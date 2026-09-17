@@ -2,6 +2,8 @@ const pool = require('../config/db');
 const nodemailer = require('nodemailer');
 const { broadcastToCompany } = require('../services/websocket.service');
 const notificationService = require('../services/notification.service');
+const eggExportService = require('../services/eggProductionExport.service');
+const eggReportsExportService = require('../services/eggReportsExport.service');
 
 // Helper oficial para cálculo de código de lote en Calendario Juliano: LOTE-[Año 2d][Día Juliano 3d]-[Corrida 2d] (ej. LOTE-26252-01)
 const computeJulianLotCode = (productionDate, runNumber = 1) => {
@@ -123,6 +125,67 @@ const ensureEggSchema = async () => {
                 ADD COLUMN quality_brix DECIMAL(5,2) NULL AFTER quality_defect_dirty_pct
             `);
             console.log("[EggIndustrial] Auto-migrated quality classification columns in egg_raw_materials.");
+        }
+
+        // Tablas y columnas de mermas, remanentes y mapeos de códigos (Mejoras Integrales v199)
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS egg_batch_waste_logs (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                company_id INT NOT NULL,
+                batch_id INT NOT NULL,
+                stage ENUM('quebraje', 'pasteurizacion', 'tuberias', 'envasado', 'almacenamiento', 'calidad', 'otro') NOT NULL DEFAULT 'quebraje',
+                waste_type VARCHAR(100) NOT NULL DEFAULT 'merma_operativa',
+                quantity_lbs DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+                reason TEXT NULL,
+                operator_name VARCHAR(150) NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_ebw_comp_batch (company_id, batch_id),
+                INDEX idx_ebw_stage (company_id, stage),
+                INDEX idx_ebw_created (company_id, created_at)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+        `);
+
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS egg_batch_remanentes (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                company_id INT NOT NULL,
+                batch_id INT NOT NULL,
+                product_type VARCHAR(100) NOT NULL,
+                remanente_type ENUM('pasteurizado', 'no_pasteurizado', 'reproceso', 'reutilizable') NOT NULL DEFAULT 'pasteurizado',
+                quantity_lbs DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+                storage_location VARCHAR(150) NULL,
+                status ENUM('disponible', 'asignado_a_lote', 'descartado') NOT NULL DEFAULT 'disponible',
+                target_batch_id INT NULL,
+                notes TEXT NULL,
+                operator_name VARCHAR(150) NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                INDEX idx_ebr_comp_batch (company_id, batch_id),
+                INDEX idx_ebr_status (company_id, status)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+        `);
+
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS egg_product_code_mappings (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                company_id INT NOT NULL,
+                industrial_product_type VARCHAR(100) NOT NULL,
+                presentation VARCHAR(100) NOT NULL,
+                catalog_codes TEXT NOT NULL,
+                unit_weight_lbs DECIMAL(10,2) NOT NULL DEFAULT 1.00,
+                unit_weight_kg DECIMAL(10,2) NOT NULL DEFAULT 0.45,
+                notes VARCHAR(255) NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                INDEX idx_epcm_comp_type (company_id, industrial_product_type)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+        `);
+
+        const [bCols] = await pool.query(
+            "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'egg_production_batches' AND COLUMN_NAME = 'packaging_status'"
+        );
+        if (bCols.length === 0) {
+            await pool.query("ALTER TABLE egg_production_batches ADD COLUMN packaging_status ENUM('pendiente', 'en_envasado', 'cerrado') NOT NULL DEFAULT 'pendiente' AFTER status, ADD COLUMN packaging_loss_lbs DECIMAL(12,2) DEFAULT 0.00 AFTER packaging_status, ADD COLUMN packaging_efficiency_pct DECIMAL(5,2) DEFAULT 0.00 AFTER packaging_loss_lbs, ADD COLUMN notes TEXT NULL AFTER packaging_efficiency_pct");
         }
 
         schemaEnsured = true;
@@ -4221,6 +4284,920 @@ const getFactoryUsers = async (req, res) => {
     }
 };
 
+// =========================================================================
+// MEJORAS INTEGRALES HUEVO INDUSTRIAL (V199)
+// =========================================================================
+
+// 3.1 Actualizar Lote de Producción (Edición)
+const updateProductionBatch = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { product_type, presentation, operator_name, target_brix, target_solids_pct, notes } = req.body;
+        const company_id = req.company_id;
+
+        const [existing] = await pool.query(
+            'SELECT * FROM egg_production_batches WHERE id = ? AND company_id = ?',
+            [id, company_id]
+        );
+        if (existing.length === 0) {
+            return res.status(404).json({ message: 'Lote de producción no encontrado.' });
+        }
+
+        await pool.query(
+            `UPDATE egg_production_batches 
+             SET product_type = COALESCE(?, product_type),
+                 presentation = COALESCE(?, presentation),
+                 operator_name = COALESCE(?, operator_name),
+                 target_brix = ?,
+                 target_solids_pct = ?,
+                 notes = COALESCE(?, notes),
+                 updated_at = NOW()
+             WHERE id = ? AND company_id = ?`,
+            [
+                product_type, presentation, operator_name, 
+                target_brix || null, target_solids_pct || null, 
+                notes, id, company_id
+            ]
+        );
+
+        await pool.query(
+            `INSERT INTO egg_industrial_events (company_id, event_type, severity, description, payload, operator_name)
+             VALUES (?, 'production.updated', 'info', ?, ?, ?)`,
+            [
+                company_id,
+                `Lote de producción #${id} (${existing[0].batch_code_display || existing[0].batch_uuid}) actualizado.`,
+                JSON.stringify({ batch_id: parseInt(id), updates: req.body }),
+                operator_name || req.user?.nombre || 'Sistema'
+            ]
+        );
+
+        res.json({ success: true, message: 'Lote de producción actualizado exitosamente.' });
+    } catch (error) {
+        console.error('Error in updateProductionBatch:', error);
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// 3.2 Eliminar / Anular Lote de Producción con reversión de materia prima
+const deleteProductionBatch = async (req, res) => {
+    const connection = await pool.getConnection();
+    try {
+        await connection.beginTransaction();
+        const { id } = req.params;
+        const company_id = req.company_id;
+
+        const [existing] = await connection.query(
+            'SELECT * FROM egg_production_batches WHERE id = ? AND company_id = ?',
+            [id, company_id]
+        );
+        if (existing.length === 0) {
+            await connection.rollback();
+            return res.status(404).json({ message: 'Lote de producción no encontrado.' });
+        }
+        const batch = existing[0];
+
+        // Verificar si ya tiene empaque registrado
+        const [pkgRecords] = await connection.query(
+            'SELECT COUNT(*) as count FROM egg_packaging_records WHERE batch_id = ? AND company_id = ?',
+            [id, company_id]
+        );
+        if (pkgRecords[0]?.count > 0 && req.query.force !== 'true') {
+            await connection.rollback();
+            return res.status(400).json({ 
+                message: `No se puede eliminar el lote porque ya cuenta con ${pkgRecords[0].count} registro(s) de envasado comercial. Elimine primero el envasado o use eliminación forzada.` 
+            });
+        }
+
+        // Revertir materias primas consumidas a egg_raw_materials
+        const [materials] = await connection.query(
+            'SELECT * FROM batch_raw_materials WHERE batch_id = ?',
+            [id]
+        );
+        for (const rm of materials) {
+            const qty = parseFloat(rm.quantity_lbs || 0);
+            const boxes = parseInt(rm.boxes_count || 0, 10);
+            if (boxes > 0) {
+                await connection.query(
+                    'UPDATE egg_raw_materials SET stock_lbs = stock_lbs + ?, total_boxes = total_boxes + ? WHERE id = ? AND company_id = ?',
+                    [qty, boxes, rm.raw_material_id, company_id]
+                );
+            } else {
+                await connection.query(
+                    'UPDATE egg_raw_materials SET stock_lbs = stock_lbs + ? WHERE id = ? AND company_id = ?',
+                    [qty, rm.raw_material_id, company_id]
+                );
+            }
+        }
+
+        // Eliminar tablas dependientes
+        await connection.query('DELETE FROM batch_raw_materials WHERE batch_id = ?', [id]);
+        await connection.query('DELETE FROM egg_batch_variable_costs WHERE batch_id = ? AND company_id = ?', [id, company_id]);
+        await connection.query('DELETE FROM egg_batch_waste_logs WHERE batch_id = ? AND company_id = ?', [id, company_id]);
+        await connection.query('DELETE FROM egg_batch_remanentes WHERE batch_id = ? AND company_id = ?', [id, company_id]);
+        await connection.query('DELETE FROM egg_pasteurization_logs WHERE batch_id = ? AND company_id = ?', [id, company_id]);
+
+        // Si estaba vinculado al calendario, restaurar estado a 'programado'
+        if (batch.scheduled_production_id) {
+            await connection.query(
+                'UPDATE egg_scheduled_productions SET status = "programado", batch_id = NULL WHERE id = ? AND company_id = ?',
+                [batch.scheduled_production_id, company_id]
+            );
+        }
+
+        await connection.query('DELETE FROM egg_production_batches WHERE id = ? AND company_id = ?', [id, company_id]);
+
+        await connection.query(
+            `INSERT INTO egg_industrial_events (company_id, event_type, severity, description, payload, operator_name)
+             VALUES (?, 'production.deleted', 'warning', ?, ?, ?)`,
+            [
+                company_id,
+                `Lote de producción #${id} (${batch.batch_code_display || batch.batch_uuid}) eliminado y stock revertido.`,
+                JSON.stringify({ batch_id: parseInt(id), batch_code: batch.batch_code_display, materials_reverted: materials.length }),
+                req.user?.nombre || 'Administrador'
+            ]
+        );
+
+        await connection.commit();
+        res.json({ success: true, message: 'Lote de producción eliminado y materias primas revertidas al stock.' });
+    } catch (error) {
+        await connection.rollback();
+        console.error('Error in deleteProductionBatch:', error);
+        res.status(500).json({ message: error.message });
+    } finally {
+        connection.release();
+    }
+};
+
+// 3.3 Agregar más tarimas al quebraje durante la corrida
+const addTarimasToBatch = async (req, res) => {
+    const connection = await pool.getConnection();
+    try {
+        await connection.beginTransaction();
+        const { id } = req.params;
+        const { raw_material_id, quantity_lbs, boxes_count, tarimas, notes } = req.body;
+        const company_id = req.company_id;
+
+        const qty = parseFloat(quantity_lbs || 0);
+        const boxes = parseInt(boxes_count || 0, 10);
+        if (qty <= 0) {
+            await connection.rollback();
+            return res.status(400).json({ message: 'El peso de las tarimas agregadas debe ser mayor a cero.' });
+        }
+
+        // Validar lote de producción
+        const [batches] = await connection.query(
+            'SELECT * FROM egg_production_batches WHERE id = ? AND company_id = ?',
+            [id, company_id]
+        );
+        if (batches.length === 0) {
+            await connection.rollback();
+            return res.status(404).json({ message: 'Lote de producción no encontrado.' });
+        }
+        const batch = batches[0];
+
+        // Validar stock de materia prima
+        const [rmRows] = await connection.query(
+            'SELECT * FROM egg_raw_materials WHERE id = ? AND company_id = ? FOR UPDATE',
+            [raw_material_id, company_id]
+        );
+        if (rmRows.length === 0) {
+            await connection.rollback();
+            return res.status(404).json({ message: 'Materia prima no encontrada.' });
+        }
+        const currentStock = parseFloat(rmRows[0].stock_lbs || 0);
+        if (currentStock < qty) {
+            await connection.rollback();
+            return res.status(400).json({ 
+                message: `Stock insuficiente en lote ${rmRows[0].provider_lot}. Disponible: ${currentStock.toFixed(2)} Lbs, Solicitado: ${qty.toFixed(2)} Lbs.` 
+            });
+        }
+
+        // Descontar stock
+        if (boxes > 0) {
+            await connection.query(
+                'UPDATE egg_raw_materials SET stock_lbs = GREATEST(0, stock_lbs - ?), total_boxes = GREATEST(0, total_boxes - ?) WHERE id = ? AND company_id = ?',
+                [qty, boxes, raw_material_id, company_id]
+            );
+        } else {
+            await connection.query(
+                'UPDATE egg_raw_materials SET stock_lbs = GREATEST(0, stock_lbs - ?) WHERE id = ? AND company_id = ?',
+                [qty, raw_material_id, company_id]
+            );
+        }
+
+        // Insertar en batch_raw_materials
+        const tarimasJson = tarimas && Array.isArray(tarimas) ? JSON.stringify(tarimas) : null;
+        await connection.query(
+            'INSERT INTO batch_raw_materials (batch_id, raw_material_id, quantity_lbs, tarimas_json, boxes_count) VALUES (?, ?, ?, ?, ?)',
+            [id, raw_material_id, qty, tarimasJson, boxes]
+        );
+
+        // Incrementar input_weight_lbs en el lote
+        await connection.query(
+            'UPDATE egg_production_batches SET input_weight_lbs = input_weight_lbs + ? WHERE id = ? AND company_id = ?',
+            [qty, id, company_id]
+        );
+
+        await connection.query(
+            `INSERT INTO egg_industrial_events (company_id, event_type, severity, description, payload, operator_name)
+             VALUES (?, 'batch.tarimas_added', 'info', ?, ?, ?)`,
+            [
+                company_id,
+                `Agregadas ${qty} Lbs (${boxes} cajas / tarimas) al quebraje del lote ${batch.batch_code_display || batch.batch_uuid}.`,
+                JSON.stringify({ batch_id: parseInt(id), raw_material_id, quantity_lbs: qty, boxes_count: boxes, notes }),
+                req.user?.nombre || batch.operator_name || 'Operador'
+            ]
+        );
+
+        await connection.commit();
+        res.json({ 
+            success: true, 
+            message: `Se agregaron exitosamente ${qty} Lbs al lote ${batch.batch_code_display || batch.batch_uuid}.`,
+            new_input_weight_lbs: parseFloat(batch.input_weight_lbs || 0) + qty
+        });
+    } catch (error) {
+        await connection.rollback();
+        console.error('Error in addTarimasToBatch:', error);
+        res.status(500).json({ message: error.message });
+    } finally {
+        connection.release();
+    }
+};
+
+// 3.4 Visualizador de Etapas Cumplidas del Ciclo de Producción
+const getBatchStages = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const company_id = req.company_id;
+
+        const data = await eggExportService.getBatchExportData(id, company_id);
+        if (!data) return res.status(404).json({ message: 'Lote no encontrado.' });
+
+        const { batch, rawMaterials, pasteurizationLogs, remanentes, packagingRecords, wasteLogs, totals } = data;
+
+        // Construir el desglose de las 4 etapas
+        const stages = [
+            {
+                step: 1,
+                id: 'quebraje',
+                title: 'Inicio de Producción y Quebraje de Tarimas',
+                subtitle: 'Recepción, pesaje y quebraje de huevo en cáscara / líquido',
+                status: batch.input_weight_lbs > 0 ? 'completado' : 'pendiente',
+                started_at: batch.started_at,
+                data: {
+                    total_input_lbs: totals.totalInputWeight,
+                    total_boxes: rawMaterials.reduce((s, r) => s + parseInt(r.boxes_count || 0, 10), 0),
+                    raw_materials_count: rawMaterials.length,
+                    raw_materials: rawMaterials
+                }
+            },
+            {
+                step: 2,
+                id: 'pasteurizacion',
+                title: 'Pasteurización Térmica y Lotes Duales',
+                subtitle: 'Tratamiento térmico, curva de temperatura, caudal y presión',
+                status: pasteurizationLogs.length > 0 ? 'completado' : (batch.status === 'en_proceso' ? 'en_progreso' : 'pendiente'),
+                data: {
+                    logs_count: pasteurizationLogs.length,
+                    logs: pasteurizationLogs,
+                    target_brix: batch.target_brix,
+                    target_solids_pct: batch.target_solids_pct,
+                    yield_liquid_lbs: totals.liquidYield,
+                    waste_shell_lbs: totals.shellWaste,
+                    is_dual_compatible: true
+                }
+            },
+            {
+                step: 3,
+                id: 'remanentes',
+                title: 'Remanentes, Reprocesos y Reutilizables',
+                subtitle: 'Gestión de sobrantes (ej. huevo en leche), mezclas y reprocesos',
+                status: remanentes.length > 0 ? 'activo' : 'opcional',
+                data: {
+                    total_remanente_lbs: totals.remanenteWeight,
+                    remanentes: remanentes
+                }
+            },
+            {
+                step: 4,
+                id: 'envasado',
+                title: 'Envasado Comercial, Mermas y Balance Final',
+                subtitle: 'Empaque en cubetas/galones, detección de faltante y cierre oficial',
+                status: batch.packaging_status === 'cerrado' ? 'completado' : (packagingRecords.length > 0 ? 'en_envasado' : 'pendiente'),
+                data: {
+                    packaged_weight_lbs: totals.packagedWeight,
+                    packaged_records_count: packagingRecords.length,
+                    packaging_records: packagingRecords,
+                    packaging_status: batch.packaging_status || 'pendiente',
+                    packaging_loss_lbs: parseFloat(batch.packaging_loss_lbs || 0),
+                    packaging_efficiency_pct: parseFloat(batch.packaging_efficiency_pct || totals.packagingEfficiencyPct),
+                    waste_logs: wasteLogs
+                }
+            }
+        ];
+
+        res.json({
+            batch,
+            totals,
+            stages
+        });
+    } catch (error) {
+        console.error('Error in getBatchStages:', error);
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// 3.5 Gestión de Mermas de Producción
+const getBatchWastes = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const [rows] = await pool.query(
+            'SELECT * FROM egg_batch_waste_logs WHERE batch_id = ? AND company_id = ? ORDER BY created_at DESC',
+            [id, req.company_id]
+        );
+        res.json(rows);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+const createBatchWaste = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { stage, waste_type, quantity_lbs, reason, operator_name } = req.body;
+        const company_id = req.company_id;
+
+        const qty = parseFloat(quantity_lbs || 0);
+        if (qty <= 0) return res.status(400).json({ message: 'La cantidad de merma debe ser mayor a cero.' });
+
+        const [result] = await pool.query(
+            `INSERT INTO egg_batch_waste_logs (company_id, batch_id, stage, waste_type, quantity_lbs, reason, operator_name)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            [company_id, id, stage || 'quebraje', waste_type || 'merma_operativa', qty, reason || null, operator_name || req.user?.nombre || null]
+        );
+
+        await pool.query(
+            `INSERT INTO egg_industrial_events (company_id, event_type, severity, description, payload, operator_name)
+             VALUES (?, 'waste.logged', 'info', ?, ?, ?)`,
+            [
+                company_id,
+                `Registrada merma de ${qty} Lbs en etapa ${stage} para lote #${id}.`,
+                JSON.stringify({ waste_id: result.insertId, batch_id: parseInt(id), quantity_lbs: qty, stage, reason }),
+                operator_name || req.user?.nombre || 'Operador'
+            ]
+        );
+
+        res.status(201).json({ id: result.insertId, success: true, message: 'Merma registrada exitosamente.' });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+const deleteBatchWaste = async (req, res) => {
+    try {
+        const { id } = req.params;
+        await pool.query('DELETE FROM egg_batch_waste_logs WHERE id = ? AND company_id = ?', [id, req.company_id]);
+        res.json({ success: true, message: 'Registro de merma eliminado.' });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// 3.6 Remanentes, Reprocesos y Reutilizables
+const getBatchRemanentes = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const [rows] = await pool.query(
+            'SELECT * FROM egg_batch_remanentes WHERE batch_id = ? AND company_id = ? ORDER BY created_at DESC',
+            [id, req.company_id]
+        );
+        res.json(rows);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+const getAvailableRemanentes = async (req, res) => {
+    try {
+        const [rows] = await pool.query(
+            `SELECT r.*, b.batch_code_display, b.batch_uuid 
+             FROM egg_batch_remanentes r
+             JOIN egg_production_batches b ON r.batch_id = b.id
+             WHERE r.company_id = ? AND r.status = 'disponible'
+             ORDER BY r.created_at DESC`,
+            [req.company_id]
+        );
+        res.json(rows);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+const createBatchRemanente = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { product_type, remanente_type, quantity_lbs, storage_location, notes, operator_name } = req.body;
+        const company_id = req.company_id;
+
+        const qty = parseFloat(quantity_lbs || 0);
+        if (qty <= 0) return res.status(400).json({ message: 'La cantidad debe ser mayor a cero.' });
+
+        const [result] = await pool.query(
+            `INSERT INTO egg_batch_remanentes (company_id, batch_id, product_type, remanente_type, quantity_lbs, storage_location, notes, operator_name)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+                company_id, id, product_type || 'huevo entero', 
+                remanente_type || 'pasteurizado', qty, 
+                storage_location || 'Tanque Pulmón', notes || null, 
+                operator_name || req.user?.nombre || null
+            ]
+        );
+
+        res.status(201).json({ id: result.insertId, success: true, message: 'Remanente / Reproceso registrado con éxito.' });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+const updateBatchRemanente = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { status, target_batch_id, notes } = req.body;
+        await pool.query(
+            `UPDATE egg_batch_remanentes 
+             SET status = COALESCE(?, status),
+                 target_batch_id = COALESCE(?, target_batch_id),
+                 notes = COALESCE(?, notes),
+                 updated_at = NOW()
+             WHERE id = ? AND company_id = ?`,
+            [status, target_batch_id, notes, id, req.company_id]
+        );
+        res.json({ success: true, message: 'Remanente actualizado.' });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// 3.7 Cierre de Lote de Envasado con Detección de Faltante y Eficiencia
+const closeBatchPackaging = async (req, res) => {
+    const connection = await pool.getConnection();
+    try {
+        await connection.beginTransaction();
+        const { id } = req.params;
+        const { reason, operator_name } = req.body;
+        const company_id = req.company_id;
+
+        const [batches] = await connection.query(
+            'SELECT * FROM egg_production_batches WHERE id = ? AND company_id = ?',
+            [id, company_id]
+        );
+        if (batches.length === 0) {
+            await connection.rollback();
+            return res.status(404).json({ message: 'Lote no encontrado.' });
+        }
+        const batch = batches[0];
+
+        // Sumar envasado real
+        const [pkgSum] = await connection.query(
+            'SELECT COALESCE(SUM(total_batch_weight_lbs), 0) as packaged_weight FROM egg_packaging_records WHERE batch_id = ? AND company_id = ?',
+            [id, company_id]
+        );
+        const packagedWeight = parseFloat(pkgSum[0]?.packaged_weight || 0);
+        const yieldLiquid = parseFloat(batch.yield_liquid_lbs || 0);
+        const missingLbs = Math.max(0, yieldLiquid - packagedWeight);
+        const efficiencyPct = yieldLiquid > 0 ? Math.round((packagedWeight / yieldLiquid) * 10000) / 100 : 0;
+
+        // Si faltaron libras por envasar, registrarlas como merma en tuberías / envasado
+        if (missingLbs > 0.01) {
+            await connection.query(
+                `INSERT INTO egg_batch_waste_logs (company_id, batch_id, stage, waste_type, quantity_lbs, reason, operator_name)
+                 VALUES (?, ?, 'envasado', 'merma_tuberias_envasado', ?, ?, ?)`,
+                [
+                    company_id, id, missingLbs, 
+                    reason || `Faltante de cierre de envasado (${missingLbs.toFixed(2)} Lbs no envasadas / residuos en tuberías).`,
+                    operator_name || req.user?.nombre || 'Operador Envasado'
+                ]
+            );
+        }
+
+        // Marcar lote como cerrado en envasado
+        await connection.query(
+            `UPDATE egg_production_batches 
+             SET packaging_status = 'cerrado', 
+                 status = 'empaquetado',
+                 packaging_loss_lbs = ?,
+                 packaging_efficiency_pct = ?,
+                 completed_at = COALESCE(completed_at, NOW())
+             WHERE id = ? AND company_id = ?`,
+            [missingLbs, efficiencyPct, id, company_id]
+        );
+
+        await connection.query(
+            `INSERT INTO egg_industrial_events (company_id, event_type, severity, description, payload, operator_name)
+             VALUES (?, 'packaging.closed', 'info', ?, ?, ?)`,
+            [
+                company_id,
+                `Envasado de lote #${id} (${batch.batch_code_display || batch.batch_uuid}) cerrado. Envasado: ${packagedWeight} Lbs. Faltante registrado como merma: ${missingLbs} Lbs. Eficiencia: ${efficiencyPct}%.`,
+                JSON.stringify({ batch_id: parseInt(id), packagedWeight, yieldLiquid, missingLbs, efficiencyPct }),
+                operator_name || req.user?.nombre || 'Operador'
+            ]
+        );
+
+        await connection.commit();
+        res.json({
+            success: true,
+            message: `Lote cerrado exitosamente. Eficiencia de envasado: ${efficiencyPct}%. Merma registrada: ${missingLbs.toFixed(2)} Lbs.`,
+            packagedWeight,
+            missingLbs,
+            efficiencyPct
+        });
+    } catch (error) {
+        await connection.rollback();
+        console.error('Error in closeBatchPackaging:', error);
+        res.status(500).json({ message: error.message });
+    } finally {
+        connection.release();
+    }
+};
+
+// 3.8 Exportar Resumen de Producción en PDF, Excel y Word
+const exportBatchSummary = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { format } = req.query; // 'pdf', 'excel', 'word'
+        const company_id = req.company_id;
+
+        if (format === 'excel' || format === 'xlsx') {
+            const buffer = await eggExportService.generateBatchSummaryExcel(id, company_id);
+            res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            res.setHeader('Content-Disposition', `attachment; filename="resumen_produccion_lote_${id}.xlsx"`);
+            return res.send(buffer);
+        }
+
+        if (format === 'word' || format === 'docx') {
+            const buffer = await eggExportService.generateBatchSummaryWord(id, company_id);
+            res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+            res.setHeader('Content-Disposition', `attachment; filename="resumen_produccion_lote_${id}.docx"`);
+            return res.send(buffer);
+        }
+
+        // Default: PDF
+        const buffer = await eggExportService.generateBatchSummaryPdf(id, company_id);
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename="resumen_produccion_lote_${id}.pdf"`);
+        return res.send(buffer);
+    } catch (error) {
+        console.error('Error in exportBatchSummary:', error);
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// 1.2 Eliminar Recepción de Materia Prima
+const deleteRawMaterial = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const company_id = req.company_id;
+
+        // Verificar si fue consumida en un lote de producción
+        const [consumed] = await pool.query(
+            'SELECT brm.*, b.batch_code_display FROM batch_raw_materials brm JOIN egg_production_batches b ON brm.batch_id = b.id WHERE brm.raw_material_id = ?',
+            [id]
+        );
+        if (consumed.length > 0) {
+            return res.status(400).json({
+                message: `No se puede eliminar la recepción #${id} porque ya fue consumida en el lote de producción ${consumed[0].batch_code_display || '#' + consumed[0].batch_id}.`
+            });
+        }
+
+        // Eliminar tarimas hijas si existen
+        try {
+            await pool.query('DELETE FROM egg_raw_material_tarimas WHERE raw_material_id = ?', [id]);
+        } catch (e) {}
+
+        await pool.query('DELETE FROM egg_raw_materials WHERE id = ? AND company_id = ?', [id, company_id]);
+
+        await pool.query(
+            `INSERT INTO egg_industrial_events (company_id, event_type, severity, description, payload, operator_name)
+             VALUES (?, 'raw_material.deleted', 'warning', ?, ?, ?)`,
+            [company_id, `Recepción de materia prima #${id} eliminada.`, JSON.stringify({ raw_material_id: parseInt(id) }), req.user?.nombre || 'Administrador']
+        );
+
+        res.json({ success: true, message: 'Recepción de materia prima eliminada correctamente.' });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// 23. Reportes de Huevo Industrial
+const getRawMaterialsReport = async (req, res) => {
+    try {
+        const { format, start_date, end_date, provider_id, egg_type } = req.query;
+        const filters = { startDate: start_date, endDate: end_date, providerId: provider_id, eggType: egg_type };
+
+        if (format === 'excel') {
+            const buffer = await eggReportsExportService.generateRawMaterialsReportExcel(req.company_id, filters);
+            res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            res.setHeader('Content-Disposition', 'attachment; filename="reporte_materia_prima.xlsx"');
+            return res.send(buffer);
+        }
+        if (format === 'pdf') {
+            const buffer = await eggReportsExportService.generateRawMaterialsReportPdf(req.company_id, filters);
+            res.setHeader('Content-Type', 'application/pdf');
+            res.setHeader('Content-Disposition', 'inline; filename="reporte_materia_prima.pdf"');
+            return res.send(buffer);
+        }
+
+        const data = await eggReportsExportService.getRawMaterialsReportData(req.company_id, filters);
+        res.json(data);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+const getProductionReport = async (req, res) => {
+    try {
+        const { format, start_date, end_date, product_type, status } = req.query;
+        const filters = { startDate: start_date, endDate: end_date, productType: product_type, status };
+
+        if (format === 'excel') {
+            const buffer = await eggReportsExportService.generateProductionReportExcel(req.company_id, filters);
+            res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            res.setHeader('Content-Disposition', 'attachment; filename="reporte_produccion.xlsx"');
+            return res.send(buffer);
+        }
+        if (format === 'pdf') {
+            const buffer = await eggReportsExportService.generateProductionReportPdf(req.company_id, filters);
+            res.setHeader('Content-Type', 'application/pdf');
+            res.setHeader('Content-Disposition', 'inline; filename="reporte_produccion.pdf"');
+            return res.send(buffer);
+        }
+
+        const data = await eggReportsExportService.getProductionReportData(req.company_id, filters);
+        res.json(data);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+const getPackagingReport = async (req, res) => {
+    try {
+        const { format, start_date, end_date, product_type, presentation, batch_id } = req.query;
+        const filters = { startDate: start_date, endDate: end_date, productType: product_type, presentation, batchId: batch_id };
+
+        if (format === 'excel') {
+            const buffer = await eggReportsExportService.generatePackagingReportExcel(req.company_id, filters);
+            res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            res.setHeader('Content-Disposition', 'attachment; filename="reporte_empaque.xlsx"');
+            return res.send(buffer);
+        }
+        if (format === 'pdf') {
+            const buffer = await eggReportsExportService.generatePackagingReportPdf(req.company_id, filters);
+            res.setHeader('Content-Type', 'application/pdf');
+            res.setHeader('Content-Disposition', 'inline; filename="reporte_empaque.pdf"');
+            return res.send(buffer);
+        }
+
+        const data = await eggReportsExportService.getPackagingReportData(req.company_id, filters);
+        res.json(data);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+const getQualityReport = async (req, res) => {
+    try {
+        const { format, start_date, end_date, quality_status } = req.query;
+        const filters = { startDate: start_date, endDate: end_date, qualityStatus: quality_status };
+
+        if (format === 'excel') {
+            const buffer = await eggReportsExportService.generateQualityReportExcel(req.company_id, filters);
+            res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            res.setHeader('Content-Disposition', 'attachment; filename="reporte_calidad.xlsx"');
+            return res.send(buffer);
+        }
+        if (format === 'pdf') {
+            const buffer = await eggReportsExportService.generateQualityReportPdf(req.company_id, filters);
+            res.setHeader('Content-Type', 'application/pdf');
+            res.setHeader('Content-Disposition', 'inline; filename="reporte_calidad.pdf"');
+            return res.send(buffer);
+        }
+
+        const data = await eggReportsExportService.getQualityReportData(req.company_id, filters);
+        res.json(data);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+const getWastesReport = async (req, res) => {
+    try {
+        const { format, start_date, end_date, stage, batch_id } = req.query;
+        const filters = { startDate: start_date, endDate: end_date, stage, batchId: batch_id };
+
+        if (format === 'excel') {
+            const buffer = await eggReportsExportService.generateWastesReportExcel(req.company_id, filters);
+            res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            res.setHeader('Content-Disposition', 'attachment; filename="reporte_mermas.xlsx"');
+            return res.send(buffer);
+        }
+        if (format === 'pdf') {
+            const buffer = await eggReportsExportService.generateWastesReportPdf(req.company_id, filters);
+            res.setHeader('Content-Type', 'application/pdf');
+            res.setHeader('Content-Disposition', 'inline; filename="reporte_mermas.pdf"');
+            return res.send(buffer);
+        }
+
+        const data = await eggReportsExportService.getWastesReportData(req.company_id, filters);
+        res.json(data);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// 24. Vinculación de Códigos de Catálogo (Mapeo de Productos)
+const getCodeMappings = async (req, res) => {
+    try {
+        await ensureEggSchema();
+        const [rows] = await pool.query(
+            'SELECT * FROM egg_product_code_mappings WHERE company_id = ? ORDER BY industrial_product_type, presentation',
+            [req.company_id]
+        );
+        res.json(rows);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+const saveCodeMapping = async (req, res) => {
+    try {
+        await ensureEggSchema();
+        const { id } = req.params || {};
+        const { industrial_product_type, presentation, catalog_codes, unit_weight_lbs, unit_weight_kg, notes } = req.body;
+        const company_id = req.company_id;
+
+        if (!industrial_product_type || !presentation || !catalog_codes) {
+            return res.status(400).json({ message: 'Tipo de producto, presentación y códigos de catálogo son obligatorios.' });
+        }
+
+        const lbs = parseFloat(unit_weight_lbs || 1.00);
+        const kg = parseFloat(unit_weight_kg || (lbs * 0.453592).toFixed(2));
+
+        if (id) {
+            await pool.query(
+                `UPDATE egg_product_code_mappings 
+                 SET industrial_product_type = ?, presentation = ?, catalog_codes = ?, unit_weight_lbs = ?, unit_weight_kg = ?, notes = ?, updated_at = NOW()
+                 WHERE id = ? AND company_id = ?`,
+                [industrial_product_type, presentation, catalog_codes, lbs, kg, notes || null, id, company_id]
+            );
+            return res.json({ success: true, message: 'Mapeo de códigos actualizado correctamente.' });
+        } else {
+            const [result] = await pool.query(
+                `INSERT INTO egg_product_code_mappings (company_id, industrial_product_type, presentation, catalog_codes, unit_weight_lbs, unit_weight_kg, notes)
+                 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+                [company_id, industrial_product_type, presentation, catalog_codes, lbs, kg, notes || null]
+            );
+            return res.status(201).json({ id: result.insertId, success: true, message: 'Mapeo de códigos creado exitosamente.' });
+        }
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+const deleteCodeMapping = async (req, res) => {
+    try {
+        const { id } = req.params;
+        await pool.query('DELETE FROM egg_product_code_mappings WHERE id = ? AND company_id = ?', [id, req.company_id]);
+        res.json({ success: true, message: 'Mapeo eliminado exitosamente.' });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// 25. Inventario Traducido de Huevo Industrial
+const getTranslatedInventory = async (req, res) => {
+    try {
+        await ensureEggSchema();
+        const company_id = req.company_id;
+
+        // 1. Obtener todos los mapeos activos
+        const [mappings] = await pool.query(
+            'SELECT * FROM egg_product_code_mappings WHERE company_id = ?',
+            [company_id]
+        );
+
+        // Crear mapa rápido de código -> mapeo
+        const codeMap = {};
+        for (const m of mappings) {
+            const rawCodes = (m.catalog_codes || '').split(',').map(c => c.trim().toLowerCase()).filter(Boolean);
+            for (const c of rawCodes) {
+                codeMap[c] = m;
+            }
+        }
+
+        // 2. Consultar productos del inventario general con su stock real
+        const [products] = await pool.query(
+            `SELECT p.id, p.codigo, p.nombre, COALESCE(SUM(i.stock), 0) as stock, p.unidad_medida, c.name as category_name
+             FROM products p
+             LEFT JOIN inventory i ON p.id = i.product_id
+             LEFT JOIN product_categories c ON p.category_id = c.id
+             WHERE p.company_id = ? AND p.status = 'activo'
+             GROUP BY p.id, p.codigo, p.nombre, p.unidad_medida, c.name`,
+            [company_id]
+        );
+
+        // 3. Clasificar y traducir inventario
+        const byType = {};
+        const byPresentation = {};
+        const unmappedProducts = [];
+        let grandTotalUnits = 0;
+        let grandTotalLbs = 0;
+        let grandTotalKg = 0;
+
+        for (const prod of products) {
+            const code = (prod.codigo || '').trim().toLowerCase();
+            const mapping = codeMap[code];
+
+            const currentStockUnits = parseFloat(prod.stock || 0);
+
+            // Verificar si es candidato a huevo pero no mapeado
+            const isEggCandidate = 
+                (prod.nombre || '').toLowerCase().includes('huevo') || 
+                (prod.nombre || '').toLowerCase().includes('clara') || 
+                (prod.nombre || '').toLowerCase().includes('yema') ||
+                (prod.categoria || '').toLowerCase().includes('huevo') ||
+                (prod.category_name || '').toLowerCase().includes('huevo') ||
+                (prod.category_name || '').toLowerCase().includes('ovoproducto');
+
+            if (mapping) {
+                const lbsPerUnit = parseFloat(mapping.unit_weight_lbs || 1);
+                const kgPerUnit = parseFloat(mapping.unit_weight_kg || (lbsPerUnit * 0.453592));
+                const totalLbs = currentStockUnits * lbsPerUnit;
+                const totalKg = currentStockUnits * kgPerUnit;
+
+                grandTotalUnits += currentStockUnits;
+                grandTotalLbs += totalLbs;
+                grandTotalKg += totalKg;
+
+                // Agrupar por Tipo de Producto
+                const pType = mapping.industrial_product_type;
+                if (!byType[pType]) {
+                    byType[pType] = { product_type: pType, units: 0, total_lbs: 0, total_kg: 0, presentations: {} };
+                }
+                byType[pType].units += currentStockUnits;
+                byType[pType].total_lbs += totalLbs;
+                byType[pType].total_kg += totalKg;
+
+                // Agrupar por Presentación
+                const pres = mapping.presentation;
+                if (!byType[pType].presentations[pres]) {
+                    byType[pType].presentations[pres] = {
+                        presentation: pres,
+                        units: 0,
+                        total_lbs: 0,
+                        total_kg: 0,
+                        unit_weight_lbs: lbsPerUnit,
+                        unit_weight_kg: kgPerUnit,
+                        matched_products: []
+                    };
+                }
+                byType[pType].presentations[pres].units += currentStockUnits;
+                byType[pType].presentations[pres].total_lbs += totalLbs;
+                byType[pType].presentations[pres].total_kg += totalKg;
+                byType[pType].presentations[pres].matched_products.push({
+                    product_id: prod.id,
+                    codigo: prod.codigo,
+                    nombre: prod.nombre,
+                    stock_units: currentStockUnits
+                });
+            } else if (isEggCandidate) {
+                unmappedProducts.push({
+                    id: prod.id,
+                    codigo: prod.codigo,
+                    nombre: prod.nombre,
+                    stock_units: currentStockUnits,
+                    categoria: prod.category_name || prod.categoria || 'Sin categoría'
+                });
+            }
+        }
+
+        res.json({
+            summary: {
+                grandTotalUnits,
+                grandTotalLbs: Math.round(grandTotalLbs * 100) / 100,
+                grandTotalKg: Math.round(grandTotalKg * 100) / 100,
+                mappedProductsCount: Object.keys(codeMap).length,
+                unmappedProductsCount: unmappedProducts.length
+            },
+            by_type: Object.values(byType),
+            unmapped_products: unmappedProducts,
+            mappings_count: mappings.length
+        });
+    } catch (error) {
+        console.error('Error in getTranslatedInventory:', error);
+        res.status(500).json({ message: error.message });
+    }
+};
+
 module.exports = {
     getRawMaterials,
     createRawMaterial,
@@ -4292,6 +5269,30 @@ module.exports = {
     getEggCustomerOrders,
     saveEggCustomerOrder,
     deleteEggCustomerOrder,
-    getFactoryUsers
+    getFactoryUsers,
+    // Mejoras Integrales v199
+    deleteRawMaterial,
+    updateProductionBatch,
+    deleteProductionBatch,
+    addTarimasToBatch,
+    getBatchStages,
+    getBatchWastes,
+    createBatchWaste,
+    deleteBatchWaste,
+    getBatchRemanentes,
+    getAvailableRemanentes,
+    createBatchRemanente,
+    updateBatchRemanente,
+    closeBatchPackaging,
+    exportBatchSummary,
+    getRawMaterialsReport,
+    getProductionReport,
+    getPackagingReport,
+    getQualityReport,
+    getWastesReport,
+    getCodeMappings,
+    saveCodeMapping,
+    deleteCodeMapping,
+    getTranslatedInventory
 };
 

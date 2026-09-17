@@ -8,6 +8,7 @@ router.post('/raw-materials', eggController.createRawMaterial);
 router.put('/raw-materials/:id', eggController.updateRawMaterial);
 router.put('/raw-materials/:id/quality-classification', eggController.saveQualityClassification);
 router.put('/raw-materials/:id/void', eggController.voidRawMaterial);
+router.delete('/raw-materials/:id', eggController.deleteRawMaterial);
 
 // 2. CIP (Clean In Place)
 router.get('/cip', eggController.getCipLogs);
@@ -17,7 +18,24 @@ router.post('/cip/quick-sanitize', eggController.quickSanitizeCip);
 // 3. Lotes de Producción
 router.get('/batches', eggController.getProductionBatches);
 router.post('/batches', eggController.createProductionBatch);
+router.put('/batches/:id', eggController.updateProductionBatch);
+router.delete('/batches/:id', eggController.deleteProductionBatch);
 router.put('/batches/:id/complete', eggController.completeProductionBatch);
+router.get('/batches/:id/stages', eggController.getBatchStages);
+router.post('/batches/:id/tarimas', eggController.addTarimasToBatch);
+router.post('/batches/:id/close-packaging', eggController.closeBatchPackaging);
+router.get('/batches/:id/export-summary', eggController.exportBatchSummary);
+
+// 3.1 Mermas de Producción
+router.get('/batches/:id/mermas', eggController.getBatchWastes);
+router.post('/batches/:id/mermas', eggController.createBatchWaste);
+router.delete('/mermas/:id', eggController.deleteBatchWaste);
+
+// 3.2 Remanentes y Reprocesos
+router.get('/batches/:id/remanentes', eggController.getBatchRemanentes);
+router.get('/remanentes/available', eggController.getAvailableRemanentes);
+router.post('/batches/:id/remanentes', eggController.createBatchRemanente);
+router.put('/remanentes/:id', eggController.updateBatchRemanente);
 
 // 4. Pasteurización
 router.post('/pasteurize', eggController.createPasteurizationLog);
@@ -181,6 +199,22 @@ router.get('/dispatch/search-dte-orders', eggDispatchController.searchDteOrActiv
 router.post('/dispatch/stops/:stop_id/confirm', eggDispatchController.confirmStopDelivery);
 router.put('/dispatch/branches/:branch_id/location', eggDispatchController.updateCustomerBranchLocation);
 router.get('/dispatch/customer-branches', eggDispatchController.getCustomerBranches);
+
+// 23. Reportes de Huevo Industrial
+router.get('/reports/raw-materials', eggController.getRawMaterialsReport);
+router.get('/reports/production', eggController.getProductionReport);
+router.get('/reports/packaging', eggController.getPackagingReport);
+router.get('/reports/quality', eggController.getQualityReport);
+router.get('/reports/wastes', eggController.getWastesReport);
+
+// 24. Vinculación de Códigos de Catálogo (Mapeo de Productos)
+router.get('/code-mappings', eggController.getCodeMappings);
+router.post('/code-mappings', eggController.saveCodeMapping);
+router.put('/code-mappings/:id', eggController.saveCodeMapping);
+router.delete('/code-mappings/:id', eggController.deleteCodeMapping);
+
+// 25. Inventario Traducido de Huevo Industrial
+router.get('/inventory-translated', eggController.getTranslatedInventory);
 
 module.exports = router;
 
