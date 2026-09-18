@@ -69,6 +69,7 @@ const PurchaseChecks = () => {
     const [deliverDocumento, setDeliverDocumento] = useState('');
 
     const [branchFilter, setBranchFilter] = useState(user?.branch_id || '');
+    const [destinoFilter, setDestinoFilter] = useState('');
 
     const [showConfigModal, setShowConfigModal] = useState(false);
     const [configBranchId, setConfigBranchId] = useState(user?.branch_id || '');
@@ -86,9 +87,15 @@ const PurchaseChecks = () => {
     const isEditing = editId !== null;
 
     const { data: listData, isLoading: listLoading } = useQuery({
-        queryKey: ['purchase-checks', listSearch, listPage, branchFilter],
+        queryKey: ['purchase-checks', listSearch, listPage, branchFilter, destinoFilter],
         queryFn: async () => (await axios.get('/api/purchases/checks', {
-            params: { search: listSearch || undefined, page: listPage, limit: 15, branch_id: branchFilter || undefined }
+            params: {
+                search: listSearch || undefined,
+                page: listPage,
+                limit: 15,
+                branch_id: branchFilter || undefined,
+                destino: destinoFilter || undefined
+            }
         })).data
     });
 
@@ -518,8 +525,8 @@ const PurchaseChecks = () => {
                 </div>
             </div>
 
-                <div className="flex items-center gap-3">
-                    <div className="relative flex-1 max-w-sm">
+                <div className="flex flex-wrap items-center gap-3">
+                    <div className="relative flex-1 min-w-[200px] max-w-sm">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
                         <input
                             type="text"
@@ -539,6 +546,17 @@ const PurchaseChecks = () => {
                             {branches.map(b => (
                                 <option key={b.id} value={b.id}>{b.nombre}</option>
                             ))}
+                        </select>
+                    </div>
+                    <div className="w-40">
+                        <select
+                            value={destinoFilter}
+                            onChange={(e) => { setDestinoFilter(e.target.value); setListPage(1); }}
+                            className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-400 transition-all text-[11px] font-bold uppercase tracking-tight"
+                        >
+                            <option value="">Todos los Destinos</option>
+                            <option value="P">PISTA</option>
+                            <option value="T">TIENDA</option>
                         </select>
                     </div>
                     <button

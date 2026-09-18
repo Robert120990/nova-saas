@@ -6,7 +6,7 @@ const reportPdfHelper = require('../utils/reportPdfHelper');
 
 const getQuedans = async (req, res) => {
     try {
-        const { search, page = 1, limit = 15, branch_id } = req.query;
+        const { search, page = 1, limit = 15, branch_id, destino, status } = req.query;
         const offset = (page - 1) * limit;
         const companyId = req.company_id || req.user?.company_id;
         const branchFilter = branch_id || req.user?.branch_id;
@@ -26,6 +26,16 @@ const getQuedans = async (req, res) => {
         if (branchFilter) {
             query += " AND pq.branch_id = ?";
             params.push(branchFilter);
+        }
+
+        if (destino) {
+            query += " AND pq.destino = ?";
+            params.push(destino);
+        }
+
+        if (status) {
+            query += " AND pq.status = ?";
+            params.push(status);
         }
 
         const getSearchWords = (term) => {
@@ -98,10 +108,11 @@ const getQuedanById = async (req, res) => {
 
 const createQuedan = async (req, res) => {
     try {
-        const { branch_id, num_quedan, provider_id, dias_credito, fecha, fecha_vencimiento, items } = req.body;
+        const { branch_id, num_quedan, provider_id, dias_credito, destino, fecha, fecha_vencimiento, items } = req.body;
         const companyId = req.company_id || req.user?.company_id;
         const usuarioId = req.user?.id;
         const branchId = branch_id || req.user?.branch_id;
+        const targetDestino = (destino || 'T').toUpperCase() === 'P' ? 'P' : 'T';
 
         if (!num_quedan || !provider_id || !fecha) {
             return res.status(400).json({ message: 'N. Quedan, proveedor y fecha son requeridos' });
@@ -137,10 +148,10 @@ const createQuedan = async (req, res) => {
 
         const [result] = await pool.query(`
             INSERT INTO purchase_quedans
-                (company_id, branch_id, num_quedan, provider_id, dias_credito, fecha, fecha_vencimiento,
+                (company_id, branch_id, num_quedan, provider_id, dias_credito, destino, fecha, fecha_vencimiento,
                  total_gravadas, total_iva, total_retencion, total_percepcion, total_exentas, total, usuario_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `, [companyId, branchId, num_quedan, provider_id, dias_credito || 0, fecha, fecha_vencimiento,
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `, [companyId, branchId, num_quedan, provider_id, dias_credito || 0, targetDestino, fecha, fecha_vencimiento,
             totalGravadas, totalIva, totalRetencion, totalPercepcion, totalExentas, total, usuarioId]);
 
         const quedanId = result.insertId;
@@ -177,7 +188,7 @@ const createQuedan = async (req, res) => {
 const updateQuedan = async (req, res) => {
     try {
         const { id } = req.params;
-        const { branch_id, num_quedan, provider_id, dias_credito, fecha, fecha_vencimiento, items } = req.body;
+        const { branch_id, num_quedan, provider_id, dias_credito, destino, fecha, fecha_vencimiento, items } = req.body;
         const companyId = req.company_id || req.user?.company_id;
 
         const [existing] = await pool.query(
@@ -196,6 +207,7 @@ const updateQuedan = async (req, res) => {
         const branchId = branch_id || existing[0].branch_id;
         const quedanNum = num_quedan || existing[0].num_quedan;
         const provId = provider_id || existing[0].provider_id;
+        const targetDestino = destino !== undefined ? ((destino || 'T').toUpperCase() === 'P' ? 'P' : 'T') : (existing[0].destino || 'T');
 
         const [dup] = await pool.query(
             'SELECT id FROM purchase_quedans WHERE company_id = ? AND branch_id = ? AND provider_id = ? AND num_quedan = ? AND id != ?',
@@ -227,16 +239,17 @@ const updateQuedan = async (req, res) => {
 
         await pool.query(`
             UPDATE purchase_quedans SET
-                branch_id = ?, num_quedan = ?, provider_id = ?, dias_credito = ?,
+                branch_id = ?, num_quedan = ?, provider_id = ?, dias_credito = ?, destino = ?,
                 fecha = ?, fecha_vencimiento = ?,
                 total_gravadas = ?, total_iva = ?, total_retencion = ?,
                 total_percepcion = ?, total_exentas = ?, total = ?
             WHERE id = ? AND company_id = ?
         `, [
-            branch_id || existing[0].branch_id,
-            num_quedan || existing[0].num_quedan,
-            provider_id || existing[0].provider_id,
+            branchId,
+            quedanNum,
+            provId,
             dias_credito ?? existing[0].dias_credito,
+            targetDestino,
             fecha || existing[0].fecha,
             fecha_vencimiento || existing[0].fecha_vencimiento,
             totalGravadas, totalIva, totalRetencion, totalPercepcion, totalExentas, total,
@@ -374,7 +387,7 @@ const requestQuedan = async (req, res) => {
         const nrc = (quedan.provider_nrc || '').replace(/\s/g, '');
         const codProveedor = nrc;
         const llave = `${config.rrs_id_empresa}-${quedan.id}`;
-        const tipoDestino = 'TIENDA';
+        const tipoDestino = (quedan.destino || 'T') === 'P' ? 'PISTA' : 'TIENDA';
         const fechaDate = quedan.fecha instanceof Date
             ? quedan.fecha.toISOString().split('T')[0]
             : String(quedan.fecha).substring(0, 10);
@@ -501,7 +514,7 @@ const revertQuedan = async (req, res) => {
 
 const getQuedanReportPDF = async (req, res) => {
     try {
-        const { start_date, end_date, branch_id } = req.query;
+        const { start_date, end_date, branch_id, destino } = req.query;
         const companyId = req.company_id || req.user?.company_id;
 
         if (!start_date || !end_date) {
@@ -529,6 +542,11 @@ const getQuedanReportPDF = async (req, res) => {
             params.push(branch_id);
         }
 
+        if (destino && destino !== 'all') {
+            sql += ' AND pq.destino = ?';
+            params.push(destino);
+        }
+
         sql += ' ORDER BY pq.fecha ASC, pq.num_quedan ASC';
 
         const [rows] = await pool.query(sql, params);
@@ -544,6 +562,7 @@ const getQuedanReportPDF = async (req, res) => {
                         { header: 'Vencimiento', key: 'vencimiento', width: 15 },
                         { header: 'Proveedor', key: 'proveedor', width: 30 },
                         { header: 'Sucursal', key: 'sucursal', width: 20 },
+                        { header: 'Destino', key: 'destino', width: 12 },
                         { header: 'Días Crédito', key: 'dias_credito', width: 12 },
                         { header: 'Total', key: 'total', width: 15 },
                         { header: 'Estado', key: 'estado', width: 15 },
@@ -555,6 +574,7 @@ const getQuedanReportPDF = async (req, res) => {
                         vencimiento: r.fecha_vencimiento ? new Date(r.fecha_vencimiento).toLocaleDateString('es-SV') : '---',
                         proveedor: r.provider_nombre || '---',
                         sucursal: r.branch_nombre || '---',
+                        destino: r.destino === 'P' ? 'PISTA' : 'TIENDA',
                         dias_credito: r.dias_credito || 0,
                         total: `$${parseFloat(r.total || 0).toFixed(2)}`,
                         estado: r.status || '---',
@@ -568,22 +588,27 @@ const getQuedanReportPDF = async (req, res) => {
         // Generate PDF
         const { doc, getBuffer } = reportPdfHelper.createPdfDocument('portrait');
 
-        let branchSubtitle = null;
+        let subtitle = null;
         if (branch_id && branch_id !== 'all' && rows.length > 0) {
-            branchSubtitle = `SUCURSAL: ${rows[0].branch_nombre}`;
+            subtitle = `SUCURSAL: ${rows[0].branch_nombre}`;
+        }
+        if (destino && destino !== 'all') {
+            const destSub = `DESTINO: ${destino === 'P' ? 'PISTA' : 'TIENDA'}`;
+            subtitle = subtitle ? `${subtitle}    |    ${destSub}` : destSub;
         }
 
         const periodText = `DEL ${reportPdfHelper.formatDate(start_date)} AL ${reportPdfHelper.formatDate(end_date)}`;
 
         const startX = 30;
         const colWidths = {
-            num: 60,
-            fecha: 52,
-            venc: 52,
-            dias: 30,
-            proveedor: 195,
-            total: 85,
-            estado: 78
+            num: 55,
+            fecha: 48,
+            venc: 48,
+            dias: 26,
+            proveedor: 165,
+            dest: 44,
+            total: 86,
+            estado: 80
         };
         const colX = {
             num: startX,
@@ -591,8 +616,9 @@ const getQuedanReportPDF = async (req, res) => {
             venc: startX + colWidths.num + colWidths.fecha,
             dias: startX + colWidths.num + colWidths.fecha + colWidths.venc,
             proveedor: startX + colWidths.num + colWidths.fecha + colWidths.venc + colWidths.dias,
-            total: startX + colWidths.num + colWidths.fecha + colWidths.venc + colWidths.dias + colWidths.proveedor,
-            estado: startX + colWidths.num + colWidths.fecha + colWidths.venc + colWidths.dias + colWidths.proveedor + colWidths.total
+            dest: startX + colWidths.num + colWidths.fecha + colWidths.venc + colWidths.dias + colWidths.proveedor,
+            total: startX + colWidths.num + colWidths.fecha + colWidths.venc + colWidths.dias + colWidths.proveedor + colWidths.dest,
+            estado: startX + colWidths.num + colWidths.fecha + colWidths.venc + colWidths.dias + colWidths.proveedor + colWidths.dest + colWidths.total
         };
         const tableWidth = 552;
 
@@ -604,12 +630,13 @@ const getQuedanReportPDF = async (req, res) => {
             doc.text('VENCE', colX.venc + 2, y + 3, { width: colWidths.venc - 4 });
             doc.text('DÍAS', colX.dias, y + 3, { width: colWidths.dias, align: 'center' });
             doc.text('PROVEEDOR', colX.proveedor + 2, y + 3, { width: colWidths.proveedor - 4 });
+            doc.text('DESTINO', colX.dest + 2, y + 3, { width: colWidths.dest - 4 });
             doc.text('TOTAL', colX.total, y + 3, { width: colWidths.total - 4, align: 'right' });
             doc.text('ESTADO', colX.estado + 4, y + 3, { width: colWidths.estado - 4 });
             return y + 17;
         };
 
-        let currentY = reportPdfHelper.renderHeader(doc, comp, 'REPORTE DE QUEDANES EMITIDOS', periodText, 'portrait', branchSubtitle);
+        let currentY = reportPdfHelper.renderHeader(doc, comp, 'REPORTE DE QUEDANES EMITIDOS', periodText, 'portrait', subtitle);
         currentY = drawTableHeader(currentY);
 
         let grandTotal = 0;
@@ -618,7 +645,7 @@ const getQuedanReportPDF = async (req, res) => {
         rows.forEach(row => {
             if (currentY > 710) {
                 doc.addPage();
-                currentY = reportPdfHelper.renderHeader(doc, comp, 'REPORTE DE QUEDANES EMITIDOS', periodText, 'portrait', branchSubtitle);
+                currentY = reportPdfHelper.renderHeader(doc, comp, 'REPORTE DE QUEDANES EMITIDOS', periodText, 'portrait', subtitle);
                 currentY = drawTableHeader(currentY);
             }
 
@@ -630,6 +657,12 @@ const getQuedanReportPDF = async (req, res) => {
             const dias = parseInt(row.dias_credito) || 0;
             doc.text(dias > 0 ? String(dias) : '—', colX.dias, currentY, { width: colWidths.dias, align: 'center' });
             doc.text((row.provider_nombre || '---').toUpperCase(), colX.proveedor + 2, currentY, { width: colWidths.proveedor - 6, truncate: true });
+            
+            const destLabel = row.destino === 'P' ? 'PISTA' : 'TIENDA';
+            doc.font('Helvetica-Bold').fillColor(row.destino === 'P' ? '#2563eb' : '#059669');
+            doc.text(destLabel, colX.dest + 2, currentY, { width: colWidths.dest - 4 });
+
+            doc.font('Helvetica').fillColor('#334155');
             doc.text(reportPdfHelper.fmt(rowVal), colX.total, currentY, { width: colWidths.total - 4, align: 'right' });
 
             const statusColors = {
@@ -647,7 +680,7 @@ const getQuedanReportPDF = async (req, res) => {
 
         if (currentY > 690) {
             doc.addPage();
-            currentY = reportPdfHelper.renderHeader(doc, comp, 'REPORTE DE QUEDANES EMITIDOS', periodText, 'portrait', branchSubtitle);
+            currentY = reportPdfHelper.renderHeader(doc, comp, 'REPORTE DE QUEDANES EMITIDOS', periodText, 'portrait', subtitle);
         }
 
         // Línea de gran total

@@ -3,7 +3,8 @@ import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
 import { 
     GitBranch, 
-    Calendar
+    Calendar,
+    Layers
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
@@ -19,7 +20,8 @@ const QuedanReport = () => {
     const [filters, setFilters] = useState({
         start_date: firstDayOfMonth,
         end_date: today,
-        branch_id: user?.branch_id || 'all'
+        branch_id: user?.branch_id || 'all',
+        destino: 'all'
     });
 
     const [isGenerating, setIsGenerating] = useState(false);
@@ -45,7 +47,8 @@ const QuedanReport = () => {
             const params = {
                 start_date: filters.start_date,
                 end_date: filters.end_date,
-                branch_id: filters.branch_id
+                branch_id: filters.branch_id,
+                destino: filters.destino
             };
 
             const response = await axios.get('/api/purchases/quedans/reports/pdf', {
@@ -83,6 +86,7 @@ const QuedanReport = () => {
                 start_date: filters.start_date,
                 end_date: filters.end_date,
                 branch_id: filters.branch_id,
+                destino: filters.destino,
                 format: 'excel'
             };
             const response = await axios.get('/api/purchases/quedans/reports/pdf', {
@@ -110,7 +114,7 @@ const QuedanReport = () => {
     return (
         <ReportLayout
             title="Reporte de Quedanes"
-            subtitle="Quedanes emitidos por rango de fecha y sucursal."
+            subtitle="Quedanes emitidos por rango de fecha, sucursal y destino."
             category="Compras"
             pdfUrl={pdfUrl}
             isGenerating={isGenerating}
@@ -133,6 +137,22 @@ const QuedanReport = () => {
                     {branches.map(b => (
                         <option key={b.id} value={b.id}>{b.nombre}</option>
                     ))}
+                </select>
+            </div>
+
+            <div className="space-y-2">
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                    <Layers size={12} className="text-indigo-500" /> Destino
+                </label>
+                <select 
+                    name="destino"
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-xs font-black text-slate-700 outline-none focus:ring-4 focus:ring-indigo-500/5 transition-all"
+                    value={filters.destino}
+                    onChange={(e) => handleFilterChange('destino', e.target.value)}
+                >
+                    <option value="all">Todos los destinos</option>
+                    <option value="T">Tienda</option>
+                    <option value="P">Pista</option>
                 </select>
             </div>
 

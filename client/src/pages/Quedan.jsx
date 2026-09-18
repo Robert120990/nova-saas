@@ -35,6 +35,7 @@ const Quedan = () => {
     const [listSearch, setListSearch] = useState('');
     const [listPage, setListPage] = useState(1);
     const [branchFilter, setBranchFilter] = useState(user?.branch_id || '');
+    const [destinoFilter, setDestinoFilter] = useState('');
 
     const [showFormModal, setShowFormModal] = useState(false);
     const [editId, setEditId] = useState(null);
@@ -43,6 +44,7 @@ const Quedan = () => {
     const [formBranchId, setFormBranchId] = useState(user?.branch_id || '');
     const [formNumQuedan, setFormNumQuedan] = useState('');
     const [formProviderId, setFormProviderId] = useState('');
+    const [formDestino, setFormDestino] = useState('T');
     const [isProviderModalOpen, setIsProviderModalOpen] = useState(false);
     const [editingProvider, setEditingProvider] = useState(null);
     const [formProviderDias, setFormProviderDias] = useState(0);
@@ -63,9 +65,15 @@ const Quedan = () => {
     const isEditing = editId !== null;
 
     const { data: listData, isLoading: listLoading } = useQuery({
-        queryKey: ['purchase-quedans', listSearch, listPage, branchFilter],
+        queryKey: ['purchase-quedans', listSearch, listPage, branchFilter, destinoFilter],
         queryFn: async () => (await axios.get('/api/purchases/quedans', {
-            params: { search: listSearch || undefined, page: listPage, limit: 15, branch_id: branchFilter || undefined }
+            params: {
+                search: listSearch || undefined,
+                page: listPage,
+                limit: 15,
+                branch_id: branchFilter || undefined,
+                destino: destinoFilter || undefined
+            }
         })).data
     });
 
@@ -111,6 +119,7 @@ const Quedan = () => {
             setFormBranchId(editData.branch_id || user?.branch_id || '');
             setFormNumQuedan(editData.num_quedan || '');
             setFormProviderId(String(editData.provider_id || ''));
+            setFormDestino(editData.destino || 'T');
             if (editData.provider_nombre && editData.provider_id) {
                 setCreditProvidersCache(prev => ({ ...prev, [editData.provider_id]: { id: editData.provider_id, nombre: editData.provider_nombre, dias_credito: editData.dias_credito } }));
             }
@@ -328,6 +337,7 @@ const Quedan = () => {
         setFormBranchId(user?.branch_id || '');
         setFormNumQuedan('');
         setFormProviderId('');
+        setFormDestino('T');
         setFormProviderDias(0);
         setFormFecha(today());
         setFormFechaVenc('');
@@ -371,6 +381,7 @@ const Quedan = () => {
             num_quedan: formNumQuedan,
             provider_id: formProviderId,
             dias_credito: formProviderDias,
+            destino: formDestino,
             fecha: formFecha,
             fecha_vencimiento: formFechaVenc,
             items: formItems.map(item => ({
@@ -437,8 +448,8 @@ const Quedan = () => {
                 </button>
             </div>
 
-            <div className="flex items-center gap-3">
-                <div className="relative flex-1 max-w-sm">
+            <div className="flex flex-wrap items-center gap-3">
+                <div className="relative flex-1 min-w-[200px] max-w-sm">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
                     <input
                         type="text"
@@ -460,11 +471,22 @@ const Quedan = () => {
                         ))}
                     </select>
                 </div>
+                <div className="w-40">
+                    <select
+                        value={destinoFilter}
+                        onChange={(e) => { setDestinoFilter(e.target.value); setListPage(1); }}
+                        className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-400 transition-all text-[11px] font-bold uppercase tracking-tight"
+                    >
+                        <option value="">Todos los Destinos</option>
+                        <option value="T">TIENDA</option>
+                        <option value="P">PISTA</option>
+                    </select>
+                </div>
             </div>
 
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                 <Table
-                    headers={['N. Quedan', 'Fecha', 'Vencimiento', 'Días', 'Proveedor', 'Total', 'Estado', 'Fecha Entrega', 'Acciones']}
+                    headers={['N. Quedan', 'Fecha', 'Vencimiento', 'Días', 'Proveedor', 'Destino', 'Total', 'Estado', 'Fecha Entrega', 'Acciones']}
                     data={quedans}
                     isLoading={listLoading}
                     renderRow={(c) => (
@@ -490,6 +512,11 @@ const Quedan = () => {
                             </td>
                             <td className="px-5 py-1 text-[10px] font-bold text-slate-600 uppercase max-w-[160px] truncate" title={c.provider_nombre}>
                                 {c.provider_nombre}
+                            </td>
+                            <td className="px-5 py-1">
+                                <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest ${c.destino === 'P' ? 'bg-blue-50 text-blue-600' : 'bg-emerald-50 text-emerald-600'}`}>
+                                    {c.destino === 'P' ? 'PISTA' : 'TIENDA'}
+                                </span>
                             </td>
                             <td className="px-5 py-1 font-black text-slate-900 text-[10px]">
                                 <Money value={c.total || 0} />
@@ -591,7 +618,7 @@ const Quedan = () => {
                 maxWidth="max-w-5xl"
             >
                 <div className="space-y-5">
-                    <div className="grid grid-cols-2 gap-5">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                         <div>
                             <label className={`${labelCls} block mb-1`}>N. Quedan</label>
                             <input type="text" value={formNumQuedan}
@@ -602,6 +629,13 @@ const Quedan = () => {
                             <label className={`${labelCls} block mb-1`}>Sucursal</label>
                             <select value={formBranchId} onChange={(e) => setFormBranchId(e.target.value)} className={inputCls}>
                                 {branches.map(b => <option key={b.id} value={b.id}>{b.nombre.toUpperCase()}</option>)}
+                            </select>
+                        </div>
+                        <div>
+                            <label className={`${labelCls} block mb-1`}>Destino</label>
+                            <select value={formDestino} onChange={(e) => setFormDestino(e.target.value)} className={inputCls}>
+                                <option value="T">TIENDA</option>
+                                <option value="P">PISTA</option>
                             </select>
                         </div>
                         <div>
@@ -910,6 +944,13 @@ const Quedan = () => {
                                     </p>
                                 </div>
                                 <div className="flex items-center gap-2">
+                                    <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border ${
+                                        detailData.destino === 'P'
+                                            ? 'bg-blue-50 text-blue-700 border-blue-200'
+                                            : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                    }`}>
+                                        {detailData.destino === 'P' ? 'PISTA' : 'TIENDA'}
+                                    </span>
                                     <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border ${
                                         detailData.status === 'ENTREGADO'
                                             ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
