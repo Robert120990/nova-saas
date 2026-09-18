@@ -29,7 +29,10 @@ import {
     ShieldCheck,
     Award,
     Trash2,
-    Lock
+    Lock,
+    FlaskConical,
+    ClipboardList,
+    Check
 } from 'lucide-react';
 import TarimaLabelModal from '../../components/egg/TarimaLabelModal';
 
@@ -142,13 +145,66 @@ const EggReception = () => {
         return 'bg-amber-50 text-amber-700 border-amber-200';
     };
 
-    // Estado del modal de evaluación de calidad y clasificación de lote (LAB-004)
+    const defaultPhysicochemical = {
+        granja: { val1: '', val2: '' },
+        espesor_celda_aire: { val1: '', val2: '' },
+        ph_huevo_fresco: { val1: '', val2: '' },
+        solidos_huevo_fresco: { val1: '', val2: '' },
+        firmeza_albumina: { val1: '', val2: '' },
+        ph_albumina: { val1: '', val2: '' },
+        solidos_albumina: { val1: '', val2: '' },
+        firmeza_yema: { val1: '', val2: '' },
+        forma_yema: { val1: '', val2: '' },
+        color_yema: { val1: '', val2: '' },
+        ph_yema: { val1: '', val2: '' },
+        solidos_yema: { val1: '', val2: '' },
+        estado_separacion: { val1: '', val2: '' }
+    };
+
+    const defaultOrganoleptic = {
+        olor_normal: true,
+        olor_fuerte: false,
+        olor_descomposicion_prematura: false,
+        olor_descomposicion_avanzada: false,
+        consistencia_cascaron: 'resistente'
+    };
+
+    const defaultTransport = {
+        limpieza_camion: 'CONFORME / LIMPIO',
+        apariencia_cajas: 'BUEN ESTADO / LIMPIAS',
+        temperatura_transporte: ''
+    };
+
+    const handlePrintLab001 = (rawMaterialId) => {
+        if (!rawMaterialId) return;
+        window.open(`/api/egg-industrial/raw-materials/${rawMaterialId}/lab-001-pdf`, '_blank');
+    };
+
+    // Estado del modal de evaluación de calidad y reporte de materia prima (LAB 001, Rev. 7.03.24)
     const [qualityModal, setQualityModal] = useState({
         isOpen: false,
+        activeTab: 'general',
         rm: null,
-        inspector_name: '',
-        egg_classification: 'Grado A',
+        provider_type: 'LOCAL',
+        farm_name: '',
+        provider_lot: '',
+        production_date: '',
+        expiration_date: '',
+        total_boxes: 0,
+        remission_note: '',
+        plant_entry_date: todayStr,
+        reception_date: todayStr,
+        analysis_date: todayStr,
+        analysis_time: '',
+        egg_color: 'blanco',
         egg_size: 'L',
+        sample_egg_weight_g: '',
+        egg_classification: 'Grado A',
+        physicochemical: defaultPhysicochemical,
+        organoleptic: defaultOrganoleptic,
+        transport_storage: defaultTransport,
+        inspector_name: '',
+        quality_reviewed_by: 'Jefe de Control de Calidad',
         quality_status: 'aprobado',
         quality_defect_broken_pct: 0,
         quality_defect_dirty_pct: 0,
@@ -158,17 +214,83 @@ const EggReception = () => {
     });
 
     const handleOpenQualityModal = (rm) => {
+        let labReport = {};
+        if (rm.quality_lab_report_json) {
+            try {
+                labReport = typeof rm.quality_lab_report_json === 'string'
+                    ? JSON.parse(rm.quality_lab_report_json)
+                    : rm.quality_lab_report_json;
+            } catch (e) {
+                labReport = {};
+            }
+        }
+
+        const sampleWeight = rm.sample_egg_weight_g !== null && rm.sample_egg_weight_g !== undefined
+            ? rm.sample_egg_weight_g
+            : (labReport.sample_egg_weight_g || (
+                rm.weight_lbs && rm.total_boxes
+                    ? Math.round((parseFloat(rm.weight_lbs) * 453.592) / (parseInt(rm.total_boxes) * 360) * 10) / 10
+                    : ''
+            ));
+
+        const prov = providers.find(p => p.id === rm.provider_id);
+        const isExtranjero = labReport.provider_type
+            ? labReport.provider_type.toUpperCase() === 'EXTRANJERO'
+            : (prov?.pais && !['EL SALVADOR', 'SV', 'SALVADOR'].includes(prov.pais.toUpperCase()));
+
+        const plantEntry = labReport.plant_entry_date || (rm.fecha ? String(rm.fecha).split('T')[0] : todayStr);
+        const receptionDt = labReport.reception_date || (rm.fecha ? String(rm.fecha).split('T')[0] : todayStr);
+        const analysisDt = labReport.analysis_date || (rm.quality_date ? String(rm.quality_date).split('T')[0] : todayStr);
+        const analysisTm = labReport.analysis_time || (rm.quality_date ? new Date(rm.quality_date).toTimeString().substring(0, 5) : new Date().toTimeString().substring(0, 5));
+
+        const farm = rm.farm_name || labReport.farm_name || '';
+
         setQualityModal({
             isOpen: true,
+            activeTab: 'general',
             rm,
-            inspector_name: rm.quality_inspector_name || user?.nombre || '',
-            egg_classification: rm.egg_classification || 'Grado A',
+            provider_type: isExtranjero ? 'EXTRANJERO' : 'LOCAL',
+            farm_name: farm,
+            provider_lot: rm.provider_lot || '',
+            production_date: rm.production_date ? String(rm.production_date).split('T')[0] : (labReport.production_date || ''),
+            expiration_date: rm.expiration_date ? String(rm.expiration_date).split('T')[0] : (labReport.expiration_date || ''),
+            total_boxes: rm.total_boxes || 0,
+            remission_note: rm.remission_note || labReport.remission_note || '',
+            plant_entry_date: plantEntry,
+            reception_date: receptionDt,
+            analysis_date: analysisDt,
+            analysis_time: analysisTm,
+            egg_color: rm.egg_color || 'blanco',
             egg_size: rm.egg_size || 'L',
+            sample_egg_weight_g: sampleWeight,
+            egg_classification: rm.egg_classification || 'Grado A',
+
+            physicochemical: {
+                ...defaultPhysicochemical,
+                ...(labReport.physicochemical || {}),
+                granja: (labReport.physicochemical?.granja?.val1
+                    ? labReport.physicochemical.granja
+                    : { val1: farm, val2: '' })
+            },
+
+            organoleptic: {
+                ...defaultOrganoleptic,
+                ...(labReport.organoleptic || {})
+            },
+
+            transport_storage: {
+                limpieza_camion: labReport.transport_storage?.limpieza_camion || 'CONFORME / LIMPIO',
+                apariencia_cajas: labReport.transport_storage?.apariencia_cajas || 'BUEN ESTADO / LIMPIAS',
+                temperatura_transporte: labReport.transport_storage?.temperatura_transporte || (rm.truck_temperature_c ? `${rm.truck_temperature_c} °C` : (rm.temperature_c ? `${rm.temperature_c} °C` : ''))
+            },
+
+            inspector_name: rm.quality_inspector_name || labReport.inspector_name || user?.nombre || '',
+            quality_reviewed_by: rm.quality_reviewed_by || labReport.reviewed_by || 'Jefe de Control de Calidad',
             quality_status: rm.quality_status || (rm.status === 'aprobado' ? 'aprobado' : 'cuarentena'),
             quality_defect_broken_pct: rm.quality_defect_broken_pct !== null && rm.quality_defect_broken_pct !== undefined ? rm.quality_defect_broken_pct : 0,
             quality_defect_dirty_pct: rm.quality_defect_dirty_pct !== null && rm.quality_defect_dirty_pct !== undefined ? rm.quality_defect_dirty_pct : 0,
             quality_brix: rm.quality_brix !== null && rm.quality_brix !== undefined ? rm.quality_brix : '',
-            quality_notes: rm.quality_notes || '',
+            quality_notes: rm.quality_notes || labReport.observations || '',
             isSubmitting: false
         });
     };
@@ -178,31 +300,63 @@ const EggReception = () => {
         if (!qualityModal.rm?.id) return;
 
         if (!canEditQuality) {
-            toast.error('No tiene permisos asignados para modificar el dictamen de calidad (LAB-004).');
+            toast.error('No tiene permisos asignados para modificar el dictamen de calidad (LAB 001).');
             return;
         }
 
         if (!qualityModal.inspector_name?.trim()) {
-            toast.error('Debe ingresar el nombre del inspector o responsable de Calidad.');
+            toast.error('Debe ingresar el nombre del inspector responsable de Calidad.');
             return;
         }
 
         setQualityModal(prev => ({ ...prev, isSubmitting: true }));
         try {
+            const labReportJson = {
+                provider_type: qualityModal.provider_type,
+                farm_name: qualityModal.farm_name,
+                provider_lot: qualityModal.provider_lot,
+                production_date: qualityModal.production_date || null,
+                expiration_date: qualityModal.expiration_date || null,
+                total_boxes: qualityModal.total_boxes,
+                remission_note: qualityModal.remission_note,
+                plant_entry_date: qualityModal.plant_entry_date,
+                reception_date: qualityModal.reception_date,
+                analysis_date: qualityModal.analysis_date,
+                analysis_time: qualityModal.analysis_time,
+                sample_egg_weight_g: qualityModal.sample_egg_weight_g,
+                egg_color: qualityModal.egg_color,
+                egg_size: qualityModal.egg_size,
+                egg_classification: qualityModal.egg_classification,
+                physicochemical: qualityModal.physicochemical,
+                organoleptic: qualityModal.organoleptic,
+                transport_storage: qualityModal.transport_storage,
+                observations: qualityModal.quality_notes?.trim() || '',
+                inspector_name: qualityModal.inspector_name.trim(),
+                reviewed_by: qualityModal.quality_reviewed_by?.trim() || 'Jefe de Control de Calidad'
+            };
+
             const payload = {
                 egg_classification: qualityModal.egg_classification,
                 egg_size: qualityModal.egg_size,
+                egg_color: qualityModal.egg_color,
                 quality_status: qualityModal.quality_status,
                 quality_inspector_name: qualityModal.inspector_name.trim(),
+                quality_reviewed_by: qualityModal.quality_reviewed_by?.trim() || 'Jefe de Control de Calidad',
                 quality_defect_broken_pct: parseFloat(qualityModal.quality_defect_broken_pct) || 0,
                 quality_defect_dirty_pct: parseFloat(qualityModal.quality_defect_dirty_pct) || 0,
                 quality_brix: qualityModal.quality_brix !== '' ? parseFloat(qualityModal.quality_brix) : null,
-                quality_notes: qualityModal.quality_notes?.trim() || null
+                quality_notes: qualityModal.quality_notes?.trim() || null,
+                remission_note: qualityModal.remission_note || null,
+                farm_name: qualityModal.farm_name || null,
+                production_date: qualityModal.production_date || null,
+                expiration_date: qualityModal.expiration_date || null,
+                sample_egg_weight_g: qualityModal.sample_egg_weight_g ? parseFloat(qualityModal.sample_egg_weight_g) : null,
+                quality_lab_report_json: labReportJson
             };
 
             const res = await axios.put(`/api/egg-industrial/raw-materials/${qualityModal.rm.id}/quality-classification`, payload);
 
-            toast.success(res.data?.message || 'Dictamen de calidad y clasificación guardados exitosamente.');
+            toast.success(res.data?.message || 'Reporte técnico LAB 001 y dictamen guardados exitosamente.');
 
             setRawMaterials(prev => prev.map(item => {
                 if (item.id === qualityModal.rm.id) {
@@ -1421,6 +1575,14 @@ const EggReception = () => {
                                                         </button>
                                                         <button
                                                             type="button"
+                                                            onClick={() => handlePrintLab001(rm.id)}
+                                                            className="p-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded-lg border border-amber-200 transition-colors shadow-xs"
+                                                            title="Imprimir Reporte Oficial de Calidad LAB 001 (Rev. 7.03.24)"
+                                                        >
+                                                            <Printer size={13} />
+                                                        </button>
+                                                        <button
+                                                            type="button"
                                                             onClick={() => {
                                                                 let parsedTarimas = [];
                                                                 try {
@@ -1637,14 +1799,25 @@ const EggReception = () => {
                                         </div>
                                     </div>
 
-                                    <button
-                                        type="button"
-                                        onClick={() => handleOpenQualityModal(viewingReception)}
-                                        className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 self-start sm:self-auto"
-                                    >
-                                        <ShieldCheck size={13} />
-                                        <span>{viewingReception.quality_inspector_name ? 'Editar Dictamen de Calidad' : 'Evaluar Calidad de Lote'}</span>
-                                    </button>
+                                    <div className="flex items-center gap-2 self-start sm:self-auto">
+                                        <button
+                                            type="button"
+                                            onClick={() => handlePrintLab001(viewingReception.id)}
+                                            className="px-3 py-1.5 bg-white hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-xl text-xs font-bold transition-all shadow-2xs flex items-center gap-1.5"
+                                            title="Imprimir Formato Oficial LAB 001 (Rev. 7.03.24)"
+                                        >
+                                            <Printer size={13} />
+                                            <span>Imprimir LAB 001</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleOpenQualityModal(viewingReception)}
+                                            className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5"
+                                        >
+                                            <ShieldCheck size={13} />
+                                            <span>{viewingReception.quality_inspector_name ? 'Editar Dictamen LAB 001' : 'Evaluar Calidad (LAB 001)'}</span>
+                                        </button>
+                                    </div>
                                 </div>
 
                                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
@@ -1820,227 +1993,815 @@ const EggReception = () => {
                 </div>
             )}
 
-            {/* Modal de Evaluación y Clasificación de Calidad del Lote (LAB-004) */}
+            {/* Modal de Evaluación y Reporte de Calidad Oficial (LAB 001, Rev. 7.03.24) */}
             {qualityModal.isOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
-                    <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-2xl max-w-xl w-full mx-4 max-h-[90vh] overflow-y-auto space-y-5 text-slate-900">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-3 sm:p-4">
+                    <div className="bg-white border border-slate-200 rounded-2xl shadow-2xl max-w-4xl w-full mx-auto max-h-[92vh] flex flex-col text-slate-900 overflow-hidden">
                         {/* Modal Header */}
-                        <div className="flex items-center justify-between border-b border-slate-200 pb-3.5">
+                        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3.5 bg-slate-50/80">
                             <div className="flex items-center gap-3">
-                                <div className="p-2.5 bg-amber-50 rounded-xl border border-amber-200 text-amber-600">
+                                <div className="p-2.5 bg-amber-500 text-white rounded-xl shadow-xs">
                                     <ShieldCheck className="h-6 w-6" />
                                 </div>
                                 <div>
-                                    <h2 className="text-base font-bold text-slate-900 tracking-tight">
-                                        Evaluación y Clasificación de Calidad (LAB-004)
-                                    </h2>
+                                    <div className="flex items-center gap-2">
+                                        <h2 className="text-base font-black text-slate-900 tracking-tight">
+                                            Laboratorio de Control de Calidad • Reporte de Materia Prima
+                                        </h2>
+                                        <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-amber-100 text-amber-900 border border-amber-300">
+                                            LAB 001 • Rev. 7.03.24
+                                        </span>
+                                    </div>
                                     <p className="text-xs text-slate-500 font-medium">
-                                        Dictamen técnico de calidad para el lote de materia prima
+                                        Complemento técnico oficial de recepción, muestreo y dictamen de lote
                                     </p>
                                 </div>
                             </div>
-                            <button
-                                type="button"
-                                onClick={() => setQualityModal(prev => ({ ...prev, isOpen: false }))}
-                                className="text-slate-400 hover:text-slate-700 p-1.5 rounded-xl hover:bg-slate-100 transition-colors"
-                            >
-                                <XCircle size={20} />
-                            </button>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => handlePrintLab001(qualityModal.rm?.id)}
+                                    className="px-3 py-1.5 bg-white hover:bg-amber-50 text-amber-900 border border-amber-300 rounded-xl text-xs font-bold transition-all shadow-2xs flex items-center gap-1.5"
+                                    title="Imprimir formato físico oficial LAB 001 en PDF"
+                                >
+                                    <Printer size={14} className="text-amber-700" />
+                                    <span className="hidden sm:inline">Imprimir LAB 001</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setQualityModal(prev => ({ ...prev, isOpen: false }))}
+                                    className="text-slate-400 hover:text-slate-700 p-1.5 rounded-xl hover:bg-slate-100 transition-colors"
+                                >
+                                    <XCircle size={20} />
+                                </button>
+                            </div>
                         </div>
 
-                        {/* Resumen del Lote */}
+                        {/* Resumen del Lote en Cabecera */}
                         {qualityModal.rm && (
-                            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 flex flex-wrap items-center justify-between gap-2 text-xs">
-                                <div>
-                                    <span className="text-[10px] font-bold text-slate-400 uppercase block">Lote Proveedor:</span>
-                                    <strong className="text-indigo-700 font-black">{qualityModal.rm.provider_lot}</strong>
+                            <div className="bg-amber-50/60 border-b border-amber-200/70 px-5 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
+                                <div className="flex items-center gap-4 flex-wrap">
+                                    <div>
+                                        <span className="text-[10px] font-bold text-amber-900/70 uppercase block">Lote:</span>
+                                        <strong className="text-slate-900 font-black">{qualityModal.provider_lot || qualityModal.rm.provider_lot}</strong>
+                                    </div>
+                                    <div>
+                                        <span className="text-[10px] font-bold text-amber-900/70 uppercase block">Proveedor:</span>
+                                        <strong className="text-slate-800">{qualityModal.rm.provider_name}</strong>
+                                    </div>
+                                    <div>
+                                        <span className="text-[10px] font-bold text-amber-900/70 uppercase block">Cajas / Peso:</span>
+                                        <strong className="text-slate-800">{qualityModal.total_boxes || qualityModal.rm.total_boxes || 0} cjs (~{parseFloat(qualityModal.rm.weight_lbs || 0).toLocaleString()} Lbs)</strong>
+                                    </div>
+                                    <div>
+                                        <span className="text-[10px] font-bold text-amber-900/70 uppercase block">Ingreso:</span>
+                                        <strong className="text-slate-800">{formatDate(qualityModal.plant_entry_date)}</strong>
+                                    </div>
                                 </div>
-                                <div>
-                                    <span className="text-[10px] font-bold text-slate-400 uppercase block">Proveedor:</span>
-                                    <strong className="text-slate-800">{qualityModal.rm.provider_name}</strong>
-                                </div>
-                                <div>
-                                    <span className="text-[10px] font-bold text-slate-400 uppercase block">Cajas / Peso:</span>
-                                    <strong className="text-slate-800">{qualityModal.rm.total_boxes || 0} cjs (~{parseFloat(qualityModal.rm.weight_lbs || 0).toLocaleString()} Lbs)</strong>
-                                </div>
-                                <div>
-                                    <span className="text-[10px] font-bold text-slate-400 uppercase block">Ingreso:</span>
-                                    <strong className="text-slate-800">{formatDate(qualityModal.rm.fecha || qualityModal.rm.created_at)}</strong>
+                                <div className="flex items-center gap-1.5">
+                                    <span className="text-[10px] font-bold text-amber-900/70 uppercase">Clasificación:</span>
+                                    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black border ${getQualityBadgeClass(qualityModal.quality_status, qualityModal.egg_classification)}`}>
+                                        {qualityModal.egg_classification || 'Grado A'}
+                                    </span>
                                 </div>
                             </div>
                         )}
 
-                        <form onSubmit={handleSaveQualityClassification} className="space-y-4">
+                        {/* Pestañas de Navegación del Formulario LAB 001 */}
+                        <div className="flex items-center border-b border-slate-200 px-5 bg-white overflow-x-auto">
+                            <button
+                                type="button"
+                                onClick={() => setQualityModal(prev => ({ ...prev, activeTab: 'general' }))}
+                                className={`px-4 py-3 text-xs font-bold border-b-2 transition-all flex items-center gap-2 shrink-0 ${
+                                    qualityModal.activeTab === 'general'
+                                        ? 'border-amber-600 text-amber-800 bg-amber-50/40'
+                                        : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'
+                                }`}
+                            >
+                                <ClipboardList size={14} />
+                                <span>1. Datos Generales & Clasificación</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setQualityModal(prev => ({ ...prev, activeTab: 'physico' }))}
+                                className={`px-4 py-3 text-xs font-bold border-b-2 transition-all flex items-center gap-2 shrink-0 ${
+                                    qualityModal.activeTab === 'physico'
+                                        ? 'border-amber-600 text-amber-800 bg-amber-50/40'
+                                        : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'
+                                }`}
+                            >
+                                <FlaskConical size={14} />
+                                <span>2. Análisis Fisicoquímicos (13 Parámetros)</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setQualityModal(prev => ({ ...prev, activeTab: 'organo' }))}
+                                className={`px-4 py-3 text-xs font-bold border-b-2 transition-all flex items-center gap-2 shrink-0 ${
+                                    qualityModal.activeTab === 'organo'
+                                        ? 'border-amber-600 text-amber-800 bg-amber-50/40'
+                                        : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'
+                                }`}
+                            >
+                                <Truck size={14} />
+                                <span>3. Organolépticos & Transporte</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setQualityModal(prev => ({ ...prev, activeTab: 'review' }))}
+                                className={`px-4 py-3 text-xs font-bold border-b-2 transition-all flex items-center gap-2 shrink-0 ${
+                                    qualityModal.activeTab === 'review'
+                                        ? 'border-amber-600 text-amber-800 bg-amber-50/40'
+                                        : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'
+                                }`}
+                            >
+                                <Award size={14} />
+                                <span>4. Dictamen Oficial & Firmas</span>
+                            </button>
+                        </div>
+
+                        {/* Modal Body / Form */}
+                        <form onSubmit={handleSaveQualityClassification} className="flex-1 overflow-y-auto p-5 space-y-4">
                             {!canEditQuality && (
                                 <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-900 flex items-center gap-2">
                                     <Lock size={16} className="shrink-0 text-amber-600" />
-                                    <span><b>Modo Solo Lectura:</b> Su rol no posee permisos para editar o dictaminar calidad (LAB-004). Contacte a un administrador.</span>
+                                    <span><b>Modo Solo Lectura:</b> Su rol no posee permisos para editar el dictamen de calidad (LAB 001).</span>
                                 </div>
                             )}
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                                {/* Responsable de Calidad */}
-                                <div className="space-y-1 sm:col-span-2">
-                                    <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">
-                                        Inspector / Responsable de Control de Calidad *
-                                    </label>
-                                    <input
-                                        type="text"
-                                        required
-                                        disabled={!canEditQuality}
-                                        placeholder="Nombre y apellido del técnico de calidad"
-                                        value={qualityModal.inspector_name}
-                                        onChange={(e) => setQualityModal({ ...qualityModal, inspector_name: e.target.value })}
-                                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs disabled:bg-slate-100 disabled:text-slate-500"
-                                    />
-                                </div>
 
-                                {/* Clasificación de Huevo */}
-                                <div className="space-y-1">
-                                    <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">
-                                        Clasificación / Grado de Huevo *
-                                    </label>
-                                    <select
-                                        disabled={!canEditQuality}
-                                        value={qualityModal.egg_classification}
-                                        onChange={(e) => setQualityModal({ ...qualityModal, egg_classification: e.target.value })}
-                                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs disabled:bg-slate-100 disabled:text-slate-500"
-                                    >
-                                        <option value="Grado AA">Grado AA (Extra Especial / Cáscara Impecable)</option>
-                                        <option value="Grado A">Grado A (Estándar Premium de Planta)</option>
-                                        <option value="Grado B">Grado B (Comercial / Cáscara Irregular)</option>
-                                        <option value="Grado Industrial">Grado Industrial (Quiebre Inmediato)</option>
-                                        <option value="No Conforme">No Conforme / Rechazado</option>
-                                    </select>
-                                </div>
+                            {/* TAB 1: DATOS GENERALES */}
+                            {qualityModal.activeTab === 'general' && (
+                                <div className="space-y-4">
+                                    {/* Clasificación Destacada (Formato LAB 001) */}
+                                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+                                        <div>
+                                            <label className="text-xs font-black text-slate-900 uppercase tracking-wide block">
+                                                CLASIFICACION HUEVO SEGÚN ANALISIS *
+                                            </label>
+                                            <span className="text-[11px] text-slate-500">
+                                                Dictamen técnico de recepción plasmado en el recuadro superior oficial de LAB 001
+                                            </span>
+                                        </div>
+                                        <div className="w-full sm:w-64">
+                                            <select
+                                                disabled={!canEditQuality}
+                                                value={qualityModal.egg_classification}
+                                                onChange={(e) => setQualityModal({ ...qualityModal, egg_classification: e.target.value })}
+                                                className="w-full px-3 py-2 bg-white border-2 border-slate-900 rounded-xl text-xs font-black text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500/20 shadow-xs"
+                                            >
+                                                <option value="Grado AA">Grado AA (Extra Especial / Cáscara Impecable)</option>
+                                                <option value="Grado A">Grado A (Estándar Premium de Planta)</option>
+                                                <option value="Grado B">Grado B (Comercial / Cáscara Irregular)</option>
+                                                <option value="Grado Industrial">Grado Industrial (Quiebre Inmediato)</option>
+                                                <option value="No Conforme">No Conforme / Rechazado</option>
+                                            </select>
+                                        </div>
+                                    </div>
 
-                                {/* Talla / Calibre */}
-                                <div className="space-y-1">
-                                    <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">
-                                        Calibre / Talla Verificada
-                                    </label>
-                                    <select
-                                        disabled={!canEditQuality}
-                                        value={qualityModal.egg_size}
-                                        onChange={(e) => setQualityModal({ ...qualityModal, egg_size: e.target.value })}
-                                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs disabled:bg-slate-100 disabled:text-slate-500"
-                                    >
-                                        <option value="XL">XL (Super Grande / &gt;73g)</option>
-                                        <option value="L">L (Grande / 63g - 73g)</option>
-                                        <option value="M">M (Mediano / 53g - 63g)</option>
-                                        <option value="S">S (Pequeño / &lt;53g)</option>
-                                        <option value="Jumbo">Jumbo (&gt; 78g)</option>
-                                    </select>
-                                </div>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3.5">
+                                        {/* Tipo de Proveedor (Local / Extranjero) */}
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">
+                                                Origen del Proveedor
+                                            </label>
+                                            <div className="flex gap-2">
+                                                <button
+                                                    type="button"
+                                                    disabled={!canEditQuality}
+                                                    onClick={() => setQualityModal({ ...qualityModal, provider_type: 'LOCAL' })}
+                                                    className={`flex-1 py-1.5 px-3 rounded-xl text-xs font-bold border transition-all ${
+                                                        qualityModal.provider_type === 'LOCAL'
+                                                            ? 'bg-emerald-600 text-white border-emerald-700 shadow-xs'
+                                                            : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+                                                    }`}
+                                                >
+                                                    Local
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    disabled={!canEditQuality}
+                                                    onClick={() => setQualityModal({ ...qualityModal, provider_type: 'EXTRANJERO' })}
+                                                    className={`flex-1 py-1.5 px-3 rounded-xl text-xs font-bold border transition-all ${
+                                                        qualityModal.provider_type === 'EXTRANJERO'
+                                                            ? 'bg-indigo-600 text-white border-indigo-700 shadow-xs'
+                                                            : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+                                                    }`}
+                                                >
+                                                    Extranjero
+                                                </button>
+                                            </div>
+                                        </div>
 
-                                {/* Dictamen Oficial del Lote */}
-                                <div className="space-y-1 sm:col-span-2">
-                                    <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">
-                                        Dictamen / Estado de Calidad del Lote *
-                                    </label>
-                                    <select
-                                        disabled={!canEditQuality}
-                                        value={qualityModal.quality_status}
-                                        onChange={(e) => setQualityModal({ ...qualityModal, quality_status: e.target.value })}
-                                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-black text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs disabled:bg-slate-100 disabled:text-slate-500"
-                                    >
-                                        <option value="aprobado">✅ Aprobado para Producción y Quebrado</option>
-                                        <option value="condicional">⚠️ Aprobado Condicional (Uso Restringido o Mezcla)</option>
-                                        <option value="cuarentena">⏳ Cuarentena / En Espera de Laboratorio</option>
-                                        <option value="rechazado">❌ No Conforme / Rechazado para Producción</option>
-                                    </select>
-                                </div>
+                                        {/* Granja */}
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">
+                                                Granja de Procedencia
+                                            </label>
+                                            <input
+                                                type="text"
+                                                disabled={!canEditQuality}
+                                                placeholder="Ej: Granja El Progreso, Galpón 4"
+                                                value={qualityModal.farm_name}
+                                                onChange={(e) => setQualityModal({ ...qualityModal, farm_name: e.target.value })}
+                                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs"
+                                            />
+                                        </div>
 
-                                {/* Muestreo de Defectos Físicos */}
-                                <div className="space-y-1">
-                                    <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">
-                                        % Huevo Roto / Fisurado
-                                    </label>
-                                    <div className="relative">
-                                        <input
-                                            type="number"
-                                            step="0.01"
-                                            min="0"
-                                            max="100"
-                                            disabled={!canEditQuality}
-                                            placeholder="0.00"
-                                            value={qualityModal.quality_defect_broken_pct}
-                                            onChange={(e) => setQualityModal({ ...qualityModal, quality_defect_broken_pct: e.target.value })}
-                                            className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs disabled:bg-slate-100 disabled:text-slate-500"
-                                        />
-                                        <span className="absolute right-3 top-2 text-xs text-slate-400 font-bold">%</span>
+                                        {/* Lote */}
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">
+                                                Lote de Recepción
+                                            </label>
+                                            <input
+                                                type="text"
+                                                disabled={!canEditQuality}
+                                                placeholder="Lote proveedor"
+                                                value={qualityModal.provider_lot}
+                                                onChange={(e) => setQualityModal({ ...qualityModal, provider_lot: e.target.value })}
+                                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-indigo-700 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs"
+                                            />
+                                        </div>
+
+                                        {/* Nota de Remisión */}
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">
+                                                Nota de Remisión / Guía
+                                            </label>
+                                            <input
+                                                type="text"
+                                                disabled={!canEditQuality}
+                                                placeholder="Ej: NR-8921"
+                                                value={qualityModal.remission_note}
+                                                onChange={(e) => setQualityModal({ ...qualityModal, remission_note: e.target.value })}
+                                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs"
+                                            />
+                                        </div>
+
+                                        {/* Número de Cajas */}
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">
+                                                Número de Cajas
+                                            </label>
+                                            <input
+                                                type="number"
+                                                disabled={!canEditQuality}
+                                                placeholder="Total cajas recibidas"
+                                                value={qualityModal.total_boxes}
+                                                onChange={(e) => setQualityModal({ ...qualityModal, total_boxes: parseInt(e.target.value) || 0 })}
+                                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs"
+                                            />
+                                        </div>
+
+                                        {/* Peso en Gramos Unitario Muestreado */}
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">
+                                                Peso Unitario en Gramos (Muestreo)
+                                            </label>
+                                            <div className="relative">
+                                                <input
+                                                    type="number"
+                                                    step="0.1"
+                                                    disabled={!canEditQuality}
+                                                    placeholder="Ej: 62.5"
+                                                    value={qualityModal.sample_egg_weight_g}
+                                                    onChange={(e) => setQualityModal({ ...qualityModal, sample_egg_weight_g: e.target.value })}
+                                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs"
+                                                />
+                                                <span className="absolute right-3 top-2 text-xs text-slate-400 font-bold">g/huevo</span>
+                                            </div>
+                                        </div>
+
+                                        {/* Color Cascarón */}
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">
+                                                Color Cascarón
+                                            </label>
+                                            <select
+                                                disabled={!canEditQuality}
+                                                value={qualityModal.egg_color}
+                                                onChange={(e) => setQualityModal({ ...qualityModal, egg_color: e.target.value })}
+                                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs"
+                                            >
+                                                <option value="blanco">Blanco</option>
+                                                <option value="marrón">Marrón / Rojo</option>
+                                                <option value="mixto">Mixto</option>
+                                            </select>
+                                        </div>
+
+                                        {/* Tamaño de Huevo */}
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">
+                                                Tamaño de Huevo
+                                            </label>
+                                            <select
+                                                disabled={!canEditQuality}
+                                                value={qualityModal.egg_size}
+                                                onChange={(e) => setQualityModal({ ...qualityModal, egg_size: e.target.value })}
+                                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs"
+                                            >
+                                                <option value="XL">XL (Super Grande / &gt;73g)</option>
+                                                <option value="L">L (Grande / 63g - 73g)</option>
+                                                <option value="M">M (Mediano / 53g - 63g)</option>
+                                                <option value="S">S (Pequeño / &lt;53g)</option>
+                                                <option value="Jumbo">Jumbo (&gt;78g)</option>
+                                            </select>
+                                        </div>
+
+                                        {/* Fecha Producción */}
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">
+                                                Fecha Producción / Postura
+                                            </label>
+                                            <input
+                                                type="date"
+                                                disabled={!canEditQuality}
+                                                value={qualityModal.production_date}
+                                                onChange={(e) => setQualityModal({ ...qualityModal, production_date: e.target.value })}
+                                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs"
+                                            />
+                                        </div>
+
+                                        {/* Fecha Vencimiento */}
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">
+                                                Fecha Vencimiento
+                                            </label>
+                                            <input
+                                                type="date"
+                                                disabled={!canEditQuality}
+                                                value={qualityModal.expiration_date}
+                                                onChange={(e) => setQualityModal({ ...qualityModal, expiration_date: e.target.value })}
+                                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs"
+                                            />
+                                        </div>
+
+                                        {/* Fecha Ingreso a Planta */}
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">
+                                                Fecha Ingreso a Planta
+                                            </label>
+                                            <input
+                                                type="date"
+                                                disabled={!canEditQuality}
+                                                value={qualityModal.plant_entry_date}
+                                                onChange={(e) => setQualityModal({ ...qualityModal, plant_entry_date: e.target.value })}
+                                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs"
+                                            />
+                                        </div>
+
+                                        {/* Fecha Recepción */}
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">
+                                                Fecha Recepción
+                                            </label>
+                                            <input
+                                                type="date"
+                                                disabled={!canEditQuality}
+                                                value={qualityModal.reception_date}
+                                                onChange={(e) => setQualityModal({ ...qualityModal, reception_date: e.target.value })}
+                                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs"
+                                            />
+                                        </div>
+
+                                        {/* Fecha Análisis */}
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">
+                                                Fecha Análisis Laboratorio
+                                            </label>
+                                            <input
+                                                type="date"
+                                                disabled={!canEditQuality}
+                                                value={qualityModal.analysis_date}
+                                                onChange={(e) => setQualityModal({ ...qualityModal, analysis_date: e.target.value })}
+                                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs"
+                                            />
+                                        </div>
+
+                                        {/* Hora Análisis */}
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">
+                                                Hora del Análisis
+                                            </label>
+                                            <input
+                                                type="time"
+                                                disabled={!canEditQuality}
+                                                value={qualityModal.analysis_time}
+                                                onChange={(e) => setQualityModal({ ...qualityModal, analysis_time: e.target.value })}
+                                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs"
+                                            />
+                                        </div>
                                     </div>
                                 </div>
+                            )}
 
-                                <div className="space-y-1">
-                                    <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">
-                                        % Huevo Sucio / Manchado
-                                    </label>
-                                    <div className="relative">
-                                        <input
-                                            type="number"
-                                            step="0.01"
-                                            min="0"
-                                            max="100"
-                                            disabled={!canEditQuality}
-                                            placeholder="0.00"
-                                            value={qualityModal.quality_defect_dirty_pct}
-                                            onChange={(e) => setQualityModal({ ...qualityModal, quality_defect_dirty_pct: e.target.value })}
-                                            className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs disabled:bg-slate-100 disabled:text-slate-500"
-                                        />
-                                        <span className="absolute right-3 top-2 text-xs text-slate-400 font-bold">%</span>
+                            {/* TAB 2: ANALISIS FISICOQUIMICOS */}
+                            {qualityModal.activeTab === 'physico' && (
+                                <div className="space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wide">
+                                                Parámetros Fisicoquímicos (Formato Oficial LAB 001)
+                                            </h3>
+                                            <p className="text-[11px] text-slate-500">
+                                                Registre las lecturas analíticas por muestra o lote de granja conforme a la hoja de laboratorio.
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
+                                        <table className="w-full text-xs text-left">
+                                            <thead className="bg-slate-100/90 text-slate-700 font-bold border-b border-slate-200 uppercase text-[10px]">
+                                                <tr>
+                                                    <th className="px-4 py-2.5 w-1/2">Parámetro</th>
+                                                    <th className="px-4 py-2.5 w-1/4 text-center">Lectura / Muestra 1</th>
+                                                    <th className="px-4 py-2.5 w-1/4 text-center">Lectura / Muestra 2</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-200 bg-white">
+                                                {[
+                                                    { key: 'granja', label: 'GRANJA', placeholder: 'Identificador / Galpón' },
+                                                    { key: 'espesor_celda_aire', label: 'ESPESOR CELDA DE AIRE', placeholder: 'Ej: 3 mm' },
+                                                    { key: 'ph_huevo_fresco', label: 'PH HUEVO FRESCO', placeholder: 'Ej: 7.6 - 8.2' },
+                                                    { key: 'solidos_huevo_fresco', label: 'SOLIDOS HUEVO FRESCO', placeholder: 'Ej: 23.5 - 24.5 %' },
+                                                    { key: 'firmeza_albumina', label: 'FIRMEZA DE ALBUMINA', placeholder: 'Unidades Haugh' },
+                                                    { key: 'ph_albumina', label: 'PH DE ALBUMINA', placeholder: 'Ej: 8.8 - 9.1' },
+                                                    { key: 'solidos_albumina', label: 'SOLIDOS ALBUMINA', placeholder: 'Ej: 11.5 - 12.5 %' },
+                                                    { key: 'firmeza_yema', label: 'FIRMEZA YEMA', placeholder: 'Firme / Regular' },
+                                                    { key: 'forma_yema', label: 'FORMA YEMA', placeholder: 'Índice / Esférica' },
+                                                    { key: 'color_yema', label: 'COLOR YEMA', placeholder: 'Escala Roche (1-15)' },
+                                                    { key: 'ph_yema', label: 'PH YEMA', placeholder: 'Ej: 6.0 - 6.3' },
+                                                    { key: 'solidos_yema', label: 'SOLIDOS DE YEMA', placeholder: 'Ej: 48 - 50 %' },
+                                                    { key: 'estado_separacion', label: 'ESTADO DE SEPARACION', placeholder: 'Conforme / Limpio' }
+                                                ].map((param, idx) => (
+                                                    <tr key={param.key} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}>
+                                                        <td className="px-4 py-2 font-bold text-slate-800 text-[11px]">
+                                                            {param.label}
+                                                        </td>
+                                                        <td className="px-2 py-1.5">
+                                                            <input
+                                                                type="text"
+                                                                disabled={!canEditQuality}
+                                                                placeholder={param.placeholder}
+                                                                value={qualityModal.physicochemical[param.key]?.val1 || ''}
+                                                                onChange={(e) => {
+                                                                    const val = e.target.value;
+                                                                    setQualityModal(prev => ({
+                                                                        ...prev,
+                                                                        physicochemical: {
+                                                                            ...prev.physicochemical,
+                                                                            [param.key]: {
+                                                                                ...(prev.physicochemical[param.key] || {}),
+                                                                                val1: val
+                                                                            }
+                                                                        }
+                                                                    }));
+                                                                }}
+                                                                className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs text-center font-medium focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500"
+                                                            />
+                                                        </td>
+                                                        <td className="px-2 py-1.5">
+                                                            <input
+                                                                type="text"
+                                                                disabled={!canEditQuality}
+                                                                placeholder={param.placeholder}
+                                                                value={qualityModal.physicochemical[param.key]?.val2 || ''}
+                                                                onChange={(e) => {
+                                                                    const val = e.target.value;
+                                                                    setQualityModal(prev => ({
+                                                                        ...prev,
+                                                                        physicochemical: {
+                                                                            ...prev.physicochemical,
+                                                                            [param.key]: {
+                                                                                ...(prev.physicochemical[param.key] || {}),
+                                                                                val2: val
+                                                                            }
+                                                                        }
+                                                                    }));
+                                                                }}
+                                                                className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs text-center font-medium focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500"
+                                                            />
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
                                     </div>
                                 </div>
+                            )}
 
-                                <div className="space-y-1 sm:col-span-2">
-                                    <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">
-                                        °Brix / Sólidos Totales (Opcional para Huevo Líquido o muestreo de control)
-                                    </label>
-                                    <input
-                                        type="number"
-                                        step="0.1"
-                                        disabled={!canEditQuality}
-                                        placeholder="Opcional. Ej: 23.5"
-                                        value={qualityModal.quality_brix}
-                                        onChange={(e) => setQualityModal({ ...qualityModal, quality_brix: e.target.value })}
-                                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs disabled:bg-slate-100 disabled:text-slate-500"
-                                    />
+                            {/* TAB 3: ORGANOLEPTICOS & TRANSPORTE */}
+                            {qualityModal.activeTab === 'organo' && (
+                                <div className="space-y-4">
+                                    {/* Olores Organolépticos */}
+                                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
+                                        <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wide">
+                                            Análisis Organolépticos • Evaluación de Olor
+                                        </h3>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                                            {[
+                                                { key: 'olor_normal', label: 'OLOR CARACTERISTICO A HUEVO NORMAL', desc: 'Conforme, sin notas extrañas' },
+                                                { key: 'olor_fuerte', label: 'OLOR CARACTERISTICO A HUEVO FUERTE', desc: 'Alerta por intensidad o edad del huevo' },
+                                                { key: 'olor_descomposicion_prematura', label: 'OLOR EN DESCOMPOSICION PREMATURA', desc: 'No conforme, riesgo biológico' },
+                                                { key: 'olor_descomposicion_avanzada', label: 'OLOR EN DESCOMPOSICION AVANZADA', desc: 'Rechazo inmediato de lote' }
+                                            ].map((item) => (
+                                                <label
+                                                    key={item.key}
+                                                    className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
+                                                        qualityModal.organoleptic[item.key]
+                                                            ? item.key.includes('descomposicion')
+                                                                ? 'bg-rose-50 border-rose-300 text-rose-900'
+                                                                : 'bg-emerald-50 border-emerald-300 text-emerald-900'
+                                                            : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                                                    }`}
+                                                >
+                                                    <input
+                                                        type="checkbox"
+                                                        disabled={!canEditQuality}
+                                                        checked={!!qualityModal.organoleptic[item.key]}
+                                                        onChange={(e) => {
+                                                            const chk = e.target.checked;
+                                                            setQualityModal(prev => ({
+                                                                ...prev,
+                                                                organoleptic: {
+                                                                    ...prev.organoleptic,
+                                                                    [item.key]: chk
+                                                                }
+                                                            }));
+                                                        }}
+                                                        className="mt-0.5 rounded text-amber-600 focus:ring-amber-500 h-4 w-4"
+                                                    />
+                                                    <div>
+                                                        <span className="text-xs font-bold block">{item.label}</span>
+                                                        <span className="text-[10px] text-slate-500 font-medium">{item.desc}</span>
+                                                    </div>
+                                                </label>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* Consistencia de Cascarón */}
+                                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-2.5">
+                                        <label className="text-xs font-bold text-slate-900 uppercase tracking-wide block">
+                                            CONSISTENCIA CASCARON
+                                        </label>
+                                        <div className="grid grid-cols-3 gap-3">
+                                            {[
+                                                { val: 'resistente', label: 'RESISTENTE', color: 'emerald' },
+                                                { val: 'poco_resistente', label: 'POCO RESISTENTE', color: 'amber' },
+                                                { val: 'fragil', label: 'FRAGIL', color: 'rose' }
+                                            ].map((c) => {
+                                                const isSel = (qualityModal.organoleptic.consistencia_cascaron || 'resistente') === c.val;
+                                                return (
+                                                    <button
+                                                        key={c.val}
+                                                        type="button"
+                                                        disabled={!canEditQuality}
+                                                        onClick={() => setQualityModal(prev => ({
+                                                            ...prev,
+                                                            organoleptic: { ...prev.organoleptic, consistencia_cascaron: c.val }
+                                                        }))}
+                                                        className={`py-2 px-3 rounded-xl text-xs font-black border transition-all flex items-center justify-center gap-1.5 ${
+                                                            isSel
+                                                                ? c.color === 'emerald'
+                                                                    ? 'bg-emerald-600 text-white border-emerald-700 shadow-xs'
+                                                                    : c.color === 'amber'
+                                                                    ? 'bg-amber-600 text-white border-amber-700 shadow-xs'
+                                                                    : 'bg-rose-600 text-white border-rose-700 shadow-xs'
+                                                                : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+                                                        }`}
+                                                    >
+                                                        {isSel && <Check size={14} />}
+                                                        <span>{c.label}</span>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+
+                                    {/* Transporte y Almacenaje */}
+                                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
+                                        <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wide">
+                                            Transporte y Almacenaje
+                                        </h3>
+                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                            <div className="space-y-1">
+                                                <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">
+                                                    Limpieza / Orden Camión
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    disabled={!canEditQuality}
+                                                    placeholder="Ej: CONFORME / LIMPIO"
+                                                    value={qualityModal.transport_storage?.limpieza_camion || ''}
+                                                    onChange={(e) => {
+                                                        const val = e.target.value;
+                                                        setQualityModal(prev => ({
+                                                            ...prev,
+                                                            transport_storage: { ...prev.transport_storage, limpieza_camion: val }
+                                                        }));
+                                                    }}
+                                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs"
+                                                />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">
+                                                    Apariencia de Cajas a su Ingreso
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    disabled={!canEditQuality}
+                                                    placeholder="Ej: BUEN ESTADO / LIMPIAS"
+                                                    value={qualityModal.transport_storage?.apariencia_cajas || ''}
+                                                    onChange={(e) => {
+                                                        const val = e.target.value;
+                                                        setQualityModal(prev => ({
+                                                            ...prev,
+                                                            transport_storage: { ...prev.transport_storage, apariencia_cajas: val }
+                                                        }));
+                                                    }}
+                                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs"
+                                                />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">
+                                                    T° Transporte
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    disabled={!canEditQuality}
+                                                    placeholder="Ej: 18.5 °C"
+                                                    value={qualityModal.transport_storage?.temperatura_transporte || ''}
+                                                    onChange={(e) => {
+                                                        const val = e.target.value;
+                                                        setQualityModal(prev => ({
+                                                            ...prev,
+                                                            transport_storage: { ...prev.transport_storage, temperatura_transporte: val }
+                                                        }));
+                                                    }}
+                                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs"
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
+                            )}
 
-                                {/* Observaciones y Notas Técnicas */}
-                                <div className="space-y-1 sm:col-span-2">
-                                    <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">
-                                        Observaciones Técnicas / Dictamen de Calidad
-                                    </label>
-                                    <textarea
-                                        rows={3}
-                                        disabled={!canEditQuality}
-                                        placeholder="Detalle aquí cualquier observación sobre el lote, cámara de aire, olor, aspecto de cáscara o acuerdos con proveedor..."
-                                        value={qualityModal.quality_notes}
-                                        onChange={(e) => setQualityModal({ ...qualityModal, quality_notes: e.target.value })}
-                                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs disabled:bg-slate-100 disabled:text-slate-500"
-                                    />
+                            {/* TAB 4: DICTAMEN OFICIAL & FIRMAS */}
+                            {qualityModal.activeTab === 'review' && (
+                                <div className="space-y-4">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                                        {/* Dictamen Oficial del Lote */}
+                                        <div className="space-y-1 sm:col-span-2">
+                                            <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">
+                                                Dictamen Oficial del Lote *
+                                            </label>
+                                            <select
+                                                disabled={!canEditQuality}
+                                                value={qualityModal.quality_status}
+                                                onChange={(e) => setQualityModal({ ...qualityModal, quality_status: e.target.value })}
+                                                className="w-full px-3 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-black text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs"
+                                            >
+                                                <option value="aprobado">✅ Aprobado para Producción y Quebrado</option>
+                                                <option value="condicional">⚠️ Aprobado Condicional (Uso Restringido o Mezcla)</option>
+                                                <option value="cuarentena">⏳ Cuarentena / En Espera de Laboratorio</option>
+                                                <option value="rechazado">❌ No Conforme / Rechazado para Producción</option>
+                                            </select>
+                                        </div>
+
+                                        {/* Muestreo de Defectos Físicos */}
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">
+                                                % Huevo Roto / Fisurado
+                                            </label>
+                                            <div className="relative">
+                                                <input
+                                                    type="number"
+                                                    step="0.01"
+                                                    min="0"
+                                                    max="100"
+                                                    disabled={!canEditQuality}
+                                                    placeholder="0.00"
+                                                    value={qualityModal.quality_defect_broken_pct}
+                                                    onChange={(e) => setQualityModal({ ...qualityModal, quality_defect_broken_pct: e.target.value })}
+                                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs"
+                                                />
+                                                <span className="absolute right-3 top-2 text-xs text-slate-400 font-bold">%</span>
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">
+                                                % Huevo Sucio / Manchado
+                                            </label>
+                                            <div className="relative">
+                                                <input
+                                                    type="number"
+                                                    step="0.01"
+                                                    min="0"
+                                                    max="100"
+                                                    disabled={!canEditQuality}
+                                                    placeholder="0.00"
+                                                    value={qualityModal.quality_defect_dirty_pct}
+                                                    onChange={(e) => setQualityModal({ ...qualityModal, quality_defect_dirty_pct: e.target.value })}
+                                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs"
+                                                />
+                                                <span className="absolute right-3 top-2 text-xs text-slate-400 font-bold">%</span>
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-1 sm:col-span-2">
+                                            <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">
+                                                °Brix / Sólidos Totales (Opcional)
+                                            </label>
+                                            <input
+                                                type="number"
+                                                step="0.1"
+                                                disabled={!canEditQuality}
+                                                placeholder="Opcional. Ej: 23.5"
+                                                value={qualityModal.quality_brix}
+                                                onChange={(e) => setQualityModal({ ...qualityModal, quality_brix: e.target.value })}
+                                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs"
+                                            />
+                                        </div>
+
+                                        {/* Observaciones Técnicas */}
+                                        <div className="space-y-1 sm:col-span-2">
+                                            <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">
+                                                OBSERVACIONES :
+                                            </label>
+                                            <textarea
+                                                rows={3}
+                                                disabled={!canEditQuality}
+                                                placeholder="Detalle aquí cualquier observación sobre el lote, cámara de aire, olor, aspecto de cáscara o acuerdos con proveedor..."
+                                                value={qualityModal.quality_notes}
+                                                onChange={(e) => setQualityModal({ ...qualityModal, quality_notes: e.target.value })}
+                                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs"
+                                            />
+                                        </div>
+
+                                        {/* Firmas: Realizado y Revisado */}
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">
+                                                REALIZADO : (Inspector de Calidad) *
+                                            </label>
+                                            <input
+                                                type="text"
+                                                required
+                                                disabled={!canEditQuality}
+                                                placeholder="Nombre del técnico analista"
+                                                value={qualityModal.inspector_name}
+                                                onChange={(e) => setQualityModal({ ...qualityModal, inspector_name: e.target.value })}
+                                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs"
+                                            />
+                                        </div>
+
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">
+                                                REVISADO : (Supervisor / Jefe de Calidad) *
+                                            </label>
+                                            <input
+                                                type="text"
+                                                required
+                                                disabled={!canEditQuality}
+                                                placeholder="Nombre del supervisor que valida"
+                                                value={qualityModal.quality_reviewed_by}
+                                                onChange={(e) => setQualityModal({ ...qualityModal, quality_reviewed_by: e.target.value })}
+                                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs"
+                                            />
+                                        </div>
+                                    </div>
                                 </div>
-                            </div>
+                            )}
 
-                            {/* Footer Buttons */}
-                            <div className="flex justify-end gap-2.5 pt-4 border-t border-slate-200">
+                            {/* Modal Footer Controls */}
+                            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t border-slate-200">
                                 <button
                                     type="button"
-                                    onClick={() => setQualityModal(prev => ({ ...prev, isOpen: false }))}
-                                    className="px-4 py-2 bg-white hover:bg-slate-100 text-slate-700 rounded-xl text-xs font-bold border border-slate-300 transition-colors shadow-2xs"
+                                    onClick={() => handlePrintLab001(qualityModal.rm?.id)}
+                                    className="w-full sm:w-auto px-4 py-2 bg-white hover:bg-amber-50 text-amber-900 rounded-xl text-xs font-bold border border-amber-300 transition-colors shadow-2xs flex items-center justify-center gap-1.5"
                                 >
-                                    {canEditQuality ? 'Cancelar' : 'Cerrar'}
+                                    <Printer size={15} className="text-amber-700" />
+                                    <span>Imprimir Reporte LAB 001 (PDF)</span>
                                 </button>
-                                {canEditQuality && (
+
+                                <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end">
                                     <button
-                                        type="submit"
-                                        disabled={qualityModal.isSubmitting}
-                                        className="px-5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 disabled:opacity-50"
+                                        type="button"
+                                        onClick={() => setQualityModal(prev => ({ ...prev, isOpen: false }))}
+                                        className="px-4 py-2 bg-white hover:bg-slate-100 text-slate-700 rounded-xl text-xs font-bold border border-slate-300 transition-colors shadow-2xs"
                                     >
-                                        <ShieldCheck size={15} />
-                                        <span>{qualityModal.isSubmitting ? 'Guardando Dictamen...' : 'Guardar Dictamen de Calidad'}</span>
+                                        {canEditQuality ? 'Cancelar' : 'Cerrar'}
                                     </button>
-                                )}
+                                    {canEditQuality && (
+                                        <button
+                                            type="submit"
+                                            disabled={qualityModal.isSubmitting}
+                                            className="px-5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1.5 disabled:opacity-50"
+                                        >
+                                            <ShieldCheck size={15} />
+                                            <span>{qualityModal.isSubmitting ? 'Guardando Reporte...' : 'Guardar Reporte LAB 001'}</span>
+                                        </button>
+                                    )}
+                                </div>
                             </div>
                         </form>
                     </div>

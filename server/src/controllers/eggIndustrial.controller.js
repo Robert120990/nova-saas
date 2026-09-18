@@ -5,6 +5,7 @@ const notificationService = require('../services/notification.service');
 const eggExportService = require('../services/eggProductionExport.service');
 const eggReportsExportService = require('../services/eggReportsExport.service');
 const eggQualityLetterExport = require('../services/eggQualityLetterExport.service');
+const eggRawMaterialLabReport = require('../services/eggRawMaterialLabReport.service');
 const reportPdfHelper = require('../utils/reportPdfHelper');
 const excelService = require('../services/excel.service');
 
@@ -514,19 +515,28 @@ const voidRawMaterial = async (req, res) => {
     }
 };
 
-// 1.1 Clasificación y Dictamen de Calidad de Lote de Materia Prima (Personal de Calidad LAB-004)
+// 1.1 Clasificación y Dictamen de Calidad de Lote de Materia Prima (Personal de Calidad LAB 001 / LAB-004)
 const saveQualityClassification = async (req, res) => {
     try {
         const { id } = req.params;
         const {
             egg_classification,
             egg_size,
+            egg_color,
             quality_inspector_name,
+            quality_reviewed_by,
             quality_status,
             quality_notes,
             quality_defect_broken_pct,
             quality_defect_dirty_pct,
-            quality_brix
+            quality_brix,
+            // Campos extendidos LAB 001
+            remission_note,
+            farm_name,
+            production_date,
+            expiration_date,
+            sample_egg_weight_g,
+            quality_lab_report_json
         } = req.body;
 
         const [existing] = await pool.query(
@@ -538,31 +548,52 @@ const saveQualityClassification = async (req, res) => {
         }
 
         const inspector = quality_inspector_name || req.user?.nombre || 'Inspector de Calidad';
+        const reviewedBy = quality_reviewed_by || 'Jefe de Control de Calidad';
         const qStatus = quality_status || 'aprobado_calidad';
         const now = new Date();
+
+        const jsonStr = quality_lab_report_json
+            ? (typeof quality_lab_report_json === 'string' ? quality_lab_report_json : JSON.stringify(quality_lab_report_json))
+            : null;
 
         await pool.query(
             `UPDATE egg_raw_materials SET 
                 egg_classification = ?,
                 egg_size = COALESCE(?, egg_size),
+                egg_color = COALESCE(?, egg_color),
                 quality_inspector_name = ?,
+                quality_reviewed_by = ?,
                 quality_status = ?,
                 quality_date = ?,
                 quality_notes = ?,
                 quality_defect_broken_pct = ?,
                 quality_defect_dirty_pct = ?,
-                quality_brix = ?
+                quality_brix = ?,
+                remission_note = COALESCE(?, remission_note),
+                farm_name = COALESCE(?, farm_name),
+                production_date = COALESCE(?, production_date),
+                expiration_date = COALESCE(?, expiration_date),
+                sample_egg_weight_g = COALESCE(?, sample_egg_weight_g),
+                quality_lab_report_json = COALESCE(?, quality_lab_report_json)
              WHERE id = ? AND company_id = ?`,
             [
                 egg_classification || 'Grado A',
                 egg_size || null,
+                egg_color || null,
                 inspector,
+                reviewedBy,
                 qStatus,
                 now,
                 quality_notes || null,
                 parseFloat(quality_defect_broken_pct) || 0,
                 parseFloat(quality_defect_dirty_pct) || 0,
                 quality_brix ? parseFloat(quality_brix) : null,
+                remission_note || null,
+                farm_name || null,
+                production_date || null,
+                expiration_date || null,
+                sample_egg_weight_g ? parseFloat(sample_egg_weight_g) : null,
+                jsonStr,
                 id,
                 req.company_id
             ]
@@ -573,7 +604,7 @@ const saveQualityClassification = async (req, res) => {
              VALUES (?, 'raw_material.quality_classified', 'info', ?, ?, ?)`,
             [
                 req.company_id,
-                `Evaluación de calidad y clasificación registrada para lote ${existing[0].provider_lot || id}: ${egg_classification || 'Grado A'} (${qStatus}).`,
+                `Evaluación de calidad y dictamen LAB 001 registrado para lote ${existing[0].provider_lot || id}: ${egg_classification || 'Grado A'} (${qStatus}).`,
                 JSON.stringify({ raw_material_id: parseInt(id), egg_classification, quality_status: qStatus }),
                 inspector
             ]
@@ -581,17 +612,41 @@ const saveQualityClassification = async (req, res) => {
 
         res.json({
             success: true,
-            message: 'Clasificación de calidad guardada exitosamente.',
+            message: 'Reporte técnico de calidad LAB 001 y dictamen guardados exitosamente.',
             data: {
                 id,
                 egg_classification,
                 quality_inspector_name: inspector,
+                quality_reviewed_by: reviewedBy,
                 quality_status: qStatus,
                 quality_date: now
             }
         });
     } catch (error) {
         console.error('Error al guardar clasificación de calidad:', error);
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// 1.2 Exportación Oficial LAB 001 - Reporte de Control de Calidad de Materia Prima
+const getRawMaterialLab001Pdf = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const companyId = req.company_id || req.user?.company_id;
+
+        const data = await eggRawMaterialLabReport.getRawMaterialLab001Data(id, companyId);
+        if (!data) {
+            return res.status(404).json({ message: 'Recepción de materia prima no encontrada.' });
+        }
+
+        const safeLot = (data.provider_lot || `LOTE-${id}`).replace(/[^a-zA-Z0-9_-]/g, '_');
+        const pdfBuffer = await eggRawMaterialLabReport.generateRawMaterialLab001Pdf(data);
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename="LAB_001_Materia_Prima_${safeLot}.pdf"`);
+        return res.send(pdfBuffer);
+    } catch (error) {
+        console.error('Error generating LAB 001 PDF:', error);
         res.status(500).json({ message: error.message });
     }
 };
@@ -7213,6 +7268,7 @@ module.exports = {
     updateRawMaterial,
     voidRawMaterial,
     saveQualityClassification,
+    getRawMaterialLab001Pdf,
     getCipLogs,
     createCipLog,
     getProductionBatches,
