@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import {
     Printer,
     X,
@@ -15,6 +16,50 @@ import {
 import { QRCodeSVG } from 'qrcode.react';
 import JsBarcode from 'jsbarcode';
 import { toast } from 'sonner';
+
+/**
+ * Genera el Código de Barras Code 128 como un string SVG vectorial independiente para impresión
+ */
+const generateBarcodeSvg = (code, width = 1.35, height = 36) => {
+    try {
+        const svgNode = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        JsBarcode(svgNode, String(code).trim(), {
+            format: 'CODE128',
+            lineColor: '#000000',
+            width: width,
+            height: height,
+            displayValue: true,
+            fontSize: 9,
+            font: 'monospace',
+            textMargin: 2,
+            margin: 2
+        });
+        return new XMLSerializer().serializeToString(svgNode);
+    } catch (e) {
+        console.warn('Error generando código de barras SVG:', e);
+        return `<div style="font-family: monospace; font-size: 9pt; font-weight: 900; text-align: center; border: 1px dashed #000; padding: 2mm;">*${code}*</div>`;
+    }
+};
+
+/**
+ * Genera el Código QR como un string SVG vectorial independiente para impresión
+ */
+const generateQrSvg = (payloadObj, size = 68) => {
+    try {
+        const jsonStr = typeof payloadObj === 'string' ? payloadObj : JSON.stringify(payloadObj);
+        return renderToStaticMarkup(
+            React.createElement(QRCodeSVG, {
+                value: jsonStr,
+                size: size,
+                level: 'M',
+                includeMargin: false
+            })
+        );
+    } catch (e) {
+        console.warn('Error generando QR SVG:', e);
+        return '';
+    }
+};
 
 /**
  * Helper to format date to DD/MM/YYYY
@@ -179,6 +224,15 @@ export default function TarimaLabelModal({
                     .net-highlight { font-size: 15pt; font-weight: 900; color: #047857; letter-spacing: 0.5px; }
                     .footer-codes { display: flex; justify-content: space-between; align-items: center; border-top: 1px dashed #94a3b8; padding-top: 2.5mm; margin-top: 2mm; }
                     .operator-seal { font-size: 7pt; color: #64748b; text-align: right; }
+                    .codes-section { border-top: 2px solid #0f172a; padding-top: 2.5mm; margin-top: 2.5mm; margin-bottom: 2mm; }
+                    .barcode-block { text-align: center; margin-bottom: 2.5mm; padding: 1.5mm 0; background: #fff; }
+                    .barcode-block svg { max-width: 100%; height: auto; display: block; margin: 0 auto; }
+                    .code-title { font-size: 6pt; font-weight: 800; color: #475569; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 1mm; text-align: center; }
+                    .qr-footer-block { display: flex; align-items: center; justify-content: space-between; gap: 3mm; border-top: 1px dashed #cbd5e1; padding-top: 2mm; }
+                    .qr-box { border: 1px solid #94a3b8; background: #fff; padding: 1.5mm; border-radius: 4px; text-align: center; flex-shrink: 0; }
+                    .qr-box svg { display: block; margin: 0 auto; }
+                    .qr-legend { font-size: 5pt; font-weight: 800; color: #475569; text-transform: uppercase; margin-top: 0.8mm; letter-spacing: 0.5px; }
+                    .footer-meta { flex: 1; display: flex; flex-direction: column; justify-content: space-between; }
                 </style>
             </head>
             <body>
@@ -273,14 +327,35 @@ export default function TarimaLabelModal({
                                     </tr>
                                 </table>
 
-                                <div class="footer-codes">
-                                    <div>
-                                        <div style="font-size: 6.5pt; font-weight: 800; color: #64748b; margin-bottom: 1mm;">CÓDIGO DE TRAZABILIDAD</div>
-                                        <div style="font-family: monospace; font-size: 9pt; font-weight: 900; letter-spacing: 1px;">*${tCode}*</div>
+                                <!-- Códigos de Trazabilidad Barcode 1D y QR 2D para Escaneo en Planta -->
+                                <div class="codes-section">
+                                    <div class="barcode-block">
+                                        <div class="code-title">CÓDIGO DE BARRAS (ESCÁNER 1D / BARRAS)</div>
+                                        ${generateBarcodeSvg(tCode, labelFormat === '80mm' ? 1.35 : 1.6, labelFormat === '80mm' ? 38 : 46)}
                                     </div>
-                                    <div class="operator-seal">
-                                        <div><strong>RECIBIDO CONFORME:</strong> ${operator}</div>
-                                        <div style="margin-top: 1mm; font-size: 6pt; color: #94a3b8;">SISTEMA SIPEWEBgas • CONTROL DE BÁSCULA</div>
+
+                                    <div class="qr-footer-block">
+                                        <div class="qr-box">
+                                            ${generateQrSvg({
+                                                id: tCode,
+                                                lot: lotCode,
+                                                tarima: tNum,
+                                                net_lb: parseFloat(tNet),
+                                                boxes: tBoxes,
+                                                date: receptionDate
+                                            }, labelFormat === '80mm' ? 64 : 76)}
+                                            <div class="qr-legend">QR ESCÁNER PLANTA</div>
+                                        </div>
+                                        <div class="footer-meta">
+                                            <div>
+                                                <span class="info-label">CÓDIGO DE TRAZABILIDAD</span>
+                                                <span style="font-family: monospace; font-size: 8.5pt; font-weight: 900; letter-spacing: 0.5px; color: #0f172a;">*${tCode}*</span>
+                                            </div>
+                                            <div class="operator-seal" style="margin-top: 1.5mm;">
+                                                <div><strong>RECIBIDO CONFORME:</strong> ${operator}</div>
+                                                <div style="margin-top: 0.8mm; font-size: 6pt; color: #94a3b8;">SISTEMA SIPEWEBgas • CONTROL DE BÁSCULA</div>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
