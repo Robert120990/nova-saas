@@ -27,10 +27,14 @@ router.post('/batches/:id/add-tarimas', eggController.addTarimasToBatch);
 router.post('/batches/:id/close-packaging', eggController.closeBatchPackaging);
 router.get('/batches/:id/export-summary', eggController.exportBatchSummary);
 
-// 3.1 Mermas de Producción
+// 3.1 Mermas de Producción (Soporte dual /mermas y /wastes)
 router.get('/batches/:id/mermas', eggController.getBatchWastes);
 router.post('/batches/:id/mermas', eggController.createBatchWaste);
 router.delete('/mermas/:id', eggController.deleteBatchWaste);
+router.get('/batches/:id/wastes', eggController.getBatchWastes);
+router.post('/batches/:id/wastes', eggController.createBatchWaste);
+router.delete('/batches/:id/wastes/:wasteId', eggController.deleteBatchWaste);
+router.delete('/wastes/:id', eggController.deleteBatchWaste);
 
 // 3.2 Remanentes y Reprocesos
 router.get('/batches/:id/remanentes', eggController.getBatchRemanentes);
@@ -54,6 +58,7 @@ router.delete('/packaging/:id', eggController.deletePackagingRecord);
 // 7. Blast Freezer
 router.get('/blast-freezer', eggController.getBlastFreezerLogs);
 router.post('/blast-freezer', eggController.createBlastFreezerLog);
+router.delete('/blast-freezer/:id', eggController.deleteBlastFreezerLog);
 
 // 8. Mantenimiento de Maquinaria
 router.get('/maintenance', eggController.getMaintenanceLogs);

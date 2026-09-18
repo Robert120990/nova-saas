@@ -28,7 +28,8 @@ import {
     CheckCircle2,
     ChevronRight,
     AlertTriangle,
-    FileCheck
+    FileCheck,
+    Barcode
 } from 'lucide-react';
 import ProductionTarimaScannerModal from '../../components/egg/ProductionTarimaScannerModal';
 
@@ -45,10 +46,13 @@ const EggProduction = () => {
     // Modal de escáner con cámara para tarimas QR / Código de barras
     const [scannerModalOpen, setScannerModalOpen] = useState(false);
     const [tarimaPickerModal, setTarimaPickerModal] = useState({ isOpen: false, lot: null, availableTarimas: [] });
+    const [tarimaSearchPickerOpen, setTarimaSearchPickerOpen] = useState(false);
 
     // Lists
     const [batches, setBatches] = useState([]);
     const [rawMaterials, setRawMaterials] = useState([]);
+    const [availableRemanentes, setAvailableRemanentes] = useState([]);
+    const [openExportMenuId, setOpenExportMenuId] = useState(null);
     const [cipLogs, setCipLogs] = useState([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
@@ -59,10 +63,12 @@ const EggProduction = () => {
     // Form States
     const [batchForm, setBatchForm] = useState({
         product_type: 'huevo entero',
-        presentation: 'cubeta 32LB',
+        presentation: 'cubeta 30LB',
+        presentations: ['cubeta 30LB'],
         run_number: 1,
         scheduled_production_id: null,
         raw_materials: [],
+        remanente_ids: [],
         ingredients: {
             boxes_count: '',
             water_bottles: '',
@@ -208,7 +214,9 @@ const EggProduction = () => {
                 stage: wastesModal.stage,
                 waste_type: wastesModal.waste_type,
                 weight_lbs: parseFloat(wastesModal.weight_lbs),
+                quantity_lbs: parseFloat(wastesModal.weight_lbs),
                 notes: wastesModal.notes,
+                reason: wastesModal.notes,
                 operator_name: user?.nombre || ''
             });
             toast.success('Merma registrada con éxito.');
@@ -263,12 +271,17 @@ const EggProduction = () => {
             if (match) runNum = parseInt(match[1], 10);
         }
 
+        const presStr = batch.presentation || 'cubeta 30LB';
+        const presList = presStr.split(',').map(s => s.trim()).filter(Boolean);
+
         setBatchForm({
             product_type: batch.product_type || 'huevo entero',
-            presentation: batch.presentation || 'cubeta 32LB',
+            presentation: presStr,
+            presentations: presList.length > 0 ? presList : ['cubeta 30LB'],
             run_number: runNum,
             scheduled_production_id: batch.scheduled_production_id || null,
             raw_materials: mappedRms.length > 0 ? mappedRms : [{ raw_material_id: '', quantity_lbs: '', boxes_count: '', tarimas: [] }],
+            remanente_ids: [],
             ingredients: {
                 boxes_count: formula.boxes_count || formula.raw_egg_boxes || '',
                 water_bottles: formula.water_bottles || '',
@@ -555,6 +568,7 @@ const EggProduction = () => {
                 product_type: remanenteModal.product_type,
                 presentation: remanenteModal.presentation,
                 weight_lbs: parseFloat(remanenteModal.weight_lbs),
+                quantity_lbs: parseFloat(remanenteModal.weight_lbs),
                 is_pasteurized: remanenteModal.is_pasteurized,
                 destination: remanenteModal.destination,
                 notes: remanenteModal.notes,
@@ -634,16 +648,18 @@ const EggProduction = () => {
     const fetchData = async () => {
         setLoading(true);
         try {
-            const [bRes, rmRes, cRes, cfgRes] = await Promise.all([
+            const [bRes, rmRes, cRes, cfgRes, remRes] = await Promise.all([
                 axios.get('/api/egg-industrial/batches'),
                 axios.get('/api/egg-industrial/raw-materials', { params: { only_with_stock: 'true' } }),
                 axios.get('/api/egg-industrial/cip'),
-                axios.get('/api/egg-industrial/product-config')
+                axios.get('/api/egg-industrial/product-config'),
+                axios.get('/api/egg-industrial/remanentes/available').catch(() => ({ data: [] }))
             ]);
             setBatches(bRes.data);
             setRawMaterials(rmRes.data.filter(rm => rm.status === 'aprobado'));
             setCipLogs(cRes.data);
             setProductConfig(cfgRes.data);
+            setAvailableRemanentes(remRes.data || []);
         } catch (error) {
             console.error('Error fetching production data:', error);
             toast.error('Error al cargar datos del módulo de producción.');
@@ -1004,13 +1020,17 @@ const EggProduction = () => {
             return toast.error('El peso total debe ser mayor a cero.');
         }
 
+        const resolvedPres = Array.isArray(batchForm.presentations) && batchForm.presentations.length > 0
+            ? batchForm.presentations.join(', ')
+            : (batchForm.presentation || 'cubeta 30LB');
+
         setIsSubmitting(true);
         try {
             if (editingBatch) {
                 // Modo Edición: Actualizar lote existente
                 const res = await axios.put(`/api/egg-industrial/batches/${editingBatch.id}`, {
                     product_type: batchForm.product_type,
-                    presentation: batchForm.presentation,
+                    presentation: resolvedPres,
                     operator_name: batchForm.operator_name,
                     notes: batchForm.notes,
                     raw_materials: batchForm.raw_materials,
@@ -1026,8 +1046,10 @@ const EggProduction = () => {
             const shouldBypass = forceBypass || Boolean(batchForm.bypass_cip_check);
             await axios.post('/api/egg-industrial/batches', {
                 ...batchForm,
+                presentation: resolvedPres,
                 run_number: parseInt(batchForm.run_number) || 1,
                 raw_materials: batchForm.raw_materials,
+                remanente_ids: batchForm.remanente_ids || [],
                 ingredients: batchForm.ingredients,
                 bypass_cip_check: shouldBypass
             });
@@ -1036,10 +1058,12 @@ const EggProduction = () => {
             fetchScheduledProductions();
             setBatchForm({
                 product_type: 'huevo entero',
-                presentation: 'cubeta 32LB',
+                presentation: 'cubeta 30LB',
+                presentations: ['cubeta 30LB'],
                 run_number: 1,
                 scheduled_production_id: null,
                 raw_materials: [],
+                remanente_ids: [],
                 ingredients: {
                     boxes_count: '',
                     water_bottles: '',
@@ -1256,12 +1280,25 @@ const EggProduction = () => {
                     <button
                         onClick={() => {
                             setEditingBatch(null);
+                            const today = new Date();
+                            const startOfYear = new Date(today.getFullYear(), 0, 0);
+                            const diff = today - startOfYear;
+                            const dayOfYear = Math.floor(diff / (1000 * 60 * 60 * 24));
+                            const todayBatches = batches.filter(b => {
+                                if (!b.batch_code_display) return false;
+                                const parts = b.batch_code_display.split('-').map(s => s.trim());
+                                return parts.length === 3 && parseInt(parts[1], 10) === dayOfYear;
+                            });
+                            const nextRun = todayBatches.length > 0 ? Math.max(...todayBatches.map(b => parseInt(b.run_number, 10) || 1)) + 1 : 1;
+
                             setBatchForm({
                                 product_type: 'huevo entero',
-                                presentation: 'cubeta 32LB',
-                                run_number: 1,
+                                presentation: 'cubeta 30LB',
+                                presentations: ['cubeta 30LB'],
+                                run_number: nextRun,
                                 scheduled_production_id: null,
                                 raw_materials: [],
+                                remanente_ids: [],
                                 ingredients: {
                                     boxes_count: '',
                                     water_bottles: '',
@@ -1435,40 +1472,58 @@ const EggProduction = () => {
                                                     </button>
 
                                                     {/* Exportar Resumen (PDF, Excel, Word) */}
-                                                    <div className="relative group inline-block">
+                                                    <div className="relative inline-block">
                                                         <button
                                                             type="button"
+                                                            onClick={() => setOpenExportMenuId(openExportMenuId === b.id ? null : b.id)}
                                                             className="p-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-lg border border-slate-200 transition-colors shadow-xs flex items-center gap-0.5"
                                                             title="Exportar Resumen de Producción (PDF, Excel, Word)"
                                                         >
                                                             <Download size={13} />
                                                         </button>
-                                                        <div className="hidden group-hover:flex absolute right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl p-1.5 z-40 flex-col gap-1 min-w-[120px] text-left">
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => handleExportSummary(b.id, 'pdf')}
-                                                                className="flex items-center gap-1.5 px-2 py-1 hover:bg-rose-50 rounded-lg text-[11px] font-bold text-rose-700 w-full"
-                                                            >
-                                                                <FileText size={12} />
-                                                                PDF
-                                                            </button>
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => handleExportSummary(b.id, 'excel')}
-                                                                className="flex items-center gap-1.5 px-2 py-1 hover:bg-emerald-50 rounded-lg text-[11px] font-bold text-emerald-700 w-full"
-                                                            >
-                                                                <FileSpreadsheet size={12} />
-                                                                Excel (.xlsx)
-                                                            </button>
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => handleExportSummary(b.id, 'word')}
-                                                                className="flex items-center gap-1.5 px-2 py-1 hover:bg-blue-50 rounded-lg text-[11px] font-bold text-blue-700 w-full"
-                                                            >
-                                                                <FileCheck size={12} />
-                                                                Word (.docx)
-                                                            </button>
-                                                        </div>
+                                                        {openExportMenuId === b.id && (
+                                                            <>
+                                                                <div
+                                                                    className="fixed inset-0 z-30"
+                                                                    onClick={() => setOpenExportMenuId(null)}
+                                                                />
+                                                                <div className="absolute right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl p-1.5 z-40 flex flex-col gap-1 min-w-[130px] text-left animate-in fade-in duration-100">
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                            handleExportSummary(b.id, 'pdf');
+                                                                            setOpenExportMenuId(null);
+                                                                        }}
+                                                                        className="flex items-center gap-1.5 px-2 py-1.5 hover:bg-rose-50 rounded-lg text-[11px] font-bold text-rose-700 w-full"
+                                                                    >
+                                                                        <FileText size={12} />
+                                                                        PDF
+                                                                    </button>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                            handleExportSummary(b.id, 'excel');
+                                                                            setOpenExportMenuId(null);
+                                                                        }}
+                                                                        className="flex items-center gap-1.5 px-2 py-1.5 hover:bg-emerald-50 rounded-lg text-[11px] font-bold text-emerald-700 w-full"
+                                                                    >
+                                                                        <FileSpreadsheet size={12} />
+                                                                        Excel (.xlsx)
+                                                                    </button>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                            handleExportSummary(b.id, 'word');
+                                                                            setOpenExportMenuId(null);
+                                                                        }}
+                                                                        className="flex items-center gap-1.5 px-2 py-1.5 hover:bg-blue-50 rounded-lg text-[11px] font-bold text-blue-700 w-full"
+                                                                    >
+                                                                        <FileCheck size={12} />
+                                                                        Word (.docx)
+                                                                    </button>
+                                                                </div>
+                                                            </>
+                                                        )}
                                                     </div>
 
                                                     {/* Balance si pasteurizado */}
@@ -1852,18 +1907,48 @@ const EggProduction = () => {
                             </div>
 
                             <div>
-                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">Presentación Comercial</label>
-                                <select
-                                    value={batchForm.presentation}
-                                    onChange={(e) => setBatchForm({ ...batchForm, presentation: e.target.value })}
-                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                                >
-                                    <option value="cubeta 30LB">Cubeta Industrial (30 Lbs - Estándar)</option>
-                                    <option value="cubeta 32LB">Cubeta Industrial (32 Lbs)</option>
-                                    <option value="galón 8LB">Galón (8 Lbs)</option>
-                                    <option value="medio galón 4LB">Medio Galón (4 Lbs)</option>
-                                    <option value="litro 2LB">Litro (2 Lbs)</option>
-                                </select>
+                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">
+                                    Presentaciones Comerciales (Múltiples)
+                                </label>
+                                <div className="flex flex-wrap gap-1.5 p-1.5 bg-white border border-slate-300 rounded-xl min-h-[38px] items-center">
+                                    {[
+                                        { id: 'cubeta 30LB', label: 'Cubeta 30 Lbs' },
+                                        { id: 'cubeta 32LB', label: 'Cubeta 32 Lbs' },
+                                        { id: 'galón 8LB', label: 'Galón 8 Lbs' },
+                                        { id: 'medio galón 4LB', label: 'Medio Galón 4 Lbs' },
+                                        { id: 'litro 2LB', label: 'Litro 2 Lbs' },
+                                        { id: 'bolsa 5LB', label: 'Bolsa 5 Lbs' }
+                                    ].map(p => {
+                                        const currentSelected = Array.isArray(batchForm.presentations) 
+                                            ? batchForm.presentations 
+                                            : (batchForm.presentation ? batchForm.presentation.split(',').map(s => s.trim()) : ['cubeta 30LB']);
+                                        const isSelected = currentSelected.includes(p.id);
+                                        return (
+                                            <button
+                                                key={p.id}
+                                                type="button"
+                                                onClick={() => {
+                                                    let updated;
+                                                    if (isSelected) {
+                                                        if (currentSelected.length === 1) return toast.info('Debe mantener al menos una presentación seleccionada.');
+                                                        updated = currentSelected.filter(x => x !== p.id);
+                                                    } else {
+                                                        updated = [...currentSelected, p.id];
+                                                    }
+                                                    setBatchForm({ ...batchForm, presentations: updated, presentation: updated.join(', ') });
+                                                }}
+                                                className={`px-2 py-0.5 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1 border ${
+                                                    isSelected 
+                                                        ? 'bg-indigo-50 border-indigo-300 text-indigo-700 shadow-2xs' 
+                                                        : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100'
+                                                }`}
+                                            >
+                                                {isSelected && <Check size={11} className="text-indigo-600" />}
+                                                <span>{p.label}</span>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
                             </div>
                         </div>
 
@@ -2152,6 +2237,82 @@ const EggProduction = () => {
                                 <Plus size={14} />
                                 Agregar Otro Lote de Materia Prima
                             </button>
+                        </div>
+
+                        {/* Remanentes / Sobrantes Disponibles de Producciones Anteriores */}
+                        <div className="bg-teal-50/60 p-4 rounded-2xl border border-teal-200 space-y-3">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-teal-200/80 pb-2">
+                                <div>
+                                    <label className="text-xs font-bold text-teal-900 uppercase tracking-wide flex items-center gap-1.5">
+                                        <Sparkles className="w-4 h-4 text-teal-600" />
+                                        <span>Incorporar Remanentes / Sobrantes Disponibles (Producciones Previas)</span>
+                                    </label>
+                                    <p className="text-[11px] text-teal-700">
+                                        Sobrantes guardados (huevo en leche, mezclas previas) listos para integrarse en esta formulación.
+                                    </p>
+                                </div>
+                                <span className="text-xs bg-white px-2.5 py-1 rounded-lg border border-teal-200 text-teal-800 font-bold self-start sm:self-auto">
+                                    {availableRemanentes.length} disponibles
+                                </span>
+                            </div>
+
+                            {availableRemanentes.length === 0 ? (
+                                <p className="text-xs text-teal-700/80 italic py-1">
+                                    No hay remanentes o sobrantes con saldo disponible en este momento.
+                                </p>
+                            ) : (
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                                    {availableRemanentes.map(rem => {
+                                        const isSelected = (batchForm.remanente_ids || []).includes(rem.id);
+                                        return (
+                                            <div 
+                                                key={rem.id}
+                                                onClick={() => {
+                                                    const current = batchForm.remanente_ids || [];
+                                                    const updated = isSelected ? current.filter(id => id !== rem.id) : [...current, rem.id];
+                                                    setBatchForm({ ...batchForm, remanente_ids: updated });
+                                                }}
+                                                className={`p-3 rounded-xl border cursor-pointer transition-all flex items-start justify-between gap-2 ${
+                                                    isSelected 
+                                                        ? 'bg-white border-teal-500 shadow-sm ring-2 ring-teal-500/20' 
+                                                        : 'bg-white/70 border-teal-200/70 hover:bg-white'
+                                                }`}
+                                            >
+                                                <div className="space-y-1">
+                                                    <div className="flex items-center gap-2">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={isSelected}
+                                                            onChange={() => {}}
+                                                            className="rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+                                                        />
+                                                        <span className="text-xs font-bold text-slate-900">{rem.batch_code_display || `Lote #${rem.batch_id}`}</span>
+                                                        <span className="text-[10px] px-1.5 py-0.2 rounded bg-teal-100 text-teal-800 font-semibold uppercase">{rem.remanente_type || 'pasteurizado'}</span>
+                                                    </div>
+                                                    <div className="text-[11px] text-slate-600">
+                                                        <span>{rem.product_type} • </span>
+                                                        <strong className="text-teal-700">{parseFloat(rem.quantity_lbs || rem.weight_lbs || 0).toFixed(1)} Lbs</strong>
+                                                    </div>
+                                                    {rem.notes && (
+                                                        <p className="text-[10px] text-slate-500 line-clamp-1">{rem.notes}</p>
+                                                    )}
+                                                </div>
+                                                <div className="text-right">
+                                                    <span className="text-[10px] font-bold text-teal-700">{parseFloat(rem.quantity_lbs || rem.weight_lbs || 0).toFixed(1)} Lbs</span>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                            {(batchForm.remanente_ids || []).length > 0 && (
+                                <div className="text-xs font-bold text-teal-800 bg-white/90 px-3 py-1.5 rounded-lg border border-teal-300 flex items-center justify-between">
+                                    <span>Remanentes Seleccionados: {(batchForm.remanente_ids || []).length}</span>
+                                    <span>
+                                        + {availableRemanentes.filter(r => (batchForm.remanente_ids || []).includes(r.id)).reduce((acc, r) => acc + parseFloat(r.quantity_lbs || r.weight_lbs || 0), 0).toFixed(1)} Lbs incorporadas a la mezcla
+                                    </span>
+                                </div>
+                            )}
                         </div>
 
                         {/* Insumos de Formulación / Receta */}
@@ -2945,21 +3106,74 @@ const EggProduction = () => {
                             Permite adicionar tarimas de materia prima a la corrida en caso de que el quebraje sea menor a lo esperado o se requiera volumen extra.
                         </p>
 
-                        {/* Barra de Herramientas: Escáner con Teléfono/Cámara & Digitación Manual */}
+                        {/* Histórico de Tarimas / Materia Prima ya Quebradas en este Lote */}
+                        {addTarimasModal.batch?.raw_materials && addTarimasModal.batch.raw_materials.length > 0 && (
+                            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wide flex items-center gap-1.5">
+                                        <ClipboardList size={14} className="text-indigo-600" />
+                                        Tarimas / Lotes ya Quebrados en esta Producción
+                                    </span>
+                                    <span className="text-[11px] text-slate-500 font-semibold">
+                                        Total previo: <strong className="text-slate-900">{parseFloat(addTarimasModal.batch.input_weight_lbs || 0).toLocaleString()} Lbs</strong>
+                                    </span>
+                                </div>
+                                <div className="space-y-1.5">
+                                    {addTarimasModal.batch.raw_materials.map((rmPrev, pIdx) => (
+                                        <div key={pIdx} className="bg-white border border-slate-200/80 rounded-lg p-2.5 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
+                                            <div>
+                                                <div className="font-bold text-slate-800 flex items-center gap-1.5">
+                                                    <span>{rmPrev.egg_type || 'Huevo'}</span>
+                                                    <span className="text-slate-400 font-normal">| Lote:</span>
+                                                    <span className="font-mono text-indigo-700">{rmPrev.provider_lot || rmPrev.id}</span>
+                                                </div>
+                                                {Array.isArray(rmPrev.tarimas) && rmPrev.tarimas.length > 0 ? (
+                                                    <div className="flex flex-wrap gap-1 mt-1">
+                                                        {rmPrev.tarimas.map((t, ti) => (
+                                                            <span key={ti} className="bg-indigo-50 border border-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded text-[10px] font-semibold">
+                                                                Tarima #{t.tarima_number} ({t.boxes_count || 0} cjs • {parseFloat(t.quantity_lbs || 0).toFixed(0)} Lbs)
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                ) : (
+                                                    <span className="text-[11px] text-slate-500">{rmPrev.boxes_count ? `${rmPrev.boxes_count} cajas` : ''}</span>
+                                                )}
+                                            </div>
+                                            <div className="text-right font-bold text-slate-900 shrink-0">
+                                                {parseFloat(rmPrev.quantity_lbs || 0).toFixed(2)} Lbs
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Barra de Herramientas: Escáner con Teléfono/Cámara & Digitación / Búsqueda Manual */}
                         <div className="bg-gradient-to-r from-indigo-50/80 to-slate-50 p-4 rounded-xl border border-indigo-100 space-y-3">
                             <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        setScannerContext('add_tarimas');
-                                        setScannerModalOpen(true);
-                                    }}
-                                    className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-sm shadow-indigo-500/20"
-                                    title="Escanear con cámara de teléfono o lector QR"
-                                >
-                                    <Camera size={16} />
-                                    <span>Escanear Tarima (Cámara / QR)</span>
-                                </button>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setScannerContext('add_tarimas');
+                                            setScannerModalOpen(true);
+                                        }}
+                                        className="px-3.5 py-2 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-sm shadow-indigo-500/20"
+                                        title="Escanear con cámara de teléfono o lector QR"
+                                    >
+                                        <Camera size={15} />
+                                        <span>Escanear Tarima (Cámara / QR)</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setTarimaSearchPickerOpen(true)}
+                                        className="px-3.5 py-2 bg-white hover:bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-2xs"
+                                        title="Abrir buscador visual de todos los lotes y tarimas disponibles"
+                                    >
+                                        <Search size={14} className="text-indigo-600" />
+                                        <span>Ver Lotes y Tarimas</span>
+                                    </button>
+                                </div>
 
                                 <div className="flex items-center gap-2 text-xs bg-white px-3 py-1.5 rounded-xl border border-slate-200 shadow-2xs self-end sm:self-auto">
                                     <span className="text-slate-500 font-medium">Cajas: <strong className="text-indigo-700">{addTarimasModal.raw_materials.reduce((s, rm) => s + (parseInt(rm.boxes_count) || (rm.tarimas || []).reduce((ts, t) => ts + (parseInt(t.boxes_count) || 0), 0)), 0)} cjs</strong></span>
@@ -2968,17 +3182,24 @@ const EggProduction = () => {
                                 </div>
                             </div>
 
-                            {/* Digitar Tarima Manualmente */}
+                            {/* Digitar Tarima Manualmente o Abrir Selector con Lupa */}
                             <form onSubmit={handleManualTarimaDigitize} className="flex gap-2 items-center">
                                 <div className="relative flex-1">
+                                    <button
+                                        type="button"
+                                        onClick={() => setTarimaSearchPickerOpen(true)}
+                                        className="absolute left-2.5 top-2 h-4 w-4 text-indigo-600 hover:text-indigo-800 transition-colors"
+                                        title="Clic para buscar y seleccionar entre todos los lotes y tarimas disponibles"
+                                    >
+                                        <Search size={15} />
+                                    </button>
                                     <input
                                         type="text"
                                         value={addTarimasModal.manualTarimaInput || ''}
                                         onChange={(e) => setAddTarimasModal(prev => ({ ...prev, manualTarimaInput: e.target.value }))}
-                                        placeholder="Digitar código de barras (ej: TAR-LOTE-01) o N° de tarima..."
+                                        placeholder="Digitar código de barras (ej: TAR-LOTE-01) o N° de tarima, o clic en lupa..."
                                         className="w-full pl-8 pr-3 py-1.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                                     />
-                                    <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-slate-400" />
                                 </div>
                                 <button
                                     type="submit"
@@ -3276,6 +3497,131 @@ const EggProduction = () => {
                 </div>
             )}
 
+            {/* MODAL BUSCADOR DE LOTES Y TARIMAS DISPONIBLES */}
+            {tarimaSearchPickerOpen && (
+                <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+                    <div className="bg-white border border-slate-200 rounded-2xl shadow-2xl max-w-2xl w-full max-h-[85vh] overflow-y-auto p-6 space-y-4 text-slate-900">
+                        <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+                            <div>
+                                <h3 className="text-sm font-bold uppercase tracking-wider text-slate-900 flex items-center gap-2">
+                                    <Search className="text-indigo-600" size={16} />
+                                    Lotes y Tarimas Disponibles para Quebraje
+                                </h3>
+                                <p className="text-xs text-slate-500 mt-0.5">Seleccione con un clic las tarimas o lotes de materia prima que ingresarán al quebraje.</p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setTarimaSearchPickerOpen(false)}
+                                className="text-slate-400 hover:text-slate-700 p-1"
+                            >
+                                <XCircle size={20} />
+                            </button>
+                        </div>
+
+                        <div className="space-y-3">
+                            {rawMaterials.filter(m => !m.is_depleted && parseFloat(m.stock_lbs || 0) > 0.01).length === 0 ? (
+                                <p className="text-xs text-slate-400 text-center py-6">No hay lotes con saldo disponible en bodega de recepción.</p>
+                            ) : rawMaterials.filter(m => !m.is_depleted && parseFloat(m.stock_lbs || 0) > 0.01).map(lot => {
+                                let lotTarimas = lot.tarimas_available || [];
+                                if (lotTarimas.length === 0 && lot.tarimas_json) {
+                                    try {
+                                        lotTarimas = typeof lot.tarimas_json === 'string' ? JSON.parse(lot.tarimas_json) : lot.tarimas_json;
+                                    } catch (e) { lotTarimas = []; }
+                                }
+                                const activeTarimas = (lotTarimas || []).filter(t => !t.is_depleted && !(t.available_boxes <= 0 && t.available_lbs <= 0.01));
+
+                                return (
+                                    <div key={lot.id} className="border border-slate-200 rounded-xl p-3.5 bg-slate-50/70 space-y-2.5">
+                                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 border-b border-slate-200/60 pb-2">
+                                            <div>
+                                                <span className="font-bold text-slate-900 text-xs">{lot.egg_type}</span>
+                                                <span className="text-slate-500 text-xs ml-1.5 font-mono">Lote: <strong>{lot.provider_lot}</strong></span>
+                                                <span className="text-slate-400 text-[11px] ml-1.5">({lot.provider_name || 'Proveedor'})</span>
+                                            </div>
+                                            <div className="flex items-center gap-2 text-xs">
+                                                <span className="bg-white border border-slate-200 px-2 py-0.5 rounded font-bold text-indigo-700">
+                                                    Stock: {parseFloat(lot.stock_lbs || 0).toFixed(0)} Lbs ({lot.total_boxes || 0} cjs)
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        {activeTarimas.length > 0 ? (
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                                {activeTarimas.map(t => (
+                                                    <div key={t.tarima_number} className="bg-white border border-slate-200 rounded-lg p-2.5 flex items-center justify-between gap-2 shadow-2xs">
+                                                        <div>
+                                                            <div className="text-xs font-bold text-slate-800 flex items-center gap-1">
+                                                                <Barcode size={12} className="text-indigo-500" />
+                                                                Tarima #{t.tarima_number}
+                                                            </div>
+                                                            <div className="text-[11px] text-slate-500">
+                                                                {t.available_boxes ?? t.boxes_count} cjs • <strong className="text-emerald-700">{parseFloat(t.available_lbs ?? t.net_weight_lbs ?? t.gross_weight_lbs ?? 0).toFixed(1)} Lbs</strong>
+                                                            </div>
+                                                        </div>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                const updated = [...addTarimasModal.raw_materials];
+                                                                let rmIdx = updated.findIndex(r => String(r.raw_material_id) === String(lot.id));
+                                                                if (rmIdx === -1) {
+                                                                    updated.push({ raw_material_id: String(lot.id), quantity_lbs: '', boxes_count: '', tarimas: [] });
+                                                                    rmIdx = updated.length - 1;
+                                                                }
+                                                                setAddTarimasModal(prev => ({ ...prev, raw_materials: updated }));
+                                                                handleAddSpecificTarimaToAddModal(rmIdx, t);
+                                                            }}
+                                                            className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-600 hover:text-white border border-indigo-200 text-indigo-700 rounded-lg text-xs font-bold transition-all"
+                                                        >
+                                                            + Agregar
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <div className="flex items-center justify-between text-xs bg-white p-2.5 rounded-lg border border-slate-200">
+                                                <span className="text-slate-600">Lote completo sin desglose individual de tarimas</span>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const updated = [...addTarimasModal.raw_materials];
+                                                        let rmIdx = updated.findIndex(r => String(r.raw_material_id) === String(lot.id));
+                                                        if (rmIdx === -1) {
+                                                            updated.push({
+                                                                raw_material_id: String(lot.id),
+                                                                quantity_lbs: String(lot.stock_lbs || ''),
+                                                                boxes_count: String(lot.total_boxes || ''),
+                                                                tarimas: []
+                                                            });
+                                                        } else {
+                                                            updated[rmIdx].quantity_lbs = String(lot.stock_lbs || '');
+                                                            updated[rmIdx].boxes_count = String(lot.total_boxes || '');
+                                                        }
+                                                        setAddTarimasModal(prev => ({ ...prev, raw_materials: updated }));
+                                                        toast.success(`Lote ${lot.provider_lot} seleccionado.`);
+                                                    }}
+                                                    className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-600 hover:text-white border border-indigo-200 text-indigo-700 rounded-lg text-xs font-bold transition-all"
+                                                >
+                                                    + Cargar Lote
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+
+                        <div className="flex justify-end pt-2 border-t border-slate-200">
+                            <button
+                                type="button"
+                                onClick={() => setTarimaSearchPickerOpen(false)}
+                                className="px-4 py-2 bg-slate-800 text-white rounded-xl text-xs font-bold hover:bg-slate-900"
+                            >
+                                Listo / Volver al Lote
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* MODAL REGISTRAR REMANENTE / SOBRANTE */}
             {remanenteModal.isOpen && (
