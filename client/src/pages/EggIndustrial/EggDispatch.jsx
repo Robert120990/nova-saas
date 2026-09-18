@@ -25,9 +25,12 @@ import {
     ExternalLink,
     Printer,
     Search,
-    X
+    X,
+    Receipt,
+    CreditCard
 } from 'lucide-react';
 import EggCustomerOrderModal from '../../components/egg/EggCustomerOrderModal';
+import RouteAutoInvoicingModal from '../../components/egg/RouteAutoInvoicingModal';
 
 const PRODUCT_PROFILES = [
     'Huevo Entero Pasteurizado',
@@ -69,10 +72,42 @@ export default function EggDispatch() {
     const [editingOrder, setEditingOrder] = useState(null);
     const [orderStatusFilter, setOrderStatusFilter] = useState('todos');
     const [orderPriorityFilter, setOrderPriorityFilter] = useState('todos');
+    const [autoInvoiceModalOpen, setAutoInvoiceModalOpen] = useState(false);
 
     const handlePrintOrderReceipt = (orderId) => {
         if (!orderId) return;
         window.open(`/api/egg-industrial/orders/${orderId}/delivery-receipt`, '_blank');
+    };
+
+    const handlePrintRouteManifest = (routeId, format = 'pdf') => {
+        if (!routeId) return;
+        const url = `/api/egg-industrial/dispatch/routes/${routeId}/manifest-pdf${format === 'excel' ? '?format=excel' : ''}`;
+        window.open(url, '_blank');
+    };
+
+    const getOrderItems = (orderOrStop) => {
+        if (!orderOrStop) return [];
+        if (orderOrStop.items_json) {
+            try {
+                const parsed = typeof orderOrStop.items_json === 'string' 
+                    ? JSON.parse(orderOrStop.items_json) 
+                    : orderOrStop.items_json;
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                    return parsed;
+                }
+            } catch (e) {
+                console.error('Error parseando items_json:', e);
+            }
+        }
+        return [
+            {
+                product_type: orderOrStop.product_type || 'Ovoproducto Líquido',
+                presentation: orderOrStop.presentation || 'cubeta 30LB',
+                quantity_lbs: orderOrStop.quantity_lbs || 0,
+                price_per_lb: orderOrStop.price_per_lb || 0,
+                lot_code: orderOrStop.lot_code || orderOrStop.lot_code_display || orderOrStop.order_lot_code || orderOrStop.linked_batch_code || null
+            }
+        ];
     };
 
     // Formulario de Pedido
@@ -337,6 +372,39 @@ export default function EggDispatch() {
         setRouteModalOpen(true);
     };
 
+    const handleEditRoute = (r, detail) => {
+        if (!r) return;
+        const currentStopOrderIds = detail?.stops ? detail.stops.map(s => s.order_id) : [];
+        setRouteForm({
+            codigo_ruta: r.codigo_ruta || '',
+            fecha_despacho: r.fecha_despacho ? r.fecha_despacho.split('T')[0] : selectedDate,
+            vehicle_id: r.vehicle_id || '',
+            driver_id: r.driver_id || '',
+            driver_name: r.driver_name || '',
+            driver_phone: r.driver_phone || '',
+            hora_salida_estimada: r.hora_salida_estimada || '07:00:00',
+            notas_ruta: r.notas_ruta || '',
+            selectedOrderIds: currentStopOrderIds
+        });
+        setEditingRouteId(r.id);
+        setRouteModalOpen(true);
+    };
+
+    const handleRemoveStopFromRoute = async (stopId, orderId) => {
+        if (!routeDetail?.id || !stopId) return;
+        if (!window.confirm('¿Desea quitar este pedido de la ruta? El pedido volverá a quedar disponible para programar.')) return;
+        try {
+            await axios.delete(`/api/egg-industrial/dispatch/routes/${routeDetail.id}/stops/${stopId}`);
+            toast.success('Pedido desvinculado de la ruta exitosamente.');
+            fetchRouteDetail(routeDetail.id);
+            fetchRoutes();
+            fetchOrders();
+        } catch (error) {
+            console.error('Error al remover parada:', error);
+            toast.error(error.response?.data?.message || 'Error al desvincular pedido de la ruta.');
+        }
+    };
+
     const handleSaveRoute = async (e) => {
         e.preventDefault();
 
@@ -580,6 +648,20 @@ export default function EggDispatch() {
     const selectedVehicleForRoute = useMemo(() => {
         return vehicles.find(v => v.id === parseInt(routeForm.vehicle_id));
     }, [vehicles, routeForm.vehicle_id]);
+
+    // Pedidos disponibles para planificar o editar ruta
+    // EXCLUYE pedidos que ya están en otra ruta o que ya fueron entregados
+    const availableOrdersForRoute = useMemo(() => {
+        return orders.filter(ord => {
+            if (ord.delivery_status === 'entregado') return false;
+            if (editingRouteId) {
+                // Si estamos editando una ruta, mostrar los pedidos de esta ruta O los no asignados
+                return !ord.dispatch_route_id || ord.dispatch_route_id === editingRouteId;
+            }
+            // Si estamos creando una ruta nueva, NO mostrar pedidos que ya tienen ruta o están en ruta
+            return !ord.dispatch_route_id && ord.delivery_status !== 'en_ruta';
+        });
+    }, [orders, editingRouteId]);
 
     const calculatedLoadForNewRoute = useMemo(() => {
         let lbs = 0;
@@ -936,13 +1018,24 @@ export default function EggDispatch() {
                                                     </div>
                                                 </td>
                                                 <td className="p-3">
-                                                    <div className="font-semibold text-slate-800">{ord.product_type}</div>
-                                                    <div className="text-[11px] text-slate-500">{ord.presentation}</div>
-                                                    {(ord.linked_batch_code || ord.lot_code) && (
-                                                        <span className="inline-block mt-0.5 text-[10px] font-bold text-emerald-800 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
-                                                            Lote: {ord.linked_batch_code || ord.lot_code}
-                                                        </span>
-                                                    )}
+                                                    {getOrderItems(ord).map((item, itemIdx) => (
+                                                        <div key={itemIdx} className="mb-1.5 last:mb-0">
+                                                            <div className="font-semibold text-slate-800 flex items-center gap-1.5 flex-wrap">
+                                                                <span>{item.product_type}</span>
+                                                                {getOrderItems(ord).length > 1 && (
+                                                                    <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.2 rounded">
+                                                                        {parseFloat(item.quantity_lbs || 0).toLocaleString()} Lbs
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                            <div className="text-[11px] text-slate-500">{item.presentation}</div>
+                                                            {(item.lot_code || ord.linked_batch_code || ord.lot_code) && (
+                                                                <span className="inline-block mt-0.5 text-[10px] font-bold text-emerald-800 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
+                                                                    Lote: {item.lot_code || ord.linked_batch_code || ord.lot_code}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    ))}
                                                 </td>
                                                 <td className="p-3 text-right font-black text-indigo-700 whitespace-nowrap">
                                                     {parseFloat(ord.quantity_lbs || 0).toLocaleString()} Lbs
@@ -954,19 +1047,33 @@ export default function EggDispatch() {
                                                     <Money amount={parseFloat(ord.price_per_lb || 0)} />
                                                 </td>
                                                 <td className="p-3 whitespace-nowrap">
-                                                    {ord.delivery_status === 'entregado' ? (
-                                                        <span className="text-[10px] font-black bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-md flex items-center gap-1 w-max">
-                                                            <CheckCircle2 className="w-3 h-3" /> Entregado
-                                                        </span>
-                                                    ) : ord.dispatch_route_id ? (
-                                                        <span className="text-[10px] font-black bg-cyan-100 text-cyan-800 px-2 py-0.5 rounded-md flex items-center gap-1 w-max">
-                                                            <Truck className="w-3 h-3" /> {ord.codigo_ruta || 'En Ruta'}
-                                                        </span>
-                                                    ) : (
-                                                        <span className="text-[10px] font-black bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-md w-max block">
-                                                            Pendiente Despacho
-                                                        </span>
-                                                    )}
+                                                    <div className="space-y-1">
+                                                        {ord.delivery_status === 'entregado' ? (
+                                                            <span className="text-[10px] font-black bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-md flex items-center gap-1 w-max">
+                                                                <CheckCircle2 className="w-3 h-3" /> Entregado
+                                                            </span>
+                                                        ) : ord.dispatch_route_id ? (
+                                                            <span className="text-[10px] font-black bg-cyan-100 text-cyan-800 px-2 py-0.5 rounded-md flex items-center gap-1 w-max">
+                                                                <Truck className="w-3 h-3" /> {ord.codigo_ruta || 'En Ruta'}
+                                                            </span>
+                                                        ) : (
+                                                            <span className="text-[10px] font-black bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-md w-max block">
+                                                                Pendiente Despacho
+                                                            </span>
+                                                        )}
+
+                                                        {/* Badge de Facturación Anti-Refacturación */}
+                                                        {ord.is_billed || ord.sale_id || ord.dte_codigo_generacion ? (
+                                                            <span className="text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300 px-1.5 py-0.2 rounded-md flex items-center gap-1 w-max shadow-2xs">
+                                                                <Receipt className="w-3 h-3 text-emerald-600" />
+                                                                <span>Facturado {ord.sale_numero_control ? `#${ord.sale_numero_control}` : ''}</span>
+                                                            </span>
+                                                        ) : (
+                                                            <span className="text-[9px] font-bold text-slate-400 block pl-0.5">
+                                                                Sin Facturar
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                 </td>
                                                 <td className="p-3 text-center whitespace-nowrap">
                                                     <div className="flex items-center justify-center gap-1">
@@ -1074,15 +1181,62 @@ export default function EggDispatch() {
                                             </p>
                                         </div>
 
-                                        <button
-                                            onClick={handleOptimizeRoute}
-                                            disabled={optimizingRoute}
-                                            className="flex items-center gap-1 text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded-xl shadow-sm transition disabled:opacity-50"
-                                            title="Reordena automáticamente priorizando urgentes y proximidad geográfica"
-                                        >
-                                            <Sparkles className={`w-3.5 h-3.5 ${optimizingRoute ? 'animate-spin' : ''}`} />
-                                            <span>{optimizingRoute ? 'Optimizando...' : 'Optimizar Ruta'}</span>
-                                        </button>
+                                        <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                                            {/* Botón Imprimir Listado / Manifiesto de Despacho (PDF y Excel) */}
+                                            <div className="flex items-center bg-indigo-50 border border-indigo-200 rounded-xl overflow-hidden p-0.5 shadow-xs">
+                                                <button
+                                                    onClick={() => handlePrintRouteManifest(routeDetail.id, 'pdf')}
+                                                    className="flex items-center gap-1 text-xs font-bold text-indigo-700 hover:bg-indigo-600 hover:text-white px-2.5 py-1.5 rounded-lg transition"
+                                                    title="Imprimir Manifiesto de Despacho en PDF Oficial"
+                                                >
+                                                    <Printer className="w-3.5 h-3.5" />
+                                                    <span>Imprimir Listado</span>
+                                                </button>
+                                                <button
+                                                    onClick={() => handlePrintRouteManifest(routeDetail.id, 'excel')}
+                                                    className="text-[10px] font-black text-emerald-700 hover:bg-emerald-600 hover:text-white px-2 py-1.5 rounded-lg transition border-l border-indigo-200"
+                                                    title="Exportar Listado de Despacho a Excel"
+                                                >
+                                                    XLS
+                                                </button>
+                                            </div>
+
+                                            {/* Botón Facturar Ruta Automáticamente */}
+                                            <button
+                                                onClick={() => setAutoInvoiceModalOpen(true)}
+                                                className="flex items-center gap-1.5 text-xs font-black bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-xl shadow-sm transition active:scale-95"
+                                                title="Facturar automáticamente los pedidos de esta ruta con asignación de lotes"
+                                            >
+                                                <Receipt className="w-3.5 h-3.5" />
+                                                <span>Facturar Ruta</span>
+                                                {routeDetail.stops?.some(s => !s.is_billed && !s.sale_id && !s.dte_codigo_generacion) && (
+                                                    <span className="bg-white/20 text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold">
+                                                        {routeDetail.stops.filter(s => !s.is_billed && !s.sale_id && !s.dte_codigo_generacion).length}
+                                                    </span>
+                                                )}
+                                            </button>
+
+                                            {/* Botón Editar Ruta */}
+                                            <button
+                                                onClick={() => handleEditRoute(selectedRoute || routeDetail, routeDetail)}
+                                                className="flex items-center gap-1 text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 px-2.5 py-1.5 rounded-xl border border-slate-200 transition"
+                                                title="Editar Paradas, Camión o Chofer de esta Ruta"
+                                            >
+                                                <Edit3 className="w-3.5 h-3.5" />
+                                                <span>Editar</span>
+                                            </button>
+
+                                            {/* Botón Optimizar Secuencia */}
+                                            <button
+                                                onClick={handleOptimizeRoute}
+                                                disabled={optimizingRoute}
+                                                className="flex items-center gap-1 text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded-xl shadow-sm transition disabled:opacity-50"
+                                                title="Reordena automáticamente priorizando urgentes y proximidad geográfica"
+                                            >
+                                                <Sparkles className={`w-3.5 h-3.5 ${optimizingRoute ? 'animate-spin' : ''}`} />
+                                                <span>{optimizingRoute ? '...' : 'Optimizar'}</span>
+                                            </button>
+                                        </div>
                                     </div>
 
                                     {/* Barra de Carga del Camión */}
@@ -1110,11 +1264,22 @@ export default function EggDispatch() {
 
                                     {/* Lista de Paradas Ordenadas */}
                                     <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1">
-                                        {routeDetail.stops?.map((stop, idx) => (
+                                        {routeDetail.stops?.map((stop, idx) => {
+                                            const isStopBilled = !!(
+                                                stop.is_billed ||
+                                                stop.sale_id ||
+                                                stop.sale_id_linked ||
+                                                stop.dte_codigo_generacion ||
+                                                stop.sale_codigo_generacion
+                                            );
+
+                                            return (
                                             <div
                                                 key={stop.id}
                                                 className={`p-3 rounded-xl border transition ${
-                                                    stop.estado_entrega === 'entregado'
+                                                    isStopBilled
+                                                        ? 'bg-emerald-50/90 border-emerald-300 shadow-2xs'
+                                                        : stop.estado_entrega === 'entregado'
                                                         ? 'bg-emerald-50/50 border-emerald-200'
                                                         : 'bg-white border-slate-200 hover:border-indigo-300'
                                                 }`}
@@ -1122,16 +1287,33 @@ export default function EggDispatch() {
                                                 <div className="flex items-start justify-between gap-2">
                                                     <div className="flex items-start gap-2.5">
                                                         <span className={`w-6 h-6 rounded-full flex items-center justify-center font-black text-xs flex-shrink-0 ${
-                                                            stop.estado_entrega === 'entregado'
+                                                            isStopBilled
+                                                                ? 'bg-emerald-600 text-white shadow-xs'
+                                                                : stop.estado_entrega === 'entregado'
                                                                 ? 'bg-emerald-600 text-white'
                                                                 : 'bg-indigo-600 text-white'
                                                         }`}>
-                                                            {stop.estado_entrega === 'entregado' ? '✓' : stop.orden_visita}
+                                                            {isStopBilled ? '✓' : stop.estado_entrega === 'entregado' ? '✓' : stop.orden_visita}
                                                         </span>
 
                                                         <div>
-                                                            <div className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
+                                                            <div className="font-bold text-slate-900 text-xs flex items-center gap-1.5 flex-wrap">
                                                                 <span>{stop.customer_name}</span>
+                                                                {isStopBilled ? (
+                                                                    <span className="inline-flex items-center gap-1 text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300 px-2 py-0.5 rounded-full shadow-2xs">
+                                                                        <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                                                        <span>FACTURADO</span>
+                                                                        {stop.sale_numero_control ? (
+                                                                            <span className="font-mono">#{stop.sale_numero_control}</span>
+                                                                        ) : stop.sale_dte_type ? (
+                                                                            <span className="font-mono">[{stop.sale_dte_type}]</span>
+                                                                        ) : null}
+                                                                    </span>
+                                                                ) : (
+                                                                    <span className="text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.2 rounded-md">
+                                                                        Pendiente Factura
+                                                                    </span>
+                                                                )}
                                                                 {stop.prioridad === 'urgente' && (
                                                                     <span className="text-[9px] font-black bg-rose-100 text-rose-700 px-1.5 py-0.2 rounded">
                                                                         URGENTE
@@ -1151,9 +1333,28 @@ export default function EggDispatch() {
                                                                 </p>
                                                             )}
 
-                                                            <div className="text-[11px] text-indigo-700 font-bold mt-1">
-                                                                📦 {stop.quantity_lbs || 0} Lbs ({Math.ceil((stop.quantity_lbs || 0) / 30)} cubetas) - {stop.product_type}
-                                                            </div>
+                                                             {/* Desglose de Productos del Pedido / Parada */}
+                                                             <div className="mt-2 space-y-1">
+                                                                 {getOrderItems(stop).map((item, itemIdx) => (
+                                                                     <div key={itemIdx} className="bg-slate-50 border border-slate-100 rounded-lg p-2 flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-xs">
+                                                                         <div className="flex items-center gap-1.5 flex-wrap">
+                                                                             <span className="font-bold text-slate-800">• {item.product_type}</span>
+                                                                             <span className="text-slate-500 text-[10px]">({item.presentation || 'cubeta 30LB'})</span>
+                                                                             {(item.lot_code || stop.lot_code || stop.order_lot_code || stop.linked_batch_code) && (
+                                                                                 <span className="bg-emerald-50 text-emerald-800 border border-emerald-200 font-bold text-[10px] px-1.5 py-0.2 rounded">
+                                                                                     Lote: {item.lot_code || stop.lot_code || stop.order_lot_code || stop.linked_batch_code}
+                                                                                 </span>
+                                                                             )}
+                                                                         </div>
+                                                                         <div className="text-right whitespace-nowrap">
+                                                                             <span className="font-black text-indigo-700">{parseFloat(item.quantity_lbs || 0).toLocaleString()} Lbs</span>
+                                                                             <span className="text-[10px] text-slate-500 ml-1">
+                                                                                 ({Math.ceil(parseFloat(item.quantity_lbs || 0) / 30)} cub)
+                                                                             </span>
+                                                                         </div>
+                                                                     </div>
+                                                                 ))}
+                                                             </div>
                                                         </div>
                                                     </div>
 
@@ -1173,9 +1374,16 @@ export default function EggDispatch() {
                                                         <button
                                                             onClick={() => handlePrintOrderReceipt(stop.order_id)}
                                                             className="p-1 text-slate-400 hover:text-emerald-600 hover:bg-slate-100 rounded"
-                                                            title="Imprimir comprobante de entrega"
+                                                            title="Imprimir comprobante de entrega individual"
                                                         >
                                                             <Printer className="w-3.5 h-3.5" />
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleRemoveStopFromRoute(stop.id, stop.order_id)}
+                                                            className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition"
+                                                            title="Quitar de esta ruta (volver a dejar pedido pendiente)"
+                                                        >
+                                                            <Trash2 className="w-3.5 h-3.5" />
                                                         </button>
                                                         <button
                                                             disabled={idx === 0}
@@ -1196,7 +1404,8 @@ export default function EggDispatch() {
                                                     </div>
                                                 </div>
                                             </div>
-                                        ))}
+                                            );
+                                        })}
                                     </div>
                                 </div>
                             </div>
@@ -1783,52 +1992,83 @@ export default function EggDispatch() {
                             </label>
                         </div>
 
-                        <div className="border border-slate-200 rounded-xl max-h-60 overflow-y-auto divide-y divide-slate-100">
-                            {orders.filter(o => o.delivery_status !== 'entregado').map(ord => {
-                                const isSelected = routeForm.selectedOrderIds.includes(ord.id);
-                                return (
-                                    <label
-                                        key={ord.id}
-                                        className={`flex items-center justify-between p-2.5 cursor-pointer text-xs transition ${
-                                            isSelected ? 'bg-indigo-50/70' : 'hover:bg-slate-50'
-                                        }`}
-                                    >
-                                        <div className="flex items-center gap-3">
-                                            <input
-                                                type="checkbox"
-                                                checked={isSelected}
-                                                onChange={(e) => {
-                                                    if (e.target.checked) {
-                                                        setRouteForm(prev => ({
-                                                            ...prev,
-                                                            selectedOrderIds: [...prev.selectedOrderIds, ord.id]
-                                                        }));
-                                                    } else {
-                                                        setRouteForm(prev => ({
-                                                            ...prev,
-                                                            selectedOrderIds: prev.selectedOrderIds.filter(id => id !== ord.id)
-                                                        }));
-                                                    }
-                                                }}
-                                                className="rounded text-indigo-600 focus:ring-indigo-500 h-4 w-4"
-                                            />
-                                            <div>
-                                                <div className="font-bold text-slate-900">{ord.customer_name}</div>
-                                                <div className="text-[11px] text-slate-500">
-                                                    📍 {ord.branch_name || 'Sucursal Principal'} | Fecha: {ord.required_delivery_date?.split('T')[0]}
+                        <div className="border border-slate-200 rounded-xl max-h-72 overflow-y-auto divide-y divide-slate-100">
+                            {availableOrdersForRoute.length === 0 ? (
+                                <div className="p-6 text-center text-xs text-slate-400">
+                                    No hay pedidos pendientes disponibles para programar. Todos los pedidos ya fueron asignados a una ruta o entregados.
+                                </div>
+                            ) : (
+                                availableOrdersForRoute.map(ord => {
+                                    const isSelected = routeForm.selectedOrderIds.includes(ord.id);
+                                    const orderItems = getOrderItems(ord);
+                                    return (
+                                        <label
+                                            key={ord.id}
+                                            className={`flex items-start justify-between p-3 cursor-pointer text-xs transition ${
+                                                isSelected ? 'bg-indigo-50/80' : 'hover:bg-slate-50'
+                                            }`}
+                                        >
+                                            <div className="flex items-start gap-3">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={isSelected}
+                                                    onChange={(e) => {
+                                                        if (e.target.checked) {
+                                                            setRouteForm(prev => ({
+                                                                ...prev,
+                                                                selectedOrderIds: [...prev.selectedOrderIds, ord.id]
+                                                            }));
+                                                        } else {
+                                                            setRouteForm(prev => ({
+                                                                ...prev,
+                                                                selectedOrderIds: prev.selectedOrderIds.filter(id => id !== ord.id)
+                                                            }));
+                                                        }
+                                                    }}
+                                                    className="rounded text-indigo-600 focus:ring-indigo-500 h-4 w-4 mt-0.5"
+                                                />
+                                                <div>
+                                                    <div className="font-bold text-slate-900 flex items-center gap-2">
+                                                        <span>{ord.customer_name}</span>
+                                                        {ord.priority === 'urgente' && (
+                                                            <span className="text-[9px] font-black bg-rose-100 text-rose-700 px-1.5 py-0.2 rounded">
+                                                                URGENTE
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <div className="text-[11px] text-slate-500">
+                                                        📍 {ord.branch_name || 'Sucursal Principal'} | Fecha: {ord.required_delivery_date?.split('T')[0]}
+                                                    </div>
+
+                                                    {/* Desglose de Productos y Lotes */}
+                                                    <div className="mt-1 space-y-0.5">
+                                                        {orderItems.map((it, i) => (
+                                                            <div key={i} className="text-[11px] text-slate-600 flex items-center gap-1.5 flex-wrap">
+                                                                <span className="font-semibold text-slate-800">• {it.product_type}</span>
+                                                                <span className="text-indigo-600 font-bold">
+                                                                    ({parseFloat(it.quantity_lbs || 0).toLocaleString()} Lbs{it.presentation ? ` - ${it.presentation}` : ''})
+                                                                </span>
+                                                                {(it.lot_code || ord.lot_code || ord.linked_batch_code) && (
+                                                                    <span className="bg-emerald-50 text-emerald-800 font-bold text-[10px] px-1.5 py-0.2 rounded border border-emerald-200">
+                                                                        Lote: {it.lot_code || ord.lot_code || ord.linked_batch_code}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        ))}
+                                                    </div>
                                                 </div>
                                             </div>
-                                        </div>
 
-                                        <div className="text-right">
-                                            <span className="font-black text-indigo-700">{ord.quantity_lbs} Lbs</span>
-                                            <span className="text-[10px] text-slate-500 block">
-                                                {Math.ceil(parseFloat(ord.quantity_lbs || 0) / 30)} Cubetas
-                                            </span>
-                                        </div>
-                                    </label>
-                                );
-                            })}
+                                            <div className="text-right flex-shrink-0 ml-3">
+                                                <span className="font-black text-indigo-700 block">{parseFloat(ord.quantity_lbs || 0).toLocaleString()} Lbs</span>
+                                                <span className="text-[10px] text-slate-500 block">
+                                                    {Math.ceil(parseFloat(ord.quantity_lbs || 0) / 30)} Cubetas
+                                                </span>
+                                            </div>
+                                        </label>
+                                    );
+                                })
+                            )}
                         </div>
                     </div>
 
@@ -2206,6 +2446,22 @@ export default function EggDispatch() {
                         fetchRouteDetail(routeDetail.id);
                     }
                     fetchDriverRoutes();
+                    fetchOrders();
+                }}
+            />
+
+            {/* ========================================================================= */}
+            {/* MODAL 6: FACTURACIÓN AUTOMÁTICA DE RUTA Y ASIGNACIÓN DE LOTES */}
+            {/* ========================================================================= */}
+            <RouteAutoInvoicingModal
+                isOpen={autoInvoiceModalOpen}
+                onClose={() => setAutoInvoiceModalOpen(false)}
+                route={routeDetail}
+                onInvoiceSuccess={() => {
+                    if (routeDetail?.id) {
+                        fetchRouteDetail(routeDetail.id);
+                    }
+                    fetchRoutes();
                     fetchOrders();
                 }}
             />

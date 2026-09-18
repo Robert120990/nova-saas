@@ -7090,13 +7090,18 @@ const getOrderDeliveryReceipt = async (req, res) => {
                     v.codigo as vehicle_code,
                     v.placa as vehicle_plate,
                     v.modelo as vehicle_model,
-                    b.batch_code_display as linked_batch_code
+                    b.batch_code_display as linked_batch_code,
+                    sh.codigo_generacion as sale_codigo_generacion,
+                    sh.numero_control as sale_numero_control,
+                    sh.dte_type as sale_dte_type,
+                    (CASE WHEN o.sale_id IS NOT NULL OR o.dte_codigo_generacion IS NOT NULL OR sh.id IS NOT NULL THEN 1 ELSE 0 END) as is_billed
              FROM egg_customer_orders o
              LEFT JOIN customers c ON o.customer_id = c.id
              LEFT JOIN customer_branches cb ON o.customer_branch_id = cb.id
              LEFT JOIN egg_dispatch_routes r ON o.dispatch_route_id = r.id
              LEFT JOIN delivery_vehicles v ON r.vehicle_id = v.id
              LEFT JOIN egg_production_batches b ON o.batch_id = b.id
+             LEFT JOIN sales_headers sh ON (o.sale_id = sh.id OR (o.dte_codigo_generacion IS NOT NULL AND o.dte_codigo_generacion = sh.codigo_generacion))
              WHERE o.id = ? AND o.company_id = ?`,
             [id, company_id]
         );

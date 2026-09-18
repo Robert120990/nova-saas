@@ -1,4 +1,7 @@
 const pool = require('../config/db');
+const reportPdfHelper = require('../utils/reportPdfHelper');
+const excelService = require('../services/excel.service');
+const dteService = require('../services/dte.service');
 
 /**
  * ==============================================================================
@@ -469,7 +472,7 @@ const getDispatchRouteDetail = async (req, res) => {
 
         const route = routeRows[0];
 
-        // Obtener paradas con datos de pedido, cliente y sucursal
+        // Obtener paradas con datos de pedido, cliente, sucursal, productos y lotes
         const [stops] = await pool.query(
             `SELECT s.*,
                     o.order_number,
@@ -478,12 +481,28 @@ const getDispatchRouteDetail = async (req, res) => {
                     o.quantity_lbs,
                     o.price_per_lb,
                     o.notes AS order_notes,
+                    o.items_json,
+                    o.batch_id AS order_batch_id,
+                    o.lot_code AS order_lot_code,
+                    o.required_delivery_date,
+                    b.batch_code_display AS linked_batch_code,
+                    COALESCE(s.lot_code, o.lot_code, b.batch_code_display) AS lot_code_display,
                     ROUND(o.quantity_lbs / 30.0, 0) AS calculated_buckets,
                     c.nombre AS customer_name,
                     c.nombre_comercial AS customer_commercial_name,
                     c.nit AS customer_nit,
                     c.nrc AS customer_nrc,
                     c.telefono AS customer_phone,
+                    c.direccion AS customer_address,
+                    c.es_credito AS customer_es_credito,
+                    c.dias_credito AS customer_dias_credito,
+                    c.limite_credito AS customer_limite_credito,
+                    c.condicion_fiscal AS customer_condicion_fiscal,
+                    c.pais AS customer_pais,
+                    c.codigo_actividad AS customer_codigo_actividad,
+                    c.departamento AS customer_departamento,
+                    c.municipio AS customer_municipio,
+                    c.distrito AS customer_distrito,
                     cb.nombre AS branch_name,
                     cb.direccion AS branch_address,
                     cb.departamento AS branch_departamento,
@@ -493,11 +512,29 @@ const getDispatchRouteDetail = async (req, res) => {
                     cb.contacto_telefono AS branch_contact_phone,
                     cb.indicaciones_entrega AS branch_delivery_notes,
                     cb.latitude AS branch_latitude,
-                    cb.longitude AS branch_longitude
+                    cb.longitude AS branch_longitude,
+                    sh.id AS sale_id_linked,
+                    sh.codigo_generacion AS sale_codigo_generacion,
+                    sh.numero_control AS sale_numero_control,
+                    sh.sello_recepcion AS sale_sello_recepcion,
+                    sh.dte_type AS sale_dte_type,
+                    sh.total_pagar AS sale_total_pagar,
+                    sh.condicion_operacion AS sale_condicion_operacion,
+                    sh.estado AS sale_estado,
+                    (CASE 
+                        WHEN s.sale_id IS NOT NULL 
+                          OR s.dte_codigo_generacion IS NOT NULL 
+                          OR o.sale_id IS NOT NULL 
+                          OR o.dte_codigo_generacion IS NOT NULL 
+                          OR sh.id IS NOT NULL 
+                        THEN 1 ELSE 0 
+                     END) AS is_billed
              FROM egg_dispatch_stops s
              JOIN egg_customer_orders o ON s.order_id = o.id
+             LEFT JOIN egg_production_batches b ON o.batch_id = b.id
              JOIN customers c ON s.customer_id = c.id
              LEFT JOIN customer_branches cb ON s.customer_branch_id = cb.id
+             LEFT JOIN sales_headers sh ON (s.sale_id = sh.id OR o.sale_id = sh.id OR (s.dte_codigo_generacion IS NOT NULL AND s.dte_codigo_generacion = sh.codigo_generacion))
              WHERE s.dispatch_route_id = ?
              ORDER BY s.orden_visita ASC, s.id ASC`,
             [id]
@@ -692,16 +729,23 @@ const saveDispatchRoute = async (req, res) => {
             routeId = insRes.insertId;
         }
 
-        // 5. Insertar paradas y asociar pedidos
+        // 5. Insertar paradas y asociar pedidos con trazabilidad de lotes
         for (let idx = 0; idx < stopList.length; idx++) {
             const stop = stopList[idx];
             const ordenVisita = stop.orden_visita !== undefined ? parseInt(stop.orden_visita) : (idx + 1);
 
+            const [oData] = await connection.query(
+                'SELECT batch_id, lot_code FROM egg_customer_orders WHERE id = ?',
+                [stop.order_id]
+            );
+            const stopBatchId = oData[0]?.batch_id || null;
+            const stopLotCode = oData[0]?.lot_code || null;
+
             await connection.query(
                 `INSERT INTO egg_dispatch_stops (
                     dispatch_route_id, order_id, customer_id, customer_branch_id,
-                    orden_visita, prioridad, estado_entrega
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+                    orden_visita, prioridad, estado_entrega, batch_id, lot_code
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 [
                     routeId,
                     stop.order_id,
@@ -709,7 +753,9 @@ const saveDispatchRoute = async (req, res) => {
                     stop.customer_branch_id || null,
                     ordenVisita,
                     stop.prioridad || 'normal',
-                    'pendiente'
+                    'pendiente',
+                    stopBatchId,
+                    stopLotCode
                 ]
             );
 
@@ -1264,6 +1310,873 @@ const getCustomerBranches = async (req, res) => {
     }
 };
 
+// ==========================================
+// 5. MANIFIESTO DE RUTA Y LISTADO DE DESPACHO
+// ==========================================
+
+const removeStopFromRoute = async (req, res) => {
+    const connection = await pool.getConnection();
+    try {
+        await connection.beginTransaction();
+        const { id, stop_id } = req.params;
+        const company_id = req.company_id || req.user?.company_id;
+
+        // 1. Verificar que la parada pertenezca a la ruta y empresa
+        const [stopRows] = await connection.query(
+            `SELECT s.id, s.order_id, s.dispatch_route_id 
+             FROM egg_dispatch_stops s
+             JOIN egg_dispatch_routes r ON s.dispatch_route_id = r.id
+             WHERE s.id = ? AND s.dispatch_route_id = ? AND r.company_id = ?`,
+            [stop_id, id, company_id]
+        );
+
+        if (stopRows.length === 0) {
+            await connection.rollback();
+            return res.status(404).json({ message: 'Parada no encontrada en esta ruta.' });
+        }
+
+        const stop = stopRows[0];
+
+        // 2. Liberar el pedido (vuelve a pendiente sin ruta)
+        await connection.query(
+            `UPDATE egg_customer_orders SET dispatch_route_id = NULL, delivery_status = 'pendiente'
+             WHERE id = ? AND company_id = ?`,
+            [stop.order_id, company_id]
+        );
+
+        // 3. Eliminar la parada
+        await connection.query('DELETE FROM egg_dispatch_stops WHERE id = ?', [stop_id]);
+
+        // 4. Reordenar paradas restantes
+        const [remainingStops] = await connection.query(
+            `SELECT s.id, o.quantity_lbs 
+             FROM egg_dispatch_stops s
+             JOIN egg_customer_orders o ON s.order_id = o.id
+             WHERE s.dispatch_route_id = ?
+             ORDER BY s.orden_visita ASC, s.id ASC`,
+            [id]
+        );
+
+        for (let i = 0; i < remainingStops.length; i++) {
+            await connection.query(
+                'UPDATE egg_dispatch_stops SET orden_visita = ? WHERE id = ?',
+                [i + 1, remainingStops[i].id]
+            );
+        }
+
+        // 5. Recalcular totales de carga de la ruta
+        const totalPedidos = remainingStops.length;
+        const totalPesoLbs = remainingStops.reduce((sum, r) => sum + (parseFloat(r.quantity_lbs) || 0), 0);
+        const totalCubetas = remainingStops.reduce((sum, r) => sum + Math.ceil((parseFloat(r.quantity_lbs) || 0) / 30), 0);
+
+        await connection.query(
+            `UPDATE egg_dispatch_routes SET
+                total_pedidos = ?,
+                total_peso_lbs = ?,
+                total_cubetas = ?
+             WHERE id = ? AND company_id = ?`,
+            [totalPedidos, totalPesoLbs, totalCubetas, id, company_id]
+        );
+
+        await connection.commit();
+        res.json({
+            message: 'Parada removida y pedido liberado correctamente.',
+            total_pedidos: totalPedidos,
+            total_peso_lbs: totalPesoLbs,
+            total_cubetas: totalCubetas
+        });
+    } catch (error) {
+        await connection.rollback();
+        console.error('Error al remover parada de ruta:', error);
+        res.status(500).json({ message: error.message });
+    } finally {
+        connection.release();
+    }
+};
+
+const getDispatchRouteManifestPdf = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const company_id = req.company_id || req.user?.company_id;
+        const { format } = req.query;
+
+        // 1. Obtener datos de la ruta y vehículo
+        const [routeRows] = await pool.query(
+            `SELECT r.*,
+                    v.codigo AS vehicle_codigo,
+                    v.placa AS vehicle_placa,
+                    v.marca AS vehicle_marca,
+                    v.modelo AS vehicle_modelo,
+                    v.capacidad_peso_lbs AS vehicle_capacidad_peso,
+                    v.capacidad_cubetas AS vehicle_capacidad_cubetas,
+                    v.tiene_termo_king,
+                    u.nombre AS driver_user_nombre
+             FROM egg_dispatch_routes r
+             LEFT JOIN delivery_vehicles v ON r.vehicle_id = v.id
+             LEFT JOIN users u ON r.driver_id = u.id
+             WHERE r.id = ? AND r.company_id = ?`,
+            [id, company_id]
+        );
+
+        if (routeRows.length === 0) {
+            return res.status(404).json({ message: 'Ruta de despacho no encontrada.' });
+        }
+
+        const route = routeRows[0];
+        const company = await reportPdfHelper.getCompanyInfo(company_id);
+
+        // 2. Obtener paradas con detalle de pedidos y lotes
+        const [stops] = await pool.query(
+            `SELECT s.*,
+                    o.order_number,
+                    o.product_type,
+                    o.presentation,
+                    o.quantity_lbs,
+                    o.price_per_lb,
+                    o.notes AS order_notes,
+                    o.items_json,
+                    o.batch_id AS order_batch_id,
+                    o.lot_code AS order_lot_code,
+                    o.required_delivery_date,
+                    b.batch_code_display AS linked_batch_code,
+                    COALESCE(s.lot_code, o.lot_code, b.batch_code_display) AS lot_code_display,
+                    c.nombre AS customer_name,
+                    c.nombre_comercial AS customer_commercial_name,
+                    c.nit AS customer_nit,
+                    c.nrc AS customer_nrc,
+                    c.telefono AS customer_phone,
+                    c.direccion AS customer_address,
+                    cb.nombre AS branch_name,
+                    cb.direccion AS branch_address,
+                    cb.departamento AS branch_departamento,
+                    cb.municipio AS branch_municipio,
+                    cb.telefono AS branch_phone,
+                    cb.contacto_nombre AS branch_contact_person,
+                    cb.contacto_telefono AS branch_contact_phone,
+                    cb.indicaciones_entrega AS branch_delivery_notes
+             FROM egg_dispatch_stops s
+             JOIN egg_customer_orders o ON s.order_id = o.id
+             LEFT JOIN egg_production_batches b ON o.batch_id = b.id
+             JOIN customers c ON s.customer_id = c.id
+             LEFT JOIN customer_branches cb ON s.customer_branch_id = cb.id
+             WHERE s.dispatch_route_id = ?
+             ORDER BY s.orden_visita ASC, s.id ASC`,
+            [id]
+        );
+
+        // 3. Aplanar items para el manifiesto
+        const flattenedRows = [];
+        let totalGeneralLbs = 0;
+        let totalGeneralCubetas = 0;
+
+        stops.forEach((stop, stopIdx) => {
+            let items = [];
+            if (stop.items_json) {
+                try {
+                    const parsed = typeof stop.items_json === 'string' ? JSON.parse(stop.items_json) : stop.items_json;
+                    if (Array.isArray(parsed) && parsed.length > 0) {
+                        items = parsed;
+                    }
+                } catch (e) {}
+            }
+
+            if (items.length === 0) {
+                items = [{
+                    product_type: stop.product_type || 'Ovoproducto Líquido',
+                    presentation: stop.presentation || 'cubeta 30LB',
+                    quantity_lbs: stop.quantity_lbs || 0,
+                    lot_code: stop.lot_code_display || '---'
+                }];
+            }
+
+            const clientDisplayName = (stop.customer_commercial_name || stop.customer_name || 'CLIENTE').toUpperCase();
+            const branchText = stop.branch_name ? `${stop.branch_name}${stop.branch_address ? ' - ' + stop.branch_address : ''}` : (stop.customer_address || 'Sucursal Principal');
+            const contactText = stop.branch_contact_person ? `${stop.branch_contact_person} (${stop.branch_contact_phone || stop.branch_phone || stop.customer_phone || ''})` : (stop.customer_phone || '');
+            const orderDateStr = reportPdfHelper.formatDate(stop.required_delivery_date || route.fecha_despacho);
+            const orderNumStr = stop.order_number || `PED-${String(stop.order_id).padStart(5, '0')}`;
+
+            items.forEach((it, itIdx) => {
+                const lbs = parseFloat(it.quantity_lbs) || 0;
+                const cubetas = Math.ceil(lbs / 30);
+                totalGeneralLbs += lbs;
+                totalGeneralCubetas += cubetas;
+
+                flattenedRows.push({
+                    stopIndex: stopIdx + 1,
+                    isFirstItemOfStop: itIdx === 0,
+                    itemCountInStop: items.length,
+                    fecha: orderDateStr,
+                    cliente: clientDisplayName,
+                    sucursal_direccion: branchText,
+                    contacto: contactText,
+                    pedido: orderNumStr,
+                    prioridad: stop.prioridad || 'normal',
+                    producto: it.product_type || 'Ovoproducto Líquido',
+                    presentacion: it.presentation || 'cubeta 30LB',
+                    cantidad_lbs: lbs,
+                    cubetas: cubetas,
+                    lote: it.lot_code || stop.lot_code_display || '---',
+                    estado: stop.estado_entrega || 'pendiente'
+                });
+            });
+        });
+
+        // ==========================================
+        // EXPORTACIÓN A EXCEL (si format === 'excel')
+        // ==========================================
+        if (format === 'excel') {
+            const excelColumns = [
+                { header: 'N° Visita', key: 'stopIndex', width: 10 },
+                { header: 'Fecha Entrega', key: 'fecha', width: 14 },
+                { header: 'Cliente', key: 'cliente', width: 32 },
+                { header: 'Sucursal / Dirección', key: 'sucursal_direccion', width: 35 },
+                { header: 'Contacto / Tel.', key: 'contacto', width: 25 },
+                { header: 'N° Pedido', key: 'pedido', width: 14 },
+                { header: 'Producto', key: 'producto', width: 30 },
+                { header: 'Presentación', key: 'presentacion', width: 18 },
+                { header: 'Cantidad (Lbs)', key: 'cantidad_lbs', width: 16 },
+                { header: 'Cubetas Est.', key: 'cubetas', width: 14 },
+                { header: 'Lote de Producción', key: 'lote', width: 22 },
+                { header: 'Estado Entrega', key: 'estado', width: 15 }
+            ];
+
+            const excelData = flattenedRows.map(r => ({
+                stopIndex: r.stopIndex,
+                fecha: r.fecha,
+                cliente: r.cliente,
+                sucursal_direccion: r.sucursal_direccion,
+                contacto: r.contacto,
+                pedido: r.pedido,
+                producto: r.producto,
+                presentacion: r.presentacion,
+                cantidad_lbs: r.cantidad_lbs,
+                cubetas: r.cubetas,
+                lote: r.lote,
+                estado: r.estado.toUpperCase()
+            }));
+
+            // Fila de totales
+            excelData.push({
+                stopIndex: '',
+                fecha: '',
+                cliente: 'TOTALES DE RUTA',
+                sucursal_direccion: '',
+                contacto: '',
+                pedido: `${stops.length} Paradas`,
+                producto: '',
+                presentacion: '',
+                cantidad_lbs: totalGeneralLbs,
+                cubetas: totalGeneralCubetas,
+                lote: '',
+                estado: ''
+            });
+
+            const buffer = await excelService.createExcelBuffer({
+                title: `MANIFIESTO DE RUTA ${route.codigo_ruta} - ${reportPdfHelper.formatDate(route.fecha_despacho)}`,
+                sheets: [
+                    {
+                        name: 'Listado Despacho',
+                        columns: excelColumns,
+                        data: excelData
+                    }
+                ]
+            });
+
+            return excelService.sendExcelResponse(res, buffer, `Manifiesto_${route.codigo_ruta}.xlsx`);
+        }
+
+        // ==========================================
+        // GENERACIÓN DE PDF FORMAL (Landscape)
+        // ==========================================
+        const { doc, getBuffer } = reportPdfHelper.createPdfDocument('landscape');
+
+        const pageWidth = 792;
+        const pageHeight = 612;
+        const margin = 30;
+        const contentWidth = pageWidth - margin * 2; // 732
+
+        // Función para dibujar encabezado de página
+        const drawPageHeader = () => {
+            const now = new Date();
+            const dateStr = now.toLocaleDateString('es-SV', { day: '2-digit', month: '2-digit', year: 'numeric' });
+            const timeStr = now.toLocaleTimeString('es-SV', { hour: '2-digit', minute: '2-digit' });
+
+            doc.fontSize(6.5).font('Helvetica').fillColor('#64748b').text(`Emisión: ${dateStr} ${timeStr}`, margin, 18);
+
+            // Razón social
+            const companyName = (company?.razon_social || company?.nombre_comercial || 'EMPRESA INDUSTRIAL').toUpperCase();
+            doc.fontSize(11).font('Helvetica-Bold').fillColor('#0f172a').text(companyName, margin, 18, { align: 'center', width: contentWidth });
+
+            // Título
+            doc.fontSize(10).font('Helvetica-Bold').fillColor('#1e293b').text('MANIFIESTO DE CARGA Y HOJA DE RUTA DE DESPACHO', margin, 31, { align: 'center', width: contentWidth });
+
+            // Identificadores fiscales
+            const taxLine = `NRC: ${company?.nrc || 'N/A'}  |  NIT: ${company?.nit || 'N/A'}  |  PBX: ${company?.telefono || 'N/A'}`;
+            doc.fontSize(7.5).font('Helvetica').fillColor('#475569').text(taxLine, margin, 43, { align: 'center', width: contentWidth });
+
+            // Caja resumen de metadatos de la ruta
+            const boxY = 56;
+            const boxH = 34;
+            doc.rect(margin, boxY, contentWidth, boxH).fill('#f8fafc');
+            doc.rect(margin, boxY, contentWidth, boxH).stroke('#cbd5e1');
+
+            doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#0f172a');
+            doc.text('CÓDIGO RUTA:', margin + 8, boxY + 6);
+            doc.font('Helvetica-Bold').fillColor('#4f46e5').text(route.codigo_ruta || 'RUTA-S/N', margin + 70, boxY + 6);
+
+            doc.font('Helvetica-Bold').fillColor('#0f172a').text('FECHA DESPACHO:', margin + 8, boxY + 19);
+            doc.font('Helvetica').fillColor('#334155').text(reportPdfHelper.formatDate(route.fecha_despacho), margin + 85, boxY + 19);
+
+            doc.font('Helvetica-Bold').fillColor('#0f172a').text('CAMIÓN / PLACA:', margin + 165, boxY + 6);
+            const vehTxt = `${route.vehicle_codigo || 'CAMIÓN'} (${route.vehicle_placa || 'S/P'}) ${route.tiene_termo_king ? '• TERMO-KING' : ''}`;
+            doc.font('Helvetica').fillColor('#334155').text(vehTxt, margin + 245, boxY + 6);
+
+            doc.font('Helvetica-Bold').fillColor('#0f172a').text('MOTORISTA / TEL:', margin + 165, boxY + 19);
+            const driverTxt = `${route.driver_name || route.driver_user_nombre || 'No Asignado'} ${route.driver_phone ? '- Tel: ' + route.driver_phone : ''}`;
+            doc.font('Helvetica').fillColor('#334155').text(driverTxt, margin + 245, boxY + 19);
+
+            doc.font('Helvetica-Bold').fillColor('#0f172a').text('TOTAL PARADAS:', margin + 490, boxY + 6);
+            doc.font('Helvetica-Bold').fillColor('#4f46e5').text(`${stops.length} Clientes / Entregas`, margin + 565, boxY + 6);
+
+            doc.font('Helvetica-Bold').fillColor('#0f172a').text('CARGA PROGRAMADA:', margin + 490, boxY + 19);
+            doc.font('Helvetica-Bold').fillColor('#059669').text(`${parseFloat(route.total_peso_lbs || totalGeneralLbs).toLocaleString()} Lbs  (${route.total_cubetas || totalGeneralCubetas} Cubetas)`, margin + 585, boxY + 19);
+
+            // Cabecera de la tabla de paradas
+            const tableHeaderY = boxY + boxH + 6;
+            drawTableHeader(tableHeaderY);
+            return tableHeaderY + 16;
+        };
+
+        // Definición de anchos de columna (Total: 732pt)
+        const colW = {
+            num: 22,        // # Visita
+            fecha: 48,      // Fecha
+            cliente: 162,   // Cliente / Sucursal / Contacto
+            pedido: 50,     // N° Pedido
+            producto: 125,  // Producto
+            pres: 65,       // Presentación
+            lbs: 45,        // Libras
+            cubetas: 40,    // Cubetas
+            lote: 75,       // Lote de producción
+            firma: 100      // Firma / Sello Recibido
+        };
+
+        const colX = {
+            num: margin,
+            fecha: margin + colW.num,
+            cliente: margin + colW.num + colW.fecha,
+            pedido: margin + colW.num + colW.fecha + colW.cliente,
+            producto: margin + colW.num + colW.fecha + colW.cliente + colW.pedido,
+            pres: margin + colW.num + colW.fecha + colW.cliente + colW.pedido + colW.producto,
+            lbs: margin + colW.num + colW.fecha + colW.cliente + colW.pedido + colW.producto + colW.pres,
+            cubetas: margin + colW.num + colW.fecha + colW.cliente + colW.pedido + colW.producto + colW.pres + colW.lbs,
+            lote: margin + colW.num + colW.fecha + colW.cliente + colW.pedido + colW.producto + colW.pres + colW.lbs + colW.cubetas,
+            firma: margin + colW.num + colW.fecha + colW.cliente + colW.pedido + colW.producto + colW.pres + colW.lbs + colW.cubetas + colW.lote
+        };
+
+        const drawTableHeader = (y) => {
+            doc.rect(margin, y, contentWidth, 16).fill('#1e293b');
+            doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#ffffff');
+
+            doc.text('#', colX.num, y + 5, { width: colW.num, align: 'center' });
+            doc.text('FECHA', colX.fecha, y + 5, { width: colW.fecha, align: 'center' });
+            doc.text('CLIENTE / DESTINO / CONTACTO', colX.cliente + 3, y + 5, { width: colW.cliente - 6, align: 'left' });
+            doc.text('PEDIDO #', colX.pedido, y + 5, { width: colW.pedido, align: 'center' });
+            doc.text('PRODUCTO(S)', colX.producto + 3, y + 5, { width: colW.producto - 6, align: 'left' });
+            doc.text('PRESENTACIÓN', colX.pres + 2, y + 5, { width: colW.pres - 4, align: 'left' });
+            doc.text('LBS', colX.lbs - 3, y + 5, { width: colW.lbs, align: 'right' });
+            doc.text('CUB.', colX.cubetas - 3, y + 5, { width: colW.cubetas, align: 'right' });
+            doc.text('LOTE PROD.', colX.lote, y + 5, { width: colW.lote, align: 'center' });
+            doc.text('FIRMA / SELLO RECIBIDO', colX.firma, y + 5, { width: colW.firma, align: 'center' });
+        };
+
+        let currentY = drawPageHeader();
+
+        // Renderizado de cada fila
+        flattenedRows.forEach((row, idx) => {
+            // Estimar altura de fila
+            const rowH = row.isFirstItemOfStop ? 26 : 18;
+
+            // Salto defensivo de página si se acerca al final
+            if (currentY + rowH > pageHeight - 65) {
+                doc.addPage();
+                currentY = drawPageHeader();
+            }
+
+            // Fondo alternado suave
+            if (row.stopIndex % 2 === 0) {
+                doc.rect(margin, currentY, contentWidth, rowH).fill('#f8fafc');
+            }
+
+            // Borde inferior sutil
+            doc.strokeColor('#e2e8f0').lineWidth(0.5).moveTo(margin, currentY + rowH).lineTo(pageWidth - margin, currentY + rowH).stroke();
+
+            // Si es el primer item de la parada, pintar datos del cliente y parada
+            if (row.isFirstItemOfStop) {
+                // Número de parada con círculo o número negrita
+                doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#1e293b');
+                doc.text(String(row.stopIndex), colX.num, currentY + 4, { width: colW.num, align: 'center' });
+
+                // Fecha
+                doc.fontSize(7).font('Helvetica').fillColor('#475569');
+                doc.text(row.fecha, colX.fecha, currentY + 4, { width: colW.fecha, align: 'center' });
+
+                // Cliente y destino
+                doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#0f172a');
+                doc.text(reportPdfHelper.fitText(doc, row.cliente, colW.cliente - 6), colX.cliente + 3, currentY + 3, { width: colW.cliente - 6 });
+
+                // Sucursal y contacto debajo
+                doc.fontSize(6).font('Helvetica').fillColor('#64748b');
+                const subLoc = `${row.sucursal_direccion} ${row.contacto ? '| ' + row.contacto : ''}`;
+                doc.text(reportPdfHelper.fitText(doc, subLoc, colW.cliente - 6), colX.cliente + 3, currentY + 13, { width: colW.cliente - 6 });
+
+                // Pedido
+                doc.fontSize(7).font('Helvetica-Bold').fillColor('#4f46e5');
+                doc.text(row.pedido, colX.pedido, currentY + 4, { width: colW.pedido, align: 'center' });
+
+                // Recuadro para firma y sello en la columna de la derecha
+                doc.rect(colX.firma + 4, currentY + 2, colW.firma - 8, rowH - 4).stroke('#cbd5e1');
+                doc.fontSize(5.5).font('Helvetica').fillColor('#94a3b8').text('Firma y Sello', colX.firma + 6, currentY + rowH - 8, { width: colW.firma - 12, align: 'center' });
+            }
+
+            // Datos del producto (se muestran en cada fila)
+            doc.fontSize(7).font('Helvetica-Bold').fillColor('#1e293b');
+            doc.text(reportPdfHelper.fitText(doc, `• ${row.producto}`, colW.producto - 6), colX.producto + 3, currentY + 4, { width: colW.producto - 6 });
+
+            doc.fontSize(6.5).font('Helvetica').fillColor('#475569');
+            doc.text(reportPdfHelper.fitText(doc, row.presentacion, colW.pres - 4), colX.pres + 2, currentY + 4, { width: colW.pres - 4 });
+
+            doc.fontSize(7).font('Helvetica-Bold').fillColor('#0f172a');
+            doc.text(row.cantidad_lbs.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 }), colX.lbs - 3, currentY + 4, { width: colW.lbs, align: 'right' });
+
+            doc.fontSize(7).font('Helvetica').fillColor('#475569');
+            doc.text(String(row.cubetas), colX.cubetas - 3, currentY + 4, { width: colW.cubetas, align: 'right' });
+
+            // Lote con badge visual o texto negrita
+            doc.fontSize(6.5).font('Helvetica-Bold').fillColor(row.lote !== '---' ? '#047857' : '#94a3b8');
+            doc.text(row.lote, colX.lote, currentY + 4, { width: colW.lote, align: 'center' });
+
+            currentY += rowH;
+        });
+
+        // ==========================================
+        // FILA DE TOTALES Y CIERRE
+        // ==========================================
+        if (currentY + 65 > pageHeight - 35) {
+            doc.addPage();
+            currentY = drawPageHeader();
+        }
+
+        currentY += 4;
+        doc.rect(margin, currentY, contentWidth, 18).fill('#f1f5f9');
+        doc.rect(margin, currentY, contentWidth, 18).stroke('#cbd5e1');
+
+        doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#0f172a');
+        doc.text(`TOTALES GENERALES DE LA RUTA (${stops.length} PARADAS / ${flattenedRows.length} ÍTEMS):`, margin + 10, currentY + 5);
+
+        doc.fontSize(8).font('Helvetica-Bold').fillColor('#0f172a');
+        doc.text(`${totalGeneralLbs.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} Lbs`, colX.lbs - 8, currentY + 5, { width: colW.lbs + 5, align: 'right' });
+
+        doc.fontSize(8).font('Helvetica-Bold').fillColor('#475569');
+        doc.text(`${totalGeneralCubetas} Cubetas`, colX.cubetas - 5, currentY + 5, { width: colW.cubetas + 15, align: 'right' });
+
+        currentY += 24;
+
+        // Bloques de firma obligatorios de control de despacho
+        const signY = currentY;
+        const signW = 200;
+
+        // Bloque 1: Despachador de Planta
+        doc.strokeColor('#94a3b8').lineWidth(0.5).moveTo(margin + 40, signY + 26).lineTo(margin + 40 + signW, signY + 26).stroke();
+        doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#1e293b').text('DESPACHADO POR (BODEGA / PLANTA)', margin + 40, signY + 29, { width: signW, align: 'center' });
+        doc.fontSize(5.5).font('Helvetica').fillColor('#64748b').text('Nombre, Firma y Hora de Salida', margin + 40, signY + 37, { width: signW, align: 'center' });
+
+        // Bloque 2: Transportista / Conductor
+        doc.strokeColor('#94a3b8').lineWidth(0.5).moveTo(pageWidth - margin - 40 - signW, signY + 26).lineTo(pageWidth - margin - 40, signY + 26).stroke();
+        doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#1e293b').text('MOTORISTA / TRANSPORTISTA', pageWidth - margin - 40 - signW, signY + 29, { width: signW, align: 'center' });
+        doc.fontSize(5.5).font('Helvetica').fillColor('#64748b').text('Recibí Conforme Carga para Entrega', pageWidth - margin - 40 - signW, signY + 37, { width: signW, align: 'center' });
+
+        // Numeración de páginas
+        reportPdfHelper.renderPageNumbers(doc);
+
+        doc.end();
+        const buffer = await getBuffer();
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename="Manifiesto_${route.codigo_ruta}.pdf"`);
+        res.send(buffer);
+    } catch (error) {
+        console.error('Error al generar manifiesto de ruta:', error);
+        res.status(500).json({ message: error.message });
+    }
+};
+
+/**
+ * Facturación automática de paradas/pedidos de una ruta de despacho.
+ * - Soporta modelos Contado/Crédito según cliente o selección.
+ * - Soporta DTEs 01 (Consumidor Final), 03 (Crédito Fiscal), 11 (FEX) y 04 (Nota Remisión).
+ * - Protege contra refacturación de pedidos/paradas ya facturados.
+ * - Requiere que cada producto tenga lote asignado.
+ */
+const autoInvoiceDispatchRoute = async (req, res) => {
+    const connection = await pool.getConnection();
+    try {
+        await connection.beginTransaction();
+
+        const company_id = req.company_id || req.user?.company_id;
+        const { id: route_id } = req.params;
+        const { stops = [] } = req.body;
+
+        if (!stops || !Array.isArray(stops) || stops.length === 0) {
+            await connection.rollback();
+            return res.status(400).json({ message: 'No se seleccionaron paradas o pedidos para facturar.' });
+        }
+
+        // 1. Obtener datos de la empresa (incluyendo configuración DTE)
+        const [companyRows] = await connection.query(`
+            SELECT c.*, cat.description as actividad_economica 
+            FROM companies c
+            LEFT JOIN cat_019_actividad_economica cat ON c.codigo_actividad = cat.code
+            WHERE c.id = ?
+        `, [company_id]);
+
+        if (companyRows.length === 0) {
+            await connection.rollback();
+            return res.status(404).json({ message: 'Empresa no encontrada.' });
+        }
+        const company = companyRows[0];
+
+        // 2. Obtener datos de la ruta
+        const [routeRows] = await connection.query(
+            'SELECT * FROM egg_dispatch_routes WHERE id = ? AND company_id = ?',
+            [route_id, company_id]
+        );
+        if (routeRows.length === 0) {
+            await connection.rollback();
+            return res.status(404).json({ message: 'Ruta de despacho no encontrada.' });
+        }
+        const route = routeRows[0];
+
+        // 3. Validar contra refacturación y verificar existencia en la ruta
+        const stopIds = stops.map(s => s.stop_id).filter(Boolean);
+        if (stopIds.length > 0) {
+            const [existingStops] = await connection.query(
+                `SELECT s.id, s.order_id, s.sale_id, s.dte_codigo_generacion, o.order_number, c.nombre as customer_name
+                 FROM egg_dispatch_stops s
+                 JOIN egg_customer_orders o ON s.order_id = o.id
+                 JOIN customers c ON s.customer_id = c.id
+                 WHERE s.id IN (?) AND s.dispatch_route_id = ?`,
+                [stopIds, route_id]
+            );
+
+            for (const es of existingStops) {
+                if (es.sale_id || es.dte_codigo_generacion) {
+                    await connection.rollback();
+                    return res.status(400).json({
+                        message: `La parada del cliente "${es.customer_name}" (Pedido ${es.order_number}) ya se encuentra facturada (DTE: ${es.dte_codigo_generacion || '#' + es.sale_id}). No se permite refacturar.`
+                    });
+                }
+            }
+        }
+
+        // 4. Validar que cada producto a facturar tenga lote asignado
+        for (const stop of stops) {
+            if (!stop.items || !Array.isArray(stop.items) || stop.items.length === 0) {
+                await connection.rollback();
+                return res.status(400).json({
+                    message: `La parada del cliente ID ${stop.customer_id} no contiene productos.`
+                });
+            }
+            for (const it of stop.items) {
+                const lotCode = (it.lot_code || '').trim();
+                if (!lotCode) {
+                    await connection.rollback();
+                    return res.status(400).json({
+                        message: `El producto "${it.product_type}" en el pedido ${stop.order_number || stop.order_id} no tiene lote asignado. Todos los productos deben contar con lote antes de facturar.`
+                    });
+                }
+            }
+        }
+
+        const billedResults = [];
+
+        // 5. Procesar cada parada seleccionada
+        for (const stop of stops) {
+            const [custRows] = await connection.query(
+                'SELECT * FROM customers WHERE id = ? AND company_id = ?',
+                [stop.customer_id, company_id]
+            );
+            if (custRows.length === 0) {
+                await connection.rollback();
+                return res.status(400).json({ message: `Cliente ID ${stop.customer_id} no encontrado.` });
+            }
+            const customer = custRows[0];
+
+            const dteType = stop.dte_type || (customer.pais && customer.pais !== '9579' && customer.pais !== 'SV' ? '11' : customer.nrc ? '03' : '01');
+            const condicionOperacion = parseInt(stop.condicion_operacion) || (customer.es_credito ? 2 : 1);
+            const diasCredito = condicionOperacion === 2 ? (parseInt(stop.dias_credito) || parseInt(customer.dias_credito) || 15) : 0;
+
+            // Validaciones DTE si la empresa tiene DTE activo
+            if (company.dte_active) {
+                if (dteType !== '11') {
+                    const addressError = await dteService.validateCustomerAddress(stop.customer_id, stop.customer_branch_id || null);
+                    if (addressError) {
+                        await connection.rollback();
+                        return res.status(400).json({ message: `Cliente "${customer.nombre}": ${addressError}` });
+                    }
+                }
+                if (dteType === '03' && !customer.nit) {
+                    await connection.rollback();
+                    return res.status(400).json({
+                        message: `El cliente "${customer.nombre}" no tiene NIT registrado. Para emitir Crédito Fiscal (03) el cliente debe tener NIT.`
+                    });
+                }
+            }
+
+            // Cálculos de montos de ítems
+            let totalGravado = 0;
+            let totalIva = 0;
+            let totalExento = 0;
+            let totalNoSujeto = 0;
+            const itemsProcessed = [];
+
+            const ivaRate = 0.13;
+
+            for (let i = 0; i < stop.items.length; i++) {
+                const it = stop.items[i];
+                const qty = parseFloat(it.quantity_lbs || 0);
+                const priceLb = parseFloat(it.price_per_lb || 0);
+                let itemTotal = Math.round(qty * priceLb * 100) / 100;
+
+                if (dteType === '04') {
+                    itemTotal = 0.00001; // Precio simbólico para Nota de Remisión
+                }
+
+                let ventaGravada = 0;
+                let ivaItem = 0;
+                let precioUnitario = priceLb;
+
+                if (dteType === '11') {
+                    ventaGravada = itemTotal;
+                    ivaItem = 0;
+                } else if (dteType === '04') {
+                    ventaGravada = 0;
+                    ivaItem = 0;
+                    precioUnitario = 0.00001;
+                } else {
+                    const gravNeto = Math.round((itemTotal / (1 + ivaRate)) * 100) / 100;
+                    ivaItem = Math.round((itemTotal - gravNeto) * 100) / 100;
+                    ventaGravada = gravNeto;
+                }
+
+                totalGravado += ventaGravada;
+                totalIva += ivaItem;
+
+                const itemDesc = `${it.product_type} (${it.presentation || '30LB'}) [Lote: ${it.lot_code}]`;
+
+                itemsProcessed.push({
+                    product_id: null,
+                    codigo: it.lot_code,
+                    descripcion: itemDesc,
+                    cantidad: qty,
+                    precio_unitario: precioUnitario,
+                    monto_descuento: 0,
+                    venta_gravada: ventaGravada,
+                    venta_exenta: 0,
+                    tributos: dteType === '11' || dteType === '04' ? [] : ['20']
+                });
+            }
+
+            const totalPagar = dteType === '04' ? 0.00001 : (dteType === '11' ? totalGravado : (totalGravado + totalIva));
+
+            let retencion = 0;
+            let percepcion = 0;
+            if (company.tipo_contribuyente !== 'Grande' && customer.condicion_fiscal === 'gran contribuyente' && dteType === '03') {
+                if (totalGravado >= 100) {
+                    retencion = Math.round(totalGravado * 0.01 * 100) / 100;
+                }
+            }
+
+            const sellerId = route.driver_id || req.user?.id || 1;
+            const branchId = req.user?.branch_id || (company.branches && company.branches[0]?.id) || 1;
+
+            // 5a. Insertar Cabecera de Venta
+            const [saleResult] = await connection.query('INSERT INTO sales_headers SET ?', [{
+                company_id: company_id,
+                branch_id: branchId,
+                customer_id: stop.customer_id,
+                customer_branch_id: stop.customer_branch_id || null,
+                seller_id: sellerId,
+                dte_type: dteType,
+                tipo_documento: dteType,
+                condicion_operacion: condicionOperacion,
+                payment_condition: condicionOperacion,
+                fecha_emision: new Date(),
+                hora_emision: new Date().toTimeString().split(' ')[0],
+                estado: 'emitido',
+                total_gravado: totalGravado,
+                total_exento: totalExento,
+                total_nosujetas: totalNoSujeto,
+                total_iva: totalIva,
+                descuento_general: 0,
+                iva_percibido: percepcion,
+                iva_retenido: retencion,
+                total_pagar: totalPagar,
+                cliente_nombre: customer.nombre,
+                observaciones: `Facturación Automática de Despacho Ruta ${route.codigo_ruta} - Pedido ${stop.order_number || stop.order_id}`,
+                remission_type: dteType === '04' ? '02' : null,
+                transporter_name: dteType === '04' ? (route.driver_name || 'Chofer Asignado') : null,
+                vehicle_plate: dteType === '04' ? (route.vehicle_placa || null) : null,
+                created_at: new Date()
+            }]);
+            const saleId = saleResult.insertId;
+
+            // 5b. Insertar Ítems
+            for (const item of itemsProcessed) {
+                await connection.query('INSERT INTO sales_items SET ?', [{
+                    sale_id: saleId,
+                    product_id: item.product_id,
+                    codigo: item.codigo,
+                    descripcion: item.descripcion,
+                    cantidad: item.cantidad,
+                    precio_unitario: item.precio_unitario,
+                    monto_descuento: 0,
+                    venta_gravada: item.venta_gravada,
+                    venta_exenta: 0,
+                    tributos: JSON.stringify(item.tributos || [])
+                }]);
+            }
+
+            // 5c. Insertar Pago
+            await connection.query('INSERT INTO sales_payments SET ?', [{
+                sale_id: saleId,
+                metodo_pago: '01',
+                monto: totalPagar,
+                referencia: condicionOperacion === 2 ? `Crédito ${diasCredito} días` : 'Contado Despacho'
+            }]);
+
+            // 5d. Emitir DTE si la empresa tiene DTE activo
+            let dteInfo = {};
+            if (company.dte_active) {
+                const dtePayload = {
+                    header: {
+                        company_id: company_id,
+                        branch_id: branchId,
+                        user_id: req.user?.id || 1,
+                        customer_id: stop.customer_id,
+                        customer_branch_id: stop.customer_branch_id || null,
+                        dte_type: dteType,
+                        condicion_operacion: condicionOperacion,
+                        dias_credito: diasCredito,
+                        total_gravado: totalGravado,
+                        total_iva: totalIva,
+                        total_pagar: totalPagar,
+                        total_retencion: retencion,
+                        total_percepcion: percepcion,
+                        remission_type: dteType === '04' ? '02' : null,
+                        transporter_name: dteType === '04' ? (route.driver_name || 'Chofer Asignado') : null,
+                        vehicle_plate: dteType === '04' ? (route.vehicle_placa || null) : null
+                    },
+                    items: itemsProcessed,
+                    payments: [{
+                        codigo: '01',
+                        monto: totalPagar
+                    }]
+                };
+
+                try {
+                    const dteResult = await dteService.emitDTE(company, dtePayload, saleId);
+                    if (dteResult && dteResult.success) {
+                        dteInfo = dteResult.data;
+                    } else if (dteResult && dteResult.codigo_generacion) {
+                        dteInfo = {
+                            codigo_generacion: dteResult.codigo_generacion,
+                            numero_control: dteResult.numero_control,
+                            sello_recepcion: dteResult.data?.sello_recepcion || null,
+                            fh_procesamiento: dteResult.data?.fh_procesamiento || null
+                        };
+                    }
+                } catch (dteErr) {
+                    console.error(`[AutoInvoice] Error emitiendo DTE para venta ${saleId}:`, dteErr.message);
+                }
+            }
+
+            // 5e. Actualizar venta con datos DTE
+            if (dteInfo.codigo_generacion) {
+                await connection.query('UPDATE sales_headers SET ? WHERE id = ?', [{
+                    codigo_generacion: dteInfo.codigo_generacion,
+                    numero_control: dteInfo.numero_control || null,
+                    sello_recepcion: dteInfo.sello_recepcion || null,
+                    fh_procesamiento: dteInfo.fh_procesamiento || null
+                }, saleId]);
+            }
+
+            // 5f. Actualizar Parada (egg_dispatch_stops)
+            const firstBatchId = stop.items[0]?.batch_id || null;
+            const firstLotCode = stop.items[0]?.lot_code || null;
+            await connection.query(`
+                UPDATE egg_dispatch_stops SET
+                    sale_id = ?,
+                    dte_codigo_generacion = COALESCE(?, dte_codigo_generacion),
+                    batch_id = COALESCE(?, batch_id),
+                    lot_code = COALESCE(?, lot_code)
+                WHERE id = ? AND dispatch_route_id = ?
+            `, [
+                saleId,
+                dteInfo.codigo_generacion || null,
+                firstBatchId,
+                firstLotCode,
+                stop.stop_id,
+                route_id
+            ]);
+
+            // 5g. Actualizar Pedido (egg_customer_orders)
+            await connection.query(`
+                UPDATE egg_customer_orders SET
+                    sale_id = ?,
+                    dte_codigo_generacion = COALESCE(?, dte_codigo_generacion),
+                    batch_id = COALESCE(?, batch_id),
+                    lot_code = COALESCE(?, lot_code),
+                    items_json = ?
+                WHERE id = ? AND company_id = ?
+            `, [
+                saleId,
+                dteInfo.codigo_generacion || null,
+                firstBatchId,
+                firstLotCode,
+                JSON.stringify(stop.items),
+                stop.order_id,
+                company_id
+            ]);
+
+            billedResults.push({
+                stop_id: stop.stop_id,
+                order_id: stop.order_id,
+                sale_id: saleId,
+                customer_name: customer.nombre,
+                dte_type: dteType,
+                numero_control: dteInfo.numero_control || `VTA-${saleId}`,
+                codigo_generacion: dteInfo.codigo_generacion || null,
+                total: totalPagar
+            });
+        }
+
+        await connection.commit();
+
+        res.json({
+            success: true,
+            message: `Se facturaron exitosamente ${billedResults.length} parada(s) de la ruta ${route.codigo_ruta}.`,
+            results: billedResults
+        });
+    } catch (error) {
+        await connection.rollback();
+        console.error('Error en autoInvoiceDispatchRoute:', error);
+        res.status(500).json({ message: error.message || 'Error al procesar la facturación de la ruta.' });
+    } finally {
+        connection.release();
+    }
+};
+
 module.exports = {
     // Vehículos
     getVehicles,
@@ -1282,6 +2195,9 @@ module.exports = {
     deleteDispatchRoute,
     reorderRouteStops,
     optimizeRouteStops,
+    removeStopFromRoute,
+    getDispatchRouteManifestPdf,
+    autoInvoiceDispatchRoute,
 
     // Motorista & Entregas
     getMyDriverRoutes,

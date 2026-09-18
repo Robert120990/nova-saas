@@ -200,11 +200,14 @@ router.delete('/dispatch/maintenance/:id', eggDispatchController.deleteMaintenan
 // 22.3 Rutas de Despacho y Paradas
 router.get('/dispatch/routes', eggDispatchController.getDispatchRoutes);
 router.get('/dispatch/routes/:id', eggDispatchController.getDispatchRouteDetail);
+router.get('/dispatch/routes/:id/manifest-pdf', eggDispatchController.getDispatchRouteManifestPdf);
 router.post('/dispatch/routes', eggDispatchController.saveDispatchRoute);
 router.put('/dispatch/routes/:id', eggDispatchController.saveDispatchRoute);
 router.delete('/dispatch/routes/:id', eggDispatchController.deleteDispatchRoute);
 router.put('/dispatch/routes/:id/reorder', eggDispatchController.reorderRouteStops);
 router.post('/dispatch/routes/:id/optimize', eggDispatchController.optimizeRouteStops);
+router.delete('/dispatch/routes/:id/stops/:stop_id', eggDispatchController.removeStopFromRoute);
+router.post('/dispatch/routes/:id/auto-invoice', eggDispatchController.autoInvoiceDispatchRoute);
 
 // 22.4 Modo Motorista, DTE y Confirmación de Entregas con GPS
 router.get('/dispatch/my-routes', eggDispatchController.getMyDriverRoutes);
