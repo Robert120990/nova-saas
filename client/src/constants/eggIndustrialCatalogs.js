@@ -22,6 +22,33 @@ export const INDUSTRIAL_PRODUCT_CATEGORIES = Object.freeze([
     { value: 'otro', label: 'Otro' }
 ]);
 
+export const RECIPE_FORMULA_NAMES = Object.freeze({
+    'huevo entero': 'Huevo Entero Pasteurizado',
+    'huevo rapido': 'Huevo Entero Rápido',
+    'clara': 'Clara Pasteurizada',
+    'clara ppg': 'Clara PPG',
+    'yema salada': 'Yema Líquida Salada',
+    'yema azucarada': 'Yema Líquida Azucarada',
+    'yema': 'Yema Líquida',
+    'fórmula especial': 'Fórmula Especial / Mezcla Premium'
+});
+
+export const RECIPES_CATALOG = Object.freeze([
+    { type: 'huevo entero', label: 'Huevo Entero Pasteurizado', defaultWeight: '32.00', defaultYield: '85.00' },
+    { type: 'huevo rapido', label: 'Huevo Entero Rápido', defaultWeight: '32.00', defaultYield: '85.00' },
+    { type: 'clara', label: 'Clara Pasteurizada', defaultWeight: '8.00', defaultYield: '85.00' },
+    { type: 'clara ppg', label: 'Clara PPG', defaultWeight: '8.00', defaultYield: '85.00' },
+    { type: 'yema salada', label: 'Yema Líquida Salada', defaultWeight: '4.00', defaultYield: '85.00' },
+    { type: 'yema azucarada', label: 'Yema Líquida Azucarada', defaultWeight: '4.00', defaultYield: '85.00' },
+    { type: 'fórmula especial', label: 'Fórmula Especial / Mezcla Premium', defaultWeight: '32.00', defaultYield: '85.00' }
+]);
+
+export const getRecipeFormulaName = (productType) => {
+    if (!productType) return '';
+    const clean = String(productType).trim().toLowerCase();
+    return RECIPE_FORMULA_NAMES[clean] || INDUSTRIAL_PRODUCT_CATEGORIES.find(c => c.value === clean)?.label || productType;
+};
+
 export const INDUSTRIAL_PRESENTATIONS = Object.freeze([
     { value: 'cubeta 32LB', label: 'Cubeta (32 lb)', weightLbs: 32 },
     { value: 'cubeta 30LB', label: 'Cubeta (30 lb)', weightLbs: 30 },

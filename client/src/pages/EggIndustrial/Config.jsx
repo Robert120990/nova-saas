@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { toast } from 'sonner';
 import axios from 'axios';
@@ -14,7 +14,10 @@ import {
     INDUSTRIAL_PRODUCT_CATEGORIES,
     kilogramsToPounds,
     normalizeIndustrialPresentation,
-    poundsToKilograms
+    poundsToKilograms,
+    RECIPES_CATALOG,
+    RECIPE_FORMULA_NAMES,
+    getRecipeFormulaName
 } from '../../constants/eggIndustrialCatalogs';
 import {
     Settings,
@@ -51,8 +54,12 @@ const inferCategoryAndPresentation = (productName = '', code = '') => {
     const text = `${productName} ${code}`.toLowerCase();
 
     let product_type = DEFAULT_INDUSTRIAL_PRODUCT_CATEGORY;
-    if (text.includes('clara')) {
+    if (text.includes('clara ppg') || text.includes('ppg')) {
+        product_type = 'clara ppg';
+    } else if (text.includes('clara')) {
         product_type = 'clara';
+    } else if (text.includes('rapido') || text.includes('rápido')) {
+        product_type = 'huevo rapido';
     } else if (text.includes('salada') || text.includes('yema sal')) {
         product_type = 'yema salada';
     } else if (text.includes('azucar') || text.includes('azúcar') || text.includes('yema azuc')) {
@@ -211,19 +218,35 @@ const EggConfig = () => {
 
     const defaults = {
         'huevo entero': { weight: '32.00', yield_pct: '85.00', shell_pct: '12.00', loss_pct: '3.00' },
+        'huevo rapido': { weight: '32.00', yield_pct: '85.00', shell_pct: '12.00', loss_pct: '3.00' },
         'clara': { weight: '8.00', yield_pct: '85.00', shell_pct: '12.00', loss_pct: '3.00' },
+        'clara ppg': { weight: '8.00', yield_pct: '85.00', shell_pct: '12.00', loss_pct: '3.00' },
         'yema salada': { weight: '4.00', yield_pct: '85.00', shell_pct: '12.00', loss_pct: '3.00' },
         'yema azucarada': { weight: '4.00', yield_pct: '85.00', shell_pct: '12.00', loss_pct: '3.00' },
         'fórmula especial': { weight: '32.00', yield_pct: '85.00', shell_pct: '12.00', loss_pct: '3.00' }
     };
 
-    const products = [
+    const baseFormulationProducts = [
         { type: 'huevo entero', label: 'Huevo Entero Pasteurizado' },
+        { type: 'huevo rapido', label: 'Huevo Entero Rápido' },
         { type: 'clara', label: 'Clara Pasteurizada' },
+        { type: 'clara ppg', label: 'Clara PPG' },
         { type: 'yema salada', label: 'Yema Líquida Salada' },
         { type: 'yema azucarada', label: 'Yema Líquida Azucarada' },
         { type: 'fórmula especial', label: 'Fórmula Especial / Mezcla Premium' }
     ];
+
+    const formulationProducts = useMemo(() => {
+        const list = [...baseFormulationProducts];
+        (codeMappings || []).forEach((m) => {
+            const type = (m.product_type || m.industrial_product_type || '').trim().toLowerCase();
+            const label = m.catalog_product_name || getRecipeFormulaName(type) || m.product_name;
+            if (type && !list.some((p) => p.type === type)) {
+                list.push({ type, label });
+            }
+        });
+        return list;
+    }, [codeMappings]);
 
     const getWeight = (productType) => {
         const cfg = config.find(c => c.product_type === productType);
@@ -248,14 +271,24 @@ const EggConfig = () => {
             ]);
 
             const data = Array.isArray(prodRes.data) ? prodRes.data : [];
+            const currentCodeMappings = Array.isArray(mapRes.data) ? mapRes.data : [];
             setCostConcepts(Array.isArray(costRes.data) ? costRes.data : []);
             setProviderLotConfigs(Array.isArray(lotRes.data) ? lotRes.data : []);
             setProviders(Array.isArray(provRes.data) ? provRes.data : (provRes.data?.data || []));
-            setCodeMappings(Array.isArray(mapRes.data) ? mapRes.data : []);
+            setCodeMappings(currentCodeMappings);
             const prods = Array.isArray(sysProdRes.data) ? sysProdRes.data : (sysProdRes.data?.data || []);
             setSystemProducts(prods);
 
-            const merged = products.map(p => {
+            const effectiveProducts = [...baseFormulationProducts];
+            currentCodeMappings.forEach((m) => {
+                const type = (m.product_type || m.industrial_product_type || '').trim().toLowerCase();
+                const label = m.catalog_product_name || getRecipeFormulaName(type) || m.product_name;
+                if (type && !effectiveProducts.some((p) => p.type === type)) {
+                    effectiveProducts.push({ type, label });
+                }
+            });
+
+            const merged = effectiveProducts.map(p => {
                 const existing = data.find(c => c.product_type === p.type);
                 return existing || {
                     product_type: p.type,
@@ -385,9 +418,10 @@ const EggConfig = () => {
         }));
 
         if (!isMappingModalOpen) {
+            const recipeFormula = getRecipeFormulaName(inferred.product_type);
             setMappingForm({
                 ...createMappingForm(),
-                product_name: product.nombre || product.name || '',
+                product_name: recipeFormula || product.nombre || product.name || '',
                 product_type: inferred.product_type,
                 presentation: inferred.presentation,
                 codes: newItems,
@@ -395,7 +429,7 @@ const EggConfig = () => {
             });
             setIsMappingModalOpen(true);
             setIsProductCatalogModalOpen(false);
-            toast.success(`Producto '${product.nombre}' preparado para vinculación.`);
+            toast.success(`Producto '${recipeFormula || product.nombre}' preparado para vinculación.`);
             return;
         }
 
@@ -415,11 +449,13 @@ const EggConfig = () => {
                 }
             }
 
+            const resolvedType = current.product_type === DEFAULT_INDUSTRIAL_PRODUCT_CATEGORY ? inferred.product_type : current.product_type;
+            const recipeFormula = getRecipeFormulaName(resolvedType);
             return {
                 ...current,
                 codes: updated,
-                product_name: !current.product_name?.trim() ? (product.nombre || product.name || '') : current.product_name,
-                product_type: current.product_type === DEFAULT_INDUSTRIAL_PRODUCT_CATEGORY ? inferred.product_type : current.product_type,
+                product_name: !current.product_name?.trim() ? (recipeFormula || product.nombre || product.name || '') : current.product_name,
+                product_type: resolvedType,
                 presentation: current.presentation === DEFAULT_INDUSTRIAL_PRESENTATION ? inferred.presentation : current.presentation
             };
         });
@@ -430,7 +466,11 @@ const EggConfig = () => {
     };
 
     const handleOpenCreateMapping = () => {
-        setMappingForm(createMappingForm());
+        const initialForm = createMappingForm();
+        setMappingForm({
+            ...initialForm,
+            product_name: getRecipeFormulaName(initialForm.product_type)
+        });
         setIsMappingModalOpen(true);
     };
 
@@ -709,7 +749,7 @@ const EggConfig = () => {
 
     const handleSaveAllProducts = async () => {
         try {
-            for (const p of products) {
+            for (const p of formulationProducts) {
                 await axios.put('/api/egg-industrial/product-config', {
                     product_type: p.type,
                     weight_per_unit_lbs: parseFloat(getWeight(p.type)),
@@ -1220,7 +1260,7 @@ const EggConfig = () => {
                         <div className="text-center text-slate-400 text-xs py-8 animate-pulse font-medium">Cargando parámetros...</div>
                     ) : (
                         <div className="space-y-4">
-                            {products.map(p => (
+                            {formulationProducts.map(p => (
                                 <div key={p.type} className="bg-slate-50 border border-slate-200/80 rounded-xl p-4 space-y-3">
                                     <div className="flex items-center justify-between">
                                         <span className="text-xs font-bold text-slate-800 capitalize">{p.label}</span>
@@ -1377,7 +1417,7 @@ const EggConfig = () => {
                                             return (
                                                 <tr key={m.id} className="hover:bg-slate-50/80 transition-colors">
                                                     <td className="p-3 font-bold text-slate-900">
-                                                        <div>{m.product_name || m.catalog_product_name || 'Sin descripción'}</div>
+                                                        <div>{m.catalog_product_name || getRecipeFormulaName(m.product_type) || m.product_name || 'Sin descripción'}</div>
                                                         {m.notes && <div className="text-[10px] text-slate-400 font-normal italic">{m.notes}</div>}
                                                     </td>
                                                     <td className="p-3">
@@ -1515,17 +1555,44 @@ const EggConfig = () => {
 
                         <form onSubmit={handleSaveMapping} className="space-y-4">
                             <div>
-                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1">
-                                    Nombre Descriptivo del Producto *
-                                </label>
+                                <div className="flex items-center justify-between mb-1">
+                                    <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide">
+                                        Producto Comercial / Nombre de la Receta o Fórmula *
+                                    </label>
+                                    <span className="text-[10px] text-indigo-600 font-semibold">
+                                        Mismo nombre que en Formulación
+                                    </span>
+                                </div>
                                 <input
                                     type="text"
                                     required
                                     value={mappingForm.product_name}
                                     onChange={(e) => setMappingForm({ ...mappingForm, product_name: e.target.value })}
-                                    placeholder="Ej: Huevo Entero Pasteurizado Galón"
+                                    placeholder="Ej: Clara PPG, Huevo Entero Rápido, Huevo Entero Pasteurizado"
                                     className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                                 />
+                                {/* Quick selection chips con las recetas canónicas */}
+                                <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase mr-0.5">Recetas Oficiales:</span>
+                                    {RECIPES_CATALOG.map((rec) => (
+                                        <button
+                                            key={rec.type}
+                                            type="button"
+                                            onClick={() => setMappingForm(prev => ({
+                                                ...prev,
+                                                product_name: rec.label,
+                                                product_type: rec.type
+                                            }))}
+                                            className={`text-[10px] px-2 py-0.5 rounded-lg font-medium border transition-colors ${
+                                                mappingForm.product_name === rec.label || mappingForm.product_type === rec.type
+                                                    ? 'bg-indigo-100 text-indigo-800 border-indigo-300 font-bold shadow-xs'
+                                                    : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                                            }`}
+                                        >
+                                            {rec.label}
+                                        </button>
+                                    ))}
+                                </div>
                             </div>
 
                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -1535,7 +1602,17 @@ const EggConfig = () => {
                                     </label>
                                     <select
                                         value={mappingForm.product_type}
-                                        onChange={(e) => setMappingForm({ ...mappingForm, product_type: e.target.value })}
+                                        onChange={(e) => {
+                                            const nextType = e.target.value;
+                                            const suggestedName = getRecipeFormulaName(nextType);
+                                            setMappingForm(prev => ({
+                                                ...prev,
+                                                product_type: nextType,
+                                                product_name: (!prev.product_name?.trim() || Object.values(RECIPE_FORMULA_NAMES).includes(prev.product_name))
+                                                    ? suggestedName
+                                                    : prev.product_name
+                                            }));
+                                        }}
                                         className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-semibold focus:outline-none focus:border-indigo-500"
                                     >
                                         {INDUSTRIAL_PRODUCT_CATEGORIES.map((category) => (
@@ -1648,9 +1725,10 @@ const EggConfig = () => {
                                                             );
                                                             if (match && !mappingForm.product_name?.trim()) {
                                                                 const inferred = inferCategoryAndPresentation(match.nombre || match.name || '', val);
+                                                                const formulaName = getRecipeFormulaName(inferred.product_type);
                                                                 setMappingForm(prev => ({
                                                                     ...prev,
-                                                                    product_name: match.nombre || match.name || prev.product_name,
+                                                                    product_name: formulaName || match.nombre || match.name || prev.product_name,
                                                                     product_type: prev.product_type === DEFAULT_INDUSTRIAL_PRODUCT_CATEGORY ? inferred.product_type : prev.product_type,
                                                                     presentation: prev.presentation === DEFAULT_INDUSTRIAL_PRESENTATION ? inferred.presentation : prev.presentation
                                                                 }));

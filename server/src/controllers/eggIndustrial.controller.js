@@ -6116,12 +6116,23 @@ const normalizeCatalogCodes = (codes) => {
 const getCodeMappings = async (req, res) => {
     try {
         await ensureEggSchema();
+        const RECIPE_NAMES = {
+            'huevo entero': 'Huevo Entero Pasteurizado',
+            'huevo rapido': 'Huevo Entero Rápido',
+            'clara': 'Clara Pasteurizada',
+            'clara ppg': 'Clara PPG',
+            'yema salada': 'Yema Líquida Salada',
+            'yema azucarada': 'Yema Líquida Azucarada',
+            'yema': 'Yema Líquida',
+            'fórmula especial': 'Fórmula Especial / Mezcla Premium'
+        };
+
         const [rows] = await pool.query(
             `SELECT m.*,
                     m.catalog_product_id AS product_id,
                     COALESCE(
+                        NULLIF(TRIM(m.catalog_product_name), ''),
                         p.nombre,
-                        NULLIF(m.catalog_product_name, ''),
                         CONCAT(m.industrial_product_type, ' - ', m.presentation)
                     ) AS product_name,
                     m.industrial_product_type AS product_type,
@@ -6134,7 +6145,18 @@ const getCodeMappings = async (req, res) => {
              ORDER BY m.industrial_product_type, m.presentation`,
             [req.company_id]
         );
-        res.json(rows);
+
+        const processed = rows.map(r => {
+            const key = String(r.product_type || r.industrial_product_type || '').trim().toLowerCase();
+            const canonicalRecipe = RECIPE_NAMES[key] || r.product_name;
+            return {
+                ...r,
+                recipe_name: canonicalRecipe,
+                product_name: r.product_name || canonicalRecipe
+            };
+        });
+
+        res.json(processed);
     } catch (error) {
         res.status(500).json({ message: error.message });
     }

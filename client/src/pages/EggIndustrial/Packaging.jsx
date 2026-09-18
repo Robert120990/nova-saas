@@ -759,7 +759,9 @@ const EggPackaging = () => {
                                 className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                             >
                                 <option value="huevo entero">Huevo Entero Pasteurizado</option>
+                                <option value="huevo rapido">Huevo Entero Rápido</option>
                                 <option value="clara">Clara de Huevo Pasteurizada</option>
+                                <option value="clara ppg">Clara PPG Pasteurizada</option>
                                 <option value="yema">Yema Líquida Pasteurizada</option>
                                 <option value="yema azucarada">Yema Pasteurizada Azucarada</option>
                                 <option value="yema salada">Yema Pasteurizada Salada</option>
