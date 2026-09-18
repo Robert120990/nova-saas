@@ -253,18 +253,18 @@ export default function DispatchRouteMap({ stops = [], activeStopId = null, onSe
     }).length;
 
     return (
-        <div className="relative w-full rounded-2xl overflow-hidden border border-slate-200 shadow-sm bg-slate-50">
+        <div className="relative isolate z-0 w-full rounded-2xl overflow-hidden border border-slate-200 shadow-sm bg-slate-50" style={{ zIndex: 0 }}>
             {/* Header / Info bar */}
-            <div className="absolute top-3 left-3 z-[1000] bg-white/90 backdrop-blur-md px-3 py-1.5 rounded-xl border border-slate-200 shadow-md flex items-center gap-2 text-xs font-semibold text-slate-700">
+            <div className="absolute top-3 left-3 z-10 bg-white/90 backdrop-blur-md px-3 py-1.5 rounded-xl border border-slate-200 shadow-md flex items-center gap-2 text-xs font-semibold text-slate-700">
                 <span className="w-2.5 h-2.5 rounded-full bg-indigo-600 animate-pulse" />
                 <span>Ruta en Mapa: {stopsWithCoordsCount} de {stops.length} paradas geolocalizadas</span>
             </div>
 
             {/* Contenedor del Mapa Leaflet */}
-            <div ref={mapContainerRef} style={{ height, width: '100%', minHeight: '350px' }} />
+            <div ref={mapContainerRef} className="z-0" style={{ height, width: '100%', minHeight: '350px', zIndex: 0 }} />
 
             {stopsWithCoordsCount === 0 && (
-                <div className="absolute inset-0 z-[500] pointer-events-none flex items-center justify-center bg-slate-900/10 backdrop-blur-[1px]">
+                <div className="absolute inset-0 z-10 pointer-events-none flex items-center justify-center bg-slate-900/10 backdrop-blur-[1px]">
                     <div className="bg-white px-4 py-2.5 rounded-xl shadow-lg border border-slate-200 text-xs text-slate-600 font-medium">
                         💡 Las sucursales aún no tienen coordenadas GPS. Al confirmar cada entrega desde el teléfono del motorista, se guardarán automáticamente en el mapa.
                     </div>

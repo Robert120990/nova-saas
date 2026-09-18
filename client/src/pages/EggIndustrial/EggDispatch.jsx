@@ -22,8 +22,12 @@ import {
     Edit3,
     QrCode,
     Sparkles,
-    ExternalLink
+    ExternalLink,
+    Printer,
+    Search,
+    X
 } from 'lucide-react';
+import EggCustomerOrderModal from '../../components/egg/EggCustomerOrderModal';
 
 const PRODUCT_PROFILES = [
     'Huevo Entero Pasteurizado',
@@ -54,8 +58,8 @@ export default function EggDispatch() {
     // Estados generales
     const [loading, setLoading] = useState(false);
     const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
-
-
+    const [dateFilterMode, setDateFilterMode] = useState('dia'); // 'dia' | 'semana' | 'mes' | 'todos'
+    const [clientFilter, setClientFilter] = useState('');
 
     // =========================================================================
     // 1. ESTADO: PEDIDOS Y CALENDARIO
@@ -65,6 +69,11 @@ export default function EggDispatch() {
     const [editingOrder, setEditingOrder] = useState(null);
     const [orderStatusFilter, setOrderStatusFilter] = useState('todos');
     const [orderPriorityFilter, setOrderPriorityFilter] = useState('todos');
+
+    const handlePrintOrderReceipt = (orderId) => {
+        if (!orderId) return;
+        window.open(`/api/egg-industrial/orders/${orderId}/delivery-receipt`, '_blank');
+    };
 
     // Formulario de Pedido
     const [orderForm, setOrderForm] = useState({
@@ -521,11 +530,40 @@ export default function EggDispatch() {
     // =========================================================================
     const filteredOrders = useMemo(() => {
         return orders.filter(o => {
+            // 1. Filtro por Estado
             const matchesStatus = orderStatusFilter === 'todos' || o.delivery_status === orderStatusFilter;
+            // 2. Filtro por Prioridad
             const matchesPriority = orderPriorityFilter === 'todos' || o.priority === orderPriorityFilter;
-            return matchesStatus && matchesPriority;
+            // 3. Filtro por Cliente
+            const ordClient = (o.customer_name || '').toLowerCase();
+            const filterTerm = clientFilter.trim().toLowerCase();
+            const matchesClient = !filterTerm || ordClient.includes(filterTerm) || String(o.customer_id) === filterTerm;
+
+            // 4. Filtro por Fecha de Entrega (Día, Semana, Mes, Todos)
+            let matchesDate = true;
+            if (dateFilterMode !== 'todos') {
+                const orderDateStr = o.required_delivery_date ? o.required_delivery_date.split('T')[0] : '';
+                if (!orderDateStr) {
+                    matchesDate = false;
+                } else if (dateFilterMode === 'dia') {
+                    matchesDate = orderDateStr === selectedDate;
+                } else if (dateFilterMode === 'mes') {
+                    matchesDate = orderDateStr.substring(0, 7) === selectedDate.substring(0, 7);
+                } else if (dateFilterMode === 'semana') {
+                    const target = new Date(selectedDate + 'T00:00:00');
+                    const ordD = new Date(orderDateStr + 'T00:00:00');
+                    const day = target.getDay() || 7;
+                    const monday = new Date(target);
+                    monday.setDate(target.getDate() - (day - 1));
+                    const sunday = new Date(monday);
+                    sunday.setDate(monday.getDate() + 6);
+                    matchesDate = ordD >= monday && ordD <= sunday;
+                }
+            }
+
+            return matchesStatus && matchesPriority && matchesClient && matchesDate;
         });
-    }, [orders, orderStatusFilter, orderPriorityFilter]);
+    }, [orders, orderStatusFilter, orderPriorityFilter, clientFilter, dateFilterMode, selectedDate]);
 
     // Pedidos pendientes agrupados por fecha
     const ordersByDate = useMemo(() => {
@@ -695,26 +733,115 @@ export default function EggDispatch() {
             {activeTab === 'calendario' && (
                 <div className="space-y-4">
                     {/* Barra de Filtros y Fechas */}
-                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
-                        <div className="flex flex-wrap items-center gap-2">
-                            <label className="text-xs font-bold text-slate-500 uppercase">
-                                Fecha de Entrega:
-                            </label>
-                            <input
-                                type="date"
-                                value={selectedDate}
-                                onChange={(e) => setSelectedDate(e.target.value)}
-                                className="text-xs font-bold bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-slate-700 outline-none"
-                            />
-                            <button
-                                onClick={() => setSelectedDate(new Date().toISOString().split('T')[0])}
-                                className="text-xs font-semibold text-indigo-600 hover:underline px-1"
-                            >
-                                Hoy
-                            </button>
+                    <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+                            {/* Fecha y Modos de Visualización (Día, Semana, Mes, Todos) */}
+                            <div className="flex flex-wrap items-center gap-2">
+                                <label className="text-xs font-bold text-slate-500 uppercase">
+                                    Fecha Entrega:
+                                </label>
+                                <input
+                                    type="date"
+                                    value={selectedDate}
+                                    onChange={(e) => setSelectedDate(e.target.value)}
+                                    className="text-xs font-bold bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-slate-700 outline-none"
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => setSelectedDate(new Date().toISOString().split('T')[0])}
+                                    className="text-xs font-semibold text-indigo-600 hover:underline px-1"
+                                >
+                                    Hoy
+                                </button>
+
+                                {/* Selector de Rango */}
+                                <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200 text-xs font-bold ml-1">
+                                    <button
+                                        type="button"
+                                        onClick={() => setDateFilterMode('dia')}
+                                        className={`px-2.5 py-1 rounded-lg transition-all ${dateFilterMode === 'dia' ? 'bg-white text-indigo-600 shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}
+                                    >
+                                        Día
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setDateFilterMode('semana')}
+                                        className={`px-2.5 py-1 rounded-lg transition-all ${dateFilterMode === 'semana' ? 'bg-white text-indigo-600 shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}
+                                    >
+                                        Semana
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setDateFilterMode('mes')}
+                                        className={`px-2.5 py-1 rounded-lg transition-all ${dateFilterMode === 'mes' ? 'bg-white text-indigo-600 shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}
+                                    >
+                                        Mes
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setDateFilterMode('todos')}
+                                        className={`px-2.5 py-1 rounded-lg transition-all ${dateFilterMode === 'todos' ? 'bg-white text-indigo-600 shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}
+                                    >
+                                        Todos
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Botón Registrar Nuevo Pedido */}
+                            <div className="flex items-center gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setEditingOrder(null);
+                                        setOrderModalOpen(true);
+                                    }}
+                                    className="flex items-center gap-1.5 text-xs font-bold bg-indigo-600 text-white px-3.5 py-2 rounded-xl shadow transition hover:bg-indigo-700"
+                                >
+                                    <Plus className="w-3.5 h-3.5" />
+                                    <span>+ Nuevo Pedido</span>
+                                </button>
+
+                                {/* Botón Crear Ruta con Pedidos del Día Seleccionado */}
+                                {ordersByDate[selectedDate]?.filter(o => o.delivery_status !== 'entregado' && !o.dispatch_route_id).length > 0 && (
+                                    <button
+                                        onClick={() => {
+                                            const unassignedIds = ordersByDate[selectedDate]
+                                                .filter(o => o.delivery_status !== 'entregado' && !o.dispatch_route_id)
+                                                .map(o => o.id);
+                                            handleOpenCreateRoute(selectedDate, unassignedIds);
+                                        }}
+                                        className="flex items-center gap-1.5 text-xs font-bold bg-emerald-600 text-white px-3.5 py-2 rounded-xl shadow transition hover:bg-emerald-700"
+                                    >
+                                        <Truck className="w-3.5 h-3.5" />
+                                        <span>Ruta con {ordersByDate[selectedDate].filter(o => o.delivery_status !== 'entregado' && !o.dispatch_route_id).length} pedidos</span>
+                                    </button>
+                                )}
+                            </div>
                         </div>
 
-                        <div className="flex flex-wrap items-center gap-2">
+                        {/* Fila Secundaria: Filtro por Cliente, Estado y Prioridad */}
+                        <div className="flex flex-wrap items-center gap-2.5 pt-2 border-t border-slate-100">
+                            {/* Buscador de Cliente */}
+                            <div className="relative flex-1 min-w-[200px] max-w-sm">
+                                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                                <input
+                                    type="text"
+                                    placeholder="Filtrar por cliente..."
+                                    value={clientFilter}
+                                    onChange={(e) => setClientFilter(e.target.value)}
+                                    className="w-full text-xs font-semibold pl-8 pr-7 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:border-indigo-500"
+                                />
+                                {clientFilter && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setClientFilter('')}
+                                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                                    >
+                                        <X className="w-3.5 h-3.5" />
+                                    </button>
+                                )}
+                            </div>
+
                             {/* Filtro Estado */}
                             <select
                                 value={orderStatusFilter}
@@ -738,22 +865,6 @@ export default function EggDispatch() {
                                 <option value="alta">🟡 Altas</option>
                                 <option value="normal">🔵 Normales</option>
                             </select>
-
-                            {/* Botón Crear Ruta con Pedidos del Día Seleccionado */}
-                            {ordersByDate[selectedDate]?.filter(o => o.delivery_status !== 'entregado' && !o.dispatch_route_id).length > 0 && (
-                                <button
-                                    onClick={() => {
-                                        const unassignedIds = ordersByDate[selectedDate]
-                                            .filter(o => o.delivery_status !== 'entregado' && !o.dispatch_route_id)
-                                            .map(o => o.id);
-                                        handleOpenCreateRoute(selectedDate, unassignedIds);
-                                    }}
-                                    className="flex items-center gap-1.5 text-xs font-bold bg-indigo-600 text-white px-3 py-1.5 rounded-xl shadow transition hover:bg-indigo-700"
-                                >
-                                    <Truck className="w-3.5 h-3.5" />
-                                    <span>Ruta con {ordersByDate[selectedDate].filter(o => o.delivery_status !== 'entregado' && !o.dispatch_route_id).length} pedidos del día</span>
-                                </button>
-                            )}
                         </div>
                     </div>
 
@@ -827,6 +938,11 @@ export default function EggDispatch() {
                                                 <td className="p-3">
                                                     <div className="font-semibold text-slate-800">{ord.product_type}</div>
                                                     <div className="text-[11px] text-slate-500">{ord.presentation}</div>
+                                                    {(ord.linked_batch_code || ord.lot_code) && (
+                                                        <span className="inline-block mt-0.5 text-[10px] font-bold text-emerald-800 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
+                                                            Lote: {ord.linked_batch_code || ord.lot_code}
+                                                        </span>
+                                                    )}
                                                 </td>
                                                 <td className="p-3 text-right font-black text-indigo-700 whitespace-nowrap">
                                                     {parseFloat(ord.quantity_lbs || 0).toLocaleString()} Lbs
@@ -857,26 +973,19 @@ export default function EggDispatch() {
                                                         <button
                                                             onClick={() => {
                                                                 setEditingOrder(ord);
-                                                                setOrderForm({
-                                                                    customer_id: ord.customer_id,
-                                                                    customer_branch_id: ord.customer_branch_id || '',
-                                                                    customer_name: ord.customer_name,
-                                                                    order_number: ord.order_number || '',
-                                                                    product_type: ord.product_type,
-                                                                    presentation: ord.presentation,
-                                                                    quantity_lbs: ord.quantity_lbs,
-                                                                    required_delivery_date: ord.required_delivery_date ? ord.required_delivery_date.split('T')[0] : '',
-                                                                    priority: ord.priority || 'normal',
-                                                                    price_per_lb: ord.price_per_lb || '',
-                                                                    notes: ord.notes || ''
-                                                                });
-                                                                setCustomerSearch(ord.customer_name);
                                                                 setOrderModalOpen(true);
                                                             }}
-                                                            title="Editar Pedido"
+                                                            title="Editar Pedido (ajustar productos, cantidades o lote)"
                                                             className="p-1.5 hover:bg-indigo-50 text-indigo-600 rounded-lg transition"
                                                         >
                                                             <Edit3 className="w-3.5 h-3.5" />
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handlePrintOrderReceipt(ord.id)}
+                                                            title="Imprimir Comprobante de Entrega / Despacho"
+                                                            className="p-1.5 hover:bg-emerald-50 text-emerald-600 rounded-lg transition"
+                                                        >
+                                                            <Printer className="w-3.5 h-3.5" />
                                                         </button>
                                                         <button
                                                             onClick={() => handleDeleteOrder(ord.id)}
@@ -1048,8 +1157,26 @@ export default function EggDispatch() {
                                                         </div>
                                                     </div>
 
-                                                    {/* Controles para reordenar arriba/abajo */}
+                                                    {/* Controles para reordenar arriba/abajo y acciones */}
                                                     <div className="flex flex-col gap-1 flex-shrink-0">
+                                                        <button
+                                                            onClick={() => {
+                                                                const foundOrd = orders.find(o => o.id === stop.order_id);
+                                                                setEditingOrder(foundOrd || stop);
+                                                                setOrderModalOpen(true);
+                                                            }}
+                                                            className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 rounded"
+                                                            title="Editar pedido de esta parada (ajustar cantidades o lote)"
+                                                        >
+                                                            <Edit3 className="w-3.5 h-3.5" />
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handlePrintOrderReceipt(stop.order_id)}
+                                                            className="p-1 text-slate-400 hover:text-emerald-600 hover:bg-slate-100 rounded"
+                                                            title="Imprimir comprobante de entrega"
+                                                        >
+                                                            <Printer className="w-3.5 h-3.5" />
+                                                        </button>
                                                         <button
                                                             disabled={idx === 0}
                                                             onClick={() => handleMoveStop(idx, -1)}
@@ -1532,194 +1659,20 @@ export default function EggDispatch() {
             {/* ========================================================================= */}
             {/* MODAL 1: NUEVO / EDITAR PEDIDO DE CLIENTE */}
             {/* ========================================================================= */}
-            <Modal
+            {/* MODAL NORMALIZADO DE PEDIDOS DE CLIENTES */}
+            <EggCustomerOrderModal
                 isOpen={orderModalOpen}
-                onClose={() => setOrderModalOpen(false)}
-                title={editingOrder ? 'Editar Pedido de Cliente' : 'Nuevo Pedido de Ovoproductos'}
-                size="lg"
-            >
-                <form onSubmit={handleSaveOrder} className="space-y-4">
-                    {/* Buscador de Cliente */}
-                    <div>
-                        <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">
-                            Cliente *
-                        </label>
-                        <div className="relative">
-                            <input
-                                type="text"
-                                required
-                                value={customerSearch}
-                                onChange={(e) => handleCustomerSearch(e.target.value)}
-                                placeholder="Buscar cliente por nombre o nombre comercial..."
-                                className="w-full text-xs font-semibold border border-slate-200 rounded-xl px-3 py-2 text-slate-800 focus:border-indigo-500 outline-none"
-                            />
-                            {searchingCustomer && (
-                                <RefreshCw className="w-4 h-4 absolute right-3 top-2.5 text-slate-400 animate-spin" />
-                            )}
-                        </div>
-
-                        {customerOptions.length > 0 && (
-                            <div className="mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-40 overflow-y-auto divide-y divide-slate-100 z-10 relative">
-                                {customerOptions.map(c => (
-                                    <button
-                                        key={c.id}
-                                        type="button"
-                                        onClick={() => handleSelectCustomer(c)}
-                                        className="w-full text-left p-2 hover:bg-indigo-50 text-xs font-medium text-slate-800 flex justify-between"
-                                    >
-                                        <span>{c.nombre} {c.nombre_comercial && `(${c.nombre_comercial})`}</span>
-                                        <span className="text-[10px] text-indigo-600 font-bold">Seleccionar</span>
-                                    </button>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Sucursal del Cliente */}
-                    <div>
-                        <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">
-                            Sucursal de Entrega (Dirección / Destino)
-                        </label>
-                        <select
-                            value={orderForm.customer_branch_id}
-                            onChange={(e) => setOrderForm(prev => ({ ...prev, customer_branch_id: e.target.value }))}
-                            className="w-full text-xs font-medium border border-slate-200 rounded-xl px-3 py-2 text-slate-800 outline-none"
-                        >
-                            <option value="">-- Sucursal Principal / Sin especificar --</option>
-                            {customerBranches.map(b => (
-                                <option key={b.id} value={b.id}>
-                                    {b.nombre} - {b.direccion || 'Sin dirección'}
-                                </option>
-                            ))}
-                        </select>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                        <div>
-                            <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">
-                                Tipo de Producto *
-                            </label>
-                            <select
-                                required
-                                value={orderForm.product_type}
-                                onChange={(e) => setOrderForm(prev => ({ ...prev, product_type: e.target.value }))}
-                                className="w-full text-xs font-semibold border border-slate-200 rounded-xl px-3 py-2 text-slate-800 outline-none"
-                            >
-                                {PRODUCT_PROFILES.map(p => (
-                                    <option key={p} value={p}>{p}</option>
-                                ))}
-                            </select>
-                        </div>
-
-                        <div>
-                            <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">
-                                Presentación
-                            </label>
-                            <select
-                                value={orderForm.presentation}
-                                onChange={(e) => setOrderForm(prev => ({ ...prev, presentation: e.target.value }))}
-                                className="w-full text-xs font-medium border border-slate-200 rounded-xl px-3 py-2 text-slate-800 outline-none"
-                            >
-                                {PRESENTATIONS.map(p => (
-                                    <option key={p} value={p}>{p}</option>
-                                ))}
-                            </select>
-                        </div>
-
-                        <div>
-                            <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">
-                                Cantidad (Lbs) *
-                            </label>
-                            <input
-                                type="number"
-                                required
-                                step="any"
-                                min="1"
-                                value={orderForm.quantity_lbs}
-                                onChange={(e) => setOrderForm(prev => ({ ...prev, quantity_lbs: e.target.value }))}
-                                placeholder="Ej: 3000"
-                                className="w-full text-xs font-bold border border-slate-200 rounded-xl px-3 py-2 text-indigo-700 outline-none"
-                            />
-                            {orderForm.quantity_lbs && (
-                                <span className="text-[10px] text-slate-500 block mt-0.5">
-                                    ≈ {Math.ceil(parseFloat(orderForm.quantity_lbs) / 30)} cubetas de 30 Lb
-                                </span>
-                            )}
-                        </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                        <div>
-                            <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">
-                                Fecha Requerida *
-                            </label>
-                            <input
-                                type="date"
-                                required
-                                value={orderForm.required_delivery_date}
-                                onChange={(e) => setOrderForm(prev => ({ ...prev, required_delivery_date: e.target.value }))}
-                                className="w-full text-xs font-medium border border-slate-200 rounded-xl px-3 py-2 text-slate-800 outline-none"
-                            />
-                        </div>
-
-                        <div>
-                            <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">
-                                Prioridad
-                            </label>
-                            <select
-                                value={orderForm.priority}
-                                onChange={(e) => setOrderForm(prev => ({ ...prev, priority: e.target.value }))}
-                                className="w-full text-xs font-bold border border-slate-200 rounded-xl px-3 py-2 text-slate-800 outline-none"
-                            >
-                                <option value="normal">Normal</option>
-                                <option value="alta">Alta</option>
-                                <option value="urgente">Urgente</option>
-                            </select>
-                        </div>
-
-                        <div>
-                            <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">
-                                Precio acordado / Lb
-                            </label>
-                            <MoneyInput
-                                value={orderForm.price_per_lb}
-                                onChange={(val) => setOrderForm(prev => ({ ...prev, price_per_lb: val }))}
-                                placeholder="0.0000"
-                                className="w-full text-xs font-semibold border border-slate-200 rounded-xl px-3 py-2 text-slate-800 outline-none"
-                            />
-                        </div>
-                    </div>
-
-                    <div>
-                        <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">
-                            Notas de Entrega / Referencias
-                        </label>
-                        <textarea
-                            rows="2"
-                            value={orderForm.notes}
-                            onChange={(e) => setOrderForm(prev => ({ ...prev, notes: e.target.value }))}
-                            placeholder="Indicaciones especiales de entrega..."
-                            className="w-full text-xs border border-slate-200 rounded-xl p-2 text-slate-800 outline-none"
-                        />
-                    </div>
-
-                    <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
-                        <button
-                            type="button"
-                            onClick={() => setOrderModalOpen(false)}
-                            className="text-xs font-semibold text-slate-600 px-4 py-2 hover:bg-slate-100 rounded-xl transition"
-                        >
-                            Cancelar
-                        </button>
-                        <button
-                            type="submit"
-                            className="text-xs font-bold bg-indigo-600 text-white px-5 py-2.5 rounded-xl shadow hover:bg-indigo-700 transition"
-                        >
-                            {editingOrder ? 'Guardar Cambios' : 'Registrar Pedido'}
-                        </button>
-                    </div>
-                </form>
-            </Modal>
+                onClose={() => {
+                    setOrderModalOpen(false);
+                    setEditingOrder(null);
+                }}
+                orderToEdit={editingOrder}
+                onOrderSaved={() => {
+                    fetchOrders();
+                    if (selectedRoute) fetchRouteDetail(selectedRoute);
+                }}
+                defaultDate={selectedDate}
+            />
 
             {/* ========================================================================= */}
             {/* MODAL 2: CREAR / CONFIGURAR RUTA DE DESPACHO */}
@@ -1728,7 +1681,8 @@ export default function EggDispatch() {
                 isOpen={routeModalOpen}
                 onClose={() => setRouteModalOpen(false)}
                 title="Planificar Ruta de Despacho"
-                size="xl"
+                maxWidth="max-w-4xl"
+                zIndex="z-[1200]"
             >
                 <form onSubmit={handleSaveRoute} className="space-y-4">
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">

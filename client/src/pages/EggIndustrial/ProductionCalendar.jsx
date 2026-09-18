@@ -44,6 +44,7 @@ import {
     isJulianLotCode
 } from '../../utils/julianDate';
 import RawMaterialPlannerModal from '../../components/egg/RawMaterialPlannerModal';
+import EggCustomerOrderModal from '../../components/egg/EggCustomerOrderModal';
 
 const PRODUCT_PROFILES = [
     { id: 'Huevo Entero Pasteurizado', name: 'Huevo Entero Pasteurizado', defaultSolids: 23.5, color: 'indigo', desc: '83% rendimiento estándar' },
@@ -167,6 +168,13 @@ const ProductionCalendar = () => {
     const [isOrdersModalOpen, setIsOrdersModalOpen] = useState(false);
     const [isPlannerModalOpen, setIsPlannerModalOpen] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
+
+    // Modal Normalizado de Pedidos de Clientes & Alterar Fechas
+    const [isCustomerOrderModalOpen, setIsCustomerOrderModalOpen] = useState(false);
+    const [selectedOrderToEdit, setSelectedOrderToEdit] = useState(null);
+    const [alterDateItem, setAlterDateItem] = useState(null); // { type: 'production' | 'order', id, item, title, currentDate }
+    const [newAlteredDate, setNewAlteredDate] = useState('');
+    const [isAlteringDate, setIsAlteringDate] = useState(false);
 
     // Sugerencia Mensual IA & Planificador MP
     const [suggestionsTab, setSuggestionsTab] = useState('monthly'); // 'monthly' | 'tactical'
@@ -869,6 +877,47 @@ const ProductionCalendar = () => {
         }
     };
 
+    // Alterar fecha de producción o pedido directamente desde el calendario
+    const handleOpenAlterDateModal = (type, item) => {
+        const currentDate = type === 'production'
+            ? (item.production_date ? item.production_date.split('T')[0] : '')
+            : (item.required_delivery_date ? item.required_delivery_date.split('T')[0] : '');
+        const title = type === 'production'
+            ? `Producción Lote ${item.lot_code} (${item.product_profile})`
+            : `Pedido de ${item.customer_name} (${item.product_type} - ${parseFloat(item.quantity_lbs || 0).toLocaleString()} Lbs)`;
+        setAlterDateItem({ type, id: item.id, item, title, currentDate });
+        setNewAlteredDate(currentDate || new Date().toISOString().split('T')[0]);
+    };
+
+    const handleSaveAlteredDate = async (e) => {
+        if (e) e.preventDefault();
+        if (!alterDateItem || !newAlteredDate) return;
+        try {
+            setIsAlteringDate(true);
+            if (alterDateItem.type === 'production') {
+                await axios.patch(`/api/egg-industrial/calendar/${alterDateItem.id}`, {
+                    production_date: newAlteredDate
+                });
+                toast.success('Fecha de producción reprogramada exitosamente.');
+                fetchProductions();
+            } else {
+                await axios.put(`/api/egg-industrial/orders/${alterDateItem.id}`, {
+                    ...alterDateItem.item,
+                    required_delivery_date: newAlteredDate
+                });
+                toast.success('Fecha de entrega de pedido reprogramada exitosamente.');
+                fetchOrders();
+                fetchSuggestions();
+            }
+            setAlterDateItem(null);
+        } catch (err) {
+            console.error('Error alterando fecha:', err);
+            toast.error(err.response?.data?.message || 'Error al reprogramar fecha.');
+        } finally {
+            setIsAlteringDate(false);
+        }
+    };
+
     // Filtered Productions
     const filteredProductions = useMemo(() => {
         return productions.filter(p => {
@@ -1275,6 +1324,7 @@ const ProductionCalendar = () => {
                     <div className="grid grid-cols-7 divide-x divide-y divide-slate-100">
                         {calendarMonthDays.map((cell, index) => {
                             const dayProds = getProductionsForDate(cell.dateStr);
+                            const dayOrders = customerOrders.filter(o => o.required_delivery_date && o.required_delivery_date.split('T')[0] === cell.dateStr);
                             const isToday = cell.dateStr === todayStr;
                             const isDropTarget = dragOverDate === cell.dateStr;
 
@@ -1300,18 +1350,32 @@ const ProductionCalendar = () => {
                                             {cell.dayNumber}
                                         </span>
 
-                                        <button
-                                            type="button"
-                                            onClick={() => handleOpenCreateModal(cell.dateStr)}
-                                            className="opacity-0 group-hover:opacity-100 p-1 hover:bg-indigo-50 text-indigo-600 rounded-md transition-all text-xs"
-                                            title={`Programar producción para ${cell.dateStr}`}
-                                        >
-                                            <Plus className="w-3.5 h-3.5" />
-                                        </button>
+                                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setSelectedOrderToEdit(null);
+                                                    setIsCustomerOrderModalOpen(true);
+                                                }}
+                                                className="p-1 hover:bg-amber-50 text-amber-700 rounded-md transition-all text-xs"
+                                                title={`Registrar pedido para ${cell.dateStr}`}
+                                            >
+                                                <ShoppingBag className="w-3 h-3" />
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleOpenCreateModal(cell.dateStr)}
+                                                className="p-1 hover:bg-indigo-50 text-indigo-600 rounded-md transition-all text-xs"
+                                                title={`Programar producción para ${cell.dateStr}`}
+                                            >
+                                                <Plus className="w-3.5 h-3.5" />
+                                            </button>
+                                        </div>
                                     </div>
 
-                                    {/* Lista de Producciones del Día */}
-                                    <div className="space-y-1.5 flex-1 overflow-y-auto max-h-[120px] pr-0.5">
+                                    {/* Lista de Producciones y Pedidos del Día */}
+                                    <div className="space-y-1.5 flex-1 overflow-y-auto max-h-[135px] pr-0.5">
+                                        {/* 1. Lotes de Producción */}
                                         {dayProds.map((prod) => {
                                             const badgeStyle = getProfileBadgeStyle(prod.product_profile);
                                             const tasksDone = (prod.tasks || []).filter(t => t.checklist_status === 'completado').length;
@@ -1339,6 +1403,19 @@ const ProductionCalendar = () => {
                                                             </span>
                                                         </div>
                                                         <div className="flex items-center gap-1 shrink-0">
+                                                            {/* Botón Alterar fecha de producción */}
+                                                            <button
+                                                                type="button"
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    handleOpenAlterDateModal('production', prod);
+                                                                }}
+                                                                className="p-0.5 rounded bg-slate-100 hover:bg-indigo-100 text-slate-600 hover:text-indigo-800 text-[8px] font-bold transition-all flex items-center"
+                                                                title="Alterar / Reprogramar fecha de producción"
+                                                            >
+                                                                <CalendarCheck className="w-2.5 h-2.5" />
+                                                            </button>
+
                                                             {!isJulianLotCode(prod.lot_code) && (
                                                                 <button
                                                                     type="button"
@@ -1402,6 +1479,47 @@ const ProductionCalendar = () => {
                                                 </div>
                                             );
                                         })}
+
+                                        {/* 2. Pedidos de Clientes del Día */}
+                                        {dayOrders.map((ord) => (
+                                            <div
+                                                key={`ord-${ord.id}`}
+                                                onClick={() => {
+                                                    setSelectedOrderToEdit(ord);
+                                                    setIsCustomerOrderModalOpen(true);
+                                                }}
+                                                className="p-1 sm:p-1.5 rounded-lg border border-amber-200/90 bg-amber-50/70 hover:bg-amber-100/80 text-left cursor-pointer transition-all hover:shadow-xs group/ord"
+                                                title="Clic para ver o editar pedido completo"
+                                            >
+                                                <div className="flex items-center justify-between gap-1">
+                                                    <span className="font-bold text-[10px] text-amber-950 truncate flex items-center gap-1">
+                                                        <ShoppingBag className="w-2.5 h-2.5 text-amber-700 shrink-0" />
+                                                        <span className="truncate">{ord.customer_name}</span>
+                                                    </span>
+                                                    <div className="flex items-center gap-0.5 shrink-0">
+                                                        <button
+                                                            type="button"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                handleOpenAlterDateModal('order', ord);
+                                                            }}
+                                                            className="p-0.5 rounded bg-amber-200/80 hover:bg-amber-300 text-amber-900 text-[8px] font-bold transition-all flex items-center"
+                                                            title="Alterar / Reprogramar fecha de entrega de pedido"
+                                                        >
+                                                            <CalendarCheck className="w-2.5 h-2.5" />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                                <div className="text-[9px] font-medium text-amber-800 truncate mt-0.5">
+                                                    {ord.product_type} - {parseFloat(ord.quantity_lbs || 0).toLocaleString()} Lbs
+                                                </div>
+                                                {ord.linked_batch_code && (
+                                                    <div className="text-[8px] font-bold text-emerald-700 mt-0.5 truncate">
+                                                        Lote: {ord.linked_batch_code}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ))}
                                     </div>
                                 </div>
                             );
@@ -2402,228 +2520,41 @@ const ProductionCalendar = () => {
                 title="Pedidos de Clientes (Ovoproductos)"
                 maxWidth="max-w-4xl"
             >
-                <div className="space-y-5">
-                    {/* Formulario de Nuevo Pedido */}
-                    <form onSubmit={handleSaveOrder} className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3.5">
-                        <div className="flex items-center justify-between">
-                            <span className="text-xs font-bold text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
-                                <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
-                                <span>Registrar Nuevo Pedido para el Algoritmo de Sugerencias</span>
-                            </span>
-                            <span className="text-[10px] text-slate-500 font-medium">
-                                Los precios se enlazan con el módulo de CRM
-                            </span>
+                <div className="space-y-4">
+                    {/* Barra Superior con botón para Registrar Nuevo Pedido */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
+                        <div>
+                            <h4 className="text-xs font-black text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
+                                <Sparkles className="w-4 h-4 text-indigo-600" />
+                                <span>Pedidos de Clientes Programados</span>
+                            </h4>
+                            <p className="text-[11px] text-slate-500 mt-0.5">
+                                Total de pedidos registrados: <strong>{customerOrders.length}</strong>
+                            </p>
                         </div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 text-xs">
-                            {/* CLIENTE OBLIGATORIO CON AUTOCOMPLETE */}
-                            <div className="relative">
-                                <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">
-                                    Cliente * <span className="text-slate-400 font-normal">(Catálogo existente)</span>
-                                </label>
-                                <div className="relative">
-                                    <input
-                                        type="text"
-                                        required
-                                        placeholder="Buscar cliente existente..."
-                                        value={customerSearchInput}
-                                        onChange={handleCustomerInputChange}
-                                        onFocus={() => {
-                                            setShowCustomerDropdown(true);
-                                            if (customerSearchResults.length === 0) searchCustomersList(customerSearchInput);
-                                        }}
-                                        className={`w-full bg-white border rounded-lg px-2.5 py-1.5 font-medium pr-8 transition-colors ${selectedCustomer
-                                                ? 'border-emerald-500 ring-1 ring-emerald-500/30 bg-emerald-50/20 text-slate-900 font-bold'
-                                                : customerSearchInput && !selectedCustomer
-                                                    ? 'border-amber-400 bg-amber-50/10'
-                                                    : 'border-slate-300'
-                                            }`}
-                                    />
-                                    {selectedCustomer ? (
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                setSelectedCustomer(null);
-                                                setCustomerSearchInput('');
-                                                setCustomerAgreements([]);
-                                                setAgreedPriceNotice(null);
-                                                setOrderForm(prev => ({ ...prev, customer_id: '', customer_name: '', price_per_lb: '' }));
-                                                searchCustomersList('');
-                                            }}
-                                            className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-rose-500 p-0.5 transition-colors"
-                                            title="Quitar cliente seleccionado"
-                                        >
-                                            <X className="w-4 h-4" />
-                                        </button>
-                                    ) : (
-                                        <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
-                                            {loadingCustomers ? <RefreshCw className="w-3.5 h-3.5 animate-spin text-indigo-600" /> : <Search className="w-3.5 h-3.5" />}
-                                        </div>
-                                    )}
-                                </div>
-
-                                {/* Feedback de selección */}
-                                {selectedCustomer && (
-                                    <div className="flex items-center gap-1.5 mt-1 text-[10px] font-bold text-emerald-700">
-                                        <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                                        <span>Cliente existente (ID: {selectedCustomer.id})</span>
-                                        {customerAgreements.length > 0 && (
-                                            <span className="bg-indigo-50 text-indigo-700 border border-indigo-200 px-1.5 py-0.2 rounded text-[9px]">
-                                                {customerAgreements.length} acuerdo{customerAgreements.length > 1 ? 's' : ''} CRM
-                                            </span>
-                                        )}
-                                    </div>
-                                )}
-
-                                {!selectedCustomer && customerSearchInput.trim().length > 0 && !showCustomerDropdown && (
-                                    <p className="text-[10px] text-amber-600 mt-1 font-medium flex items-center gap-1">
-                                        <AlertCircle className="w-3 h-3 text-amber-500" />
-                                        <span>Debe coincidir con un cliente registrado en el sistema.</span>
-                                    </p>
-                                )}
-
-                                {/* Dropdown flotante de catálogo de clientes */}
-                                {showCustomerDropdown && (
-                                    <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-52 overflow-y-auto divide-y divide-slate-100">
-                                        {loadingCustomers ? (
-                                            <div className="p-3 text-center text-xs text-slate-400 flex items-center justify-center gap-2">
-                                                <RefreshCw className="w-3.5 h-3.5 animate-spin text-indigo-600" />
-                                                <span>Buscando en catálogo...</span>
-                                            </div>
-                                        ) : customerSearchResults.length === 0 ? (
-                                            <div className="p-3 text-center text-xs text-slate-400">
-                                                No se encontró ningún cliente registrado con ese término.
-                                            </div>
-                                        ) : (
-                                            customerSearchResults.map((cust) => (
-                                                <div
-                                                    key={cust.id}
-                                                    onClick={() => handleSelectCustomer(cust)}
-                                                    className="p-2.5 hover:bg-indigo-50/70 cursor-pointer transition-colors text-xs flex items-center justify-between"
-                                                >
-                                                    <div>
-                                                        <div className="font-bold text-slate-800 flex items-center gap-1.5">
-                                                            <Building2 className="w-3.5 h-3.5 text-indigo-500" />
-                                                            <span>{cust.nombre}</span>
-                                                        </div>
-                                                        <div className="text-[10px] text-slate-500 mt-0.5">
-                                                            {cust.nombre_comercial && cust.nombre_comercial !== cust.nombre && (
-                                                                <span className="mr-2 italic text-slate-600 font-medium">"{cust.nombre_comercial}"</span>
-                                                            )}
-                                                            NIT: {cust.nit || 'N/A'} • NRC: {cust.nrc || 'N/A'}
-                                                        </div>
-                                                    </div>
-                                                    <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-full">
-                                                        Elegir
-                                                    </span>
-                                                </div>
-                                            ))
-                                        )}
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* PRODUCTO REQUERIDO */}
-                            <div>
-                                <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">Producto Requerido *</label>
-                                <select
-                                    value={orderForm.product_type}
-                                    onChange={(e) => handleProductTypeChange(e.target.value)}
-                                    className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 font-medium"
-                                >
-                                    {PRODUCT_PROFILES.map(p => (
-                                        <option key={p.id} value={p.id}>{p.name}</option>
-                                    ))}
-                                </select>
-                            </div>
-
-                            {/* CANTIDAD LBS */}
-                            <div>
-                                <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">Cantidad (Lbs) *</label>
-                                <input
-                                    type="number"
-                                    required
-                                    placeholder="ej. 5000"
-                                    value={orderForm.quantity_lbs}
-                                    onChange={(e) => setOrderForm({ ...orderForm, quantity_lbs: e.target.value })}
-                                    className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 font-bold"
-                                />
-                            </div>
-
-                            {/* FECHA DE ENTREGA */}
-                            <div>
-                                <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">Fecha de Entrega Requerida *</label>
-                                <input
-                                    type="date"
-                                    required
-                                    value={orderForm.required_delivery_date}
-                                    onChange={(e) => setOrderForm({ ...orderForm, required_delivery_date: e.target.value })}
-                                    className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 font-medium"
-                                />
-                            </div>
-
-                            {/* PRECIO ACORDADO ($/LB) CON AUTO-PULL CRM */}
-                            <div>
-                                <div className="flex items-center justify-between mb-1">
-                                    <label className="text-[10px] font-bold text-slate-600 uppercase">
-                                        Precio Acordado ($/Lb)
-                                    </label>
-                                    {agreedPriceNotice?.type === 'crm' && (
-                                        <span className="inline-flex items-center gap-1 text-[9px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded animate-pulse">
-                                            <Sparkles className="w-2.5 h-2.5 text-emerald-600" /> Auto CRM
-                                        </span>
-                                    )}
-                                </div>
-                                <MoneyInput
-                                    value={orderForm.price_per_lb}
-                                    onChange={(e) => {
-                                        setOrderForm({ ...orderForm, price_per_lb: e.target.value });
-                                        if (agreedPriceNotice?.type === 'crm') {
-                                            setAgreedPriceNotice(prev => ({ ...prev, overridden: true }));
-                                        }
-                                    }}
-                                    placeholder="ej. 1.25"
-                                    step="0.0001"
-                                    className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 font-medium text-xs focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                                />
-                                {loadingAgreements ? (
-                                    <p className="text-[10px] text-indigo-600 mt-1 flex items-center gap-1">
-                                        <RefreshCw className="w-2.5 h-2.5 animate-spin" /> Verificando acuerdos en CRM...
-                                    </p>
-                                ) : agreedPriceNotice ? (
-                                    <p className={`text-[10px] mt-1 font-medium flex items-center gap-1 ${agreedPriceNotice.type === 'crm' ? 'text-emerald-700' : 'text-slate-500'
-                                        }`}>
-                                        {agreedPriceNotice.type === 'crm' && <Check className="w-3 h-3 text-emerald-600" />}
-                                        <span>{agreedPriceNotice.label}</span>
-                                        {agreedPriceNotice.overridden && (
-                                            <span className="text-amber-600 italic">(manual)</span>
-                                        )}
-                                    </p>
-                                ) : null}
-                            </div>
-
-                            {/* BOTÓN GUARDAR */}
-                            <div className="flex items-end">
-                                <button
-                                    type="submit"
-                                    className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold shadow transition-all flex items-center justify-center gap-1.5"
-                                >
-                                    <Plus className="w-4 h-4" />
-                                    <span>Guardar Pedido</span>
-                                </button>
-                            </div>
-                        </div>
-                    </form>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setSelectedOrderToEdit(null);
+                                setIsCustomerOrderModalOpen(true);
+                            }}
+                            className="inline-flex items-center gap-1.5 text-xs font-bold bg-indigo-600 text-white px-4 py-2 rounded-xl shadow hover:bg-indigo-700 transition"
+                        >
+                            <Plus className="w-4 h-4" />
+                            <span>+ Registrar Nuevo Pedido</span>
+                        </button>
+                    </div>
 
                     {/* Tabla de Pedidos */}
-                    <div className="overflow-x-auto border border-slate-200 rounded-xl">
+                    <div className="overflow-x-auto border border-slate-200 rounded-2xl bg-white shadow-xs">
                         <table className="w-full text-left text-xs">
-                            <thead className="bg-slate-100 text-[10px] font-bold text-slate-600 uppercase">
+                            <thead className="bg-slate-50 text-[10px] font-bold text-slate-600 uppercase border-b border-slate-200">
                                 <tr>
                                     <th className="px-3 py-2.5">Cliente</th>
-                                    <th className="px-3 py-2.5">Producto</th>
+                                    <th className="px-3 py-2.5">Producto / Presentación</th>
                                     <th className="px-3 py-2.5 text-right">Cantidad (Lbs)</th>
                                     <th className="px-3 py-2.5 text-right">Precio ($/Lb)</th>
+                                    <th className="px-3 py-2.5">Lote Vinculado</th>
                                     <th className="px-3 py-2.5">Entrega</th>
                                     <th className="px-3 py-2.5">Estado</th>
                                     <th className="px-3 py-2.5 text-center">Acciones</th>
@@ -2632,48 +2563,81 @@ const ProductionCalendar = () => {
                             <tbody className="divide-y divide-slate-100">
                                 {customerOrders.length === 0 ? (
                                     <tr>
-                                        <td colSpan={7} className="px-3 py-6 text-center text-slate-400 font-medium">
+                                        <td colSpan={8} className="px-3 py-8 text-center text-slate-400 font-medium">
                                             No hay pedidos registrados todavía.
                                         </td>
                                     </tr>
                                 ) : (
                                     customerOrders.map(order => (
                                         <tr key={order.id} className="hover:bg-slate-50 transition-colors">
-                                            <td className="px-3 py-2">
+                                            <td className="px-3 py-2.5">
                                                 <div className="font-bold text-slate-900">{order.customer_name}</div>
                                                 {order.customer_id && (
-                                                    <span className="text-[10px] text-slate-400 font-normal">
+                                                    <span className="text-[10px] text-slate-400 font-normal block">
                                                         Cliente ID #{order.customer_id}
                                                     </span>
                                                 )}
                                             </td>
-                                            <td className="px-3 py-2 text-slate-700">{order.product_type}</td>
-                                            <td className="px-3 py-2 text-right font-bold text-indigo-600">
+                                            <td className="px-3 py-2.5">
+                                                <div className="text-slate-800 font-semibold">{order.product_type}</div>
+                                                <div className="text-[10px] text-slate-500">{order.presentation}</div>
+                                            </td>
+                                            <td className="px-3 py-2.5 text-right font-bold text-indigo-600 whitespace-nowrap">
                                                 {parseFloat(order.quantity_lbs || 0).toLocaleString()} Lbs
                                             </td>
-                                            <td className="px-3 py-2 text-right">
+                                            <td className="px-3 py-2.5 text-right whitespace-nowrap">
                                                 <span className="font-bold text-slate-800">
                                                     <Money value={order.price_per_lb} />
                                                 </span>
                                                 <span className="text-[10px] text-slate-400 block font-normal">/ Lb</span>
                                             </td>
-                                            <td className="px-3 py-2 text-slate-600">
+                                            <td className="px-3 py-2.5">
+                                                {order.linked_batch_code || order.lot_code ? (
+                                                    <span className="text-[10px] font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                                                        {order.linked_batch_code || order.lot_code}
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-[10px] text-slate-400">Sin lote</span>
+                                                )}
+                                            </td>
+                                            <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">
                                                 {order.required_delivery_date ? new Date(order.required_delivery_date).toLocaleDateString('es-SV', { timeZone: 'UTC' }) : 'N/A'}
                                             </td>
-                                            <td className="px-3 py-2">
+                                            <td className="px-3 py-2.5">
                                                 <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800">
-                                                    {order.status}
+                                                    {order.delivery_status || order.status || 'pendiente'}
                                                 </span>
                                             </td>
-                                            <td className="px-3 py-2 text-center">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleDeleteOrder(order.id)}
-                                                    className="p-1 hover:bg-red-50 text-red-500 rounded transition-colors"
-                                                    title="Eliminar pedido"
-                                                >
-                                                    <Trash2 className="w-3.5 h-3.5" />
-                                                </button>
+                                            <td className="px-3 py-2.5 text-center whitespace-nowrap">
+                                                <div className="flex items-center justify-center gap-1">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setSelectedOrderToEdit(order);
+                                                            setIsCustomerOrderModalOpen(true);
+                                                        }}
+                                                        className="p-1 hover:bg-indigo-50 text-indigo-600 rounded transition-colors"
+                                                        title="Editar pedido"
+                                                    >
+                                                        <Edit3 className="w-3.5 h-3.5" />
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleOpenAlterDateModal('order', order)}
+                                                        className="p-1 hover:bg-amber-50 text-amber-700 rounded transition-colors"
+                                                        title="Alterar fecha de entrega"
+                                                    >
+                                                        <CalendarCheck className="w-3.5 h-3.5" />
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleDeleteOrder(order.id)}
+                                                        className="p-1 hover:bg-rose-50 text-rose-500 rounded transition-colors"
+                                                        title="Eliminar pedido"
+                                                    >
+                                                        <Trash2 className="w-3.5 h-3.5" />
+                                                    </button>
+                                                </div>
                                             </td>
                                         </tr>
                                     ))
@@ -2683,6 +2647,76 @@ const ProductionCalendar = () => {
                     </div>
                 </div>
             </Modal>
+
+            {/* MODAL NORMALIZADO DE PEDIDO DE CLIENTE */}
+            <EggCustomerOrderModal
+                isOpen={isCustomerOrderModalOpen}
+                onClose={() => {
+                    setIsCustomerOrderModalOpen(false);
+                    setSelectedOrderToEdit(null);
+                }}
+                orderToEdit={selectedOrderToEdit}
+                onOrderSaved={() => {
+                    fetchOrders();
+                    fetchSuggestions();
+                }}
+            />
+
+            {/* MODAL PARA ALTERAR FECHA DE PRODUCCIÓN / PEDIDO */}
+            {alterDateItem && (
+                <Modal
+                    isOpen={!!alterDateItem}
+                    onClose={() => setAlterDateItem(null)}
+                    title="Alterar / Reprogramar Fecha en Calendario"
+                    maxWidth="max-w-md"
+                    zIndex="z-[1200]"
+                >
+                    <form onSubmit={handleSaveAlteredDate} className="space-y-4">
+                        <div className="p-3.5 bg-indigo-50/70 rounded-2xl border border-indigo-100 text-xs">
+                            <span className="text-[10px] font-bold text-indigo-600 uppercase block mb-1">
+                                {alterDateItem.type === 'production' ? 'Producción Programada' : 'Pedido de Cliente'}:
+                            </span>
+                            <p className="font-black text-slate-900 leading-tight">
+                                {alterDateItem.title}
+                            </p>
+                            <p className="text-[11px] text-slate-500 mt-2">
+                                Fecha actual: <strong className="text-slate-700">{alterDateItem.currentDate || 'Sin fecha'}</strong>
+                            </p>
+                        </div>
+
+                        <div>
+                            <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+                                Nueva Fecha Asignada *
+                            </label>
+                            <input
+                                type="date"
+                                required
+                                value={newAlteredDate}
+                                onChange={(e) => setNewAlteredDate(e.target.value)}
+                                className="w-full text-xs font-bold border border-slate-300 rounded-xl px-3 py-2 text-slate-900 outline-none focus:border-indigo-500 bg-white"
+                            />
+                        </div>
+
+                        <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                            <button
+                                type="button"
+                                onClick={() => setAlterDateItem(null)}
+                                className="px-3.5 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                type="submit"
+                                disabled={isAlteringDate}
+                                className="px-4 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow transition flex items-center gap-1.5 disabled:opacity-60"
+                            >
+                                {isAlteringDate ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <CalendarCheck className="w-3.5 h-3.5" />}
+                                <span>Guardar Nueva Fecha</span>
+                            </button>
+                        </div>
+                    </form>
+                </Modal>
+            )}
 
             {/* ========================================================================= */}
             {/* MODAL 4: PLANIFICADOR DE MATERIA PRIMA E INSUMOS (MRP) */}
