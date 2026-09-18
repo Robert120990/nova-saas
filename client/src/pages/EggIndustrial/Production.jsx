@@ -52,6 +52,7 @@ const EggProduction = () => {
     const [batches, setBatches] = useState([]);
     const [rawMaterials, setRawMaterials] = useState([]);
     const [availableRemanentes, setAvailableRemanentes] = useState([]);
+    const [showAllRemanentes, setShowAllRemanentes] = useState(false);
     const [openExportMenuId, setOpenExportMenuId] = useState(null);
     const [cipLogs, setCipLogs] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -274,6 +275,8 @@ const EggProduction = () => {
         const presStr = batch.presentation || 'cubeta 30LB';
         const presList = presStr.split(',').map(s => s.trim()).filter(Boolean);
 
+        const assignedRemIds = (batch.remanentes_used || []).map(r => r.id);
+
         setBatchForm({
             product_type: batch.product_type || 'huevo entero',
             presentation: presStr,
@@ -281,7 +284,7 @@ const EggProduction = () => {
             run_number: runNum,
             scheduled_production_id: batch.scheduled_production_id || null,
             raw_materials: mappedRms.length > 0 ? mappedRms : [{ raw_material_id: '', quantity_lbs: '', boxes_count: '', tarimas: [] }],
-            remanente_ids: [],
+            remanente_ids: assignedRemIds,
             ingredients: {
                 boxes_count: formula.boxes_count || formula.raw_egg_boxes || '',
                 water_bottles: formula.water_bottles || '',
@@ -296,8 +299,54 @@ const EggProduction = () => {
             notes: batch.notes || ''
         });
 
+        // Cargar remanentes disponibles incluyendo los asignados a este lote
+        axios.get('/api/egg-industrial/remanentes/available', { params: { include_batch_id: batch.id } })
+            .then(res => {
+                if (res.data) setAvailableRemanentes(res.data);
+            })
+            .catch(() => {});
+
         setCipBlockedError(null);
         setIsNewBatchModalOpen(true);
+    };
+
+    const handleMarkRemanenteUsed = async (e, rem) => {
+        e.stopPropagation();
+        if (!window.confirm(`¿Confirmas que este remanente de ${parseFloat(rem.quantity_lbs || rem.weight_lbs || 0).toFixed(1)} Lbs ya fue utilizado en una producción anterior?`)) return;
+        try {
+            await axios.put(`/api/egg-industrial/remanentes/${rem.id}`, {
+                status: 'asignado_a_lote',
+                notes: (rem.notes ? rem.notes + ' | ' : '') + 'Marcado manualmente como utilizado en producción anterior'
+            });
+            toast.success('Remanente marcado como utilizado con éxito.');
+            setBatchForm(prev => ({
+                ...prev,
+                remanente_ids: (prev.remanente_ids || []).filter(id => id !== rem.id)
+            }));
+            const res = await axios.get('/api/egg-industrial/remanentes/available', {
+                params: showAllRemanentes ? { all: 'true' } : (editingBatch ? { include_batch_id: editingBatch.id } : {})
+            });
+            setAvailableRemanentes(res.data || []);
+        } catch (err) {
+            toast.error('Error al actualizar el estado del remanente.');
+        }
+    };
+
+    const handleReactivateRemanente = async (e, rem) => {
+        e.stopPropagation();
+        try {
+            await axios.put(`/api/egg-industrial/remanentes/${rem.id}`, {
+                status: 'disponible',
+                target_batch_id: null
+            });
+            toast.success('Remanente reactivado como disponible con éxito.');
+            const res = await axios.get('/api/egg-industrial/remanentes/available', {
+                params: showAllRemanentes ? { all: 'true' } : (editingBatch ? { include_batch_id: editingBatch.id } : {})
+            });
+            setAvailableRemanentes(res.data || []);
+        } catch (err) {
+            toast.error('Error al reactivar el remanente.');
+        }
     };
 
     // Funciones para gestionar tarimas en modal Agregar Más Tarimas
@@ -1034,6 +1083,7 @@ const EggProduction = () => {
                     operator_name: batchForm.operator_name,
                     notes: batchForm.notes,
                     raw_materials: batchForm.raw_materials,
+                    remanente_ids: batchForm.remanente_ids || [],
                     ingredients: batchForm.ingredients
                 });
                 toast.success(res.data?.message || 'Lote de producción actualizado exitosamente.');
@@ -2248,9 +2298,31 @@ const EggProduction = () => {
                                             Sobrantes guardados (huevo en leche, mezclas previas) listos para integrarse en esta formulación.
                                         </p>
                                     </div>
-                                    <span className="text-xs bg-white px-2.5 py-1 rounded-lg border border-teal-200 text-teal-800 font-bold self-start sm:self-auto">
-                                        {availableRemanentes.length} disponibles
-                                    </span>
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={async () => {
+                                                const nextVal = !showAllRemanentes;
+                                                setShowAllRemanentes(nextVal);
+                                                try {
+                                                    const res = await axios.get('/api/egg-industrial/remanentes/available', {
+                                                        params: nextVal ? { all: 'true' } : (editingBatch ? { include_batch_id: editingBatch.id } : {})
+                                                    });
+                                                    setAvailableRemanentes(res.data || []);
+                                                } catch (e) {}
+                                            }}
+                                            className={`text-[11px] px-2.5 py-1 rounded-lg border font-semibold transition-all ${
+                                                showAllRemanentes 
+                                                    ? 'bg-teal-700 text-white border-teal-700' 
+                                                    : 'bg-white text-teal-800 border-teal-300 hover:bg-teal-100'
+                                            }`}
+                                        >
+                                            {showAllRemanentes ? 'Ver Solo Disponibles' : 'Ver Todos / Historial'}
+                                        </button>
+                                        <span className="text-xs bg-white px-2.5 py-1 rounded-lg border border-teal-200 text-teal-800 font-bold self-start sm:self-auto">
+                                            {availableRemanentes.filter(r => r.status === 'disponible').length} disponibles
+                                        </span>
+                                    </div>
                                 </div>
 
                                 {availableRemanentes.length === 0 ? (
@@ -2261,29 +2333,44 @@ const EggProduction = () => {
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
                                         {availableRemanentes.map(rem => {
                                             const isSelected = (batchForm.remanente_ids || []).includes(rem.id);
+                                            const isAssigned = rem.status === 'asignado_a_lote';
                                             return (
                                                 <div
                                                     key={rem.id}
                                                     onClick={() => {
+                                                        if (isAssigned && !isSelected) return;
                                                         const current = batchForm.remanente_ids || [];
                                                         const updated = isSelected ? current.filter(id => id !== rem.id) : [...current, rem.id];
                                                         setBatchForm({ ...batchForm, remanente_ids: updated });
                                                     }}
-                                                    className={`p-3 rounded-xl border cursor-pointer transition-all flex items-start justify-between gap-2 ${isSelected
-                                                            ? 'bg-white border-teal-500 shadow-sm ring-2 ring-teal-500/20'
-                                                            : 'bg-white/70 border-teal-200/70 hover:bg-white'
-                                                        }`}
+                                                    className={`p-3 rounded-xl border transition-all flex items-start justify-between gap-2 ${
+                                                        isSelected
+                                                            ? 'bg-white border-teal-500 shadow-sm ring-2 ring-teal-500/20 cursor-pointer'
+                                                            : isAssigned
+                                                            ? 'bg-slate-100/80 border-slate-200 text-slate-500 cursor-default opacity-85'
+                                                            : 'bg-white/70 border-teal-200/70 hover:bg-white cursor-pointer'
+                                                    }`}
                                                 >
                                                     <div className="space-y-1">
                                                         <div className="flex items-center gap-2">
                                                             <input
                                                                 type="checkbox"
                                                                 checked={isSelected}
-                                                                onChange={() => { }}
+                                                                disabled={isAssigned && !isSelected}
+                                                                onChange={(e) => {
+                                                                    e.stopPropagation();
+                                                                    if (isAssigned && !isSelected) return;
+                                                                    const current = batchForm.remanente_ids || [];
+                                                                    const updated = isSelected ? current.filter(id => id !== rem.id) : [...current, rem.id];
+                                                                    setBatchForm({ ...batchForm, remanente_ids: updated });
+                                                                }}
                                                                 className="rounded border-slate-300 text-teal-600 focus:ring-teal-500"
                                                             />
                                                             <span className="text-xs font-bold text-slate-900">{rem.batch_code_display || `Lote #${rem.batch_id}`}</span>
                                                             <span className="text-[10px] px-1.5 py-0.2 rounded bg-teal-100 text-teal-800 font-semibold uppercase">{rem.remanente_type || 'pasteurizado'}</span>
+                                                            {isAssigned && (
+                                                                <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-200 text-slate-700 font-bold">Usado</span>
+                                                            )}
                                                         </div>
                                                         <div className="text-[11px] text-slate-600">
                                                             <span>{rem.product_type} • </span>
@@ -2292,9 +2379,33 @@ const EggProduction = () => {
                                                         {rem.notes && (
                                                             <p className="text-[10px] text-slate-500 line-clamp-1">{rem.notes}</p>
                                                         )}
+                                                        {isSelected && (
+                                                            <span className="inline-block text-[10px] font-bold text-teal-700 bg-teal-50 px-1.5 py-0.5 rounded border border-teal-200">
+                                                                ✓ Seleccionado para esta formulación
+                                                            </span>
+                                                        )}
                                                     </div>
-                                                    <div className="text-right">
-                                                        <span className="text-[10px] font-bold text-teal-700">{parseFloat(rem.quantity_lbs || rem.weight_lbs || 0).toFixed(1)} Lbs</span>
+                                                    <div className="flex flex-col items-end gap-1.5">
+                                                        <span className="text-[11px] font-bold text-teal-700">{parseFloat(rem.quantity_lbs || rem.weight_lbs || 0).toFixed(1)} Lbs</span>
+                                                        {!isAssigned ? (
+                                                            <button
+                                                                type="button"
+                                                                title="Marcar como ya utilizado en corrida previa"
+                                                                onClick={(e) => handleMarkRemanenteUsed(e, rem)}
+                                                                className="text-[10px] font-semibold text-slate-600 hover:text-amber-700 bg-slate-100 hover:bg-amber-100 px-2 py-0.5 rounded border border-slate-200 transition-colors"
+                                                            >
+                                                                Ya usado
+                                                            </button>
+                                                        ) : (
+                                                            <button
+                                                                type="button"
+                                                                title="Reactivar como disponible"
+                                                                onClick={(e) => handleReactivateRemanente(e, rem)}
+                                                                className="text-[10px] font-semibold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-2 py-0.5 rounded border border-indigo-200 transition-colors"
+                                                            >
+                                                                Reactivar
+                                                            </button>
+                                                        )}
                                                     </div>
                                                 </div>
                                             );
