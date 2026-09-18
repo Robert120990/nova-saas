@@ -563,13 +563,11 @@ const RawMaterialPlannerModal = ({ isOpen, onClose, initialDate = new Date() }) 
                         </span>
                     </div>
 
-                    <div className={`border rounded-xl p-3 shadow-sm ${
-                        isDeficit ? 'bg-amber-50/70 border-amber-200' : 'bg-emerald-50/70 border-emerald-200'
-                    }`}>
+                    <div className={`border rounded-xl p-3 shadow-sm ${isDeficit ? 'bg-amber-50/70 border-amber-200' : 'bg-emerald-50/70 border-emerald-200'
+                        }`}>
                         <div className="flex items-center justify-between">
-                            <span className={`text-[10px] font-bold uppercase tracking-wider block ${
-                                isDeficit ? 'text-amber-800' : 'text-emerald-800'
-                            }`}>
+                            <span className={`text-[10px] font-bold uppercase tracking-wider block ${isDeficit ? 'text-amber-800' : 'text-emerald-800'
+                                }`}>
                                 Balance Neto MP
                             </span>
                             {isDeficit ? (
@@ -579,20 +577,17 @@ const RawMaterialPlannerModal = ({ isOpen, onClose, initialDate = new Date() }) 
                             )}
                         </div>
                         <div className="flex items-baseline gap-1 mt-0.5">
-                            <span className={`text-lg sm:text-xl font-black ${
-                                isDeficit ? 'text-amber-700' : 'text-emerald-700'
-                            }`}>
+                            <span className={`text-lg sm:text-xl font-black ${isDeficit ? 'text-amber-700' : 'text-emerald-700'
+                                }`}>
                                 {isDeficit ? '' : '+'}{eggBal.net_balance_boxes?.toLocaleString() || 0}
                             </span>
-                            <span className={`text-[11px] font-semibold ${
-                                isDeficit ? 'text-amber-700' : 'text-emerald-700'
-                            }`}>
+                            <span className={`text-[11px] font-semibold ${isDeficit ? 'text-amber-700' : 'text-emerald-700'
+                                }`}>
                                 cajas
                             </span>
                         </div>
-                        <span className={`text-[10px] font-semibold block mt-0.5 ${
-                            isDeficit ? 'text-amber-700' : 'text-emerald-700'
-                        }`}>
+                        <span className={`text-[10px] font-semibold block mt-0.5 ${isDeficit ? 'text-amber-700' : 'text-emerald-700'
+                            }`}>
                             {isDeficit ? 'Déficit para cubrir el mes' : 'Stock suficiente para el mes'}
                         </span>
                     </div>
@@ -618,11 +613,10 @@ const RawMaterialPlannerModal = ({ isOpen, onClose, initialDate = new Date() }) 
                     <button
                         type="button"
                         onClick={() => setActiveTab('egg')}
-                        className={`px-3.5 py-2 text-xs font-bold rounded-t-xl transition-all flex items-center gap-1.5 whitespace-nowrap ${
-                            activeTab === 'egg'
+                        className={`px-3.5 py-2 text-xs font-bold rounded-t-xl transition-all flex items-center gap-1.5 whitespace-nowrap ${activeTab === 'egg'
                                 ? 'bg-indigo-600 text-white shadow-sm'
                                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                        }`}
+                            }`}
                     >
                         <Boxes className="w-4 h-4" />
                         <span>Huevo Cáscara & Camiones</span>
@@ -631,11 +625,10 @@ const RawMaterialPlannerModal = ({ isOpen, onClose, initialDate = new Date() }) 
                     <button
                         type="button"
                         onClick={() => setActiveTab('ingredients')}
-                        className={`px-3.5 py-2 text-xs font-bold rounded-t-xl transition-all flex items-center gap-1.5 whitespace-nowrap ${
-                            activeTab === 'ingredients'
+                        className={`px-3.5 py-2 text-xs font-bold rounded-t-xl transition-all flex items-center gap-1.5 whitespace-nowrap ${activeTab === 'ingredients'
                                 ? 'bg-indigo-600 text-white shadow-sm'
                                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                        }`}
+                            }`}
                     >
                         <Droplets className="w-4 h-4" />
                         <span>Insumos & Aditivos (H2O / Ácido)</span>
@@ -644,11 +637,10 @@ const RawMaterialPlannerModal = ({ isOpen, onClose, initialDate = new Date() }) 
                     <button
                         type="button"
                         onClick={() => setActiveTab('packaging')}
-                        className={`px-3.5 py-2 text-xs font-bold rounded-t-xl transition-all flex items-center gap-1.5 whitespace-nowrap ${
-                            activeTab === 'packaging'
+                        className={`px-3.5 py-2 text-xs font-bold rounded-t-xl transition-all flex items-center gap-1.5 whitespace-nowrap ${activeTab === 'packaging'
                                 ? 'bg-indigo-600 text-white shadow-sm'
                                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                        }`}
+                            }`}
                     >
                         <PackageCheck className="w-4 h-4" />
                         <span>Cubetas & Empaques</span>
@@ -657,11 +649,10 @@ const RawMaterialPlannerModal = ({ isOpen, onClose, initialDate = new Date() }) 
                     <button
                         type="button"
                         onClick={() => setActiveTab('orders')}
-                        className={`px-3.5 py-2 text-xs font-bold rounded-t-xl transition-all flex items-center gap-1.5 whitespace-nowrap ${
-                            activeTab === 'orders'
+                        className={`px-3.5 py-2 text-xs font-bold rounded-t-xl transition-all flex items-center gap-1.5 whitespace-nowrap ${activeTab === 'orders'
                                 ? 'bg-indigo-600 text-white shadow-sm'
                                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                        }`}
+                            }`}
                     >
                         <Printer className="w-4 h-4" />
                         <span>Orden Consolidada de Abastecimiento</span>
@@ -966,22 +957,20 @@ const RawMaterialPlannerModal = ({ isOpen, onClose, initialDate = new Date() }) 
                                                                 <button
                                                                     type="button"
                                                                     onClick={() => updateProviderAllocation(alloc.id, 'container_capacity', 900)}
-                                                                    className={`px-1.5 py-0.5 rounded text-[9px] font-bold transition-all ${
-                                                                        parseInt(alloc.container_capacity) === 900
+                                                                    className={`px-1.5 py-0.5 rounded text-[9px] font-bold transition-all ${parseInt(alloc.container_capacity) === 900
                                                                             ? 'bg-indigo-600 text-white'
                                                                             : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
-                                                                    }`}
+                                                                        }`}
                                                                 >
                                                                     900 cjs
                                                                 </button>
                                                                 <button
                                                                     type="button"
                                                                     onClick={() => updateProviderAllocation(alloc.id, 'container_capacity', 600)}
-                                                                    className={`px-1.5 py-0.5 rounded text-[9px] font-bold transition-all ${
-                                                                        parseInt(alloc.container_capacity) === 600
+                                                                    className={`px-1.5 py-0.5 rounded text-[9px] font-bold transition-all ${parseInt(alloc.container_capacity) === 600
                                                                             ? 'bg-indigo-600 text-white'
                                                                             : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
-                                                                    }`}
+                                                                        }`}
                                                                 >
                                                                     600 cjs
                                                                 </button>
@@ -1075,11 +1064,10 @@ const RawMaterialPlannerModal = ({ isOpen, onClose, initialDate = new Date() }) 
                                             <div className="flex items-center gap-2">
                                                 <span className="text-slate-500 font-medium">Meta Requerida:</span>
                                                 <strong className="text-slate-800">{targetDemandBoxes.toLocaleString()} cjs</strong>
-                                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                                                    totalAllocatedBoxes >= targetDemandBoxes
+                                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${totalAllocatedBoxes >= targetDemandBoxes
                                                         ? 'bg-emerald-100 text-emerald-800'
                                                         : 'bg-amber-100 text-amber-800'
-                                                }`}>
+                                                    }`}>
                                                     {coveragePercent}% Cubierto
                                                 </span>
                                             </div>
@@ -1088,9 +1076,8 @@ const RawMaterialPlannerModal = ({ isOpen, onClose, initialDate = new Date() }) 
                                         {/* Barra de Progreso */}
                                         <div className="w-full bg-slate-200 rounded-full h-2 overflow-hidden">
                                             <div
-                                                className={`h-full transition-all rounded-full ${
-                                                    totalAllocatedBoxes >= targetDemandBoxes ? 'bg-emerald-600' : 'bg-indigo-600'
-                                                }`}
+                                                className={`h-full transition-all rounded-full ${totalAllocatedBoxes >= targetDemandBoxes ? 'bg-emerald-600' : 'bg-indigo-600'
+                                                    }`}
                                                 style={{ width: `${Math.min(100, coveragePercent)}%` }}
                                             />
                                         </div>
@@ -1175,7 +1162,7 @@ const RawMaterialPlannerModal = ({ isOpen, onClose, initialDate = new Date() }) 
                                 </div>
 
                                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                                    {/* Agua purificada */}
+                                    {/* liquido a */}
                                     <div className="p-3.5 bg-white border border-slate-200 rounded-xl shadow-sm space-y-1.5">
                                         <div className="flex items-center justify-between">
                                             <span className="text-xs font-bold text-slate-800">Agua Desmineralizada H2O</span>

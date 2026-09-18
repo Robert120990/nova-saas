@@ -497,7 +497,7 @@ const EggProduction = () => {
         if (availableTarimas.length === 0 && targetLot.tarimas_json) {
             try {
                 availableTarimas = typeof targetLot.tarimas_json === 'string' ? JSON.parse(targetLot.tarimas_json) : targetLot.tarimas_json;
-            } catch (err) {}
+            } catch (err) { }
         }
 
         const updated = [...addTarimasModal.raw_materials];
@@ -532,11 +532,11 @@ const EggProduction = () => {
     const handleAddTarimasSubmit = async (e) => {
         e.preventDefault();
         const validRms = (addTarimasModal.raw_materials || []).filter(rm => rm.raw_material_id && parseFloat(rm.quantity_lbs || 0) > 0);
-        
+
         if (validRms.length === 0) {
             return toast.error('Debe seleccionar al menos una tarima o lote con peso válido.');
         }
-        
+
         setAddTarimasModal(prev => ({ ...prev, isSubmitting: true }));
         try {
             const res = await axios.post(`/api/egg-industrial/batches/${addTarimasModal.batch.id}/tarimas`, {
@@ -624,11 +624,11 @@ const EggProduction = () => {
                 responseType: 'blob'
             });
             const ext = format === 'pdf' ? 'pdf' : format === 'excel' ? 'xlsx' : 'docx';
-            const mime = format === 'pdf' 
-                ? 'application/pdf' 
-                : format === 'excel' 
-                ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-                : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+            const mime = format === 'pdf'
+                ? 'application/pdf'
+                : format === 'excel'
+                    ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                    : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
             const blob = new Blob([res.data], { type: mime });
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -916,7 +916,7 @@ const EggProduction = () => {
         const { lotCode, tarimaNumber, _palletId, rawText, loadAll } = scannedData;
 
         // 1. Buscar lote en rawMaterials
-        const lot = rawMaterials.find(m => 
+        const lot = rawMaterials.find(m =>
             (m.provider_lot || '').trim().toUpperCase() === (lotCode || '').trim().toUpperCase() ||
             String(m.id) === String(lotCode)
         );
@@ -936,7 +936,7 @@ const EggProduction = () => {
         if (availableTarimas.length === 0 && lot.tarimas_json) {
             try {
                 availableTarimas = typeof lot.tarimas_json === 'string' ? JSON.parse(lot.tarimas_json) : lot.tarimas_json;
-            } catch (e) {}
+            } catch (e) { }
         }
 
         const isAddContext = scannerContext === 'add_tarimas';
@@ -1254,17 +1254,15 @@ const EggProduction = () => {
                 <div className="flex flex-wrap gap-1 p-1 bg-slate-100 rounded-xl border border-slate-200 w-fit">
                     <button
                         onClick={() => { setActiveTab('batches'); setCipBlockedError(null); setHaccpViolationAlert(null); }}
-                        className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${
-                            activeTab === 'batches' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'
-                        }`}
+                        className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'batches' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                            }`}
                     >
                         Lotes de Producción
                     </button>
                     <button
                         onClick={() => { setActiveTab('cip'); setCipBlockedError(null); setHaccpViolationAlert(null); }}
-                        className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${
-                            activeTab === 'cip' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'
-                        }`}
+                        className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'cip' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                            }`}
                     >
                         Registros de Sanitización (CIP)
                     </button>
@@ -1720,9 +1718,8 @@ const EggProduction = () => {
                                     <div className="space-y-1.5">
                                         <div className="flex items-center gap-2">
                                             <span className="text-xs font-bold text-slate-900 capitalize">{log.equipment_name}</span>
-                                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
-                                                log.validation_status === 'completado' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'
-                                            }`}>
+                                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${log.validation_status === 'completado' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'
+                                                }`}>
                                                 {log.validation_status}
                                             </span>
                                         </div>
@@ -1732,7 +1729,7 @@ const EggProduction = () => {
                                             <span>Operador: <b className="text-slate-700">{log.operator_name}</b></span>
                                         </div>
                                     </div>
-                                    
+
                                     <div className="flex md:flex-col justify-between items-end text-right">
                                         <span className="text-[11px] text-slate-500 font-medium">{new Date(log.created_at).toLocaleString()}</span>
                                         <div className="flex gap-2 text-xs mt-2">
@@ -1755,829 +1752,826 @@ const EggProduction = () => {
 
             {isNewBatchModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
-                <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto space-y-6 text-slate-900">
-                    <div>
-                        <div className="flex items-center justify-between">
-                            <h2 className="text-base font-bold text-slate-900 uppercase tracking-tight flex items-center gap-2">
-                                {editingBatch ? (
-                                    <>
-                                        <Pencil className="h-5 w-5 text-indigo-600" />
-                                        <span>Editar Lote de Producción: <b className="text-indigo-700">{editingBatch.batch_code_display || editingBatch.batch_uuid}</b></span>
-                                    </>
-                                ) : (
-                                    <>
-                                        <Plus className="h-5 w-5 text-emerald-600" />
-                                        <span>Iniciar Nueva Producción</span>
-                                    </>
-                                )}
-                            </h2>
-                            <button
-                                type="button"
-                                onClick={() => { setIsNewBatchModalOpen(false); setEditingBatch(null); }}
-                                className="text-slate-400 hover:text-slate-700 p-1"
-                            >
-                                <XCircle size={20} />
-                            </button>
-                        </div>
-                        <p className="text-xs text-slate-500 mt-1">
-                            {editingBatch 
-                                ? 'Modifica los parámetros del lote, formulación y materias primas asignadas a esta corrida.'
-                                : 'El pasteurizador debe contar con una limpieza CIP aprobada en las últimas 12 horas.'}
-                        </p>
-                        <div className="h-px bg-slate-100 mt-4" />
-                    </div>
-
-                    {/* CIP Block Warning Alert */}
-                    {cipBlockedError && (
-                        <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 space-y-3 text-rose-900 shadow-sm">
-                            <div className="flex gap-2 items-center font-black text-xs uppercase tracking-wide text-rose-700">
-                                <AlertOctagon size={18} className="text-rose-600 shrink-0" />
-                                <span>Alerta de Inocuidad: Pasteurizador Sin Sanitización CIP Vigente</span>
-                            </div>
-                            <p className="text-xs leading-relaxed text-rose-800">
-                                {cipBlockedError}
-                            </p>
-                            <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-rose-200/70">
-                                <button
-                                    type="button"
-                                    onClick={handleQuickSanitize}
-                                    disabled={isSubmitting}
-                                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5"
-                                >
-                                    <Sparkles size={13} />
-                                    Auto-registrar CIP Aprobado de Hoy (1 clic)
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={(e) => handleCreateBatch(e, true)}
-                                    disabled={isSubmitting}
-                                    className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5"
-                                >
-                                    <ShieldAlert size={13} />
-                                    Iniciar de todos modos (Omitir CIP)
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => { setActiveTab('cip'); setCipBlockedError(null); setIsNewBatchModalOpen(false); }}
-                                    className="px-3 py-1.5 bg-white hover:bg-rose-100/60 border border-rose-300 text-rose-800 rounded-xl text-xs font-semibold transition-all"
-                                >
-                                    Ir a Bitácora CIP Manual
-                                </button>
-                            </div>
-                        </div>
-                    )}
-
-                    <form onSubmit={handleCreateBatch} className="space-y-5">
-                        {/* Selector de Producción Programada del Calendario */}
-                        <div className="bg-indigo-50/70 border border-indigo-200 rounded-2xl p-4 space-y-2">
+                    <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto space-y-6 text-slate-900">
+                        <div>
                             <div className="flex items-center justify-between">
-                                <label className="text-xs font-black text-indigo-900 uppercase tracking-wide flex items-center gap-1.5">
-                                    <Calendar className="w-4 h-4 text-indigo-600" />
-                                    <span>Vincular con Producción Programada del Calendario</span>
-                                </label>
-                                {selectedScheduledProd && (
+                                <h2 className="text-base font-bold text-slate-900 uppercase tracking-tight flex items-center gap-2">
+                                    {editingBatch ? (
+                                        <>
+                                            <Pencil className="h-5 w-5 text-indigo-600" />
+                                            <span>Editar Lote de Producción: <b className="text-indigo-700">{editingBatch.batch_code_display || editingBatch.batch_uuid}</b></span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Plus className="h-5 w-5 text-emerald-600" />
+                                            <span>Iniciar Nueva Producción</span>
+                                        </>
+                                    )}
+                                </h2>
+                                <button
+                                    type="button"
+                                    onClick={() => { setIsNewBatchModalOpen(false); setEditingBatch(null); }}
+                                    className="text-slate-400 hover:text-slate-700 p-1"
+                                >
+                                    <XCircle size={20} />
+                                </button>
+                            </div>
+                            <p className="text-xs text-slate-500 mt-1">
+                                {editingBatch
+                                    ? 'Modifica los parámetros del lote, formulación y materias primas asignadas a esta corrida.'
+                                    : 'El pasteurizador debe contar con una limpieza CIP aprobada en las últimas 12 horas.'}
+                            </p>
+                            <div className="h-px bg-slate-100 mt-4" />
+                        </div>
+
+                        {/* CIP Block Warning Alert */}
+                        {cipBlockedError && (
+                            <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 space-y-3 text-rose-900 shadow-sm">
+                                <div className="flex gap-2 items-center font-black text-xs uppercase tracking-wide text-rose-700">
+                                    <AlertOctagon size={18} className="text-rose-600 shrink-0" />
+                                    <span>Alerta de Inocuidad: Pasteurizador Sin Sanitización CIP Vigente</span>
+                                </div>
+                                <p className="text-xs leading-relaxed text-rose-800">
+                                    {cipBlockedError}
+                                </p>
+                                <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-rose-200/70">
                                     <button
                                         type="button"
-                                        onClick={() => handleSelectScheduledProduction(null)}
-                                        className="text-[11px] font-bold text-rose-600 hover:text-rose-800 underline transition-colors"
+                                        onClick={handleQuickSanitize}
+                                        disabled={isSubmitting}
+                                        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5"
                                     >
-                                        Desvincular
+                                        <Sparkles size={13} />
+                                        Auto-registrar CIP Aprobado de Hoy (1 clic)
                                     </button>
+                                    <button
+                                        type="button"
+                                        onClick={(e) => handleCreateBatch(e, true)}
+                                        disabled={isSubmitting}
+                                        className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5"
+                                    >
+                                        <ShieldAlert size={13} />
+                                        Iniciar de todos modos (Omitir CIP)
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => { setActiveTab('cip'); setCipBlockedError(null); setIsNewBatchModalOpen(false); }}
+                                        className="px-3 py-1.5 bg-white hover:bg-rose-100/60 border border-rose-300 text-rose-800 rounded-xl text-xs font-semibold transition-all"
+                                    >
+                                        Ir a Bitácora CIP Manual
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        <form onSubmit={handleCreateBatch} className="space-y-5">
+                            {/* Selector de Producción Programada del Calendario */}
+                            <div className="bg-indigo-50/70 border border-indigo-200 rounded-2xl p-4 space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <label className="text-xs font-black text-indigo-900 uppercase tracking-wide flex items-center gap-1.5">
+                                        <Calendar className="w-4 h-4 text-indigo-600" />
+                                        <span>Vincular con Producción Programada del Calendario</span>
+                                    </label>
+                                    {selectedScheduledProd && (
+                                        <button
+                                            type="button"
+                                            onClick={() => handleSelectScheduledProduction(null)}
+                                            className="text-[11px] font-bold text-rose-600 hover:text-rose-800 underline transition-colors"
+                                        >
+                                            Desvincular
+                                        </button>
+                                    )}
+                                </div>
+                                <select
+                                    value={selectedScheduledProd?.id || ''}
+                                    onChange={(e) => {
+                                        const found = scheduledProductions.find(p => String(p.id) === e.target.value);
+                                        handleSelectScheduledProduction(found || null);
+                                    }}
+                                    className="w-full px-3 py-2 bg-white border border-indigo-300 rounded-xl text-xs text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-xs"
+                                >
+                                    <option value="">-- Iniciar Producción Libre / Sin Programación Previa --</option>
+                                    {scheduledProductions.map(p => (
+                                        <option key={p.id} value={p.id}>
+                                            Lote: {p.lot_code} | {p.product_profile} ({parseFloat(p.target_quantity_lbs || 0).toLocaleString()} Lbs) - {p.production_date?.split('T')[0]} ({p.priority || 'media'})
+                                        </option>
+                                    ))}
+                                </select>
+                                {selectedScheduledProd ? (
+                                    <div className="text-[11px] text-indigo-800 font-medium flex items-center gap-2 pt-1 border-t border-indigo-200/60">
+                                        <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0 animate-pulse"></span>
+                                        <span>
+                                            Programado: <strong>{selectedScheduledProd.production_date?.split('T')[0]}</strong> •
+                                            Operador Asignado: <strong>{selectedScheduledProd.assigned_operator_name || 'Sin asignar'}</strong> •
+                                            Meta: <strong>{parseFloat(selectedScheduledProd.target_quantity_lbs || 0).toLocaleString()} Lbs</strong>
+                                        </span>
+                                    </div>
+                                ) : (
+                                    <p className="text-[10px] text-slate-500">
+                                        Selecciona una orden del calendario para precargar automáticamente producto, presentación, corrida y fórmula.
+                                    </p>
                                 )}
                             </div>
-                            <select
-                                value={selectedScheduledProd?.id || ''}
-                                onChange={(e) => {
-                                    const found = scheduledProductions.find(p => String(p.id) === e.target.value);
-                                    handleSelectScheduledProduction(found || null);
-                                }}
-                                className="w-full px-3 py-2 bg-white border border-indigo-300 rounded-xl text-xs text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-xs"
-                            >
-                                <option value="">-- Iniciar Producción Libre / Sin Programación Previa --</option>
-                                {scheduledProductions.map(p => (
-                                    <option key={p.id} value={p.id}>
-                                        Lote: {p.lot_code} | {p.product_profile} ({parseFloat(p.target_quantity_lbs || 0).toLocaleString()} Lbs) - {p.production_date?.split('T')[0]} ({p.priority || 'media'})
-                                    </option>
-                                ))}
-                            </select>
-                            {selectedScheduledProd ? (
-                                <div className="text-[11px] text-indigo-800 font-medium flex items-center gap-2 pt-1 border-t border-indigo-200/60">
-                                    <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0 animate-pulse"></span>
-                                    <span>
-                                        Programado: <strong>{selectedScheduledProd.production_date?.split('T')[0]}</strong> • 
-                                        Operador Asignado: <strong>{selectedScheduledProd.assigned_operator_name || 'Sin asignar'}</strong> • 
-                                        Meta: <strong>{parseFloat(selectedScheduledProd.target_quantity_lbs || 0).toLocaleString()} Lbs</strong>
-                                    </span>
-                                </div>
-                            ) : (
-                                <p className="text-[10px] text-slate-500">
-                                    Selecciona una orden del calendario para precargar automáticamente producto, presentación, corrida y fórmula.
-                                </p>
-                            )}
-                        </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <div>
-                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">Corrida del Día</label>
-                                <input
-                                    type="number"
-                                    min="1"
-                                    max="99"
-                                    value={batchForm.run_number}
-                                    onChange={(e) => setBatchForm({ ...batchForm, run_number: e.target.value })}
-                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                                    placeholder="Ej: 1"
-                                />
-                                <span className="text-[10px] text-indigo-600 font-medium block mt-1">Lote juliano: {String(batchForm.run_number || 1).padStart(2, '0')} - [Día] - 26</span>
-                            </div>
-
-                            <div>
-                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">Producto a Fabricar</label>
-                                <select
-                                    value={batchForm.product_type}
-                                    onChange={(e) => setBatchForm({ ...batchForm, product_type: e.target.value })}
-                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                                >
-                                    <option value="huevo entero">Huevo Entero Pasteurizado</option>
-                                    <option value="clara">Clara Pasteurizada</option>
-                                    <option value="yema salada">Yema Líquida Salada (10% sal)</option>
-                                    <option value="yema azucarada">Yema Líquida Azucarada (10% azúcar)</option>
-                                    <option value="fórmula especial">Fórmula Especial / HE Plus (18-21% sol)</option>
-                                </select>
-                            </div>
-
-                            <div>
-                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">
-                                    Presentaciones Comerciales (Múltiples)
-                                </label>
-                                <div className="flex flex-wrap gap-1.5 p-1.5 bg-white border border-slate-300 rounded-xl min-h-[38px] items-center">
-                                    {[
-                                        { id: 'cubeta 30LB', label: 'Cubeta 30 Lbs' },
-                                        { id: 'cubeta 32LB', label: 'Cubeta 32 Lbs' },
-                                        { id: 'galón 8LB', label: 'Galón 8 Lbs' },
-                                        { id: 'medio galón 4LB', label: 'Medio Galón 4 Lbs' },
-                                        { id: 'litro 2LB', label: 'Litro 2 Lbs' },
-                                        { id: 'bolsa 5LB', label: 'Bolsa 5 Lbs' }
-                                    ].map(p => {
-                                        const currentSelected = Array.isArray(batchForm.presentations) 
-                                            ? batchForm.presentations 
-                                            : (batchForm.presentation ? batchForm.presentation.split(',').map(s => s.trim()) : ['cubeta 30LB']);
-                                        const isSelected = currentSelected.includes(p.id);
-                                        return (
-                                            <button
-                                                key={p.id}
-                                                type="button"
-                                                onClick={() => {
-                                                    let updated;
-                                                    if (isSelected) {
-                                                        if (currentSelected.length === 1) return toast.info('Debe mantener al menos una presentación seleccionada.');
-                                                        updated = currentSelected.filter(x => x !== p.id);
-                                                    } else {
-                                                        updated = [...currentSelected, p.id];
-                                                    }
-                                                    setBatchForm({ ...batchForm, presentations: updated, presentation: updated.join(', ') });
-                                                }}
-                                                className={`px-2 py-0.5 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1 border ${
-                                                    isSelected 
-                                                        ? 'bg-indigo-50 border-indigo-300 text-indigo-700 shadow-2xs' 
-                                                        : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100'
-                                                }`}
-                                            >
-                                                {isSelected && <Check size={11} className="text-indigo-600" />}
-                                                <span>{p.label}</span>
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Materias Primas con Desglose de Tarimas y Cantidades */}
-                        <div className="space-y-4 bg-slate-50/80 p-4 rounded-2xl border border-slate-200">
-                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200/80 pb-2.5">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                 <div>
-                                    <label className="text-xs font-black text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
-                                        <Layers className="w-4 h-4 text-indigo-600" />
-                                        <span>Materia Prima Base (Lotes en Recepción & Tarimas)</span>
-                                    </label>
-                                    <p className="text-[11px] text-slate-500">
-                                        Selecciona lotes aprobados con saldo disponible o escanea las tarimas con la cámara.
-                                    </p>
+                                    <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">Corrida del Día</label>
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        max="99"
+                                        value={batchForm.run_number}
+                                        onChange={(e) => setBatchForm({ ...batchForm, run_number: e.target.value })}
+                                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                                        placeholder="Ej: 1"
+                                    />
+                                    <span className="text-[10px] text-indigo-600 font-medium block mt-1">Lote juliano: {String(batchForm.run_number || 1).padStart(2, '0')} - [Día] - 26</span>
                                 </div>
-                                <div className="flex flex-wrap items-center gap-2.5">
-                                    <button
-                                        type="button"
-                                        onClick={() => setScannerModalOpen(true)}
-                                        className="px-3.5 py-1.5 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm shadow-indigo-500/20"
-                                        title="Abrir cámara para escanear QR o código de barra de la tarima"
+
+                                <div>
+                                    <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">Producto a Fabricar</label>
+                                    <select
+                                        value={batchForm.product_type}
+                                        onChange={(e) => setBatchForm({ ...batchForm, product_type: e.target.value })}
+                                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                                     >
-                                        <Camera className="w-4 h-4" />
-                                        <span>Escanear Tarima (Cámara / QR)</span>
-                                    </button>
-                                    <div className="flex items-center gap-2 text-xs bg-white px-3 py-1.5 rounded-xl border border-slate-200 shadow-2xs">
-                                        <span className="text-slate-500 font-medium">Cajas: <strong className="text-indigo-700">{batchForm.raw_materials.reduce((s, rm) => s + (parseInt(rm.boxes_count) || (rm.tarimas || []).reduce((ts, t) => ts + (parseInt(t.boxes_count) || 0), 0)), 0)} cjs</strong></span>
-                                        <span className="text-slate-300">|</span>
-                                        <span className="text-slate-500 font-medium">Entrada: <strong className="text-emerald-700">{batchForm.raw_materials.reduce((s, rm) => s + parseFloat(rm.quantity_lbs || 0), 0).toFixed(2)} Lbs</strong></span>
+                                        <option value="huevo entero">Huevo Entero Pasteurizado</option>
+                                        <option value="clara">Clara Pasteurizada</option>
+                                        <option value="yema salada">Yema Líquida Salada (10% sal)</option>
+                                        <option value="yema azucarada">Yema Líquida Azucarada (10% azúcar)</option>
+                                        <option value="fórmula especial">Fórmula Especial / HE Plus (18-21% sol)</option>
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">
+                                        Presentaciones Comerciales (Múltiples)
+                                    </label>
+                                    <div className="flex flex-wrap gap-1.5 p-1.5 bg-white border border-slate-300 rounded-xl min-h-[38px] items-center">
+                                        {[
+                                            { id: 'cubeta 30LB', label: 'Cubeta 30 Lbs' },
+                                            { id: 'cubeta 32LB', label: 'Cubeta 32 Lbs' },
+                                            { id: 'galón 8LB', label: 'Galón 8 Lbs' },
+                                            { id: 'medio galón 4LB', label: 'Medio Galón 4 Lbs' },
+                                            { id: 'litro 2LB', label: 'Litro 2 Lbs' },
+                                            { id: 'bolsa 5LB', label: 'Bolsa 5 Lbs' }
+                                        ].map(p => {
+                                            const currentSelected = Array.isArray(batchForm.presentations)
+                                                ? batchForm.presentations
+                                                : (batchForm.presentation ? batchForm.presentation.split(',').map(s => s.trim()) : ['cubeta 30LB']);
+                                            const isSelected = currentSelected.includes(p.id);
+                                            return (
+                                                <button
+                                                    key={p.id}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        let updated;
+                                                        if (isSelected) {
+                                                            if (currentSelected.length === 1) return toast.info('Debe mantener al menos una presentación seleccionada.');
+                                                            updated = currentSelected.filter(x => x !== p.id);
+                                                        } else {
+                                                            updated = [...currentSelected, p.id];
+                                                        }
+                                                        setBatchForm({ ...batchForm, presentations: updated, presentation: updated.join(', ') });
+                                                    }}
+                                                    className={`px-2 py-0.5 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1 border ${isSelected
+                                                            ? 'bg-indigo-50 border-indigo-300 text-indigo-700 shadow-2xs'
+                                                            : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100'
+                                                        }`}
+                                                >
+                                                    {isSelected && <Check size={11} className="text-indigo-600" />}
+                                                    <span>{p.label}</span>
+                                                </button>
+                                            );
+                                        })}
                                     </div>
                                 </div>
                             </div>
 
-                            {batchForm.raw_materials.map((rm, idx) => {
-                                const selectedLot = rawMaterials.find(m => String(m.id) === String(rm.raw_material_id));
-                                let lotTarimas = selectedLot?.tarimas_available || [];
-                                if (lotTarimas.length === 0 && selectedLot?.tarimas_json) {
-                                    try {
-                                        lotTarimas = typeof selectedLot.tarimas_json === 'string'
-                                            ? JSON.parse(selectedLot.tarimas_json || '[]')
-                                            : (selectedLot.tarimas_json || []);
-                                    } catch (e) {
-                                        lotTarimas = [];
-                                    }
-                                }
-
-                                return (
-                                    <div key={idx} className="bg-white border border-slate-200/90 rounded-xl p-3.5 shadow-2xs space-y-3">
-                                        {/* Cabecera de línea de lote */}
-                                        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-                                            <div className="flex-1">
-                                                <select
-                                                    value={rm.raw_material_id}
-                                                    onChange={(e) => {
-                                                        const lotId = e.target.value;
-                                                        const lotObj = rawMaterials.find(m => String(m.id) === String(lotId));
-                                                        const updated = [...batchForm.raw_materials];
-                                                        updated[idx].raw_material_id = lotId;
-                                                        updated[idx].tarimas = [];
-                                                        if (lotObj) {
-                                                            updated[idx].quantity_lbs = '';
-                                                            updated[idx].boxes_count = '';
-                                                        }
-                                                        setBatchForm({ ...batchForm, raw_materials: updated });
-                                                    }}
-                                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-semibold focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10"
-                                                >
-                                                    <option value="">Seleccionar lote recepcionado...</option>
-                                                    {rawMaterials.map(m => {
-                                                        const isAgotado = m.is_depleted || parseFloat(m.stock_lbs || 0) <= 0.01;
-                                                        const isAlreadyChosen = batchForm.raw_materials.some((r, i) => i !== idx && r.raw_material_id === String(m.id));
-                                                        return (
-                                                            <option 
-                                                                key={m.id} 
-                                                                value={m.id} 
-                                                                disabled={isAgotado || isAlreadyChosen}
-                                                                className={isAgotado ? 'text-slate-400 bg-slate-50' : 'text-slate-900'}
-                                                            >
-                                                                {m.egg_type} - Lote: {m.provider_lot} ({m.provider_name || 'Prov.'}) | {isAgotado ? '🚫 [AGOTADO - 0 Lbs]' : `Stock: ${parseFloat(m.stock_lbs || 0).toFixed(0)} Lbs (${m.total_boxes || 0} cjs)`}
-                                                            </option>
-                                                        );
-                                                    })}
-                                                </select>
-                                            </div>
-
-                                            <div className="flex items-center gap-2">
-                                                <div className="w-28">
-                                                    <input
-                                                        type="number"
-                                                        value={rm.quantity_lbs}
-                                                        readOnly
-                                                        className="w-full px-3 py-2 bg-slate-100 border border-slate-200 rounded-xl text-xs text-slate-900 font-bold text-right cursor-not-allowed"
-                                                        placeholder="Total Lbs"
-                                                        title="Suma automática de las tarimas seleccionadas"
-                                                    />
-                                                </div>
-
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        setBatchForm({ ...batchForm, raw_materials: batchForm.raw_materials.filter((_, i) => i !== idx) });
-                                                    }}
-                                                    className="p-2 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-xl transition-colors shrink-0"
-                                                    title="Eliminar este lote"
-                                                >
-                                                    <XCircle size={17} />
-                                                </button>
-                                            </div>
+                            {/* Materias Primas con Desglose de Tarimas y Cantidades */}
+                            <div className="space-y-4 bg-slate-50/80 p-4 rounded-2xl border border-slate-200">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200/80 pb-2.5">
+                                    <div>
+                                        <label className="text-xs font-black text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
+                                            <Layers className="w-4 h-4 text-indigo-600" />
+                                            <span>Materia Prima Base (Lotes en Recepción & Tarimas)</span>
+                                        </label>
+                                        <p className="text-[11px] text-slate-500">
+                                            Selecciona lotes aprobados con saldo disponible o escanea las tarimas con la cámara.
+                                        </p>
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-2.5">
+                                        <button
+                                            type="button"
+                                            onClick={() => setScannerModalOpen(true)}
+                                            className="px-3.5 py-1.5 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm shadow-indigo-500/20"
+                                            title="Abrir cámara para escanear QR o código de barra de la tarima"
+                                        >
+                                            <Camera className="w-4 h-4" />
+                                            <span>Escanear Tarima (Cámara / QR)</span>
+                                        </button>
+                                        <div className="flex items-center gap-2 text-xs bg-white px-3 py-1.5 rounded-xl border border-slate-200 shadow-2xs">
+                                            <span className="text-slate-500 font-medium">Cajas: <strong className="text-indigo-700">{batchForm.raw_materials.reduce((s, rm) => s + (parseInt(rm.boxes_count) || (rm.tarimas || []).reduce((ts, t) => ts + (parseInt(t.boxes_count) || 0), 0)), 0)} cjs</strong></span>
+                                            <span className="text-slate-300">|</span>
+                                            <span className="text-slate-500 font-medium">Entrada: <strong className="text-emerald-700">{batchForm.raw_materials.reduce((s, rm) => s + parseFloat(rm.quantity_lbs || 0), 0).toFixed(2)} Lbs</strong></span>
                                         </div>
+                                    </div>
+                                </div>
 
-                                        {/* Espacio para selección y desglose de Tarimas de Recepción */}
-                                        {selectedLot && (
-                                            <div className="bg-slate-50/80 border border-slate-200/80 rounded-xl p-3 space-y-2.5">
-                                                <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="font-bold text-slate-700 text-[11px] uppercase tracking-wider flex items-center gap-1">
-                                                            <Layers size={13} className="text-indigo-600" />
-                                                            Tarimas Registradas en Recepción
-                                                        </span>
-                                                        {lotTarimas.length > 0 && (
-                                                            <span className="bg-indigo-100 text-indigo-700 text-[10px] font-bold px-2 py-0.5 rounded-full">
-                                                                {lotTarimas.filter(t => !t.is_depleted && !(t.available_boxes <= 0 && t.available_lbs <= 0.01)).length} disponibles de {lotTarimas.length}
-                                                            </span>
-                                                        )}
-                                                    </div>
+                                {batchForm.raw_materials.map((rm, idx) => {
+                                    const selectedLot = rawMaterials.find(m => String(m.id) === String(rm.raw_material_id));
+                                    let lotTarimas = selectedLot?.tarimas_available || [];
+                                    if (lotTarimas.length === 0 && selectedLot?.tarimas_json) {
+                                        try {
+                                            lotTarimas = typeof selectedLot.tarimas_json === 'string'
+                                                ? JSON.parse(selectedLot.tarimas_json || '[]')
+                                                : (selectedLot.tarimas_json || []);
+                                        } catch (e) {
+                                            lotTarimas = [];
+                                        }
+                                    }
 
-                                                    <div className="flex flex-wrap items-center gap-1.5">
-                                                        {lotTarimas.some(t => !t.is_depleted && !(t.available_boxes <= 0 && t.available_lbs <= 0.01) && !(rm.tarimas || []).some(it => parseInt(it.tarima_number) === parseInt(t.tarima_number))) && (
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => handleLoadAllAvailableTarimas(idx, lotTarimas)}
-                                                                className="px-2.5 py-1 bg-white hover:bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg text-[10px] font-bold transition-all shadow-2xs flex items-center gap-1"
-                                                            >
-                                                                <Check size={11} /> Cargar todas disponibles
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                </div>
-
-                                                {/* Chips de tarimas registradas para seleccionar con 1 clic */}
-                                                {lotTarimas.length > 0 ? (
-                                                    <div className="flex flex-wrap gap-1.5 pt-1">
-                                                        {lotTarimas.map((t) => {
-                                                            const isAdded = (rm.tarimas || []).some(it => parseInt(it.tarima_number) === parseInt(t.tarima_number));
-                                                            const isDepleted = t.is_depleted || (t.available_boxes <= 0 && t.available_lbs <= 0.01);
-                                                            const availBoxes = t.available_boxes ?? t.boxes_count ?? 0;
-                                                            const availLbs = t.available_lbs ?? t.net_weight_lbs ?? t.gross_weight_lbs ?? 0;
-
+                                    return (
+                                        <div key={idx} className="bg-white border border-slate-200/90 rounded-xl p-3.5 shadow-2xs space-y-3">
+                                            {/* Cabecera de línea de lote */}
+                                            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                                                <div className="flex-1">
+                                                    <select
+                                                        value={rm.raw_material_id}
+                                                        onChange={(e) => {
+                                                            const lotId = e.target.value;
+                                                            const lotObj = rawMaterials.find(m => String(m.id) === String(lotId));
+                                                            const updated = [...batchForm.raw_materials];
+                                                            updated[idx].raw_material_id = lotId;
+                                                            updated[idx].tarimas = [];
+                                                            if (lotObj) {
+                                                                updated[idx].quantity_lbs = '';
+                                                                updated[idx].boxes_count = '';
+                                                            }
+                                                            setBatchForm({ ...batchForm, raw_materials: updated });
+                                                        }}
+                                                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-semibold focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10"
+                                                    >
+                                                        <option value="">Seleccionar lote recepcionado...</option>
+                                                        {rawMaterials.map(m => {
+                                                            const isAgotado = m.is_depleted || parseFloat(m.stock_lbs || 0) <= 0.01;
+                                                            const isAlreadyChosen = batchForm.raw_materials.some((r, i) => i !== idx && r.raw_material_id === String(m.id));
                                                             return (
-                                                                <button
-                                                                    key={t.tarima_number}
-                                                                    type="button"
-                                                                    disabled={isAdded || isDepleted}
-                                                                    onClick={() => handleAddSpecificTarimaToRm(idx, t)}
-                                                                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 border ${
-                                                                        isAdded
-                                                                            ? 'bg-emerald-50 border-emerald-300 text-emerald-700 shadow-2xs'
-                                                                            : isDepleted
-                                                                            ? 'bg-slate-100 border-slate-200 text-slate-400 opacity-60 cursor-not-allowed line-through'
-                                                                            : 'bg-white hover:bg-indigo-50 border-slate-300 hover:border-indigo-400 text-slate-700 hover:text-indigo-700 shadow-2xs'
-                                                                    }`}
-                                                                    title={isDepleted ? 'Tarima 100% consumida en corridas anteriores' : isAdded ? 'Tarima ya agregada' : 'Hacer clic para agregar a esta corrida'}
+                                                                <option
+                                                                    key={m.id}
+                                                                    value={m.id}
+                                                                    disabled={isAgotado || isAlreadyChosen}
+                                                                    className={isAgotado ? 'text-slate-400 bg-slate-50' : 'text-slate-900'}
                                                                 >
-                                                                    <span>Tarima #{t.tarima_number}</span>
-                                                                    <span className="text-[10px] font-semibold opacity-80">
-                                                                        ({availBoxes} cjs • {parseFloat(availLbs).toFixed(0)} Lbs)
-                                                                    </span>
-                                                                    {isAdded && <Check size={12} className="text-emerald-600" />}
-                                                                    {isDepleted && <span className="text-[9px] text-rose-500 font-bold ml-0.5">Agotada</span>}
-                                                                </button>
+                                                                    {m.egg_type} - Lote: {m.provider_lot} ({m.provider_name || 'Prov.'}) | {isAgotado ? '🚫 [AGOTADO - 0 Lbs]' : `Stock: ${parseFloat(m.stock_lbs || 0).toFixed(0)} Lbs (${m.total_boxes || 0} cjs)`}
+                                                                </option>
                                                             );
                                                         })}
-                                                    </div>
-                                                ) : (
-                                                    <p className="text-xs text-slate-400 italic py-1">
-                                                        Este lote no tiene tarimas registradas en recepción.
-                                                    </p>
-                                                )}
+                                                    </select>
+                                                </div>
 
-                                                {/* Lista de tarimas agregadas para consumir en esta corrida (admite consumo parcial) */}
-                                                {rm.tarimas && rm.tarimas.length > 0 && (
-                                                    <div className="space-y-2 pt-2 border-t border-slate-200/80">
-                                                        <div className="text-[10px] font-bold text-slate-500 uppercase px-1 flex items-center justify-between">
-                                                            <span>Tarimas a Quebrar en esta Corrida</span>
-                                                            <span className="text-indigo-600 font-medium lowercase">admite consumo parcial de cajas</span>
+                                                <div className="flex items-center gap-2">
+                                                    <div className="w-28">
+                                                        <input
+                                                            type="number"
+                                                            value={rm.quantity_lbs}
+                                                            readOnly
+                                                            className="w-full px-3 py-2 bg-slate-100 border border-slate-200 rounded-xl text-xs text-slate-900 font-bold text-right cursor-not-allowed"
+                                                            placeholder="Total Lbs"
+                                                            title="Suma automática de las tarimas seleccionadas"
+                                                        />
+                                                    </div>
+
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setBatchForm({ ...batchForm, raw_materials: batchForm.raw_materials.filter((_, i) => i !== idx) });
+                                                        }}
+                                                        className="p-2 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-xl transition-colors shrink-0"
+                                                        title="Eliminar este lote"
+                                                    >
+                                                        <XCircle size={17} />
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            {/* Espacio para selección y desglose de Tarimas de Recepción */}
+                                            {selectedLot && (
+                                                <div className="bg-slate-50/80 border border-slate-200/80 rounded-xl p-3 space-y-2.5">
+                                                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="font-bold text-slate-700 text-[11px] uppercase tracking-wider flex items-center gap-1">
+                                                                <Layers size={13} className="text-indigo-600" />
+                                                                Tarimas Registradas en Recepción
+                                                            </span>
+                                                            {lotTarimas.length > 0 && (
+                                                                <span className="bg-indigo-100 text-indigo-700 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                                                                    {lotTarimas.filter(t => !t.is_depleted && !(t.available_boxes <= 0 && t.available_lbs <= 0.01)).length} disponibles de {lotTarimas.length}
+                                                                </span>
+                                                            )}
                                                         </div>
 
-                                                        <div className="space-y-1.5">
-                                                            {rm.tarimas.map((t, ti) => {
-                                                                const maxBoxes = t.available_boxes || t.boxes_count || 0;
-                                                                const maxLbs = t.available_lbs || parseFloat(t.quantity_lbs) || 0;
-                                                                const currentBoxes = parseInt(t.boxes_count) || 0;
-                                                                const isPartial = currentBoxes < maxBoxes;
+                                                        <div className="flex flex-wrap items-center gap-1.5">
+                                                            {lotTarimas.some(t => !t.is_depleted && !(t.available_boxes <= 0 && t.available_lbs <= 0.01) && !(rm.tarimas || []).some(it => parseInt(it.tarima_number) === parseInt(t.tarima_number))) && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handleLoadAllAvailableTarimas(idx, lotTarimas)}
+                                                                    className="px-2.5 py-1 bg-white hover:bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg text-[10px] font-bold transition-all shadow-2xs flex items-center gap-1"
+                                                                >
+                                                                    <Check size={11} /> Cargar todas disponibles
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Chips de tarimas registradas para seleccionar con 1 clic */}
+                                                    {lotTarimas.length > 0 ? (
+                                                        <div className="flex flex-wrap gap-1.5 pt-1">
+                                                            {lotTarimas.map((t) => {
+                                                                const isAdded = (rm.tarimas || []).some(it => parseInt(it.tarima_number) === parseInt(t.tarima_number));
+                                                                const isDepleted = t.is_depleted || (t.available_boxes <= 0 && t.available_lbs <= 0.01);
+                                                                const availBoxes = t.available_boxes ?? t.boxes_count ?? 0;
+                                                                const availLbs = t.available_lbs ?? t.net_weight_lbs ?? t.gross_weight_lbs ?? 0;
 
                                                                 return (
-                                                                    <div key={ti} className="bg-white p-2.5 rounded-xl border border-slate-200/90 shadow-2xs space-y-1.5">
-                                                                        <div className="flex items-center justify-between gap-2">
-                                                                            <div className="flex items-center gap-2 flex-wrap">
-                                                                                <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-md font-bold text-xs">
-                                                                                    Tarima #{t.tarima_number}
-                                                                                </span>
-                                                                                {t.barcode && (
-                                                                                    <span className="font-mono text-[10px] text-slate-500 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-200">
-                                                                                        {t.barcode}
-                                                                                    </span>
-                                                                                )}
-                                                                                <span className="text-[11px] text-slate-500">
-                                                                                    (Disponible: <strong className="text-slate-700">{maxBoxes} cjs</strong> • <strong className="text-slate-700">{parseFloat(maxLbs).toFixed(1)} Lbs</strong>)
-                                                                                </span>
-                                                                            </div>
-
-                                                                            <button
-                                                                                type="button"
-                                                                                onClick={() => handleRemoveTarimaFromRm(idx, ti)}
-                                                                                className="p-1 text-slate-600 hover:text-rose-600 rounded transition-colors"
-                                                                                title="Quitar esta tarima"
-                                                                            >
-                                                                                <Trash2 size={14} />
-                                                                            </button>
-                                                                        </div>
-
-                                                                        <div className="grid grid-cols-12 gap-2 items-center">
-                                                                            <div className="col-span-6 sm:col-span-5 flex items-center gap-1.5">
-                                                                                <label className="text-[10px] font-bold text-slate-500 uppercase shrink-0">Cajas a quebrar:</label>
-                                                                                <input
-                                                                                    type="number"
-                                                                                    min="1"
-                                                                                    max={maxBoxes}
-                                                                                    value={t.boxes_count}
-                                                                                    onChange={(e) => handleUpdateTarimaBoxesInRm(idx, ti, e.target.value)}
-                                                                                    className="w-full px-2 py-1 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-800 text-center focus:border-indigo-500"
-                                                                                    placeholder="0 cjs"
-                                                                                />
-                                                                            </div>
-
-                                                                            <div className="col-span-6 sm:col-span-5 flex items-center gap-1.5">
-                                                                                <label className="text-[10px] font-bold text-slate-500 uppercase shrink-0">Peso (Lbs):</label>
-                                                                                <input
-                                                                                    type="number"
-                                                                                    step="0.01"
-                                                                                    min="0.01"
-                                                                                    max={maxLbs}
-                                                                                    value={t.quantity_lbs}
-                                                                                    onChange={(e) => handleUpdateTarimaLbsInRm(idx, ti, e.target.value)}
-                                                                                    className="w-full px-2 py-1 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-800 text-right focus:border-indigo-500"
-                                                                                    placeholder="0.00 Lbs"
-                                                                                />
-                                                                            </div>
-
-                                                                            <div className="col-span-12 sm:col-span-2 text-right">
-                                                                                {isPartial ? (
-                                                                                    <span className="inline-block text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md" title={`Quedarán ${maxBoxes - currentBoxes} cajas en inventario`}>
-                                                                                        Parcial (-{maxBoxes - currentBoxes} cjs)
-                                                                                    </span>
-                                                                                ) : (
-                                                                                    <span className="inline-block text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md">
-                                                                                        Completa
-                                                                                    </span>
-                                                                                )}
-                                                                            </div>
-                                                                        </div>
-                                                                    </div>
+                                                                    <button
+                                                                        key={t.tarima_number}
+                                                                        type="button"
+                                                                        disabled={isAdded || isDepleted}
+                                                                        onClick={() => handleAddSpecificTarimaToRm(idx, t)}
+                                                                        className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 border ${isAdded
+                                                                                ? 'bg-emerald-50 border-emerald-300 text-emerald-700 shadow-2xs'
+                                                                                : isDepleted
+                                                                                    ? 'bg-slate-100 border-slate-200 text-slate-400 opacity-60 cursor-not-allowed line-through'
+                                                                                    : 'bg-white hover:bg-indigo-50 border-slate-300 hover:border-indigo-400 text-slate-700 hover:text-indigo-700 shadow-2xs'
+                                                                            }`}
+                                                                        title={isDepleted ? 'Tarima 100% consumida en corridas anteriores' : isAdded ? 'Tarima ya agregada' : 'Hacer clic para agregar a esta corrida'}
+                                                                    >
+                                                                        <span>Tarima #{t.tarima_number}</span>
+                                                                        <span className="text-[10px] font-semibold opacity-80">
+                                                                            ({availBoxes} cjs • {parseFloat(availLbs).toFixed(0)} Lbs)
+                                                                        </span>
+                                                                        {isAdded && <Check size={12} className="text-emerald-600" />}
+                                                                        {isDepleted && <span className="text-[9px] text-rose-500 font-bold ml-0.5">Agotada</span>}
+                                                                    </button>
                                                                 );
                                                             })}
                                                         </div>
+                                                    ) : (
+                                                        <p className="text-xs text-slate-400 italic py-1">
+                                                            Este lote no tiene tarimas registradas en recepción.
+                                                        </p>
+                                                    )}
 
-                                                        <div className="flex items-center justify-between text-[11px] font-bold text-slate-700 pt-1.5 px-2 bg-slate-100/90 p-2 rounded-lg border border-slate-200">
-                                                            <span>Subtotal a Quebrar de este Lote:</span>
-                                                            <span className="text-indigo-700">
-                                                                {rm.tarimas.reduce((s, t) => s + (parseInt(t.boxes_count) || 0), 0)} Cajas • {rm.tarimas.reduce((s, t) => s + (parseFloat(t.quantity_lbs) || 0), 0).toFixed(2)} Lbs
-                                                            </span>
+                                                    {/* Lista de tarimas agregadas para consumir en esta corrida (admite consumo parcial) */}
+                                                    {rm.tarimas && rm.tarimas.length > 0 && (
+                                                        <div className="space-y-2 pt-2 border-t border-slate-200/80">
+                                                            <div className="text-[10px] font-bold text-slate-500 uppercase px-1 flex items-center justify-between">
+                                                                <span>Tarimas a Quebrar en esta Corrida</span>
+                                                                <span className="text-indigo-600 font-medium lowercase">admite consumo parcial de cajas</span>
+                                                            </div>
+
+                                                            <div className="space-y-1.5">
+                                                                {rm.tarimas.map((t, ti) => {
+                                                                    const maxBoxes = t.available_boxes || t.boxes_count || 0;
+                                                                    const maxLbs = t.available_lbs || parseFloat(t.quantity_lbs) || 0;
+                                                                    const currentBoxes = parseInt(t.boxes_count) || 0;
+                                                                    const isPartial = currentBoxes < maxBoxes;
+
+                                                                    return (
+                                                                        <div key={ti} className="bg-white p-2.5 rounded-xl border border-slate-200/90 shadow-2xs space-y-1.5">
+                                                                            <div className="flex items-center justify-between gap-2">
+                                                                                <div className="flex items-center gap-2 flex-wrap">
+                                                                                    <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-md font-bold text-xs">
+                                                                                        Tarima #{t.tarima_number}
+                                                                                    </span>
+                                                                                    {t.barcode && (
+                                                                                        <span className="font-mono text-[10px] text-slate-500 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-200">
+                                                                                            {t.barcode}
+                                                                                        </span>
+                                                                                    )}
+                                                                                    <span className="text-[11px] text-slate-500">
+                                                                                        (Disponible: <strong className="text-slate-700">{maxBoxes} cjs</strong> • <strong className="text-slate-700">{parseFloat(maxLbs).toFixed(1)} Lbs</strong>)
+                                                                                    </span>
+                                                                                </div>
+
+                                                                                <button
+                                                                                    type="button"
+                                                                                    onClick={() => handleRemoveTarimaFromRm(idx, ti)}
+                                                                                    className="p-1 text-slate-600 hover:text-rose-600 rounded transition-colors"
+                                                                                    title="Quitar esta tarima"
+                                                                                >
+                                                                                    <Trash2 size={14} />
+                                                                                </button>
+                                                                            </div>
+
+                                                                            <div className="grid grid-cols-12 gap-2 items-center">
+                                                                                <div className="col-span-6 sm:col-span-5 flex items-center gap-1.5">
+                                                                                    <label className="text-[10px] font-bold text-slate-500 uppercase shrink-0">Cajas a quebrar:</label>
+                                                                                    <input
+                                                                                        type="number"
+                                                                                        min="1"
+                                                                                        max={maxBoxes}
+                                                                                        value={t.boxes_count}
+                                                                                        onChange={(e) => handleUpdateTarimaBoxesInRm(idx, ti, e.target.value)}
+                                                                                        className="w-full px-2 py-1 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-800 text-center focus:border-indigo-500"
+                                                                                        placeholder="0 cjs"
+                                                                                    />
+                                                                                </div>
+
+                                                                                <div className="col-span-6 sm:col-span-5 flex items-center gap-1.5">
+                                                                                    <label className="text-[10px] font-bold text-slate-500 uppercase shrink-0">Peso (Lbs):</label>
+                                                                                    <input
+                                                                                        type="number"
+                                                                                        step="0.01"
+                                                                                        min="0.01"
+                                                                                        max={maxLbs}
+                                                                                        value={t.quantity_lbs}
+                                                                                        onChange={(e) => handleUpdateTarimaLbsInRm(idx, ti, e.target.value)}
+                                                                                        className="w-full px-2 py-1 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-800 text-right focus:border-indigo-500"
+                                                                                        placeholder="0.00 Lbs"
+                                                                                    />
+                                                                                </div>
+
+                                                                                <div className="col-span-12 sm:col-span-2 text-right">
+                                                                                    {isPartial ? (
+                                                                                        <span className="inline-block text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md" title={`Quedarán ${maxBoxes - currentBoxes} cajas en inventario`}>
+                                                                                            Parcial (-{maxBoxes - currentBoxes} cjs)
+                                                                                        </span>
+                                                                                    ) : (
+                                                                                        <span className="inline-block text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md">
+                                                                                            Completa
+                                                                                        </span>
+                                                                                    )}
+                                                                                </div>
+                                                                            </div>
+                                                                        </div>
+                                                                    );
+                                                                })}
+                                                            </div>
+
+                                                            <div className="flex items-center justify-between text-[11px] font-bold text-slate-700 pt-1.5 px-2 bg-slate-100/90 p-2 rounded-lg border border-slate-200">
+                                                                <span>Subtotal a Quebrar de este Lote:</span>
+                                                                <span className="text-indigo-700">
+                                                                    {rm.tarimas.reduce((s, t) => s + (parseInt(t.boxes_count) || 0), 0)} Cajas • {rm.tarimas.reduce((s, t) => s + (parseFloat(t.quantity_lbs) || 0), 0).toFixed(2)} Lbs
+                                                                </span>
+                                                            </div>
                                                         </div>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        )}
-                                    </div>
-                                );
-                            })}
-
-                            <button
-                                type="button"
-                                onClick={() => setBatchForm({ ...batchForm, raw_materials: [...batchForm.raw_materials, { raw_material_id: '', quantity_lbs: '', boxes_count: '', tarimas: [] }] })}
-                                className="w-full py-2.5 bg-indigo-50/80 hover:bg-indigo-100 text-indigo-700 rounded-xl text-xs font-bold transition-all border border-indigo-200/80 flex items-center justify-center gap-1.5 shadow-2xs"
-                            >
-                                <Plus size={14} />
-                                Agregar Otro Lote de Materia Prima
-                            </button>
-                        </div>
-
-                        {/* Remanentes / Sobrantes Disponibles de Producciones Anteriores */}
-                        <div className="bg-teal-50/60 p-4 rounded-2xl border border-teal-200 space-y-3">
-                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-teal-200/80 pb-2">
-                                <div>
-                                    <label className="text-xs font-bold text-teal-900 uppercase tracking-wide flex items-center gap-1.5">
-                                        <Sparkles className="w-4 h-4 text-teal-600" />
-                                        <span>Incorporar Remanentes / Sobrantes Disponibles (Producciones Previas)</span>
-                                    </label>
-                                    <p className="text-[11px] text-teal-700">
-                                        Sobrantes guardados (huevo en leche, mezclas previas) listos para integrarse en esta formulación.
-                                    </p>
-                                </div>
-                                <span className="text-xs bg-white px-2.5 py-1 rounded-lg border border-teal-200 text-teal-800 font-bold self-start sm:self-auto">
-                                    {availableRemanentes.length} disponibles
-                                </span>
-                            </div>
-
-                            {availableRemanentes.length === 0 ? (
-                                <p className="text-xs text-teal-700/80 italic py-1">
-                                    No hay remanentes o sobrantes con saldo disponible en este momento.
-                                </p>
-                            ) : (
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-                                    {availableRemanentes.map(rem => {
-                                        const isSelected = (batchForm.remanente_ids || []).includes(rem.id);
-                                        return (
-                                            <div 
-                                                key={rem.id}
-                                                onClick={() => {
-                                                    const current = batchForm.remanente_ids || [];
-                                                    const updated = isSelected ? current.filter(id => id !== rem.id) : [...current, rem.id];
-                                                    setBatchForm({ ...batchForm, remanente_ids: updated });
-                                                }}
-                                                className={`p-3 rounded-xl border cursor-pointer transition-all flex items-start justify-between gap-2 ${
-                                                    isSelected 
-                                                        ? 'bg-white border-teal-500 shadow-sm ring-2 ring-teal-500/20' 
-                                                        : 'bg-white/70 border-teal-200/70 hover:bg-white'
-                                                }`}
-                                            >
-                                                <div className="space-y-1">
-                                                    <div className="flex items-center gap-2">
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={isSelected}
-                                                            onChange={() => {}}
-                                                            className="rounded border-slate-300 text-teal-600 focus:ring-teal-500"
-                                                        />
-                                                        <span className="text-xs font-bold text-slate-900">{rem.batch_code_display || `Lote #${rem.batch_id}`}</span>
-                                                        <span className="text-[10px] px-1.5 py-0.2 rounded bg-teal-100 text-teal-800 font-semibold uppercase">{rem.remanente_type || 'pasteurizado'}</span>
-                                                    </div>
-                                                    <div className="text-[11px] text-slate-600">
-                                                        <span>{rem.product_type} • </span>
-                                                        <strong className="text-teal-700">{parseFloat(rem.quantity_lbs || rem.weight_lbs || 0).toFixed(1)} Lbs</strong>
-                                                    </div>
-                                                    {rem.notes && (
-                                                        <p className="text-[10px] text-slate-500 line-clamp-1">{rem.notes}</p>
                                                     )}
                                                 </div>
-                                                <div className="text-right">
-                                                    <span className="text-[10px] font-bold text-teal-700">{parseFloat(rem.quantity_lbs || rem.weight_lbs || 0).toFixed(1)} Lbs</span>
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            )}
-                            {(batchForm.remanente_ids || []).length > 0 && (
-                                <div className="text-xs font-bold text-teal-800 bg-white/90 px-3 py-1.5 rounded-lg border border-teal-300 flex items-center justify-between">
-                                    <span>Remanentes Seleccionados: {(batchForm.remanente_ids || []).length}</span>
-                                    <span>
-                                        + {availableRemanentes.filter(r => (batchForm.remanente_ids || []).includes(r.id)).reduce((acc, r) => acc + parseFloat(r.quantity_lbs || r.weight_lbs || 0), 0).toFixed(1)} Lbs incorporadas a la mezcla
+                                            )}
+                                        </div>
+                                    );
+                                })}
+
+                                <button
+                                    type="button"
+                                    onClick={() => setBatchForm({ ...batchForm, raw_materials: [...batchForm.raw_materials, { raw_material_id: '', quantity_lbs: '', boxes_count: '', tarimas: [] }] })}
+                                    className="w-full py-2.5 bg-indigo-50/80 hover:bg-indigo-100 text-indigo-700 rounded-xl text-xs font-bold transition-all border border-indigo-200/80 flex items-center justify-center gap-1.5 shadow-2xs"
+                                >
+                                    <Plus size={14} />
+                                    Agregar Otro Lote de Materia Prima
+                                </button>
+                            </div>
+
+                            {/* Remanentes / Sobrantes Disponibles de Producciones Anteriores */}
+                            <div className="bg-teal-50/60 p-4 rounded-2xl border border-teal-200 space-y-3">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-teal-200/80 pb-2">
+                                    <div>
+                                        <label className="text-xs font-bold text-teal-900 uppercase tracking-wide flex items-center gap-1.5">
+                                            <Sparkles className="w-4 h-4 text-teal-600" />
+                                            <span>Incorporar Remanentes / Sobrantes Disponibles (Producciones Previas)</span>
+                                        </label>
+                                        <p className="text-[11px] text-teal-700">
+                                            Sobrantes guardados (huevo en leche, mezclas previas) listos para integrarse en esta formulación.
+                                        </p>
+                                    </div>
+                                    <span className="text-xs bg-white px-2.5 py-1 rounded-lg border border-teal-200 text-teal-800 font-bold self-start sm:self-auto">
+                                        {availableRemanentes.length} disponibles
                                     </span>
                                 </div>
-                            )}
-                        </div>
 
-                        {/* Insumos de Formulación / Receta */}
-                        <div className="space-y-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
-                            <div className="flex items-center justify-between">
-                                <label className="text-[11px] font-bold text-indigo-700 uppercase tracking-wide">Insumos y Aditivos de Formulación (Receta)</label>
-                                <span className="text-[10px] text-slate-500">Opcional para fórmulas compuestas</span>
+                                {availableRemanentes.length === 0 ? (
+                                    <p className="text-xs text-teal-700/80 italic py-1">
+                                        No hay remanentes o sobrantes con saldo disponible en este momento.
+                                    </p>
+                                ) : (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                                        {availableRemanentes.map(rem => {
+                                            const isSelected = (batchForm.remanente_ids || []).includes(rem.id);
+                                            return (
+                                                <div
+                                                    key={rem.id}
+                                                    onClick={() => {
+                                                        const current = batchForm.remanente_ids || [];
+                                                        const updated = isSelected ? current.filter(id => id !== rem.id) : [...current, rem.id];
+                                                        setBatchForm({ ...batchForm, remanente_ids: updated });
+                                                    }}
+                                                    className={`p-3 rounded-xl border cursor-pointer transition-all flex items-start justify-between gap-2 ${isSelected
+                                                            ? 'bg-white border-teal-500 shadow-sm ring-2 ring-teal-500/20'
+                                                            : 'bg-white/70 border-teal-200/70 hover:bg-white'
+                                                        }`}
+                                                >
+                                                    <div className="space-y-1">
+                                                        <div className="flex items-center gap-2">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={isSelected}
+                                                                onChange={() => { }}
+                                                                className="rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+                                                            />
+                                                            <span className="text-xs font-bold text-slate-900">{rem.batch_code_display || `Lote #${rem.batch_id}`}</span>
+                                                            <span className="text-[10px] px-1.5 py-0.2 rounded bg-teal-100 text-teal-800 font-semibold uppercase">{rem.remanente_type || 'pasteurizado'}</span>
+                                                        </div>
+                                                        <div className="text-[11px] text-slate-600">
+                                                            <span>{rem.product_type} • </span>
+                                                            <strong className="text-teal-700">{parseFloat(rem.quantity_lbs || rem.weight_lbs || 0).toFixed(1)} Lbs</strong>
+                                                        </div>
+                                                        {rem.notes && (
+                                                            <p className="text-[10px] text-slate-500 line-clamp-1">{rem.notes}</p>
+                                                        )}
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <span className="text-[10px] font-bold text-teal-700">{parseFloat(rem.quantity_lbs || rem.weight_lbs || 0).toFixed(1)} Lbs</span>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                                {(batchForm.remanente_ids || []).length > 0 && (
+                                    <div className="text-xs font-bold text-teal-800 bg-white/90 px-3 py-1.5 rounded-lg border border-teal-300 flex items-center justify-between">
+                                        <span>Remanentes Seleccionados: {(batchForm.remanente_ids || []).length}</span>
+                                        <span>
+                                            + {availableRemanentes.filter(r => (batchForm.remanente_ids || []).includes(r.id)).reduce((acc, r) => acc + parseFloat(r.quantity_lbs || r.weight_lbs || 0), 0).toFixed(1)} Lbs incorporadas a la mezcla
+                                        </span>
+                                    </div>
+                                )}
                             </div>
-                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                                <div>
-                                    <label className="text-[10px] text-slate-600 font-bold uppercase block mb-1">Cajas Huevo</label>
-                                    <input
-                                        type="number"
-                                        placeholder="0 cjs"
-                                        value={batchForm.ingredients.boxes_count}
-                                        onChange={(e) => setBatchForm({ ...batchForm, ingredients: { ...batchForm.ingredients, boxes_count: e.target.value } })}
-                                        className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-xs text-slate-800 text-center font-bold"
-                                    />
+
+                            {/* Insumos de Formulación / Receta */}
+                            <div className="space-y-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                                <div className="flex items-center justify-between">
+                                    <label className="text-[11px] font-bold text-indigo-700 uppercase tracking-wide">Insumos y Aditivos de Formulación (Receta)</label>
+                                    <span className="text-[10px] text-slate-500">Opcional para fórmulas compuestas</span>
                                 </div>
-                                <div>
-                                    <label className="text-[10px] text-slate-600 font-bold uppercase block mb-1">Agua (Garrafones)</label>
-                                    <input
-                                        type="number"
-                                        placeholder="0 garrafones"
-                                        value={batchForm.ingredients.water_bottles}
-                                        onChange={(e) => setBatchForm({ ...batchForm, ingredients: { ...batchForm.ingredients, water_bottles: e.target.value } })}
-                                        className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-xs text-slate-800 text-center font-bold"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="text-[10px] text-slate-600 font-bold uppercase block mb-1">Azúcar (Lbs)</label>
-                                    <input
-                                        type="number"
-                                        step="0.1"
-                                        placeholder="0.0"
-                                        value={batchForm.ingredients.sugar_lbs}
-                                        onChange={(e) => setBatchForm({ ...batchForm, ingredients: { ...batchForm.ingredients, sugar_lbs: e.target.value } })}
-                                        className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-xs text-slate-800 text-center font-bold"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="text-[10px] text-slate-600 font-bold uppercase block mb-1">Sal (Lbs)</label>
-                                    <input
-                                        type="number"
-                                        step="0.1"
-                                        placeholder="0.0"
-                                        value={batchForm.ingredients.salt_lbs}
-                                        onChange={(e) => setBatchForm({ ...batchForm, ingredients: { ...batchForm.ingredients, salt_lbs: e.target.value } })}
-                                        className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-xs text-slate-800 text-center font-bold"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="text-[10px] text-slate-600 font-bold uppercase block mb-1">Ác. Cítrico (Lbs)</label>
-                                    <input
-                                        type="number"
-                                        step="0.01"
-                                        placeholder="0.0"
-                                        value={batchForm.ingredients.citric_acid_lbs}
-                                        onChange={(e) => setBatchForm({ ...batchForm, ingredients: { ...batchForm.ingredients, citric_acid_lbs: e.target.value } })}
-                                        className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-xs text-slate-800 text-center font-bold"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="text-[10px] text-slate-600 font-bold uppercase block mb-1">Leche Polvo (Lbs)</label>
-                                    <input
-                                        type="number"
-                                        step="0.1"
-                                        placeholder="0.0"
-                                        value={batchForm.ingredients.milk_powder_lbs}
-                                        onChange={(e) => setBatchForm({ ...batchForm, ingredients: { ...batchForm.ingredients, milk_powder_lbs: e.target.value } })}
-                                        className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-xs text-slate-800 text-center font-bold"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="text-[10px] text-slate-600 font-bold uppercase block mb-1">PPG (Gramos)</label>
-                                    <input
-                                        type="number"
-                                        step="0.1"
-                                        placeholder="0.0"
-                                        value={batchForm.ingredients.ppg_g}
-                                        onChange={(e) => setBatchForm({ ...batchForm, ingredients: { ...batchForm.ingredients, ppg_g: e.target.value } })}
-                                        className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-xs text-slate-800 text-center font-bold"
-                                    />
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                                    <div>
+                                        <label className="text-[10px] text-slate-600 font-bold uppercase block mb-1">Cajas Huevo</label>
+                                        <input
+                                            type="number"
+                                            placeholder="0 cjs"
+                                            value={batchForm.ingredients.boxes_count}
+                                            onChange={(e) => setBatchForm({ ...batchForm, ingredients: { ...batchForm.ingredients, boxes_count: e.target.value } })}
+                                            className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-xs text-slate-800 text-center font-bold"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] text-slate-600 font-bold uppercase block mb-1">liquido a</label>
+                                        <input
+                                            type="number"
+                                            placeholder="0 garrafones"
+                                            value={batchForm.ingredients.water_bottles}
+                                            onChange={(e) => setBatchForm({ ...batchForm, ingredients: { ...batchForm.ingredients, water_bottles: e.target.value } })}
+                                            className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-xs text-slate-800 text-center font-bold"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] text-slate-600 font-bold uppercase block mb-1">Azúcar (Lbs)</label>
+                                        <input
+                                            type="number"
+                                            step="0.1"
+                                            placeholder="0.0"
+                                            value={batchForm.ingredients.sugar_lbs}
+                                            onChange={(e) => setBatchForm({ ...batchForm, ingredients: { ...batchForm.ingredients, sugar_lbs: e.target.value } })}
+                                            className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-xs text-slate-800 text-center font-bold"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] text-slate-600 font-bold uppercase block mb-1">Sal (Lbs)</label>
+                                        <input
+                                            type="number"
+                                            step="0.1"
+                                            placeholder="0.0"
+                                            value={batchForm.ingredients.salt_lbs}
+                                            onChange={(e) => setBatchForm({ ...batchForm, ingredients: { ...batchForm.ingredients, salt_lbs: e.target.value } })}
+                                            className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-xs text-slate-800 text-center font-bold"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] text-slate-600 font-bold uppercase block mb-1">Ác. Cítrico (Lbs)</label>
+                                        <input
+                                            type="number"
+                                            step="0.01"
+                                            placeholder="0.0"
+                                            value={batchForm.ingredients.citric_acid_lbs}
+                                            onChange={(e) => setBatchForm({ ...batchForm, ingredients: { ...batchForm.ingredients, citric_acid_lbs: e.target.value } })}
+                                            className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-xs text-slate-800 text-center font-bold"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] text-slate-600 font-bold uppercase block mb-1">Leche Polvo (Lbs)</label>
+                                        <input
+                                            type="number"
+                                            step="0.1"
+                                            placeholder="0.0"
+                                            value={batchForm.ingredients.milk_powder_lbs}
+                                            onChange={(e) => setBatchForm({ ...batchForm, ingredients: { ...batchForm.ingredients, milk_powder_lbs: e.target.value } })}
+                                            className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-xs text-slate-800 text-center font-bold"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] text-slate-600 font-bold uppercase block mb-1">PPG (Gramos)</label>
+                                        <input
+                                            type="number"
+                                            step="0.1"
+                                            placeholder="0.0"
+                                            value={batchForm.ingredients.ppg_g}
+                                            onChange={(e) => setBatchForm({ ...batchForm, ingredients: { ...batchForm.ingredients, ppg_g: e.target.value } })}
+                                            className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-xs text-slate-800 text-center font-bold"
+                                        />
+                                    </div>
                                 </div>
                             </div>
-                        </div>
 
-                        {/* Checkbox de autorización de excepción de CIP */}
-                        <div className="bg-amber-50 border border-amber-200/80 rounded-xl p-3.5 flex items-start gap-3">
-                            <input
-                                type="checkbox"
-                                id="bypassCipCheckModal"
-                                checked={batchForm.bypass_cip_check || false}
-                                onChange={(e) => setBatchForm({ ...batchForm, bypass_cip_check: e.target.checked })}
-                                className="mt-0.5 h-4 w-4 rounded border-amber-300 text-amber-600 focus:ring-amber-500 cursor-pointer"
-                            />
-                            <label htmlFor="bypassCipCheckModal" className="text-xs text-amber-900 cursor-pointer select-none">
-                                <span className="font-bold flex items-center gap-1.5">
-                                    <ShieldAlert size={14} className="text-amber-600" />
-                                    Autorizar inicio bajo excepción operativa de sanitización CIP
-                                </span>
-                                <span className="text-[11px] text-amber-700 block mt-0.5">
-                                    Marque esta casilla si la planta ya fue sanitizada o requiere procesar de urgencia sin registro formal previo de CIP (se auditará como evento de excepción).
-                                </span>
-                            </label>
-                        </div>
+                            {/* Checkbox de autorización de excepción de CIP */}
+                            <div className="bg-amber-50 border border-amber-200/80 rounded-xl p-3.5 flex items-start gap-3">
+                                <input
+                                    type="checkbox"
+                                    id="bypassCipCheckModal"
+                                    checked={batchForm.bypass_cip_check || false}
+                                    onChange={(e) => setBatchForm({ ...batchForm, bypass_cip_check: e.target.checked })}
+                                    className="mt-0.5 h-4 w-4 rounded border-amber-300 text-amber-600 focus:ring-amber-500 cursor-pointer"
+                                />
+                                <label htmlFor="bypassCipCheckModal" className="text-xs text-amber-900 cursor-pointer select-none">
+                                    <span className="font-bold flex items-center gap-1.5">
+                                        <ShieldAlert size={14} className="text-amber-600" />
+                                        Autorizar inicio bajo excepción operativa de sanitización CIP
+                                    </span>
+                                    <span className="text-[11px] text-amber-700 block mt-0.5">
+                                        Marque esta casilla si la planta ya fue sanitizada o requiere procesar de urgencia sin registro formal previo de CIP (se auditará como evento de excepción).
+                                    </span>
+                                </label>
+                            </div>
 
-                        <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
-                            <button
-                                type="button"
-                                onClick={() => { setIsNewBatchModalOpen(false); setEditingBatch(null); }}
-                                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all border border-slate-200"
-                            >
-                                Cancelar
-                            </button>
-                            <button
-                                type="submit"
-                                disabled={isSubmitting}
-                                className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm"
-                            >
-                                {isSubmitting 
-                                    ? (editingBatch ? 'Guardando Cambios...' : 'Iniciando...') 
-                                    : (editingBatch ? 'Actualizar Lote' : 'Iniciar Lote')}
-                            </button>
-                        </div>
-                    </form>
-                </div>
+                            <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
+                                <button
+                                    type="button"
+                                    onClick={() => { setIsNewBatchModalOpen(false); setEditingBatch(null); }}
+                                    className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all border border-slate-200"
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={isSubmitting}
+                                    className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm"
+                                >
+                                    {isSubmitting
+                                        ? (editingBatch ? 'Guardando Cambios...' : 'Iniciando...')
+                                        : (editingBatch ? 'Actualizar Lote' : 'Iniciar Lote')}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
                 </div>
             )}
 
             {isPasteurizeModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
-                <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto space-y-6 text-slate-900">
-                    <div>
-                        <h2 className="text-base font-bold text-slate-900 uppercase tracking-tight flex items-center gap-2">
-                            <Flame className="h-5 w-5 text-orange-600" />
-                            Registro de Parámetros de Pasteurización
-                        </h2>
-                        <p className="text-xs text-slate-500 mt-1">Verifique termómetros y manómetros antes de validar el tratamiento térmico.</p>
-                        <div className="h-px bg-slate-100 mt-4" />
-                    </div>
-
-                    {/* Guía Rápida de Límites de Pasteurización ANDELSA */}
-                    <div className="grid grid-cols-3 gap-2 bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs">
-                        <div className="text-center p-2 rounded-lg bg-white border border-slate-200">
-                            <span className="text-slate-500 block font-bold uppercase text-[10px]">Huevo Entero</span>
-                            <span className="text-slate-900 font-bold text-xs">≥ 64.0°C</span>
-                            <span className="text-slate-400 block text-[9px]">210 seg</span>
-                        </div>
-                        <div className="text-center p-2 rounded-lg bg-white border border-slate-200">
-                            <span className="text-slate-500 block font-bold uppercase text-[10px]">Clara Líquida</span>
-                            <span className="text-slate-900 font-bold text-xs">≥ 56.0°C</span>
-                            <span className="text-slate-400 block text-[9px]">210 seg</span>
-                        </div>
-                        <div className="text-center p-2 rounded-lg bg-white border border-slate-200">
-                            <span className="text-slate-500 block font-bold uppercase text-[10px]">Yema / Salada</span>
-                            <span className="text-slate-900 font-bold text-xs">≥ 66.5°C</span>
-                            <span className="text-slate-400 block text-[9px]">210 seg</span>
-                        </div>
-                    </div>
-
-                    {/* Alert HACCP */}
-                    {haccpViolationAlert && (
-                        <div className="bg-rose-50 border-2 border-rose-300 rounded-xl p-4 text-rose-900 space-y-3 shadow-sm">
-                            <div className="flex gap-2 items-center font-bold text-xs uppercase tracking-wide text-rose-700">
-                                <AlertOctagon size={18} className="text-rose-600" />
-                                ALERTA DE INOCUIDAD ALIMENTARIA: PARÁMETROS FUERA DE RANGO
-                            </div>
-                            <p className="text-xs font-bold leading-relaxed">{haccpViolationAlert}</p>
-                            <p className="text-xs text-rose-700">
-                                <b>ACCIÓN AUTOMÁTICA:</b> El lote ha sido marcado como bloqueado para empaque comercial y requiere evaluación de calidad.
-                            </p>
-                            <button
-                                onClick={() => { setHaccpViolationAlert(null); setIsPasteurizeModalOpen(false); }}
-                                className="px-4 py-2 bg-rose-600 text-white rounded-xl text-xs font-bold hover:bg-rose-700 transition-all shadow-xs"
-                            >
-                                Volver al Historial
-                            </button>
-                        </div>
-                    )}
-
-                    <form onSubmit={handlePasteurize} className="space-y-4">
+                    <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto space-y-6 text-slate-900">
                         <div>
-                            <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">Lote en Proceso a Pasteurizar</label>
-                            <select
-                                value={selectedBatchForPasteurize}
-                                onChange={(e) => setSelectedBatchForPasteurize(e.target.value)}
-                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                            >
-                                <option value="">Seleccione Lote...</option>
-                                {batches.filter(b => b.status === 'en_proceso' || String(b.id) === String(selectedBatchForPasteurize)).map(b => (
-                                    <option key={b.id} value={b.id}>
-                                        [{b.batch_code_display || b.batch_uuid}] {b.product_type} ({b.presentation})
-                                    </option>
-                                ))}
-                            </select>
+                            <h2 className="text-base font-bold text-slate-900 uppercase tracking-tight flex items-center gap-2">
+                                <Flame className="h-5 w-5 text-orange-600" />
+                                Registro de Parámetros de Pasteurización
+                            </h2>
+                            <p className="text-xs text-slate-500 mt-1">Verifique termómetros y manómetros antes de validar el tratamiento térmico.</p>
+                            <div className="h-px bg-slate-100 mt-4" />
                         </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div>
-                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">Temperatura Pasteurización (°C)</label>
-                                <input
-                                    type="number"
-                                    value={pasteurizeForm.temperature_c}
-                                    onChange={(e) => setPasteurizeForm({ ...pasteurizeForm, temperature_c: e.target.value })}
-                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                                    step="0.01"
-                                    placeholder="Ej: 64.5"
-                                />
+                        {/* Guía Rápida de Límites de Pasteurización ANDELSA */}
+                        <div className="grid grid-cols-3 gap-2 bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs">
+                            <div className="text-center p-2 rounded-lg bg-white border border-slate-200">
+                                <span className="text-slate-500 block font-bold uppercase text-[10px]">Huevo Entero</span>
+                                <span className="text-slate-900 font-bold text-xs">≥ 64.0°C</span>
+                                <span className="text-slate-400 block text-[9px]">210 seg</span>
                             </div>
-
-                            <div>
-                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">Tiempo de Retención (Segundos)</label>
-                                <input
-                                    type="number"
-                                    value={pasteurizeForm.holding_time_seconds}
-                                    onChange={(e) => setPasteurizeForm({ ...pasteurizeForm, holding_time_seconds: e.target.value })}
-                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                                    placeholder="Ej: 210"
-                                />
+                            <div className="text-center p-2 rounded-lg bg-white border border-slate-200">
+                                <span className="text-slate-500 block font-bold uppercase text-[10px]">Clara Líquida</span>
+                                <span className="text-slate-900 font-bold text-xs">≥ 56.0°C</span>
+                                <span className="text-slate-400 block text-[9px]">210 seg</span>
                             </div>
-
-                            <div>
-                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">Presión Hidráulica (PSI)</label>
-                                <input
-                                    type="number"
-                                    value={pasteurizeForm.pressure_psi}
-                                    onChange={(e) => setPasteurizeForm({ ...pasteurizeForm, pressure_psi: e.target.value })}
-                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                                    step="0.01"
-                                    placeholder="Ej: 48.0"
-                                />
-                            </div>
-
-                            <div>
-                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">Flujo de Bomba (GPM)</label>
-                                <input
-                                    type="number"
-                                    value={pasteurizeForm.flow_rate_gpm}
-                                    onChange={(e) => setPasteurizeForm({ ...pasteurizeForm, flow_rate_gpm: e.target.value })}
-                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                                    step="0.01"
-                                    placeholder="Ej: 12.5"
-                                />
+                            <div className="text-center p-2 rounded-lg bg-white border border-slate-200">
+                                <span className="text-slate-500 block font-bold uppercase text-[10px]">Yema / Salada</span>
+                                <span className="text-slate-900 font-bold text-xs">≥ 66.5°C</span>
+                                <span className="text-slate-400 block text-[9px]">210 seg</span>
                             </div>
                         </div>
 
-                        <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
-                            <button
-                                type="button"
-                                onClick={() => setIsPasteurizeModalOpen(false)}
-                                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all border border-slate-200"
-                            >
-                                Cancelar
-                            </button>
-                            <button
-                                type="submit"
-                                disabled={isSubmitting}
-                                className="px-5 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm"
-                            >
-                                {isSubmitting ? 'Validando...' : 'Validar & Guardar'}
-                            </button>
-                        </div>
-                    </form>
-                </div>
+                        {/* Alert HACCP */}
+                        {haccpViolationAlert && (
+                            <div className="bg-rose-50 border-2 border-rose-300 rounded-xl p-4 text-rose-900 space-y-3 shadow-sm">
+                                <div className="flex gap-2 items-center font-bold text-xs uppercase tracking-wide text-rose-700">
+                                    <AlertOctagon size={18} className="text-rose-600" />
+                                    ALERTA DE INOCUIDAD ALIMENTARIA: PARÁMETROS FUERA DE RANGO
+                                </div>
+                                <p className="text-xs font-bold leading-relaxed">{haccpViolationAlert}</p>
+                                <p className="text-xs text-rose-700">
+                                    <b>ACCIÓN AUTOMÁTICA:</b> El lote ha sido marcado como bloqueado para empaque comercial y requiere evaluación de calidad.
+                                </p>
+                                <button
+                                    onClick={() => { setHaccpViolationAlert(null); setIsPasteurizeModalOpen(false); }}
+                                    className="px-4 py-2 bg-rose-600 text-white rounded-xl text-xs font-bold hover:bg-rose-700 transition-all shadow-xs"
+                                >
+                                    Volver al Historial
+                                </button>
+                            </div>
+                        )}
+
+                        <form onSubmit={handlePasteurize} className="space-y-4">
+                            <div>
+                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">Lote en Proceso a Pasteurizar</label>
+                                <select
+                                    value={selectedBatchForPasteurize}
+                                    onChange={(e) => setSelectedBatchForPasteurize(e.target.value)}
+                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                                >
+                                    <option value="">Seleccione Lote...</option>
+                                    {batches.filter(b => b.status === 'en_proceso' || String(b.id) === String(selectedBatchForPasteurize)).map(b => (
+                                        <option key={b.id} value={b.id}>
+                                            [{b.batch_code_display || b.batch_uuid}] {b.product_type} ({b.presentation})
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">Temperatura Pasteurización (°C)</label>
+                                    <input
+                                        type="number"
+                                        value={pasteurizeForm.temperature_c}
+                                        onChange={(e) => setPasteurizeForm({ ...pasteurizeForm, temperature_c: e.target.value })}
+                                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                                        step="0.01"
+                                        placeholder="Ej: 64.5"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">Tiempo de Retención (Segundos)</label>
+                                    <input
+                                        type="number"
+                                        value={pasteurizeForm.holding_time_seconds}
+                                        onChange={(e) => setPasteurizeForm({ ...pasteurizeForm, holding_time_seconds: e.target.value })}
+                                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                                        placeholder="Ej: 210"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">Presión Hidráulica (PSI)</label>
+                                    <input
+                                        type="number"
+                                        value={pasteurizeForm.pressure_psi}
+                                        onChange={(e) => setPasteurizeForm({ ...pasteurizeForm, pressure_psi: e.target.value })}
+                                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                                        step="0.01"
+                                        placeholder="Ej: 48.0"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">Flujo de Bomba (GPM)</label>
+                                    <input
+                                        type="number"
+                                        value={pasteurizeForm.flow_rate_gpm}
+                                        onChange={(e) => setPasteurizeForm({ ...pasteurizeForm, flow_rate_gpm: e.target.value })}
+                                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                                        step="0.01"
+                                        placeholder="Ej: 12.5"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
+                                <button
+                                    type="button"
+                                    onClick={() => setIsPasteurizeModalOpen(false)}
+                                    className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all border border-slate-200"
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={isSubmitting}
+                                    className="px-5 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm"
+                                >
+                                    {isSubmitting ? 'Validando...' : 'Validar & Guardar'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
                 </div>
             )}
 
@@ -3253,9 +3247,9 @@ const EggProduction = () => {
                                                             const isAgotado = m.is_depleted || parseFloat(m.stock_lbs || 0) <= 0.01;
                                                             const isAlreadyChosen = addTarimasModal.raw_materials.some((r, i) => i !== idx && r.raw_material_id === String(m.id));
                                                             return (
-                                                                <option 
-                                                                    key={m.id} 
-                                                                    value={m.id} 
+                                                                <option
+                                                                    key={m.id}
+                                                                    value={m.id}
                                                                     disabled={isAgotado || isAlreadyChosen}
                                                                     className={isAgotado ? 'text-slate-400 bg-slate-50' : 'text-slate-900'}
                                                                 >
@@ -3340,13 +3334,12 @@ const EggProduction = () => {
                                                                         type="button"
                                                                         disabled={isAdded || isDepleted}
                                                                         onClick={() => handleAddSpecificTarimaToAddModal(idx, t)}
-                                                                        className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 border ${
-                                                                            isAdded
+                                                                        className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 border ${isAdded
                                                                                 ? 'bg-emerald-50 border-emerald-300 text-emerald-700 shadow-2xs'
                                                                                 : isDepleted
-                                                                                ? 'bg-slate-100 border-slate-200 text-slate-400 opacity-60 cursor-not-allowed line-through'
-                                                                                : 'bg-white hover:bg-indigo-50 border-slate-300 hover:border-indigo-400 text-slate-700 hover:text-indigo-700 shadow-2xs'
-                                                                        }`}
+                                                                                    ? 'bg-slate-100 border-slate-200 text-slate-400 opacity-60 cursor-not-allowed line-through'
+                                                                                    : 'bg-white hover:bg-indigo-50 border-slate-300 hover:border-indigo-400 text-slate-700 hover:text-indigo-700 shadow-2xs'
+                                                                            }`}
                                                                         title={isDepleted ? 'Tarima 100% consumida' : isAdded ? 'Tarima ya agregada' : 'Hacer clic para agregar'}
                                                                     >
                                                                         <span>Tarima #{t.tarima_number}</span>

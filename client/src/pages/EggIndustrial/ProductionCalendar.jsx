@@ -48,7 +48,7 @@ import RawMaterialPlannerModal from '../../components/egg/RawMaterialPlannerModa
 const PRODUCT_PROFILES = [
     { id: 'Huevo Entero Pasteurizado', name: 'Huevo Entero Pasteurizado', defaultSolids: 23.5, color: 'indigo', desc: '83% rendimiento estándar' },
     { id: 'Huevo Formulado por Separación', name: 'Huevo Formulado por Separación (Yema + H2O)', defaultSolids: 22.5, color: 'emerald', desc: 'Venta de Clara + Yema con aditivo H2O' },
-    { id: 'Huevo Entero Plus', name: 'Huevo Entero Plus', defaultSolids: 21.5, color: 'cyan', desc: 'Con agua 8% y ácido cítrico' },
+    { id: 'Huevo Entero Plus', name: 'Huevo Entero Plus', defaultSolids: 21.5, color: 'cyan', desc: 'Con liquido a 8% y ácido cítrico' },
     { id: 'Clara de Huevo Pasteurizada', name: 'Clara de Huevo Pasteurizada', defaultSolids: 11.5, color: 'teal', desc: '54% rendimiento, alta demanda' },
     { id: 'Yema Azucarada', name: 'Yema Azucarada (4% azúcar)', defaultSolids: 48.0, color: 'amber', desc: 'Para panificación y repostería' },
     { id: 'Yema Salada', name: 'Yema Salada (10% sal)', defaultSolids: 47.0, color: 'orange', desc: 'Para aderezos y mayonesa' },
@@ -68,7 +68,7 @@ const FACTORY_ROLES = [
 const DEFAULT_PRESETS_BY_ROLE = {
     'Quebrado y Carga': 'Alinear y quebrar cajas de huevo blanco en cámara de quebrado.',
     'Sanitización CIP': 'Sanitizar pasteurizador con Ácido Peracético 1.5% a 78°C antes de iniciar.',
-    'Dosificación H2O / Mezcla': 'Medir y dosificar agua desmineralizada H2O con ácido cítrico estabilizador.',
+    'Dosificación H2O / Mezcla': 'Medir y dosificar liquido a con ácido cítrico estabilizador.',
     'Pasteurización HACCP': 'Mantener régimen pasteurizador a 64.5°C por 210s monitoreando CCP-1.',
     'Control de Calidad LAB-004': 'Verificar refractómetro: Sólidos totales y pH antes de envasado.',
     'Empaque y Cuarto Frío': 'Alistar cubetas sanitizadas con liner alimentario y etiquetas de lote.'
@@ -392,7 +392,7 @@ const ProductionCalendar = () => {
             rawLiquid = qty - waterLbs;
             boxes = Math.round(rawLiquid / 36.1);
             citricAcid = (qty * 0.0012).toFixed(2);
-            notes = `Adicionar ${waterLbs.toLocaleString()} Lbs de agua purificada (8%) y ${citricAcid} Lbs de ácido cítrico sobre ${rawLiquid.toLocaleString()} Lbs de huevo líquido base.`;
+            notes = `Adicionar ${waterLbs.toLocaleString()} Lbs liquido(8%) y ${citricAcid} Lbs de ácido cítrico sobre ${rawLiquid.toLocaleString()} Lbs de huevo líquido base.`;
         } else if (profLower.includes('azucar')) {
             solids = 48.0;
             sugarLbs = (qty * 0.04).toFixed(2);
@@ -411,7 +411,7 @@ const ProductionCalendar = () => {
             waterLbs = Math.round(qty * 0.04);
             rawLiquid = qty - parseFloat(milkLbs) - waterLbs;
             boxes = Math.round(rawLiquid / 36.1);
-            notes = `Huevo con leche: dosificar ${milkLbs} Lbs de leche en polvo y ${waterLbs} Lbs de agua purificada.`;
+            notes = `Huevo con leche: dosificar ${milkLbs} Lbs de leche en polvo y ${waterLbs} Lbs de liquido.`;
         } else {
             // Huevo entero estándar
             solids = 23.5;
@@ -1226,9 +1226,8 @@ const ProductionCalendar = () => {
                         <button
                             type="button"
                             onClick={() => setCalendarView('month')}
-                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                                calendarView === 'month' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'
-                            }`}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${calendarView === 'month' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                                }`}
                         >
                             <CalendarDays className="w-3.5 h-3.5" />
                             <span className="hidden sm:inline">Mes</span>
@@ -1236,9 +1235,8 @@ const ProductionCalendar = () => {
                         <button
                             type="button"
                             onClick={() => setCalendarView('list')}
-                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                                calendarView === 'list' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'
-                            }`}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${calendarView === 'list' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                                }`}
                         >
                             <List className="w-3.5 h-3.5" />
                             <span className="hidden sm:inline">Lista / Agenda</span>
@@ -1286,20 +1284,18 @@ const ProductionCalendar = () => {
                                     onDragOver={(e) => handleDragOver(e, cell.dateStr)}
                                     onDragLeave={handleDragLeave}
                                     onDrop={(e) => handleDrop(e, cell.dateStr)}
-                                    className={`min-h-[125px] sm:min-h-[145px] p-1.5 sm:p-2 flex flex-col transition-all group ${
-                                        cell.isCurrentMonth ? 'bg-white' : 'bg-slate-50/50 opacity-60'
-                                    } ${isDropTarget ? 'bg-indigo-50/80 ring-2 ring-indigo-400 ring-inset' : ''}`}
+                                    className={`min-h-[125px] sm:min-h-[145px] p-1.5 sm:p-2 flex flex-col transition-all group ${cell.isCurrentMonth ? 'bg-white' : 'bg-slate-50/50 opacity-60'
+                                        } ${isDropTarget ? 'bg-indigo-50/80 ring-2 ring-indigo-400 ring-inset' : ''}`}
                                 >
                                     {/* Número del día y botón rápido + */}
                                     <div className="flex items-center justify-between mb-1">
                                         <span
-                                            className={`text-xs font-bold rounded-lg w-6 h-6 flex items-center justify-center ${
-                                                isToday
+                                            className={`text-xs font-bold rounded-lg w-6 h-6 flex items-center justify-center ${isToday
                                                     ? 'bg-indigo-600 text-white shadow-sm'
                                                     : cell.isCurrentMonth
-                                                    ? 'text-slate-700'
-                                                    : 'text-slate-400'
-                                            }`}
+                                                        ? 'text-slate-700'
+                                                        : 'text-slate-400'
+                                                }`}
                                         >
                                             {cell.dayNumber}
                                         </span>
@@ -1327,9 +1323,8 @@ const ProductionCalendar = () => {
                                                     draggable={true}
                                                     onDragStart={(e) => handleDragStart(e, prod)}
                                                     onClick={() => handleOpenEditModal(prod)}
-                                                    className={`p-1.5 rounded-lg border text-left cursor-grab active:cursor-grabbing transition-all hover:shadow-md ${badgeStyle.card} ${
-                                                        draggedItem?.id === prod.id ? 'opacity-40' : ''
-                                                    }`}
+                                                    className={`p-1.5 rounded-lg border text-left cursor-grab active:cursor-grabbing transition-all hover:shadow-md ${badgeStyle.card} ${draggedItem?.id === prod.id ? 'opacity-40' : ''
+                                                        }`}
                                                 >
                                                     <div className="flex items-center justify-between gap-1">
                                                         <div className="flex items-center gap-1 min-w-0">
@@ -1389,9 +1384,8 @@ const ProductionCalendar = () => {
                                                         <span>{parseFloat(prod.target_quantity_lbs || 0).toLocaleString()} Lbs</span>
                                                         {tasksTotal > 0 && (
                                                             <span
-                                                                className={`font-semibold px-1 rounded ${
-                                                                    tasksDone === tasksTotal ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'
-                                                                }`}
+                                                                className={`font-semibold px-1 rounded ${tasksDone === tasksTotal ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'
+                                                                    }`}
                                                             >
                                                                 {tasksDone}/{tasksTotal} roles
                                                             </span>
@@ -1518,15 +1512,14 @@ const ProductionCalendar = () => {
 
                                                 <td className="px-4 py-3">
                                                     <span
-                                                        className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
-                                                            prod.status === 'completado'
+                                                        className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${prod.status === 'completado'
                                                                 ? 'bg-emerald-100 text-emerald-700'
                                                                 : prod.status === 'en_proceso'
-                                                                ? 'bg-blue-100 text-blue-700 animate-pulse'
-                                                                : prod.status === 'cancelado'
-                                                                ? 'bg-slate-200 text-slate-600'
-                                                                : 'bg-amber-100 text-amber-700'
-                                                        }`}
+                                                                    ? 'bg-blue-100 text-blue-700 animate-pulse'
+                                                                    : prod.status === 'cancelado'
+                                                                        ? 'bg-slate-200 text-slate-600'
+                                                                        : 'bg-amber-100 text-amber-700'
+                                                            }`}
                                                     >
                                                         {prod.status}
                                                     </span>
@@ -2078,11 +2071,10 @@ const ProductionCalendar = () => {
                             <button
                                 type="button"
                                 onClick={() => setSuggestionsTab('monthly')}
-                                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                                    suggestionsTab === 'monthly'
+                                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${suggestionsTab === 'monthly'
                                         ? 'bg-white text-indigo-700 shadow-sm'
                                         : 'text-slate-600 hover:text-slate-900'
-                                }`}
+                                    }`}
                             >
                                 <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
                                 <span>Plan Mensual Completo (IA)</span>
@@ -2093,11 +2085,10 @@ const ProductionCalendar = () => {
                             <button
                                 type="button"
                                 onClick={() => setSuggestionsTab('tactical')}
-                                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                                    suggestionsTab === 'tactical'
+                                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${suggestionsTab === 'tactical'
                                         ? 'bg-white text-emerald-700 shadow-sm'
                                         : 'text-slate-600 hover:text-slate-900'
-                                }`}
+                                    }`}
                             >
                                 <CalendarCheck className="w-3.5 h-3.5 text-emerald-600" />
                                 <span>Sugerencias Tácticas</span>
@@ -2237,13 +2228,12 @@ const ProductionCalendar = () => {
                                             return (
                                                 <div
                                                     key={run.id}
-                                                    className={`p-3 rounded-xl border transition-all ${
-                                                        run.already_scheduled
+                                                    className={`p-3 rounded-xl border transition-all ${run.already_scheduled
                                                             ? 'bg-slate-50/60 border-slate-200 opacity-60'
                                                             : isSelected
-                                                            ? 'bg-indigo-50/40 border-indigo-300 shadow-sm'
-                                                            : 'bg-white border-slate-200 hover:border-slate-300'
-                                                    }`}
+                                                                ? 'bg-indigo-50/40 border-indigo-300 shadow-sm'
+                                                                : 'bg-white border-slate-200 hover:border-slate-300'
+                                                        }`}
                                                 >
                                                     <div className="flex items-start gap-3">
                                                         <input
@@ -2442,13 +2432,12 @@ const ProductionCalendar = () => {
                                             setShowCustomerDropdown(true);
                                             if (customerSearchResults.length === 0) searchCustomersList(customerSearchInput);
                                         }}
-                                        className={`w-full bg-white border rounded-lg px-2.5 py-1.5 font-medium pr-8 transition-colors ${
-                                            selectedCustomer 
-                                                ? 'border-emerald-500 ring-1 ring-emerald-500/30 bg-emerald-50/20 text-slate-900 font-bold' 
+                                        className={`w-full bg-white border rounded-lg px-2.5 py-1.5 font-medium pr-8 transition-colors ${selectedCustomer
+                                                ? 'border-emerald-500 ring-1 ring-emerald-500/30 bg-emerald-50/20 text-slate-900 font-bold'
                                                 : customerSearchInput && !selectedCustomer
                                                     ? 'border-amber-400 bg-amber-50/10'
                                                     : 'border-slate-300'
-                                        }`}
+                                            }`}
                                     />
                                     {selectedCustomer ? (
                                         <button
@@ -2602,9 +2591,8 @@ const ProductionCalendar = () => {
                                         <RefreshCw className="w-2.5 h-2.5 animate-spin" /> Verificando acuerdos en CRM...
                                     </p>
                                 ) : agreedPriceNotice ? (
-                                    <p className={`text-[10px] mt-1 font-medium flex items-center gap-1 ${
-                                        agreedPriceNotice.type === 'crm' ? 'text-emerald-700' : 'text-slate-500'
-                                    }`}>
+                                    <p className={`text-[10px] mt-1 font-medium flex items-center gap-1 ${agreedPriceNotice.type === 'crm' ? 'text-emerald-700' : 'text-slate-500'
+                                        }`}>
                                         {agreedPriceNotice.type === 'crm' && <Check className="w-3 h-3 text-emerald-600" />}
                                         <span>{agreedPriceNotice.label}</span>
                                         {agreedPriceNotice.overridden && (

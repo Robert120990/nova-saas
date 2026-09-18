@@ -1,6 +1,6 @@
 const nodemailer = require('nodemailer');
 const pool = require('../config/db');
-const { 
+const {
     generateAgingPDF,
     generateProviderAgingPDF,
     generateRTEE,
@@ -19,7 +19,7 @@ const {
  */
 const getSMTPSettings = async (branchId, companyId) => {
     if (!branchId) throw new Error('Se requiere el ID de sucursal para obtener SMTP');
-    
+
     // 1. Try branch-specific first
     const [branchRows] = await pool.query('SELECT * FROM smtp_settings WHERE branch_id = ?', [branchId]);
     if (branchRows.length > 0) return branchRows[0];
@@ -37,7 +37,7 @@ const getSMTPSettings = async (branchId, companyId) => {
             return companyRows[0];
         }
     }
-    
+
     throw new Error('No se encontró configuración SMTP para esta sucursal ni para la empresa. Por favor, configure el correo en el panel de sucursales.');
 };
 
@@ -233,23 +233,23 @@ const sendAnticiposStatementEmail = async (customerId, branchId, companyId) => {
     }
 };
 
-  /**
-   * Sends a Trupput (prepago por galonaje) statement email with a PDF attachment
-   */
-  const sendTrupputStatementEmail = async (customerId, branchId, companyId) => {
-      try {
-          const [companyRows] = await pool.query('SELECT razon_social, nombre_comercial FROM companies WHERE id = ?', [companyId]);
-          const [branchRows] = await pool.query('SELECT nombre FROM branches WHERE id = ?', [branchId]);
-          const [customerRows] = await pool.query('SELECT nombre, correo FROM customers WHERE id = ?', [customerId]);
+/**
+ * Sends a Trupput (prepago por galonaje) statement email with a PDF attachment
+ */
+const sendTrupputStatementEmail = async (customerId, branchId, companyId) => {
+    try {
+        const [companyRows] = await pool.query('SELECT razon_social, nombre_comercial FROM companies WHERE id = ?', [companyId]);
+        const [branchRows] = await pool.query('SELECT nombre FROM branches WHERE id = ?', [branchId]);
+        const [customerRows] = await pool.query('SELECT nombre, correo FROM customers WHERE id = ?', [customerId]);
 
-          if (!customerRows.length || !customerRows[0].correo) {
-              throw new Error('El cliente no tiene un correo electrónico registrado.');
-          }
+        if (!customerRows.length || !customerRows[0].correo) {
+            throw new Error('El cliente no tiene un correo electrónico registrado.');
+        }
 
-          const customer = customerRows[0];
-          const smtp = await getSMTPSettings(branchId, companyId);
+        const customer = customerRows[0];
+        const smtp = await getSMTPSettings(branchId, companyId);
 
-          const [recharges] = await pool.query(`
+        const [recharges] = await pool.query(`
               SELECT 
                   DATE_FORMAT(t.fecha, '%Y-%m-%d') as fecha,
                   'TRUPPUT' as tipo,
@@ -264,7 +264,7 @@ const sendAnticiposStatementEmail = async (customerId, branchId, companyId) => {
               WHERE t.company_id = ? AND t.cliente_id = ? AND (t.branch_id = ? OR t.branch_id IS NULL)
           `, [companyId, customerId, branchId]);
 
-          const [dispatches] = await pool.query(`
+        const [dispatches] = await pool.query(`
               SELECT 
                   DATE_FORMAT(c.fecha_turno, '%Y-%m-%d') as fecha,
                   'DESPACHO' as tipo,
@@ -280,40 +280,40 @@ const sendAnticiposStatementEmail = async (customerId, branchId, companyId) => {
               WHERE td.cliente_id = ? AND c.company_id = ? AND c.branch_id = ?
           `, [customerId, companyId, branchId]);
 
-          const movementsAll = [...recharges, ...dispatches].sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
-          let currentBalanceGal = 0;
-          let totalRecargado = 0;
-          let totalDespachado = 0;
-          const history = movementsAll.map(m => {
-              const cargoGal = parseFloat(m.galones_cargo || 0);
-              const abonoGal = parseFloat(m.galones_abono || 0);
-              currentBalanceGal += (cargoGal - abonoGal);
-              totalRecargado += parseFloat(m.cargo || 0);
-              totalDespachado += parseFloat(m.abono || 0);
-              return { ...m, balance_galones: currentBalanceGal };
-          });
+        const movementsAll = [...recharges, ...dispatches].sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+        let currentBalanceGal = 0;
+        let totalRecargado = 0;
+        let totalDespachado = 0;
+        const history = movementsAll.map(m => {
+            const cargoGal = parseFloat(m.galones_cargo || 0);
+            const abonoGal = parseFloat(m.galones_abono || 0);
+            currentBalanceGal += (cargoGal - abonoGal);
+            totalRecargado += parseFloat(m.cargo || 0);
+            totalDespachado += parseFloat(m.abono || 0);
+            return { ...m, balance_galones: currentBalanceGal };
+        });
 
-          const companyName = companyRows[0]?.nombre_comercial || companyRows[0]?.razon_social || 'Empresa';
-          const branchName = branchRows[0]?.nombre || 'Sucursal';
-          const customerName = customer.nombre || 'Cliente';
+        const companyName = companyRows[0]?.nombre_comercial || companyRows[0]?.razon_social || 'Empresa';
+        const branchName = branchRows[0]?.nombre || 'Sucursal';
+        const customerName = customer.nombre || 'Cliente';
 
-          const pdfBuffer = await generateTrupputStatementPDF({
-              company_name: companyName,
-              branch_name: branchName,
-              customer_name: customerName,
-              customer_email: customer.correo || '',
-              total_balance_galones: currentBalanceGal,
-              total_recargado: totalRecargado,
-              total_despachado: totalDespachado,
-              movements: history
-          });
+        const pdfBuffer = await generateTrupputStatementPDF({
+            company_name: companyName,
+            branch_name: branchName,
+            customer_name: customerName,
+            customer_email: customer.correo || '',
+            total_balance_galones: currentBalanceGal,
+            total_recargado: totalRecargado,
+            total_despachado: totalDespachado,
+            movements: history
+        });
 
-          const transporter = createTransporter(smtp);
-          await transporter.sendMail({
-              from: `"${smtp.from_name}" <${smtp.from_email}>`,
-              to: customer.correo,
-              subject: `Estado de Cuenta Trupput - ${companyRows[0]?.nombre_comercial || companyRows[0]?.razon_social || 'CXC'}`,
-              html: `
+        const transporter = createTransporter(smtp);
+        await transporter.sendMail({
+            from: `"${smtp.from_name}" <${smtp.from_email}>`,
+            to: customer.correo,
+            subject: `Estado de Cuenta Trupput - ${companyRows[0]?.nombre_comercial || companyRows[0]?.razon_social || 'CXC'}`,
+            html: `
                   <div style="font-family: sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 12px; max-width: 600px; margin: auto;">
                       <h2 style="color: #4f46e5; text-align: center;">Estado de Cuenta Trupput</h2>
                       <p>Hola <b>${customer.nombre}</b>,</p>
@@ -327,17 +327,17 @@ const sendAnticiposStatementEmail = async (customerId, branchId, companyId) => {
                       <p style="font-size: 12px; color: #94a3b8; text-align: center;">Este es un mensaje automático de <b>${branchRows[0].nombre}</b>.</p>
                   </div>
               `,
-              attachments: [{ filename: `Estado_Cuenta_Trupput_${customer.nombre.replace(/ /g, '_')}.pdf`, content: pdfBuffer }]
-          });
-      } catch (error) {
-          console.error(`[Mailer] ERROR in sendTrupputStatementEmail:`, error);
-          throw error;
-      }
-  };
+            attachments: [{ filename: `Estado_Cuenta_Trupput_${customer.nombre.replace(/ /g, '_')}.pdf`, content: pdfBuffer }]
+        });
+    } catch (error) {
+        console.error(`[Mailer] ERROR in sendTrupputStatementEmail:`, error);
+        throw error;
+    }
+};
 
-  /**
-   * Sends a provider statement email with a PDF attachment
-   */
+/**
+ * Sends a provider statement email with a PDF attachment
+ */
 const sendProviderStatementEmail = async (providerId, branchId, companyId) => {
     try {
         const [companyRows] = await pool.query('SELECT razon_social, nombre_comercial FROM companies WHERE id = ?', [companyId]);
@@ -482,7 +482,7 @@ const sendProviderPaymentReceiptEmail = async (paymentId) => {
         if (!p.proveedor_email) throw new Error('El proveedor no tiene un correo electrónico registrado.');
 
         const smtp = await getSMTPSettings(p.branch_id, p.company_id);
-        
+
         // Re-use payment receipt PDF (adjust labels if needed in pdf.service, or provide specifically)
         // For now using general labels.
         const pdfBuffer = await generatePaymentReceiptPDF({
@@ -537,7 +537,7 @@ const sendMail = async ({ branchId, to, subject, text, html, attachments }) => {
     }
 };
 
-module.exports = { 
+module.exports = {
     sendCustomerStatementEmail,
     sendAnticiposStatementEmail,
     sendTrupputStatementEmail,
@@ -653,7 +653,7 @@ module.exports = {
                     direccion: dteJson.emisor.direccion,
                     telefono: dteJson.emisor.telefono || venta.branch_telefono,
                     correo: dteJson.emisor.correo || venta.branch_correo,
-                    departamento_nombre: 'San Salvador', 
+                    departamento_nombre: 'San Salvador',
                     municipio_nombre: 'San Salvador',
                     logoPath: venta.branch_logo_url || venta.company_logo_url || null
                 },
@@ -748,13 +748,13 @@ module.exports = {
             // 5. Actualizar estado en DB
             await pool.query('UPDATE sales_headers SET dte_email_sent = 1, dte_email_error = NULL WHERE id = ?', [saleId]);
             console.log(`[Mailer] DTE enviado con éxito para Venta ID: ${saleId}`);
-            
+
             return { success: true };
 
         } catch (error) {
             console.error(`[Mailer] Error enviando DTE ID ${saleId}:`, error.message);
             await pool.query('UPDATE sales_headers SET dte_email_sent = 0, dte_email_error = ? WHERE id = ?', [error.message, saleId]);
-            
+
             return { success: false, error: error.message };
         }
     },
@@ -827,7 +827,7 @@ module.exports = {
                     direccion: dteJson.emisor.direccion,
                     telefono: dteJson.emisor.telefono || venta.branch_telefono,
                     correo: dteJson.emisor.correo || venta.branch_correo,
-                    departamento_nombre: 'San Salvador', 
+                    departamento_nombre: 'San Salvador',
                     municipio_nombre: 'San Salvador',
                     logoPath: venta.branch_logo_url || venta.company_logo_url || null
                 },

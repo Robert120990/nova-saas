@@ -141,7 +141,7 @@ export default function EggCosteoPorLibra() {
                 axios.get('/api/egg-industrial/costeo-libra/scenarios'),
                 axios.get('/api/egg-industrial/costeo-libra/products-lookup')
             ]);
-            
+
             const confMap = {};
             if (Array.isArray(confRes.data)) {
                 confRes.data.forEach(c => { confMap[c.setting_key] = parseFloat(c.setting_value) || 0; });
@@ -721,11 +721,10 @@ export default function EggCosteoPorLibra() {
                                 key={btn.id}
                                 type="button"
                                 onClick={() => handlePresetChange(btn.id)}
-                                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all ${
-                                    dateRange.preset === btn.id
+                                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all ${dateRange.preset === btn.id
                                         ? 'bg-white text-indigo-700 shadow-sm border border-slate-200'
                                         : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
-                                }`}
+                                    }`}
                             >
                                 {btn.label}
                             </button>
@@ -860,15 +859,13 @@ export default function EggCosteoPorLibra() {
                     <div className="bg-white/5 border border-white/10 rounded-xl p-4 backdrop-blur-sm">
                         <div className="flex items-center justify-between text-indigo-300 text-[11px] font-bold uppercase mb-1">
                             <span>Margen Real</span>
-                            <span className={`text-[10px] font-black px-1.5 py-0.5 rounded ${
-                                (opBreakdown.actual_margin_pct || 0) >= 15 ? 'bg-emerald-500/20 text-emerald-300' : 'bg-amber-500/20 text-amber-300'
-                            }`}>
+                            <span className={`text-[10px] font-black px-1.5 py-0.5 rounded ${(opBreakdown.actual_margin_pct || 0) >= 15 ? 'bg-emerald-500/20 text-emerald-300' : 'bg-amber-500/20 text-amber-300'
+                                }`}>
                                 {opBreakdown.actual_margin_pct ? opBreakdown.actual_margin_pct.toFixed(1) : '0.0'}%
                             </span>
                         </div>
-                        <div className={`text-xl font-black mt-1 ${
-                            (opBreakdown.actual_margin_per_lb || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'
-                        }`}>
+                        <div className={`text-xl font-black mt-1 ${(opBreakdown.actual_margin_per_lb || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                            }`}>
                             ${opBreakdown.actual_margin_per_lb ? opBreakdown.actual_margin_per_lb.toFixed(2) : '0.00'}
                             <span className="text-xs font-normal text-indigo-300"> /lb utilidad</span>
                         </div>
@@ -894,18 +891,16 @@ export default function EggCosteoPorLibra() {
                         <button
                             key={tab.id}
                             onClick={() => setActiveTab(tab.id)}
-                            className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition-all ${
-                                isActive
+                            className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition-all ${isActive
                                     ? 'bg-white text-indigo-700 shadow-sm border border-slate-200'
                                     : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
-                            }`}
+                                }`}
                         >
                             <Icon className="w-4 h-4" />
                             <span>{tab.label}</span>
                             {tab.badge !== undefined && (
-                                <span className={`px-1.5 py-0.2 text-[10px] rounded-full font-black ${
-                                    isActive ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-200 text-slate-700'
-                                }`}>
+                                <span className={`px-1.5 py-0.2 text-[10px] rounded-full font-black ${isActive ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-200 text-slate-700'
+                                    }`}>
                                     {tab.badge}
                                 </span>
                             )}
@@ -941,7 +936,7 @@ export default function EggCosteoPorLibra() {
                                 >
                                     <option value="Huevo Entero Pasteurizado">Huevo Entero Pasteurizado (83% rend.)</option>
                                     <option value="Huevo Formulado por Separación">Huevo Formulado por Separación (Yema + H2O + Venta de Clara)</option>
-                                    <option value="Huevo Entero Plus">Huevo Entero Plus (Con agua 8% y ácido cítrico)</option>
+                                    <option value="Huevo Entero Plus">Huevo Entero Plus (Con formula 8% y ácido cítrico)</option>
                                     <option value="Clara de Huevo Pasteurizada">Clara Pasteurizada (53.95% rend.)</option>
                                     <option value="Yema Azucarada">Yema Azucarada (4% azúcar)</option>
                                     <option value="Yema Salada">Yema Salada (10% sal)</option>
@@ -1198,11 +1193,10 @@ export default function EggCosteoPorLibra() {
                                             <Droplets className="w-4 h-4 text-cyan-600" />
                                             <span>Nivelación de Sólidos & Balance Hídrico (HE+)</span>
                                         </div>
-                                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
-                                            (parseFloat(calcParams.target_solids) || 0) >= 21.0
+                                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${(parseFloat(calcParams.target_solids) || 0) >= 21.0
                                                 ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
                                                 : 'bg-rose-100 text-rose-800 border border-rose-300'
-                                        }`}>
+                                            }`}>
                                             {(parseFloat(calcParams.target_solids) || 0) >= 21.0 ? 'Norma Cumplida (≥21.0%)' : 'Sólidos Bajos (<21.0%)'}
                                         </span>
                                     </div>
@@ -1245,7 +1239,7 @@ export default function EggCosteoPorLibra() {
 
                                         <div>
                                             <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">
-                                                % Agua a Añadir
+                                                % liquido a a Añadir
                                             </label>
                                             <input
                                                 type="number"
@@ -1265,7 +1259,7 @@ export default function EggCosteoPorLibra() {
                                     <div className="bg-white/80 border border-cyan-200 rounded-lg p-2 text-[10px] text-slate-700 flex flex-col sm:flex-row sm:items-center justify-between gap-1">
                                         <div>
                                             <span className="font-bold text-cyan-800">Fórmula de Planta: </span>
-                                            <span className="font-mono text-[10.5px] text-slate-800">% Agua = [(Sólidos Base − Sólidos Target) ÷ Sólidos Base] × 100</span>
+                                            <span className="font-mono text-[10.5px] text-slate-800">% liquido a = [(Sólidos Base − Sólidos Target) ÷ Sólidos Base] × 100</span>
                                         </div>
                                         <div className="font-bold text-cyan-900">
                                             Lote: {(parseFloat(calcParams.batch_size_lbs) || 12000).toLocaleString()} lbs
@@ -1282,7 +1276,7 @@ export default function EggCosteoPorLibra() {
                                         </div>
 
                                         <div className="bg-white p-2 rounded-lg border border-cyan-200">
-                                            <span className="text-[9px] font-bold text-slate-500 uppercase block">Agua Purificada</span>
+                                            <span className="text-[9px] font-bold text-slate-500 uppercase block">liquido a</span>
                                             <span className="font-bold text-cyan-700 text-xs mt-0.5 block">
                                                 {(calculationResult?.formulation?.water_lbs || (parseFloat(calcParams.batch_size_lbs || 12000) * (parseFloat(calcParams.water_added_pct || 0) / 100))).toLocaleString(undefined, { maximumFractionDigits: 0 })} lbs
                                             </span>
@@ -1546,7 +1540,7 @@ export default function EggCosteoPorLibra() {
                                                 <strong className="text-white">{(calculationResult.separation_data.final_formulated_lbs || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })} lbs</strong>
                                             </div>
                                             <div className="flex justify-between text-amber-100">
-                                                <span>Agua Purificada Adicionada:</span>
+                                                <span>liquido a:</span>
                                                 <strong className="text-cyan-300">{(calculationResult.separation_data.h2o_garrafones || 0).toFixed(1)} garrafones (42 lb)</strong>
                                             </div>
                                             <div className="flex justify-between text-[11px] text-amber-200/80 pt-1 border-t border-white/10">
@@ -1626,7 +1620,7 @@ export default function EggCosteoPorLibra() {
                                         bg: 'bg-amber-50/80',
                                         desc: calculationResult?.separation_data?.is_separation_mode
                                             ? `Formulado con H2O y crédito de clara (Ahorro -$${(calculationResult.separation_data.mp_cost_reduction_per_lb || 0).toFixed(2)}/lb)`
-                                            : calculationResult?.formulation?.water_added_pct > 0 
+                                            : calculationResult?.formulation?.water_added_pct > 0
                                                 ? `Base puro $${(calculationResult.formulation.pure_egg_cost_per_lb || 0).toFixed(2)} (Ahorro -$${(calculationResult.formulation.mp_cost_savings_per_lb || 0).toFixed(2)})`
                                                 : 'Huevo cáscara descontando 17% cáscara'
                                     },
@@ -1700,7 +1694,7 @@ export default function EggCosteoPorLibra() {
 
                         {/* Matriz Comparativa por Presentación y Empaque (Desplegable para evitar saturación) */}
                         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden transition-all">
-                            <div 
+                            <div
                                 onClick={() => setShowPresentationsMatrixCalc(prev => !prev)}
                                 className="p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 cursor-pointer hover:bg-slate-50/70 transition-colors select-none"
                             >
@@ -1893,9 +1887,8 @@ export default function EggCosteoPorLibra() {
 
                             <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
                                 <span className="text-[10px] font-bold text-slate-500 uppercase">Margen Bruto ($/lb)</span>
-                                <div className={`text-xl font-black mt-1 ${
-                                    (calculationResult?.target_simulation?.margin_per_lb || 0) >= 0 ? 'text-emerald-600' : 'text-rose-600'
-                                }`}>
+                                <div className={`text-xl font-black mt-1 ${(calculationResult?.target_simulation?.margin_per_lb || 0) >= 0 ? 'text-emerald-600' : 'text-rose-600'
+                                    }`}>
                                     <Money value={calculationResult?.target_simulation?.margin_per_lb || 0} />
                                     <span className="text-xs font-medium text-slate-500"> /lb</span>
                                 </div>
@@ -1909,8 +1902,8 @@ export default function EggCosteoPorLibra() {
                                         (calculationResult?.target_simulation?.margin_pct || 0) >= 20
                                             ? 'text-emerald-600'
                                             : (calculationResult?.target_simulation?.margin_pct || 0) >= 10
-                                            ? 'text-amber-600'
-                                            : 'text-rose-600'
+                                                ? 'text-amber-600'
+                                                : 'text-rose-600'
                                     }>
                                         {calculationResult?.target_simulation?.margin_pct?.toFixed(1) || 0}%
                                     </span>
@@ -1955,13 +1948,12 @@ export default function EggCosteoPorLibra() {
                                         {(calculationResult?.target_simulation?.margin_matrix || []).map((row, idx) => (
                                             <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
                                                 <td className="py-3 px-3">
-                                                    <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold inline-block ${
-                                                        row.margin_target_pct >= 25
+                                                    <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold inline-block ${row.margin_target_pct >= 25
                                                             ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                                                             : row.margin_target_pct >= 15
-                                                            ? 'bg-indigo-50 text-indigo-700 border border-indigo-200'
-                                                            : 'bg-amber-50 text-amber-700 border border-amber-200'
-                                                    }`}>
+                                                                ? 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+                                                                : 'bg-amber-50 text-amber-700 border border-amber-200'
+                                                        }`}>
                                                         {row.margin_target_pct}%
                                                     </span>
                                                 </td>
@@ -1983,7 +1975,7 @@ export default function EggCosteoPorLibra() {
 
                         {/* Columna Derecha: Simulación Multiformato por Presentación (Desplegable para evitar saturación) */}
                         <div className="lg:col-span-7 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden transition-all">
-                            <div 
+                            <div
                                 onClick={() => setShowPresentationsMatrixSim(prev => !prev)}
                                 className="p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 cursor-pointer hover:bg-slate-50/70 transition-colors select-none"
                             >
@@ -2097,13 +2089,12 @@ export default function EggCosteoPorLibra() {
                                                             </td>
                                                             <td className="py-3 px-3 text-center">
                                                                 {hasSimPrice ? (
-                                                                    <span className={`px-2 py-0.5 rounded-full text-[11px] font-black inline-block ${
-                                                                        marginPct >= 20
+                                                                    <span className={`px-2 py-0.5 rounded-full text-[11px] font-black inline-block ${marginPct >= 20
                                                                             ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                                                                             : marginPct >= 10
-                                                                            ? 'bg-amber-50 text-amber-700 border border-amber-200'
-                                                                            : 'bg-rose-50 text-rose-700 border border-rose-200'
-                                                                    }`}>
+                                                                                ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                                                                                : 'bg-rose-50 text-rose-700 border border-rose-200'
+                                                                        }`}>
                                                                         {marginPct.toFixed(1)}%
                                                                     </span>
                                                                 ) : (
@@ -2202,11 +2193,10 @@ export default function EggCosteoPorLibra() {
                                 key={f.id}
                                 type="button"
                                 onClick={() => setValidityFilter(f.id)}
-                                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
-                                    validityFilter === f.id
+                                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${validityFilter === f.id
                                         ? 'bg-indigo-600 text-white shadow-sm'
                                         : 'text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200/70'
-                                }`}
+                                    }`}
                             >
                                 {f.label}
                             </button>
@@ -2241,8 +2231,8 @@ export default function EggCosteoPorLibra() {
                                                 client.status === 'green'
                                                     ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                                                     : client.status === 'yellow'
-                                                    ? 'bg-amber-50 text-amber-700 border border-amber-200'
-                                                    : 'bg-rose-50 text-rose-700 border border-rose-200';
+                                                        ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                                                        : 'bg-rose-50 text-rose-700 border border-rose-200';
 
                                             return (
                                                 <tr key={client.id} className="hover:bg-slate-50/80 transition-colors">
@@ -2666,22 +2656,20 @@ export default function EggCosteoPorLibra() {
                             <button
                                 type="button"
                                 onClick={() => setHistorySubTab('real_production')}
-                                className={`px-3 py-1.5 rounded-lg font-bold transition-all ${
-                                    historySubTab === 'real_production'
+                                className={`px-3 py-1.5 rounded-lg font-bold transition-all ${historySubTab === 'real_production'
                                         ? 'bg-white text-indigo-700 shadow-sm'
                                         : 'text-slate-600 hover:text-slate-900'
-                                }`}
+                                    }`}
                             >
                                 Producción Real & Costo/Lb
                             </button>
                             <button
                                 type="button"
                                 onClick={() => setHistorySubTab('scenarios')}
-                                className={`px-3 py-1.5 rounded-lg font-bold transition-all ${
-                                    historySubTab === 'scenarios'
+                                className={`px-3 py-1.5 rounded-lg font-bold transition-all ${historySubTab === 'scenarios'
                                         ? 'bg-white text-indigo-700 shadow-sm'
                                         : 'text-slate-600 hover:text-slate-900'
-                                }`}
+                                    }`}
                             >
                                 Escenarios Simulados ({scenarios.length})
                             </button>
@@ -2691,11 +2679,10 @@ export default function EggCosteoPorLibra() {
                                     setHistorySubTab('agreements_history');
                                     loadGlobalAgreementHistory();
                                 }}
-                                className={`px-3 py-1.5 rounded-lg font-bold transition-all ${
-                                    historySubTab === 'agreements_history'
+                                className={`px-3 py-1.5 rounded-lg font-bold transition-all ${historySubTab === 'agreements_history'
                                         ? 'bg-white text-indigo-700 shadow-sm'
                                         : 'text-slate-600 hover:text-slate-900'
-                                }`}
+                                    }`}
                             >
                                 Historial de Tarifas Clientes
                             </button>
