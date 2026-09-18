@@ -176,6 +176,7 @@ router.get('/orders', eggController.getEggCustomerOrders);
 router.post('/orders', eggController.saveEggCustomerOrder);
 router.put('/orders/:id', eggController.saveEggCustomerOrder);
 router.delete('/orders/:id', eggController.deleteEggCustomerOrder);
+router.get('/orders/:id/delivery-receipt', eggController.getOrderDeliveryReceipt);
 
 // 21. Usuarios de Planta para Roles
 router.get('/factory-users', eggController.getFactoryUsers);
@@ -226,6 +227,7 @@ router.delete('/code-mappings/:id', eggController.deleteCodeMapping);
 
 // 25. Inventario Traducido de Huevo Industrial
 router.get('/inventory-translated', eggController.getTranslatedInventory);
+router.get('/inventory-translated/export', eggController.exportTranslatedInventory);
 
 module.exports = router;
 

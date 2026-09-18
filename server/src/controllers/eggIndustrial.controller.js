@@ -5,6 +5,8 @@ const notificationService = require('../services/notification.service');
 const eggExportService = require('../services/eggProductionExport.service');
 const eggReportsExportService = require('../services/eggReportsExport.service');
 const eggQualityLetterExport = require('../services/eggQualityLetterExport.service');
+const reportPdfHelper = require('../utils/reportPdfHelper');
+const excelService = require('../services/excel.service');
 
 // Helper oficial para cálculo de código de lote en Calendario Juliano: LOTE-[Año 2d][Día Juliano 3d]-[Corrida 2d] (ej. LOTE-26252-01)
 const computeJulianLotCode = (productionDate, runNumber = 1) => {
@@ -221,6 +223,13 @@ const ensureEggSchema = async () => {
         );
         if (bCols.length === 0) {
             await pool.query("ALTER TABLE egg_production_batches ADD COLUMN packaging_status ENUM('pendiente', 'en_envasado', 'cerrado') NOT NULL DEFAULT 'pendiente' AFTER status, ADD COLUMN packaging_loss_lbs DECIMAL(12,2) DEFAULT 0.00 AFTER packaging_status, ADD COLUMN packaging_efficiency_pct DECIMAL(5,2) DEFAULT 0.00 AFTER packaging_loss_lbs, ADD COLUMN notes TEXT NULL AFTER packaging_efficiency_pct");
+        }
+
+        const [ecoCols] = await pool.query(
+            "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'egg_customer_orders' AND COLUMN_NAME = 'items_json'"
+        );
+        if (ecoCols.length === 0) {
+            await pool.query("ALTER TABLE egg_customer_orders ADD COLUMN items_json JSON NULL AFTER notes, ADD COLUMN batch_id INT NULL AFTER items_json, ADD COLUMN lot_code VARCHAR(100) NULL AFTER batch_id");
         }
 
         schemaEnsured = true;
@@ -738,6 +747,12 @@ const getProductionBatches = async (req, res) => {
                 [batch.id, req.company_id]
             );
             batch.variable_costs = varCosts;
+
+            const [remanentes] = await pool.query(
+                'SELECT * FROM egg_batch_remanentes WHERE target_batch_id = ? AND company_id = ?',
+                [batch.id, req.company_id]
+            );
+            batch.remanentes_used = remanentes;
         }
 
         res.json(rows);
@@ -896,8 +911,9 @@ const createProductionBatch = async (req, res) => {
         }
 
         // Vincular remanentes utilizados en esta producción
-        const remanenteIds = req.body.remanente_ids || (Array.isArray(req.body.remanentes) ? req.body.remanentes.map(r => r.id || r) : []);
-        if (Array.isArray(remanenteIds) && remanenteIds.length > 0) {
+        const rawRemIds = req.body.remanente_ids || (Array.isArray(req.body.remanentes) ? req.body.remanentes.map(r => r.id || r) : []);
+        const remanenteIds = (Array.isArray(rawRemIds) ? rawRemIds : []).map(r => parseInt(r, 10)).filter(r => !isNaN(r) && r > 0);
+        if (remanenteIds.length > 0) {
             for (const remId of remanenteIds) {
                 try {
                     await connection.query(
@@ -5034,11 +5050,13 @@ const getEggCustomerOrders = async (req, res) => {
                    r.codigo_ruta,
                    r.driver_name as route_driver_name,
                    r.fecha_despacho as route_date,
-                   r.estado as route_estado
+                   r.estado as route_estado,
+                   b.batch_code_display as linked_batch_code
             FROM egg_customer_orders o
             LEFT JOIN customers c ON o.customer_id = c.id
             LEFT JOIN customer_branches cb ON o.customer_branch_id = cb.id
             LEFT JOIN egg_dispatch_routes r ON o.dispatch_route_id = r.id
+            LEFT JOIN egg_production_batches b ON o.batch_id = b.id
             WHERE o.company_id = ?
         `;
         const params = [company_id];
@@ -5091,16 +5109,20 @@ const saveEggCustomerOrder = async (req, res) => {
             status,
             priority,
             price_per_lb,
-            notes
+            notes,
+            items,
+            items_json,
+            batch_id,
+            lot_code
         } = req.body;
 
         const company_id = req.company_id || req.user?.company_id;
 
-        if (!customer_name || !product_type || !quantity_lbs || !required_delivery_date) {
-            return res.status(400).json({ message: 'Cliente, Producto, Cantidad (Lbs) y Fecha requerida son obligatorios.' });
+        if (!customer_name || !required_delivery_date) {
+            return res.status(400).json({ message: 'El nombre del cliente y la fecha requerida son obligatorios.' });
         }
 
-        // 1. Validar que el cliente coincida con un cliente existente registrado en el sistema
+        // 1. Manejo flexible de cliente: si existe se vincula, si no se encuentra o se escribe ad-hoc se permite sin bloquear
         let resolvedCustomerId = customer_id ? parseInt(customer_id) : null;
         let resolvedCustomerName = (customer_name || '').trim();
 
@@ -5109,12 +5131,13 @@ const saveEggCustomerOrder = async (req, res) => {
                 'SELECT id, nombre, nombre_comercial FROM customers WHERE id = ? AND company_id = ?',
                 [resolvedCustomerId, company_id]
             );
-            if (cCheck.length === 0) {
-                return res.status(400).json({ message: 'El cliente seleccionado no existe en el catálogo de clientes.' });
+            if (cCheck.length > 0) {
+                resolvedCustomerName = cCheck[0].nombre;
+            } else {
+                resolvedCustomerId = null;
             }
-            resolvedCustomerName = cCheck[0].nombre;
-        } else {
-            // Buscar coincidencia por nombre o nombre comercial en customers
+        } else if (resolvedCustomerName) {
+            // Intentar buscar coincidencia sin forzar si no está registrado
             const [cCheck] = await pool.query(
                 `SELECT id, nombre, nombre_comercial FROM customers 
                  WHERE company_id = ? 
@@ -5122,18 +5145,15 @@ const saveEggCustomerOrder = async (req, res) => {
                  LIMIT 1`,
                 [company_id, resolvedCustomerName, resolvedCustomerName]
             );
-            if (cCheck.length === 0) {
-                return res.status(400).json({
-                    message: `El cliente '${resolvedCustomerName}' no coincide con ningún cliente registrado. Debe seleccionar un cliente existente.`
-                });
+            if (cCheck.length > 0) {
+                resolvedCustomerId = cCheck[0].id;
+                resolvedCustomerName = cCheck[0].nombre;
             }
-            resolvedCustomerId = cCheck[0].id;
-            resolvedCustomerName = cCheck[0].nombre;
         }
 
         // Validar sucursal si se especificó
         let resolvedBranchId = customer_branch_id ? parseInt(customer_branch_id) : null;
-        if (resolvedBranchId) {
+        if (resolvedBranchId && resolvedCustomerId) {
             const [bCheck] = await pool.query(
                 'SELECT id FROM customer_branches WHERE id = ? AND customer_id = ? AND company_id = ?',
                 [resolvedBranchId, resolvedCustomerId, company_id]
@@ -5141,11 +5161,67 @@ const saveEggCustomerOrder = async (req, res) => {
             if (bCheck.length === 0) {
                 resolvedBranchId = null;
             }
+        } else {
+            resolvedBranchId = null;
         }
 
-        // 2. Si el precio acordado no se ingresó manualmente (> 0), jalarlo automáticamente desde el CRM
-        let finalPrice = parseFloat(price_per_lb) || 0;
-        if (finalPrice <= 0 && resolvedCustomerId) {
+        // 2. Procesar presentaciones y productos múltiples (+ botón)
+        let itemList = [];
+        if (Array.isArray(items) && items.length > 0) {
+            itemList = items;
+        } else if (items_json) {
+            try {
+                itemList = typeof items_json === 'string' ? JSON.parse(items_json) : items_json;
+            } catch (e) {
+                itemList = [];
+            }
+        }
+
+        let primaryProductType = (product_type || '').trim();
+        let primaryPresentation = (presentation || '').trim();
+        let primaryPrice = parseFloat(price_per_lb) || 0;
+        let totalQuantityLbs = parseFloat(quantity_lbs) || 0;
+        let resolvedBatchId = batch_id ? parseInt(batch_id) : null;
+        let resolvedLotCode = lot_code || null;
+
+        if (itemList.length > 0) {
+            totalQuantityLbs = itemList.reduce((sum, it) => sum + (parseFloat(it.quantity_lbs) || 0), 0);
+            const firstItem = itemList[0];
+            primaryProductType = primaryProductType || firstItem.product_type || 'Huevo Entero Pasteurizado';
+            primaryPresentation = primaryPresentation || firstItem.presentation || 'cubeta 30LB';
+            if (primaryPrice <= 0 && firstItem.price_per_lb) {
+                primaryPrice = parseFloat(firstItem.price_per_lb) || 0;
+            }
+            if (!resolvedBatchId && firstItem.batch_id) {
+                resolvedBatchId = parseInt(firstItem.batch_id);
+            }
+            if (!resolvedLotCode && firstItem.lot_code) {
+                resolvedLotCode = firstItem.lot_code;
+            }
+        } else {
+            primaryProductType = primaryProductType || 'Huevo Entero Pasteurizado';
+            primaryPresentation = primaryPresentation || 'cubeta 30LB';
+        }
+
+        if (totalQuantityLbs <= 0) {
+            totalQuantityLbs = parseFloat(quantity_lbs) || 0;
+        }
+
+        // Resolver lot_code si tenemos batch_id
+        if (resolvedBatchId && !resolvedLotCode) {
+            const [bRow] = await pool.query(
+                'SELECT batch_code_display FROM egg_production_batches WHERE id = ? AND company_id = ?',
+                [resolvedBatchId, company_id]
+            );
+            if (bRow.length > 0) {
+                resolvedLotCode = bRow[0].batch_code_display;
+            }
+        }
+
+        const serializedItems = itemList.length > 0 ? JSON.stringify(itemList) : null;
+
+        // 3. Obtener precio pactado del CRM si no se ingresó manualmente
+        if (primaryPrice <= 0 && resolvedCustomerId) {
             const [agreements] = await pool.query(
                 `SELECT agreed_price_per_lb 
                  FROM egg_costing_customer_agreements 
@@ -5158,42 +5234,97 @@ const saveEggCustomerOrder = async (req, res) => {
                        OR LOWER(?) LIKE CONCAT('%', LOWER(product_type), '%')
                    )
                  ORDER BY updated_at DESC LIMIT 1`,
-                [company_id, resolvedCustomerId, resolvedCustomerName, product_type, `%${product_type}%`, product_type]
+                [company_id, resolvedCustomerId, resolvedCustomerName, primaryProductType, `%${primaryProductType}%`, primaryProductType]
             );
             if (agreements.length > 0 && parseFloat(agreements[0].agreed_price_per_lb) > 0) {
-                finalPrice = parseFloat(agreements[0].agreed_price_per_lb);
+                primaryPrice = parseFloat(agreements[0].agreed_price_per_lb);
             }
         }
 
+        let orderId = id;
         if (id) {
+            const [currentOrder] = await pool.query(
+                'SELECT dispatch_route_id FROM egg_customer_orders WHERE id = ? AND company_id = ?',
+                [id, company_id]
+            );
+
             await pool.query(
                 `UPDATE egg_customer_orders SET
                     customer_id = ?, customer_branch_id = ?, customer_name = ?, order_number = ?, product_type = ?,
                     presentation = ?, quantity_lbs = ?, required_delivery_date = ?,
-                    status = ?, priority = ?, price_per_lb = ?, notes = ?
+                    status = ?, priority = ?, price_per_lb = ?, notes = ?,
+                    items_json = ?, batch_id = ?, lot_code = ?
                  WHERE id = ? AND company_id = ?`,
                 [
-                    resolvedCustomerId, resolvedBranchId, resolvedCustomerName, order_number || null, product_type,
-                    presentation || 'cubeta 30LB', parseFloat(quantity_lbs) || 0,
-                    required_delivery_date, status || 'pendiente', priority || 'normal', finalPrice,
-                    notes || null, id, company_id
+                    resolvedCustomerId, resolvedBranchId, resolvedCustomerName, order_number || null, primaryProductType,
+                    primaryPresentation, totalQuantityLbs,
+                    required_delivery_date, status || 'pendiente', priority || 'normal', primaryPrice,
+                    notes || null, serializedItems, resolvedBatchId, resolvedLotCode, id, company_id
                 ]
             );
-            return res.json({ id, message: 'Pedido actualizado exitosamente.', customer_id: resolvedCustomerId, price_per_lb: finalPrice });
+
+            // Sincronizar parada de despacho y totales de ruta si el pedido ya está en ruta/despacho
+            const activeRouteId = currentOrder[0]?.dispatch_route_id;
+            if (activeRouteId) {
+                await pool.query(
+                    `UPDATE egg_dispatch_stops 
+                     SET batch_id = COALESCE(?, batch_id), lot_code = COALESCE(?, lot_code)
+                     WHERE order_id = ? AND dispatch_route_id = ?`,
+                    [resolvedBatchId, resolvedLotCode, id, activeRouteId]
+                );
+
+                const [rOrders] = await pool.query(
+                    'SELECT quantity_lbs FROM egg_customer_orders WHERE dispatch_route_id = ?',
+                    [activeRouteId]
+                );
+                let rLbs = 0;
+                let rCubetas = 0;
+                rOrders.forEach(ro => {
+                    const l = parseFloat(ro.quantity_lbs) || 0;
+                    rLbs += l;
+                    rCubetas += Math.ceil(l / 30.0);
+                });
+                await pool.query(
+                    'UPDATE egg_dispatch_routes SET total_peso_lbs = ?, total_cubetas = ? WHERE id = ?',
+                    [rLbs, rCubetas, activeRouteId]
+                );
+            }
+
+            return res.json({
+                id,
+                message: 'Pedido actualizado exitosamente.',
+                customer_id: resolvedCustomerId,
+                customer_name: resolvedCustomerName,
+                price_per_lb: primaryPrice,
+                batch_id: resolvedBatchId,
+                lot_code: resolvedLotCode,
+                quantity_lbs: totalQuantityLbs
+            });
         } else {
             const [result] = await pool.query(
                 `INSERT INTO egg_customer_orders (
                     company_id, customer_id, customer_branch_id, customer_name, order_number, product_type,
-                    presentation, quantity_lbs, required_delivery_date, status, priority, price_per_lb, notes
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                    presentation, quantity_lbs, required_delivery_date, status, priority, price_per_lb, notes,
+                    items_json, batch_id, lot_code
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 [
-                    company_id, resolvedCustomerId, resolvedBranchId, resolvedCustomerName, order_number || null, product_type,
-                    presentation || 'cubeta 30LB', parseFloat(quantity_lbs) || 0,
-                    required_delivery_date, status || 'pendiente', priority || 'normal', finalPrice,
-                    notes || null
+                    company_id, resolvedCustomerId, resolvedBranchId, resolvedCustomerName, order_number || null, primaryProductType,
+                    primaryPresentation, totalQuantityLbs,
+                    required_delivery_date, status || 'pendiente', priority || 'normal', primaryPrice,
+                    notes || null, serializedItems, resolvedBatchId, resolvedLotCode
                 ]
             );
-            return res.status(201).json({ id: result.insertId, message: 'Pedido registrado exitosamente.', customer_id: resolvedCustomerId, price_per_lb: finalPrice });
+            orderId = result.insertId;
+            return res.status(201).json({
+                id: orderId,
+                message: 'Pedido registrado exitosamente.',
+                customer_id: resolvedCustomerId,
+                customer_name: resolvedCustomerName,
+                price_per_lb: primaryPrice,
+                batch_id: resolvedBatchId,
+                lot_code: resolvedLotCode,
+                quantity_lbs: totalQuantityLbs
+            });
         }
     } catch (error) {
         console.error('Error al guardar pedido de ovoproductos:', error);
@@ -5333,6 +5464,37 @@ const updateProductionBatch = async (req, res) => {
                 notes, resolvedIngredients, inputWeightLbs, id, company_id
             ]
         );
+
+        // Sincronizar remanentes vinculados a este lote
+        if (req.body.remanente_ids !== undefined) {
+            const rawRemIds = Array.isArray(req.body.remanente_ids) ? req.body.remanente_ids : [];
+            const cleanRemIds = rawRemIds.map(r => parseInt(r, 10)).filter(r => !isNaN(r) && r > 0);
+
+            if (cleanRemIds.length > 0) {
+                // Liberar remanentes que estaban asignados y ahora se desmarcaron
+                await connection.query(
+                    `UPDATE egg_batch_remanentes 
+                     SET status = 'disponible', target_batch_id = NULL, updated_at = NOW()
+                     WHERE target_batch_id = ? AND company_id = ? AND id NOT IN (?)`,
+                    [id, company_id, cleanRemIds]
+                );
+                // Marcar los remanentes seleccionados como asignados a este lote
+                await connection.query(
+                    `UPDATE egg_batch_remanentes 
+                     SET status = 'asignado_a_lote', target_batch_id = ?, updated_at = NOW()
+                     WHERE id IN (?) AND company_id = ?`,
+                    [id, cleanRemIds, company_id]
+                );
+            } else {
+                // Si se enviaron remanentes vacíos, desvincular todos los asignados a este lote
+                await connection.query(
+                    `UPDATE egg_batch_remanentes 
+                     SET status = 'disponible', target_batch_id = NULL, updated_at = NOW()
+                     WHERE target_batch_id = ? AND company_id = ?`,
+                    [id, company_id]
+                );
+            }
+        }
 
         await connection.query(
             `INSERT INTO egg_industrial_events (company_id, event_type, severity, description, payload, operator_name)
@@ -5760,14 +5922,25 @@ const getBatchRemanentes = async (req, res) => {
 
 const getAvailableRemanentes = async (req, res) => {
     try {
-        const [rows] = await pool.query(
-            `SELECT r.*, b.batch_code_display, b.batch_uuid 
+        const includeBatchId = req.query.include_batch_id ? parseInt(req.query.include_batch_id, 10) : null;
+        const showAll = req.query.all === 'true' || req.query.status === 'all';
+        let query = `SELECT r.*, b.batch_code_display, b.batch_uuid 
              FROM egg_batch_remanentes r
              JOIN egg_production_batches b ON r.batch_id = b.id
-             WHERE r.company_id = ? AND r.status = 'disponible'
-             ORDER BY r.created_at DESC`,
-            [req.company_id]
-        );
+             WHERE r.company_id = ? `;
+        const params = [req.company_id];
+
+        if (showAll) {
+            // Todos los estados recientes
+        } else if (includeBatchId) {
+            query += ` AND (r.status = 'disponible' OR r.target_batch_id = ?)`;
+            params.push(includeBatchId);
+        } else {
+            query += ` AND r.status = 'disponible'`;
+        }
+        query += ` ORDER BY r.created_at DESC LIMIT 100`;
+
+        const [rows] = await pool.query(query, params);
         res.json(rows);
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -5807,16 +5980,35 @@ const updateBatchRemanente = async (req, res) => {
     try {
         const { id } = req.params;
         const { status, target_batch_id, notes } = req.body;
+        const company_id = req.company_id || req.user?.company_id;
+
+        let targetBatch = target_batch_id !== undefined ? target_batch_id : null;
+        if (status === 'disponible') {
+            targetBatch = null;
+        }
+
         await pool.query(
             `UPDATE egg_batch_remanentes 
              SET status = COALESCE(?, status),
-                 target_batch_id = COALESCE(?, target_batch_id),
+                 target_batch_id = CASE 
+                     WHEN ? = 'disponible' THEN NULL 
+                     WHEN ? IS NOT NULL THEN ? 
+                     ELSE target_batch_id 
+                 END,
                  notes = COALESCE(?, notes),
                  updated_at = NOW()
              WHERE id = ? AND company_id = ?`,
-            [status, target_batch_id, notes, id, req.company_id]
+            [
+                status || null, 
+                status || null, 
+                targetBatch, 
+                targetBatch, 
+                notes !== undefined ? notes : null, 
+                id, 
+                company_id
+            ]
         );
-        res.json({ success: true, message: 'Remanente actualizado.' });
+        res.json({ success: true, message: 'Remanente actualizado con éxito.' });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -6533,6 +6725,36 @@ const getTranslatedInventory = async (req, res) => {
             }
         }
 
+        // 4. Agrupar existencias según la vinculación de productos (egg_product_code_mappings)
+        const byMapping = mappings.map(m => {
+            const mCodes = normalizeCatalogCodes(m.catalog_codes).map(c => c.toLowerCase());
+            const matchedProds = items.filter(it => 
+                mCodes.includes((it.product_code || '').toLowerCase()) || 
+                mCodes.includes((it.product_barcode || '').toLowerCase()) ||
+                (it.product_id && it.product_id === Number(m.catalog_product_id))
+            );
+
+            const totalUnits = matchedProds.reduce((sum, it) => sum + (parseFloat(it.stock_units) || 0), 0);
+            const totalLbs = matchedProds.reduce((sum, it) => sum + (parseFloat(it.total_lbs) || 0), 0);
+            const totalKg = matchedProds.reduce((sum, it) => sum + (parseFloat(it.total_kg) || 0), 0);
+
+            return {
+                id: m.id,
+                commercial_name: m.catalog_product_name || m.industrial_product_type,
+                industrial_product_type: m.industrial_product_type,
+                presentation: m.presentation,
+                catalog_codes: m.catalog_codes,
+                unit_weight_lbs: parseFloat(m.unit_weight_lbs || 1),
+                unit_weight_kg: parseFloat(m.unit_weight_kg || 0.45),
+                unit_of_measure: m.unit_of_measure || 'lb',
+                total_stock_units: totalUnits,
+                total_weight_lbs: Math.round(totalLbs * 100) / 100,
+                total_weight_kg: Math.round(totalKg * 100) / 100,
+                status: totalUnits <= 0 ? 'Agotado' : (totalUnits < 10 ? 'Bajo' : 'En Stock'),
+                matched_items: matchedProds
+            };
+        });
+
         res.json({
             totals: {
                 total_items: items.length,
@@ -6552,11 +6774,435 @@ const getTranslatedInventory = async (req, res) => {
             },
             items,
             by_type: Object.values(byType),
+            by_mapping: byMapping,
             unmapped_products: unmappedProducts,
             mappings_count: mappings.length
         });
     } catch (error) {
         console.error('Error in getTranslatedInventory:', error);
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// 25.1 Exportación Oficial de Inventario Traducido (PDF / Excel)
+const exportTranslatedInventory = async (req, res) => {
+    try {
+        await ensureEggSchema();
+        const company_id = req.company_id || req.user?.company_id;
+        const format = (req.query.format || 'pdf').toLowerCase();
+
+        const [mappings] = await pool.query(
+            'SELECT * FROM egg_product_code_mappings WHERE company_id = ?',
+            [company_id]
+        );
+
+        const codeMap = {};
+        const mappingByProductId = {};
+        const mappedCodesList = [];
+        const mappedProductIds = [];
+        for (const m of mappings) {
+            let weightsByCode = {};
+            if (m.code_weights_json) {
+                try {
+                    const parsed = typeof m.code_weights_json === 'string' ? JSON.parse(m.code_weights_json) : m.code_weights_json;
+                    if (Array.isArray(parsed)) {
+                        parsed.forEach((item) => {
+                            if (item && item.code) {
+                                weightsByCode[item.code.toLowerCase().trim()] = item;
+                            }
+                        });
+                    }
+                } catch (e) {}
+            }
+            const rawCodes = normalizeCatalogCodes(m.catalog_codes).map((code) => code.toLowerCase());
+            for (const c of rawCodes) {
+                const specificItem = weightsByCode[c];
+                const specificLbs = specificItem ? parseFloat(specificItem.weight_lbs) : null;
+                const specificKg = specificItem ? parseFloat(specificItem.weight_kg) : null;
+                codeMap[c] = {
+                    mapping: m,
+                    weight_lbs: Number.isFinite(specificLbs) && specificLbs > 0 ? specificLbs : parseFloat(m.unit_weight_lbs || 1),
+                    weight_kg: Number.isFinite(specificKg) && specificKg > 0 ? specificKg : parseFloat(m.unit_weight_kg || 0.45),
+                    matched_code: c
+                };
+                mappedCodesList.push(c);
+            }
+            const catalogProductId = Number(m.catalog_product_id);
+            if (Number.isInteger(catalogProductId) && catalogProductId > 0) {
+                mappingByProductId[catalogProductId] = {
+                    mapping: m,
+                    weight_lbs: parseFloat(m.unit_weight_lbs || 1),
+                    weight_kg: parseFloat(m.unit_weight_kg || 0.45)
+                };
+                mappedProductIds.push(catalogProductId);
+            }
+        }
+
+        const safeCodes = mappedCodesList.length > 0 ? mappedCodesList : ['__none__'];
+        const safeProductIds = mappedProductIds.length > 0 ? mappedProductIds : [0];
+        const [products] = await pool.query(
+            `SELECT p.id, p.codigo, p.codigo_barra, p.nombre, COALESCE(SUM(i.stock), 0) as stock, p.unidad_medida, c.name as category_name
+             FROM products p
+             LEFT JOIN inventory i ON p.id = i.product_id
+             LEFT JOIN product_categories c ON p.category_id = c.id
+             WHERE p.company_id = ? AND p.status = 'activo'
+               AND (
+                   LOWER(p.nombre) LIKE '%huevo%' 
+                   OR LOWER(p.nombre) LIKE '%clara%' 
+                   OR LOWER(p.nombre) LIKE '%yema%'
+                   OR LOWER(c.name) LIKE '%huevo%'
+                   OR LOWER(c.name) LIKE '%ovoproducto%'
+                   OR LOWER(p.codigo) IN (?)
+                   OR LOWER(p.codigo_barra) IN (?)
+                   OR p.id IN (?)
+               )
+             GROUP BY p.id, p.codigo, p.codigo_barra, p.nombre, p.unidad_medida, c.name`,
+            [company_id, safeCodes, safeCodes, safeProductIds]
+        );
+
+        const items = [];
+        let grandTotalUnits = 0;
+        let grandTotalLbs = 0;
+        let grandTotalKg = 0;
+
+        for (const prod of products) {
+            const code = (prod.codigo || '').trim().toLowerCase();
+            const barcode = (prod.codigo_barra || '').trim().toLowerCase();
+            const matchedEntry = codeMap[code] || codeMap[barcode] || mappingByProductId[prod.id];
+            const mapping = matchedEntry?.mapping;
+            const currentStockUnits = parseFloat(prod.stock || 0);
+
+            if (mapping) {
+                const lbsPerUnit = parseFloat(matchedEntry?.weight_lbs ?? mapping.unit_weight_lbs ?? 1);
+                const kgPerUnit = parseFloat(matchedEntry?.weight_kg ?? mapping.unit_weight_kg ?? (lbsPerUnit * 0.453592));
+                const totalLbs = currentStockUnits * lbsPerUnit;
+                const totalKg = currentStockUnits * kgPerUnit;
+                grandTotalUnits += currentStockUnits;
+                grandTotalLbs += totalLbs;
+                grandTotalKg += totalKg;
+
+                items.push({
+                    product_code: prod.codigo || '',
+                    matched_code: (codeMap[code] ? prod.codigo : (codeMap[barcode] ? prod.codigo_barra : mapping.catalog_codes)),
+                    product_name: mapping.catalog_product_name || prod.nombre,
+                    product_type: mapping.industrial_product_type,
+                    presentation: mapping.presentation,
+                    stock_units: currentStockUnits,
+                    weight_per_unit_lbs: lbsPerUnit,
+                    weight_per_unit_kg: kgPerUnit,
+                    total_lbs: totalLbs,
+                    total_kg: totalKg,
+                    status: currentStockUnits <= 0 ? 'Agotado' : (currentStockUnits < 10 ? 'Bajo' : 'En Stock')
+                });
+            }
+        }
+
+        // Exportar a Excel
+        if (format === 'excel') {
+            const rows = items.map(it => [
+                it.product_code,
+                it.matched_code,
+                it.product_name,
+                it.stock_units,
+                it.weight_per_unit_lbs.toFixed(2),
+                it.total_lbs.toFixed(2),
+                it.total_kg.toFixed(2),
+                it.status
+            ]);
+            rows.push([
+                'TOTAL GENERAL',
+                '',
+                `${items.length} Productos`,
+                grandTotalUnits,
+                '',
+                grandTotalLbs.toFixed(2),
+                grandTotalKg.toFixed(2),
+                ''
+            ]);
+
+            const buffer = await excelService.createExcelBuffer({
+                title: 'Inventario Industrial Traducido',
+                sheets: [{
+                    name: 'Inventario Traducido',
+                    headers: ['CÓDIGO CATÁLOGO', 'CÓDIGOS VINCULADOS', 'PRODUCTO COMERCIAL', 'STOCK FÍSICO', 'PESO UNIT. (LBS)', 'TOTAL LIBRAS (LBS)', 'TOTAL KILOS (KG)', 'ESTADO'],
+                    rows
+                }]
+            });
+            return excelService.sendExcelResponse(res, buffer, `inventario_industrial_${new Date().toISOString().split('T')[0]}.xlsx`);
+        }
+
+        // Exportar a PDF (Estándar Contable Oficial Andelsa / Report Design Rules)
+        const company = await reportPdfHelper.getCompanyInfo(company_id);
+        const { doc, getBuffer } = reportPdfHelper.createPdfDocument('landscape');
+
+        const title = 'INVENTARIO INDUSTRIAL TRADUCIDO';
+        const subtitle = 'CONTROL DE STOCK, EQUIVALENCIAS Y CONVERSIÓN A LIBRAS Y KILOS';
+        const periodText = `EMISIÓN: ${new Date().toLocaleDateString('es-SV')} ${new Date().toLocaleTimeString('es-SV', { hour: '2-digit', minute: '2-digit' })}`;
+
+        let currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+
+        const drawTableHeader = (y) => {
+            doc.rect(30, y, 732, 16).fill('#f1f5f9');
+            doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(7);
+            doc.text('CÓD. CATÁLOGO', 35, y + 4, { width: 65 });
+            doc.text('CÓD. VINCULADOS', 105, y + 4, { width: 100 });
+            doc.text('PRODUCTO COMERCIAL', 210, y + 4, { width: 200 });
+            doc.text('STOCK (U)', 415, y + 4, { width: 65, align: 'right' });
+            doc.text('PESO U. (LB)', 485, y + 4, { width: 65, align: 'right' });
+            doc.text('TOTAL LBS', 555, y + 4, { width: 70, align: 'right' });
+            doc.text('TOTAL KG', 630, y + 4, { width: 70, align: 'right' });
+            doc.text('ESTADO', 705, y + 4, { width: 50, align: 'center' });
+            doc.rect(30, y + 16, 732, 0.5).fill('#cbd5e1');
+            return y + 18;
+        };
+
+        currentY = drawTableHeader(currentY);
+
+        items.forEach((item, idx) => {
+            if (currentY > 510) {
+                doc.addPage();
+                currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+                currentY = drawTableHeader(currentY);
+            }
+
+            if (idx % 2 === 1) {
+                doc.rect(30, currentY - 1, 732, 14).fill('#f8fafc');
+            }
+
+            doc.fillColor('#334155').font('Helvetica').fontSize(7);
+            doc.text(item.product_code || '-', 35, currentY + 2, { width: 65 });
+            doc.text(String(item.matched_code || '-').substring(0, 25), 105, currentY + 2, { width: 100 });
+            doc.fillColor('#0f172a').font('Helvetica-Bold').text(item.product_name, 210, currentY + 2, { width: 200, ellipsis: true });
+            doc.font('Helvetica').fillColor('#334155');
+            doc.text(parseInt(item.stock_units).toLocaleString(), 415, currentY + 2, { width: 65, align: 'right' });
+            doc.text(item.weight_per_unit_lbs.toFixed(2), 485, currentY + 2, { width: 65, align: 'right' });
+            doc.font('Helvetica-Bold').fillColor('#047857').text(item.total_lbs.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 }), 555, currentY + 2, { width: 70, align: 'right' });
+            doc.fillColor('#6d28d9').text(item.total_kg.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 }), 630, currentY + 2, { width: 70, align: 'right' });
+            doc.font('Helvetica').fillColor(item.stock_units <= 0 ? '#b91c1c' : '#047857').text(item.status, 705, currentY + 2, { width: 50, align: 'center' });
+
+            currentY += 14;
+        });
+
+        if (currentY > 500) {
+            doc.addPage();
+            currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+            currentY = drawTableHeader(currentY);
+        }
+
+        doc.rect(30, currentY, 732, 16).fill('#e2e8f0');
+        doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(7.5);
+        doc.text('TOTALES DE INVENTARIO INDUSTRIAL:', 35, currentY + 4, { width: 370 });
+        doc.text(parseInt(grandTotalUnits).toLocaleString(), 415, currentY + 4, { width: 65, align: 'right' });
+        doc.fillColor('#047857').text(grandTotalLbs.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' Lbs', 555, currentY + 4, { width: 70, align: 'right' });
+        doc.fillColor('#6d28d9').text(grandTotalKg.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' Kg', 630, currentY + 4, { width: 70, align: 'right' });
+        currentY += 24;
+
+        reportPdfHelper.renderClosingFooter(doc, 30, currentY, items.length, 'Líneas de Inventario');
+        reportPdfHelper.renderPageNumbers(doc);
+
+        const pdfBuffer = await getBuffer();
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename=inventario_industrial_${new Date().toISOString().split('T')[0]}.pdf`);
+        res.send(pdfBuffer);
+    } catch (error) {
+        console.error('Error al exportar inventario traducido:', error);
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// 20.1 Comprobante / Orden de Despacho y Entrega de Ovoproductos
+const getOrderDeliveryReceipt = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const company_id = req.company_id || req.user?.company_id;
+
+        const [orderRows] = await pool.query(
+            `SELECT o.*,
+                    c.nombre as customer_registered_name,
+                    c.nombre_comercial as customer_commercial_name,
+                    c.nit as customer_nit,
+                    c.nrc as customer_nrc,
+                    c.telefono as customer_phone,
+                    c.direccion as customer_address,
+                    cb.nombre as branch_name,
+                    cb.direccion as branch_address,
+                    cb.contacto_nombre as branch_contact_person,
+                    cb.contacto_telefono as branch_contact_phone,
+                    r.codigo_ruta,
+                    r.fecha_despacho as route_date,
+                    r.driver_name as route_driver_name,
+                    r.driver_phone as route_driver_phone,
+                    v.codigo as vehicle_code,
+                    v.placa as vehicle_plate,
+                    v.modelo as vehicle_model,
+                    b.batch_code_display as linked_batch_code
+             FROM egg_customer_orders o
+             LEFT JOIN customers c ON o.customer_id = c.id
+             LEFT JOIN customer_branches cb ON o.customer_branch_id = cb.id
+             LEFT JOIN egg_dispatch_routes r ON o.dispatch_route_id = r.id
+             LEFT JOIN delivery_vehicles v ON r.vehicle_id = v.id
+             LEFT JOIN egg_production_batches b ON o.batch_id = b.id
+             WHERE o.id = ? AND o.company_id = ?`,
+            [id, company_id]
+        );
+
+        if (orderRows.length === 0) {
+            return res.status(404).json({ message: 'Pedido no encontrado.' });
+        }
+
+        const ord = orderRows[0];
+        const company = await reportPdfHelper.getCompanyInfo(company_id);
+
+        let lineItems = [];
+        if (ord.items_json) {
+            try {
+                const parsed = typeof ord.items_json === 'string' ? JSON.parse(ord.items_json) : ord.items_json;
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                    lineItems = parsed;
+                }
+            } catch (e) {}
+        }
+        if (lineItems.length === 0) {
+            lineItems = [{
+                product_type: ord.product_type,
+                presentation: ord.presentation,
+                quantity_lbs: ord.quantity_lbs,
+                price_per_lb: ord.price_per_lb,
+                lot_code: ord.lot_code || ord.linked_batch_code || 'Por asignar'
+            }];
+        }
+
+        const { doc, getBuffer } = reportPdfHelper.createPdfDocument('portrait');
+
+        // Encabezado institucional
+        doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(12).text(company.razon_social || 'EMPRESA INDUSTRIAL', 35, 35, { align: 'center' });
+        doc.font('Helvetica').fontSize(8).fillColor('#475569');
+        doc.text(`NIT: ${company.nit || 'N/A'} | NRC: ${company.nrc || 'N/A'} | Tel: ${company.telefono || 'N/A'}`, 35, 50, { align: 'center' });
+        doc.text(company.direccion || 'San Salvador, El Salvador', 35, 62, { align: 'center' });
+
+        doc.rect(35, 78, 542, 22).fill('#4f46e5');
+        doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(11).text('COMPROBANTE DE DESPACHO Y ENTREGA DE OVOPRODUCTOS', 35, 84, { align: 'center' });
+
+        let currentY = 110;
+        doc.rect(35, currentY, 542, 95).fill('#f8fafc');
+        doc.rect(35, currentY, 542, 95).stroke('#cbd5e1');
+
+        doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(8);
+        doc.text('DATOS DEL PEDIDO', 45, currentY + 8);
+        doc.text('DATOS DEL CLIENTE Y DESTINO', 300, currentY + 8);
+        doc.rect(45, currentY + 18, 230, 0.5).fill('#cbd5e1');
+        doc.rect(300, currentY + 18, 265, 0.5).fill('#cbd5e1');
+
+        doc.font('Helvetica').fontSize(7.5).fillColor('#334155');
+        const orderNum = ord.order_number || `PED-${String(ord.id).padStart(5, '0')}`;
+        const reqDate = ord.required_delivery_date ? ord.required_delivery_date.split('T')[0] : 'N/A';
+        doc.text(`Orden #: `, 45, currentY + 24);
+        doc.font('Helvetica-Bold').text(orderNum, 90, currentY + 24);
+        doc.font('Helvetica').text(`Fecha Entrega: `, 45, currentY + 36);
+        doc.font('Helvetica-Bold').text(reqDate, 115, currentY + 36);
+        doc.font('Helvetica').text(`Prioridad: `, 45, currentY + 48);
+        doc.text((ord.priority || 'Normal').toUpperCase(), 95, currentY + 48);
+        doc.font('Helvetica').text(`Ruta Despacho: `, 45, currentY + 60);
+        doc.font('Helvetica-Bold').text(ord.codigo_ruta || 'Sin Ruta Asignada', 115, currentY + 60);
+        doc.font('Helvetica').text(`Camión / Motorista: `, 45, currentY + 72);
+        doc.text(`${ord.vehicle_code ? `${ord.vehicle_code} (${ord.vehicle_plate}) - ` : ''}${ord.route_driver_name || 'Sin asignar'}`, 130, currentY + 72, { width: 145, ellipsis: true });
+
+        doc.font('Helvetica-Bold').text(ord.customer_name || 'Cliente sin registrar', 300, currentY + 24, { width: 265, ellipsis: true });
+        doc.font('Helvetica').text(`Sucursal: `, 300, currentY + 36);
+        doc.text(ord.branch_name || 'Sucursal Principal', 345, currentY + 36, { width: 220, ellipsis: true });
+        doc.text(`Dirección: `, 300, currentY + 48);
+        doc.text(ord.branch_address || ord.customer_address || 'Dirección no especificada', 345, currentY + 48, { width: 220, ellipsis: true });
+        doc.text(`Contacto: `, 300, currentY + 60);
+        doc.text(`${ord.branch_contact_person || 'N/A'} ${ord.branch_contact_phone ? `(Tel: ${ord.branch_contact_phone})` : ''}`, 345, currentY + 60, { width: 220, ellipsis: true });
+        doc.text(`Estado: `, 300, currentY + 72);
+        doc.font('Helvetica-Bold').text((ord.delivery_status || ord.status || 'Pendiente').toUpperCase(), 340, currentY + 72);
+
+        // Tabla de Productos
+        currentY += 105;
+        doc.rect(35, currentY, 542, 16).fill('#1e293b');
+        doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(7.5);
+        doc.text('#', 40, currentY + 4, { width: 20 });
+        doc.text('PRODUCTO SOLICITADO', 65, currentY + 4, { width: 165 });
+        doc.text('PRESENTACIÓN', 235, currentY + 4, { width: 90 });
+        doc.text('LOTE PROD.', 330, currentY + 4, { width: 75 });
+        doc.text('CANT. (LBS)', 410, currentY + 4, { width: 55, align: 'right' });
+        doc.text('CUBETAS', 470, currentY + 4, { width: 45, align: 'right' });
+        doc.text('TOTAL ($)', 520, currentY + 4, { width: 50, align: 'right' });
+
+        currentY += 16;
+        let totalLbs = 0;
+        let totalCubetas = 0;
+        let totalMonto = 0;
+
+        lineItems.forEach((it, idx) => {
+            const lbs = parseFloat(it.quantity_lbs) || 0;
+            const cubetas = Math.ceil(lbs / 30.0);
+            const precio = parseFloat(it.price_per_lb) || 0;
+            const subtotal = lbs * precio;
+
+            totalLbs += lbs;
+            totalCubetas += cubetas;
+            totalMonto += subtotal;
+
+            if (idx % 2 === 1) {
+                doc.rect(35, currentY, 542, 15).fill('#f8fafc');
+            }
+
+            doc.fillColor('#334155').font('Helvetica').fontSize(7.5);
+            doc.text(String(idx + 1), 40, currentY + 3, { width: 20 });
+            doc.font('Helvetica-Bold').fillColor('#0f172a').text(it.product_type || 'Huevo Entero Pasteurizado', 65, currentY + 3, { width: 165, ellipsis: true });
+            doc.font('Helvetica').fillColor('#334155').text(it.presentation || 'cubeta 30LB', 235, currentY + 3, { width: 90 });
+            doc.font('Helvetica-Bold').fillColor('#4338ca').text(it.lot_code || ord.lot_code || ord.linked_batch_code || 'Por asignar', 330, currentY + 3, { width: 75 });
+            doc.fillColor('#0f172a').text(lbs.toLocaleString() + ' Lb', 410, currentY + 3, { width: 55, align: 'right' });
+            doc.text(String(cubetas), 470, currentY + 3, { width: 45, align: 'right' });
+            doc.text(subtotal > 0 ? `$${subtotal.toFixed(2)}` : '$0.00', 520, currentY + 3, { width: 50, align: 'right' });
+
+            currentY += 15;
+        });
+
+        // Totales
+        doc.rect(35, currentY, 542, 18).fill('#e2e8f0');
+        doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(8);
+        doc.text('TOTALES DE ENTREGA:', 45, currentY + 5);
+        doc.text(`${totalLbs.toLocaleString()} Lbs`, 410, currentY + 5, { width: 55, align: 'right' });
+        doc.text(String(totalCubetas), 470, currentY + 5, { width: 45, align: 'right' });
+        doc.text(totalMonto > 0 ? `$${totalMonto.toFixed(2)}` : '$0.00', 520, currentY + 5, { width: 50, align: 'right' });
+
+        currentY += 28;
+
+        if (ord.notes || ord.delivery_notes) {
+            doc.rect(35, currentY, 542, 35).fill('#f1f5f9');
+            doc.rect(35, currentY, 542, 35).stroke('#cbd5e1');
+            doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(7.5).text('NOTAS E INDICACIONES DE ENTREGA:', 45, currentY + 5);
+            doc.font('Helvetica').fontSize(7).fillColor('#475569').text(ord.notes || ord.delivery_notes, 45, currentY + 16, { width: 520 });
+            currentY += 45;
+        } else {
+            currentY += 15;
+        }
+
+        currentY = Math.max(currentY + 20, 600);
+        doc.rect(35, currentY, 250, 75).stroke('#cbd5e1');
+        doc.rect(327, currentY, 250, 75).stroke('#cbd5e1');
+
+        doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(7.5);
+        doc.text('DESPACHADO / ENTREGADO POR:', 45, currentY + 8);
+        doc.text('RECIBIDO CONFORME (CLIENTE):', 337, currentY + 8);
+
+        doc.font('Helvetica').fontSize(7).fillColor('#475569');
+        doc.text(`Motorista: ${ord.route_driver_name || '________________________'}`, 45, currentY + 38);
+        doc.text(`Firma: ______________________________`, 45, currentY + 55);
+
+        doc.text(`Nombre: ________________________________`, 337, currentY + 38);
+        doc.text(`DUI / Firma: ___________________________`, 337, currentY + 55);
+
+        doc.fontSize(6.5).fillColor('#94a3b8').text(`Comprobante generado el ${new Date().toLocaleString('es-SV')} | Sistema SIPEWEB NOVASAAS`, 35, 740, { align: 'center' });
+
+        const pdfBuffer = await getBuffer();
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename=comprobante_entrega_${orderNum}.pdf`);
+        res.send(pdfBuffer);
+    } catch (error) {
+        console.error('Error al generar comprobante de entrega:', error);
         res.status(500).json({ message: error.message });
     }
 };
@@ -6658,6 +7304,8 @@ module.exports = {
     saveCodeMapping,
     deleteCodeMapping,
     getTranslatedInventory,
+    exportTranslatedInventory,
+    getOrderDeliveryReceipt,
     // Trazabilidad 360° & Carta de Calidad
     getTraceability360List,
     getTraceability360Stats,
