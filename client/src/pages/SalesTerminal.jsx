@@ -236,16 +236,51 @@ const SalesTerminal = () => {
     });
 
     // Lotes Ovoproductos para selección rápida (Alt + Shift + L)
-    const { data: availableLots = [], isLoading: isLoadingLots } = useQuery({
-        queryKey: ['sales-available-lots', lotSearch, showAllLots],
-        queryFn: async () => (await axios.get('/api/egg-industrial/traceability-360/available-lots', {
-            params: {
-                search: lotSearch || undefined,
-                all_lots: showAllLots ? 'true' : 'false'
+    const { 
+        data: companyEggLots = [], 
+        isLoading: isLoadingLots,
+        refetch: refetchLots 
+    } = useQuery({
+        queryKey: ['sales-company-egg-lots', user?.company_id],
+        queryFn: async () => {
+            try {
+                const res = await axios.get('/api/egg-industrial/traceability-360/available-lots', {
+                    params: { all_lots: 'true' }
+                });
+                return Array.isArray(res.data) ? res.data : [];
+            } catch {
+                return [];
             }
-        })).data,
-        enabled: isLotModalOpen
+        },
+        staleTime: 60 * 1000,
+        retry: false
     });
+
+    const hasEggLots = companyEggLots.length > 0;
+
+    const availableLots = useMemo(() => {
+        if (!companyEggLots || companyEggLots.length === 0) return [];
+        let list = companyEggLots;
+        if (!showAllLots) {
+            list = list.filter(l => l.has_stock);
+        }
+        if (lotSearch && lotSearch.trim()) {
+            const q = lotSearch.trim().toLowerCase();
+            list = list.filter(l => 
+                (l.lot_code && l.lot_code.toLowerCase().includes(q)) ||
+                (l.product_type && l.product_type.toLowerCase().includes(q)) ||
+                (l.presentation && l.presentation.toLowerCase().includes(q)) ||
+                (l.barcode && l.barcode.includes(q))
+            );
+        }
+        return list;
+    }, [companyEggLots, showAllLots, lotSearch]);
+
+    useEffect(() => {
+        if (isLotModalOpen && hasEggLots) {
+            refetchLots();
+        }
+    }, [isLotModalOpen, hasEggLots, refetchLots]);
 
     const { data: customerSales = [], isLoading: isLoadingCustomerSales } = useQuery({
         queryKey: ['customer-sales', customerId],
@@ -618,7 +653,7 @@ const SalesTerminal = () => {
     // Keyboard Shortcuts
     useEffect(() => {
         const handleKeyDown = (e) => {
-            if (e.altKey && e.shiftKey && (e.key === 'l' || e.key === 'L')) {
+            if (hasEggLots && e.altKey && e.shiftKey && (e.key === 'l' || e.key === 'L')) {
                 e.preventDefault();
                 setIsLotModalOpen(prev => !prev);
             }
@@ -1968,17 +2003,19 @@ const SalesTerminal = () => {
 
                         {/* History / Refs & Lotes Section (Col 12) */}
                         <div className="md:col-span-1 flex items-end justify-end h-full py-1 gap-1.5">
-                            <button 
-                                type="button"
-                                onClick={() => setIsLotModalOpen(true)}
-                                className="bg-amber-50 hover:bg-amber-100 text-amber-700 p-3 rounded-2xl transition-all shadow-sm border border-amber-200/60 relative group"
-                                title="Selección de Lotes Ovoproductos (Alt + Shift + L)"
-                            >
-                                <Layers size={20} className="text-amber-600" />
-                                <span className="hidden group-hover:block absolute -top-8 right-0 bg-slate-900 text-white text-[9px] font-black px-2 py-0.5 rounded whitespace-nowrap z-30 shadow">
-                                    Lotes (Alt+Shift+L)
-                                </span>
-                            </button>
+                            {hasEggLots && (
+                                <button 
+                                    type="button"
+                                    onClick={() => setIsLotModalOpen(true)}
+                                    className="bg-amber-50 hover:bg-amber-100 text-amber-700 p-3 rounded-2xl transition-all shadow-sm border border-amber-200/60 relative group"
+                                    title="Selección de Lotes Ovoproductos (Alt + Shift + L)"
+                                >
+                                    <Layers size={20} className="text-amber-600" />
+                                    <span className="hidden group-hover:block absolute -top-8 right-0 bg-slate-900 text-white text-[9px] font-black px-2 py-0.5 rounded whitespace-nowrap z-30 shadow">
+                                        Lotes (Alt+Shift+L)
+                                    </span>
+                                </button>
+                            )}
                             <button 
                                 type="button"
                                 onClick={() => setIsLinkedDocModalOpen(true)}
@@ -3351,7 +3388,7 @@ const SalesTerminal = () => {
             )}
 
             {/* Modal de Selección de Lotes Ovoproductos (Alt + Shift + L) */}
-            {isLotModalOpen && (
+            {isLotModalOpen && hasEggLots && (
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[350] flex items-center justify-center p-3 md:p-6 animate-in fade-in duration-200">
                     <div className="bg-white rounded-[2.5rem] w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl border border-slate-100 overflow-hidden animate-in zoom-in-95 duration-200">
                         {/* Header */}
