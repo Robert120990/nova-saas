@@ -38,7 +38,8 @@ import {
     Package,
     Filter,
     X,
-    AlertCircle
+    AlertCircle,
+    Lock
 } from 'lucide-react';
 
 const MONTH_NAMES = [
@@ -94,19 +95,60 @@ const parseMappingCodes = (codes) => {
     return parsed.length > 0 ? parsed : [''];
 };
 
+const parseMappingItems = (m) => {
+    if (m?.code_weights_json) {
+        try {
+            const parsed = typeof m.code_weights_json === 'string' ? JSON.parse(m.code_weights_json) : m.code_weights_json;
+            if (Array.isArray(parsed) && parsed.length > 0) {
+                return parsed.map((item) => {
+                    const lbs = Number(item.weight_lbs || m.unit_weight_lbs || m.weight_lbs || 1);
+                    const kg = Number(item.weight_kg || poundsToKilograms(lbs));
+                    return {
+                        code: String(item.code || '').trim(),
+                        weight_lbs: lbs > 0 ? lbs.toFixed(2) : '1.00',
+                        weight_kg: kg > 0 ? kg.toFixed(2) : '0.45',
+                        product_id: item.product_id || null,
+                        product_name: item.product_name || ''
+                    };
+                }).filter((it) => it.code);
+            }
+        } catch (e) {
+            console.error('Error parsing code_weights_json in parseMappingItems:', e);
+        }
+    }
+
+    // Fallback: parse catalog_codes as strings and assign mapping's unit weight
+    const rawCodes = parseMappingCodes(m?.codes || m?.catalog_codes);
+    const defaultLbs = Number(m?.unit_weight_lbs ?? m?.weight_lbs ?? 1);
+    const defaultKg = Number(m?.unit_weight_kg ?? m?.weight_kg ?? poundsToKilograms(defaultLbs));
+
+    return rawCodes.map((code) => ({
+        code,
+        weight_lbs: defaultLbs > 0 ? defaultLbs.toFixed(2) : '1.00',
+        weight_kg: defaultKg > 0 ? defaultKg.toFixed(2) : '0.45',
+        product_id: m?.product_id || m?.catalog_product_id || null,
+        product_name: m?.product_name || m?.catalog_product_name || ''
+    }));
+};
+
 const createMappingForm = () => {
     const presentation = DEFAULT_INDUSTRIAL_PRESENTATION;
-    const weightLbs = getIndustrialPresentationWeightLbs(presentation, 1);
+    const weightLbs = getIndustrialPresentationWeightLbs(presentation, 32);
 
     return {
         id: null,
-        product_id: '',
         product_name: '',
         product_type: DEFAULT_INDUSTRIAL_PRODUCT_CATEGORY,
         presentation,
-        codes: [''],
-        weight_lbs: weightLbs.toFixed(2),
-        weight_kg: poundsToKilograms(weightLbs).toFixed(2),
+        codes: [
+            {
+                code: '',
+                weight_lbs: weightLbs > 0 ? weightLbs.toFixed(2) : '32.00',
+                weight_kg: poundsToKilograms(weightLbs > 0 ? weightLbs : 32).toFixed(2),
+                product_id: null,
+                product_name: ''
+            }
+        ],
         unit_of_measure: DEFAULT_INDUSTRIAL_MEASUREMENT_UNIT,
         notes: ''
     };
@@ -254,67 +296,101 @@ const EggConfig = () => {
         setIsProductCatalogModalOpen(true);
     };
 
-    const mappedCodesSet = new Set(
-        codeMappings.flatMap((m) => parseMappingCodes(m.codes || m.catalog_codes).map((c) => c.toLowerCase()))
-    );
-    const mappedProductIdsSet = new Set(
-        codeMappings.map((m) => Number(m.product_id || m.catalog_product_id)).filter(Boolean)
-    );
-
-    const isProductMapped = (prod) => {
+    const isProductMapped = (prod, currentEditingId = null) => {
         const sku = (prod.codigo || '').trim().toLowerCase();
         const barcode = (prod.codigo_barra || '').trim().toLowerCase();
-        return mappedProductIdsSet.has(Number(prod.id)) ||
-            (sku && mappedCodesSet.has(sku)) ||
-            (barcode && mappedCodesSet.has(barcode));
-    };
+        const prodId = Number(prod.id);
 
-    const getProductMappingInfo = (prod) => {
-        const sku = (prod.codigo || '').trim().toLowerCase();
-        const barcode = (prod.codigo_barra || '').trim().toLowerCase();
-        return codeMappings.find((m) => {
-            if (Number(m.product_id || m.catalog_product_id) === Number(prod.id)) return true;
-            const codes = parseMappingCodes(m.codes || m.catalog_codes).map((c) => c.toLowerCase());
-            return (sku && codes.includes(sku)) || (barcode && codes.includes(barcode));
+        return codeMappings.some((m) => {
+            if (currentEditingId && Number(m.id) === Number(currentEditingId)) return false;
+            if (Number(m.product_id || m.catalog_product_id) === prodId) return true;
+            const items = parseMappingItems(m);
+            return items.some((it) => {
+                const c = (it.code || '').toLowerCase();
+                return (sku && c === sku) || (barcode && c === barcode) || (it.product_id && Number(it.product_id) === prodId);
+            });
         });
     };
 
-    const handleSelectProductCode = (product, codeType = 'sku', autoFillMeta = true) => {
+    const getProductMappingInfo = (prod, currentEditingId = null) => {
+        const sku = (prod.codigo || '').trim().toLowerCase();
+        const barcode = (prod.codigo_barra || '').trim().toLowerCase();
+        const prodId = Number(prod.id);
+
+        return codeMappings.find((m) => {
+            if (currentEditingId && Number(m.id) === Number(currentEditingId)) return false;
+            if (Number(m.product_id || m.catalog_product_id) === prodId) return true;
+            const items = parseMappingItems(m);
+            return items.some((it) => {
+                const c = (it.code || '').toLowerCase();
+                return (sku && c === sku) || (barcode && c === barcode) || (it.product_id && Number(it.product_id) === prodId);
+            });
+        });
+    };
+
+    const isProductInCurrentForm = (prod, targetIdx = null) => {
+        const sku = (prod.codigo || '').trim().toLowerCase();
+        const barcode = (prod.codigo_barra || '').trim().toLowerCase();
+        const prodId = Number(prod.id);
+
+        return (mappingForm.codes || []).some((it, idx) => {
+            if (targetIdx !== null && idx === targetIdx) return false;
+            const c = (it.code || '').trim().toLowerCase();
+            return (sku && c === sku) || (barcode && c === barcode) || (it.product_id && Number(it.product_id) === prodId);
+        });
+    };
+
+    const handleSelectProductCode = (product, codeType = 'sku') => {
         const skuCode = (product.codigo || '').trim();
         const barcode = (product.codigo_barra || '').trim();
 
-        let codesToInsert = [];
-        if (codeType === 'sku' && skuCode) {
-            codesToInsert.push(skuCode);
-        } else if (codeType === 'barcode' && barcode) {
-            codesToInsert.push(barcode);
-        } else if (codeType === 'both') {
-            if (skuCode) codesToInsert.push(skuCode);
-            if (barcode && barcode !== skuCode) codesToInsert.push(barcode);
-        } else {
-            if (skuCode) codesToInsert.push(skuCode);
-            else if (barcode) codesToInsert.push(barcode);
+        // 1. Validar que no esté ya vinculado a otra configuración de ovoproducto
+        const existingMapping = getProductMappingInfo(product, mappingForm.id);
+        if (existingMapping) {
+            return toast.error(`El producto '${product.nombre}' ya está vinculado a '${existingMapping.product_name || existingMapping.industrial_product_type}'. No se puede duplicar.`);
         }
 
-        if (codesToInsert.length === 0) {
+        // 2. Validar que no esté ya agregado en este mismo formulario
+        if (isProductInCurrentForm(product, targetCodeIndex)) {
+            return toast.error(`El producto '${product.nombre}' ya está seleccionado en este formulario.`);
+        }
+
+        const inferred = inferCategoryAndPresentation(product.nombre || product.name || '', skuCode || barcode);
+        const presentationWeight = getIndustrialPresentationWeightLbs(inferred.presentation, 0);
+        const itemWeightLbs = presentationWeight > 0 ? presentationWeight : (parseFloat(mappingForm.codes?.[0]?.weight_lbs) || 32);
+        const itemWeightKg = poundsToKilograms(itemWeightLbs);
+
+        let codesToInclude = [];
+        if (codeType === 'both') {
+            if (skuCode) codesToInclude.push(skuCode);
+            if (barcode && barcode !== skuCode) codesToInclude.push(barcode);
+        } else if (codeType === 'barcode') {
+            if (barcode) codesToInclude.push(barcode);
+            else if (skuCode) codesToInclude.push(skuCode);
+        } else {
+            if (skuCode) codesToInclude.push(skuCode);
+            else if (barcode) codesToInclude.push(barcode);
+        }
+
+        if (codesToInclude.length === 0) {
             return toast.error('Este producto no tiene código SKU ni código de barra registrado.');
         }
 
-        const inferred = inferCategoryAndPresentation(product.nombre || product.name || '', codesToInsert[0]);
-        const presentationWeight = getIndustrialPresentationWeightLbs(inferred.presentation, 0);
+        const newItems = codesToInclude.map(c => ({
+            code: c,
+            weight_lbs: itemWeightLbs.toFixed(2),
+            weight_kg: itemWeightKg.toFixed(2),
+            product_id: product.id,
+            product_name: product.nombre || product.name || ''
+        }));
 
-        // Si el modal de vinculación no estaba abierto, abrirlo pre-rellenado
         if (!isMappingModalOpen) {
-            const weightLbs = presentationWeight > 0 ? presentationWeight : (parseFloat(mappingForm.weight_lbs) || 8);
             setMappingForm({
                 ...createMappingForm(),
-                product_id: String(product.id),
                 product_name: product.nombre || product.name || '',
                 product_type: inferred.product_type,
                 presentation: inferred.presentation,
-                codes: codesToInsert,
-                weight_lbs: weightLbs.toFixed(2),
-                weight_kg: poundsToKilograms(weightLbs).toFixed(2),
+                codes: newItems,
                 unit_of_measure: product.unidad_medida?.toLowerCase() === 'kg' ? 'kg' : 'lb'
             });
             setIsMappingModalOpen(true);
@@ -323,41 +399,34 @@ const EggConfig = () => {
             return;
         }
 
-        // Si el modal de vinculación ya está abierto:
-        if (targetCodeIndex !== null && targetCodeIndex !== undefined && targetCodeIndex >= 0) {
-            const primaryCode = codesToInsert[0];
-            setMappingForm((current) => {
-                const updatedCodes = [...current.codes];
-                updatedCodes[targetCodeIndex] = primaryCode;
-                if (codesToInsert[1] && !updatedCodes.includes(codesToInsert[1])) {
-                    updatedCodes.push(codesToInsert[1]);
+        // Si el modal de vinculación ya está abierto
+        setMappingForm((current) => {
+            let updated = [...(current.codes || [])];
+            if (targetCodeIndex !== null && targetCodeIndex >= 0 && targetCodeIndex < updated.length) {
+                updated[targetCodeIndex] = newItems[0];
+                if (newItems.length > 1) {
+                    updated.splice(targetCodeIndex + 1, 0, ...newItems.slice(1));
                 }
-                return {
-                    ...current,
-                    codes: updatedCodes,
-                    product_id: autoFillMeta && !current.product_id ? String(product.id) : current.product_id,
-                    product_name: autoFillMeta && !current.product_name?.trim() ? (product.nombre || product.name || '') : current.product_name
-                };
-            });
-        } else {
-            setMappingForm((current) => {
-                const existing = current.codes.filter(Boolean);
-                const merged = [...existing];
-                codesToInsert.forEach((c) => {
-                    if (!merged.includes(c)) merged.push(c);
-                });
-                return {
-                    ...current,
-                    codes: merged.length > 0 ? merged : [''],
-                    product_id: autoFillMeta && !current.product_id ? String(product.id) : current.product_id,
-                    product_name: autoFillMeta && !current.product_name?.trim() ? (product.nombre || product.name || '') : current.product_name
-                };
-            });
-        }
+            } else {
+                if (updated.length === 1 && !updated[0].code?.trim()) {
+                    updated = [...newItems];
+                } else {
+                    updated.push(...newItems);
+                }
+            }
+
+            return {
+                ...current,
+                codes: updated,
+                product_name: !current.product_name?.trim() ? (product.nombre || product.name || '') : current.product_name,
+                product_type: current.product_type === DEFAULT_INDUSTRIAL_PRODUCT_CATEGORY ? inferred.product_type : current.product_type,
+                presentation: current.presentation === DEFAULT_INDUSTRIAL_PRESENTATION ? inferred.presentation : current.presentation
+            };
+        });
 
         setIsProductCatalogModalOpen(false);
         setTargetCodeIndex(null);
-        toast.success(`Código(s) [${codesToInsert.join(', ')}] insertado(s).`);
+        toast.success(`Código(s) [${codesToInclude.join(', ')}] insertado(s) con peso unitario de ${itemWeightLbs.toFixed(2)} lb.`);
     };
 
     const handleOpenCreateMapping = () => {
@@ -367,19 +436,23 @@ const EggConfig = () => {
 
     const handleOpenEditMapping = (m) => {
         const presentation = normalizeIndustrialPresentation(m.presentation);
-        const presentationWeight = getIndustrialPresentationWeightLbs(presentation, 0);
-        const weightLbs = Number(m.weight_lbs ?? m.unit_weight_lbs ?? presentationWeight);
-        const weightKg = Number(m.weight_kg ?? m.unit_weight_kg ?? poundsToKilograms(weightLbs));
+        const items = parseMappingItems(m);
 
         setMappingForm({
             id: m.id,
-            product_id: m.product_id || '',
+            product_id: m.product_id || m.catalog_product_id || '',
             product_name: m.product_name || m.catalog_product_name || '',
             product_type: m.product_type || m.industrial_product_type || DEFAULT_INDUSTRIAL_PRODUCT_CATEGORY,
             presentation,
-            codes: parseMappingCodes(m.codes || m.catalog_codes),
-            weight_lbs: Number.isFinite(weightLbs) && weightLbs > 0 ? weightLbs.toFixed(2) : '',
-            weight_kg: Number.isFinite(weightKg) && weightKg > 0 ? weightKg.toFixed(2) : '',
+            codes: items.length > 0 ? items : [
+                {
+                    code: '',
+                    weight_lbs: '32.00',
+                    weight_kg: '14.51',
+                    product_id: null,
+                    product_name: ''
+                }
+            ],
             unit_of_measure: m.unit_of_measure || DEFAULT_INDUSTRIAL_MEASUREMENT_UNIT,
             notes: m.notes || ''
         });
@@ -387,45 +460,162 @@ const EggConfig = () => {
     };
 
     const handleAddCodeToMapping = (mapping) => {
-        handleOpenEditMapping({
-            ...mapping,
-            codes: [...parseMappingCodes(mapping.codes || mapping.catalog_codes), '']
+        const presentation = normalizeIndustrialPresentation(mapping.presentation);
+        const items = parseMappingItems(mapping);
+        const defLbs = getIndustrialPresentationWeightLbs(presentation, 32);
+
+        setMappingForm({
+            id: mapping.id,
+            product_id: mapping.product_id || mapping.catalog_product_id || '',
+            product_name: mapping.product_name || mapping.catalog_product_name || '',
+            product_type: mapping.product_type || mapping.industrial_product_type || DEFAULT_INDUSTRIAL_PRODUCT_CATEGORY,
+            presentation,
+            codes: [
+                ...items,
+                {
+                    code: '',
+                    weight_lbs: defLbs.toFixed(2),
+                    weight_kg: poundsToKilograms(defLbs).toFixed(2),
+                    product_id: null,
+                    product_name: ''
+                }
+            ],
+            unit_of_measure: mapping.unit_of_measure || DEFAULT_INDUSTRIAL_MEASUREMENT_UNIT,
+            notes: mapping.notes || ''
         });
+        setIsMappingModalOpen(true);
     };
 
     const handleAddMappingCode = () => {
-        setMappingForm((current) => ({ ...current, codes: [...current.codes, ''] }));
-    };
-
-    const handleUpdateMappingCode = (index, value) => {
+        const defWeight = getIndustrialPresentationWeightLbs(mappingForm.presentation, 32);
         setMappingForm((current) => ({
             ...current,
-            codes: current.codes.map((code, codeIndex) => codeIndex === index ? value : code)
+            codes: [
+                ...current.codes,
+                {
+                    code: '',
+                    weight_lbs: defWeight > 0 ? defWeight.toFixed(2) : (current.codes[0]?.weight_lbs || '32.00'),
+                    weight_kg: poundsToKilograms(defWeight > 0 ? defWeight : parseFloat(current.codes[0]?.weight_lbs || 32)).toFixed(2),
+                    product_id: null,
+                    product_name: ''
+                }
+            ]
         }));
+    };
+
+    const handleUpdateMappingCode = (index, field, value, extraValue) => {
+        setMappingForm((current) => {
+            const updated = [...current.codes];
+            const item = { ...updated[index] };
+
+            if (field === 'code') {
+                item.code = value;
+                const match = systemProducts.find((p) =>
+                    (p.codigo && p.codigo.toLowerCase() === value.trim().toLowerCase()) ||
+                    (p.codigo_barra && p.codigo_barra.toLowerCase() === value.trim().toLowerCase())
+                );
+                if (match) {
+                    item.product_id = match.id;
+                    item.product_name = match.nombre || match.name || '';
+                    if (!item.weight_lbs || item.weight_lbs === '0.00' || item.weight_lbs === '32.00') {
+                        const inferred = inferCategoryAndPresentation(match.nombre || match.name || '', value);
+                        const pWeight = getIndustrialPresentationWeightLbs(inferred.presentation, 0);
+                        if (pWeight > 0) {
+                            item.weight_lbs = pWeight.toFixed(2);
+                            item.weight_kg = poundsToKilograms(pWeight).toFixed(2);
+                        }
+                    }
+                }
+            } else if (field === 'weight_lbs') {
+                item.weight_lbs = value;
+                if (extraValue !== undefined) item.weight_kg = extraValue;
+            } else if (field === 'weight_kg') {
+                item.weight_kg = value;
+                if (extraValue !== undefined) item.weight_lbs = extraValue;
+            } else {
+                item[field] = value;
+            }
+
+            updated[index] = item;
+            return { ...current, codes: updated };
+        });
     };
 
     const handleRemoveMappingCode = (index) => {
         setMappingForm((current) => {
             const codes = current.codes.filter((_, codeIndex) => codeIndex !== index);
-            return { ...current, codes: codes.length > 0 ? codes : [''] };
+            const defWeight = getIndustrialPresentationWeightLbs(current.presentation, 32);
+            return {
+                ...current,
+                codes: codes.length > 0 ? codes : [
+                    {
+                        code: '',
+                        weight_lbs: defWeight.toFixed(2),
+                        weight_kg: poundsToKilograms(defWeight).toFixed(2),
+                        product_id: null,
+                        product_name: ''
+                    }
+                ]
+            };
         });
     };
 
     const handleSaveMapping = async (e) => {
         e?.preventDefault();
-        const codes = mappingForm.codes.map((code) => code.trim()).filter(Boolean);
-        if ((!mappingForm.product_name?.trim() && !mappingForm.product_id) || codes.length === 0) {
-            return toast.error('Debe indicar el nombre del producto y los códigos vinculados.');
+        const validItems = (mappingForm.codes || [])
+            .map((it) => ({
+                ...it,
+                code: (it.code || '').trim(),
+                weight_lbs: parseFloat(it.weight_lbs) || 0,
+                weight_kg: parseFloat(it.weight_kg) || 0
+            }))
+            .filter((it) => it.code.length > 0);
+
+        if (!mappingForm.product_name?.trim()) {
+            return toast.error('Debe indicar el nombre descriptivo del producto comercial.');
         }
+        if (validItems.length === 0) {
+            return toast.error('Debe ingresar al menos un código vinculado.');
+        }
+
+        // Validar que cada código tenga peso unitario > 0
+        const zeroWeightItem = validItems.find((it) => it.weight_lbs <= 0);
+        if (zeroWeightItem) {
+            return toast.error(`El código "${zeroWeightItem.code}" debe tener un peso unitario en libras mayor a cero.`);
+        }
+
+        // Validar duplicados en el mismo formulario
+        const codeCounts = new Map();
+        for (const it of validItems) {
+            const cLower = it.code.toLowerCase();
+            codeCounts.set(cLower, (codeCounts.get(cLower) || 0) + 1);
+            if (codeCounts.get(cLower) > 1) {
+                return toast.error(`El código "${it.code}" está repetido en este formulario. Cada código debe ser único.`);
+            }
+        }
+
+        // Validar duplicados contra otras vinculaciones existentes
+        for (const it of validItems) {
+            const cLower = it.code.toLowerCase();
+            const existing = codeMappings.find((m) => {
+                if (mappingForm.id && Number(m.id) === Number(mappingForm.id)) return false;
+                const items = parseMappingItems(m);
+                return items.some((otherIt) => otherIt.code.toLowerCase() === cLower);
+            });
+            if (existing) {
+                return toast.error(`El código "${it.code}" ya está vinculado a "${existing.product_name || existing.industrial_product_type}". No se puede duplicar.`);
+            }
+        }
+
         try {
             const payload = {
-                product_id: mappingForm.product_id ? parseInt(mappingForm.product_id) : null,
                 product_name: mappingForm.product_name.trim(),
                 product_type: mappingForm.product_type,
                 presentation: mappingForm.presentation,
-                codes,
-                weight_lbs: parseFloat(mappingForm.weight_lbs) || 0,
-                weight_kg: parseFloat(mappingForm.weight_kg) || 0,
+                codes: validItems.map((it) => it.code),
+                code_items: validItems,
+                unit_weight_lbs: validItems[0]?.weight_lbs || 1,
+                unit_weight_kg: validItems[0]?.weight_kg || 0.45,
                 unit_of_measure: mappingForm.unit_of_measure,
                 notes: mappingForm.notes
             };
@@ -695,44 +885,40 @@ const EggConfig = () => {
                 <div className="flex flex-wrap gap-1.5 p-1 bg-slate-100/90 rounded-xl border border-slate-200">
                     <button
                         onClick={() => setActiveTab('costs')}
-                        className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                            activeTab === 'costs'
-                                ? 'bg-white text-indigo-700 shadow-xs border border-slate-200/80'
-                                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
-                        }`}
+                        className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${activeTab === 'costs'
+                            ? 'bg-white text-indigo-700 shadow-xs border border-slate-200/80'
+                            : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
+                            }`}
                     >
                         <DollarSign size={14} />
                         Costos y Planillas
                     </button>
                     <button
                         onClick={() => setActiveTab('lot-prefixes')}
-                        className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                            activeTab === 'lot-prefixes'
-                                ? 'bg-white text-indigo-700 shadow-xs border border-slate-200/80'
-                                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
-                        }`}
+                        className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${activeTab === 'lot-prefixes'
+                            ? 'bg-white text-indigo-700 shadow-xs border border-slate-200/80'
+                            : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
+                            }`}
                     >
                         <Tag size={14} />
                         Prefijos de Lote por Proveedor
                     </button>
                     <button
                         onClick={() => setActiveTab('products')}
-                        className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                            activeTab === 'products'
-                                ? 'bg-white text-indigo-700 shadow-xs border border-slate-200/80'
-                                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
-                        }`}
+                        className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${activeTab === 'products'
+                            ? 'bg-white text-indigo-700 shadow-xs border border-slate-200/80'
+                            : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
+                            }`}
                     >
                         <Layers size={14} />
                         Rendimientos de Producto
                     </button>
                     <button
                         onClick={() => setActiveTab('code-mappings')}
-                        className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                            activeTab === 'code-mappings'
-                                ? 'bg-white text-indigo-700 shadow-xs border border-slate-200/80'
-                                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
-                        }`}
+                        className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${activeTab === 'code-mappings'
+                            ? 'bg-white text-indigo-700 shadow-xs border border-slate-200/80'
+                            : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
+                            }`}
                     >
                         <Barcode size={14} />
                         Vinculación de Códigos
@@ -1116,15 +1302,6 @@ const EggConfig = () => {
                         <div className="flex flex-wrap gap-2.5 shrink-0">
                             <button
                                 type="button"
-                                onClick={handleSeedExampleMappings}
-                                className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold border border-slate-700 transition-all flex items-center gap-2 shadow-xs"
-                                title="Cargar códigos oficiales de ejemplo citados en el documento (HEGL8, hel2, hec32, CL2b)"
-                            >
-                                <Sparkles size={14} className="text-amber-400" />
-                                Cargar Ejemplos Doc
-                            </button>
-                            <button
-                                type="button"
                                 onClick={handleOpenCreateMapping}
                                 className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-2 shadow-xs"
                             >
@@ -1191,7 +1368,12 @@ const EggConfig = () => {
                                                 (m.product_type || '').toLowerCase().includes(term) ||
                                                 (m.presentation || '').toLowerCase().includes(term);
                                         }).map(m => {
-                                            const codesArr = parseMappingCodes(m.codes || m.catalog_codes);
+                                            const items = parseMappingItems(m);
+                                            const weights = items.map(it => parseFloat(it.weight_lbs) || 0).filter(w => w > 0);
+                                            const minW = weights.length > 0 ? Math.min(...weights) : parseFloat(m.unit_weight_lbs || 0);
+                                            const maxW = weights.length > 0 ? Math.max(...weights) : parseFloat(m.unit_weight_lbs || 0);
+                                            const linkedProductNames = Array.from(new Set(items.map(it => it.product_name).filter(Boolean)));
+
                                             return (
                                                 <tr key={m.id} className="hover:bg-slate-50/80 transition-colors">
                                                     <td className="p-3 font-bold text-slate-900">
@@ -1207,25 +1389,45 @@ const EggConfig = () => {
                                                         {m.presentation}
                                                     </td>
                                                     <td className="p-3">
-                                                        <div className="flex flex-wrap gap-1">
-                                                            {codesArr.map((c, ci) => (
-                                                                <span key={ci} className="font-mono text-[11px] font-bold bg-slate-100 text-slate-800 px-2 py-0.5 rounded border border-slate-200">
-                                                                    {c}
+                                                        <div className="flex flex-wrap gap-1.5">
+                                                            {items.map((it, ci) => (
+                                                                <span
+                                                                    key={ci}
+                                                                    className="inline-flex items-center gap-1 font-mono text-[11px] font-bold bg-slate-100 text-slate-800 px-2 py-0.5 rounded border border-slate-200"
+                                                                    title={`Peso: ${parseFloat(it.weight_lbs).toFixed(2)} lb (~${parseFloat(it.weight_kg).toFixed(2)} kg)${it.product_name ? ` | ${it.product_name}` : ''}`}
+                                                                >
+                                                                    <span>{it.code}</span>
+                                                                    <span className="text-[10px] text-indigo-600 font-semibold font-sans bg-indigo-50 px-1 rounded border border-indigo-100">
+                                                                        {parseFloat(it.weight_lbs).toFixed(1)} lb
+                                                                    </span>
                                                                 </span>
                                                             ))}
                                                         </div>
                                                     </td>
                                                     <td className="p-3 text-right">
-                                                        <div className="font-bold text-slate-900">{parseFloat(m.weight_lbs ?? m.unit_weight_lbs ?? 0).toFixed(2)} lb</div>
-                                                        <div className="text-[10px] text-slate-400 font-medium">~{parseFloat(m.weight_kg ?? m.unit_weight_kg ?? 0).toFixed(2)} kg</div>
+                                                        <div className="font-bold text-slate-900">
+                                                            {minW === maxW ? `${minW.toFixed(2)} lb` : `${minW.toFixed(1)} - ${maxW.toFixed(1)} lb`}
+                                                        </div>
+                                                        <div className="text-[10px] text-slate-400 font-medium">
+                                                            {minW === maxW ? `~${poundsToKilograms(minW).toFixed(2)} kg` : `~${poundsToKilograms(minW).toFixed(1)} - ${poundsToKilograms(maxW).toFixed(1)} kg`}
+                                                        </div>
                                                     </td>
                                                     <td className="p-3 text-slate-600 font-bold uppercase">
                                                         {m.unit_of_measure || 'lb'}
                                                     </td>
                                                     <td className="p-3 text-slate-600 font-medium">
-                                                        {m.catalog_product_name ? (
-                                                            <span className="text-emerald-700 font-bold flex items-center gap-1">
-                                                                <CheckCircle2 size={12} />
+                                                        {linkedProductNames.length > 0 ? (
+                                                            <div className="space-y-0.5 max-w-[200px]">
+                                                                {linkedProductNames.map((pName, pIdx) => (
+                                                                    <div key={pIdx} className="text-emerald-700 font-bold text-[11px] flex items-center gap-1 truncate" title={pName}>
+                                                                        <CheckCircle2 size={11} className="shrink-0" />
+                                                                        <span className="truncate">{pName}</span>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        ) : m.catalog_product_name ? (
+                                                            <span className="text-emerald-700 font-bold flex items-center gap-1 text-[11px]">
+                                                                <CheckCircle2 size={11} className="shrink-0" />
                                                                 {m.catalog_product_name}
                                                             </span>
                                                         ) : (
@@ -1277,14 +1479,16 @@ const EggConfig = () => {
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-150">
                     {/* Datalist para autocompletar códigos del sistema mientras se escribe */}
                     <datalist id="system-product-codes-list">
-                        {systemProducts.flatMap(p => {
-                            const entries = [];
-                            if (p.codigo) entries.push(<option key={`sku-${p.id}`} value={p.codigo}>{p.nombre} (SKU: {p.codigo})</option>);
-                            if (p.codigo_barra && p.codigo_barra !== p.codigo) {
-                                entries.push(<option key={`bar-${p.id}`} value={p.codigo_barra}>{p.nombre} (Barra: {p.codigo_barra})</option>);
-                            }
-                            return entries;
-                        })}
+                        {systemProducts
+                            .filter(p => !isProductMapped(p, mappingForm.id) && !isProductInCurrentForm(p, null))
+                            .flatMap(p => {
+                                const entries = [];
+                                if (p.codigo) entries.push(<option key={`sku-${p.id}`} value={p.codigo}>{p.nombre} (SKU: {p.codigo})</option>);
+                                if (p.codigo_barra && p.codigo_barra !== p.codigo) {
+                                    entries.push(<option key={`bar-${p.id}`} value={p.codigo_barra}>{p.nombre} (Barra: {p.codigo_barra})</option>);
+                                }
+                                return entries;
+                            })}
                     </datalist>
 
                     <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-6 shadow-2xl max-w-xl w-full max-h-[90vh] overflow-y-auto text-slate-900 space-y-4">
@@ -1316,7 +1520,7 @@ const EggConfig = () => {
                                 </label>
                                 <input
                                     type="text"
-                                    required={!mappingForm.product_id}
+                                    required
                                     value={mappingForm.product_name}
                                     onChange={(e) => setMappingForm({ ...mappingForm, product_name: e.target.value })}
                                     placeholder="Ej: Huevo Entero Pasteurizado Galón"
@@ -1349,11 +1553,23 @@ const EggConfig = () => {
                                         onChange={(e) => {
                                             const presentation = e.target.value;
                                             const lbs = getIndustrialPresentationWeightLbs(presentation, 0);
-                                            setMappingForm({
-                                                ...mappingForm,
-                                                presentation,
-                                                weight_lbs: lbs > 0 ? lbs.toFixed(2) : mappingForm.weight_lbs,
-                                                weight_kg: lbs > 0 ? poundsToKilograms(lbs).toFixed(2) : mappingForm.weight_kg
+                                            setMappingForm(prev => {
+                                                const nextLbs = lbs > 0 ? lbs.toFixed(2) : null;
+                                                const nextKg = lbs > 0 ? poundsToKilograms(lbs).toFixed(2) : null;
+                                                return {
+                                                    ...prev,
+                                                    presentation,
+                                                    codes: (prev.codes || []).map((it, idx) => {
+                                                        if (nextLbs && (idx === 0 || !it.weight_lbs || it.weight_lbs === '32.00')) {
+                                                            return {
+                                                                ...it,
+                                                                weight_lbs: nextLbs,
+                                                                weight_kg: nextKg
+                                                            };
+                                                        }
+                                                        return it;
+                                                    })
+                                                };
                                             });
                                         }}
                                         className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-semibold focus:outline-none focus:border-indigo-500"
@@ -1384,10 +1600,10 @@ const EggConfig = () => {
                                 <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
                                     <div className="flex items-center gap-1.5">
                                         <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide">
-                                            Códigos vinculados *
+                                            Códigos vinculados y pesos unitarios *
                                         </label>
                                         <span className="text-[10px] bg-slate-100 text-slate-600 font-bold px-1.5 py-0.5 rounded border border-slate-200">
-                                            {mappingForm.codes.filter(Boolean).length} vinculados
+                                            {(mappingForm.codes || []).filter(c => (c.code || '').trim()).length} vinculados
                                         </span>
                                     </div>
                                     <div className="flex items-center gap-1.5">
@@ -1411,155 +1627,116 @@ const EggConfig = () => {
                                         </button>
                                     </div>
                                 </div>
-                                <div className="space-y-2">
-                                    {mappingForm.codes.map((code, index) => (
-                                        <div key={index} className="flex items-center gap-2">
-                                            <div className="relative flex-1 min-w-0">
-                                                <input
-                                                    type="text"
-                                                    list="system-product-codes-list"
-                                                    value={code}
-                                                    onChange={(e) => {
-                                                        const val = e.target.value;
-                                                        handleUpdateMappingCode(index, val);
-                                                        // Si coincide exactamente con un producto del sistema, sugerir autocompletar nombre
-                                                        const match = systemProducts.find(p =>
-                                                            (p.codigo && p.codigo.toLowerCase() === val.toLowerCase()) ||
-                                                            (p.codigo_barra && p.codigo_barra.toLowerCase() === val.toLowerCase())
-                                                        );
-                                                        if (match && !mappingForm.product_name?.trim()) {
-                                                            const inferred = inferCategoryAndPresentation(match.nombre || match.name || '', val);
-                                                            setMappingForm(prev => ({
-                                                                ...prev,
-                                                                product_name: match.nombre || match.name || prev.product_name,
-                                                                product_id: prev.product_id || String(match.id),
-                                                                product_type: prev.product_type === DEFAULT_INDUSTRIAL_PRODUCT_CATEGORY ? inferred.product_type : prev.product_type,
-                                                                presentation: prev.presentation === DEFAULT_INDUSTRIAL_PRESENTATION ? inferred.presentation : prev.presentation
-                                                            }));
-                                                        }
-                                                    }}
-                                                    placeholder={index === 0 ? 'Ej: HEGL8 o escribe para buscar...' : 'Otro código (SKU o Barra)'}
-                                                    className="w-full pl-3 pr-8 py-2 bg-white border border-slate-300 rounded-xl text-xs font-mono font-bold text-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                                                />
+                                <p className="text-[11px] text-slate-400 mb-2">
+                                    Cada código seleccionado tiene su propio peso unitario para calcular con precisión el stock y la equivalencia.
+                                </p>
+                                <div className="space-y-2.5">
+                                    {mappingForm.codes.map((item, index) => (
+                                        <div key={index} className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                                            <div className="flex items-center gap-2">
+                                                <div className="relative flex-1 min-w-0">
+                                                    <input
+                                                        type="text"
+                                                        list="system-product-codes-list"
+                                                        value={typeof item === 'string' ? item : (item.code || '')}
+                                                        onChange={(e) => {
+                                                            const val = e.target.value;
+                                                            handleUpdateMappingCode(index, 'code', val);
+                                                            const match = systemProducts.find(p =>
+                                                                (p.codigo && p.codigo.toLowerCase() === val.toLowerCase()) ||
+                                                                (p.codigo_barra && p.codigo_barra.toLowerCase() === val.toLowerCase())
+                                                            );
+                                                            if (match && !mappingForm.product_name?.trim()) {
+                                                                const inferred = inferCategoryAndPresentation(match.nombre || match.name || '', val);
+                                                                setMappingForm(prev => ({
+                                                                    ...prev,
+                                                                    product_name: match.nombre || match.name || prev.product_name,
+                                                                    product_type: prev.product_type === DEFAULT_INDUSTRIAL_PRODUCT_CATEGORY ? inferred.product_type : prev.product_type,
+                                                                    presentation: prev.presentation === DEFAULT_INDUSTRIAL_PRESENTATION ? inferred.presentation : prev.presentation
+                                                                }));
+                                                            }
+                                                        }}
+                                                        placeholder={index === 0 ? 'Ej: HEGL8 o escribe para buscar...' : 'Otro código (SKU o Barra)'}
+                                                        className="w-full pl-3 pr-8 py-2 bg-white border border-slate-300 rounded-xl text-xs font-mono font-bold text-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleOpenProductCatalog(index)}
+                                                        className="absolute right-2.5 top-2 text-slate-400 hover:text-indigo-600 transition-colors"
+                                                        title="Buscar y seleccionar código de la lista de productos del sistema"
+                                                    >
+                                                        <Search size={14} />
+                                                    </button>
+                                                </div>
                                                 <button
                                                     type="button"
-                                                    onClick={() => handleOpenProductCatalog(index)}
-                                                    className="absolute right-2 top-2 text-slate-400 hover:text-indigo-600 transition-colors"
-                                                    title="Buscar y seleccionar código de la lista de productos del sistema"
+                                                    onClick={() => handleRemoveMappingCode(index)}
+                                                    disabled={mappingForm.codes.length === 1}
+                                                    className="inline-flex shrink-0 items-center justify-center p-2 text-rose-700 bg-rose-50 border border-rose-200 rounded-xl hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-40 transition-colors"
+                                                    title="Quitar código"
+                                                    aria-label="Quitar código"
                                                 >
-                                                    <Search size={14} />
+                                                    <Trash2 size={14} />
                                                 </button>
                                             </div>
-                                            <button
-                                                type="button"
-                                                onClick={() => handleRemoveMappingCode(index)}
-                                                disabled={mappingForm.codes.length === 1}
-                                                className="inline-flex shrink-0 items-center justify-center p-2 text-rose-700 bg-rose-50 border border-rose-200 rounded-xl hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-40 transition-colors"
-                                                title="Quitar código"
-                                                aria-label="Quitar código"
-                                            >
-                                                <Trash2 size={14} />
-                                            </button>
+
+                                            {/* Nombre del producto detectado/vinculado */}
+                                            {item.product_name && (
+                                                <div className="text-[11px] text-slate-600 font-medium flex items-center gap-1 pl-1">
+                                                    <span className="text-slate-400">Producto:</span>
+                                                    <span className="font-bold text-slate-700 truncate">{item.product_name}</span>
+                                                </div>
+                                            )}
+
+                                            {/* Pesos unitarios individuales para este código */}
+                                            <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-200/60">
+                                                <div>
+                                                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide block mb-0.5">
+                                                        Peso Unitario (Lbs) *
+                                                    </label>
+                                                    <div className="relative">
+                                                        <input
+                                                            type="number"
+                                                            step="0.01"
+                                                            value={item.weight_lbs ?? ''}
+                                                            onChange={(e) => {
+                                                                const lbsVal = e.target.value;
+                                                                const lbsNum = parseFloat(lbsVal) || 0;
+                                                                handleUpdateMappingCode(index, 'weight_lbs', lbsVal, poundsToKilograms(lbsNum).toFixed(2));
+                                                            }}
+                                                            placeholder="0.00"
+                                                            className="w-full pl-2.5 pr-7 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-800 focus:outline-none focus:border-indigo-500"
+                                                        />
+                                                        <span className="absolute right-2 top-1.5 text-[10px] font-bold text-slate-400">lb</span>
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide block mb-0.5">
+                                                        Peso Unitario (Kg) *
+                                                    </label>
+                                                    <div className="relative">
+                                                        <input
+                                                            type="number"
+                                                            step="0.01"
+                                                            value={item.weight_kg ?? ''}
+                                                            onChange={(e) => {
+                                                                const kgVal = e.target.value;
+                                                                const kgNum = parseFloat(kgVal) || 0;
+                                                                handleUpdateMappingCode(index, 'weight_kg', kgVal, kilogramsToPounds(kgNum).toFixed(2));
+                                                            }}
+                                                            placeholder="0.00"
+                                                            className="w-full pl-2.5 pr-7 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-800 focus:outline-none focus:border-indigo-500"
+                                                        />
+                                                        <span className="absolute right-2 top-1.5 text-[10px] font-bold text-slate-400">kg</span>
+                                                    </div>
+                                                </div>
+                                            </div>
                                         </div>
                                     ))}
                                 </div>
-                                <div className="flex items-center justify-between gap-2 mt-1">
-                                    <span className="text-[10px] text-slate-400 block">
-                                        Escribe para ver sugerencias automáticas o pulsa <strong>Buscar en sistema</strong>.
-                                    </span>
-                                </div>
-                            </div>
-
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                <div>
-                                    <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1">
-                                        Peso Unitario (Lbs)
-                                    </label>
-                                    <input
-                                        type="number"
-                                        step="0.01"
-                                        value={mappingForm.weight_lbs}
-                                        onChange={(e) => {
-                                            const lbs = parseFloat(e.target.value) || 0;
-                                            setMappingForm({
-                                                ...mappingForm,
-                                                weight_lbs: e.target.value,
-                                                weight_kg: poundsToKilograms(lbs).toFixed(2)
-                                            });
-                                        }}
-                                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-indigo-500"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1">
-                                        Peso Unitario (Kg)
-                                    </label>
-                                    <input
-                                        type="number"
-                                        step="0.01"
-                                        value={mappingForm.weight_kg}
-                                        onChange={(e) => {
-                                            const kg = parseFloat(e.target.value) || 0;
-                                            setMappingForm({
-                                                ...mappingForm,
-                                                weight_kg: e.target.value,
-                                                weight_lbs: kilogramsToPounds(kg).toFixed(2)
-                                            });
-                                        }}
-                                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-indigo-500"
-                                    />
-                                </div>
-                            </div>
-
-                            <div>
-                                <div className="flex items-center justify-between gap-2 mb-1">
-                                    <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block">
-                                        Vincular a Producto del Catálogo General (Opcional)
-                                    </label>
-                                    {mappingForm.product_id && (
-                                        <button
-                                            type="button"
-                                            onClick={() => setMappingForm({ ...mappingForm, product_id: '' })}
-                                            className="text-[10px] text-rose-600 font-bold hover:underline"
-                                        >
-                                            Limpiar vínculo
-                                        </button>
-                                    )}
-                                </div>
-                                <SearchableSelect
-                                    options={systemProducts}
-                                    value={mappingForm.product_id}
-                                    onChange={(e, opt) => {
-                                        if (opt) {
-                                            const sku = (opt.codigo || '').trim();
-                                            const bar = (opt.codigo_barra || '').trim();
-                                            const curCodes = mappingForm.codes.filter(Boolean);
-                                            const merged = [...curCodes];
-                                            if (sku && !merged.includes(sku)) merged.push(sku);
-                                            if (bar && !merged.includes(bar)) merged.push(bar);
-
-                                            const inferred = inferCategoryAndPresentation(opt.nombre || opt.name || '', sku || bar);
-
-                                            setMappingForm(prev => ({
-                                                ...prev,
-                                                product_id: String(opt.id),
-                                                product_name: prev.product_name?.trim() ? prev.product_name : (opt.nombre || opt.name || ''),
-                                                product_type: prev.product_type === DEFAULT_INDUSTRIAL_PRODUCT_CATEGORY ? inferred.product_type : prev.product_type,
-                                                presentation: prev.presentation === DEFAULT_INDUSTRIAL_PRESENTATION ? inferred.presentation : prev.presentation,
-                                                codes: merged.length > 0 ? merged : [''],
-                                                unit_of_measure: opt.unidad_medida?.toLowerCase() === 'kg' ? 'kg' : prev.unit_of_measure
-                                            }));
-                                        } else {
-                                            setMappingForm(prev => ({ ...prev, product_id: '' }));
-                                        }
-                                    }}
-                                    valueKey="id"
-                                    labelKey="nombre"
-                                    codeKey="codigo"
-                                    searchKeys={['codigo', 'codigo_barra', 'nombre', 'category_name']}
-                                    placeholder="(Automático por SKU/Código o buscar en catálogo...)"
-                                    isClearable={true}
-                                />
+                                <span className="text-[10px] text-slate-400 block mt-1.5">
+                                    Escribe para autocompletar por SKU o pulsa <strong>Buscar en sistema</strong> para elegir desde el catálogo.
+                                </span>
                             </div>
 
                             <div>
@@ -1677,22 +1854,20 @@ const EggConfig = () => {
                                 <button
                                     type="button"
                                     onClick={() => setCatalogFilterType('all')}
-                                    className={`px-2.5 py-1 rounded-lg font-bold transition-colors ${
-                                        catalogFilterType === 'all'
-                                            ? 'bg-indigo-600 text-white shadow-2xs'
-                                            : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                                    }`}
+                                    className={`px-2.5 py-1 rounded-lg font-bold transition-colors ${catalogFilterType === 'all'
+                                        ? 'bg-indigo-600 text-white shadow-2xs'
+                                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                                        }`}
                                 >
                                     Todos ({systemProducts.length})
                                 </button>
                                 <button
                                     type="button"
                                     onClick={() => setCatalogFilterType('egg')}
-                                    className={`px-2.5 py-1 rounded-lg font-bold transition-colors ${
-                                        catalogFilterType === 'egg'
-                                            ? 'bg-indigo-600 text-white shadow-2xs'
-                                            : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                                    }`}
+                                    className={`px-2.5 py-1 rounded-lg font-bold transition-colors ${catalogFilterType === 'egg'
+                                        ? 'bg-indigo-600 text-white shadow-2xs'
+                                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                                        }`}
                                 >
                                     🥚 Huevo / Ovoproductos ({systemProducts.filter(p => {
                                         const t = `${p.nombre || ''} ${p.descripcion || ''} ${p.category_name || ''} ${p.codigo || ''}`.toLowerCase();
@@ -1702,24 +1877,22 @@ const EggConfig = () => {
                                 <button
                                     type="button"
                                     onClick={() => setCatalogFilterType('unmapped')}
-                                    className={`px-2.5 py-1 rounded-lg font-bold transition-colors ${
-                                        catalogFilterType === 'unmapped'
-                                            ? 'bg-amber-600 text-white shadow-2xs'
-                                            : 'bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100'
-                                    }`}
+                                    className={`px-2.5 py-1 rounded-lg font-bold transition-colors ${catalogFilterType === 'unmapped'
+                                        ? 'bg-amber-600 text-white shadow-2xs'
+                                        : 'bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100'
+                                        }`}
                                 >
-                                    ⚠️ Sin Vincular ({systemProducts.filter(p => !isProductMapped(p)).length})
+                                    ⚠️ Sin Vincular ({systemProducts.filter(p => !isProductMapped(p, mappingForm.id)).length})
                                 </button>
                                 <button
                                     type="button"
                                     onClick={() => setCatalogFilterType('mapped')}
-                                    className={`px-2.5 py-1 rounded-lg font-bold transition-colors ${
-                                        catalogFilterType === 'mapped'
-                                            ? 'bg-emerald-600 text-white shadow-2xs'
-                                            : 'bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100'
-                                    }`}
+                                    className={`px-2.5 py-1 rounded-lg font-bold transition-colors ${catalogFilterType === 'mapped'
+                                        ? 'bg-emerald-600 text-white shadow-2xs'
+                                        : 'bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100'
+                                        }`}
                                 >
-                                    ✅ Ya Vinculados ({systemProducts.filter(p => isProductMapped(p)).length})
+                                    ✅ Ya Vinculados ({systemProducts.filter(p => isProductMapped(p, mappingForm.id)).length})
                                 </button>
                             </div>
                         </div>
@@ -1734,9 +1907,9 @@ const EggConfig = () => {
                                         if (!t.includes('huevo') && !t.includes('clara') && !t.includes('yema') && !t.includes('ovoproducto') && !t.includes('pasteuriz')) {
                                             return false;
                                         }
-                                    } else if (catalogFilterType === 'unmapped' && isProductMapped(p)) {
+                                    } else if (catalogFilterType === 'unmapped' && isProductMapped(p, mappingForm.id)) {
                                         return false;
-                                    } else if (catalogFilterType === 'mapped' && !isProductMapped(p)) {
+                                    } else if (catalogFilterType === 'mapped' && !isProductMapped(p, mappingForm.id)) {
                                         return false;
                                     }
 
@@ -1763,14 +1936,19 @@ const EggConfig = () => {
                                 }
 
                                 return filtered.map(prod => {
-                                    const mappingInfo = getProductMappingInfo(prod);
+                                    const mappingInfo = getProductMappingInfo(prod, mappingForm.id);
+                                    const alreadyMapped = Boolean(mappingInfo);
+                                    const alreadyInForm = isProductInCurrentForm(prod, targetCodeIndex);
+                                    const isBlocked = alreadyMapped || alreadyInForm;
                                     const hasSku = Boolean(prod.codigo?.trim());
                                     const hasBarcode = Boolean(prod.codigo_barra?.trim() && prod.codigo_barra !== prod.codigo);
 
                                     return (
                                         <div
                                             key={prod.id}
-                                            className="p-3 sm:p-3.5 hover:bg-slate-50/90 transition-colors flex flex-col md:flex-row items-start md:items-center justify-between gap-3"
+                                            className={`p-3 sm:p-3.5 transition-colors flex flex-col md:flex-row items-start md:items-center justify-between gap-3 ${
+                                                isBlocked ? 'bg-slate-50/60 opacity-80' : 'hover:bg-slate-50/90'
+                                            }`}
                                         >
                                             {/* Datos del producto */}
                                             <div className="space-y-1 flex-1 min-w-0">
@@ -1795,9 +1973,14 @@ const EggConfig = () => {
                                                     {hasSku && (
                                                         <button
                                                             type="button"
-                                                            onClick={() => handleSelectProductCode(prod, 'sku', true)}
-                                                            className="inline-flex items-center gap-1 font-mono text-[11px] font-bold text-indigo-700 bg-indigo-50/80 hover:bg-indigo-100 px-2 py-0.5 rounded border border-indigo-200 transition-colors"
-                                                            title="Click para usar este código SKU"
+                                                            onClick={() => !isBlocked && handleSelectProductCode(prod, 'sku')}
+                                                            disabled={isBlocked}
+                                                            className={`inline-flex items-center gap-1 font-mono text-[11px] font-bold px-2 py-0.5 rounded border transition-colors ${
+                                                                isBlocked
+                                                                    ? 'opacity-40 cursor-not-allowed bg-slate-100 text-slate-400 border-slate-200'
+                                                                    : 'text-indigo-700 bg-indigo-50/80 hover:bg-indigo-100 border-indigo-200'
+                                                            }`}
+                                                            title={isBlocked ? (alreadyMapped ? `Ya vinculado a "${mappingInfo?.product_name || mappingInfo?.product_type}"` : 'Ya agregado en este formulario') : 'Click para usar este código SKU'}
                                                         >
                                                             <Barcode size={12} />
                                                             <span>SKU: {prod.codigo}</span>
@@ -1807,9 +1990,14 @@ const EggConfig = () => {
                                                     {hasBarcode && (
                                                         <button
                                                             type="button"
-                                                            onClick={() => handleSelectProductCode(prod, 'barcode', true)}
-                                                            className="inline-flex items-center gap-1 font-mono text-[11px] font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 px-2 py-0.5 rounded border border-slate-300 transition-colors"
-                                                            title="Click para usar este código de barra"
+                                                            onClick={() => !isBlocked && handleSelectProductCode(prod, 'barcode')}
+                                                            disabled={isBlocked}
+                                                            className={`inline-flex items-center gap-1 font-mono text-[11px] font-bold px-2 py-0.5 rounded border transition-colors ${
+                                                                isBlocked
+                                                                    ? 'opacity-40 cursor-not-allowed bg-slate-100 text-slate-400 border-slate-200'
+                                                                    : 'text-slate-700 bg-slate-100 hover:bg-slate-200 border-slate-300'
+                                                            }`}
+                                                            title={isBlocked ? (alreadyMapped ? `Ya vinculado a "${mappingInfo?.product_name || mappingInfo?.product_type}"` : 'Ya agregado en este formulario') : 'Click para usar este código de barra'}
                                                         >
                                                             <Barcode size={12} />
                                                             <span>Barra: {prod.codigo_barra}</span>
@@ -1823,14 +2011,20 @@ const EggConfig = () => {
                                                     )}
 
                                                     {/* Estado de vinculación */}
-                                                    {mappingInfo ? (
-                                                        <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 flex items-center gap-1">
-                                                            <CheckCircle2 size={11} />
-                                                            Vinculado: {mappingInfo.product_type} ({mappingInfo.presentation})
+                                                    {alreadyMapped ? (
+                                                        <span className="text-[10px] font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 flex items-center gap-1" title={`Bloqueado: Ya vinculado a "${mappingInfo.product_name || mappingInfo.product_type}"`}>
+                                                            <Lock size={11} className="text-amber-600 shrink-0" />
+                                                            <span>Ya Vinculado: {mappingInfo.product_name || mappingInfo.product_type} ({mappingInfo.presentation})</span>
+                                                        </span>
+                                                    ) : alreadyInForm ? (
+                                                        <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200 flex items-center gap-1" title="Ya está agregado en este formulario">
+                                                            <CheckCircle2 size={11} className="text-indigo-600 shrink-0" />
+                                                            <span>Ya en este formulario</span>
                                                         </span>
                                                     ) : (
-                                                        <span className="text-[10px] font-semibold text-slate-400 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-200">
-                                                            Sin vincular a ovoproducto
+                                                        <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 flex items-center gap-1">
+                                                            <Sparkles size={11} className="text-emerald-500 shrink-0" />
+                                                            <span>Disponible para vincular</span>
                                                         </span>
                                                     )}
                                                 </div>
@@ -1841,9 +2035,14 @@ const EggConfig = () => {
                                                 {hasSku && hasBarcode && (
                                                     <button
                                                         type="button"
-                                                        onClick={() => handleSelectProductCode(prod, 'both', true)}
-                                                        className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-[11px] font-bold border border-slate-300 transition-colors"
-                                                        title="Insertar ambos códigos (SKU + Barra)"
+                                                        onClick={() => !isBlocked && handleSelectProductCode(prod, 'both')}
+                                                        disabled={isBlocked}
+                                                        className={`px-2.5 py-1.5 rounded-xl text-[11px] font-bold border transition-colors ${
+                                                            isBlocked
+                                                                ? 'opacity-40 cursor-not-allowed bg-slate-100 text-slate-400 border-slate-200'
+                                                                : 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-300'
+                                                        }`}
+                                                        title={isBlocked ? (alreadyMapped ? `Ya vinculado a "${mappingInfo?.product_name || mappingInfo?.product_type}"` : 'Ya agregado en este formulario') : 'Insertar ambos códigos (SKU + Barra)'}
                                                     >
                                                         + Ambos Códigos
                                                     </button>
@@ -1851,11 +2050,21 @@ const EggConfig = () => {
 
                                                 <button
                                                     type="button"
-                                                    onClick={() => handleSelectProductCode(prod, 'both', true)}
-                                                    className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-2xs flex items-center gap-1"
+                                                    onClick={() => !isBlocked && handleSelectProductCode(prod, hasSku ? 'sku' : 'barcode')}
+                                                    disabled={isBlocked}
+                                                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-2xs flex items-center gap-1 ${
+                                                        isBlocked
+                                                            ? 'opacity-40 cursor-not-allowed bg-slate-200 text-slate-400'
+                                                            : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                                                    }`}
+                                                    title={isBlocked ? (alreadyMapped ? `Ya vinculado a "${mappingInfo?.product_name || mappingInfo?.product_type}"` : 'Ya agregado en este formulario') : (isMappingModalOpen ? 'Usar en Formulario' : 'Crear Vinculación')}
                                                 >
-                                                    <Sparkles size={12} />
-                                                    <span>{isMappingModalOpen ? 'Usar en Formulario' : 'Crear Vinculación'}</span>
+                                                    {isBlocked ? <Lock size={12} /> : <Sparkles size={12} />}
+                                                    <span>
+                                                        {isBlocked
+                                                            ? (alreadyMapped ? 'Ya Vinculado' : 'Ya en Formulario')
+                                                            : (isMappingModalOpen ? 'Usar en Formulario' : 'Crear Vinculación')}
+                                                    </span>
                                                 </button>
                                             </div>
                                         </div>

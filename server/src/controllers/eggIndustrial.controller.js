@@ -177,6 +177,7 @@ const ensureEggSchema = async () => {
                 unit_weight_lbs DECIMAL(10,2) NOT NULL DEFAULT 1.00,
                 unit_weight_kg DECIMAL(10,2) NOT NULL DEFAULT 0.45,
                 unit_of_measure VARCHAR(10) NOT NULL DEFAULT 'lb',
+                code_weights_json TEXT NULL,
                 notes VARCHAR(255) NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -198,6 +199,10 @@ const ensureEggSchema = async () => {
             {
                 name: 'unit_of_measure',
                 statement: "ALTER TABLE egg_product_code_mappings ADD COLUMN unit_of_measure VARCHAR(10) NOT NULL DEFAULT 'lb' AFTER unit_weight_kg"
+            },
+            {
+                name: 'code_weights_json',
+                statement: 'ALTER TABLE egg_product_code_mappings ADD COLUMN code_weights_json TEXT NULL AFTER catalog_codes'
             }
         ];
         for (const column of mappingColumns) {
@@ -5341,6 +5346,7 @@ const saveCodeMapping = async (req, res) => {
             presentation,
             catalog_codes,
             codes,
+            code_items,
             unit_weight_lbs,
             weight_lbs,
             unit_weight_kg,
@@ -5355,14 +5361,51 @@ const saveCodeMapping = async (req, res) => {
         const company_id = req.company_id;
         const resolvedProductType = String(industrial_product_type || product_type || '').trim();
         const resolvedPresentation = String(presentation || '').trim();
-        const resolvedCodes = normalizeCatalogCodes(catalog_codes ?? codes);
-        const requestedProductId = catalog_product_id ?? product_id;
-        const parsedProductId = requestedProductId ? Number(requestedProductId) : null;
         const resolvedUnit = String(unit_of_measure || 'lb').trim().toLowerCase();
         const currentMappingId = mappingId ? Number(mappingId) : null;
 
+        // Normalizar lista de códigos y pesos por código
+        let items = [];
+        if (Array.isArray(code_items) && code_items.length > 0) {
+            items = code_items;
+        } else if (Array.isArray(codes)) {
+            items = codes.map((c) => {
+                if (typeof c === 'object' && c !== null) return c;
+                return {
+                    code: String(c || '').trim(),
+                    weight_lbs: Number(unit_weight_lbs ?? weight_lbs ?? 1),
+                    weight_kg: Number(unit_weight_kg ?? weight_kg ?? 0.45)
+                };
+            });
+        } else {
+            const rawCodes = normalizeCatalogCodes(catalog_codes ?? codes);
+            items = rawCodes.map((c) => ({
+                code: c,
+                weight_lbs: Number(unit_weight_lbs ?? weight_lbs ?? 1),
+                weight_kg: Number(unit_weight_kg ?? weight_kg ?? 0.45)
+            }));
+        }
+
+        // Filtrar códigos vacíos y estandarizar
+        items = items
+            .map((it) => {
+                const c = String(it.code || '').trim();
+                const itemLbs = Number(it.weight_lbs ?? unit_weight_lbs ?? weight_lbs ?? 1);
+                const itemKg = Number(it.weight_kg ?? (itemLbs * 0.45359237).toFixed(2));
+                return {
+                    code: c,
+                    weight_lbs: Number.isFinite(itemLbs) && itemLbs > 0 ? itemLbs : 1,
+                    weight_kg: Number.isFinite(itemKg) && itemKg > 0 ? itemKg : 0.45,
+                    product_id: it.product_id ? Number(it.product_id) : null,
+                    product_name: it.product_name ? String(it.product_name).trim() : null
+                };
+            })
+            .filter((it) => it.code.length > 0);
+
+        const resolvedCodes = items.map((it) => it.code);
+
         if (!resolvedProductType || !resolvedPresentation || resolvedCodes.length === 0) {
-            return res.status(400).json({ message: 'Tipo de producto, presentación y códigos de catálogo son obligatorios.' });
+            return res.status(400).json({ message: 'Tipo de producto, presentación y al menos un código vinculado son obligatorios.' });
         }
         if (mappingId && (!Number.isInteger(currentMappingId) || currentMappingId <= 0)) {
             return res.status(400).json({ message: 'El identificador del mapeo no es válido.' });
@@ -5371,25 +5414,52 @@ const saveCodeMapping = async (req, res) => {
             return res.status(400).json({ message: 'La unidad de medida debe ser lb o kg.' });
         }
 
-        const [otherMappings] = await pool.query(
-            currentMappingId
-                ? 'SELECT id, catalog_codes FROM egg_product_code_mappings WHERE company_id = ? AND id <> ?'
-                : 'SELECT id, catalog_codes FROM egg_product_code_mappings WHERE company_id = ?',
-            currentMappingId ? [company_id, currentMappingId] : [company_id]
-        );
-        const assignedCodes = new Set(
-            otherMappings.flatMap((mapping) => normalizeCatalogCodes(mapping.catalog_codes)
-                .map((code) => code.toLowerCase()))
-        );
-        const duplicateCodes = resolvedCodes.filter((code) => assignedCodes.has(code.toLowerCase()));
-        if (duplicateCodes.length > 0) {
-            return res.status(409).json({
-                message: `Los siguientes códigos ya están vinculados a otro producto: ${duplicateCodes.join(', ')}.`
+        // 1. Validar que no haya códigos repetidos dentro de la misma solicitud
+        const uniqueSet = new Set();
+        const duplicatesInForm = [];
+        for (const c of resolvedCodes) {
+            const lower = c.toLowerCase();
+            if (uniqueSet.has(lower)) {
+                duplicatesInForm.push(c);
+            }
+            uniqueSet.add(lower);
+        }
+        if (duplicatesInForm.length > 0) {
+            return res.status(400).json({
+                message: `El código "${duplicatesInForm.join(', ')}" está repetido en el formulario. Cada código debe ser único.`
             });
         }
 
+        // 2. Validar que ninguno de los códigos esté ya vinculado a otra configuración
+        const [otherMappings] = await pool.query(
+            currentMappingId
+                ? 'SELECT id, catalog_codes, catalog_product_name, industrial_product_type FROM egg_product_code_mappings WHERE company_id = ? AND id <> ?'
+                : 'SELECT id, catalog_codes, catalog_product_name, industrial_product_type FROM egg_product_code_mappings WHERE company_id = ?',
+            currentMappingId ? [company_id, currentMappingId] : [company_id]
+        );
+        const assignedCodesMap = new Map();
+        for (const om of otherMappings) {
+            const ocList = normalizeCatalogCodes(om.catalog_codes);
+            for (const oc of ocList) {
+                assignedCodesMap.set(oc.toLowerCase(), om.catalog_product_name || om.industrial_product_type || 'otra vinculación');
+            }
+        }
+
+        const duplicateCodes = resolvedCodes.filter((c) => assignedCodesMap.has(c.toLowerCase()));
+        if (duplicateCodes.length > 0) {
+            const details = duplicateCodes
+                .map((c) => `"${c}" (ya vinculado en ${assignedCodesMap.get(c.toLowerCase())})`)
+                .join(', ');
+            return res.status(409).json({
+                message: `Los siguientes códigos ya están vinculados a otro producto: ${details}. Evite duplicar productos para evitar inconsistencias de inventario.`
+            });
+        }
+
+        const requestedProductId = catalog_product_id ?? product_id ?? items.find((i) => i.product_id)?.product_id;
+        const parsedProductId = requestedProductId ? Number(requestedProductId) : null;
         let resolvedProductId = null;
-        let resolvedProductName = String(catalog_product_name || product_name || '').trim() || null;
+        let resolvedProductName = String(catalog_product_name || product_name || items[0]?.product_name || '').trim() || null;
+
         if (parsedProductId !== null) {
             if (!Number.isInteger(parsedProductId) || parsedProductId <= 0) {
                 return res.status(400).json({ message: 'El producto de catálogo seleccionado no es válido.' });
@@ -5401,75 +5471,46 @@ const saveCodeMapping = async (req, res) => {
             if (products.length === 0) {
                 return res.status(400).json({ message: 'El producto seleccionado no pertenece a la empresa actual.' });
             }
-            const [existingProductMapping] = await pool.query(
-                currentMappingId
-                    ? `SELECT id
-                       FROM egg_product_code_mappings
-                       WHERE company_id = ? AND catalog_product_id = ? AND id <> ?
-                       LIMIT 1`
-                    : `SELECT id
-                       FROM egg_product_code_mappings
-                       WHERE company_id = ? AND catalog_product_id = ?
-                       LIMIT 1`,
-                currentMappingId
-                    ? [company_id, parsedProductId, currentMappingId]
-                    : [company_id, parsedProductId]
-            );
-            if (existingProductMapping.length > 0) {
-                return res.status(409).json({
-                    message: 'Este producto ya tiene una vinculación. Use el botón + para agregar otro código al mismo producto.'
-                });
-            }
             resolvedProductId = products[0].id;
-            resolvedProductName = products[0].nombre;
-        }
-        if (!resolvedProductName) {
-            return res.status(400).json({ message: 'Debe indicar un nombre descriptivo o seleccionar un producto del catálogo.' });
+            if (!resolvedProductName) resolvedProductName = products[0].nombre;
         }
 
-        const requestedLbs = Number(unit_weight_lbs ?? weight_lbs);
-        const requestedKg = Number(unit_weight_kg ?? weight_kg);
-        const isWeightValid = resolvedUnit === 'lb'
-            ? Number.isFinite(requestedLbs) && requestedLbs > 0
-            : Number.isFinite(requestedKg) && requestedKg > 0;
-        if (!isWeightValid) {
-            return res.status(400).json({ message: 'Los pesos equivalentes deben ser mayores que cero.' });
+        if (!resolvedProductName) {
+            return res.status(400).json({ message: 'Debe indicar un nombre descriptivo para el producto comercial.' });
         }
-        const lbs = resolvedUnit === 'lb'
-            ? requestedLbs
-            : Number((requestedKg * 2.2046226218).toFixed(2));
-        const resolvedKg = resolvedUnit === 'kg'
-            ? requestedKg
-            : Number((requestedLbs * 0.45359237).toFixed(2));
+
+        const primaryLbs = items.length > 0 ? items[0].weight_lbs : Number(unit_weight_lbs ?? weight_lbs ?? 1);
+        const primaryKg = items.length > 0 ? items[0].weight_kg : Number((primaryLbs * 0.45359237).toFixed(2));
         const resolvedNotes = notes ? String(notes).trim() : null;
+        const codeWeightsJson = JSON.stringify(items);
 
         if (currentMappingId) {
             const [result] = await pool.query(
                 `UPDATE egg_product_code_mappings 
                  SET catalog_product_id = ?, catalog_product_name = ?, industrial_product_type = ?, presentation = ?, catalog_codes = ?,
-                     unit_weight_lbs = ?, unit_weight_kg = ?, unit_of_measure = ?, notes = ?, updated_at = NOW()
+                     code_weights_json = ?, unit_weight_lbs = ?, unit_weight_kg = ?, unit_of_measure = ?, notes = ?, updated_at = NOW()
                  WHERE id = ? AND company_id = ?`,
                 [
                     resolvedProductId, resolvedProductName, resolvedProductType, resolvedPresentation, resolvedCodes.join(', '),
-                    lbs, resolvedKg, resolvedUnit, resolvedNotes, currentMappingId, company_id
+                    codeWeightsJson, primaryLbs, primaryKg, resolvedUnit, resolvedNotes, currentMappingId, company_id
                 ]
             );
             if (result.affectedRows === 0) {
                 return res.status(404).json({ message: 'Mapeo de códigos no encontrado.' });
             }
-            return res.json({ success: true, message: 'Mapeo de códigos actualizado correctamente.' });
+            return res.json({ success: true, message: 'Vinculación de códigos actualizada correctamente.' });
         } else {
             const [result] = await pool.query(
                 `INSERT INTO egg_product_code_mappings (
                     company_id, catalog_product_id, catalog_product_name, industrial_product_type, presentation, catalog_codes,
-                    unit_weight_lbs, unit_weight_kg, unit_of_measure, notes
-                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                    code_weights_json, unit_weight_lbs, unit_weight_kg, unit_of_measure, notes
+                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 [
                     company_id, resolvedProductId, resolvedProductName, resolvedProductType, resolvedPresentation,
-                    resolvedCodes.join(', '), lbs, resolvedKg, resolvedUnit, resolvedNotes
+                    resolvedCodes.join(', '), codeWeightsJson, primaryLbs, primaryKg, resolvedUnit, resolvedNotes
                 ]
             );
-            return res.status(201).json({ id: result.insertId, success: true, message: 'Mapeo de códigos creado exitosamente.' });
+            return res.status(201).json({ id: result.insertId, success: true, message: 'Vinculación de códigos creada exitosamente.' });
         }
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -5501,20 +5542,49 @@ const getTranslatedInventory = async (req, res) => {
             [company_id]
         );
 
-        // Crear mapas rápidos de código y producto de catálogo -> mapeo.
+        // Crear mapas rápidos de código y producto de catálogo -> mapeo con peso unitario específico por código.
         const codeMap = {};
         const mappingByProductId = {};
         const mappedCodesList = [];
         const mappedProductIds = [];
         for (const m of mappings) {
+            let weightsByCode = {};
+            if (m.code_weights_json) {
+                try {
+                    const parsed = typeof m.code_weights_json === 'string' ? JSON.parse(m.code_weights_json) : m.code_weights_json;
+                    if (Array.isArray(parsed)) {
+                        parsed.forEach((item) => {
+                            if (item && item.code) {
+                                weightsByCode[item.code.toLowerCase().trim()] = item;
+                            }
+                        });
+                    }
+                } catch (e) {
+                    console.error('Error parsing code_weights_json in getTranslatedInventory:', e);
+                }
+            }
+
             const rawCodes = normalizeCatalogCodes(m.catalog_codes).map((code) => code.toLowerCase());
             for (const c of rawCodes) {
-                codeMap[c] = m;
+                const specificItem = weightsByCode[c];
+                const specificLbs = specificItem ? parseFloat(specificItem.weight_lbs) : null;
+                const specificKg = specificItem ? parseFloat(specificItem.weight_kg) : null;
+
+                codeMap[c] = {
+                    mapping: m,
+                    weight_lbs: Number.isFinite(specificLbs) && specificLbs > 0 ? specificLbs : parseFloat(m.unit_weight_lbs || 1),
+                    weight_kg: Number.isFinite(specificKg) && specificKg > 0 ? specificKg : parseFloat(m.unit_weight_kg || 0.45),
+                    matched_code: c
+                };
                 mappedCodesList.push(c);
             }
             const catalogProductId = Number(m.catalog_product_id);
             if (Number.isInteger(catalogProductId) && catalogProductId > 0) {
-                mappingByProductId[catalogProductId] = m;
+                mappingByProductId[catalogProductId] = {
+                    mapping: m,
+                    weight_lbs: parseFloat(m.unit_weight_lbs || 1),
+                    weight_kg: parseFloat(m.unit_weight_kg || 0.45)
+                };
                 mappedProductIds.push(catalogProductId);
             }
         }
@@ -5545,17 +5615,16 @@ const getTranslatedInventory = async (req, res) => {
         // 3. Clasificar y traducir inventario
         const items = [];
         const byType = {};
-        const byPresentation = {};
-        const unmappedProducts = [];
         let grandTotalUnits = 0;
         let grandTotalLbs = 0;
         let grandTotalKg = 0;
+        const unmappedProducts = [];
 
         for (const prod of products) {
             const code = (prod.codigo || '').trim().toLowerCase();
             const barcode = (prod.codigo_barra || '').trim().toLowerCase();
-            const matchedCode = codeMap[code] ? code : (codeMap[barcode] ? barcode : null);
-            const mapping = mappingByProductId[prod.id] || codeMap[matchedCode];
+            const matchedEntry = codeMap[code] || codeMap[barcode] || mappingByProductId[prod.id];
+            const mapping = matchedEntry?.mapping;
             const currentStockUnits = parseFloat(prod.stock || 0);
 
             const isEggCandidate = 
@@ -5567,8 +5636,9 @@ const getTranslatedInventory = async (req, res) => {
                 (prod.category_name || '').toLowerCase().includes('ovoproducto');
 
             if (mapping) {
-                const lbsPerUnit = parseFloat(mapping.unit_weight_lbs || 1);
-                const kgPerUnit = parseFloat(mapping.unit_weight_kg || (lbsPerUnit * 0.453592));
+                // Usar peso unitario específico de este código si fue configurado individualmente
+                const lbsPerUnit = parseFloat(matchedEntry?.weight_lbs ?? mapping.unit_weight_lbs ?? 1);
+                const kgPerUnit = parseFloat(matchedEntry?.weight_kg ?? mapping.unit_weight_kg ?? (lbsPerUnit * 0.453592));
                 const totalLbs = currentStockUnits * lbsPerUnit;
                 const totalKg = currentStockUnits * kgPerUnit;
 
@@ -5584,10 +5654,9 @@ const getTranslatedInventory = async (req, res) => {
                     product_name: prod.nombre,
                     product_type: mapping.industrial_product_type,
                     presentation: mapping.presentation,
-                    matched_code: matchedCode || mapping.catalog_codes,
+                    matched_code: (codeMap[code] ? prod.codigo : (codeMap[barcode] ? prod.codigo_barra : mapping.catalog_codes)),
                     unit_of_measure: mapping.unit_of_measure || 'lb',
                     stock_units: currentStockUnits,
-                    weight_per_unit_lbs: lbsPerUnit,
                     weight_per_unit_lbs: lbsPerUnit,
                     weight_per_unit_kg: kgPerUnit,
                     total_lbs: totalLbs,
