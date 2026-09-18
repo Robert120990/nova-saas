@@ -74,6 +74,10 @@ router.post('/costs/sync-system-sources', eggController.syncCostsSystemSources);
 router.get('/forecast', eggController.getForecasting);
 
 // 11. Trazabilidad Bidireccional 360
+router.get('/traceability-360', eggController.getTraceability360List);
+router.get('/traceability-360/stats', eggController.getTraceability360Stats);
+router.get('/traceability-360/detail/:type/:id', eggController.getTraceability360Detail);
+router.get('/traceability-360/available-lots', eggController.getAvailableSalesLots);
 router.get('/trace/:code', eggController.getTraceability);
 
 // 12. Bitácora de Eventos de Auditoría
@@ -140,6 +144,7 @@ router.post('/quality-parameters', eggController.saveQualityParameter);
 router.put('/quality-parameters/:id', eggController.saveQualityParameter);
 router.delete('/quality-parameters/:id', eggController.deleteQualityParameter);
 router.get('/lab/logs', eggController.getLabLogs);
+router.get('/lab/quality-letter/:batchId/export', eggController.exportQualityLetter);
 router.post('/lab/logs', eggController.createLabLog);
 router.put('/lab/logs/:id', eggController.updateLabLog);
 router.post('/lab/send-unified-email', eggController.sendUnifiedCoaEmail);

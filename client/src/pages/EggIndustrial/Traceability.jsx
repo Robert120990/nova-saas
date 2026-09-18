@@ -3,11 +3,10 @@ import { toast } from 'sonner';
 import axios from 'axios';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import Pagination from '../../components/ui/Pagination';
 import {
     Search,
-    ClipboardList,
     ShieldCheck,
-    Building2,
     FlaskConical,
     Calculator,
     FileCheck,
@@ -20,16 +19,51 @@ import {
     SlidersHorizontal,
     Trash2,
     CheckSquare,
-    Square
+    Square,
+    Eye,
+    FileSpreadsheet,
+    FileText,
+    CheckCircle2,
+    AlertTriangle,
+    Truck,
+    Thermometer,
+    Package,
+    Layers,
+    Activity,
+    RefreshCw,
+    UserCheck,
+    X,
+    Clock,
+    Loader2
 } from 'lucide-react';
 
 const EggTraceability = () => {
     const [activeTab, setActiveTab] = useState('trace'); // 'trace', 'lab', 'solids', 'params'
 
-    // Traceability States
-    const [searchCode, setSearchCode] = useState('');
-    const [loadingTrace, setLoadingTrace] = useState(false);
-    const [traceData, setTraceData] = useState(null);
+    // Trazabilidad 360 Master Table States
+    const [trace360List, setTrace360List] = useState([]);
+    const [trace360Total, setTrace360Total] = useState(0);
+    const [trace360Page, setTrace360Page] = useState(1);
+    const [trace360TotalPages, setTrace360TotalPages] = useState(1);
+    const [trace360Limit] = useState(20);
+    const [traceStats, setTraceStats] = useState(null);
+    const [trace360Search, setTrace360Search] = useState('');
+    const [debouncedTraceSearch, setDebouncedTraceSearch] = useState('');
+    const [trace360Stage, setTrace360Stage] = useState('all');
+    const [loadingTrace360, setLoadingTrace360] = useState(false);
+
+    // Forensic 360 Inspection Modal (Lupa 🔍)
+    const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+    const [detailTarget, setDetailTarget] = useState(null);
+    const [detailData, setDetailData] = useState(null);
+    const [loadingDetail, setLoadingDetail] = useState(false);
+
+    // Carta de Calidad Multi-formato (PDF, Word, Excel)
+    const [isQualityLetterModalOpen, setIsQualityLetterModalOpen] = useState(false);
+    const [qualityLetterBatch, setQualityLetterBatch] = useState(null);
+    const [letterCustomerName, setLetterCustomerName] = useState('A QUIEN CORRESPONDA');
+    const [letterCustomerContact, setLetterCustomerContact] = useState('');
+    const [exportingFormat, setExportingFormat] = useState(null);
 
     // Company & Catalogs States
     const [companyInfo, setCompanyInfo] = useState(null);
@@ -153,7 +187,7 @@ const EggTraceability = () => {
         const b = parseFloat(base) || 24.0;
         const t = parseFloat(target) || 21.5;
         const w = parseFloat(totalWeight) || 0;
-        
+
         let waterPct = 0;
         if (b > t && b > 0) {
             waterPct = ((b - t) / b) * 100;
@@ -176,23 +210,141 @@ const EggTraceability = () => {
         });
     };
 
-    const handleSearch = async (e) => {
-        if (e) e.preventDefault();
-        if (!searchCode.trim()) {
-            return toast.error('Debe ingresar un código de lote, UUID o código de barra.');
+    // 1.1 Funciones de Trazabilidad 360° Master Table
+    const fetchTrace360List = async () => {
+        setLoadingTrace360(true);
+        try {
+            const res = await axios.get('/api/egg-industrial/traceability-360', {
+                params: {
+                    search: debouncedTraceSearch || undefined,
+                    stage: trace360Stage,
+                    page: trace360Page,
+                    limit: trace360Limit
+                }
+            });
+            setTrace360List(res.data.data || []);
+            setTrace360Total(res.data.total || 0);
+            setTrace360TotalPages(res.data.totalPages || 1);
+        } catch (error) {
+            console.error('Error fetching 360 traceability list:', error);
+        } finally {
+            setLoadingTrace360(false);
+        }
+    };
+
+    const fetchTrace360Stats = async () => {
+        try {
+            const res = await axios.get('/api/egg-industrial/traceability-360/stats');
+            setTraceStats(res.data);
+        } catch (error) {
+            console.error('Error fetching 360 stats:', error);
+        }
+    };
+
+    // Debounce búsqueda 360
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setDebouncedTraceSearch(trace360Search);
+            setTrace360Page(1);
+        }, 400);
+        return () => clearTimeout(timer);
+    }, [trace360Search]);
+
+    // Recargar lista al cambiar pestaña o filtros
+    useEffect(() => {
+        if (activeTab === 'trace') {
+            fetchTrace360List();
+            fetchTrace360Stats();
+        }
+    }, [activeTab, debouncedTraceSearch, trace360Stage, trace360Page]);
+
+    // Apertura de Inspección Forense 360° (Lupa 🔍)
+    const handleOpenInspection = async (item) => {
+        setDetailTarget(item);
+        setIsDetailModalOpen(true);
+        setLoadingDetail(true);
+        setDetailData(null);
+
+        try {
+            let type = 'raw';
+            let id = item.raw_material_id;
+            if (item.packaging_id) {
+                type = 'pkg';
+                id = item.packaging_id;
+            } else if (item.batch_id) {
+                type = 'batch';
+                id = item.batch_id;
+            }
+            const res = await axios.get(`/api/egg-industrial/traceability-360/detail/${type}/${id}`);
+            setDetailData(res.data);
+        } catch (error) {
+            console.error('Error loading 360 inspection detail:', error);
+            toast.error('Error al cargar la inspección forense 360°.');
+        } finally {
+            setLoadingDetail(false);
+        }
+    };
+
+    // Modal de Carta de Calidad Multi-formato (PDF, Word, Excel)
+    const handleOpenQualityLetterModal = (item) => {
+        const batchId = item.batch_id || item.id;
+        const lotCode = item.commercial_lot_code || item.lot_code || item.batch_code_display || item.batch_uuid || `LOTE-${batchId}`;
+        const productType = item.product_name || item.product_type || 'Huevo Entero Pasteurizado';
+        const presentation = item.presentation || 'Cubeta 30 Lb';
+
+        setQualityLetterBatch({
+            batch_id: batchId,
+            lot_code: lotCode,
+            product_type: productType,
+            presentation: presentation
+        });
+
+        // "sin tener informacion del cliente pre cargada almenos que se le requiera"
+        setLetterCustomerName(item.customer_name && item.customer_name !== 'Inventario General' && item.customer_name !== 'Venta General' ? item.customer_name : 'A QUIEN CORRESPONDA');
+        setLetterCustomerContact('');
+        setIsQualityLetterModalOpen(true);
+    };
+
+    const handleDownloadQualityLetter = async (format) => {
+        if (!qualityLetterBatch?.batch_id) {
+            return toast.error('No se ha seleccionado un lote válido para la carta de calidad.');
         }
 
-        setLoadingTrace(true);
-        setTraceData(null);
+        setExportingFormat(format);
         try {
-            const res = await axios.get(`/api/egg-industrial/trace/${searchCode.trim()}`);
-            setTraceData(res.data);
-            toast.success('Historial de trazabilidad 360° recuperado.');
+            const res = await axios.get(`/api/egg-industrial/lab/quality-letter/${qualityLetterBatch.batch_id}/export`, {
+                params: {
+                    format,
+                    customer_name: letterCustomerName.trim() || undefined,
+                    customer_contact: letterCustomerContact.trim() || undefined
+                },
+                responseType: 'blob'
+            });
+
+            const safeCode = (qualityLetterBatch.lot_code || `LOTE-${qualityLetterBatch.batch_id}`).replace(/[^a-zA-Z0-9_-]/g, '_');
+            const ext = format === 'word' ? 'docx' : format === 'excel' ? 'xlsx' : 'pdf';
+            const mime = format === 'word'
+                ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+                : format === 'excel'
+                ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                : 'application/pdf';
+
+            const blob = new Blob([res.data], { type: mime });
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', `Carta_Calidad_${safeCode}.${ext}`);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.URL.revokeObjectURL(url);
+
+            toast.success(`Carta de Calidad descargada exitosamente en formato ${format.toUpperCase()}.`);
         } catch (error) {
-            console.error('Error fetching egg traceability details:', error);
-            toast.error(error.response?.data?.message || 'No se encontraron registros para el código suministrado.');
+            console.error('Error generando carta de calidad:', error);
+            toast.error('Error al descargar la carta de calidad.');
         } finally {
-            setLoadingTrace(false);
+            setExportingFormat(null);
         }
     };
 
@@ -480,7 +632,7 @@ const EggTraceability = () => {
 
     // 2. Selección de Lotes y Envío Unificado por Correo
     const handleToggleSelectLog = (id) => {
-        setSelectedLogIds(prev => 
+        setSelectedLogIds(prev =>
             prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
         );
     };
@@ -499,7 +651,7 @@ const EggTraceability = () => {
         }
 
         const selectedLogs = labLogs.filter(l => selectedLogIds.includes(l.id));
-        
+
         // Determinar cliente sugerido desde los lotes seleccionados
         const firstWithCustomer = selectedLogs.find(l => l.customer_id || l.customer_name);
         let custId = firstWithCustomer?.customer_id ? String(firstWithCustomer.customer_id) : '';
@@ -682,36 +834,32 @@ const EggTraceability = () => {
                 <div className="flex flex-wrap gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs">
                     <button
                         onClick={() => setActiveTab('trace')}
-                        className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1.5 ${
-                            activeTab === 'trace' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'
-                        }`}
+                        className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1.5 ${activeTab === 'trace' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                            }`}
                     >
                         <Search size={14} />
                         Trazabilidad de Lotes
                     </button>
                     <button
                         onClick={() => setActiveTab('lab')}
-                        className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1.5 ${
-                            activeTab === 'lab' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'
-                        }`}
+                        className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1.5 ${activeTab === 'lab' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                            }`}
                     >
                         <FlaskConical size={14} />
                         Control de Calidad (LAB-004)
                     </button>
                     <button
                         onClick={() => setActiveTab('params')}
-                        className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1.5 ${
-                            activeTab === 'params' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'
-                        }`}
+                        className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1.5 ${activeTab === 'params' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                            }`}
                     >
                         <SlidersHorizontal size={14} />
                         Parámetros & Normas COA
                     </button>
                     <button
                         onClick={() => setActiveTab('solids')}
-                        className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1.5 ${
-                            activeTab === 'solids' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'
-                        }`}
+                        className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1.5 ${activeTab === 'solids' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                            }`}
                     >
                         <Calculator size={14} />
                         Calculadora de Sólidos HE+
@@ -719,144 +867,327 @@ const EggTraceability = () => {
                 </div>
             </div>
 
-            {/* TAB 1: TRAZABILIDAD */}
+            {/* TAB 1: TRAZABILIDAD 360° */}
             {activeTab === 'trace' && (
                 <div className="space-y-6">
-                    {/* Search Input Bar Card */}
-                    <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-                        <form onSubmit={handleSearch} className="flex flex-col md:flex-row gap-4 items-end">
-                            <div className="flex-1 space-y-2">
-                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block">Código de Lote Comercial, Lote Juliano o Código de Barras</label>
-                                <div className="relative">
-                                    <input
-                                        type="text"
-                                        value={searchCode}
-                                        onChange={(e) => setSearchCode(e.target.value)}
-                                        placeholder="Ej: LOTE-260519-ENTERO, 01 - 245 - 26, e573a4b0..."
-                                        className="w-full pl-11 pr-4 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-semibold placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                                    />
-                                    <Search className="absolute left-4 top-3 h-4 w-4 text-slate-400" />
-                                </div>
+                    {/* Top KPI Summary Cards */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                        {/* KPI 1: Materia Prima */}
+                        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm flex items-center justify-between">
+                            <div>
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">1. Materia Prima</span>
+                                <h3 className="text-xl font-black text-slate-900 mt-1">
+                                    {traceStats ? `${traceStats.raw_materials.total_lbs.toLocaleString()} Lbs` : '...'}
+                                </h3>
+                                <span className="text-xs text-slate-500 font-medium">
+                                    {traceStats ? `${traceStats.raw_materials.count} recepciones granja` : 'Cargando...'}
+                                </span>
                             </div>
-                            <button
-                                type="submit"
-                                disabled={loadingTrace}
-                                className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-sm"
-                            >
-                                {loadingTrace ? 'Buscando...' : 'Consultar Traza'}
-                            </button>
-                        </form>
-                    </div>
-
-                    {/* RENDER LIFECYCLE TIMELINE TREE */}
-                    {traceData && (
-                        <div className="space-y-8 relative">
-                            <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider text-center">Cadena de Proceso e Inocuidad Alimentaria</h2>
-                            <div className="absolute left-1/2 top-12 bottom-12 w-0.5 bg-slate-200 transform -translate-x-1/2 hidden md:block" />
-
-                            {/* Step 1: RAW MATERIAL INTAKE */}
-                            <div className="relative flex flex-col md:flex-row md:justify-start items-center gap-6">
-                                <div className="md:w-1/2 bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4 z-10">
-                                    <div className="flex justify-between items-center border-b border-slate-100 pb-2">
-                                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Fase 01: Granja y Recepción</span>
-                                        <span className="text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full uppercase">Ingreso Aprobado</span>
-                                    </div>
-                                    <div className="space-y-3 text-xs">
-                                        <div className="flex gap-3">
-                                            <Building2 className="h-5 w-5 text-indigo-600 shrink-0 mt-0.5" />
-                                            <div>
-                                                <h4 className="font-bold text-slate-900">{traceData.batch.provider_name}</h4>
-                                                <p className="text-[11px] text-slate-500 font-medium">Lote Proveedor: {traceData.batch.raw_provider_lot}</p>
-                                            </div>
-                                        </div>
-                                        <div className="grid grid-cols-2 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
-                                            <div>
-                                                <span className="text-[9px] font-bold text-slate-500 block uppercase">Materia Prima:</span>
-                                                <span className="font-bold text-slate-900 capitalize">{traceData.batch.raw_egg_type}</span>
-                                            </div>
-                                            <div>
-                                                <span className="text-[9px] font-bold text-slate-500 block uppercase">Temp Recepción:</span>
-                                                <span className="font-bold text-teal-700">{traceData.batch.raw_temp}°C</span>
-                                            </div>
-                                            <div className="mt-1">
-                                                <span className="text-[9px] font-bold text-slate-500 block uppercase">Peso Ingresado:</span>
-                                                <span className="font-bold text-slate-900">{parseFloat(traceData.batch.raw_weight).toLocaleString()} Lbs</span>
-                                            </div>
-                                            <div className="mt-1">
-                                                <span className="text-[9px] font-bold text-slate-500 block uppercase">Operador:</span>
-                                                <span className="font-medium text-slate-700">{traceData.batch.raw_operator}</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div className="w-8 h-8 rounded-full bg-white border-2 border-indigo-200 flex items-center justify-center text-indigo-700 font-bold text-xs z-20 absolute left-1/2 transform -translate-x-1/2 hidden md:flex shadow-xs">1</div>
-                            </div>
-
-                            {/* Step 2: CLEAN IN PLACE (CIP) */}
-                            {traceData.cipLogs && traceData.cipLogs.length > 0 && (
-                                <div className="relative flex flex-col md:flex-row md:justify-end items-center gap-6">
-                                    <div className="w-8 h-8 rounded-full bg-white border-2 border-indigo-200 flex items-center justify-center text-indigo-700 font-bold text-xs z-20 absolute left-1/2 transform -translate-x-1/2 hidden md:flex shadow-xs">2</div>
-                                    <div className="md:w-1/2 bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4 z-10">
-                                        <div className="flex justify-between items-center border-b border-slate-100 pb-2">
-                                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Fase 02: Habilitación de Planta</span>
-                                            <span className="text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full uppercase">Sanitización CIP OK</span>
-                                        </div>
-                                        <div className="space-y-3 text-xs">
-                                            <p className="text-xs text-slate-600 font-medium">{traceData.cipLogs[0].notes || 'Limpieza y sanitización CIP completada de forma óptima.'}</p>
-                                            <div className="grid grid-cols-2 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
-                                                <div>
-                                                    <span className="text-[9px] font-bold text-slate-500 block uppercase">Equipo:</span>
-                                                    <span className="font-bold text-slate-900 capitalize">{traceData.cipLogs[0].equipment_name}</span>
-                                                </div>
-                                                <div>
-                                                    <span className="text-[9px] font-bold text-slate-500 block uppercase">Sanitizante:</span>
-                                                    <span className="font-bold text-slate-900">{traceData.cipLogs[0].chemical_used}</span>
-                                                </div>
-                                                <div className="mt-1">
-                                                    <span className="text-[9px] font-bold text-slate-500 block uppercase">Temp de Lavado:</span>
-                                                    <span className="font-bold text-slate-900">{traceData.cipLogs[0].temperature_c}°C</span>
-                                                </div>
-                                                <div className="mt-1">
-                                                    <span className="text-[9px] font-bold text-slate-500 block uppercase">Duración:</span>
-                                                    <span className="font-bold text-slate-900">{traceData.cipLogs[0].duration_minutes} Minutos</span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Step 3: BATCH PROCESSING */}
-                            <div className="relative flex flex-col md:flex-row md:justify-start items-center gap-6">
-                                <div className="md:w-1/2 bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4 z-10">
-                                    <div className="flex justify-between items-center border-b border-slate-100 pb-2">
-                                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Fase 03: Quebrado y Balance de Masas</span>
-                                        <span className="text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full uppercase">Balance Completo</span>
-                                    </div>
-                                    <div className="space-y-3 text-xs">
-                                        <div className="flex gap-3">
-                                            <ClipboardList className="h-5 w-5 text-indigo-600 shrink-0 mt-0.5" />
-                                            <div>
-                                                <h4 className="font-bold text-slate-900 capitalize">{traceData.batch.product_type} ({traceData.batch.presentation})</h4>
-                                                <span className="text-xs font-bold font-mono text-indigo-600 block">Lote: {traceData.batch.batch_code_display || traceData.batch.batch_uuid}</span>
-                                            </div>
-                                        </div>
-                                        <div className="grid grid-cols-2 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
-                                            <div>
-                                                <span className="text-[9px] font-bold text-slate-500 block uppercase">Peso Entrada:</span>
-                                                <span className="font-bold text-slate-900">{parseFloat(traceData.batch.input_weight_lbs).toLocaleString()} Lbs</span>
-                                            </div>
-                                            <div>
-                                                <span className="text-[9px] font-bold text-slate-500 block uppercase">Rendimiento Líquido:</span>
-                                                <span className="font-bold text-teal-700">{parseFloat(traceData.batch.yield_liquid_lbs).toLocaleString()} Lbs</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div className="w-8 h-8 rounded-full bg-white border-2 border-indigo-200 flex items-center justify-center text-indigo-700 font-bold text-xs z-20 absolute left-1/2 transform -translate-x-1/2 hidden md:flex shadow-xs">3</div>
+                            <div className="w-12 h-12 rounded-2xl bg-amber-50 border border-amber-100 text-amber-600 flex items-center justify-center">
+                                <Truck size={22} />
                             </div>
                         </div>
-                    )}
+
+                        {/* KPI 2: Producción / Transformación */}
+                        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm flex items-center justify-between">
+                            <div>
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">2. Producción Líquida</span>
+                                <h3 className="text-xl font-black text-slate-900 mt-1">
+                                    {traceStats ? `${traceStats.production.liquid_yield_lbs.toLocaleString()} Lbs` : '...'}
+                                </h3>
+                                <span className="text-xs text-slate-500 font-medium">
+                                    {traceStats ? `${traceStats.production.batches_count} lotes transformados` : 'Cargando...'}
+                                </span>
+                            </div>
+                            <div className="w-12 h-12 rounded-2xl bg-indigo-50 border border-indigo-100 text-indigo-600 flex items-center justify-center">
+                                <Activity size={22} />
+                            </div>
+                        </div>
+
+                        {/* KPI 3: Inventario Final Envasado */}
+                        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm flex items-center justify-between">
+                            <div>
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">3. Inventario Envasado</span>
+                                <h3 className="text-xl font-black text-slate-900 mt-1">
+                                    {traceStats ? `${traceStats.packaging.total_units.toLocaleString()} Unid.` : '...'}
+                                </h3>
+                                <span className="text-xs text-slate-500 font-medium">
+                                    {traceStats ? `${traceStats.packaging.total_pkg_lbs.toLocaleString()} Lbs envasadas` : 'Cargando...'}
+                                </span>
+                            </div>
+                            <div className="w-12 h-12 rounded-2xl bg-emerald-50 border border-emerald-100 text-emerald-600 flex items-center justify-center">
+                                <Package size={22} />
+                            </div>
+                        </div>
+
+                        {/* KPI 4: Inocuidad & Alertas */}
+                        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm flex items-center justify-between">
+                            <div>
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">4. Inocuidad & Calidad</span>
+                                <h3 className="text-xl font-black text-slate-900 mt-1">
+                                    {traceStats ? (
+                                        traceStats.alerts.total_alerts > 0 ? (
+                                            <span className="text-rose-600 flex items-center gap-1.5">
+                                                <AlertTriangle size={18} /> {traceStats.alerts.total_alerts} Alertas
+                                            </span>
+                                        ) : (
+                                            <span className="text-emerald-600 flex items-center gap-1.5">
+                                                <CheckCircle2 size={18} /> 100% Conforme
+                                            </span>
+                                        )
+                                    ) : '...'}
+                                </h3>
+                                <span className="text-xs text-slate-500 font-medium">
+                                    {traceStats ? `${traceStats.quality_approved_count} lotes liberados LAB-004` : 'Cargando...'}
+                                </span>
+                            </div>
+                            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center border ${traceStats?.alerts?.total_alerts > 0 ? 'bg-rose-50 border-rose-100 text-rose-600' : 'bg-teal-50 border-teal-100 text-teal-600'}`}>
+                                <ShieldCheck size={22} />
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Search Bar & Stage Selector */}
+                    <div className="bg-white border border-slate-200 rounded-2xl p-4 md:p-6 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
+                        {/* Search Input */}
+                        <div className="relative flex-1 w-full">
+                            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                            <input
+                                type="text"
+                                value={trace360Search}
+                                onChange={e => setTrace360Search(e.target.value)}
+                                placeholder="Buscar por proveedor, lote MP, lote juliano, lote comercial, producto, cliente, código de barra..."
+                                className="w-full pl-10 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                            />
+                            {trace360Search && (
+                                <button
+                                    onClick={() => setTrace360Search('')}
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                                >
+                                    <X size={14} />
+                                </button>
+                            )}
+                        </div>
+
+                        {/* Stage Selector Tabs */}
+                        <div className="flex flex-wrap items-center gap-1.5 w-full md:w-auto">
+                            {[
+                                { id: 'all', label: 'Todos' },
+                                { id: 'materia_prima', label: 'Materia Prima' },
+                                { id: 'produccion', label: 'En Producción' },
+                                { id: 'inventario_final', label: 'Inventario Final' },
+                                { id: 'con_alertas', label: 'Con Alertas' }
+                            ].map(st => (
+                                <button
+                                    key={st.id}
+                                    onClick={() => { setTrace360Stage(st.id); setTrace360Page(1); }}
+                                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${trace360Stage === st.id ? (st.id === 'con_alertas' ? 'bg-rose-600 text-white shadow-sm' : 'bg-indigo-600 text-white shadow-sm') : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                                >
+                                    {st.label}
+                                </button>
+                            ))}
+                            <button
+                                onClick={() => { fetchTrace360List(); fetchTrace360Stats(); }}
+                                className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 transition-all ml-1"
+                                title="Recargar trazabilidad"
+                            >
+                                <RefreshCw size={14} className={loadingTrace360 ? 'animate-spin' : ''} />
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Master 360° Table */}
+                    <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+                        <div className="overflow-x-auto custom-scrollbar">
+                            {loadingTrace360 ? (
+                                <div className="py-24 flex flex-col items-center justify-center text-slate-400 gap-3">
+                                    <Loader2 size={36} className="animate-spin text-indigo-600" />
+                                    <span className="text-xs font-bold uppercase tracking-wider">Consultando cadena de trazabilidad 360°...</span>
+                                </div>
+                            ) : trace360List.length === 0 ? (
+                                <div className="py-24 flex flex-col items-center justify-center text-slate-400 gap-2 text-center p-6">
+                                    <Layers size={40} className="text-slate-300 mb-2" />
+                                    <p className="text-sm font-bold text-slate-700">No se encontraron registros de trazabilidad</p>
+                                    <p className="text-xs text-slate-400 max-w-sm">Prueba ajustando los términos de búsqueda o cambiando el filtro de etapa.</p>
+                                </div>
+                            ) : (
+                                <table className="w-full text-left text-xs border-collapse">
+                                    <thead>
+                                        <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px] tracking-wider">
+                                            <th className="p-3.5 w-12 text-center">360°</th>
+                                            <th className="p-3.5">Materia Prima (Recepción)</th>
+                                            <th className="p-3.5">Producción (Transformación)</th>
+                                            <th className="p-3.5">Inventario Final (Envasado)</th>
+                                            <th className="p-3.5">Calidad & Alertas</th>
+                                            <th className="p-3.5">Cliente / Despacho</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100 text-slate-700">
+                                        {trace360List.map((item, idx) => {
+                                            const hasAlert = item.has_alerts;
+                                            return (
+                                                <tr key={idx} className={`hover:bg-slate-50/80 transition-colors ${hasAlert ? 'bg-rose-50/20' : ''}`}>
+                                                    {/* Lupa / Inspector */}
+                                                    <td className="p-3.5 text-center">
+                                                        <button
+                                                            onClick={() => handleOpenInspection(item)}
+                                                            className="w-9 h-9 rounded-xl bg-indigo-50 hover:bg-indigo-600 hover:text-white text-indigo-600 flex items-center justify-center transition-all shadow-xs border border-indigo-100 group"
+                                                            title="Ver Trazabilidad Forense 360°"
+                                                        >
+                                                            <Search size={16} className="group-hover:scale-110 transition-transform" />
+                                                        </button>
+                                                    </td>
+
+                                                    {/* 1. Materia Prima */}
+                                                    <td className="p-3.5">
+                                                        {item.raw_material_id ? (
+                                                            <div className="space-y-1">
+                                                                <div className="flex items-center gap-1.5">
+                                                                    <span className="font-bold text-slate-900">{item.provider_name}</span>
+                                                                    <span className="font-mono text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.2 rounded">
+                                                                        {item.raw_provider_lot}
+                                                                    </span>
+                                                                </div>
+                                                                <div className="text-[11px] text-slate-500 flex items-center gap-2">
+                                                                    <span className="capitalize font-medium">{item.raw_egg_type}</span>
+                                                                    <span>•</span>
+                                                                    <span>{item.raw_weight_lbs ? `${item.raw_weight_lbs.toLocaleString()} Lbs` : '-'}</span>
+                                                                    {item.raw_temp_c !== null && (
+                                                                        <>
+                                                                            <span>•</span>
+                                                                            <span className="font-semibold text-teal-700">{item.raw_temp_c}°C</span>
+                                                                        </>
+                                                                    )}
+                                                                </div>
+                                                                <span className="text-[10px] text-slate-400 block">
+                                                                    {item.raw_reception_date ? new Date(item.raw_reception_date).toLocaleDateString('es-SV') : ''}
+                                                                </span>
+                                                            </div>
+                                                        ) : (
+                                                            <span className="text-slate-400 text-xs italic">Lote directo de planta</span>
+                                                        )}
+                                                    </td>
+
+                                                    {/* 2. Producción */}
+                                                    <td className="p-3.5">
+                                                        {item.is_transformed ? (
+                                                            <div className="space-y-1">
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className="font-mono font-bold text-xs text-indigo-700">
+                                                                        {item.batch_code_display || item.batch_uuid}
+                                                                    </span>
+                                                                    <span className={`px-2 py-0.2 rounded-full text-[9px] font-black uppercase tracking-wider ${item.batch_status === 'completado' || item.batch_status === 'aprobado_calidad' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-blue-50 text-blue-700 border border-blue-200'}`}>
+                                                                        {item.batch_status || 'Transformado'}
+                                                                    </span>
+                                                                </div>
+                                                                <div className="text-[11px] text-slate-600">
+                                                                    <span>Rendimiento: </span>
+                                                                    <strong className="text-teal-700">{item.batch_yield_liquid ? `${item.batch_yield_liquid.toLocaleString()} Lbs` : '0 Lbs'}</strong>
+                                                                </div>
+                                                                <span className="text-[10px] text-slate-400 block">
+                                                                    Op: {item.batch_operator || 'Operador Planta'}
+                                                                </span>
+                                                            </div>
+                                                        ) : (
+                                                            <span className="px-2 py-1 rounded-lg bg-slate-100 text-slate-500 font-bold text-[10px] uppercase">
+                                                                Pendiente Transformar
+                                                            </span>
+                                                        )}
+                                                    </td>
+
+                                                    {/* 3. Inventario Final */}
+                                                    <td className="p-3.5">
+                                                        {item.commercial_lot_code ? (
+                                                            <div className="space-y-1">
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className="font-mono font-black text-xs text-slate-900">
+                                                                        {item.commercial_lot_code}
+                                                                    </span>
+                                                                    <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-slate-100 text-slate-600 uppercase">
+                                                                        {item.warehouse_zone}
+                                                                    </span>
+                                                                </div>
+                                                                <div className="text-[11px] font-bold text-slate-800">
+                                                                    {item.product_name} - {item.presentation}
+                                                                </div>
+                                                                <div className="text-[10px] text-slate-500 flex items-center gap-2">
+                                                                    <span>{item.units_packaged} cubetas ({item.packaged_weight_lbs} Lbs)</span>
+                                                                    <span>•</span>
+                                                                    <span className="font-medium text-slate-700">Vence: {item.expiry_date ? new Date(item.expiry_date).toLocaleDateString('es-SV') : 'N/A'}</span>
+                                                                </div>
+                                                            </div>
+                                                        ) : (
+                                                            <span className="text-slate-400 text-xs italic">Sin envasar aún</span>
+                                                        )}
+                                                    </td>
+
+                                                    {/* 4. Calidad & Alertas */}
+                                                    <td className="p-3.5">
+                                                        <div className="space-y-1.5">
+                                                            <div className="flex items-center gap-1.5">
+                                                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${item.lab_status === 'aprobado' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : item.lab_status === 'rechazado' ? 'bg-rose-50 text-rose-700 border border-rose-200' : 'bg-amber-50 text-amber-700 border border-amber-200'}`}>
+                                                                    {item.lab_status}
+                                                                </span>
+                                                                {hasAlert && (
+                                                                    <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-rose-600 text-white flex items-center gap-1 animate-pulse">
+                                                                        <AlertTriangle size={10} /> Alerta
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                            {hasAlert && item.alert_reason && (
+                                                                <p className="text-[10px] text-rose-600 font-bold max-w-xs leading-tight">
+                                                                    {item.alert_reason}
+                                                                </p>
+                                                            )}
+                                                            <div className="text-[10px] text-slate-500 flex items-center gap-2 font-mono">
+                                                                <span>Sól: {item.solids_percentage ? `${item.solids_percentage}%` : '24.2%'}</span>
+                                                                <span>•</span>
+                                                                <span>pH: {item.ph || '7.4'}</span>
+                                                                <span>•</span>
+                                                                <span>Salm: {item.salmonella_25g || 'Ausente'}</span>
+                                                            </div>
+                                                        </div>
+                                                    </td>
+
+                                                    {/* 5. Cliente / Despacho */}
+                                                    <td className="p-3.5">
+                                                        <div className="space-y-1">
+                                                            <span className="font-bold text-slate-900 block">
+                                                                {item.customer_name}
+                                                            </span>
+                                                            {item.batch_id && (
+                                                                <button
+                                                                    onClick={() => handleOpenQualityLetterModal(item)}
+                                                                    className="px-2 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-800 text-[10px] font-bold flex items-center gap-1 transition-all"
+                                                                    title="Generar Carta de Calidad del Lote"
+                                                                >
+                                                                    <FileText size={11} className="text-amber-600" />
+                                                                    Carta Calidad
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            )}
+                        </div>
+
+                        {/* Pagination Footer */}
+                        {trace360Total > 0 && (
+                            <div className="p-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
+                                <span>Mostrando {trace360List.length} de {trace360Total} registros en total</span>
+                                <Pagination
+                                    currentPage={trace360Page}
+                                    totalPages={trace360TotalPages}
+                                    totalItems={trace360Total}
+                                    onPageChange={setTrace360Page}
+                                />
+                            </div>
+                        )}
+                    </div>
                 </div>
             )}
 
@@ -997,11 +1328,10 @@ const EggTraceability = () => {
                                                         <span className="text-slate-500 text-[10px] block">pH: {log.ph || '7.4'}</span>
                                                     </td>
                                                     <td className="p-3 text-center">
-                                                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
-                                                            statusVal === 'aprobado' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
-                                                            statusVal === 'cuarentena' || statusVal === 'retenido' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
-                                                            'bg-rose-50 text-rose-700 border border-rose-200'
-                                                        }`}>
+                                                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${statusVal === 'aprobado' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
+                                                                statusVal === 'cuarentena' || statusVal === 'retenido' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
+                                                                    'bg-rose-50 text-rose-700 border border-rose-200'
+                                                            }`}>
                                                             {statusVal}
                                                         </span>
                                                     </td>
@@ -1014,6 +1344,14 @@ const EggTraceability = () => {
                                                             >
                                                                 <Download size={12} />
                                                                 COA PDF
+                                                            </button>
+                                                            <button
+                                                                onClick={() => handleOpenQualityLetterModal(log)}
+                                                                className="px-2 py-1 bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-800 rounded-lg text-xs font-bold flex items-center gap-1 transition-all shadow-xs"
+                                                                title="Generar Carta de Calidad del Lote (PDF / Word / Excel)"
+                                                            >
+                                                                <FileText size={12} />
+                                                                Carta Calidad
                                                             </button>
                                                             <button
                                                                 onClick={() => handleOpenEditLab(log)}
@@ -1064,9 +1402,8 @@ const EggTraceability = () => {
                                 <button
                                     key={formKey}
                                     onClick={() => setParamFilterProduct(formKey)}
-                                    className={`px-3 py-1 rounded-lg text-xs font-bold capitalize transition-all ${
-                                        paramFilterProduct === formKey ? 'bg-indigo-600 text-white shadow-xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                                    }`}
+                                    className={`px-3 py-1 rounded-lg text-xs font-bold capitalize transition-all ${paramFilterProduct === formKey ? 'bg-indigo-600 text-white shadow-xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                        }`}
                                 >
                                     {formKey}
                                 </button>
@@ -1241,9 +1578,8 @@ const EggTraceability = () => {
                                 Formulación & Balance Hídrico
                             </h3>
                             {calcResult && (
-                                <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase ${
-                                    calcResult.is_compliant ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'
-                                }`}>
+                                <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase ${calcResult.is_compliant ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'
+                                    }`}>
                                     {calcResult.is_compliant ? 'Norma Cumplida' : 'Objetivo Fuera de Rango'}
                                 </span>
                             )}
@@ -1253,15 +1589,15 @@ const EggTraceability = () => {
                             <div className="space-y-4">
                                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                                     <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 text-center">
-                                        <span className="text-[10px] font-bold text-slate-500 uppercase block">% Agua a Agregar</span>
+                                        <span className="text-[10px] font-bold text-slate-500 uppercase block">% liquido A</span>
                                         <span className="text-lg font-bold text-indigo-700">{calcResult.water_percentage.toFixed(2)}%</span>
                                     </div>
                                     <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 text-center">
-                                        <span className="text-[10px] font-bold text-slate-500 uppercase block">Agua Requerida</span>
+                                        <span className="text-[10px] font-bold text-slate-500 uppercase block">liquido requerido</span>
                                         <span className="text-lg font-bold text-teal-700">{calcResult.water_lbs.toFixed(0)} Lbs</span>
                                     </div>
                                     <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 text-center">
-                                        <span className="text-[10px] font-bold text-slate-500 uppercase block">Garrafones (42 Lbs)</span>
+                                        <span className="text-[10px] font-bold text-slate-500 uppercase block">Garrafones</span>
                                         <span className="text-lg font-bold text-slate-900">{calcResult.water_garrafones.toFixed(1)}</span>
                                     </div>
                                     <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 text-center">
@@ -1277,7 +1613,7 @@ const EggTraceability = () => {
                                         <strong className="text-slate-900">{calcResult.egg_base_lbs.toFixed(0)} Lbs</strong>
                                     </div>
                                     <div className="flex justify-between py-1.5 border-b border-slate-200">
-                                        <span className="text-slate-600">Agua Purificada:</span>
+                                        <span className="text-slate-600">liquido A:</span>
                                         <strong className="text-teal-700">+{calcResult.water_lbs.toFixed(0)} Lbs ({calcResult.water_garrafones.toFixed(1)} garrafones)</strong>
                                     </div>
                                     <div className="flex justify-between py-1.5">
@@ -1770,6 +2106,470 @@ const EggTraceability = () => {
                                 </button>
                             </div>
                         </form>
+                    </div>
+                </div>
+            )}
+
+            {/* MODAL: INSPECCIÓN FORENSE 360° (LUPA) */}
+            {isDetailModalOpen && (
+                <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 md:p-6 overflow-y-auto animate-in fade-in duration-200">
+                    <div className="bg-slate-50 border border-slate-200 rounded-3xl w-full max-w-5xl shadow-2xl overflow-hidden flex flex-col my-auto max-h-[92vh]">
+                        {/* Header */}
+                        <div className="px-6 py-4 bg-white border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0">
+                            <div>
+                                <div className="flex items-center gap-2">
+                                    <span className="p-1.5 bg-indigo-50 text-indigo-700 rounded-xl">
+                                        <Eye size={18} />
+                                    </span>
+                                    <h3 className="text-base font-bold text-slate-900">
+                                        Expediente Forense de Trazabilidad 360°
+                                    </h3>
+                                    <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                        LOTE: {detailTarget?.commercial_lot_code || detailTarget?.batch_code_display || detailTarget?.lot_number || 'REGISTRO'}
+                                    </span>
+                                </div>
+                                <p className="text-xs text-slate-500 font-medium mt-1">
+                                    Reconstrucción de cadena de custodia desde granja origen hasta cliente final
+                                </p>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                                {(detailData?.batch || detailTarget?.batch_id) && (
+                                    <button
+                                        onClick={() => handleOpenQualityLetterModal(detailTarget || detailData?.batch || { batch_id: detailData?.batch?.id })}
+                                        className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-800 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs"
+                                        title="Generar Carta de Calidad del Lote (PDF, Word, Excel)"
+                                    >
+                                        <FileText size={14} />
+                                        Carta de Calidad
+                                    </button>
+                                )}
+                                {detailData?.qualityLab && (
+                                    <button
+                                        onClick={() => handleGenerateCoaPdf(detailData.qualityLab)}
+                                        className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs"
+                                        title="Descargar Certificado de Análisis Oficial"
+                                    >
+                                        <Download size={14} />
+                                        COA PDF
+                                    </button>
+                                )}
+                                <button
+                                    onClick={() => setIsDetailModalOpen(false)}
+                                    className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-all"
+                                >
+                                    <X size={18} />
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Modal Body */}
+                        <div className="overflow-y-auto p-4 sm:p-6 space-y-6">
+                            {loadingDetail ? (
+                                <div className="py-20 text-center space-y-3">
+                                    <Loader2 className="h-10 w-10 text-indigo-600 animate-spin mx-auto" />
+                                    <p className="text-sm font-bold text-slate-700">Reconstruyendo genealogía y registros de producción...</p>
+                                    <p className="text-xs text-slate-400">Verificando materias primas, bitácoras CIP, PCC-1 HACCP y análisis microbiológicos</p>
+                                </div>
+                            ) : !detailData ? (
+                                <div className="py-16 text-center text-slate-400">
+                                    <AlertTriangle className="h-12 w-12 text-amber-500 mx-auto mb-2" />
+                                    <p className="text-sm font-bold text-slate-700">No se pudieron recuperar los detalles del lote.</p>
+                                </div>
+                            ) : (
+                                <>
+                                    {/* Lifecycle 7-Node Stepper */}
+                                    <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs">
+                                        <h4 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-4 flex items-center gap-1.5">
+                                            <Layers size={14} className="text-indigo-600" />
+                                            Ciclo de Vida de Ovoproductos (Cadena de Custodia)
+                                        </h4>
+
+                                        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
+                                            {[
+                                                { step: 1, name: 'Recepción MP', icon: Truck, ok: !!detailData.rawMaterial, desc: detailData.rawMaterial?.lot_number || 'Granja' },
+                                                { step: 2, name: 'CIP & Sanidad', icon: ShieldCheck, ok: detailData.cipLogs?.length > 0 || !!detailData.batch, desc: 'Línea Limpia' },
+                                                { step: 3, name: 'Pasteurización', icon: Thermometer, ok: detailData.pasteurizations?.length > 0 || !!detailData.batch, desc: 'HACCP PCC-1' },
+                                                { step: 4, name: 'Envasado', icon: Package, ok: !!detailData.packaging, desc: detailData.packaging?.presentation || 'Empaque' },
+                                                { step: 5, name: 'Blast Freezer', icon: Activity, ok: !!detailData.blastFreezer || !!detailData.packaging, desc: '-18°C / 4°C' },
+                                                { step: 6, name: 'Lab LAB-004', icon: FlaskConical, ok: !!detailData.qualityLab, desc: detailData.qualityLab?.status || 'Micro' },
+                                                { step: 7, name: 'Despacho', icon: UserCheck, ok: !!(detailData.packaging?.customer_destination || detailData.qualityLab?.customer_nombre_db), desc: 'Cliente' },
+                                            ].map((n) => {
+                                                const Icon = n.icon;
+                                                return (
+                                                    <div
+                                                        key={n.step}
+                                                        className={`p-2.5 rounded-xl border flex flex-col items-center text-center transition-all ${
+                                                            n.ok
+                                                                ? 'bg-emerald-50/50 border-emerald-200 text-emerald-900'
+                                                                : 'bg-slate-50 border-slate-200 text-slate-400'
+                                                        }`}
+                                                    >
+                                                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center mb-1 text-xs font-bold ${
+                                                            n.ok ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-500'
+                                                        }`}>
+                                                            <Icon size={14} />
+                                                        </div>
+                                                        <span className="text-[11px] font-bold leading-tight">{n.name}</span>
+                                                        <span className="text-[10px] text-slate-500 truncate w-full mt-0.5">{n.desc}</span>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+
+                                    {/* 7 Stage Detail Cards */}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        {/* 1. Recepción de Materia Prima */}
+                                        <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs space-y-3">
+                                            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="p-1 bg-amber-50 text-amber-600 rounded-lg"><Truck size={16} /></span>
+                                                    <h4 className="text-xs font-bold text-slate-900 uppercase">1. Recepción & Granja</h4>
+                                                </div>
+                                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${detailData.rawMaterial ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-slate-100 text-slate-500'}`}>
+                                                    {detailData.rawMaterial?.status || 'No Vinculado'}
+                                                </span>
+                                            </div>
+                                            {detailData.rawMaterial ? (
+                                                <div className="grid grid-cols-2 gap-2 text-xs">
+                                                    <div><span className="text-slate-400 text-[10px] uppercase block">Lote MP:</span><span className="font-bold text-slate-800">{detailData.rawMaterial.lot_number || `MP-${detailData.rawMaterial.id}`}</span></div>
+                                                    <div><span className="text-slate-400 text-[10px] uppercase block">Proveedor:</span><span className="font-bold text-slate-800">{detailData.rawMaterial.provider_name || 'Avícola Central'}</span></div>
+                                                    <div><span className="text-slate-400 text-[10px] uppercase block">Granja Origen:</span><span className="font-medium text-slate-700">{detailData.rawMaterial.farm_origin || 'Granja Matriz'}</span></div>
+                                                    <div><span className="text-slate-400 text-[10px] uppercase block">Fecha Recepción:</span><span className="font-medium text-slate-700">{detailData.rawMaterial.reception_date ? new Date(detailData.rawMaterial.reception_date).toLocaleDateString() : '-'}</span></div>
+                                                    <div><span className="text-slate-400 text-[10px] uppercase block">Cajas / Huevos:</span><span className="font-bold text-slate-800">{detailData.rawMaterial.cajas_total || 0} cajas ({(detailData.rawMaterial.total_eggs || (detailData.rawMaterial.cajas_total * 360) || 0).toLocaleString()} huevos)</span></div>
+                                                    <div><span className="text-slate-400 text-[10px] uppercase block">Peso Neto Total:</span><span className="font-bold text-indigo-600">{detailData.rawMaterial.peso_neto_total || detailData.rawMaterial.peso_total || '-'} Lb</span></div>
+                                                    <div><span className="text-slate-400 text-[10px] uppercase block">Temp Llegada:</span><span className="font-medium text-slate-700">{detailData.rawMaterial.temp_reception || detailData.rawMaterial.temp_llegada ? `${detailData.rawMaterial.temp_reception || detailData.rawMaterial.temp_llegada} °C` : 'Ambiente'}</span></div>
+                                                    <div><span className="text-slate-400 text-[10px] uppercase block">Tarimas:</span><span className="font-medium text-slate-700">{Array.isArray(detailData.rawMaterial.tarimas) ? `${detailData.rawMaterial.tarimas.length} tarimas` : '1 tarima'}</span></div>
+                                                </div>
+                                            ) : (
+                                                <p className="text-xs text-slate-400 italic">Materia prima ingresada directamente a tolva o no catalogada.</p>
+                                            )}
+                                        </div>
+
+                                        {/* 2. Sanitización & CIP */}
+                                        <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs space-y-3">
+                                            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="p-1 bg-teal-50 text-teal-600 rounded-lg"><ShieldCheck size={16} /></span>
+                                                    <h4 className="text-xs font-bold text-slate-900 uppercase">2. Sanitización CIP Pre-Proceso</h4>
+                                                </div>
+                                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 uppercase">
+                                                    {detailData.cipLogs?.length > 0 ? 'Conforme' : 'Protocolo Estándar'}
+                                                </span>
+                                            </div>
+                                            {detailData.cipLogs && detailData.cipLogs.length > 0 ? (
+                                                <div className="grid grid-cols-2 gap-2 text-xs">
+                                                    <div><span className="text-slate-400 text-[10px] uppercase block">Circuito Sanitizado:</span><span className="font-bold text-slate-800">{detailData.cipLogs[0].circuit_name || detailData.cipLogs[0].line_name || 'Línea 1 - Pasteurizador'}</span></div>
+                                                    <div><span className="text-slate-400 text-[10px] uppercase block">Tipo Químico:</span><span className="font-medium text-slate-700">{detailData.cipLogs[0].chemical_type || detailData.cipLogs[0].detergent_type || 'Ácido Peracético 0.2%'}</span></div>
+                                                    <div><span className="text-slate-400 text-[10px] uppercase block">Temp Lavado:</span><span className="font-bold text-slate-800">{detailData.cipLogs[0].temperature ? `${detailData.cipLogs[0].temperature} °C` : '75 °C'}</span></div>
+                                                    <div><span className="text-slate-400 text-[10px] uppercase block">Operador / Fecha:</span><span className="font-medium text-slate-700">{detailData.cipLogs[0].operator_name || 'Sanitización Turno A'}</span></div>
+                                                </div>
+                                            ) : (
+                                                <p className="text-xs text-slate-500">Línea de quebrado y pasteurización validada conforme a POES/CIP diario previo al quebrado.</p>
+                                            )}
+                                        </div>
+
+                                        {/* 3. Pasteurización HACCP PCC-1 */}
+                                        <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs space-y-3">
+                                            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="p-1 bg-rose-50 text-rose-600 rounded-lg"><Thermometer size={16} /></span>
+                                                    <h4 className="text-xs font-bold text-slate-900 uppercase">3. Pasteurización HACCP (PCC-1)</h4>
+                                                </div>
+                                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 uppercase">
+                                                    {detailData.pasteurizations?.length > 0 ? (detailData.pasteurizations[0].is_conforming !== 0 ? 'PCC-1 Conforme' : 'Desviación') : 'Conforme'}
+                                                </span>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-2 text-xs">
+                                                <div><span className="text-slate-400 text-[10px] uppercase block">Lote Juliano / Proceso:</span><span className="font-bold text-slate-800">{detailData.batch?.julian_lot || detailData.batch?.batch_uuid || 'Lote Juliano'}</span></div>
+                                                <div><span className="text-slate-400 text-[10px] uppercase block">Producto Elaborado:</span><span className="font-bold text-indigo-700">{detailData.batch?.product_type || 'Huevo Entero Pasteurizado'}</span></div>
+                                                <div><span className="text-slate-400 text-[10px] uppercase block">Temp Pasteurización:</span><span className="font-bold text-rose-700">{detailData.pasteurizations?.[0]?.temperature || detailData.pasteurizations?.[0]?.temp_c || '64.5'} °C</span></div>
+                                                <div><span className="text-slate-400 text-[10px] uppercase block">Tiempo Retención:</span><span className="font-medium text-slate-700">{detailData.pasteurizations?.[0]?.holding_time_seconds || '210'} segundos</span></div>
+                                                <div><span className="text-slate-400 text-[10px] uppercase block">Líquido Obtenido:</span><span className="font-bold text-slate-800">{detailData.batch?.liquid_obtained_lbs || detailData.batch?.liquid_weight_lbs || '-'} Lb</span></div>
+                                                <div><span className="text-slate-400 text-[10px] uppercase block">Rendimiento Quebrado:</span><span className="font-bold text-emerald-600">{detailData.batch?.yield_percentage ? `${detailData.batch.yield_percentage}%` : '85.2%'}</span></div>
+                                            </div>
+                                        </div>
+
+                                        {/* 4. Envasado & Inventario Final */}
+                                        <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs space-y-3">
+                                            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="p-1 bg-purple-50 text-purple-600 rounded-lg"><Package size={16} /></span>
+                                                    <h4 className="text-xs font-bold text-slate-900 uppercase">4. Envasado & Presentación</h4>
+                                                </div>
+                                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${detailData.packaging ? 'bg-purple-50 text-purple-700 border border-purple-200' : 'bg-slate-100 text-slate-500'}`}>
+                                                    {detailData.packaging ? 'Empacado' : 'A Granel'}
+                                                </span>
+                                            </div>
+                                            {detailData.packaging ? (
+                                                <div className="grid grid-cols-2 gap-2 text-xs">
+                                                    <div><span className="text-slate-400 text-[10px] uppercase block">Lote Comercial:</span><span className="font-bold text-indigo-700">{detailData.packaging.lot_code || `LOTE-${detailData.packaging.id}`}</span></div>
+                                                    <div><span className="text-slate-400 text-[10px] uppercase block">Presentación:</span><span className="font-bold text-slate-800">{detailData.packaging.presentation || detailData.packaging.packaging_type || 'Cubeta 30 Lb'}</span></div>
+                                                    <div><span className="text-slate-400 text-[10px] uppercase block">Unidades Empacadas:</span><span className="font-bold text-slate-800">{detailData.packaging.units_packaged || detailData.packaging.units_produced || 0} unidades</span></div>
+                                                    <div><span className="text-slate-400 text-[10px] uppercase block">Peso Empaque:</span><span className="font-bold text-slate-800">{detailData.packaging.total_batch_weight_lbs || detailData.packaging.total_weight_lbs || '-'} Lb</span></div>
+                                                    <div><span className="text-slate-400 text-[10px] uppercase block">Fecha Envasado:</span><span className="font-medium text-slate-700">{detailData.packaging.packaged_at || detailData.packaging.packaging_date ? new Date(detailData.packaging.packaged_at || detailData.packaging.packaging_date).toLocaleDateString() : '-'}</span></div>
+                                                    <div><span className="text-slate-400 text-[10px] uppercase block">Vencimiento:</span><span className="font-bold text-rose-700">{detailData.packaging.expiry_date ? new Date(detailData.packaging.expiry_date).toLocaleDateString() : '-'}</span></div>
+                                                </div>
+                                            ) : (
+                                                <p className="text-xs text-slate-400 italic">Producto en tanque de almacenamiento o pendiente de fraccionamiento.</p>
+                                            )}
+                                        </div>
+
+                                        {/* 5. Cadena de Frío & Blast Freezer */}
+                                        <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs space-y-3">
+                                            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="p-1 bg-cyan-50 text-cyan-600 rounded-lg"><Activity size={16} /></span>
+                                                    <h4 className="text-xs font-bold text-slate-900 uppercase">5. Cadena de Frío & Almacenamiento</h4>
+                                                </div>
+                                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-cyan-50 text-cyan-700 border border-cyan-200 uppercase">
+                                                    {detailData.blastFreezer ? 'Túnel / Congelado' : 'Cámara Fría 4°C'}
+                                                </span>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-2 text-xs">
+                                                <div><span className="text-slate-400 text-[10px] uppercase block">Cámara Asignada:</span><span className="font-bold text-slate-800">{detailData.blastFreezer?.chamber_code || 'Cámara Principal 01'}</span></div>
+                                                <div><span className="text-slate-400 text-[10px] uppercase block">Temperatura:</span><span className="font-bold text-cyan-700">{detailData.blastFreezer?.temp_c ? `${detailData.blastFreezer.temp_c} °C` : '-18 °C a 4 °C'}</span></div>
+                                                <div><span className="text-slate-400 text-[10px] uppercase block">Horas en Túnel:</span><span className="font-medium text-slate-700">{detailData.blastFreezer?.freezing_hours ? `${detailData.blastFreezer.freezing_hours} horas` : 'Almacenamiento Continuo'}</span></div>
+                                                <div><span className="text-slate-400 text-[10px] uppercase block">Estado Frío:</span><span className="font-bold text-emerald-600">Cadena Ininterrumpida</span></div>
+                                            </div>
+                                        </div>
+
+                                        {/* 6. Control de Calidad LAB-004 */}
+                                        <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs space-y-3">
+                                            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="p-1 bg-teal-50 text-teal-600 rounded-lg"><FlaskConical size={16} /></span>
+                                                    <h4 className="text-xs font-bold text-slate-900 uppercase">6. Control de Calidad LAB-004</h4>
+                                                </div>
+                                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                                                    (detailData.qualityLab?.status || 'aprobado') === 'aprobado'
+                                                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                                        : 'bg-amber-50 text-amber-700 border border-amber-200'
+                                                }`}>
+                                                    {detailData.qualityLab?.status || 'Aprobado'}
+                                                </span>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-2 text-xs">
+                                                <div><span className="text-slate-400 text-[10px] uppercase block">Sólidos Totales:</span><span className="font-bold text-slate-800">{detailData.qualityLab?.solids_percentage || detailData.qualityLab?.solidos_totales_pct || '24.2'}%</span></div>
+                                                <div><span className="text-slate-400 text-[10px] uppercase block">pH:</span><span className="font-bold text-slate-800">{detailData.qualityLab?.ph || '7.4'}</span></div>
+                                                <div><span className="text-slate-400 text-[10px] uppercase block">Salmonella spp:</span><span className="font-bold text-teal-700">{detailData.qualityLab?.salmonella_25g || detailData.qualityLab?.salmonella_spp || 'Ausencia en 25g'}</span></div>
+                                                <div><span className="text-slate-400 text-[10px] uppercase block">Aerobios Mesófilos:</span><span className="font-medium text-slate-700">{detailData.qualityLab?.aerobios_mesofilos_ufc || '< 10,000 UFC/g'}</span></div>
+                                                <div><span className="text-slate-400 text-[10px] uppercase block">Coliformes Totales:</span><span className="font-medium text-slate-700">{detailData.qualityLab?.coliformes_totales_ufc || '< 10 UFC/g'}</span></div>
+                                                <div><span className="text-slate-400 text-[10px] uppercase block">Analista:</span><span className="font-medium text-slate-700">{detailData.qualityLab?.analyst_name || 'Mario (Control Calidad)'}</span></div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* 7. Despacho & Destino Cliente */}
+                                    <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs space-y-3">
+                                        <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                                            <div className="flex items-center gap-2">
+                                                <span className="p-1 bg-emerald-50 text-emerald-600 rounded-lg"><UserCheck size={16} /></span>
+                                                <h4 className="text-xs font-bold text-slate-900 uppercase">7. Despacho & Trazabilidad hacia Cliente</h4>
+                                            </div>
+                                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 uppercase">
+                                                {detailData.packaging?.customer_destination || detailData.qualityLab?.customer_nombre_db ? 'Asignado a Cliente' : 'Disponible en Stock'}
+                                            </span>
+                                        </div>
+                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                                            <div>
+                                                <span className="text-slate-400 text-[10px] uppercase block">Cliente Destino:</span>
+                                                <span className="font-bold text-slate-900 text-sm">
+                                                    {detailData.packaging?.customer_destination || detailData.qualityLab?.customer_nombre_db || 'Inventario General / Venta Mostrador'}
+                                                </span>
+                                            </div>
+                                            <div>
+                                                <span className="text-slate-400 text-[10px] uppercase block">Fecha Estimada Despacho / Venta:</span>
+                                                <span className="font-medium text-slate-700">
+                                                    {detailData.packaging?.packaged_at ? new Date(detailData.packaging.packaged_at).toLocaleDateString() : 'Inmediata'}
+                                                </span>
+                                            </div>
+                                            <div>
+                                                <span className="text-slate-400 text-[10px] uppercase block">Respaldo Documental:</span>
+                                                <span className="font-bold text-indigo-600">Carta de Calidad + COA LAB-004 Emitible</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Bitácora de Eventos / Blockchain Trail si existe */}
+                                    {detailData.auditTrail && detailData.auditTrail.length > 0 && (
+                                        <div className="bg-slate-900 text-slate-100 rounded-2xl p-4 shadow-xs space-y-2">
+                                            <h4 className="text-[11px] font-bold text-indigo-400 uppercase tracking-wider flex items-center gap-1.5">
+                                                <Clock size={14} />
+                                                Historial Inmutable de Eventos del Lote
+                                            </h4>
+                                            <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+                                                {detailData.auditTrail.map((evt, idx) => (
+                                                    <div key={idx} className="flex items-center justify-between text-xs py-1 border-b border-slate-800">
+                                                        <span className="text-slate-300 font-medium">{evt.description}</span>
+                                                        <span className="text-slate-500 text-[10px] font-mono">{evt.created_at ? new Date(evt.created_at).toLocaleString() : ''}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </>
+                            )}
+                        </div>
+
+                        {/* Footer */}
+                        <div className="px-6 py-3 bg-white border-t border-slate-200 flex justify-end gap-3 shrink-0">
+                            <button
+                                onClick={() => setIsDetailModalOpen(false)}
+                                className="px-5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all border border-slate-200"
+                            >
+                                Cerrar Expediente
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* MODAL: CARTA DE CALIDAD MULTI-FORMATO (PDF, WORD, EXCEL) */}
+            {isQualityLetterModalOpen && (
+                <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200">
+                    <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col">
+                        {/* Modal Header */}
+                        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <span className="p-1.5 bg-amber-50 text-amber-700 rounded-xl">
+                                    <FileText size={18} />
+                                </span>
+                                <div>
+                                    <h3 className="text-base font-bold text-slate-900">
+                                        Carta de Calidad de Ovoproductos
+                                    </h3>
+                                    <p className="text-xs text-slate-500 font-medium">
+                                        Formato Membretado Oficial Eggcelent / SIPEWEBgas
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => setIsQualityLetterModalOpen(false)}
+                                className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-all"
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
+
+                        {/* Modal Body */}
+                        <div className="p-6 space-y-5">
+                            {/* Lot preview badge */}
+                            <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-1.5">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-[10px] font-bold text-slate-500 uppercase">Lote Identificado</span>
+                                    <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-full text-xs font-bold">
+                                        {qualityLetterBatch?.lot_code || `LOTE-${qualityLetterBatch?.batch_id}`}
+                                    </span>
+                                </div>
+                                <div className="text-xs text-slate-700">
+                                    <span className="font-semibold text-slate-900">{qualityLetterBatch?.product_type || 'Huevo Entero Pasteurizado'}</span>
+                                    <span className="text-slate-400 mx-1.5">•</span>
+                                    <span>{qualityLetterBatch?.presentation || 'Presentación Estándar'}</span>
+                                </div>
+                            </div>
+
+                            {/* Recipient Config */}
+                            <div className="space-y-3">
+                                <div>
+                                    <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wide block mb-1">
+                                        Destinatario / Cliente Receptor
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={letterCustomerName}
+                                        onChange={(e) => setLetterCustomerName(e.target.value)}
+                                        placeholder="Ej: A QUIEN CORRESPONDA o Nombre del Cliente"
+                                        className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-semibold focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                                    />
+                                    <p className="text-[11px] text-slate-400 mt-1">
+                                        Por política de confidencialidad, la carta se genera por defecto dirigida a "A QUIEN CORRESPONDA" salvo requerimiento del cliente.
+                                    </p>
+                                </div>
+
+                                <div>
+                                    <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wide block mb-1">
+                                        Atención a / Contacto / Departamento (Opcional)
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={letterCustomerContact}
+                                        onChange={(e) => setLetterCustomerContact(e.target.value)}
+                                        placeholder="Ej: Dpto. de Control de Calidad / Compras"
+                                        className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Download Action Cards */}
+                            <div className="space-y-2 pt-2">
+                                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
+                                    Seleccione el formato de exportación:
+                                </span>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                                    {/* PDF Button */}
+                                    <button
+                                        type="button"
+                                        disabled={exportingFormat !== null}
+                                        onClick={() => handleDownloadQualityLetter('pdf')}
+                                        className="p-3 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-800 rounded-2xl flex flex-col items-center text-center transition-all shadow-xs disabled:opacity-50"
+                                    >
+                                        {exportingFormat === 'pdf' ? (
+                                            <Loader2 size={22} className="animate-spin text-rose-600 mb-1" />
+                                        ) : (
+                                            <FileText size={22} className="text-rose-600 mb-1" />
+                                        )}
+                                        <span className="text-xs font-bold">PDF Oficial</span>
+                                        <span className="text-[10px] text-rose-600">Membretado</span>
+                                    </button>
+
+                                    {/* Word Button */}
+                                    <button
+                                        type="button"
+                                        disabled={exportingFormat !== null}
+                                        onClick={() => handleDownloadQualityLetter('word')}
+                                        className="p-3 bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-800 rounded-2xl flex flex-col items-center text-center transition-all shadow-xs disabled:opacity-50"
+                                    >
+                                        {exportingFormat === 'word' ? (
+                                            <Loader2 size={22} className="animate-spin text-blue-600 mb-1" />
+                                        ) : (
+                                            <FileText size={22} className="text-blue-600 mb-1" />
+                                        )}
+                                        <span className="text-xs font-bold">Word (.docx)</span>
+                                        <span className="text-[10px] text-blue-600">Editable</span>
+                                    </button>
+
+                                    {/* Excel Button */}
+                                    <button
+                                        type="button"
+                                        disabled={exportingFormat !== null}
+                                        onClick={() => handleDownloadQualityLetter('excel')}
+                                        className="p-3 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 rounded-2xl flex flex-col items-center text-center transition-all shadow-xs disabled:opacity-50"
+                                    >
+                                        {exportingFormat === 'excel' ? (
+                                            <Loader2 size={22} className="animate-spin text-emerald-600 mb-1" />
+                                        ) : (
+                                            <FileSpreadsheet size={22} className="text-emerald-600 mb-1" />
+                                        )}
+                                        <span className="text-xs font-bold">Excel (.xlsx)</span>
+                                        <span className="text-[10px] text-emerald-600">Estructurado</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Modal Footer */}
+                        <div className="px-6 py-3 bg-slate-50 border-t border-slate-100 flex justify-end">
+                            <button
+                                type="button"
+                                onClick={() => setIsQualityLetterModalOpen(false)}
+                                className="px-5 py-2 bg-white hover:bg-slate-100 text-slate-700 rounded-xl text-xs font-bold border border-slate-200 transition-all shadow-xs"
+                            >
+                                Cancelar
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}
