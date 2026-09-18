@@ -34,7 +34,8 @@ import {
     UserCheck,
     X,
     Clock,
-    Loader2
+    Loader2,
+    Calendar
 } from 'lucide-react';
 
 const EggTraceability = () => {
@@ -50,6 +51,8 @@ const EggTraceability = () => {
     const [trace360Search, setTrace360Search] = useState('');
     const [debouncedTraceSearch, setDebouncedTraceSearch] = useState('');
     const [trace360Stage, setTrace360Stage] = useState('all');
+    const [traceStartDate, setTraceStartDate] = useState('');
+    const [traceEndDate, setTraceEndDate] = useState('');
     const [loadingTrace360, setLoadingTrace360] = useState(false);
 
     // Forensic 360 Inspection Modal (Lupa 🔍)
@@ -218,6 +221,8 @@ const EggTraceability = () => {
                 params: {
                     search: debouncedTraceSearch || undefined,
                     stage: trace360Stage,
+                    start_date: traceStartDate || undefined,
+                    end_date: traceEndDate || undefined,
                     page: trace360Page,
                     limit: trace360Limit
                 }
@@ -234,7 +239,12 @@ const EggTraceability = () => {
 
     const fetchTrace360Stats = async () => {
         try {
-            const res = await axios.get('/api/egg-industrial/traceability-360/stats');
+            const res = await axios.get('/api/egg-industrial/traceability-360/stats', {
+                params: {
+                    start_date: traceStartDate || undefined,
+                    end_date: traceEndDate || undefined
+                }
+            });
             setTraceStats(res.data);
         } catch (error) {
             console.error('Error fetching 360 stats:', error);
@@ -256,7 +266,7 @@ const EggTraceability = () => {
             fetchTrace360List();
             fetchTrace360Stats();
         }
-    }, [activeTab, debouncedTraceSearch, trace360Stage, trace360Page]);
+    }, [activeTab, debouncedTraceSearch, trace360Stage, traceStartDate, traceEndDate, trace360Page]);
 
     // Apertura de Inspección Forense 360° (Lupa 🔍)
     const handleOpenInspection = async (item) => {
@@ -947,51 +957,97 @@ const EggTraceability = () => {
                         </div>
                     </div>
 
-                    {/* Search Bar & Stage Selector */}
-                    <div className="bg-white border border-slate-200 rounded-2xl p-4 md:p-6 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
-                        {/* Search Input */}
-                        <div className="relative flex-1 w-full">
-                            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                            <input
-                                type="text"
-                                value={trace360Search}
-                                onChange={e => setTrace360Search(e.target.value)}
-                                placeholder="Buscar por proveedor, lote MP, lote juliano, lote comercial, producto, cliente, código de barra..."
-                                className="w-full pl-10 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
-                            />
-                            {trace360Search && (
-                                <button
-                                    onClick={() => setTrace360Search('')}
-                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                                >
-                                    <X size={14} />
-                                </button>
-                            )}
+                    {/* Search Bar, Date Range & Stage Selector */}
+                    <div className="bg-white border border-slate-200 rounded-2xl p-4 md:p-5 shadow-sm space-y-4">
+                        <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
+                            {/* Search Input */}
+                            <div className="relative flex-1">
+                                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                                <input
+                                    type="text"
+                                    value={trace360Search}
+                                    onChange={e => setTrace360Search(e.target.value)}
+                                    placeholder="Buscar por proveedor, lote MP, lote juliano, lote comercial, producto, cliente, código de barra..."
+                                    className="w-full pl-10 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                                />
+                                {trace360Search && (
+                                    <button
+                                        onClick={() => setTrace360Search('')}
+                                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                                    >
+                                        <X size={14} />
+                                    </button>
+                                )}
+                            </div>
+
+                            {/* Date Range Filter */}
+                            <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl">
+                                <div className="flex items-center gap-1.5 text-slate-500 text-[11px] font-bold uppercase tracking-wider">
+                                    <Calendar size={14} className="text-indigo-600 shrink-0" />
+                                    <span className="hidden sm:inline">Rango:</span>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                    <span className="text-[10px] font-semibold text-slate-400">Desde</span>
+                                    <input
+                                        type="date"
+                                        value={traceStartDate}
+                                        onChange={e => { setTraceStartDate(e.target.value); setTrace360Page(1); }}
+                                        className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-medium text-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                    />
+                                </div>
+                                <div className="flex items-center gap-1">
+                                    <span className="text-[10px] font-semibold text-slate-400">Hasta</span>
+                                    <input
+                                        type="date"
+                                        value={traceEndDate}
+                                        onChange={e => { setTraceEndDate(e.target.value); setTrace360Page(1); }}
+                                        className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-medium text-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                    />
+                                </div>
+                                {(traceStartDate || traceEndDate) && (
+                                    <button
+                                        onClick={() => { setTraceStartDate(''); setTraceEndDate(''); setTrace360Page(1); }}
+                                        className="p-1 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                                        title="Limpiar rango de fechas"
+                                    >
+                                        <X size={13} />
+                                    </button>
+                                )}
+                            </div>
                         </div>
 
-                        {/* Stage Selector Tabs */}
-                        <div className="flex flex-wrap items-center gap-1.5 w-full md:w-auto">
-                            {[
-                                { id: 'all', label: 'Todos' },
-                                { id: 'materia_prima', label: 'Materia Prima' },
-                                { id: 'produccion', label: 'En Producción' },
-                                { id: 'inventario_final', label: 'Inventario Final' },
-                                { id: 'con_alertas', label: 'Con Alertas' }
-                            ].map(st => (
-                                <button
-                                    key={st.id}
-                                    onClick={() => { setTrace360Stage(st.id); setTrace360Page(1); }}
-                                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${trace360Stage === st.id ? (st.id === 'con_alertas' ? 'bg-rose-600 text-white shadow-sm' : 'bg-indigo-600 text-white shadow-sm') : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-                                >
-                                    {st.label}
-                                </button>
-                            ))}
+                        {/* Stage Selector Tabs & Refresh */}
+                        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mr-1 hidden sm:inline">Etapa:</span>
+                                {[
+                                    { id: 'all', label: 'Todos' },
+                                    { id: 'materia_prima', label: 'Materia Prima' },
+                                    { id: 'produccion', label: 'En Producción' },
+                                    { id: 'inventario_final', label: 'Inventario Final' },
+                                    { id: 'con_alertas', label: 'Con Alertas' }
+                                ].map(st => (
+                                    <button
+                                        key={st.id}
+                                        onClick={() => { setTrace360Stage(st.id); setTrace360Page(1); }}
+                                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                                            trace360Stage === st.id
+                                                ? (st.id === 'con_alertas' ? 'bg-rose-600 text-white shadow-sm' : 'bg-indigo-600 text-white shadow-sm')
+                                                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                        }`}
+                                    >
+                                        {st.label}
+                                    </button>
+                                ))}
+                            </div>
+
                             <button
                                 onClick={() => { fetchTrace360List(); fetchTrace360Stats(); }}
-                                className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 transition-all ml-1"
+                                className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 transition-all flex items-center gap-1.5 text-xs font-semibold"
                                 title="Recargar trazabilidad"
                             >
                                 <RefreshCw size={14} className={loadingTrace360 ? 'animate-spin' : ''} />
+                                <span className="hidden sm:inline">Actualizar</span>
                             </button>
                         </div>
                     </div>
@@ -1008,7 +1064,7 @@ const EggTraceability = () => {
                                 <div className="py-24 flex flex-col items-center justify-center text-slate-400 gap-2 text-center p-6">
                                     <Layers size={40} className="text-slate-300 mb-2" />
                                     <p className="text-sm font-bold text-slate-700">No se encontraron registros de trazabilidad</p>
-                                    <p className="text-xs text-slate-400 max-w-sm">Prueba ajustando los términos de búsqueda o cambiando el filtro de etapa.</p>
+                                    <p className="text-xs text-slate-400 max-w-sm">Prueba ajustando los términos de búsqueda, rango de fechas o cambiando el filtro de etapa.</p>
                                 </div>
                             ) : (
                                 <table className="w-full text-left text-xs border-collapse">
@@ -1052,6 +1108,12 @@ const EggTraceability = () => {
                                                                     <span className="capitalize font-medium">{item.raw_egg_type}</span>
                                                                     <span>•</span>
                                                                     <span>{item.raw_weight_lbs ? `${item.raw_weight_lbs.toLocaleString()} Lbs` : '-'}</span>
+                                                                    {item.raw_total_boxes > 0 && (
+                                                                        <>
+                                                                            <span>•</span>
+                                                                            <span>{item.raw_total_boxes} caj.</span>
+                                                                        </>
+                                                                    )}
                                                                     {item.raw_temp_c !== null && (
                                                                         <>
                                                                             <span>•</span>
@@ -1059,8 +1121,8 @@ const EggTraceability = () => {
                                                                         </>
                                                                     )}
                                                                 </div>
-                                                                <span className="text-[10px] text-slate-400 block">
-                                                                    {item.raw_reception_date ? new Date(item.raw_reception_date).toLocaleDateString('es-SV') : ''}
+                                                                <span className="text-[10px] text-slate-400 block font-medium">
+                                                                    {item.raw_reception_date ? `Recibido: ${new Date(item.raw_reception_date).toLocaleDateString('es-SV', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}` : ''}
                                                                 </span>
                                                             </div>
                                                         ) : (
@@ -1080,13 +1142,19 @@ const EggTraceability = () => {
                                                                         {item.batch_status || 'Transformado'}
                                                                     </span>
                                                                 </div>
-                                                                <div className="text-[11px] text-slate-600">
-                                                                    <span>Rendimiento: </span>
+                                                                <div className="text-[11px] text-slate-600 flex items-center gap-1.5">
+                                                                    <span>Rendimiento:</span>
                                                                     <strong className="text-teal-700">{item.batch_yield_liquid ? `${item.batch_yield_liquid.toLocaleString()} Lbs` : '0 Lbs'}</strong>
+                                                                    {item.batch_input_weight > 0 && item.batch_yield_liquid > 0 && (
+                                                                        <span className="text-[10px] text-slate-400 font-semibold">
+                                                                            ({((item.batch_yield_liquid / item.batch_input_weight) * 100).toFixed(1)}%)
+                                                                        </span>
+                                                                    )}
                                                                 </div>
-                                                                <span className="text-[10px] text-slate-400 block">
-                                                                    Op: {item.batch_operator || 'Operador Planta'}
-                                                                </span>
+                                                                <div className="text-[10px] text-slate-400 flex items-center justify-between">
+                                                                    <span>{item.batch_started_at ? `Inicio: ${new Date(item.batch_started_at).toLocaleDateString('es-SV', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}` : ''}</span>
+                                                                    <span>Op: {item.batch_operator || 'Operador Planta'}</span>
+                                                                </div>
                                                             </div>
                                                         ) : (
                                                             <span className="px-2 py-1 rounded-lg bg-slate-100 text-slate-500 font-bold text-[10px] uppercase">
@@ -1139,22 +1207,31 @@ const EggTraceability = () => {
                                                                     {item.alert_reason}
                                                                 </p>
                                                             )}
-                                                            <div className="text-[10px] text-slate-500 flex items-center gap-2 font-mono">
-                                                                <span>Sól: {item.solids_percentage ? `${item.solids_percentage}%` : '24.2%'}</span>
-                                                                <span>•</span>
-                                                                <span>pH: {item.ph || '7.4'}</span>
-                                                                <span>•</span>
-                                                                <span>Salm: {item.salmonella_25g || 'Ausente'}</span>
+                                                            <div className="text-[10px] text-slate-600 flex flex-wrap items-center gap-1.5 font-mono">
+                                                                <span className="bg-slate-100 px-1.5 py-0.5 rounded">Sól: {item.solids_percentage ? `${item.solids_percentage}%` : '24.2%'}</span>
+                                                                <span className="bg-slate-100 px-1.5 py-0.5 rounded">pH: {item.ph || '7.4'}</span>
+                                                                <span className={`px-1.5 py-0.5 rounded ${String(item.salmonella_25g || '').toLowerCase().includes('presencia') ? 'bg-rose-100 text-rose-700 font-bold' : 'bg-teal-50 text-teal-700'}`}>
+                                                                    Salm: {item.salmonella_25g || 'Ausente'}
+                                                                </span>
                                                             </div>
                                                         </div>
                                                     </td>
 
                                                     {/* 5. Cliente / Despacho */}
                                                     <td className="p-3.5">
-                                                        <div className="space-y-1">
-                                                            <span className="font-bold text-slate-900 block">
-                                                                {item.customer_name}
-                                                            </span>
+                                                        <div className="space-y-1.5">
+                                                            {item.customer_name ? (
+                                                                <div className="flex items-center gap-1.5">
+                                                                    <UserCheck size={13} className="text-indigo-600 shrink-0" />
+                                                                    <span className="font-bold text-slate-900 block truncate max-w-[190px]" title={item.customer_name}>
+                                                                        {item.customer_name}
+                                                                    </span>
+                                                                </div>
+                                                            ) : (
+                                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                                                    <CheckCircle2 size={10} /> En Stock / Disponible
+                                                                </span>
+                                                            )}
                                                             {item.batch_id && (
                                                                 <button
                                                                     onClick={() => handleOpenQualityLetterModal(item)}
@@ -2368,15 +2445,19 @@ const EggTraceability = () => {
                                                 <span className="p-1 bg-emerald-50 text-emerald-600 rounded-lg"><UserCheck size={16} /></span>
                                                 <h4 className="text-xs font-bold text-slate-900 uppercase">7. Despacho & Trazabilidad hacia Cliente</h4>
                                             </div>
-                                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 uppercase">
-                                                {detailData.packaging?.customer_destination || detailData.qualityLab?.customer_nombre_db ? 'Asignado a Cliente' : 'Disponible en Stock'}
+                                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                                                detailData.packaging?.sale_customer_name || detailData.packaging?.customer_destination || detailData.qualityLab?.customer_nombre_db || detailTarget?.customer_name
+                                                    ? 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+                                                    : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                            }`}>
+                                                {detailData.packaging?.sale_customer_name ? 'Vendido en Punto de Venta / Facturado' : (detailData.packaging?.customer_destination || detailData.qualityLab?.customer_nombre_db || detailTarget?.customer_name ? 'Asignado a Cliente' : 'Disponible en Stock')}
                                             </span>
                                         </div>
                                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
                                             <div>
-                                                <span className="text-slate-400 text-[10px] uppercase block">Cliente Destino:</span>
+                                                <span className="text-slate-400 text-[10px] uppercase block">Cliente Destino / Comprador:</span>
                                                 <span className="font-bold text-slate-900 text-sm">
-                                                    {detailData.packaging?.customer_destination || detailData.qualityLab?.customer_nombre_db || 'Inventario General / Venta Mostrador'}
+                                                    {detailData.packaging?.sale_customer_name || detailData.packaging?.customer_destination || detailData.qualityLab?.customer_nombre_db || detailTarget?.customer_name || 'Disponible en Stock (Sin despachar)'}
                                                 </span>
                                             </div>
                                             <div>

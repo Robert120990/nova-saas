@@ -1708,7 +1708,7 @@ const getTraceability = async (req, res) => {
 const getTraceability360List = async (req, res) => {
     try {
         const company_id = req.company_id || req.user?.company_id;
-        const { search, stage, page = 1, limit = 50 } = req.query;
+        const { search, stage, start_date, end_date, page = 1, limit = 50 } = req.query;
 
         // 1. Consultar todos los flujos de recepción de materia prima
         const [rawRows] = await pool.query(`
@@ -1755,6 +1755,14 @@ const getTraceability360List = async (req, res) => {
                 pk.expiry_date,
                 pk.customer_destination as pkg_customer_destination,
                 pk.barcode as commercial_barcode,
+                (SELECT GROUP_CONCAT(DISTINCT COALESCE(sh.cliente_nombre, c.nombre, 'Consumidor Final') SEPARATOR ', ') 
+                 FROM sales_items si 
+                 JOIN sales_headers sh ON sh.id = si.sale_id 
+                 LEFT JOIN customers c ON c.id = sh.customer_id
+                 WHERE pk.lot_code IS NOT NULL 
+                   AND (si.codigo = pk.lot_code OR si.descripcion LIKE CONCAT('%', pk.lot_code, '%')) 
+                   AND sh.estado != 'anulado'
+                ) as sale_customer_name,
                 lab.id as lab_log_id,
                 lab.sample_date as lab_sample_date,
                 lab.status as lab_status,
@@ -1827,6 +1835,14 @@ const getTraceability360List = async (req, res) => {
                 pk.expiry_date,
                 pk.customer_destination as pkg_customer_destination,
                 pk.barcode as commercial_barcode,
+                (SELECT GROUP_CONCAT(DISTINCT COALESCE(sh.cliente_nombre, c.nombre, 'Consumidor Final') SEPARATOR ', ') 
+                 FROM sales_items si 
+                 JOIN sales_headers sh ON sh.id = si.sale_id 
+                 LEFT JOIN customers c ON c.id = sh.customer_id
+                 WHERE pk.lot_code IS NOT NULL 
+                   AND (si.codigo = pk.lot_code OR si.descripcion LIKE CONCAT('%', pk.lot_code, '%')) 
+                   AND sh.estado != 'anulado'
+                ) as sale_customer_name,
                 lab.id as lab_log_id,
                 lab.sample_date as lab_sample_date,
                 lab.status as lab_status,
@@ -1855,7 +1871,7 @@ const getTraceability360List = async (req, res) => {
 
         const allRows = [...rawRows, ...standaloneRows];
 
-        // Normalizar y deduplicar flujos
+        // Normalizar y estructurar cada flujo de la cadena
         const processed = allRows.map((r, index) => {
             const isTransformed = !!r.batch_id;
             let transformStatus = 'en_silo';
@@ -1876,7 +1892,7 @@ const getTraceability360List = async (req, res) => {
 
             const finalProduct = (r.packaged_product_type || r.batch_product_type || r.raw_egg_type || 'Huevo Entero Pasteurizado');
             const finalPresentation = (r.packaged_presentation || r.batch_presentation || 'Cubeta 30 Lb');
-            const effectiveCustomer = r.lab_customer_name || r.pkg_customer_destination || 'Venta General / Sin Asignar';
+            const effectiveCustomer = r.sale_customer_name || r.pkg_customer_destination || r.lab_customer_name || null;
             const finalLotCode = r.commercial_lot_code || r.batch_code_display || r.raw_provider_lot || `LOTE-${index + 1}`;
 
             let tarimas = [];
@@ -1952,8 +1968,26 @@ const getTraceability360List = async (req, res) => {
             };
         });
 
-        // Filtro de búsqueda
+        // 1. Filtro por Rango de Fecha (evalúa fecha de recepción de materia prima o fecha de inicio de producción)
         let filtered = processed;
+        if (start_date || end_date) {
+            filtered = filtered.filter(item => {
+                const targetDate = item.raw_reception_date || item.batch_started_at;
+                if (!targetDate) return true;
+                const d = new Date(targetDate);
+                if (isNaN(d.getTime())) return true;
+                const yyyy = d.getFullYear();
+                const mm = String(d.getMonth() + 1).padStart(2, '0');
+                const dd = String(d.getDate()).padStart(2, '0');
+                const itemDateStr = `${yyyy}-${mm}-${dd}`;
+
+                if (start_date && itemDateStr < start_date) return false;
+                if (end_date && itemDateStr > end_date) return false;
+                return true;
+            });
+        }
+
+        // 2. Filtro de búsqueda multicriterio
         if (search && search.trim()) {
             const q = search.trim().toLowerCase();
             filtered = filtered.filter(item => {
@@ -1970,15 +2004,19 @@ const getTraceability360List = async (req, res) => {
             });
         }
 
-        // Filtro por etapa
+        // 3. Filtro por etapa de la cadena de trazabilidad
         if (stage && stage !== 'all') {
             if (stage === 'materia_prima') {
-                filtered = filtered.filter(i => !i.is_transformed);
+                // Muestra todos los ingresos de materia prima y su trazabilidad
+                filtered = filtered.filter(i => !!i.raw_material_id);
             } else if (stage === 'produccion') {
-                filtered = filtered.filter(i => i.is_transformed && !i.commercial_lot_code);
+                // Lotes que han ingresado a proceso de transformación
+                filtered = filtered.filter(i => !!i.batch_id);
             } else if (stage === 'inventario_final') {
-                filtered = filtered.filter(i => !!i.commercial_lot_code);
+                // Lotes que ya cuentan con empaque / producto terminado
+                filtered = filtered.filter(i => !!i.commercial_lot_code || !!i.packaging_id);
             } else if (stage === 'con_alertas') {
+                // Lotes con desviaciones HACCP o fuera de norma de calidad
                 filtered = filtered.filter(i => i.has_alerts);
             }
         }
@@ -2001,39 +2039,82 @@ const getTraceability360List = async (req, res) => {
     }
 };
 
-// 11.2 ESTADÍSTICAS GLOBALES DE LA CADENA 360°
+// 11.2 ESTADÍSTICAS GLOBALES DE LA CADENA 360° (con soporte para rango de fechas)
 const getTraceability360Stats = async (req, res) => {
     try {
         const company_id = req.company_id || req.user?.company_id;
+        const { start_date, end_date } = req.query;
+
+        let rmWhere = 'company_id = ?';
+        let rmParams = [company_id];
+        let batchWhere = 'company_id = ?';
+        let batchParams = [company_id];
+        let pkgWhere = 'company_id = ?';
+        let pkgParams = [company_id];
+        let pastWhere = 'company_id = ? AND (haccp_compliant = 0 OR (deviation_description IS NOT NULL AND deviation_description != ""))';
+        let pastParams = [company_id];
+        let labAlertWhere = 'company_id = ? AND (status = "rechazado" OR status = "cuarentena" OR salmonella_25g = "presencia" OR mesophilic_aerobic_cfu > 10000)';
+        let labAlertParams = [company_id];
+        let labApprovedWhere = 'company_id = ? AND status = "aprobado"';
+        let labApprovedParams = [company_id];
+
+        if (start_date) {
+            rmWhere += ' AND DATE(created_at) >= ?';
+            rmParams.push(start_date);
+            batchWhere += ' AND DATE(started_at) >= ?';
+            batchParams.push(start_date);
+            pkgWhere += ' AND DATE(created_at) >= ?';
+            pkgParams.push(start_date);
+            pastWhere += ' AND DATE(created_at) >= ?';
+            pastParams.push(start_date);
+            labAlertWhere += ' AND DATE(sample_date) >= ?';
+            labAlertParams.push(start_date);
+            labApprovedWhere += ' AND DATE(sample_date) >= ?';
+            labApprovedParams.push(start_date);
+        }
+        if (end_date) {
+            rmWhere += ' AND DATE(created_at) <= ?';
+            rmParams.push(end_date);
+            batchWhere += ' AND DATE(started_at) <= ?';
+            batchParams.push(end_date);
+            pkgWhere += ' AND DATE(created_at) <= ?';
+            pkgParams.push(end_date);
+            pastWhere += ' AND DATE(created_at) <= ?';
+            pastParams.push(end_date);
+            labAlertWhere += ' AND DATE(sample_date) <= ?';
+            labAlertParams.push(end_date);
+            labApprovedWhere += ' AND DATE(sample_date) <= ?';
+            labApprovedParams.push(end_date);
+        }
 
         const [[rmStats]] = await pool.query(
-            'SELECT COUNT(*) as count, COALESCE(SUM(weight_lbs), 0) as total_lbs FROM egg_raw_materials WHERE company_id = ?',
-            [company_id]
+            `SELECT COUNT(*) as count, COALESCE(SUM(weight_lbs), 0) as total_lbs FROM egg_raw_materials WHERE ${rmWhere}`,
+            rmParams
         );
 
         const [[batchStats]] = await pool.query(
-            'SELECT COUNT(*) as count, COALESCE(SUM(yield_liquid_lbs), 0) as total_yield_lbs FROM egg_production_batches WHERE company_id = ?',
-            [company_id]
+            `SELECT COUNT(*) as count, COALESCE(SUM(yield_liquid_lbs), 0) as total_yield_lbs FROM egg_production_batches WHERE ${batchWhere}`,
+            batchParams
         );
 
         const [[pkgStats]] = await pool.query(
-            'SELECT COUNT(*) as count, COALESCE(SUM(total_batch_weight_lbs), 0) as total_pkg_lbs, COALESCE(SUM(units_packaged), 0) as total_units FROM egg_packaging_records WHERE company_id = ?',
-            [company_id]
+            `SELECT COUNT(*) as count, COALESCE(SUM(total_batch_weight_lbs), 0) as total_pkg_lbs, COALESCE(SUM(units_packaged), 0) as total_units FROM egg_packaging_records WHERE ${pkgWhere}`,
+            pkgParams
         );
 
         const [[alertPast]] = await pool.query(
-            'SELECT COUNT(*) as count FROM egg_pasteurization_logs WHERE company_id = ? AND (haccp_compliant = 0 OR (deviation_description IS NOT NULL AND deviation_description != ""))',
-            [company_id]
+            `SELECT COUNT(*) as count FROM egg_pasteurization_logs WHERE ${pastWhere}`,
+            pastParams
         );
 
         const [[alertLab]] = await pool.query(
-            'SELECT COUNT(*) as count FROM egg_lab_micro_logs WHERE company_id = ? AND (status = "rechazado" OR status = "cuarentena" OR salmonella_25g = "presencia" OR mesophilic_aerobic_cfu > 10000)',
-            [company_id]
+            `SELECT COUNT(*) as count FROM egg_lab_micro_logs WHERE ${labAlertWhere}`,
+            labAlertParams
         );
 
         const [[approvedLab]] = await pool.query(
-            'SELECT COUNT(*) as count FROM egg_lab_micro_logs WHERE company_id = ? AND status = "aprobado"',
-            [company_id]
+            `SELECT COUNT(*) as count FROM egg_lab_micro_logs WHERE ${labApprovedWhere}`,
+            labApprovedParams
         );
 
         res.json({
@@ -2172,13 +2253,23 @@ const getTraceability360Detail = async (req, res) => {
             pasteurizations = pasts;
         }
 
-        // Cargar empaques
+        // Cargar empaques con detección de venta/despacho a clientes
         let packaging = [];
         if (batchId) {
-            const [pkgs] = await pool.query(
-                'SELECT * FROM egg_packaging_records WHERE batch_id = ? AND company_id = ? ORDER BY id DESC',
-                [batchId, company_id]
-            );
+            const [pkgs] = await pool.query(`
+                SELECT pk.*,
+                    (SELECT GROUP_CONCAT(DISTINCT COALESCE(sh.cliente_nombre, c.nombre, 'Consumidor Final') SEPARATOR ', ') 
+                     FROM sales_items si 
+                     JOIN sales_headers sh ON sh.id = si.sale_id 
+                     LEFT JOIN customers c ON c.id = sh.customer_id
+                     WHERE pk.lot_code IS NOT NULL 
+                       AND (si.codigo = pk.lot_code OR si.descripcion LIKE CONCAT('%', pk.lot_code, '%')) 
+                       AND sh.estado != 'anulado'
+                    ) as sale_customer_name
+                FROM egg_packaging_records pk 
+                WHERE pk.batch_id = ? AND pk.company_id = ? 
+                ORDER BY pk.id DESC
+            `, [batchId, company_id]);
             packaging = pkgs;
         }
 
