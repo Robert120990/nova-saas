@@ -7427,7 +7427,13 @@ const getOrderDeliveryReceipt = async (req, res) => {
 
         doc.font('Helvetica').fontSize(7.5).fillColor('#334155');
         const orderNum = ord.order_number || `PED-${String(ord.id).padStart(5, '0')}`;
-        const reqDate = ord.required_delivery_date ? ord.required_delivery_date.split('T')[0] : 'N/A';
+        const reqDate = ord.required_delivery_date
+            ? (typeof ord.required_delivery_date === 'string'
+                ? ord.required_delivery_date.split('T')[0]
+                : (ord.required_delivery_date instanceof Date
+                    ? ord.required_delivery_date.toISOString().split('T')[0]
+                    : String(ord.required_delivery_date).substring(0, 10)))
+            : 'N/A';
         doc.text(`Orden #: `, 45, currentY + 24);
         doc.font('Helvetica-Bold').text(orderNum, 90, currentY + 24);
         doc.font('Helvetica').text(`Fecha Entrega: `, 45, currentY + 36);
@@ -7439,7 +7445,8 @@ const getOrderDeliveryReceipt = async (req, res) => {
         doc.font('Helvetica').text(`Camión / Motorista: `, 45, currentY + 72);
         doc.text(`${ord.vehicle_code ? `${ord.vehicle_code} (${ord.vehicle_plate}) - ` : ''}${ord.route_driver_name || 'Sin asignar'}`, 130, currentY + 72, { width: 145, ellipsis: true });
 
-        doc.font('Helvetica-Bold').text(ord.customer_name || 'Cliente sin registrar', 300, currentY + 24, { width: 265, ellipsis: true });
+        const customerDisplayName = ord.customer_commercial_name || ord.customer_registered_name || ord.customer_name || 'Cliente sin registrar';
+        doc.font('Helvetica-Bold').text(customerDisplayName, 300, currentY + 24, { width: 265, ellipsis: true });
         doc.font('Helvetica').text(`Sucursal: `, 300, currentY + 36);
         doc.text(ord.branch_name || 'Sucursal Principal', 345, currentY + 36, { width: 220, ellipsis: true });
         doc.text(`Dirección: `, 300, currentY + 48);
@@ -7471,16 +7478,22 @@ const getOrderDeliveryReceipt = async (req, res) => {
         lineItems.forEach((it, idx) => {
             const pres = (it.presentation || '').toLowerCase();
             let factorLbs = 30;
-            if (pres.includes('55')) factorLbs = 55;
+            const mWeight = pres.match(/(\d+(?:\.\d+)?)\s*(?:lb|lbs|libras)/i);
+            if (mWeight) {
+                factorLbs = parseFloat(mWeight[1]) || 30;
+            } else if (pres.includes('55')) factorLbs = 55;
             else if (pres.includes('32')) factorLbs = 32;
             else if (pres.includes('30')) factorLbs = 30;
             else if (pres.includes('20')) factorLbs = 20;
-            else if (pres.includes('8')) factorLbs = 8;
-            else if (pres.includes('4')) factorLbs = 4;
-            else if (pres.includes('2')) factorLbs = 2;
+            else if (pres.includes('8') || pres.includes('galon') || pres.includes('galón')) factorLbs = 8;
+            else if (pres.includes('4') || pres.includes('medio')) factorLbs = 4;
+            else if (pres.includes('2') || pres.includes('litro')) factorLbs = 2;
             else if (pres.includes('0.2') || pres.includes('unidad')) factorLbs = 0.20;
 
-            const units = it.quantity_units ? parseFloat(it.quantity_units) : (it.quantity_lbs ? Math.max(1, Math.round(parseFloat(it.quantity_lbs) / factorLbs)) : 0);
+            const rawUnits = it.quantity_units ?? it.units;
+            const units = (rawUnits !== undefined && rawUnits !== null && rawUnits !== '' && parseFloat(rawUnits) > 0)
+                ? parseFloat(rawUnits)
+                : (it.quantity_lbs ? Math.max(1, Math.round(parseFloat(it.quantity_lbs) / factorLbs)) : 0);
             const lbs = it.quantity_lbs ? parseFloat(it.quantity_lbs) : (units * factorLbs);
             const kg = it.quantity_kg ? parseFloat(it.quantity_kg) : (lbs * 0.45359237);
             const precio = parseFloat(it.price_per_lb) || 0;
@@ -7546,6 +7559,7 @@ const getOrderDeliveryReceipt = async (req, res) => {
 
         doc.fontSize(6.5).fillColor('#94a3b8').text(`Comprobante generado el ${new Date().toLocaleString('es-SV')} | Sistema SIPEWEB NOVASAAS`, 35, 740, { align: 'center' });
 
+        doc.end();
         const pdfBuffer = await getBuffer();
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `inline; filename=comprobante_entrega_${orderNum}.pdf`);
