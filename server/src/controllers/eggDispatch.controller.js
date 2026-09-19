@@ -496,7 +496,7 @@ const getDispatchRouteDetail = async (req, res) => {
                     c.direccion AS customer_address,
                     c.es_credito AS customer_es_credito,
                     c.dias_credito AS customer_dias_credito,
-                    c.limite_credito AS customer_limite_credito,
+                    0 AS customer_limite_credito,
                     c.condicion_fiscal AS customer_condicion_fiscal,
                     c.pais AS customer_pais,
                     c.codigo_actividad AS customer_codigo_actividad,
@@ -532,9 +532,9 @@ const getDispatchRouteDetail = async (req, res) => {
              FROM egg_dispatch_stops s
              JOIN egg_customer_orders o ON s.order_id = o.id
              LEFT JOIN egg_production_batches b ON o.batch_id = b.id
-             JOIN customers c ON s.customer_id = c.id
+             LEFT JOIN customers c ON s.customer_id = c.id
              LEFT JOIN customer_branches cb ON s.customer_branch_id = cb.id
-             LEFT JOIN sales_headers sh ON (s.sale_id = sh.id OR o.sale_id = sh.id OR (s.dte_codigo_generacion IS NOT NULL AND s.dte_codigo_generacion = sh.codigo_generacion))
+             LEFT JOIN sales_headers sh ON (s.sale_id = sh.id OR o.sale_id = sh.id OR (s.dte_codigo_generacion IS NOT NULL AND s.dte_codigo_generacion COLLATE utf8mb4_unicode_ci = sh.codigo_generacion COLLATE utf8mb4_unicode_ci))
              WHERE s.dispatch_route_id = ?
              ORDER BY s.orden_visita ASC, s.id ASC`,
             [id]
@@ -655,6 +655,22 @@ const saveDispatchRoute = async (req, res) => {
                     totalPesoLbs += lbs;
                     totalCubetas += Math.ceil(lbs / 30.0);
                 });
+
+                // Evitar asignación duplicada concurrente en rutas nuevas
+                if (!id) {
+                    const [alreadyAssigned] = await connection.query(
+                        `SELECT id, order_number, dispatch_route_id 
+                         FROM egg_customer_orders 
+                         WHERE id IN (?) AND dispatch_route_id IS NOT NULL AND company_id = ?`,
+                        [orderIds, company_id]
+                    );
+                    if (alreadyAssigned.length > 0) {
+                        await connection.rollback();
+                        return res.status(400).json({ 
+                            message: `El pedido ${alreadyAssigned[0].order_number || '#' + alreadyAssigned[0].id} ya se encuentra asignado a otra ruta de despacho.` 
+                        });
+                    }
+                }
             }
         }
 

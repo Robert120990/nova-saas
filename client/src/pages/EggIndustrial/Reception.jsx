@@ -32,9 +32,12 @@ import {
     Lock,
     FlaskConical,
     ClipboardList,
-    Check
+    Check,
+    Loader2,
+    ChevronDown
 } from 'lucide-react';
 import TarimaLabelModal from '../../components/egg/TarimaLabelModal';
+import PdfViewerModal from '../../components/ui/PdfViewerModal';
 
 const EggReception = () => {
     const { user } = useAuth();
@@ -175,9 +178,121 @@ const EggReception = () => {
         temperatura_transporte: ''
     };
 
-    const handlePrintLab001 = (rawMaterialId) => {
+    const [printingPdfId, setPrintingPdfId] = useState(null);
+    const [openPrintMenuId, setOpenPrintMenuId] = useState(null);
+    const [pdfPreviewModal, setPdfPreviewModal] = useState({
+        isOpen: false,
+        url: null,
+        title: '',
+        subtitle: '',
+        fileName: ''
+    });
+
+    const handleClosePdfPreview = () => {
+        if (pdfPreviewModal.url) {
+            window.URL.revokeObjectURL(pdfPreviewModal.url);
+        }
+        setPdfPreviewModal({
+            isOpen: false,
+            url: null,
+            title: '',
+            subtitle: '',
+            fileName: ''
+        });
+    };
+
+    const handlePrintLab001 = async (rawMaterialId, customLot = '') => {
         if (!rawMaterialId) return;
-        window.open(`/api/egg-industrial/raw-materials/${rawMaterialId}/lab-001-pdf`, '_blank');
+        setPrintingPdfId(rawMaterialId);
+        const toastId = toast.loading('Generando dictamen técnico de calidad LAB 001...');
+        try {
+            const res = await axios.get(`/api/egg-industrial/raw-materials/${rawMaterialId}/lab-001-pdf`, {
+                responseType: 'blob'
+            });
+            const blob = new Blob([res.data], { type: 'application/pdf' });
+            const blobUrl = window.URL.createObjectURL(blob);
+
+            setPdfPreviewModal({
+                isOpen: true,
+                url: blobUrl,
+                title: 'Reporte de Materia Prima • Control de Calidad',
+                subtitle: `Formato Oficial LAB 001 • Lote ${customLot || rawMaterialId}`,
+                fileName: `LAB_001_Materia_Prima_${(customLot || rawMaterialId).toString().replace(/[^a-zA-Z0-9_-]/g, '_')}.pdf`
+            });
+
+            toast.dismiss(toastId);
+        } catch (err) {
+            console.error('Error al generar PDF LAB 001:', err);
+            toast.error(err.response?.data?.message || 'Error al generar o visualizar el reporte LAB 001.', { id: toastId });
+        } finally {
+            setPrintingPdfId(null);
+        }
+    };
+
+    const handlePrintLab001FromModal = async () => {
+        if (!qualityModal.rm?.id) return;
+        setPrintingPdfId(qualityModal.rm.id);
+        const toastId = toast.loading('Generando dictamen técnico de calidad LAB 001...');
+        try {
+            const currentPayload = {
+                egg_classification: qualityModal.egg_classification,
+                egg_size: qualityModal.egg_size,
+                egg_color: qualityModal.egg_color,
+                quality_status: qualityModal.quality_status,
+                quality_inspector_name: qualityModal.inspector_name?.trim(),
+                quality_reviewed_by: qualityModal.quality_reviewed_by?.trim(),
+                quality_defect_broken_pct: parseFloat(qualityModal.quality_defect_broken_pct) || 0,
+                quality_defect_dirty_pct: parseFloat(qualityModal.quality_defect_dirty_pct) || 0,
+                quality_brix: qualityModal.quality_brix !== '' ? parseFloat(qualityModal.quality_brix) : null,
+                quality_notes: qualityModal.quality_notes?.trim() || null,
+                remission_note: qualityModal.remission_note || null,
+                farm_name: qualityModal.farm_name || null,
+                production_date: qualityModal.production_date || null,
+                expiration_date: qualityModal.expiration_date || null,
+                sample_egg_weight_g: qualityModal.sample_egg_weight_g ? parseFloat(qualityModal.sample_egg_weight_g) : null,
+                total_boxes: qualityModal.total_boxes || 0,
+                physicochemical: qualityModal.physicochemical,
+                organoleptic: qualityModal.organoleptic,
+                transport_storage: qualityModal.transport_storage
+            };
+
+            const res = await axios.post(`/api/egg-industrial/raw-materials/${qualityModal.rm.id}/lab-001-pdf`, currentPayload, {
+                responseType: 'blob'
+            });
+            const blob = new Blob([res.data], { type: 'application/pdf' });
+            const blobUrl = window.URL.createObjectURL(blob);
+
+            setPdfPreviewModal({
+                isOpen: true,
+                url: blobUrl,
+                title: 'Reporte de Materia Prima • Control de Calidad',
+                subtitle: `Formato Oficial LAB 001 • Lote ${qualityModal.provider_lot || qualityModal.rm.provider_lot || qualityModal.rm.id}`,
+                fileName: `LAB_001_Materia_Prima_${(qualityModal.provider_lot || qualityModal.rm.provider_lot || qualityModal.rm.id).toString().replace(/[^a-zA-Z0-9_-]/g, '_')}.pdf`
+            });
+
+            toast.dismiss(toastId);
+        } catch (err) {
+            console.error('Error al generar PDF LAB 001 desde modal:', err);
+            try {
+                const res = await axios.get(`/api/egg-industrial/raw-materials/${qualityModal.rm.id}/lab-001-pdf`, {
+                    responseType: 'blob'
+                });
+                const blob = new Blob([res.data], { type: 'application/pdf' });
+                const blobUrl = window.URL.createObjectURL(blob);
+                setPdfPreviewModal({
+                    isOpen: true,
+                    url: blobUrl,
+                    title: 'Reporte de Materia Prima • Control de Calidad',
+                    subtitle: `Formato Oficial LAB 001 • Lote ${qualityModal.provider_lot || qualityModal.rm.provider_lot || qualityModal.rm.id}`,
+                    fileName: `LAB_001_Materia_Prima_${(qualityModal.provider_lot || qualityModal.rm.provider_lot || qualityModal.rm.id).toString().replace(/[^a-zA-Z0-9_-]/g, '_')}.pdf`
+                });
+                toast.dismiss(toastId);
+            } catch (err2) {
+                toast.error(err2.response?.data?.message || err2.message || 'Error al generar dictamen LAB 001.', { id: toastId });
+            }
+        } finally {
+            setPrintingPdfId(null);
+        }
     };
 
     // Estado del modal de evaluación de calidad y reporte de materia prima (LAB 001, Rev. 7.03.24)
@@ -1557,6 +1672,7 @@ const EggReception = () => {
                                                 </td>
                                                 <td className="px-3 py-2.5 text-center">
                                                     <div className="flex items-center justify-center gap-1.5">
+                                                        {/* 1. Ver Detalle y Tarimas */}
                                                         <button
                                                             type="button"
                                                             onClick={() => setViewingReception(rm)}
@@ -1565,100 +1681,159 @@ const EggReception = () => {
                                                         >
                                                             <Eye size={13} />
                                                         </button>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => handlePrintReceptionSummary(rm)}
-                                                            className="p-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg border border-emerald-200 transition-colors shadow-xs"
-                                                            title="Imprimir Resumen Oficial PDF (LOG-004)"
-                                                        >
-                                                            <FileText size={13} />
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => handlePrintLab001(rm.id)}
-                                                            className="p-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded-lg border border-amber-200 transition-colors shadow-xs"
-                                                            title="Imprimir Reporte Oficial de Calidad LAB 001 (Rev. 7.03.24)"
-                                                        >
-                                                            <Printer size={13} />
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => {
-                                                                let parsedTarimas = [];
-                                                                try {
-                                                                    parsedTarimas = typeof rm.tarimas_json === 'string'
-                                                                        ? JSON.parse(rm.tarimas_json || '[]')
-                                                                        : (rm.tarimas_json || []);
-                                                                } catch (e) {
-                                                                    parsedTarimas = [];
-                                                                }
-                                                                if (!Array.isArray(parsedTarimas) || parsedTarimas.length === 0) {
-                                                                    parsedTarimas = [{
-                                                                        tarima_number: 1,
-                                                                        boxes_count: rm.total_boxes || 0,
-                                                                        gross_weight_lbs: rm.weight_lbs || 0,
-                                                                        tare_weight_lbs: 0,
-                                                                        net_weight_lbs: rm.weight_lbs || 0
-                                                                    }];
-                                                                }
-                                                                const recData = {
-                                                                    reception_id: rm.id,
-                                                                    provider_name: rm.provider_name,
-                                                                    provider_lot: rm.provider_lot,
-                                                                    fecha: rm.fecha || rm.created_at,
-                                                                    egg_type: rm.egg_type,
-                                                                    egg_color: rm.egg_color,
-                                                                    egg_size: rm.egg_size,
-                                                                    temperature_c: rm.temperature_c,
-                                                                    truck_temperature_c: rm.truck_temperature_c,
-                                                                    truck_plate: rm.truck_plate,
-                                                                    driver_name: rm.driver_name,
-                                                                    operator_name: rm.operator_name,
-                                                                    company_name: user?.company_name || 'ANDELSA, S.A. DE C.V.'
-                                                                };
-                                                                handleOpenPrintTarima(parsedTarimas[0], parsedTarimas, recData);
-                                                            }}
-                                                            className="p-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 rounded-lg border border-sky-200 transition-colors shadow-xs"
-                                                            title="Imprimir Etiquetas de Tarimas"
-                                                        >
-                                                            <Printer size={13} />
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => handleOpenQualityModal(rm)}
-                                                            className="p-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 rounded-lg border border-amber-200 transition-colors shadow-xs"
-                                                            title="Evaluación de Calidad y Clasificación del Lote (LAB-004)"
-                                                        >
-                                                            <ShieldCheck size={13} />
-                                                        </button>
+
+                                                        {/* 2. Menú Desplegable de Impresión */}
+                                                        <div className="relative">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setOpenPrintMenuId(openPrintMenuId === rm.id ? null : rm.id)}
+                                                                disabled={printingPdfId === rm.id}
+                                                                className={`inline-flex items-center gap-1 px-2 py-1 text-[11px] font-bold rounded-lg border transition-all shadow-xs ${
+                                                                    openPrintMenuId === rm.id
+                                                                        ? 'bg-indigo-600 text-white border-indigo-600 ring-2 ring-indigo-500/20'
+                                                                        : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200'
+                                                                } disabled:opacity-50`}
+                                                                title="Formatos de Impresión (LOG-004, LAB-001, Tarimas)"
+                                                            >
+                                                                {printingPdfId === rm.id ? (
+                                                                    <Loader2 className="animate-spin" size={12} />
+                                                                ) : (
+                                                                    <Printer size={12} className={openPrintMenuId === rm.id ? 'text-white' : 'text-slate-500'} />
+                                                                )}
+                                                                <span>Imprimir</span>
+                                                                <ChevronDown size={10} className={`transition-transform duration-150 ${openPrintMenuId === rm.id ? 'rotate-180' : ''}`} />
+                                                            </button>
+
+                                                            {openPrintMenuId === rm.id && (
+                                                                <>
+                                                                    {/* Overlay transparente para cerrar al hacer clic afuera */}
+                                                                    <div 
+                                                                        className="fixed inset-0 z-30" 
+                                                                        onClick={() => setOpenPrintMenuId(null)} 
+                                                                    />
+
+                                                                    {/* Menú Desplegable */}
+                                                                    <div className="absolute right-0 top-full mt-1.5 w-60 bg-white border border-slate-200 rounded-xl shadow-xl py-1.5 z-40 text-left divide-y divide-slate-100 animate-in fade-in-50 zoom-in-95">
+                                                                        <div className="px-3 py-1 text-[10px] font-black uppercase tracking-wider text-slate-400">
+                                                                            Formatos Oficiales
+                                                                        </div>
+                                                                        <div className="py-1">
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => {
+                                                                                    setOpenPrintMenuId(null);
+                                                                                    handlePrintReceptionSummary(rm);
+                                                                                }}
+                                                                                className="w-full px-3 py-2 text-xs text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 flex items-center gap-2.5 transition text-left"
+                                                                            >
+                                                                                <FileText size={15} className="text-emerald-600 shrink-0" />
+                                                                                <div>
+                                                                                    <span className="font-bold block text-slate-900">Resumen Recepción (LOG-004)</span>
+                                                                                    <span className="text-[10px] text-slate-400 block font-normal">Boleta de ingreso y báscula en PDF</span>
+                                                                                </div>
+                                                                            </button>
+
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => {
+                                                                                    setOpenPrintMenuId(null);
+                                                                                    handlePrintLab001(rm.id, rm.provider_lot);
+                                                                                }}
+                                                                                className="w-full px-3 py-2 text-xs text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 flex items-center gap-2.5 transition text-left"
+                                                                            >
+                                                                                <FlaskConical size={15} className="text-amber-600 shrink-0" />
+                                                                                <div>
+                                                                                    <span className="font-bold block text-slate-900">Dictamen de Calidad (LAB-001)</span>
+                                                                                    <span className="text-[10px] text-slate-400 block font-normal">Reporte técnico oficial con visor</span>
+                                                                                </div>
+                                                                            </button>
+
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => {
+                                                                                    setOpenPrintMenuId(null);
+                                                                                    let parsedTarimas = [];
+                                                                                    try {
+                                                                                        parsedTarimas = typeof rm.tarimas_json === 'string'
+                                                                                            ? JSON.parse(rm.tarimas_json || '[]')
+                                                                                            : (rm.tarimas_json || []);
+                                                                                    } catch (e) {
+                                                                                        parsedTarimas = [];
+                                                                                    }
+                                                                                    if (!Array.isArray(parsedTarimas) || parsedTarimas.length === 0) {
+                                                                                        parsedTarimas = [{
+                                                                                            tarima_number: 1,
+                                                                                            boxes_count: rm.total_boxes || 0,
+                                                                                            gross_weight_lbs: rm.weight_lbs || 0,
+                                                                                            tare_weight_lbs: 0,
+                                                                                            net_weight_lbs: rm.weight_lbs || 0
+                                                                                        }];
+                                                                                    }
+                                                                                    const recData = {
+                                                                                        reception_id: rm.id,
+                                                                                        provider_name: rm.provider_name,
+                                                                                        provider_lot: rm.provider_lot,
+                                                                                        fecha: rm.fecha || rm.created_at,
+                                                                                        egg_type: rm.egg_type,
+                                                                                        egg_color: rm.egg_color,
+                                                                                        egg_size: rm.egg_size,
+                                                                                        temperature_c: rm.temperature_c,
+                                                                                        truck_temperature_c: rm.truck_temperature_c,
+                                                                                        truck_plate: rm.truck_plate,
+                                                                                        driver_name: rm.driver_name,
+                                                                                        operator_name: rm.operator_name,
+                                                                                        company_name: user?.company_name || 'ANDELSA, S.A. DE C.V.'
+                                                                                    };
+                                                                                    handleOpenPrintTarima(parsedTarimas[0], parsedTarimas, recData);
+                                                                                }}
+                                                                                className="w-full px-3 py-2 text-xs text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 flex items-center gap-2.5 transition text-left"
+                                                                            >
+                                                                                <Boxes size={15} className="text-sky-600 shrink-0" />
+                                                                                <div>
+                                                                                    <span className="font-bold block text-slate-900">Etiquetas de Tarimas (QR)</span>
+                                                                                    <span className="text-[10px] text-slate-400 block font-normal">Fichas de identificación para estibas</span>
+                                                                                </div>
+                                                                            </button>
+                                                                        </div>
+                                                                    </div>
+                                                                </>
+                                                            )}
+                                                        </div>
+
+                                                        {/* 3. Editar Recepción */}
                                                         {rm.status !== 'anulado' && (
                                                             <button
                                                                 onClick={() => handleEdit(rm)}
                                                                 className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg border border-slate-300 transition-colors shadow-xs"
-                                                                title="Editar Recepción Original Completa"
+                                                                title="Editar Recepción"
                                                             >
                                                                 <Pencil size={13} />
                                                             </button>
                                                         )}
+
+                                                        {/* 4. Anular */}
                                                         {rm.status !== 'anulado' && parseFloat(rm.stock_lbs || 0) >= parseFloat(rm.weight_lbs || 0) && (
                                                             <button
                                                                 onClick={() => setVoidConfirmId(rm.id)}
                                                                 className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg border border-rose-200 transition-colors shadow-xs"
-                                                                title="Anular"
+                                                                title="Anular Recepción"
                                                             >
                                                                 <Ban size={13} />
                                                             </button>
                                                         )}
+
+                                                        {/* 5. Eliminar */}
                                                         {canDeleteReception && (
                                                             <button
                                                                 type="button"
                                                                 onClick={() => setDeleteConfirmRm(rm)}
                                                                 className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg border border-rose-200 transition-colors shadow-xs"
-                                                                title="Eliminar Recepción de Materia Prima"
+                                                                title="Eliminar Recepción Permanentemente"
                                                             >
                                                                 <Trash2 size={13} />
                                                             </button>
                                                         )}
+
                                                         {rm.status === 'anulado' && (
                                                             <span className="text-[10px] text-slate-400 font-semibold italic">Anulado</span>
                                                         )}
@@ -1802,11 +1977,12 @@ const EggReception = () => {
                                     <div className="flex items-center gap-2 self-start sm:self-auto">
                                         <button
                                             type="button"
-                                            onClick={() => handlePrintLab001(viewingReception.id)}
-                                            className="px-3 py-1.5 bg-white hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-xl text-xs font-bold transition-all shadow-2xs flex items-center gap-1.5"
+                                            disabled={printingPdfId === viewingReception.id}
+                                            onClick={() => handlePrintLab001(viewingReception.id, viewingReception.provider_lot)}
+                                            className="px-3 py-1.5 bg-white hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-xl text-xs font-bold transition-all shadow-2xs flex items-center gap-1.5 disabled:opacity-50"
                                             title="Imprimir Formato Oficial LAB 001 (Rev. 7.03.24)"
                                         >
-                                            <Printer size={13} />
+                                            {printingPdfId === viewingReception.id ? <Loader2 className="animate-spin" size={13} /> : <Printer size={13} />}
                                             <span>Imprimir LAB 001</span>
                                         </button>
                                         <button
@@ -2020,12 +2196,13 @@ const EggReception = () => {
                             <div className="flex items-center gap-2">
                                 <button
                                     type="button"
-                                    onClick={() => handlePrintLab001(qualityModal.rm?.id)}
-                                    className="px-3 py-1.5 bg-white hover:bg-amber-50 text-amber-900 border border-amber-300 rounded-xl text-xs font-bold transition-all shadow-2xs flex items-center gap-1.5"
+                                    disabled={printingPdfId === qualityModal.rm?.id}
+                                    onClick={handlePrintLab001FromModal}
+                                    className="px-3 py-1.5 bg-white hover:bg-amber-50 text-amber-900 border border-amber-300 rounded-xl text-xs font-bold transition-all shadow-2xs flex items-center gap-1.5 disabled:opacity-50"
                                     title="Imprimir formato físico oficial LAB 001 en PDF"
                                 >
-                                    <Printer size={14} className="text-amber-700" />
-                                    <span className="hidden sm:inline">Imprimir LAB 001</span>
+                                    {printingPdfId === qualityModal.rm?.id ? <Loader2 className="animate-spin" size={14} /> : <Printer size={14} className="text-amber-700" />}
+                                    <span className="hidden sm:inline">{printingPdfId === qualityModal.rm?.id ? 'Generando...' : 'Imprimir LAB 001'}</span>
                                 </button>
                                 <button
                                     type="button"
@@ -2776,11 +2953,12 @@ const EggReception = () => {
                             <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t border-slate-200">
                                 <button
                                     type="button"
-                                    onClick={() => handlePrintLab001(qualityModal.rm?.id)}
-                                    className="w-full sm:w-auto px-4 py-2 bg-white hover:bg-amber-50 text-amber-900 rounded-xl text-xs font-bold border border-amber-300 transition-colors shadow-2xs flex items-center justify-center gap-1.5"
+                                    disabled={printingPdfId === qualityModal.rm?.id}
+                                    onClick={handlePrintLab001FromModal}
+                                    className="w-full sm:w-auto px-4 py-2 bg-white hover:bg-amber-50 text-amber-900 rounded-xl text-xs font-bold border border-amber-300 transition-colors shadow-2xs flex items-center justify-center gap-1.5 disabled:opacity-50"
                                 >
-                                    <Printer size={15} className="text-amber-700" />
-                                    <span>Imprimir Reporte LAB 001 (PDF)</span>
+                                    {printingPdfId === qualityModal.rm?.id ? <Loader2 className="animate-spin" size={15} /> : <Printer size={15} className="text-amber-700" />}
+                                    <span>{printingPdfId === qualityModal.rm?.id ? 'Generando Reporte LAB 001...' : 'Imprimir Reporte LAB 001 (PDF)'}</span>
                                 </button>
 
                                 <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end">
@@ -2861,6 +3039,18 @@ const EggReception = () => {
                 tarima={printTarimaModal.tarima}
                 allTarimas={printTarimaModal.allTarimas}
                 receptionData={printTarimaModal.receptionData}
+            />
+
+            {/* Modal de Visualización e Impresión de Reporte LAB 001 */}
+            <PdfViewerModal
+                isOpen={pdfPreviewModal.isOpen}
+                onClose={handleClosePdfPreview}
+                title={pdfPreviewModal.title}
+                subtitle={pdfPreviewModal.subtitle}
+                badge="LAB 001 • Rev. 7.03.24"
+                pdfUrl={pdfPreviewModal.url}
+                fileName={pdfPreviewModal.fileName}
+                footerNote="Laboratorio de Control de Calidad • Reporte Oficial de Materia Prima y Dictamen Técnico (LAB 001)"
             />
         </div>
     );

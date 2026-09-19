@@ -8,6 +8,7 @@ router.post('/raw-materials', eggController.createRawMaterial);
 router.put('/raw-materials/:id', eggController.updateRawMaterial);
 router.put('/raw-materials/:id/quality-classification', eggController.saveQualityClassification);
 router.get('/raw-materials/:id/lab-001-pdf', eggController.getRawMaterialLab001Pdf);
+router.post('/raw-materials/:id/lab-001-pdf', eggController.getRawMaterialLab001Pdf);
 router.put('/raw-materials/:id/void', eggController.voidRawMaterial);
 router.delete('/raw-materials/:id', eggController.deleteRawMaterial);
 
@@ -177,6 +178,7 @@ router.get('/orders', eggController.getEggCustomerOrders);
 router.post('/orders', eggController.saveEggCustomerOrder);
 router.put('/orders/:id', eggController.saveEggCustomerOrder);
 router.delete('/orders/:id', eggController.deleteEggCustomerOrder);
+router.get('/orders/customer-pricing', eggController.getCustomerPricingForOrder);
 router.get('/orders/:id/delivery-receipt', eggController.getOrderDeliveryReceipt);
 
 // 21. Usuarios de Planta para Roles
