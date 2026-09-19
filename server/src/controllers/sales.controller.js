@@ -2099,150 +2099,154 @@ async function resolveUbicacionCompleta(depCode, munCode, distCode, direccionCom
     };
 }
 
+const getSaleRTEEPdfBuffer = async (id, companyId) => {
+    // 1. Obtener datos detallados de la venta y DTE
+    const [header] = await pool.query(
+        `SELECT h.*, h.estado as sale_estado,
+        s.nombre as seller_name, p.nombre as pos_name, c.nombre as customer_name, c.correo as customer_email,
+        c.nrc as customer_nrc,
+        COALESCE(d_c.status, d_v.status) as dte_status, COALESCE(d_c.numero_control, d_v.numero_control) as dte_control, COALESCE(d_c.respuesta_hacienda, d_v.respuesta_hacienda) as respuesta_hacienda, COALESCE(d_c.respuesta_hacienda, d_v.respuesta_hacienda) as dte_error,
+        COALESCE(d_c.json_original, d_v.json_original) as json_original, COALESCE(d_c.sello_recepcion, d_v.sello_recepcion) as sello_recepcion, COALESCE(d_c.fh_procesamiento, d_v.fh_procesamiento) as fh_procesamiento
+        FROM sales_headers h
+        LEFT JOIN customers c ON h.customer_id = c.id
+        LEFT JOIN sellers s ON h.seller_id = s.id
+        LEFT JOIN points_of_sale p ON h.pos_id = p.id
+        LEFT JOIN dtes d_c ON d_c.codigo_generacion = h.codigo_generacion AND d_c.company_id = h.company_id
+        LEFT JOIN dtes d_v ON (h.codigo_generacion IS NULL OR h.codigo_generacion = '') AND d_v.venta_id = h.id AND d_v.company_id = h.company_id
+        WHERE h.id = ? AND h.company_id = ? LIMIT 1`, [id, companyId]);
+
+    if (header.length === 0) {
+        throw new Error('Venta no encontrada');
+    }
+
+    const venta = header[0];
+    
+    // Procesar JSON si viene como string
+    let dteJson = venta.json_original;
+    if (typeof dteJson === 'string') {
+        try { dteJson = JSON.parse(dteJson); } catch (e) {
+            throw new Error('Error al procesar el JSON del DTE');
+        }
+    }
+
+    if (!dteJson) {
+        throw new Error('Esta venta no tiene un DTE asociado para generar la RTEE');
+    }
+
+    // 2. Obtener datos del emisor (Empresa y Sucursal)
+    const [company] = await pool.query('SELECT * FROM companies WHERE id = ?', [companyId]);
+    const [branch] = await pool.query('SELECT * FROM branches WHERE id = ?', [venta.branch_id]);
+
+    const branchRow = branch[0] || {};
+    const companyRow = company[0] || {};
+
+    // --- Lógica de Logo Robusta sin préstamos entre sucursales ---
+    const logoPath = await resolveRTEELogo(companyId, venta.branch_id, branchRow.logo_url, companyRow.logo_url);
+
+    // Resolver ubicación detallada de la sucursal (dirección, distrito, municipio, departamento)
+    const depCode = branchRow.departamento || dteJson.emisor?.direccion?.departamento || companyRow.departamento;
+    const munCode = branchRow.municipio || dteJson.emisor?.direccion?.municipio || companyRow.municipio;
+    const distCode = branchRow.distrito || dteJson.emisor?.direccion?.distrito;
+    const dirComplemento = branchRow.direccion || dteJson.emisor?.direccion?.complemento || dteJson.emisor?.direccion || '';
+
+    const [emisorDescActividad, receptorDescActividad, ubicacionInfo] = await Promise.all([
+        resolveActividadOficial(dteJson.emisor?.codActividad, dteJson.emisor?.descActividad),
+        resolveActividadOficial(dteJson.receptor?.codActividad, dteJson.receptor?.descActividad),
+        resolveUbicacionCompleta(depCode, munCode, distCode, dirComplemento)
+    ]);
+
+    const reportData = {
+        emisor: {
+            razon_social: companyRow.nombre || companyRow.razon_social || dteJson.emisor?.nombre,
+            nombre_comercial: companyRow.nombre_comercial || dteJson.emisor?.nombreComercial,
+            sucursal_nombre: branchRow.nombre || dteJson.emisor?.nombreComercial || null,
+            cod_establecimiento: branchRow.codigo_mh || dteJson.emisor?.codEstable || dteJson.emisor?.codEstableMH || null,
+            cod_punto_venta: dteJson.emisor?.codPuntoVenta || dteJson.emisor?.codPuntoVentaMH || venta.pos_name || null,
+            tipo_establecimiento: branchRow.tipo_establecimiento || dteJson.emisor?.tipoEstablecimiento || null,
+            es_casa_matriz: branchRow.es_casa_matriz ?? 0,
+            nit: companyRow.nit || dteJson.emisor?.nit,
+            nrc: companyRow.nrc || dteJson.emisor?.nrc,
+            descActividad: emisorDescActividad,
+            direccion: dteJson.emisor?.direccion || branchRow.direccion,
+            direccion_completa: ubicacionInfo.textoCompleto,
+            telefono: dteJson.emisor?.telefono || branchRow.telefono,
+            correo: dteJson.emisor?.correo || branchRow.correo,
+            departamento_nombre: ubicacionInfo.departamento_nombre,
+            municipio_nombre: ubicacionInfo.municipio_nombre,
+            logoPath: logoPath
+        },
+        receptor: {
+            nombre: dteJson.receptor?.nombre,
+            nit: dteJson.receptor?.nit,
+            nrc: dteJson.receptor?.nrc || venta.customer_nrc || null,
+            numDocumento: dteJson.receptor?.numDocumento,
+            direccion: dteJson.receptor?.direccion,
+            codActividad: dteJson.receptor?.codActividad || null,
+            descActividad: receptorDescActividad,
+            codPais: dteJson.receptor?.codPais || null,
+            nombrePais: dteJson.receptor?.nombrePais || null,
+        },
+        dte: {
+            tipoDte: dteJson.identificacion?.tipoDte,
+            tipoDteNombre: getDteTypeName(dteJson.identificacion?.tipoDte),
+            codigoGeneracion: dteJson.identificacion?.codigoGeneracion,
+            numeroControl: dteJson.identificacion?.numeroControl,
+            selloRecepcion: venta.sello_recepcion,
+            ambiente: dteJson.identificacion?.ambiente,
+            tipoModelo: dteJson.identificacion?.tipoModelo,
+            tipoOperacion: dteJson.identificacion?.tipoOperacion
+        },
+        venta: {
+            fecha_emision: dteJson.identificacion?.fecEmi,
+            hora_emision: dteJson.identificacion?.horEmi,
+            condicion_operacion: dteJson.resumen?.condicionOperacion || 1,
+            total_gravado: dteJson.resumen?.totalGravada || dteJson.resumen?.totalSujetoRetencion || 0,
+            total_exento: dteJson.resumen?.totalExenta || 0,
+            total_nosujetas: dteJson.resumen?.totalNoSuj || 0,
+            total_iva: dteJson.resumen?.totalIva || dteJson.resumen?.totalIvaRetenido || dteJson.resumen?.totalIVAretenido || (dteJson.resumen?.tributos ? dteJson.resumen?.tributos.find(t => t.codigo === '20')?.valor : 0) || 0,
+            total_descuento: dteJson.resumen?.descuNoExenta || 0,
+            total_pagar: dteJson.resumen?.totalPagar || dteJson.resumen?.totalIvaRetenido || dteJson.resumen?.totalIVAretenido || parseFloat(venta.total_pagar) || 0,
+            total_letras: dteJson.resumen?.totalLetras || dteJson.resumen?.totalIVAretenidoLetras || '',
+            fovial: parseFloat(venta.fovial) || 0,
+            cotrans: parseFloat(venta.cotrans) || 0,
+            tributos: dteJson.resumen?.tributos || [],
+            totalSujetoRetencion: dteJson.resumen?.totalSujetoRetencion || 0,
+            totalIVAretenido: dteJson.resumen?.totalIvaRetenido || dteJson.resumen?.totalIVAretenido || 0,
+            totalIvaRetenido: dteJson.resumen?.totalIvaRetenido || dteJson.resumen?.totalIVAretenido || 0,
+            total_retencion: dteJson.resumen?.ivaRete || dteJson.resumen?.totalIvaRetenido || 0,
+            total_percepcion: dteJson.resumen?.ivaPerci || 0,
+        },
+        items: (dteJson.cuerpoDocumento || []).map(item => ({
+            cantidad: item.cantidad || 1,
+            descripcion: item.descripcion || '',
+            precioUnitario: item.precioUni || item.montoSujetoGrav || 0,
+            montoDescuento: item.montoDescu || 0,
+            totalItem: item.ventaGravada || item.montoSujetoGrav || 0,
+            montoSujetoGrav: item.montoSujetoGrav || item.ventaGravada || 0,
+            uniMedida: item.uniMedida || 59,
+            tipoDte: item.tipoDte || null,
+            tipoGeneracion: item.tipoGeneracion || null,
+            numDocumento: item.numeroDocumento || item.numDocumento || null,
+            numeroDocumento: item.numeroDocumento || item.numDocumento || null,
+            fechaEmision: item.fechaEmision || item.emissionDate || item.fecEmi || null,
+            ivaRetenido: item.ivaRetenido || 0,
+            codigoRetencionMH: item.codigoRetencionMH || null,
+            tributos: item.tributos || null,
+        }))
+    };
+
+    reportData.isVoided = ['anulado', 'invalidado'].includes((venta.estado || '').toLowerCase()) ||
+                          ['anulado', 'invalidado'].includes((venta.sale_estado || '').toLowerCase()) ||
+                          venta.dte_status === 'INVALIDADO';
+
+    return await pdfService.generateRTEE(reportData);
+};
+
 const exportRTEE = async (req, res) => {
     const { id } = req.params;
 
     try {
-        // 1. Obtener datos detallados de la venta y DTE
-        const [header] = await pool.query(
-            `SELECT h.*, h.estado as sale_estado,
-            s.nombre as seller_name, p.nombre as pos_name, c.nombre as customer_name, c.correo as customer_email,
-            c.nrc as customer_nrc,
-            COALESCE(d_c.status, d_v.status) as dte_status, COALESCE(d_c.numero_control, d_v.numero_control) as dte_control, COALESCE(d_c.respuesta_hacienda, d_v.respuesta_hacienda) as respuesta_hacienda, COALESCE(d_c.respuesta_hacienda, d_v.respuesta_hacienda) as dte_error,
-            COALESCE(d_c.json_original, d_v.json_original) as json_original, COALESCE(d_c.sello_recepcion, d_v.sello_recepcion) as sello_recepcion, COALESCE(d_c.fh_procesamiento, d_v.fh_procesamiento) as fh_procesamiento
-            FROM sales_headers h
-            LEFT JOIN customers c ON h.customer_id = c.id
-            LEFT JOIN sellers s ON h.seller_id = s.id
-            LEFT JOIN points_of_sale p ON h.pos_id = p.id
-            LEFT JOIN dtes d_c ON d_c.codigo_generacion = h.codigo_generacion AND d_c.company_id = h.company_id
-            LEFT JOIN dtes d_v ON (h.codigo_generacion IS NULL OR h.codigo_generacion = '') AND d_v.venta_id = h.id AND d_v.company_id = h.company_id
-            WHERE h.id = ? AND h.company_id = ? LIMIT 1`, [id, req.company_id]);
-
-        if (header.length === 0) {
-            return res.status(404).json({ message: 'Venta no encontrada' });
-        }
-
-        const venta = header[0];
-        
-        // Procesar JSON si viene como string
-        let dteJson = venta.json_original;
-        if (typeof dteJson === 'string') {
-            try { dteJson = JSON.parse(dteJson); } catch (e) {
-                return res.status(500).json({ message: 'Error al procesar el JSON del DTE' });
-            }
-        }
-
-        if (!dteJson) {
-            return res.status(400).json({ message: 'Esta venta no tiene un DTE asociado para generar la RTEE' });
-        }
-
-        // 2. Obtener datos del emisor (Empresa y Sucursal)
-        const [company] = await pool.query('SELECT * FROM companies WHERE id = ?', [req.company_id]);
-        const [branch] = await pool.query('SELECT * FROM branches WHERE id = ?', [venta.branch_id]);
-
-        const branchRow = branch[0] || {};
-        const companyRow = company[0] || {};
-
-        // --- Lógica de Logo Robusta sin préstamos entre sucursales ---
-        const logoPath = await resolveRTEELogo(req.company_id, venta.branch_id, branchRow.logo_url, companyRow.logo_url);
-
-        // Resolver ubicación detallada de la sucursal (dirección, distrito, municipio, departamento)
-        const depCode = branchRow.departamento || dteJson.emisor?.direccion?.departamento || companyRow.departamento;
-        const munCode = branchRow.municipio || dteJson.emisor?.direccion?.municipio || companyRow.municipio;
-        const distCode = branchRow.distrito || dteJson.emisor?.direccion?.distrito;
-        const dirComplemento = branchRow.direccion || dteJson.emisor?.direccion?.complemento || dteJson.emisor?.direccion || '';
-
-        const [emisorDescActividad, receptorDescActividad, ubicacionInfo] = await Promise.all([
-            resolveActividadOficial(dteJson.emisor?.codActividad, dteJson.emisor?.descActividad),
-            resolveActividadOficial(dteJson.receptor?.codActividad, dteJson.receptor?.descActividad),
-            resolveUbicacionCompleta(depCode, munCode, distCode, dirComplemento)
-        ]);
-
-        const reportData = {
-            emisor: {
-                nombre: companyRow.razon_social || dteJson.emisor?.nombre,
-                nombre_comercial: dteJson.emisor?.nombreComercial || companyRow.nombre_comercial || null,
-                sucursal_nombre: branchRow.nombre || dteJson.emisor?.nombreComercial || null,
-                cod_establecimiento: branchRow.codigo_mh || dteJson.emisor?.codEstable || dteJson.emisor?.codEstableMH || null,
-                cod_punto_venta: dteJson.emisor?.codPuntoVenta || dteJson.emisor?.codPuntoVentaMH || venta.pos_name || null,
-                tipo_establecimiento: branchRow.tipo_establecimiento || dteJson.emisor?.tipoEstablecimiento || null,
-                es_casa_matriz: branchRow.es_casa_matriz ?? 0,
-                nit: companyRow.nit || dteJson.emisor?.nit,
-                nrc: companyRow.nrc || dteJson.emisor?.nrc,
-                descActividad: emisorDescActividad,
-                direccion: dteJson.emisor?.direccion || branchRow.direccion,
-                direccion_completa: ubicacionInfo.textoCompleto,
-                telefono: dteJson.emisor?.telefono || branchRow.telefono,
-                correo: dteJson.emisor?.correo || branchRow.correo,
-                departamento_nombre: ubicacionInfo.departamento_nombre,
-                municipio_nombre: ubicacionInfo.municipio_nombre,
-                logoPath: logoPath
-            },
-            receptor: {
-                nombre: dteJson.receptor.nombre,
-                nit: dteJson.receptor.nit,
-                nrc: dteJson.receptor.nrc || venta.customer_nrc || null,
-                numDocumento: dteJson.receptor.numDocumento,
-                direccion: dteJson.receptor.direccion,
-                codActividad: dteJson.receptor.codActividad || null,
-                descActividad: receptorDescActividad,
-                codPais: dteJson.receptor.codPais || null,
-                nombrePais: dteJson.receptor.nombrePais || null,
-            },
-            dte: {
-                tipoDte: dteJson.identificacion.tipoDte,
-                tipoDteNombre: getDteTypeName(dteJson.identificacion.tipoDte),
-                codigoGeneracion: dteJson.identificacion.codigoGeneracion,
-                numeroControl: dteJson.identificacion.numeroControl,
-                selloRecepcion: venta.sello_recepcion,
-                ambiente: dteJson.identificacion.ambiente,
-                tipoModelo: dteJson.identificacion.tipoModelo,
-                tipoOperacion: dteJson.identificacion.tipoOperacion
-            },
-            venta: {
-                fecha_emision: dteJson.identificacion.fecEmi,
-                hora_emision: dteJson.identificacion.horEmi,
-                condicion_operacion: dteJson.resumen.condicionOperacion || 1,
-                total_gravado: dteJson.resumen.totalGravada || dteJson.resumen.totalSujetoRetencion || 0,
-                total_exento: dteJson.resumen.totalExenta || 0,
-                total_nosujetas: dteJson.resumen.totalNoSuj || 0,
-                total_iva: dteJson.resumen.totalIva || dteJson.resumen.totalIvaRetenido || dteJson.resumen.totalIVAretenido || (dteJson.resumen.tributos ? dteJson.resumen.tributos.find(t => t.codigo === '20')?.valor : 0) || 0,
-                total_descuento: dteJson.resumen.descuNoExenta || 0,
-                total_pagar: dteJson.resumen.totalPagar || dteJson.resumen.totalIvaRetenido || dteJson.resumen.totalIVAretenido || parseFloat(venta.total_pagar) || 0,
-                total_letras: dteJson.resumen.totalLetras || dteJson.resumen.totalIVAretenidoLetras || '',
-                fovial: parseFloat(venta.fovial) || 0,
-                cotrans: parseFloat(venta.cotrans) || 0,
-                tributos: dteJson.resumen.tributos || [],
-                totalSujetoRetencion: dteJson.resumen.totalSujetoRetencion || 0,
-                totalIVAretenido: dteJson.resumen.totalIvaRetenido || dteJson.resumen.totalIVAretenido || 0,
-                totalIvaRetenido: dteJson.resumen.totalIvaRetenido || dteJson.resumen.totalIVAretenido || 0,
-                total_retencion: dteJson.resumen.ivaRete || dteJson.resumen.totalIvaRetenido || 0,
-                total_percepcion: dteJson.resumen.ivaPerci || 0,
-            },
-            items: (dteJson.cuerpoDocumento || []).map(item => ({
-                cantidad: item.cantidad || 1,
-                descripcion: item.descripcion || '',
-                precioUnitario: item.precioUni || item.montoSujetoGrav || 0,
-                montoDescuento: item.montoDescu || 0,
-                totalItem: item.ventaGravada || item.montoSujetoGrav || 0,
-                montoSujetoGrav: item.montoSujetoGrav || item.ventaGravada || 0,
-                uniMedida: item.uniMedida || 59,
-                tipoDte: item.tipoDte || null,
-                tipoGeneracion: item.tipoGeneracion || null,
-                numDocumento: item.numeroDocumento || item.numDocumento || null,
-                numeroDocumento: item.numeroDocumento || item.numDocumento || null,
-                fechaEmision: item.fechaEmision || item.emissionDate || item.fecEmi || null,
-                ivaRetenido: item.ivaRetenido || 0,
-                codigoRetencionMH: item.codigoRetencionMH || null,
-                tributos: item.tributos || null,
-            }))
-        };
-
-        reportData.isVoided = ['anulado', 'invalidado'].includes((venta.estado || '').toLowerCase()) ||
-                              ['anulado', 'invalidado'].includes((venta.sale_estado || '').toLowerCase()) ||
-                              venta.dte_status === 'INVALIDADO';
-
-        const pdfBuffer = await pdfService.generateRTEE(reportData);
+        const pdfBuffer = await getSaleRTEEPdfBuffer(id, req.company_id);
 
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `inline; filename=RTEE-${id}.pdf`);
@@ -2568,6 +2572,16 @@ const voidSale = async (req, res) => {
         // 4. Actualizar estado de la venta INMEDIATAMENTE (fuera de transacción)
         //    para evitar el escenario donde el DTE queda invalidado pero estado = ""
         await pool.query('UPDATE sales_headers SET estado = "invalidado" WHERE id = ?', [id]);
+
+        // Liberar paradas de despacho de huevo si la venta fue generada desde una ruta
+        try {
+            await pool.query(
+                'UPDATE egg_dispatch_stops SET sale_id = NULL, dte_codigo_generacion = NULL, estado_entrega = "pendiente" WHERE sale_id = ?',
+                [id]
+            );
+        } catch (dispatchErr) {
+            console.warn('[VoidSale] Error desvinculando parada de despacho de huevo:', dispatchErr.message);
+        }
 
         // 5. Restaurar Stock e Inventario (en su propia transacción)
         //    Si falla, el estado ya quedó como "anulado" y el usuario puede corregir stock manualmente
@@ -3197,6 +3211,14 @@ const regenerateDTE = async (req, res) => {
                 [newSaleId, dteInfo.codigo_generacion, req.company_id]
             );
 
+            // Sincronizar parada de despacho si la venta provino de despacho
+            try {
+                await connection.query(
+                    'UPDATE egg_dispatch_stops SET sale_id = ?, dte_codigo_generacion = ? WHERE sale_id = ?',
+                    [newSaleId, dteInfo.codigo_generacion, id]
+                );
+            } catch (_) {}
+
             await connection.commit();
             connection.release();
             connection = null;
@@ -3344,9 +3366,17 @@ const regenerateDTE = async (req, res) => {
             [id, dteInfo.codigo_generacion, req.company_id]
         );
         await connection.query(
-            'UPDATE sales_headers SET codigo_generacion = ?, numero_control = ?, sello_recepcion = ?, fh_procesamiento = ? WHERE id = ?',
+            'UPDATE sales_headers SET codigo_generacion = ?, numero_control = ?, sello_recepcion = ?, fh_procesamiento = ?, estado = "emitido" WHERE id = ?',
             [dteInfo.codigo_generacion, dteInfo.numero_control, dteInfo.sello_recepcion || null, dteInfo.fh_procesamiento || null, id]
         );
+
+        // Sincronizar parada de despacho si la venta provino de despacho
+        try {
+            await connection.query(
+                'UPDATE egg_dispatch_stops SET dte_codigo_generacion = ? WHERE sale_id = ?',
+                [dteInfo.codigo_generacion, id]
+            );
+        } catch (_) {}
         connection.release();
         connection = null;
 
@@ -4001,6 +4031,7 @@ module.exports = {
     exportSalesByPOSPDF,
     exportSalesDetailPDF,
     exportRTEE,
+    getSaleRTEEPdfBuffer,
     getPublicRTEE,
     getPublicDTEInfo,
     getPublicDTEJson,
