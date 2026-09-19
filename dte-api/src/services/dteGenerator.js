@@ -571,13 +571,33 @@ async function generateDTE(payload) {
             periodo: null
         }
     ]).map(p => {
-        // En operaciones a crédito (condición 2), Hacienda exige plazo y periodo válidos.
-        // Se usa el período de días de crédito del cliente con unidad "Días" (Cat-018 = 01).
+        // En operaciones a crédito (condición 2), Hacienda exige plazo y periodo válidos según Cat-018.
+        // Cat-018 Plazo: "01" (Días), "02" (Meses), "03" (Años).
+        // Periodo: Número entero > 0 que indica la cantidad de días/meses/años de crédito.
         const isCredit = parseInt(payload.condicionOperacion) === 2;
         const dias = parseInt(payload.dias_credito) || 15;
-        const rawPeriodo = (p.periodo !== null && p.periodo !== undefined && String(p.periodo).trim() !== '') ? parseInt(p.periodo) : null;
-        const periodo = (rawPeriodo !== null && !isNaN(rawPeriodo)) ? rawPeriodo : (isCredit ? dias : null);
-        const plazo = (p.plazo && String(p.plazo).trim() !== '') ? String(p.plazo).trim() : (isCredit ? '01' : null); // 01 = Días (Cat-018)
+        const validPlazos = ['01', '02', '03'];
+
+        let rawPlazo = (p.plazo !== null && p.plazo !== undefined && String(p.plazo).trim() !== '')
+            ? String(p.plazo).trim()
+            : null;
+        let rawPeriodo = (p.periodo !== null && p.periodo !== undefined && String(p.periodo).trim() !== '')
+            ? parseInt(p.periodo, 10)
+            : null;
+
+        // Auto-corrección defensiva si plazo y periodo vienen invertidos (ej: plazo = 15 o "15", periodo = "01" o 1)
+        if (rawPlazo && !validPlazos.includes(rawPlazo)) {
+            const numericPlazo = parseInt(rawPlazo, 10);
+            if (!isNaN(numericPlazo) && numericPlazo > 0) {
+                if (!rawPeriodo || rawPeriodo === 1) {
+                    rawPeriodo = numericPlazo;
+                }
+            }
+            rawPlazo = '01'; // '01' = Días
+        }
+
+        const plazo = isCredit ? (rawPlazo && validPlazos.includes(rawPlazo) ? rawPlazo : '01') : null;
+        const periodo = isCredit ? (rawPeriodo && !isNaN(rawPeriodo) && rawPeriodo > 0 ? rawPeriodo : dias) : null;
         const referencia = (p.referencia && String(p.referencia).trim() !== '') ? String(p.referencia).trim() : null;
         return {
             codigo: p.codigo,

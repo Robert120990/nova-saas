@@ -77,10 +77,19 @@ async function invalidateDTE(payload, companyId, user) {
     // Schemas v3/v4 (03,04,05,06,11) sí los tienen.
     const isV2Schema = ['01', '07', '08', '09', '14', '15'].includes(dte.tipo_dte);
 
+    // Extraer de numero_control si está disponible (la serie contiene codEstableMH y codPuntoVentaMH oficiales aprobados por Hacienda)
+    const controlParts = (dte.numero_control || '').split('-');
+    let controlEstableMH = null;
+    let controlPuntoVentaMH = null;
+    if (controlParts.length >= 3 && controlParts[2].length === 8) {
+        controlEstableMH = controlParts[2].substring(0, 4);
+        controlPuntoVentaMH = controlParts[2].substring(4, 8);
+    }
+
     let codEstableMH, codEstable, codPuntoVentaMH, codPuntoVenta;
 
     if (isV2Schema) {
-        codEstableMH = emisorOrig.codEstable;
+        codEstableMH = controlEstableMH || emisorOrig.codEstableMH || emisorOrig.codEstable;
         if (!codEstableMH) {
             codEstableMH = branch.codigo_mh ? String(branch.codigo_mh).padStart(4, '0').substring(0, 4) : null;
             if (!codEstableMH) {
@@ -88,19 +97,22 @@ async function invalidateDTE(payload, companyId, user) {
             }
         }
 
-        codEstable = codEstableMH;
+        codEstable = emisorOrig.codEstable || codEstableMH;
 
-        codPuntoVentaMH = pos.codigo ? String(pos.codigo).padStart(4, '0').substring(0, 4) : null;
+        // codPuntoVentaMH debe ser de 4 caracteres según formato oficial de Hacienda (ej: P001, P005)
+        codPuntoVentaMH = controlPuntoVentaMH
+            || (pos.codigo && String(pos.codigo).startsWith('P') ? String(pos.codigo).substring(0, 4) : null)
+            || (emisorOrig.codPuntoVentaMH && String(emisorOrig.codPuntoVentaMH).startsWith('P') ? emisorOrig.codPuntoVentaMH : null);
+
         if (!codPuntoVentaMH) {
-            codPuntoVentaMH = emisorOrig.codPuntoVenta;
-            if (!codPuntoVentaMH) {
-                throw new Error('El DTE original no contiene código de punto de venta y el punto de venta no tiene código configurado en la base de datos.');
-            }
+            const rawP = pos.codigo || emisorOrig.codPuntoVenta || '1';
+            const digits = String(rawP).replace(/[^\d]/g, '').slice(-3).padStart(3, '0');
+            codPuntoVentaMH = `P${digits}`;
         }
 
         codPuntoVenta = emisorOrig.codPuntoVenta || codPuntoVentaMH;
     } else {
-        codEstableMH = emisorOrig.codEstableMH;
+        codEstableMH = controlEstableMH || emisorOrig.codEstableMH;
         if (!codEstableMH) {
             codEstableMH = branch.codigo_mh ? String(branch.codigo_mh).padStart(4, '0').substring(0, 4) : null;
             if (!codEstableMH) {
@@ -114,19 +126,19 @@ async function invalidateDTE(payload, companyId, user) {
         codEstable = emisorOrig.codEstable
             || (branch.codigo_mh ? String(branch.codigo_mh).padStart(4, '0').substring(0, 4) : null);
 
-        codPuntoVentaMH = emisorOrig.codPuntoVentaMH;
+        codPuntoVentaMH = controlPuntoVentaMH
+            || (emisorOrig.codPuntoVentaMH && String(emisorOrig.codPuntoVentaMH).startsWith('P') ? emisorOrig.codPuntoVentaMH : null)
+            || (pos.codigo && String(pos.codigo).startsWith('P') ? String(pos.codigo).substring(0, 4) : null);
+
         if (!codPuntoVentaMH) {
-            codPuntoVentaMH = pos.codigo ? String(pos.codigo).padStart(4, '0').substring(0, 4) : null;
-            if (!codPuntoVentaMH) {
-                codPuntoVentaMH = emisorOrig.codPuntoVenta ? String(emisorOrig.codPuntoVenta).padStart(4, '0').substring(0, 4) : null;
-            }
-            if (!codPuntoVentaMH) {
-                throw new Error('El DTE original no tiene código de punto de venta MH y el punto de venta no tiene código configurado.');
-            }
+            const rawP = emisorOrig.codPuntoVentaMH || pos.codigo || emisorOrig.codPuntoVenta || '1';
+            const digits = String(rawP).replace(/[^\d]/g, '').slice(-3).padStart(3, '0');
+            codPuntoVentaMH = `P${digits}`;
         }
 
         codPuntoVenta = emisorOrig.codPuntoVenta
-            || (pos.codigo ? String(pos.codigo).substring(0, 15) : null);
+            || (pos.codigo ? String(pos.codigo).substring(0, 15) : null)
+            || codPuntoVentaMH;
     }
 
     // Datos del receptor — permitir null cuando sea consumidor final sin identificación
