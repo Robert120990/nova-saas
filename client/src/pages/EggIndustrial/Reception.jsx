@@ -295,6 +295,83 @@ const EggReception = () => {
         }
     };
 
+    const handleDownloadLab001Docx = async (rawMaterialId, customLot = '') => {
+        if (!rawMaterialId) return;
+        setPrintingPdfId(rawMaterialId);
+        const toastId = toast.loading('Generando documento Word (.docx) de LAB 001...');
+        try {
+            const res = await axios.get(`/api/egg-industrial/raw-materials/${rawMaterialId}/lab-001-pdf?format=word`, {
+                responseType: 'blob'
+            });
+            const safeLot = (customLot || rawMaterialId).toString().replace(/[^a-zA-Z0-9_-]/g, '_');
+            const blob = new Blob([res.data], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+            const blobUrl = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = blobUrl;
+            link.download = `LAB_001_Dictamen_Calidad_${safeLot}.docx`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(blobUrl);
+            toast.success('Documento Word descargado con éxito.', { id: toastId });
+        } catch (err) {
+            console.error('Error al descargar Word LAB 001:', err);
+            toast.error(err.response?.data?.message || 'Error al generar el documento Word LAB 001.', { id: toastId });
+        } finally {
+            setPrintingPdfId(null);
+        }
+    };
+
+    const handleDownloadLab001DocxFromModal = async () => {
+        if (!qualityModal.rm?.id) return;
+        setPrintingPdfId(qualityModal.rm.id);
+        const toastId = toast.loading('Generando documento Word (.docx) de LAB 001...');
+        try {
+            const currentPayload = {
+                format: 'word',
+                egg_classification: qualityModal.egg_classification,
+                egg_size: qualityModal.egg_size,
+                egg_color: qualityModal.egg_color,
+                quality_status: qualityModal.quality_status,
+                quality_inspector_name: qualityModal.inspector_name?.trim(),
+                quality_reviewed_by: qualityModal.quality_reviewed_by?.trim(),
+                quality_defect_broken_pct: parseFloat(qualityModal.quality_defect_broken_pct) || 0,
+                quality_defect_dirty_pct: parseFloat(qualityModal.quality_defect_dirty_pct) || 0,
+                quality_brix: qualityModal.quality_brix !== '' ? parseFloat(qualityModal.quality_brix) : null,
+                quality_notes: qualityModal.quality_notes?.trim() || null,
+                remission_note: qualityModal.remission_note || null,
+                farm_name: qualityModal.farm_name || null,
+                production_date: qualityModal.production_date || null,
+                expiration_date: qualityModal.expiration_date || null,
+                sample_egg_weight_g: qualityModal.sample_egg_weight_g ? parseFloat(qualityModal.sample_egg_weight_g) : null,
+                total_boxes: qualityModal.total_boxes || 0,
+                physicochemical: qualityModal.physicochemical,
+                organoleptic: qualityModal.organoleptic,
+                transport_storage: qualityModal.transport_storage
+            };
+
+            const res = await axios.post(`/api/egg-industrial/raw-materials/${qualityModal.rm.id}/lab-001-pdf?format=word`, currentPayload, {
+                responseType: 'blob'
+            });
+            const safeLot = (qualityModal.provider_lot || qualityModal.rm.provider_lot || qualityModal.rm.id).toString().replace(/[^a-zA-Z0-9_-]/g, '_');
+            const blob = new Blob([res.data], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+            const blobUrl = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = blobUrl;
+            link.download = `LAB_001_Dictamen_Calidad_${safeLot}.docx`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(blobUrl);
+            toast.success('Documento Word descargado con éxito.', { id: toastId });
+        } catch (err) {
+            console.error('Error al descargar Word LAB 001 desde modal:', err);
+            toast.error(err.response?.data?.message || 'Error al generar documento Word LAB 001.', { id: toastId });
+        } finally {
+            setPrintingPdfId(null);
+        }
+    };
+
     // Estado del modal de evaluación de calidad y reporte de materia prima (LAB 001, Rev. 7.03.24)
     const [qualityModal, setQualityModal] = useState({
         isOpen: false,
@@ -1744,7 +1821,22 @@ const EggReception = () => {
                                                                                 <FlaskConical size={15} className="text-amber-600 shrink-0" />
                                                                                 <div>
                                                                                     <span className="font-bold block text-slate-900">Dictamen de Calidad (LAB-001)</span>
-                                                                                    <span className="text-[10px] text-slate-400 block font-normal">Reporte técnico oficial con visor</span>
+                                                                                    <span className="text-[10px] text-slate-400 block font-normal">Reporte técnico oficial en PDF</span>
+                                                                                </div>
+                                                                            </button>
+
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => {
+                                                                                    setOpenPrintMenuId(null);
+                                                                                    handleDownloadLab001Docx(rm.id, rm.provider_lot);
+                                                                                }}
+                                                                                className="w-full px-3 py-2 text-xs text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 flex items-center gap-2.5 transition text-left"
+                                                                            >
+                                                                                <FileText size={15} className="text-indigo-600 shrink-0" />
+                                                                                <div>
+                                                                                    <span className="font-bold block text-slate-900">Dictamen Word (LAB-001)</span>
+                                                                                    <span className="text-[10px] text-slate-400 block font-normal">Descargar documento editable (.docx)</span>
                                                                                 </div>
                                                                             </button>
 
@@ -2203,6 +2295,16 @@ const EggReception = () => {
                                 >
                                     {printingPdfId === qualityModal.rm?.id ? <Loader2 className="animate-spin" size={14} /> : <Printer size={14} className="text-amber-700" />}
                                     <span className="hidden sm:inline">{printingPdfId === qualityModal.rm?.id ? 'Generando...' : 'Imprimir LAB 001'}</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    disabled={printingPdfId === qualityModal.rm?.id}
+                                    onClick={handleDownloadLab001DocxFromModal}
+                                    className="px-3 py-1.5 bg-white hover:bg-indigo-50 text-indigo-900 border border-indigo-200 rounded-xl text-xs font-bold transition-all shadow-2xs flex items-center gap-1.5 disabled:opacity-50"
+                                    title="Descargar dictamen técnico oficial en formato Word editable (.docx)"
+                                >
+                                    <FileText size={14} className="text-indigo-600" />
+                                    <span className="hidden sm:inline">Word (.docx)</span>
                                 </button>
                                 <button
                                     type="button"

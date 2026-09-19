@@ -663,8 +663,16 @@ const getRawMaterialLab001Pdf = async (req, res) => {
         }
 
         const safeLot = (data.provider_lot || `LOTE-${id}`).replace(/[^a-zA-Z0-9_-]/g, '_');
-        const pdfBuffer = await eggRawMaterialLabReport.generateRawMaterialLab001Pdf(data);
+        const format = (req.query.format || req.body?.format || 'pdf').toLowerCase();
 
+        if (format === 'word' || format === 'docx') {
+            const docxBuffer = await eggRawMaterialLabReport.generateRawMaterialLab001Docx(data);
+            res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+            res.setHeader('Content-Disposition', `attachment; filename="LAB_001_Materia_Prima_${safeLot}.docx"`);
+            return res.send(docxBuffer);
+        }
+
+        const pdfBuffer = await eggRawMaterialLabReport.generateRawMaterialLab001Pdf(data);
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `inline; filename="LAB_001_Materia_Prima_${safeLot}.pdf"`);
         return res.send(pdfBuffer);
