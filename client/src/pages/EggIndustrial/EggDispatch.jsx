@@ -27,7 +27,8 @@ import {
     Search,
     X,
     Receipt,
-    CreditCard
+    CreditCard,
+    Files
 } from 'lucide-react';
 import EggCustomerOrderModal from '../../components/egg/EggCustomerOrderModal';
 import RouteAutoInvoicingModal from '../../components/egg/RouteAutoInvoicingModal';
@@ -130,7 +131,7 @@ export default function EggDispatch() {
         }
     };
 
-    const handlePrintRouteManifest = async (routeId, format = 'pdf') => {
+    const handlePrintRouteManifest = async (routeId, format = 'pdf', includeDtes = false) => {
         if (!routeId) return;
         if (format === 'excel') {
             const toastId = toast.loading('Exportando manifiesto a Excel...');
@@ -155,10 +156,11 @@ export default function EggDispatch() {
             return;
         }
 
-        setPrintingManifest(true);
-        const toastId = toast.loading('Generando manifiesto de carga y ruta...');
+        setPrintingManifest(includeDtes ? 'with_dtes' : 'only_manifest');
+        const toastId = toast.loading(includeDtes ? 'Generando manifiesto con facturas DTE anexadas...' : 'Generando manifiesto de carga y ruta...');
         try {
-            const res = await axios.get(`/api/egg-industrial/dispatch/routes/${routeId}/manifest-pdf`, {
+            const url = `/api/egg-industrial/dispatch/routes/${routeId}/manifest-pdf${includeDtes ? '?include_dtes=true' : ''}`;
+            const res = await axios.get(url, {
                 responseType: 'blob'
             });
             const blob = new Blob([res.data], { type: 'application/pdf' });
@@ -167,9 +169,9 @@ export default function EggDispatch() {
             setPdfPreviewModal({
                 isOpen: true,
                 url: blobUrl,
-                title: 'Manifiesto de Carga y Hoja de Ruta',
-                subtitle: `Ruta de Despacho #${routeId} • Planta Industrial`,
-                fileName: `Manifiesto_Despacho_Ruta_${routeId}.pdf`,
+                title: includeDtes ? 'Manifiesto de Carga + Facturas DTE' : 'Manifiesto de Carga y Hoja de Ruta',
+                subtitle: `Ruta de Despacho #${routeId} • Planta Industrial${includeDtes ? ' (con DTEs unificados)' : ''}`,
+                fileName: `Manifiesto_Despacho_Ruta_${routeId}${includeDtes ? '_con_DTEs' : ''}.pdf`,
                 footerNote: 'Control de Despacho y Logística • Hoja de Ruta Oficial'
             });
             toast.dismiss(toastId);
@@ -1296,20 +1298,33 @@ export default function EggDispatch() {
                                         </div>
 
                                         <div className="flex items-center gap-1.5 flex-wrap justify-end">
-                                            {/* Botón Imprimir Listado / Manifiesto de Despacho (PDF y Excel) */}
+                                            {/* Botón Imprimir Listado / Manifiesto de Despacho (PDF solo o con DTEs anexados, y Excel) */}
                                             <div className="flex items-center bg-indigo-50 border border-indigo-200 rounded-xl overflow-hidden p-0.5 shadow-xs">
                                                 <button
-                                                    onClick={() => handlePrintRouteManifest(routeDetail.id, 'pdf')}
-                                                    disabled={printingManifest}
+                                                    onClick={() => handlePrintRouteManifest(routeDetail.id, 'pdf', false)}
+                                                    disabled={!!printingManifest}
                                                     className="flex items-center gap-1 text-xs font-bold text-indigo-700 hover:bg-indigo-600 hover:text-white px-2.5 py-1.5 rounded-lg transition disabled:opacity-50"
-                                                    title="Imprimir Manifiesto de Despacho en PDF Oficial"
+                                                    title="Imprimir Manifiesto de Despacho en PDF Oficial (Solo Hoja de Ruta)"
                                                 >
-                                                    {printingManifest ? (
+                                                    {printingManifest === 'only_manifest' ? (
                                                         <RefreshCw className="w-3.5 h-3.5 animate-spin" />
                                                     ) : (
                                                         <Printer className="w-3.5 h-3.5" />
                                                     )}
-                                                    <span>Imprimir Listado</span>
+                                                    <span>Listado</span>
+                                                </button>
+                                                <button
+                                                    onClick={() => handlePrintRouteManifest(routeDetail.id, 'pdf', true)}
+                                                    disabled={!!printingManifest}
+                                                    className="flex items-center gap-1 text-xs font-bold text-violet-700 hover:bg-violet-600 hover:text-white px-2.5 py-1.5 rounded-lg transition disabled:opacity-50 border-l border-indigo-200"
+                                                    title="Imprimir Manifiesto de Despacho + Facturas DTE unificadas automáticamente en un solo PDF"
+                                                >
+                                                    {printingManifest === 'with_dtes' ? (
+                                                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                                    ) : (
+                                                        <Files className="w-3.5 h-3.5" />
+                                                    )}
+                                                    <span>+ DTEs</span>
                                                 </button>
                                                 <button
                                                     onClick={() => handlePrintRouteManifest(routeDetail.id, 'excel')}
@@ -1328,9 +1343,9 @@ export default function EggDispatch() {
                                             >
                                                 <Receipt className="w-3.5 h-3.5" />
                                                 <span>Facturar Ruta</span>
-                                                {routeDetail.stops?.some(s => !s.is_billed && !s.sale_id && !s.dte_codigo_generacion) && (
+                                                {routeDetail.stops?.some(s => (!s.is_billed && !s.sale_sello_recepcion) || s.is_rejected || s.dte_status === 'REJECTED') && (
                                                     <span className="bg-white/20 text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold">
-                                                        {routeDetail.stops.filter(s => !s.is_billed && !s.sale_id && !s.dte_codigo_generacion).length}
+                                                        {routeDetail.stops.filter(s => (!s.is_billed && !s.sale_sello_recepcion) || s.is_rejected || s.dte_status === 'REJECTED').length}
                                                     </span>
                                                 )}
                                             </button>
@@ -1384,12 +1399,15 @@ export default function EggDispatch() {
                                     {/* Lista de Paradas Ordenadas */}
                                     <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1">
                                         {routeDetail.stops?.map((stop, idx) => {
-                                            const isStopBilled = !!(
+                                            const isStopRejected = !!(
+                                                stop.is_rejected ||
+                                                stop.dte_status === 'REJECTED' ||
+                                                (stop.sale_id && !stop.sale_sello_recepcion && stop.dte_status === 'REJECTED')
+                                            );
+                                            const isStopBilled = !isStopRejected && !!(
                                                 stop.is_billed ||
-                                                stop.sale_id ||
-                                                stop.sale_id_linked ||
-                                                stop.dte_codigo_generacion ||
-                                                stop.sale_codigo_generacion
+                                                stop.sale_sello_recepcion ||
+                                                (stop.dte_status && stop.dte_status !== 'REJECTED')
                                             );
 
                                             return (
@@ -1398,6 +1416,8 @@ export default function EggDispatch() {
                                                 className={`p-3 rounded-xl border transition ${
                                                     isStopBilled
                                                         ? 'bg-emerald-50/90 border-emerald-300 shadow-2xs'
+                                                        : isStopRejected
+                                                        ? 'bg-rose-50/90 border-rose-300 shadow-2xs'
                                                         : stop.estado_entrega === 'entregado'
                                                         ? 'bg-emerald-50/50 border-emerald-200'
                                                         : 'bg-white border-slate-200 hover:border-indigo-300'
@@ -1408,11 +1428,13 @@ export default function EggDispatch() {
                                                         <span className={`w-6 h-6 rounded-full flex items-center justify-center font-black text-xs flex-shrink-0 ${
                                                             isStopBilled
                                                                 ? 'bg-emerald-600 text-white shadow-xs'
+                                                                : isStopRejected
+                                                                ? 'bg-rose-600 text-white shadow-xs'
                                                                 : stop.estado_entrega === 'entregado'
                                                                 ? 'bg-emerald-600 text-white'
                                                                 : 'bg-indigo-600 text-white'
                                                         }`}>
-                                                            {isStopBilled ? '✓' : stop.estado_entrega === 'entregado' ? '✓' : stop.orden_visita}
+                                                            {isStopBilled ? '✓' : isStopRejected ? '✕' : stop.estado_entrega === 'entregado' ? '✓' : stop.orden_visita}
                                                         </span>
 
                                                         <div>
@@ -1427,6 +1449,14 @@ export default function EggDispatch() {
                                                                         ) : stop.sale_dte_type ? (
                                                                             <span className="font-mono">[{stop.sale_dte_type}]</span>
                                                                         ) : null}
+                                                                    </span>
+                                                                ) : isStopRejected ? (
+                                                                    <span 
+                                                                        className="inline-flex items-center gap-1 text-[10px] font-black bg-rose-100 text-rose-800 border border-rose-300 px-2 py-0.5 rounded-full shadow-2xs cursor-help"
+                                                                        title="El DTE fue rechazado por Hacienda y no procede. La parada queda lista para refacturarse con datos corregidos."
+                                                                    >
+                                                                        <AlertTriangle className="w-3 h-3 text-rose-600" />
+                                                                        <span>RECHAZADO MH (NO PROCEDE)</span>
                                                                     </span>
                                                                 ) : (
                                                                     <span className="text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.2 rounded-md">

@@ -2,6 +2,8 @@ const pool = require('../config/db');
 const reportPdfHelper = require('../utils/reportPdfHelper');
 const excelService = require('../services/excel.service');
 const dteService = require('../services/dte.service');
+const { getSaleRTEEPdfBuffer } = require('./sales.controller');
+const { PDFDocument } = require('pdf-lib');
 
 // Helpers de sanitización numérica defensiva contra valores NaN / vacíos en MySQL
 const safeNum = (val, fallback = 0) => {
@@ -14,6 +16,21 @@ const safeInt = (val, fallback = null) => {
     if (val === null || val === undefined || val === '') return fallback;
     const n = parseInt(val, 10);
     return Number.isFinite(n) ? n : fallback;
+};
+
+const getPresentationWeightLbs = (presentation) => {
+    if (!presentation) return 30;
+    const clean = String(presentation).toLowerCase().trim();
+    const m = clean.match(/(\d+(?:\.\d+)?)\s*(?:lb|lbs|libras)/i);
+    if (m) return parseFloat(m[1]) || 30;
+    if (clean.includes('galon') || clean.includes('galón')) return 8;
+    if (clean.includes('litro')) return 2;
+    if (clean.includes('medio galon') || clean.includes('medio galón')) return 4;
+    if (clean.includes('carton') || clean.includes('cartón')) return 55;
+    if (clean.includes('caja')) return 32;
+    if (clean.includes('bolsa')) return 5;
+    if (clean.includes('tanque')) return 2000;
+    return 30;
 };
 
 /**
@@ -407,7 +424,8 @@ const getDispatchRoutes = async (req, res) => {
                    u.nombre AS driver_user_nombre,
                    (SELECT COUNT(*) FROM egg_dispatch_stops s WHERE s.dispatch_route_id = r.id) AS total_stops,
                    (SELECT COUNT(*) FROM egg_dispatch_stops s WHERE s.dispatch_route_id = r.id AND s.estado_entrega = 'entregado') AS completed_stops,
-                   (SELECT COUNT(*) FROM egg_dispatch_stops s WHERE s.dispatch_route_id = r.id AND s.prioridad = 'urgente' AND s.estado_entrega != 'entregado') AS urgent_pending_stops
+                   (SELECT COUNT(*) FROM egg_dispatch_stops s WHERE s.dispatch_route_id = r.id AND s.prioridad = 'urgente' AND s.estado_entrega != 'entregado') AS urgent_pending_stops,
+                   (SELECT COUNT(*) FROM egg_dispatch_stops s JOIN sales_headers sh ON s.sale_id = sh.id LEFT JOIN dtes d ON d.venta_id = sh.id WHERE s.dispatch_route_id = r.id AND (sh.sello_recepcion IS NOT NULL OR d.status = 'ACCEPTED')) AS billed_stops
             FROM egg_dispatch_routes r
             LEFT JOIN delivery_vehicles v ON r.vehicle_id = v.id
             LEFT JOIN users u ON r.driver_id = u.id
@@ -534,20 +552,24 @@ const getDispatchRouteDetail = async (req, res) => {
                     sh.total_pagar AS sale_total_pagar,
                     sh.condicion_operacion AS sale_condicion_operacion,
                     sh.estado AS sale_estado,
+                    d.status AS dte_status,
+                    d.respuesta_hacienda AS dte_respuesta_hacienda,
                     (CASE 
-                        WHEN s.sale_id IS NOT NULL 
-                          OR s.dte_codigo_generacion IS NOT NULL 
-                          OR o.sale_id IS NOT NULL 
-                          OR o.dte_codigo_generacion IS NOT NULL 
-                          OR sh.id IS NOT NULL 
-                        THEN 1 ELSE 0 
-                     END) AS is_billed
+                        WHEN sh.sello_recepcion IS NOT NULL OR d.status = 'ACCEPTED' THEN 1
+                        WHEN sh.estado = 'contingencia' AND (d.status IS NULL OR d.status != 'REJECTED') THEN 1
+                        ELSE 0 
+                     END) AS is_billed,
+                    (CASE 
+                        WHEN d.status = 'REJECTED' OR (sh.id IS NOT NULL AND sh.sello_recepcion IS NULL AND (d.status = 'REJECTED' OR sh.estado = 'rechazado')) THEN 1
+                        ELSE 0
+                     END) AS is_rejected
              FROM egg_dispatch_stops s
              JOIN egg_customer_orders o ON s.order_id = o.id
              LEFT JOIN egg_production_batches b ON o.batch_id = b.id
              LEFT JOIN customers c ON s.customer_id = c.id
              LEFT JOIN customer_branches cb ON s.customer_branch_id = cb.id
              LEFT JOIN sales_headers sh ON (s.sale_id = sh.id OR o.sale_id = sh.id OR (s.dte_codigo_generacion IS NOT NULL AND s.dte_codigo_generacion COLLATE utf8mb4_unicode_ci = sh.codigo_generacion COLLATE utf8mb4_unicode_ci))
+             LEFT JOIN dtes d ON d.venta_id = sh.id
              WHERE s.dispatch_route_id = ?
              ORDER BY s.orden_visita ASC, s.id ASC`,
             [id]
@@ -1829,11 +1851,49 @@ const getDispatchRouteManifestPdf = async (req, res) => {
         reportPdfHelper.renderPageNumbers(doc);
 
         doc.end();
-        const buffer = await getBuffer();
+        let finalBuffer = await getBuffer();
+
+        // Anexar automáticamente los PDFs de DTEs emitidos de las paradas si fue solicitado
+        const includeDtes = req.query.include_dtes === 'true' || req.query.include_dtes === '1';
+        if (includeDtes) {
+            try {
+                const [saleRows] = await pool.query(
+                    `SELECT DISTINCT sh.id, sh.numero_control, s.orden_visita
+                     FROM egg_dispatch_stops s
+                     JOIN sales_headers sh ON s.sale_id = sh.id
+                     LEFT JOIN dtes d ON d.venta_id = sh.id
+                     WHERE s.dispatch_route_id = ? 
+                       AND (sh.sello_recepcion IS NOT NULL OR d.status = 'ACCEPTED')
+                     ORDER BY s.orden_visita ASC, s.id ASC`,
+                    [id]
+                );
+
+                if (saleRows.length > 0) {
+                    const mergedDoc = await PDFDocument.load(finalBuffer);
+
+                    for (const sRow of saleRows) {
+                        try {
+                            const dteBuf = await getSaleRTEEPdfBuffer(sRow.id, company_id);
+                            if (dteBuf && dteBuf.length > 0) {
+                                const dteDoc = await PDFDocument.load(dteBuf);
+                                const copiedPages = await mergedDoc.copyPages(dteDoc, dteDoc.getPageIndices());
+                                copiedPages.forEach(page => mergedDoc.addPage(page));
+                            }
+                        } catch (dteErr) {
+                            console.error(`[ManifestPDF] Advertencia al adjuntar DTE para venta ${sRow.id}:`, dteErr.message);
+                        }
+                    }
+
+                    finalBuffer = Buffer.from(await mergedDoc.save());
+                }
+            } catch (mergeErr) {
+                console.error('[ManifestPDF] Error fusionando PDFs de DTEs:', mergeErr.message);
+            }
+        }
 
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `inline; filename="Manifiesto_${route.codigo_ruta}.pdf"`);
-        res.send(buffer);
+        res.send(finalBuffer);
     } catch (error) {
         console.error('Error al generar manifiesto de ruta:', error);
         res.status(500).json({ message: error.message });
@@ -1943,6 +2003,15 @@ const autoInvoiceDispatchRoute = async (req, res) => {
         );
         resolvedBranchId = validBranch.length > 0 ? validBranch[0].id : null;
 
+        let resolvedPosId = req.user?.pos_id || null;
+        if (resolvedBranchId) {
+            const [validPos] = await connection.query(
+                'SELECT id FROM points_of_sale WHERE branch_id = ? AND status = ? ORDER BY (id = ?) DESC, id ASC LIMIT 1',
+                [resolvedBranchId, 'activo', resolvedPosId || 0]
+            );
+            resolvedPosId = validPos.length > 0 ? validPos[0].id : null;
+        }
+
         // 4. Validar que cada producto a facturar tenga lote asignado (excluyendo detalles libres)
         for (const stop of stops) {
             if (!stop.items || !Array.isArray(stop.items) || stop.items.length === 0) {
@@ -1993,32 +2062,48 @@ const autoInvoiceDispatchRoute = async (req, res) => {
             const condicionOperacion = parseInt(stop.condicion_operacion) || (customer.es_credito ? 2 : 1);
             const diasCredito = condicionOperacion === 2 ? (parseInt(stop.dias_credito) || parseInt(customer.dias_credito) || 15) : 0;
 
-            // Si la parada ya tiene una venta activa y no anulada, se reporta y no se duplica
+            // Si la parada ya tiene una venta activa y no anulada, verificar si fue aceptada o rechazada por Hacienda
             if (existingStopRows.length > 0 && existingStopRows[0].existing_sale_id) {
                 const prev = existingStopRows[0];
                 const prevAceptado = !!prev.sello_recepcion;
-                const prevContingencia = !prevAceptado && !!(prev.codigo_generacion || prev.dte_codigo_generacion);
+                const prevContingencia = !prevAceptado && !!(prev.codigo_generacion || prev.dte_codigo_generacion) && prev.estado === 'contingencia';
 
-                billedResults.push({
-                    stop_id: stop.stop_id,
-                    order_id: stop.order_id,
-                    sale_id: prev.existing_sale_id,
-                    customer_name: prev.cliente_nombre || customer.nombre,
-                    dte_type: dteType,
-                    numero_control: prev.numero_control || `VTA-${prev.existing_sale_id}`,
-                    codigo_generacion: prev.codigo_generacion || prev.dte_codigo_generacion,
-                    sello_recepcion: prev.sello_recepcion || null,
-                    dte_status: prevAceptado ? 'ACEPTADO_HACIENDA' : (prevContingencia ? 'CONTINGENCIA' : 'FACTURADA_PREVIAMENTE'),
-                    hacienda_msg: prevAceptado 
-                        ? `Facturada previamente y aceptada por Hacienda (Sello: ${prev.sello_recepcion})`
-                        : (prevContingencia ? 'Facturada previamente en contingencia' : 'Parada ya facturada en ejecución previa. Venta existente preservada.'),
-                    hacienda_details: null,
-                    condicion: prev.condicion_operacion === 2 ? 'Crédito' : 'Contado',
-                    cxc_status: prev.condicion_operacion === 2 ? 'Alimentado en Estado de Cuenta / Saldo Pendiente (CXC)' : 'Pagado al Contado',
-                    total: parseFloat(prev.total_pagar || 0),
-                    already_billed: true
-                });
-                continue;
+                // Comprobar si el DTE anterior fue rechazado por Hacienda
+                const [dCheck] = await connection.query(
+                    'SELECT status, respuesta_hacienda FROM dtes WHERE venta_id = ? ORDER BY id DESC LIMIT 1',
+                    [prev.existing_sale_id]
+                );
+                const prevDteStatus = dCheck[0]?.status;
+
+                if (prevDteStatus === 'REJECTED' || (!prevAceptado && prevDteStatus === 'REJECTED')) {
+                    console.log(`[AutoInvoice] Parada ${stop.stop_id} tenía venta previa #${prev.existing_sale_id} rechazada por Hacienda. Anulando intento previo para refacturar limpiamente...`);
+                    await connection.query(
+                        "UPDATE sales_headers SET estado = 'anulado', observaciones = CONCAT(COALESCE(observaciones, ''), ' | [ANULADA TRAS RECHAZO MH POR REINTENTO]') WHERE id = ?",
+                        [prev.existing_sale_id]
+                    );
+                    // Continuar con la emisión normal del nuevo DTE para esta parada
+                } else if (prevAceptado || prevContingencia) {
+                    billedResults.push({
+                        stop_id: stop.stop_id,
+                        order_id: stop.order_id,
+                        sale_id: prev.existing_sale_id,
+                        customer_name: prev.cliente_nombre || customer.nombre,
+                        dte_type: dteType,
+                        numero_control: prev.numero_control || `VTA-${prev.existing_sale_id}`,
+                        codigo_generacion: prev.codigo_generacion || prev.dte_codigo_generacion,
+                        sello_recepcion: prev.sello_recepcion || null,
+                        dte_status: prevAceptado ? 'ACEPTADO_HACIENDA' : (prevContingencia ? 'CONTINGENCIA' : 'FACTURADA_PREVIAMENTE'),
+                        hacienda_msg: prevAceptado 
+                            ? `Facturada previamente y aceptada por Hacienda (Sello: ${prev.sello_recepcion})`
+                            : (prevContingencia ? 'Facturada previamente en contingencia' : 'Parada ya facturada en ejecución previa. Venta existente preservada.'),
+                        hacienda_details: null,
+                        condicion: prev.condicion_operacion === 2 ? 'Crédito' : 'Contado',
+                        cxc_status: prev.condicion_operacion === 2 ? 'Alimentado en Estado de Cuenta / Saldo Pendiente (CXC)' : 'Pagado al Contado',
+                        total: parseFloat(prev.total_pagar || 0),
+                        already_billed: true
+                    });
+                    continue;
+                }
             }
 
             // Validaciones DTE si la empresa tiene DTE activo
@@ -2044,74 +2129,31 @@ const autoInvoiceDispatchRoute = async (req, res) => {
             let totalExento = 0;
             let totalNoSujeto = 0;
             const itemsProcessed = [];
+            const freeNotes = [];
 
             const ivaRate = 0.13;
 
             for (let i = 0; i < stop.items.length; i++) {
                 const it = stop.items[i];
                 const isCustom = !!it.is_custom_detail;
+                const rawQty = safeNum(it.quantity_lbs ?? it.quantity ?? 0, 0);
+                const rawPrice = safeNum(it.price_per_lb ?? it.price ?? 0, 0);
 
-                if (isCustom) {
-                    const descCustom = (it.product_type || it.descripcion || it.description || 'Detalle libre').trim();
-                    const rawQty = safeNum(it.quantity_lbs ?? it.quantity ?? 0, 0);
-                    const rawPrice = safeNum(it.price_per_lb ?? it.price ?? 0, 0);
-
-                    // Si no tiene precio (precio 0 o vacío)
-                    if (rawPrice <= 0) {
-                        itemsProcessed.push({
-                            product_id: null,
-                            codigo: 'DET-LIBRE',
-                            descripcion: descCustom,
-                            cantidad: rawQty > 0 ? rawQty : 1,
-                            precio_unitario: 0,
-                            monto_descuento: 0,
-                            venta_gravada: 0,
-                            venta_exenta: 0,
-                            tributos: []
-                        });
-                    } else {
-                        // Tiene precio definido (ej: Flete, servicio especial, etc.)
-                        const qty = rawQty > 0 ? rawQty : 1;
-                        let itemTotal = Math.round(qty * rawPrice * 100) / 100;
-                        let ventaGravada = 0;
-                        let ivaItem = 0;
-                        let precioUnitario = rawPrice;
-
-                        if (dteType === '11') {
-                            ventaGravada = itemTotal;
-                            ivaItem = 0;
-                        } else if (dteType === '04') {
-                            ventaGravada = 0;
-                            ivaItem = 0;
-                            precioUnitario = 0.00001;
-                        } else {
-                            const gravNeto = Math.round((itemTotal / (1 + ivaRate)) * 100) / 100;
-                            ivaItem = Math.round((itemTotal - gravNeto) * 100) / 100;
-                            ventaGravada = gravNeto;
-                        }
-
-                        totalGravado += safeNum(ventaGravada, 0);
-                        totalIva += safeNum(ivaItem, 0);
-
-                        itemsProcessed.push({
-                            product_id: null,
-                            codigo: 'DET-LIBRE',
-                            descripcion: descCustom,
-                            cantidad: qty,
-                            precio_unitario: safeNum(precioUnitario, 0),
-                            monto_descuento: 0,
-                            venta_gravada: safeNum(ventaGravada, 0),
-                            venta_exenta: 0,
-                            tributos: dteType === '11' || dteType === '04' ? [] : ['20']
-                        });
+                // Si es detalle libre/nota, o si tiene cantidad <= 0 o precio <= 0
+                // NO debe incluirse como renglón de ítem fiscal en la factura
+                if (isCustom || rawPrice <= 0 || rawQty <= 0) {
+                    const descNote = (it.product_type || it.descripcion || it.description || '').trim();
+                    if (descNote) {
+                        const noteDetail = rawPrice > 0 ? `${descNote} ($${rawPrice.toFixed(2)})` : descNote;
+                        freeNotes.push(noteDetail);
                     }
                     continue;
                 }
 
-                // Ítem normal de producto de catálogo / inventario
-                const qty = safeNum(it.quantity_lbs ?? it.quantity ?? 0, 0);
-                const priceLb = safeNum(it.price_per_lb ?? it.price ?? 0, 0);
-                let itemTotal = Math.round(qty * priceLb * 100) / 100;
+                // Ítem normal de producto ovoproducto legítimo
+                const qtyLbs = rawQty;
+                const priceLb = rawPrice;
+                let itemTotal = Math.round(qtyLbs * priceLb * 100) / 100;
 
                 if (dteType === '04') {
                     itemTotal = 0.00001; // Precio simbólico para Nota de Remisión
@@ -2137,18 +2179,41 @@ const autoInvoiceDispatchRoute = async (req, res) => {
                 totalGravado += safeNum(ventaGravada, 0);
                 totalIva += safeNum(ivaItem, 0);
 
-                const itemDesc = `${it.product_type || 'Ovoproducto'} (${it.presentation || '30LB'}) [Lote: ${it.lot_code || 'S/L'}]`;
+                const productType = (it.product_type || 'Ovoproducto').trim();
+                const presentation = (it.presentation || 'cubeta 30LB').trim();
+                const lotCode = (it.lot_code || 'S/L').trim();
+
+                // Calcular unidades según presentación o usar unidades provistas
+                let units = safeNum(it.units ?? it.quantity_units ?? 0, 0);
+                if (units <= 0) {
+                    const unitWeight = getPresentationWeightLbs(presentation);
+                    const calcUnits = unitWeight > 0 ? (qtyLbs / unitWeight) : 1;
+                    units = Number.isInteger(calcUnits) ? calcUnits : Math.round(calcUnits * 100) / 100;
+                }
+
+                // Descripción completa requerida por normativa y solicitud del usuario:
+                // Producto, Presentación, Lote, Cantidad en unidades, Cantidad en libras
+                // (Precio y Total van en sus columnas fiscales respectivas)
+                const itemDesc = `${productType} | Presentación: ${presentation} | Lote: ${lotCode} | Cant: ${units} Uds (${qtyLbs.toFixed(2)} Lbs)`;
 
                 itemsProcessed.push({
-                    product_id: null,
-                    codigo: it.lot_code || 'S/L',
+                    product_id: it.product_id || null,
+                    codigo: lotCode,
                     descripcion: itemDesc,
-                    cantidad: qty > 0 ? qty : 1,
+                    cantidad: qtyLbs,
                     precio_unitario: safeNum(precioUnitario, 0),
                     monto_descuento: 0,
                     venta_gravada: safeNum(ventaGravada, 0),
                     venta_exenta: 0,
                     tributos: dteType === '11' || dteType === '04' ? [] : ['20']
+                });
+            }
+
+            // Validar que la parada tenga al menos un producto facturable válido
+            if (itemsProcessed.length === 0) {
+                await connection.rollback();
+                return res.status(400).json({
+                    message: `La parada del cliente "${customer.nombre}" (Pedido #${stop.order_number || stop.order_id}) no contiene productos facturables válidos con cantidad y precio mayores a cero.`
                 });
             }
 
@@ -2173,16 +2238,18 @@ const autoInvoiceDispatchRoute = async (req, res) => {
             const branchId = resolvedBranchId;
 
             // Extraer notas de detalles libres para observaciones
-            const freeNotes = stop.items
+            const customNotes = stop.items
                 .filter(it => it.is_custom_detail && (it.product_type || it.descripcion))
                 .map(it => (it.product_type || it.descripcion).trim());
-            const notesSuffix = freeNotes.length > 0 ? ` | Notas: ${freeNotes.join('; ')}` : '';
+            const allNotes = [...customNotes, ...freeNotes.filter(n => !customNotes.includes(n))];
+            const notesSuffix = allNotes.length > 0 ? ` | Notas: ${allNotes.join('; ')}` : '';
             const saleObservaciones = `Facturación Automática de Despacho Ruta ${route.codigo_ruta} - Pedido ${stop.order_number || stop.order_id}${notesSuffix}`;
 
             // 5a. Insertar Cabecera de Venta
             const [saleResult] = await connection.query('INSERT INTO sales_headers SET ?', [{
                 company_id: company_id,
                 branch_id: branchId,
+                pos_id: resolvedPosId,
                 customer_id: stop.customer_id,
                 customer_branch_id: stop.customer_branch_id || null,
                 seller_id: sellerId,
@@ -2245,6 +2312,7 @@ const autoInvoiceDispatchRoute = async (req, res) => {
                     header: {
                         company_id: company_id,
                         branch_id: branchId,
+                        pos_id: resolvedPosId,
                         user_id: req.user?.id || 1,
                         customer_id: stop.customer_id,
                         customer_branch_id: stop.customer_branch_id || null,
@@ -2264,8 +2332,8 @@ const autoInvoiceDispatchRoute = async (req, res) => {
                     payments: [{
                         codigo: '01',
                         monto: totalPagar,
-                        plazo: condicionOperacion === 2 ? diasCredito : null,
-                        periodo: condicionOperacion === 2 ? '01' : null
+                        plazo: condicionOperacion === 2 ? '01' : null,
+                        periodo: condicionOperacion === 2 ? (parseInt(diasCredito) || 15) : null
                     }]
                 };
 
@@ -2300,9 +2368,8 @@ const autoInvoiceDispatchRoute = async (req, res) => {
             }
 
             // 5e. Actualizar venta con datos DTE y vincular tabla dtes
-            const saleEstadoFinal = dteHaciendaStatus === 'RECHAZADO_HACIENDA' 
-                ? 'rechazado' 
-                : (dteHaciendaStatus === 'CONTINGENCIA' ? 'contingencia' : 'emitido');
+            // Nota: sales_headers.estado es enum('borrador','emitido','invalidado','contingencia')
+            const saleEstadoFinal = dteHaciendaStatus === 'CONTINGENCIA' ? 'contingencia' : 'emitido';
 
             const saleObservacionesFinal = dteHaciendaStatus === 'RECHAZADO_HACIENDA'
                 ? `${saleObservaciones} | [RECHAZADO HACIENDA]: ${dteHaciendaMsg}${dteHaciendaDetails ? ' (' + (Array.isArray(dteHaciendaDetails) ? dteHaciendaDetails.join('; ') : JSON.stringify(dteHaciendaDetails)) + ')' : ''}`
@@ -2361,6 +2428,55 @@ const autoInvoiceDispatchRoute = async (req, res) => {
                 safeInt(stop.order_id),
                 safeInt(company_id)
             ]);
+
+            // 5h. Descontar existencias del lote específico según su tipo de producto (Huevo Entero vs Clara vs Yema)
+            for (const it of stop.items) {
+                const lotCode = (it.lot_code || '').trim();
+                const qtyLbs = safeNum(it.quantity_lbs ?? it.quantity ?? 0, 0);
+                if (!lotCode || qtyLbs <= 0) continue;
+
+                let units = safeNum(it.units ?? it.quantity_units ?? 0, 0);
+                const presentation = (it.presentation || 'cubeta 30LB').trim();
+                if (units <= 0) {
+                    const unitWeight = getPresentationWeightLbs(presentation);
+                    const calcUnits = unitWeight > 0 ? (qtyLbs / unitWeight) : 1;
+                    units = Number.isInteger(calcUnits) ? calcUnits : Math.round(calcUnits * 100) / 100;
+                }
+
+                // Buscar el empaque específico para este lot_code y su tipo de producto
+                const [pkgRows] = await connection.query(`
+                    SELECT id, product_type, presentation, units_packaged, weight_per_unit_lbs, total_batch_weight_lbs
+                    FROM egg_packaging_records
+                    WHERE company_id = ? AND lot_code = ?
+                    ORDER BY 
+                        CASE 
+                            WHEN LOWER(product_type) = LOWER(?) THEN 1
+                            WHEN LOWER(product_type) LIKE CONCAT('%', LOWER(?), '%') THEN 2
+                            ELSE 3
+                        END ASC, id DESC
+                    LIMIT 1
+                `, [company_id, lotCode, it.product_type, it.product_type]);
+
+                if (pkgRows.length > 0) {
+                    const pkg = pkgRows[0];
+                    await connection.query(`
+                        UPDATE egg_packaging_records
+                        SET units_packaged = GREATEST(0, units_packaged - ?),
+                            total_batch_weight_lbs = GREATEST(0, total_batch_weight_lbs - ?)
+                        WHERE id = ? AND company_id = ?
+                    `, [units, qtyLbs, pkg.id, company_id]);
+
+                    await connection.query(`
+                        INSERT INTO egg_industrial_events (company_id, event_type, severity, description, payload, operator_name, created_at)
+                        VALUES (?, 'DESPACHO_SALIDA_LOTE', 'INFO', ?, ?, ?, NOW())
+                    `, [
+                        company_id,
+                        `Salida de Lote ${lotCode} (${pkg.product_type || it.product_type}): -${units} uds (${qtyLbs} Lbs) en Facturación Pedido #${stop.order_number || stop.order_id}`,
+                        JSON.stringify({ packaging_id: pkg.id, lot_code: lotCode, product_type: pkg.product_type, units_deducted: units, lbs_deducted: qtyLbs, sale_id: saleId }),
+                        req.user?.nombre || 'Sistema Despacho'
+                    ]);
+                }
+            }
 
             billedResults.push({
                 stop_id: stop.stop_id,

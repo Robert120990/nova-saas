@@ -3,6 +3,7 @@ import axios from 'axios';
 import { toast } from 'sonner';
 import Modal from '../ui/Modal';
 import Money from '../ui/Money';
+import { getIndustrialPresentationWeightLbs } from '../../constants/eggIndustrialCatalogs';
 import {
     CheckCircle2,
     AlertTriangle,
@@ -56,12 +57,10 @@ export default function RouteAutoInvoicingModal({
 
         const initialConfig = {};
         route.stops.forEach(stop => {
-            const isBilled = !!(
+            const isRejected = !!(stop.is_rejected || stop.dte_status === 'REJECTED');
+            const isBilled = !isRejected && !!(
                 stop.is_billed ||
-                stop.sale_id ||
-                stop.sale_id_linked ||
-                stop.dte_codigo_generacion ||
-                stop.sale_codigo_generacion
+                (stop.sale_sello_recepcion && (stop.sale_id || stop.sale_id_linked))
             );
 
             // Condición de pago por defecto: si el cliente tiene crédito activo -> Crédito (2), sino Contado (1)
@@ -150,7 +149,37 @@ export default function RouteAutoInvoicingModal({
 
     const handleSelectLotForTarget = (lot) => {
         if (!lotPickerTarget) return;
-        const { stopId, itemIndex } = lotPickerTarget;
+        const { stopId, itemIndex, item } = lotPickerTarget;
+
+        // 1. Alerta de existencia insuficiente (sin bloquear)
+        const requiredLbs = parseFloat(item?.quantity_lbs || 0);
+        const lotStockLbs = parseFloat(lot.total_weight_lbs || (lot.units_in_stock * (lot.weight_per_unit_lbs || 30)) || 0);
+        const hasLowStock = lot.units_in_stock <= 0 || (requiredLbs > 0 && lotStockLbs < requiredLbs);
+
+        // 2. Alerta de lote antiguo vs nuevo (rotación FIFO por tipo de ovoproducto)
+        // Recordar: lote de huevo entero es diferente a lote de clara o yema; cada uno tiene su propia existencia
+        const currentProdClean = String(lot.product_type || item?.product_type || '').trim().toLowerCase();
+        const sameProductLotsWithStock = availableLots.filter(l => {
+            const pClean = String(l.product_type || '').trim().toLowerCase();
+            return (pClean === currentProdClean || pClean.includes(currentProdClean) || currentProdClean.includes(pClean))
+                && l.units_in_stock > 0
+                && (l.packaging_id !== lot.packaging_id);
+        });
+
+        // Ver si existe algún lote más antiguo en stock
+        const olderAvailableLot = sameProductLotsWithStock.find(l => {
+            if (l.packaging_id && lot.packaging_id && l.packaging_id < lot.packaging_id) return true;
+            if (l.expiry_date && lot.expiry_date && new Date(l.expiry_date) < new Date(lot.expiry_date)) return true;
+            return false;
+        });
+
+        if (hasLowStock) {
+            toast.warning(`Existencia insuficiente en lote #${lot.lot_code} (Disponible: ${lot.units_in_stock} cub / ${lotStockLbs.toFixed(1)} Lbs). Se permite continuar.`, { duration: 5000 });
+        } else if (olderAvailableLot) {
+            toast.info(`Aviso de Rotación: Existe un lote más antiguo disponible (#${olderAvailableLot.lot_code}, ${olderAvailableLot.units_in_stock} cub) para ${lot.product_type}. Se asigna #${lot.lot_code}.`, { duration: 5500 });
+        } else {
+            toast.success(`Lote #${lot.lot_code} asignado al producto.`);
+        }
 
         setStopsConfig(prev => {
             const currentStop = prev[stopId];
@@ -160,7 +189,9 @@ export default function RouteAutoInvoicingModal({
                 ...newItems[itemIndex],
                 lot_code: lot.lot_code,
                 batch_id: lot.batch_id,
-                packaging_id: lot.packaging_id
+                packaging_id: lot.packaging_id,
+                low_stock_warning: hasLowStock,
+                fifo_warning: olderAvailableLot ? olderAvailableLot.lot_code : null
             };
             return {
                 ...prev,
@@ -171,7 +202,6 @@ export default function RouteAutoInvoicingModal({
             };
         });
 
-        toast.success(`Lote #${lot.lot_code} asignado al producto.`);
         setLotPickerTarget(null);
     };
 
@@ -673,9 +703,9 @@ export default function RouteAutoInvoicingModal({
                                                     }`}
                                                 >
                                                     <div className="flex-1 flex flex-col sm:flex-row sm:items-center gap-2">
-                                                        <div className="flex items-center gap-1 text-indigo-600 font-bold shrink-0">
-                                                            <FileText className="w-3.5 h-3.5" />
-                                                            <span className="text-[10px] uppercase font-black tracking-wide">Detalle:</span>
+                                                        <div className="flex items-center gap-1 text-slate-600 font-bold shrink-0">
+                                                            <FileText className="w-3.5 h-3.5 text-indigo-500" />
+                                                            <span className="text-[10px] uppercase font-black tracking-wide">Nota / Obs:</span>
                                                         </div>
                                                         {!isBilled ? (
                                                             <input
@@ -752,36 +782,74 @@ export default function RouteAutoInvoicingModal({
                                         }
 
                                         // 2. Caso: Producto de Catálogo / Inventario
+                                        const qtyLbs = parseFloat(it.quantity_lbs || 0);
+                                        const priceLb = parseFloat(it.price_per_lb || 0);
+                                        const itemTotal = qtyLbs * priceLb;
                                         const hasLot = !!(it.lot_code && String(it.lot_code).trim());
-                                        const itemTotal = (parseFloat(it.quantity_lbs || 0) * parseFloat(it.price_per_lb || 0));
+
+                                        let units = parseFloat(it.units ?? it.quantity_units ?? 0);
+                                        if (!units || units <= 0) {
+                                            const weightLbs = getIndustrialPresentationWeightLbs(it.presentation, 30) || 30;
+                                            const calc = weightLbs > 0 ? (qtyLbs / weightLbs) : 1;
+                                            units = Number.isInteger(calc) ? calc : Math.round(calc * 100) / 100;
+                                        }
 
                                         return (
                                             <div
                                                 key={itemIdx}
-                                                className={`p-2.5 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs ${
+                                                className={`p-3 rounded-xl border flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs transition-all ${
                                                     isBilled
                                                         ? 'bg-white/60 border-emerald-200'
                                                         : hasLot
-                                                        ? 'bg-slate-50 border-slate-100'
+                                                        ? 'bg-slate-50 border-slate-200 shadow-xs'
                                                         : 'bg-amber-50/80 border-amber-300 shadow-xs'
                                                 }`}
                                             >
-                                                <div className="flex items-center gap-2 flex-wrap">
-                                                    <span className="font-bold text-slate-900">• {it.product_type}</span>
-                                                    <span className="text-[11px] text-slate-500">({it.presentation || '30LB'})</span>
-                                                    <span className="font-black text-indigo-700">
-                                                        {parseFloat(it.quantity_lbs || 0).toLocaleString()} Lbs
-                                                    </span>
-                                                    <span className="text-[10px] text-slate-400">
-                                                        @ <Money value={it.price_per_lb || 0} />/lb = <strong className="text-slate-800"><Money value={itemTotal} /></strong>
-                                                    </span>
+                                                <div className="flex-1 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 items-center">
+                                                    {/* 1. Producto */}
+                                                    <div className="col-span-2 sm:col-span-1 md:col-span-2">
+                                                        <span className="block text-[9px] font-black uppercase text-slate-400">Producto</span>
+                                                        <span className="font-black text-slate-900 line-clamp-1">{it.product_type}</span>
+                                                    </div>
+
+                                                    {/* 2. Presentación */}
+                                                    <div>
+                                                        <span className="block text-[9px] font-black uppercase text-slate-400">Presentación</span>
+                                                        <span className="font-bold text-slate-700">{it.presentation || 'cubeta 30LB'}</span>
+                                                    </div>
+
+                                                    {/* 3. Cant. Unidades */}
+                                                    <div className="text-center sm:text-left">
+                                                        <span className="block text-[9px] font-black uppercase text-slate-400">Unidades</span>
+                                                        <span className="font-black text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100 inline-block">
+                                                            {units} Uds
+                                                        </span>
+                                                    </div>
+
+                                                    {/* 4. Cant. Libras */}
+                                                    <div className="text-center sm:text-left">
+                                                        <span className="block text-[9px] font-black uppercase text-slate-400">Libras (Peso)</span>
+                                                        <span className="font-black text-slate-900">
+                                                            {qtyLbs.toLocaleString()} Lbs
+                                                        </span>
+                                                    </div>
+
+                                                    {/* 5 & 6. Precio y Total */}
+                                                    <div className="text-right">
+                                                        <span className="block text-[9px] font-black uppercase text-slate-400">
+                                                            @ <Money value={priceLb} />/lb
+                                                        </span>
+                                                        <span className="font-black text-slate-900 text-sm">
+                                                            <Money value={itemTotal} />
+                                                        </span>
+                                                    </div>
                                                 </div>
 
-                                                {/* Estado del Lote & Botón Pop-up Selector */}
-                                                <div className="flex items-center gap-2 shrink-0">
+                                                {/* 7. Lote & Botón Pop-up Selector */}
+                                                <div className="flex items-center justify-end gap-2 shrink-0 pt-2 md:pt-0 border-t md:border-t-0 border-slate-100">
                                                     {hasLot ? (
                                                         <div className="flex items-center gap-1.5">
-                                                            <span className="inline-flex items-center gap-1 text-[11px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded-lg">
+                                                            <span className="inline-flex items-center gap-1 text-[11px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200 px-2.5 py-1 rounded-lg">
                                                                 <CheckCircle2 className="w-3 h-3 text-emerald-600" />
                                                                 <span>Lote: {it.lot_code}</span>
                                                             </span>
