@@ -10,6 +10,19 @@ const eggOriginCertificate = require('../services/eggOriginCertificate.service')
 const reportPdfHelper = require('../utils/reportPdfHelper');
 const excelService = require('../services/excel.service');
 
+// Helpers de sanitización numérica defensiva contra valores NaN / vacíos en MySQL
+const safeNum = (val, fallback = 0) => {
+    if (val === null || val === undefined || val === '') return fallback;
+    const n = Number(val);
+    return Number.isFinite(n) ? n : fallback;
+};
+
+const safeInt = (val, fallback = null) => {
+    if (val === null || val === undefined || val === '') return fallback;
+    const n = parseInt(val, 10);
+    return Number.isFinite(n) ? n : fallback;
+};
+
 // Helper oficial para cálculo de código de lote en Calendario Juliano: LOTE-[Año 2d][Día Juliano 3d]-[Corrida 2d] (ej. LOTE-26252-01)
 const computeJulianLotCode = (productionDate, runNumber = 1) => {
     let d;
@@ -5296,7 +5309,7 @@ const saveEggCustomerOrder = async (req, res) => {
         }
 
         // 1. Manejo flexible de cliente: si existe se vincula, si no se encuentra o se escribe ad-hoc se permite sin bloquear
-        let resolvedCustomerId = customer_id ? parseInt(customer_id) : null;
+        let resolvedCustomerId = safeInt(customer_id, null);
         let resolvedCustomerName = (customer_name || '').trim();
 
         if (resolvedCustomerId) {
@@ -5325,7 +5338,7 @@ const saveEggCustomerOrder = async (req, res) => {
         }
 
         // Validar sucursal si se especificó
-        let resolvedBranchId = customer_branch_id ? parseInt(customer_branch_id) : null;
+        let resolvedBranchId = safeInt(customer_branch_id, null);
         if (resolvedBranchId && resolvedCustomerId) {
             const [bCheck] = await pool.query(
                 'SELECT id FROM customer_branches WHERE id = ? AND customer_id = ? AND company_id = ?',
@@ -5352,21 +5365,21 @@ const saveEggCustomerOrder = async (req, res) => {
 
         let primaryProductType = (product_type || '').trim();
         let primaryPresentation = (presentation || '').trim();
-        let primaryPrice = parseFloat(price_per_lb) || 0;
-        let totalQuantityLbs = parseFloat(quantity_lbs) || 0;
-        let resolvedBatchId = batch_id ? parseInt(batch_id) : null;
+        let primaryPrice = safeNum(price_per_lb, 0);
+        let totalQuantityLbs = safeNum(quantity_lbs, 0);
+        let resolvedBatchId = safeInt(batch_id, null);
         let resolvedLotCode = lot_code || null;
 
         if (itemList.length > 0) {
-            totalQuantityLbs = itemList.reduce((sum, it) => sum + (parseFloat(it.quantity_lbs) || 0), 0);
+            totalQuantityLbs = itemList.reduce((sum, it) => sum + safeNum(it.quantity_lbs, 0), 0);
             const firstItem = itemList[0];
             primaryProductType = primaryProductType || firstItem.product_type || 'Huevo Entero Pasteurizado';
             primaryPresentation = primaryPresentation || firstItem.presentation || 'cubeta 30LB';
             if (primaryPrice <= 0 && firstItem.price_per_lb) {
-                primaryPrice = parseFloat(firstItem.price_per_lb) || 0;
+                primaryPrice = safeNum(firstItem.price_per_lb, 0);
             }
             if (!resolvedBatchId && firstItem.batch_id) {
-                resolvedBatchId = parseInt(firstItem.batch_id);
+                resolvedBatchId = safeInt(firstItem.batch_id, null);
             }
             if (!resolvedLotCode && firstItem.lot_code) {
                 resolvedLotCode = firstItem.lot_code;
@@ -5377,7 +5390,7 @@ const saveEggCustomerOrder = async (req, res) => {
         }
 
         if (totalQuantityLbs <= 0) {
-            totalQuantityLbs = parseFloat(quantity_lbs) || 0;
+            totalQuantityLbs = safeNum(quantity_lbs, 0);
         }
 
         // Resolver lot_code si tenemos batch_id
@@ -5409,8 +5422,8 @@ const saveEggCustomerOrder = async (req, res) => {
                  ORDER BY updated_at DESC LIMIT 1`,
                 [company_id, resolvedCustomerId, resolvedCustomerName, primaryProductType, `%${primaryProductType}%`, primaryProductType]
             );
-            if (agreements.length > 0 && parseFloat(agreements[0].agreed_price_per_lb) > 0) {
-                primaryPrice = parseFloat(agreements[0].agreed_price_per_lb);
+            if (agreements.length > 0 && safeNum(agreements[0].agreed_price_per_lb, 0) > 0) {
+                primaryPrice = safeNum(agreements[0].agreed_price_per_lb, 0);
             }
         }
 
@@ -5453,13 +5466,13 @@ const saveEggCustomerOrder = async (req, res) => {
                 let rLbs = 0;
                 let rCubetas = 0;
                 rOrders.forEach(ro => {
-                    const l = parseFloat(ro.quantity_lbs) || 0;
+                    const l = safeNum(ro.quantity_lbs, 0);
                     rLbs += l;
                     rCubetas += Math.ceil(l / 30.0);
                 });
                 await pool.query(
                     'UPDATE egg_dispatch_routes SET total_peso_lbs = ?, total_cubetas = ? WHERE id = ?',
-                    [rLbs, rCubetas, activeRouteId]
+                    [safeNum(rLbs, 0), safeNum(rCubetas, 0), safeInt(activeRouteId)]
                 );
             }
 

@@ -479,10 +479,10 @@ export default function EggCustomerOrderModal({
         let totalMoney = 0;
 
         items.forEach(it => {
-            const units = parseFloat(it.quantity_units) || 0;
-            const lbs = parseFloat(it.quantity_lbs) || 0;
-            const kg = parseFloat(it.quantity_kg) || (lbs * 0.45359237);
-            const price = parseFloat(it.price_per_lb) || 0;
+            const units = Number.isFinite(parseFloat(it.quantity_units)) ? parseFloat(it.quantity_units) : 0;
+            const lbs = Number.isFinite(parseFloat(it.quantity_lbs)) ? parseFloat(it.quantity_lbs) : 0;
+            const kg = Number.isFinite(parseFloat(it.quantity_kg)) ? parseFloat(it.quantity_kg) : (lbs * 0.45359237);
+            const price = Number.isFinite(parseFloat(it.price_per_lb)) ? parseFloat(it.price_per_lb) : 0;
 
             totalUnits += units;
             totalLbs += lbs;
@@ -528,30 +528,30 @@ export default function EggCustomerOrderModal({
         try {
             setSaving(true);
             const payload = {
-                customer_id: orderForm.customer_id || null,
+                customer_id: orderForm.customer_id ? (parseInt(orderForm.customer_id, 10) || null) : null,
                 customer_name: finalCustomerName.trim(),
-                customer_branch_id: orderForm.customer_branch_id || null,
+                customer_branch_id: orderForm.customer_branch_id ? (parseInt(orderForm.customer_branch_id, 10) || null) : null,
                 branch_name: orderForm.manual_branch_name || undefined,
                 required_delivery_date: orderForm.required_delivery_date,
                 priority: orderForm.priority,
                 notes: orderForm.notes,
                 product_type: items[0].product_type,
                 presentation: items[0].presentation,
-                quantity_units: totals.totalUnits,
-                quantity_lbs: totals.totalLbs,
-                quantity_kg: totals.totalKg,
-                price_per_lb: items[0].price_per_lb ? parseFloat(items[0].price_per_lb) : 0,
-                batch_id: items[0].batch_id || null,
+                quantity_units: Number.isFinite(totals.totalUnits) ? totals.totalUnits : 0,
+                quantity_lbs: Number.isFinite(totals.totalLbs) ? totals.totalLbs : 0,
+                quantity_kg: Number.isFinite(totals.totalKg) ? totals.totalKg : 0,
+                price_per_lb: Number.isFinite(parseFloat(items[0].price_per_lb)) ? parseFloat(items[0].price_per_lb) : 0,
+                batch_id: items[0].batch_id ? (parseInt(items[0].batch_id, 10) || null) : null,
                 lot_code: items[0].lot_code || null,
                 items: items.map(it => ({
                     product_type: it.product_type,
                     presentation: it.presentation,
-                    quantity_units: parseFloat(it.quantity_units) || 0,
-                    quantity_lbs: parseFloat(it.quantity_lbs) || 0,
-                    quantity_kg: parseFloat(it.quantity_kg) || 0,
-                    price_per_lb: it.price_per_lb ? parseFloat(it.price_per_lb) : 0,
+                    quantity_units: Number.isFinite(parseFloat(it.quantity_units)) ? parseFloat(it.quantity_units) : 0,
+                    quantity_lbs: Number.isFinite(parseFloat(it.quantity_lbs)) ? parseFloat(it.quantity_lbs) : 0,
+                    quantity_kg: Number.isFinite(parseFloat(it.quantity_kg)) ? parseFloat(it.quantity_kg) : 0,
+                    price_per_lb: Number.isFinite(parseFloat(it.price_per_lb)) ? parseFloat(it.price_per_lb) : 0,
                     price_source_note: it.price_source_note || '',
-                    batch_id: it.batch_id || null,
+                    batch_id: it.batch_id ? (parseInt(it.batch_id, 10) || null) : null,
                     lot_code: it.lot_code || null
                 }))
             };

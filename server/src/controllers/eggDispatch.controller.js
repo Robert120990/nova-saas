@@ -3,6 +3,19 @@ const reportPdfHelper = require('../utils/reportPdfHelper');
 const excelService = require('../services/excel.service');
 const dteService = require('../services/dte.service');
 
+// Helpers de sanitización numérica defensiva contra valores NaN / vacíos en MySQL
+const safeNum = (val, fallback = 0) => {
+    if (val === null || val === undefined || val === '') return fallback;
+    const n = Number(val);
+    return Number.isFinite(n) ? n : fallback;
+};
+
+const safeInt = (val, fallback = null) => {
+    if (val === null || val === undefined || val === '') return fallback;
+    const n = parseInt(val, 10);
+    return Number.isFinite(n) ? n : fallback;
+};
+
 /**
  * ==============================================================================
  * CONTROLADOR DE DESPACHOS, RUTAS, FLOTA Y MANTENIMIENTO (HUEVO INDUSTRIAL)
@@ -651,7 +664,7 @@ const saveDispatchRoute = async (req, res) => {
                 );
                 totalPedidos = ordersData.length;
                 ordersData.forEach(o => {
-                    const lbs = parseFloat(o.quantity_lbs) || 0;
+                    const lbs = safeNum(o.quantity_lbs, 0);
                     totalPesoLbs += lbs;
                     totalCubetas += Math.ceil(lbs / 30.0);
                 });
@@ -688,20 +701,20 @@ const saveDispatchRoute = async (req, res) => {
                 [
                     routeCode,
                     fecha_despacho,
-                    vehicle_id || null,
-                    driver_id || null,
+                    safeInt(vehicle_id),
+                    safeInt(driver_id),
                     resolvedDriverName,
                     resolvedDriverPhone,
                     estado || 'planificada',
                     hora_salida_estimada || '07:00:00',
-                    totalPedidos,
-                    totalPesoLbs,
-                    totalCubetas,
-                    odometro_inicial ? parseFloat(odometro_inicial) : null,
-                    odometro_final ? parseFloat(odometro_final) : null,
-                    distancia_km_estimada ? parseFloat(distancia_km_estimada) : null,
+                    safeInt(totalPedidos, 0),
+                    safeNum(totalPesoLbs, 0),
+                    safeInt(totalCubetas, 0),
+                    safeNum(odometro_inicial, null),
+                    safeNum(odometro_final, null),
+                    safeNum(distancia_km_estimada, null),
                     notas_ruta || null,
-                    id,
+                    safeInt(id),
                     company_id
                 ]
             );
@@ -727,18 +740,18 @@ const saveDispatchRoute = async (req, res) => {
                     company_id,
                     routeCode,
                     fecha_despacho,
-                    vehicle_id || null,
-                    driver_id || null,
+                    safeInt(vehicle_id),
+                    safeInt(driver_id),
                     resolvedDriverName,
                     resolvedDriverPhone,
                     estado || 'planificada',
                     hora_salida_estimada || '07:00:00',
-                    totalPedidos,
-                    totalPesoLbs,
-                    totalCubetas,
-                    odometro_inicial ? parseFloat(odometro_inicial) : null,
-                    odometro_final ? parseFloat(odometro_final) : null,
-                    distancia_km_estimada ? parseFloat(distancia_km_estimada) : null,
+                    safeInt(totalPedidos, 0),
+                    safeNum(totalPesoLbs, 0),
+                    safeInt(totalCubetas, 0),
+                    safeNum(odometro_inicial, null),
+                    safeNum(odometro_final, null),
+                    safeNum(distancia_km_estimada, null),
                     notas_ruta || null
                 ]
             );
@@ -748,13 +761,13 @@ const saveDispatchRoute = async (req, res) => {
         // 5. Insertar paradas y asociar pedidos con trazabilidad de lotes
         for (let idx = 0; idx < stopList.length; idx++) {
             const stop = stopList[idx];
-            const ordenVisita = stop.orden_visita !== undefined ? parseInt(stop.orden_visita) : (idx + 1);
+            const ordenVisita = stop.orden_visita !== undefined ? safeInt(stop.orden_visita, idx + 1) : (idx + 1);
 
             const [oData] = await connection.query(
                 'SELECT batch_id, lot_code FROM egg_customer_orders WHERE id = ?',
                 [stop.order_id]
             );
-            const stopBatchId = oData[0]?.batch_id || null;
+            const stopBatchId = safeInt(oData[0]?.batch_id);
             const stopLotCode = oData[0]?.lot_code || null;
 
             await connection.query(
@@ -763,10 +776,10 @@ const saveDispatchRoute = async (req, res) => {
                     orden_visita, prioridad, estado_entrega, batch_id, lot_code
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 [
-                    routeId,
-                    stop.order_id,
-                    stop.customer_id,
-                    stop.customer_branch_id || null,
+                    safeInt(routeId),
+                    safeInt(stop.order_id),
+                    safeInt(stop.customer_id),
+                    safeInt(stop.customer_branch_id),
                     ordenVisita,
                     stop.prioridad || 'normal',
                     'pendiente',
@@ -784,7 +797,7 @@ const saveDispatchRoute = async (req, res) => {
                     status = 'en_proceso',
                     priority = ?
                  WHERE id = ? AND company_id = ?`,
-                [routeId, stop.customer_branch_id || null, stop.prioridad || 'normal', stop.order_id, company_id]
+                [safeInt(routeId), safeInt(stop.customer_branch_id), stop.prioridad || 'normal', safeInt(stop.order_id), company_id]
             );
         }
 
@@ -1102,8 +1115,8 @@ const confirmStopDelivery = async (req, res) => {
         }
 
         const stop = stopRows[0];
-        const parsedLat = latitude !== undefined && latitude !== null && latitude !== '' ? parseFloat(latitude) : null;
-        const parsedLng = longitude !== undefined && longitude !== null && longitude !== '' ? parseFloat(longitude) : null;
+        const parsedLat = safeNum(latitude, null);
+        const parsedLng = safeNum(longitude, null);
         const cleanRecibidoPor = (recibido_por || '').trim();
         const cleanTelefono = (telefono_receptor || '').trim();
         const cleanDte = (dte_codigo_generacion || '').trim().toUpperCase();
@@ -2040,8 +2053,8 @@ const autoInvoiceDispatchRoute = async (req, res) => {
 
                 if (isCustom) {
                     const descCustom = (it.product_type || it.descripcion || it.description || 'Detalle libre').trim();
-                    const rawQty = parseFloat(it.quantity_lbs ?? it.quantity ?? 0);
-                    const rawPrice = parseFloat(it.price_per_lb ?? it.price ?? 0);
+                    const rawQty = safeNum(it.quantity_lbs ?? it.quantity ?? 0, 0);
+                    const rawPrice = safeNum(it.price_per_lb ?? it.price ?? 0, 0);
 
                     // Si no tiene precio (precio 0 o vacío)
                     if (rawPrice <= 0) {
@@ -2077,17 +2090,17 @@ const autoInvoiceDispatchRoute = async (req, res) => {
                             ventaGravada = gravNeto;
                         }
 
-                        totalGravado += ventaGravada;
-                        totalIva += ivaItem;
+                        totalGravado += safeNum(ventaGravada, 0);
+                        totalIva += safeNum(ivaItem, 0);
 
                         itemsProcessed.push({
                             product_id: null,
                             codigo: 'DET-LIBRE',
                             descripcion: descCustom,
                             cantidad: qty,
-                            precio_unitario: precioUnitario,
+                            precio_unitario: safeNum(precioUnitario, 0),
                             monto_descuento: 0,
-                            venta_gravada: ventaGravada,
+                            venta_gravada: safeNum(ventaGravada, 0),
                             venta_exenta: 0,
                             tributos: dteType === '11' || dteType === '04' ? [] : ['20']
                         });
@@ -2096,8 +2109,8 @@ const autoInvoiceDispatchRoute = async (req, res) => {
                 }
 
                 // Ítem normal de producto de catálogo / inventario
-                const qty = parseFloat(it.quantity_lbs || 0);
-                const priceLb = parseFloat(it.price_per_lb || 0);
+                const qty = safeNum(it.quantity_lbs ?? it.quantity ?? 0, 0);
+                const priceLb = safeNum(it.price_per_lb ?? it.price ?? 0, 0);
                 let itemTotal = Math.round(qty * priceLb * 100) / 100;
 
                 if (dteType === '04') {
@@ -2121,33 +2134,40 @@ const autoInvoiceDispatchRoute = async (req, res) => {
                     ventaGravada = gravNeto;
                 }
 
-                totalGravado += ventaGravada;
-                totalIva += ivaItem;
+                totalGravado += safeNum(ventaGravada, 0);
+                totalIva += safeNum(ivaItem, 0);
 
-                const itemDesc = `${it.product_type} (${it.presentation || '30LB'}) [Lote: ${it.lot_code}]`;
+                const itemDesc = `${it.product_type || 'Ovoproducto'} (${it.presentation || '30LB'}) [Lote: ${it.lot_code || 'S/L'}]`;
 
                 itemsProcessed.push({
                     product_id: null,
-                    codigo: it.lot_code,
+                    codigo: it.lot_code || 'S/L',
                     descripcion: itemDesc,
-                    cantidad: qty,
-                    precio_unitario: precioUnitario,
+                    cantidad: qty > 0 ? qty : 1,
+                    precio_unitario: safeNum(precioUnitario, 0),
                     monto_descuento: 0,
-                    venta_gravada: ventaGravada,
+                    venta_gravada: safeNum(ventaGravada, 0),
                     venta_exenta: 0,
                     tributos: dteType === '11' || dteType === '04' ? [] : ['20']
                 });
             }
 
-            const totalPagar = dteType === '04' ? 0.00001 : (dteType === '11' ? totalGravado : (totalGravado + totalIva));
+            const finalTotalGravado = safeNum(totalGravado, 0);
+            const finalTotalIva = safeNum(totalIva, 0);
+            const finalTotalExento = safeNum(totalExento, 0);
+            const finalTotalNoSujeto = safeNum(totalNoSujeto, 0);
+            const calculatedPagar = dteType === '04' ? 0.00001 : (dteType === '11' ? finalTotalGravado : (finalTotalGravado + finalTotalIva));
+            const totalPagar = safeNum(calculatedPagar, 0);
 
             let retencion = 0;
             let percepcion = 0;
             if (company.tipo_contribuyente !== 'Grande' && customer.condicion_fiscal === 'gran contribuyente' && dteType === '03') {
-                if (totalGravado >= 100) {
-                    retencion = Math.round(totalGravado * 0.01 * 100) / 100;
+                if (finalTotalGravado >= 100) {
+                    retencion = Math.round(finalTotalGravado * 0.01 * 100) / 100;
                 }
             }
+            const finalRetencion = safeNum(retencion, 0);
+            const finalPercepcion = safeNum(percepcion, 0);
 
             const sellerId = resolvedSellerId;
             const branchId = resolvedBranchId;
@@ -2173,13 +2193,13 @@ const autoInvoiceDispatchRoute = async (req, res) => {
                 fecha_emision: new Date(),
                 hora_emision: new Date().toTimeString().split(' ')[0],
                 estado: 'emitido',
-                total_gravado: totalGravado,
-                total_exento: totalExento,
-                total_nosujetas: totalNoSujeto,
-                total_iva: totalIva,
+                total_gravado: finalTotalGravado,
+                total_exento: finalTotalExento,
+                total_nosujetas: finalTotalNoSujeto,
+                total_iva: finalTotalIva,
                 descuento_general: 0,
-                iva_percibido: percepcion,
-                iva_retenido: retencion,
+                iva_percibido: finalPercepcion,
+                iva_retenido: finalRetencion,
                 total_pagar: totalPagar,
                 cliente_nombre: customer.nombre,
                 observaciones: saleObservaciones,
@@ -2197,11 +2217,11 @@ const autoInvoiceDispatchRoute = async (req, res) => {
                     product_id: item.product_id,
                     codigo: item.codigo,
                     descripcion: item.descripcion,
-                    cantidad: item.cantidad,
-                    precio_unitario: item.precio_unitario,
+                    cantidad: safeNum(item.cantidad, 1),
+                    precio_unitario: safeNum(item.precio_unitario, 0),
                     monto_descuento: 0,
-                    venta_gravada: item.venta_gravada,
-                    venta_exenta: 0,
+                    venta_gravada: safeNum(item.venta_gravada, 0),
+                    venta_exenta: safeNum(item.venta_exenta, 0),
                     tributos: JSON.stringify(item.tributos || [])
                 }]);
             }
@@ -2231,11 +2251,11 @@ const autoInvoiceDispatchRoute = async (req, res) => {
                         dte_type: dteType,
                         condicion_operacion: condicionOperacion,
                         dias_credito: diasCredito,
-                        total_gravado: totalGravado,
-                        total_iva: totalIva,
+                        total_gravado: finalTotalGravado,
+                        total_iva: finalTotalIva,
                         total_pagar: totalPagar,
-                        total_retencion: retencion,
-                        total_percepcion: percepcion,
+                        total_retencion: finalRetencion,
+                        total_percepcion: finalPercepcion,
                         remission_type: dteType === '04' ? '02' : null,
                         transporter_name: dteType === '04' ? (route.driver_name || 'Chofer Asignado') : null,
                         vehicle_plate: dteType === '04' ? (route.vehicle_placa || null) : null
@@ -2305,7 +2325,7 @@ const autoInvoiceDispatchRoute = async (req, res) => {
             }
 
             // 5f. Actualizar Parada (egg_dispatch_stops)
-            const firstBatchId = stop.items[0]?.batch_id || null;
+            const firstBatchId = safeInt(stop.items[0]?.batch_id, null);
             const firstLotCode = stop.items[0]?.lot_code || null;
             await connection.query(`
                 UPDATE egg_dispatch_stops SET
@@ -2315,12 +2335,12 @@ const autoInvoiceDispatchRoute = async (req, res) => {
                     lot_code = COALESCE(?, lot_code)
                 WHERE id = ? AND dispatch_route_id = ?
             `, [
-                saleId,
+                safeInt(saleId),
                 dteInfo.codigo_generacion || null,
                 firstBatchId,
                 firstLotCode,
-                stop.stop_id,
-                route_id
+                safeInt(stop.stop_id),
+                safeInt(route_id)
             ]);
 
             // 5g. Actualizar Pedido (egg_customer_orders)
@@ -2333,13 +2353,13 @@ const autoInvoiceDispatchRoute = async (req, res) => {
                     items_json = ?
                 WHERE id = ? AND company_id = ?
             `, [
-                saleId,
+                safeInt(saleId),
                 dteInfo.codigo_generacion || null,
                 firstBatchId,
                 firstLotCode,
                 JSON.stringify(stop.items),
-                stop.order_id,
-                company_id
+                safeInt(stop.order_id),
+                safeInt(company_id)
             ]);
 
             billedResults.push({

@@ -316,8 +316,8 @@ export default function RouteAutoInvoicingModal({
                 if (cfg?.selected) {
                     selectedCount++;
                     cfg.items.forEach(it => {
-                        const price = parseFloat(it.price_per_lb || 0);
-                        const qty = parseFloat(it.quantity_lbs || 0);
+                        const price = Number.isFinite(parseFloat(it.price_per_lb)) ? parseFloat(it.price_per_lb) : 0;
+                        const qty = Number.isFinite(parseFloat(it.quantity_lbs)) ? parseFloat(it.quantity_lbs) : 0;
                         if (price > 0 && qty > 0) {
                             selectedTotal += (price * qty);
                         }
@@ -392,9 +392,14 @@ export default function RouteAutoInvoicingModal({
                         customer_id: stop.customer_id,
                         customer_branch_id: stop.customer_branch_id || null,
                         dte_type: cfg.dte_type,
-                        condicion_operacion: cfg.condicion_operacion,
-                        dias_credito: cfg.dias_credito,
-                        items: cfg.items
+                        condicion_operacion: parseInt(cfg.condicion_operacion, 10) || 1,
+                        dias_credito: parseInt(cfg.dias_credito, 10) || 0,
+                        items: (cfg.items || []).map(it => ({
+                            ...it,
+                            quantity_lbs: Number.isFinite(parseFloat(it.quantity_lbs)) ? parseFloat(it.quantity_lbs) : 0,
+                            price_per_lb: Number.isFinite(parseFloat(it.price_per_lb)) ? parseFloat(it.price_per_lb) : 0,
+                            batch_id: it.batch_id ? (parseInt(it.batch_id, 10) || null) : null
+                        }))
                     };
                 })
             };
