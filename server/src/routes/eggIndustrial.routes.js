@@ -9,6 +9,8 @@ router.put('/raw-materials/:id', eggController.updateRawMaterial);
 router.put('/raw-materials/:id/quality-classification', eggController.saveQualityClassification);
 router.get('/raw-materials/:id/lab-001-pdf', eggController.getRawMaterialLab001Pdf);
 router.post('/raw-materials/:id/lab-001-pdf', eggController.getRawMaterialLab001Pdf);
+router.get('/raw-materials/:id/origin-certificate', eggController.getOriginCertificate);
+router.post('/raw-materials/:id/origin-certificate', eggController.getOriginCertificate);
 router.put('/raw-materials/:id/void', eggController.voidRawMaterial);
 router.delete('/raw-materials/:id', eggController.deleteRawMaterial);
 
@@ -80,6 +82,8 @@ router.get('/traceability-360', eggController.getTraceability360List);
 router.get('/traceability-360/stats', eggController.getTraceability360Stats);
 router.get('/traceability-360/detail/:type/:id', eggController.getTraceability360Detail);
 router.get('/traceability-360/available-lots', eggController.getAvailableSalesLots);
+router.get('/traceability-360/batch/:batchId/origin-certificate', eggController.getOriginCertificateByBatch);
+router.post('/traceability-360/batch/:batchId/origin-certificate', eggController.getOriginCertificateByBatch);
 router.get('/trace/:code', eggController.getTraceability);
 
 // 12. Bitácora de Eventos de Auditoría

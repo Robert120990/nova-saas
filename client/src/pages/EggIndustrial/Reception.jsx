@@ -372,6 +372,138 @@ const EggReception = () => {
         }
     };
 
+    const handlePrintOriginCert = async (rawMaterialId, customLot = '') => {
+        if (!rawMaterialId) return;
+        setPrintingPdfId(rawMaterialId);
+        const toastId = toast.loading('Generando Certificado de Calidad de Origen (PDF)...');
+        try {
+            const res = await axios.get(`/api/egg-industrial/raw-materials/${rawMaterialId}/origin-certificate?format=pdf`, {
+                responseType: 'blob'
+            });
+            const blob = new Blob([res.data], { type: 'application/pdf' });
+            const blobUrl = window.URL.createObjectURL(blob);
+            setPdfPreviewModal({
+                isOpen: true,
+                url: blobUrl,
+                title: 'Certificado de Calidad de Origen (Proveedor • ANDELSA)',
+                subtitle: `Control de Origen • Lote ${customLot || rawMaterialId}`,
+                fileName: `Certificado_Origen_${(customLot || rawMaterialId).toString().replace(/[^a-zA-Z0-9_-]/g, '_')}.pdf`
+            });
+            toast.dismiss(toastId);
+        } catch (err) {
+            console.error('Error al generar PDF de Certificado de Origen:', err);
+            toast.error(err.response?.data?.message || 'Error al generar Certificado de Origen.', { id: toastId });
+        } finally {
+            setPrintingPdfId(null);
+        }
+    };
+
+    const handlePrintOriginCertFromModal = async () => {
+        if (!qualityModal.rm?.id) return;
+        setPrintingPdfId(qualityModal.rm.id);
+        const toastId = toast.loading('Generando Certificado de Calidad de Origen (PDF)...');
+        try {
+            const currentPayload = {
+                format: 'pdf',
+                farm_name: qualityModal.farm_name,
+                provider_lot: qualityModal.provider_lot,
+                production_date: qualityModal.production_date,
+                delivery_date: qualityModal.reception_date,
+                is_color_blanco: (qualityModal.egg_color || 'blanco').toLowerCase() === 'blanco',
+                is_color_marron: (qualityModal.egg_color || '').toLowerCase() === 'marron',
+                is_camion_cerrado: qualityModal.is_camion_cerrado,
+                is_limpieza_camion: qualityModal.is_limpieza_camion,
+                is_cartones_limpios: qualityModal.is_cartones_limpios,
+                bird_batches: qualityModal.bird_batches
+            };
+            const res = await axios.post(`/api/egg-industrial/raw-materials/${qualityModal.rm.id}/origin-certificate`, currentPayload, {
+                responseType: 'blob'
+            });
+            const blob = new Blob([res.data], { type: 'application/pdf' });
+            const blobUrl = window.URL.createObjectURL(blob);
+            setPdfPreviewModal({
+                isOpen: true,
+                url: blobUrl,
+                title: 'Certificado de Calidad de Origen (Proveedor • ANDELSA)',
+                subtitle: `Control de Origen • Lote ${qualityModal.provider_lot || qualityModal.rm.provider_lot || qualityModal.rm.id}`,
+                fileName: `Certificado_Origen_${(qualityModal.provider_lot || qualityModal.rm.provider_lot || qualityModal.rm.id).toString().replace(/[^a-zA-Z0-9_-]/g, '_')}.pdf`
+            });
+            toast.dismiss(toastId);
+        } catch (err) {
+            console.error('Error al generar Certificado de Origen desde modal:', err);
+            toast.error(err.response?.data?.message || 'Error al generar Certificado de Origen.', { id: toastId });
+        } finally {
+            setPrintingPdfId(null);
+        }
+    };
+
+    const handleDownloadOriginCertDocx = async (rawMaterialId, customLot = '') => {
+        if (!rawMaterialId) return;
+        setPrintingPdfId(rawMaterialId);
+        const toastId = toast.loading('Generando Certificado de Origen en Word (.docx)...');
+        try {
+            const res = await axios.get(`/api/egg-industrial/raw-materials/${rawMaterialId}/origin-certificate?format=word`, {
+                responseType: 'blob'
+            });
+            const safeLot = (customLot || rawMaterialId).toString().replace(/[^a-zA-Z0-9_-]/g, '_');
+            const blob = new Blob([res.data], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+            const blobUrl = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = blobUrl;
+            link.download = `Certificado_Origen_${safeLot}.docx`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(blobUrl);
+            toast.success('Documento Word (.docx) descargado con éxito.', { id: toastId });
+        } catch (err) {
+            console.error('Error al descargar Word de Certificado de Origen:', err);
+            toast.error(err.response?.data?.message || 'Error al descargar Word.', { id: toastId });
+        } finally {
+            setPrintingPdfId(null);
+        }
+    };
+
+    const handleDownloadOriginCertDocxFromModal = async () => {
+        if (!qualityModal.rm?.id) return;
+        setPrintingPdfId(qualityModal.rm.id);
+        const toastId = toast.loading('Generando Certificado de Origen en Word (.docx)...');
+        try {
+            const currentPayload = {
+                format: 'word',
+                farm_name: qualityModal.farm_name,
+                provider_lot: qualityModal.provider_lot,
+                production_date: qualityModal.production_date,
+                delivery_date: qualityModal.reception_date,
+                is_color_blanco: (qualityModal.egg_color || 'blanco').toLowerCase() === 'blanco',
+                is_color_marron: (qualityModal.egg_color || '').toLowerCase() === 'marron',
+                is_camion_cerrado: qualityModal.is_camion_cerrado,
+                is_limpieza_camion: qualityModal.is_limpieza_camion,
+                is_cartones_limpios: qualityModal.is_cartones_limpios,
+                bird_batches: qualityModal.bird_batches
+            };
+            const res = await axios.post(`/api/egg-industrial/raw-materials/${qualityModal.rm.id}/origin-certificate`, currentPayload, {
+                responseType: 'blob'
+            });
+            const safeLot = (qualityModal.provider_lot || qualityModal.rm.provider_lot || qualityModal.rm.id).toString().replace(/[^a-zA-Z0-9_-]/g, '_');
+            const blob = new Blob([res.data], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+            const blobUrl = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = blobUrl;
+            link.download = `Certificado_Origen_${safeLot}.docx`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(blobUrl);
+            toast.success('Documento Word (.docx) descargado con éxito.', { id: toastId });
+        } catch (err) {
+            console.error('Error al descargar Word de Certificado de Origen desde modal:', err);
+            toast.error(err.response?.data?.message || 'Error al descargar Word.', { id: toastId });
+        } finally {
+            setPrintingPdfId(null);
+        }
+    };
+
     // Estado del modal de evaluación de calidad y reporte de materia prima (LAB 001, Rev. 7.03.24)
     const [qualityModal, setQualityModal] = useState({
         isOpen: false,
@@ -395,6 +527,12 @@ const EggReception = () => {
         physicochemical: defaultPhysicochemical,
         organoleptic: defaultOrganoleptic,
         transport_storage: defaultTransport,
+        is_camion_cerrado: true,
+        is_limpieza_camion: true,
+        is_cartones_limpios: true,
+        bird_batches: [
+            { breed: 'DEKALB WHITE', age_weeks: '69 SEMANAS DE EDAD' }
+        ],
         inspector_name: '',
         quality_reviewed_by: 'Jefe de Control de Calidad',
         quality_status: 'aprobado',
@@ -476,6 +614,13 @@ const EggReception = () => {
                 temperatura_transporte: labReport.transport_storage?.temperatura_transporte || (rm.truck_temperature_c ? `${rm.truck_temperature_c} °C` : (rm.temperature_c ? `${rm.temperature_c} °C` : ''))
             },
 
+            is_camion_cerrado: labReport.camion_cerrado !== undefined ? Boolean(labReport.camion_cerrado) : true,
+            is_limpieza_camion: labReport.limpieza_camion !== undefined ? Boolean(labReport.limpieza_camion) : true,
+            is_cartones_limpios: labReport.cartones_limpios_sin_plaga !== undefined ? Boolean(labReport.cartones_limpios_sin_plaga) : true,
+            bird_batches: Array.isArray(labReport.bird_batches) && labReport.bird_batches.length > 0
+                ? labReport.bird_batches
+                : [{ breed: 'DEKALB WHITE', age_weeks: '69 SEMANAS DE EDAD' }],
+
             inspector_name: rm.quality_inspector_name || labReport.inspector_name || user?.nombre || '',
             quality_reviewed_by: rm.quality_reviewed_by || labReport.reviewed_by || 'Jefe de Control de Calidad',
             quality_status: rm.quality_status || (rm.status === 'aprobado' ? 'aprobado' : 'cuarentena'),
@@ -522,6 +667,10 @@ const EggReception = () => {
                 physicochemical: qualityModal.physicochemical,
                 organoleptic: qualityModal.organoleptic,
                 transport_storage: qualityModal.transport_storage,
+                camion_cerrado: qualityModal.is_camion_cerrado,
+                limpieza_camion: qualityModal.is_limpieza_camion,
+                cartones_limpios_sin_plaga: qualityModal.is_cartones_limpios,
+                bird_batches: qualityModal.bird_batches,
                 observations: qualityModal.quality_notes?.trim() || '',
                 inspector_name: qualityModal.inspector_name.trim(),
                 reviewed_by: qualityModal.quality_reviewed_by?.trim() || 'Jefe de Control de Calidad'
@@ -1844,6 +1993,36 @@ const EggReception = () => {
                                                                                 type="button"
                                                                                 onClick={() => {
                                                                                     setOpenPrintMenuId(null);
+                                                                                    handlePrintOriginCert(rm.id, rm.provider_lot);
+                                                                                }}
+                                                                                className="w-full px-3 py-2 text-xs text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 flex items-center gap-2.5 transition text-left border-t border-slate-100"
+                                                                            >
+                                                                                <ShieldCheck size={15} className="text-teal-600 shrink-0" />
+                                                                                <div>
+                                                                                    <span className="font-bold block text-slate-900">Certificado Calidad Origen (PDF)</span>
+                                                                                    <span className="text-[10px] text-slate-400 block font-normal">Formato oficial proveedor / ANDELSA</span>
+                                                                                </div>
+                                                                            </button>
+
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => {
+                                                                                    setOpenPrintMenuId(null);
+                                                                                    handleDownloadOriginCertDocx(rm.id, rm.provider_lot);
+                                                                                }}
+                                                                                className="w-full px-3 py-2 text-xs text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 flex items-center gap-2.5 transition text-left"
+                                                                            >
+                                                                                <FileText size={15} className="text-teal-600 shrink-0" />
+                                                                                <div>
+                                                                                    <span className="font-bold block text-slate-900">Certificado Origen Word (.docx)</span>
+                                                                                    <span className="text-[10px] text-slate-400 block font-normal">Descargar formato editable oficial</span>
+                                                                                </div>
+                                                                            </button>
+
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => {
+                                                                                    setOpenPrintMenuId(null);
                                                                                     let parsedTarimas = [];
                                                                                     try {
                                                                                         parsedTarimas = typeof rm.tarimas_json === 'string'
@@ -2285,7 +2464,27 @@ const EggReception = () => {
                                     </p>
                                 </div>
                             </div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
+                                <button
+                                    type="button"
+                                    disabled={printingPdfId === qualityModal.rm?.id}
+                                    onClick={handlePrintOriginCertFromModal}
+                                    className="px-3 py-1.5 bg-white hover:bg-teal-50 text-teal-900 border border-teal-300 rounded-xl text-xs font-bold transition-all shadow-2xs flex items-center gap-1.5 disabled:opacity-50"
+                                    title="Imprimir Certificado de Calidad de Origen (Proveedor a ANDELSA) en PDF"
+                                >
+                                    {printingPdfId === qualityModal.rm?.id ? <Loader2 className="animate-spin" size={14} /> : <ShieldCheck size={14} className="text-teal-700" />}
+                                    <span className="hidden sm:inline">Cert. Origen (PDF)</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    disabled={printingPdfId === qualityModal.rm?.id}
+                                    onClick={handleDownloadOriginCertDocxFromModal}
+                                    className="px-3 py-1.5 bg-white hover:bg-teal-50 text-teal-900 border border-teal-300 rounded-xl text-xs font-bold transition-all shadow-2xs flex items-center gap-1.5 disabled:opacity-50"
+                                    title="Descargar Certificado de Calidad de Origen en formato Word (.docx)"
+                                >
+                                    <FileText size={14} className="text-teal-600" />
+                                    <span className="hidden sm:inline">Origen (Word)</span>
+                                </button>
                                 <button
                                     type="button"
                                     disabled={printingPdfId === qualityModal.rm?.id}
@@ -2294,7 +2493,7 @@ const EggReception = () => {
                                     title="Imprimir formato físico oficial LAB 001 en PDF"
                                 >
                                     {printingPdfId === qualityModal.rm?.id ? <Loader2 className="animate-spin" size={14} /> : <Printer size={14} className="text-amber-700" />}
-                                    <span className="hidden sm:inline">{printingPdfId === qualityModal.rm?.id ? 'Generando...' : 'Imprimir LAB 001'}</span>
+                                    <span className="hidden sm:inline">{printingPdfId === qualityModal.rm?.id ? 'Generando...' : 'LAB 001'}</span>
                                 </button>
                                 <button
                                     type="button"
@@ -2346,7 +2545,7 @@ const EggReception = () => {
                             </div>
                         )}
 
-                        {/* Pestañas de Navegación del Formulario LAB 001 */}
+                        {/* Pestañas de Navegación del Formulario LAB 001 y Certificado de Origen */}
                         <div className="flex items-center border-b border-slate-200 px-5 bg-white overflow-x-auto">
                             <button
                                 type="button"
@@ -2395,6 +2594,18 @@ const EggReception = () => {
                             >
                                 <Award size={14} />
                                 <span>4. Dictamen Oficial & Firmas</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setQualityModal(prev => ({ ...prev, activeTab: 'origin_cert' }))}
+                                className={`px-4 py-3 text-xs font-bold border-b-2 transition-all flex items-center gap-2 shrink-0 ${
+                                    qualityModal.activeTab === 'origin_cert'
+                                        ? 'border-teal-600 text-teal-800 bg-teal-50/40'
+                                        : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'
+                                }`}
+                            >
+                                <ShieldCheck size={14} className="text-teal-600" />
+                                <span>5. Certificado de Calidad de Origen</span>
                             </button>
                         </div>
 
@@ -3051,17 +3262,294 @@ const EggReception = () => {
                                 </div>
                             )}
 
+                            {/* TAB 5: CERTIFICADO DE CALIDAD DE ORIGEN (FORMATO OFICIAL PROVEEDOR - ANDELSA) */}
+                            {qualityModal.activeTab === 'origin_cert' && (
+                                <div className="space-y-4">
+                                    {/* Cabecera del Certificado de Origen */}
+                                    <div className="bg-teal-50/70 border border-teal-200 rounded-2xl p-4 space-y-3">
+                                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-teal-200/80 pb-3">
+                                            <div>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="p-1.5 bg-teal-600 text-white rounded-xl shadow-2xs">
+                                                        <ShieldCheck size={16} />
+                                                    </span>
+                                                    <h3 className="text-xs font-black uppercase tracking-wider text-teal-950">
+                                                        Certificado de Calidad de Origen • Cadena de Custodia
+                                                    </h3>
+                                                </div>
+                                                <p className="text-[11px] text-teal-800 font-medium mt-0.5">
+                                                    Documento legal emitido por el proveedor para <b>ANDELSA</b> acreditando inocuidad, transporte y razas de aves
+                                                </p>
+                                            </div>
+
+                                            <div className="flex items-center gap-2">
+                                                <button
+                                                    type="button"
+                                                    disabled={printingPdfId === qualityModal.rm?.id}
+                                                    onClick={handlePrintOriginCertFromModal}
+                                                    className="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 disabled:opacity-50"
+                                                >
+                                                    <Printer size={13} />
+                                                    <span>PDF</span>
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    disabled={printingPdfId === qualityModal.rm?.id}
+                                                    onClick={handleDownloadOriginCertDocxFromModal}
+                                                    className="px-3 py-1.5 bg-white hover:bg-teal-100 text-teal-900 border border-teal-300 rounded-xl text-xs font-bold transition-all shadow-2xs flex items-center gap-1.5 disabled:opacity-50"
+                                                >
+                                                    <FileText size={13} className="text-teal-700" />
+                                                    <span>Word (.docx)</span>
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {/* Recuadro Lote ANDELSA vs Lote Proveedor */}
+                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                                            <div className="bg-white border border-teal-200 rounded-xl p-3 space-y-1">
+                                                <span className="text-[10px] font-bold text-teal-700 uppercase tracking-tight block">
+                                                    EMISOR (PROVEEDOR) :
+                                                </span>
+                                                <strong className="text-xs text-slate-900 font-bold block truncate">
+                                                    {qualityModal.rm?.provider_name || 'INVERSIONES AVÍCOLAS DE HONDURAS, S.A.'}
+                                                </strong>
+                                                <span className="text-[10px] text-slate-500 font-medium block">
+                                                    Lote Proveedor: <b>{qualityModal.provider_lot || '---'}</b>
+                                                </span>
+                                            </div>
+
+                                            <div className="bg-amber-50/90 border-2 border-amber-400 rounded-xl p-3 space-y-1 shadow-2xs">
+                                                <span className="text-[10px] font-black text-amber-900 uppercase tracking-tight block">
+                                                    LOTE (SE LO COLOCAMOS EN ANDELSA) :
+                                                </span>
+                                                <strong className="text-sm font-black text-slate-900 font-mono block">
+                                                    {qualityModal.rm?.andelsa_lot || qualityModal.rm?.lot_code || `REC-${qualityModal.rm?.id}`}
+                                                </strong>
+                                                <span className="text-[10px] text-amber-800 font-medium block">
+                                                    Destinatario: <b>ANDELSA</b>
+                                                </span>
+                                            </div>
+
+                                            <div className="bg-white border border-teal-200 rounded-xl p-3 space-y-1">
+                                                <span className="text-[10px] font-bold text-teal-700 uppercase tracking-tight block">
+                                                    FECHAS CLAVE :
+                                                </span>
+                                                <div className="text-[11px] text-slate-700 space-y-0.5">
+                                                    <div>Producción: <b>{qualityModal.production_date || '---'}</b></div>
+                                                    <div>Entrega: <b>{qualityModal.reception_date || '---'}</b></div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Sección: Requerimientos y Conformidades del Transporte y Empaque */}
+                                    <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3 shadow-2xs">
+                                        <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5 border-b border-slate-100 pb-2">
+                                            <Truck size={14} className="text-teal-600" />
+                                            Requerimientos y Conformidades de Inocuidad
+                                        </h4>
+
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                                            <div className="space-y-2">
+                                                <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wide block">
+                                                    Color del Huevo
+                                                </label>
+                                                <div className="flex items-center gap-4">
+                                                    <label className="inline-flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-700">
+                                                        <input
+                                                            type="radio"
+                                                            name="origin_egg_color"
+                                                            value="blanco"
+                                                            checked={(qualityModal.egg_color || 'blanco').toLowerCase() === 'blanco'}
+                                                            onChange={() => setQualityModal({ ...qualityModal, egg_color: 'blanco' })}
+                                                            className="text-teal-600 focus:ring-teal-500"
+                                                        />
+                                                        <span>Blanco (Conforme)</span>
+                                                    </label>
+                                                    <label className="inline-flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-700">
+                                                        <input
+                                                            type="radio"
+                                                            name="origin_egg_color"
+                                                            value="marron"
+                                                            checked={(qualityModal.egg_color || '').toLowerCase() === 'marron'}
+                                                            onChange={() => setQualityModal({ ...qualityModal, egg_color: 'marron' })}
+                                                            className="text-teal-600 focus:ring-teal-500"
+                                                        />
+                                                        <span>Marrón / Rojo</span>
+                                                    </label>
+                                                </div>
+                                            </div>
+
+                                            <div className="space-y-2">
+                                                <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wide block">
+                                                    Conformidades Físicas (Transporte y Empaque)
+                                                </label>
+                                                <div className="space-y-2">
+                                                    <label className="inline-flex items-center gap-2 cursor-pointer text-xs font-medium text-slate-700">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={qualityModal.is_camion_cerrado}
+                                                            onChange={(e) => setQualityModal({ ...qualityModal, is_camion_cerrado: e.target.checked })}
+                                                            className="rounded text-teal-600 focus:ring-teal-500"
+                                                        />
+                                                        <span>Camión cerrado</span>
+                                                    </label>
+                                                    <br />
+                                                    <label className="inline-flex items-center gap-2 cursor-pointer text-xs font-medium text-slate-700">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={qualityModal.is_limpieza_camion}
+                                                            onChange={(e) => setQualityModal({ ...qualityModal, is_limpieza_camion: e.target.checked })}
+                                                            className="rounded text-teal-600 focus:ring-teal-500"
+                                                        />
+                                                        <span>Limpieza del camión</span>
+                                                    </label>
+                                                    <br />
+                                                    <label className="inline-flex items-center gap-2 cursor-pointer text-xs font-medium text-slate-700">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={qualityModal.is_cartones_limpios}
+                                                            onChange={(e) => setQualityModal({ ...qualityModal, is_cartones_limpios: e.target.checked })}
+                                                            className="rounded text-teal-600 focus:ring-teal-500"
+                                                        />
+                                                        <span>Cartones no reciclables y limpios sin plagas ni objetos extraños</span>
+                                                    </label>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Sección: Tabla Dinámica de Razas y Semanas de Edad de las Aves */}
+                                    <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3 shadow-2xs">
+                                        <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                                            <div>
+                                                <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                                                    Lotes de Aves en Origen (Raza y Edad)
+                                                </h4>
+                                                <span className="text-[10px] text-slate-400 font-medium">
+                                                    Registre las razas y semanas de postura correspondientes a este cargamento
+                                                </span>
+                                            </div>
+
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setQualityModal(prev => ({
+                                                        ...prev,
+                                                        bird_batches: [
+                                                            ...(prev.bird_batches || []),
+                                                            { breed: 'DEKALB WHITE', age_weeks: '35 SEMANAS DE EDAD' }
+                                                        ]
+                                                    }));
+                                                }}
+                                                className="px-3 py-1.5 bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200 rounded-xl text-xs font-bold flex items-center gap-1 transition-all"
+                                            >
+                                                <Plus size={13} />
+                                                <span>+ Agregar Lote de Aves</span>
+                                            </button>
+                                        </div>
+
+                                        <div className="overflow-x-auto">
+                                            <table className="w-full text-left border-collapse">
+                                                <thead>
+                                                    <tr className="border-b border-slate-200 bg-slate-50 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                                                        <th className="p-2.5 w-12 text-center">#</th>
+                                                        <th className="p-2.5">Raza del Ave</th>
+                                                        <th className="p-2.5">Edad en Semanas</th>
+                                                        <th className="p-2.5 w-12 text-center">Acción</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-100 text-xs">
+                                                    {(qualityModal.bird_batches || []).map((batch, bIdx) => (
+                                                        <tr key={bIdx} className="hover:bg-slate-50/60 transition-colors">
+                                                            <td className="p-2.5 text-center font-mono font-bold text-slate-400 text-[11px]">
+                                                                {bIdx + 1}
+                                                            </td>
+                                                            <td className="p-2.5">
+                                                                <input
+                                                                    type="text"
+                                                                    value={batch.breed}
+                                                                    onChange={(e) => {
+                                                                        const val = e.target.value;
+                                                                        setQualityModal(prev => {
+                                                                            const updated = [...(prev.bird_batches || [])];
+                                                                            updated[bIdx] = { ...updated[bIdx], breed: val };
+                                                                            return { ...prev, bird_batches: updated };
+                                                                        });
+                                                                    }}
+                                                                    placeholder="Ej: DEKALB WHITE, BOVANS BROWN"
+                                                                    className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-bold uppercase text-slate-800 focus:ring-1 focus:ring-teal-500"
+                                                                />
+                                                            </td>
+                                                            <td className="p-2.5">
+                                                                <input
+                                                                    type="text"
+                                                                    value={batch.age_weeks}
+                                                                    onChange={(e) => {
+                                                                        const val = e.target.value;
+                                                                        setQualityModal(prev => {
+                                                                            const updated = [...(prev.bird_batches || [])];
+                                                                            updated[bIdx] = { ...updated[bIdx], age_weeks: val };
+                                                                            return { ...prev, bird_batches: updated };
+                                                                        });
+                                                                    }}
+                                                                    placeholder="Ej: 69 SEMANAS DE EDAD"
+                                                                    className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-semibold uppercase text-slate-800 focus:ring-1 focus:ring-teal-500"
+                                                                />
+                                                            </td>
+                                                            <td className="p-2.5 text-center">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        setQualityModal(prev => ({
+                                                                            ...prev,
+                                                                            bird_batches: (prev.bird_batches || []).filter((_, i) => i !== bIdx)
+                                                                        }));
+                                                                    }}
+                                                                    className="p-1 text-slate-400 hover:text-rose-600 rounded-lg transition-colors"
+                                                                    title="Eliminar fila"
+                                                                >
+                                                                    <Trash2 size={13} />
+                                                                </button>
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                    {(!qualityModal.bird_batches || qualityModal.bird_batches.length === 0) && (
+                                                        <tr>
+                                                            <td colSpan={4} className="p-4 text-center text-slate-400 italic text-xs">
+                                                                No se han registrado lotes de aves. Haga clic en "+ Agregar Lote de Aves".
+                                                            </td>
+                                                        </tr>
+                                                    )}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
                             {/* Modal Footer Controls */}
                             <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t border-slate-200">
-                                <button
-                                    type="button"
-                                    disabled={printingPdfId === qualityModal.rm?.id}
-                                    onClick={handlePrintLab001FromModal}
-                                    className="w-full sm:w-auto px-4 py-2 bg-white hover:bg-amber-50 text-amber-900 rounded-xl text-xs font-bold border border-amber-300 transition-colors shadow-2xs flex items-center justify-center gap-1.5 disabled:opacity-50"
-                                >
-                                    {printingPdfId === qualityModal.rm?.id ? <Loader2 className="animate-spin" size={15} /> : <Printer size={15} className="text-amber-700" />}
-                                    <span>{printingPdfId === qualityModal.rm?.id ? 'Generando Reporte LAB 001...' : 'Imprimir Reporte LAB 001 (PDF)'}</span>
-                                </button>
+                                <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto">
+                                    <button
+                                        type="button"
+                                        disabled={printingPdfId === qualityModal.rm?.id}
+                                        onClick={handlePrintOriginCertFromModal}
+                                        className="px-3.5 py-2 bg-teal-50 hover:bg-teal-100 text-teal-900 rounded-xl text-xs font-bold border border-teal-300 transition-colors shadow-2xs flex items-center justify-center gap-1.5 disabled:opacity-50"
+                                    >
+                                        <ShieldCheck size={14} className="text-teal-700" />
+                                        <span>Cert. Origen (PDF)</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        disabled={printingPdfId === qualityModal.rm?.id}
+                                        onClick={handlePrintLab001FromModal}
+                                        className="px-3.5 py-2 bg-white hover:bg-amber-50 text-amber-900 rounded-xl text-xs font-bold border border-amber-300 transition-colors shadow-2xs flex items-center justify-center gap-1.5 disabled:opacity-50"
+                                    >
+                                        {printingPdfId === qualityModal.rm?.id ? <Loader2 className="animate-spin" size={14} /> : <Printer size={14} className="text-amber-700" />}
+                                        <span>Reporte LAB 001</span>
+                                    </button>
+                                </div>
 
                                 <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end">
                                     <button

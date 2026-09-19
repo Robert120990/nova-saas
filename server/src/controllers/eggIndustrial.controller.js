@@ -6,6 +6,7 @@ const eggExportService = require('../services/eggProductionExport.service');
 const eggReportsExportService = require('../services/eggReportsExport.service');
 const eggQualityLetterExport = require('../services/eggQualityLetterExport.service');
 const eggRawMaterialLabReport = require('../services/eggRawMaterialLabReport.service');
+const eggOriginCertificate = require('../services/eggOriginCertificate.service');
 const reportPdfHelper = require('../utils/reportPdfHelper');
 const excelService = require('../services/excel.service');
 
@@ -678,6 +679,92 @@ const getRawMaterialLab001Pdf = async (req, res) => {
         return res.send(pdfBuffer);
     } catch (error) {
         console.error('Error generating LAB 001 PDF:', error);
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// 1.3 Exportación Oficial Certificado de Calidad de Origen (Proveedor a ANDELSA)
+const getOriginCertificate = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const companyId = req.company_id || req.user?.company_id;
+
+        let data = await eggOriginCertificate.getOriginCertificateData(id, companyId);
+        if (!data) {
+            return res.status(404).json({ message: 'Recepción de materia prima no encontrada.' });
+        }
+
+        // Si se envió un body (POST) con datos en edición o vista previa, combinarlos
+        if (req.body && typeof req.body === 'object' && Object.keys(req.body).length > 0) {
+            const b = req.body;
+            data = {
+                ...data,
+                provider_name: b.provider_name ? String(b.provider_name).toUpperCase() : data.provider_name,
+                client_name: b.client_name ? String(b.client_name).toUpperCase() : data.client_name,
+                lot_provider: b.lot_provider || b.provider_lot || data.lot_provider,
+                lot_internal: b.lot_internal || b.andelsa_lot || data.lot_internal,
+                is_color_blanco: b.is_color_blanco !== undefined ? Boolean(b.is_color_blanco) : data.is_color_blanco,
+                is_color_marron: b.is_color_marron !== undefined ? Boolean(b.is_color_marron) : data.is_color_marron,
+                is_camion_cerrado: b.is_camion_cerrado !== undefined ? Boolean(b.is_camion_cerrado) : data.is_camion_cerrado,
+                is_limpieza_camion: b.is_limpieza_camion !== undefined ? Boolean(b.is_limpieza_camion) : data.is_limpieza_camion,
+                is_cartones_limpios: b.is_cartones_limpios !== undefined ? Boolean(b.is_cartones_limpios) : data.is_cartones_limpios,
+                bird_batches: Array.isArray(b.bird_batches) ? b.bird_batches : data.bird_batches
+            };
+        }
+
+        const safeLot = (data.lot_internal || data.lot_provider || `LOTE-${id}`).replace(/[^a-zA-Z0-9_-]/g, '_');
+        const format = (req.query.format || req.body?.format || 'pdf').toLowerCase();
+
+        if (format === 'word' || format === 'docx') {
+            const docxBuffer = await eggOriginCertificate.generateOriginCertificateWord(data);
+            res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+            res.setHeader('Content-Disposition', `attachment; filename="Certificado_Calidad_Origen_${safeLot}.docx"`);
+            return res.send(docxBuffer);
+        }
+
+        const pdfBuffer = await eggOriginCertificate.generateOriginCertificatePdf(data);
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename="Certificado_Calidad_Origen_${safeLot}.pdf"`);
+        return res.send(pdfBuffer);
+    } catch (error) {
+        console.error('Error generating Origin Certificate:', error);
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// 1.4 Obtener Certificado de Calidad de Origen por Lote de Producción (Backward Traceability)
+const getOriginCertificateByBatch = async (req, res) => {
+    try {
+        const { batchId } = req.params;
+        const companyId = req.company_id || req.user?.company_id;
+
+        // 1. Buscar materia prima asociada al lote
+        let rawMaterialId = null;
+        const [brmRows] = await pool.query(
+            `SELECT raw_material_id FROM batch_raw_materials WHERE batch_id = ? LIMIT 1`,
+            [batchId]
+        );
+        if (brmRows.length > 0 && brmRows[0].raw_material_id) {
+            rawMaterialId = brmRows[0].raw_material_id;
+        } else {
+            const [bRows] = await pool.query(
+                `SELECT raw_material_id FROM egg_production_batches WHERE id = ? AND company_id = ? LIMIT 1`,
+                [batchId, companyId]
+            );
+            if (bRows.length > 0 && bRows[0].raw_material_id) {
+                rawMaterialId = bRows[0].raw_material_id;
+            }
+        }
+
+        if (!rawMaterialId) {
+            return res.status(404).json({ message: 'No se encontró recepción de materia prima asociada a este lote de producción.' });
+        }
+
+        // Reutilizar getOriginCertificate delegando el ID de materia prima
+        req.params.id = rawMaterialId;
+        return getOriginCertificate(req, res);
+    } catch (error) {
+        console.error('Error generating Origin Certificate by Batch:', error);
         res.status(500).json({ message: error.message });
     }
 };
@@ -7463,6 +7550,8 @@ module.exports = {
     voidRawMaterial,
     saveQualityClassification,
     getRawMaterialLab001Pdf,
+    getOriginCertificate,
+    getOriginCertificateByBatch,
     getCipLogs,
     createCipLog,
     getProductionBatches,

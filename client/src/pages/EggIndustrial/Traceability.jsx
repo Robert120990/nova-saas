@@ -358,6 +358,49 @@ const EggTraceability = () => {
         }
     };
 
+    // Descarga de Certificado de Calidad de Origen (Proveedor a ANDELSA)
+    const [downloadingOriginCert, setDownloadingOriginCert] = useState(false);
+
+    const handleDownloadOriginCertificate = async (identifier, isBatch = false, format = 'pdf') => {
+        if (!identifier) {
+            return toast.error('No se identificó el lote o materia prima para el Certificado de Origen.');
+        }
+
+        setDownloadingOriginCert(true);
+        try {
+            const url = isBatch
+                ? `/api/egg-industrial/traceability-360/batch/${identifier}/origin-certificate`
+                : `/api/egg-industrial/raw-materials/${identifier}/origin-certificate`;
+
+            const res = await axios.get(url, {
+                params: { format },
+                responseType: 'blob'
+            });
+
+            const ext = format === 'word' ? 'docx' : 'pdf';
+            const mime = format === 'word'
+                ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+                : 'application/pdf';
+
+            const blob = new Blob([res.data], { type: mime });
+            const blobUrl = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = blobUrl;
+            link.setAttribute('download', `Certificado_Origen_${isBatch ? `LOTE_${identifier}` : `MP_${identifier}`}.${ext}`);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.URL.revokeObjectURL(blobUrl);
+
+            toast.success(`Certificado de Calidad de Origen descargado (${format.toUpperCase()}).`);
+        } catch (error) {
+            console.error('Error al descargar Certificado de Origen:', error);
+            toast.error('No se pudo generar el Certificado de Calidad de Origen.');
+        } finally {
+            setDownloadingOriginCert(false);
+        }
+    };
+
     // Parámetros activos filtrados para el lote seleccionado en el formulario
     const selectedBatch = useMemo(() => {
         return batches.find(b => String(b.id) === String(labForm.batch_id));
@@ -2231,6 +2274,17 @@ const EggTraceability = () => {
                                         COA PDF
                                     </button>
                                 )}
+                                {detailData && (
+                                    <button
+                                        disabled={downloadingOriginCert}
+                                        onClick={() => handleDownloadOriginCertificate(detailData.rawMaterial?.id || detailData.batch?.id, !detailData.rawMaterial, 'pdf')}
+                                        className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-800 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs disabled:opacity-50"
+                                        title="Descargar Certificado de Calidad de Origen de Granja (PDF)"
+                                    >
+                                        <FileText size={14} className="text-rose-600" />
+                                        Cert. Origen PDF
+                                    </button>
+                                )}
                                 <button
                                     onClick={() => setIsDetailModalOpen(false)}
                                     className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-all"
@@ -2322,6 +2376,35 @@ const EggTraceability = () => {
                                             ) : (
                                                 <p className="text-xs text-slate-400 italic">Materia prima ingresada directamente a tolva o no catalogada.</p>
                                             )}
+
+                                            {/* Acciones Certificado de Origen ANDELSA */}
+                                            <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
+                                                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">
+                                                    Certificado de Origen Proveedor (ANDELSA):
+                                                </span>
+                                                <div className="flex items-center gap-1.5">
+                                                    <button
+                                                        type="button"
+                                                        disabled={downloadingOriginCert || (!detailData.rawMaterial && !detailData.batch)}
+                                                        onClick={() => handleDownloadOriginCertificate(detailData.rawMaterial?.id || detailData.batch?.id, !detailData.rawMaterial, 'pdf')}
+                                                        className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 rounded-lg text-[11px] font-bold flex items-center gap-1 transition-all disabled:opacity-50"
+                                                        title="Descargar Certificado de Calidad de Origen oficial en PDF"
+                                                    >
+                                                        <FileText size={12} className="text-rose-600" />
+                                                        PDF
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        disabled={downloadingOriginCert || (!detailData.rawMaterial && !detailData.batch)}
+                                                        onClick={() => handleDownloadOriginCertificate(detailData.rawMaterial?.id || detailData.batch?.id, !detailData.rawMaterial, 'word')}
+                                                        className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-700 rounded-lg text-[11px] font-bold flex items-center gap-1 transition-all disabled:opacity-50"
+                                                        title="Descargar Certificado de Calidad de Origen editable en Word (.docx)"
+                                                    >
+                                                        <Download size={12} className="text-blue-600" />
+                                                        Word (.docx)
+                                                    </button>
+                                                </div>
+                                            </div>
                                         </div>
 
                                         {/* 2. Sanitización & CIP */}
@@ -2636,6 +2719,40 @@ const EggTraceability = () => {
                                         )}
                                         <span className="text-xs font-bold">Excel (.xlsx)</span>
                                         <span className="text-[10px] text-emerald-600">Estructurado</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Respaldo de Origen del Proveedor (ANDELSA) */}
+                            <div className="p-3.5 bg-amber-50/50 border border-amber-200 rounded-2xl space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-[11px] font-bold text-amber-900 uppercase flex items-center gap-1.5">
+                                        <Truck size={13} className="text-amber-600" />
+                                        Certificado de Calidad de Origen (Proveedor a ANDELSA)
+                                    </span>
+                                    <span className="text-[10px] text-amber-700 font-semibold px-2 py-0.5 bg-amber-100/60 rounded-full">Anexo de Granja</span>
+                                </div>
+                                <p className="text-[11px] text-slate-600">
+                                    Documento técnico emitido por la granja proveedora con condiciones de inocuidad, transporte y edades de aves que amparan este lote procesado.
+                                </p>
+                                <div className="flex items-center gap-2 pt-1">
+                                    <button
+                                        type="button"
+                                        disabled={downloadingOriginCert}
+                                        onClick={() => handleDownloadOriginCertificate(qualityLetterBatch?.batch_id, true, 'pdf')}
+                                        className="flex-1 py-2 px-3 bg-white hover:bg-amber-100 border border-amber-300 text-amber-900 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-xs disabled:opacity-50"
+                                    >
+                                        <FileText size={13} className="text-rose-600" />
+                                        Certificado Origen (PDF)
+                                    </button>
+                                    <button
+                                        type="button"
+                                        disabled={downloadingOriginCert}
+                                        onClick={() => handleDownloadOriginCertificate(qualityLetterBatch?.batch_id, true, 'word')}
+                                        className="flex-1 py-2 px-3 bg-white hover:bg-blue-100 border border-blue-200 text-blue-900 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-xs disabled:opacity-50"
+                                    >
+                                        <Download size={13} className="text-blue-600" />
+                                        Certificado Origen (Word)
                                     </button>
                                 </div>
                             </div>

@@ -43,7 +43,7 @@ async function getRawMaterialLab001Data(rawMaterialId, companyId) {
                 p.nombre as provider_name, 
                 p.nombre_comercial as provider_commercial_name,
                 p.pais as provider_country,
-                c.nombre as company_name,
+                COALESCE(c.razon_social, c.nombre_comercial, 'ALIMENTOS NUTRICIONALES DE EL SALVADOR, S.A. DE C.V.') as company_name,
                 c.nit as company_nit,
                 c.nrc as company_nrc
          FROM egg_raw_materials rm
