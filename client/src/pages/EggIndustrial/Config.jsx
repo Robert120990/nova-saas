@@ -54,7 +54,9 @@ const inferCategoryAndPresentation = (productName = '', code = '') => {
     const text = `${productName} ${code}`.toLowerCase();
 
     let product_type = DEFAULT_INDUSTRIAL_PRODUCT_CATEGORY;
-    if (text.includes('clara ppg') || text.includes('ppg')) {
+    if (text.includes('cascara') || text.includes('cáscara') || text.includes('cascaron') || text.includes('cascarón') || text.includes('materia prima') || text.includes('caja de huevo') || text.includes('cajas de huevo') || text.includes('carton de huevo') || text.includes('cartón de huevo') || text.includes('cartonh') || text.includes('huevo blanco')) {
+        product_type = 'huevo en cascara';
+    } else if (text.includes('clara ppg') || text.includes('ppg')) {
         product_type = 'clara ppg';
     } else if (text.includes('clara')) {
         product_type = 'clara';
@@ -73,6 +75,12 @@ const inferCategoryAndPresentation = (productName = '', code = '') => {
     let presentation = DEFAULT_INDUSTRIAL_PRESENTATION;
     if (text.includes('cubeta') || text.includes('32lb') || text.includes('32 lb') || text.includes('32l')) {
         presentation = 'cubeta 32LB';
+    } else if (text.includes('carton 55') || text.includes('55lb') || text.includes('55 lb') || text.includes('carton') || text.includes('cartón')) {
+        presentation = 'carton 55LB';
+    } else if (text.includes('caja') || text.includes('cajas')) {
+        presentation = 'caja 32LB';
+    } else if (text.includes('unidad') || text.includes('unid') || text.includes('hcu')) {
+        presentation = 'unidad 0.2LB';
     } else if (text.includes('galon') || text.includes('galón') || text.includes('8lb') || text.includes('8 lb')) {
         presentation = 'galon 8LB';
     } else if (text.includes('litro') || text.includes('2lb') || text.includes('2 lb') || text.includes('1 lt') || text.includes('1lt')) {
@@ -223,7 +231,8 @@ const EggConfig = () => {
         'clara ppg': { weight: '8.00', yield_pct: '85.00', shell_pct: '12.00', loss_pct: '3.00' },
         'yema salada': { weight: '4.00', yield_pct: '85.00', shell_pct: '12.00', loss_pct: '3.00' },
         'yema azucarada': { weight: '4.00', yield_pct: '85.00', shell_pct: '12.00', loss_pct: '3.00' },
-        'fórmula especial': { weight: '32.00', yield_pct: '85.00', shell_pct: '12.00', loss_pct: '3.00' }
+        'fórmula especial': { weight: '32.00', yield_pct: '85.00', shell_pct: '12.00', loss_pct: '3.00' },
+        'huevo en cascara': { weight: '55.00', yield_pct: '100.00', shell_pct: '0.00', loss_pct: '0.00' }
     };
 
     const baseFormulationProducts = [
@@ -233,8 +242,16 @@ const EggConfig = () => {
         { type: 'clara ppg', label: 'Clara PPG' },
         { type: 'yema salada', label: 'Yema Líquida Salada' },
         { type: 'yema azucarada', label: 'Yema Líquida Azucarada' },
-        { type: 'fórmula especial', label: 'Fórmula Especial / Mezcla Premium' }
+        { type: 'fórmula especial', label: 'Fórmula Especial / Mezcla Premium' },
+        { type: 'huevo en cascara', label: 'Huevo en Cáscara / Cascarón' }
     ];
+
+    const eggProductsList = useMemo(() => {
+        return (systemProducts || []).filter(p => {
+            const t = `${p.nombre || ''} ${p.codigo || ''} ${p.codigo_barra || ''} ${p.category_name || ''}`.toLowerCase();
+            return t.includes('huevo') || t.includes('clara') || t.includes('yema') || t.includes('ovoproducto') || t.includes('carton') || t.includes('cascara') || t.includes('caja');
+        });
+    }, [systemProducts]);
 
     const formulationProducts = useMemo(() => {
         const list = [...baseFormulationProducts];
@@ -596,6 +613,35 @@ const EggConfig = () => {
                         product_name: ''
                     }
                 ]
+            };
+        });
+    };
+
+    const handleSelectProductQuick = (index, product) => {
+        if (!product) return;
+        const code = (product.codigo || product.codigo_barra || '').trim();
+        const inferred = inferCategoryAndPresentation(product.nombre || product.name || '', code);
+        const pWeight = getIndustrialPresentationWeightLbs(inferred.presentation, 0);
+        const lbs = pWeight > 0 ? pWeight : (parseFloat(mappingForm.codes?.[index]?.weight_lbs) || 32);
+        const kg = poundsToKilograms(lbs);
+
+        setMappingForm((current) => {
+            const updated = [...current.codes];
+            updated[index] = {
+                code,
+                weight_lbs: lbs.toFixed(2),
+                weight_kg: kg.toFixed(2),
+                product_id: product.id,
+                product_name: product.nombre || product.name || ''
+            };
+            const resolvedType = current.product_type === DEFAULT_INDUSTRIAL_PRODUCT_CATEGORY ? inferred.product_type : current.product_type;
+            const recipeFormula = getRecipeFormulaName(resolvedType);
+            return {
+                ...current,
+                codes: updated,
+                product_name: !current.product_name?.trim() ? (recipeFormula || product.nombre || product.name || '') : current.product_name,
+                product_type: resolvedType,
+                presentation: current.presentation === DEFAULT_INDUSTRIAL_PRESENTATION ? inferred.presentation : current.presentation
             };
         });
     };
@@ -1519,16 +1565,17 @@ const EggConfig = () => {
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-150">
                     {/* Datalist para autocompletar códigos del sistema mientras se escribe */}
                     <datalist id="system-product-codes-list">
-                        {systemProducts
-                            .filter(p => !isProductMapped(p, mappingForm.id) && !isProductInCurrentForm(p, null))
-                            .flatMap(p => {
-                                const entries = [];
-                                if (p.codigo) entries.push(<option key={`sku-${p.id}`} value={p.codigo}>{p.nombre} (SKU: {p.codigo})</option>);
-                                if (p.codigo_barra && p.codigo_barra !== p.codigo) {
-                                    entries.push(<option key={`bar-${p.id}`} value={p.codigo_barra}>{p.nombre} (Barra: {p.codigo_barra})</option>);
-                                }
-                                return entries;
-                            })}
+                        {systemProducts.flatMap(p => {
+                            const entries = [];
+                            const sku = p.codigo?.trim();
+                            const barcode = p.codigo_barra?.trim();
+                            const name = p.nombre || p.name || '';
+                            if (sku) entries.push(<option key={`sku-${p.id}`} value={sku}>{sku} - {name}</option>);
+                            if (barcode && barcode !== sku) {
+                                entries.push(<option key={`bar-${p.id}`} value={barcode}>{barcode} - {name}</option>);
+                            }
+                            return entries;
+                        })}
                     </datalist>
 
                     <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-6 shadow-2xl max-w-xl w-full max-h-[90vh] overflow-y-auto text-slate-900 space-y-4">
@@ -1717,24 +1764,24 @@ const EggConfig = () => {
                                                         list="system-product-codes-list"
                                                         value={typeof item === 'string' ? item : (item.code || '')}
                                                         onChange={(e) => {
-                                                            const val = e.target.value;
-                                                            handleUpdateMappingCode(index, 'code', val);
-                                                            const match = systemProducts.find(p =>
-                                                                (p.codigo && p.codigo.toLowerCase() === val.toLowerCase()) ||
-                                                                (p.codigo_barra && p.codigo_barra.toLowerCase() === val.toLowerCase())
-                                                            );
-                                                            if (match && !mappingForm.product_name?.trim()) {
-                                                                const inferred = inferCategoryAndPresentation(match.nombre || match.name || '', val);
-                                                                const formulaName = getRecipeFormulaName(inferred.product_type);
-                                                                setMappingForm(prev => ({
-                                                                    ...prev,
-                                                                    product_name: formulaName || match.nombre || match.name || prev.product_name,
-                                                                    product_type: prev.product_type === DEFAULT_INDUSTRIAL_PRODUCT_CATEGORY ? inferred.product_type : prev.product_type,
-                                                                    presentation: prev.presentation === DEFAULT_INDUSTRIAL_PRESENTATION ? inferred.presentation : prev.presentation
-                                                                }));
-                                                            }
-                                                        }}
-                                                        placeholder={index === 0 ? 'Ej: HEGL8 o escribe para buscar...' : 'Otro código (SKU o Barra)'}
+                                                             const val = e.target.value;
+                                                             handleUpdateMappingCode(index, 'code', val);
+                                                             const match = systemProducts.find(p =>
+                                                                 (p.codigo && p.codigo.toLowerCase() === val.toLowerCase()) ||
+                                                                 (p.codigo_barra && p.codigo_barra.toLowerCase() === val.toLowerCase())
+                                                             );
+                                                             if (match && !mappingForm.product_name?.trim()) {
+                                                                 const inferred = inferCategoryAndPresentation(match.nombre || match.name || '', val);
+                                                                 const formulaName = getRecipeFormulaName(inferred.product_type);
+                                                                 setMappingForm(prev => ({
+                                                                     ...prev,
+                                                                     product_name: formulaName || match.nombre || match.name || prev.product_name,
+                                                                     product_type: prev.product_type === DEFAULT_INDUSTRIAL_PRODUCT_CATEGORY ? inferred.product_type : prev.product_type,
+                                                                     presentation: prev.presentation === DEFAULT_INDUSTRIAL_PRESENTATION ? inferred.presentation : prev.presentation
+                                                                 }));
+                                                             }
+                                                         }}
+                                                        placeholder={index === 0 ? 'Ej: HC, H1 o escribe para buscar...' : 'Otro código (SKU o Barra)'}
                                                         className="w-full pl-3 pr-8 py-2 bg-white border border-slate-300 rounded-xl text-xs font-mono font-bold text-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                                                     />
                                                     <button
@@ -1756,6 +1803,29 @@ const EggConfig = () => {
                                                 >
                                                     <Trash2 size={14} />
                                                 </button>
+                                            </div>
+
+                                            {/* Selector rápido directo de productos de huevo/sistema */}
+                                            <div className="flex items-center gap-1.5 pt-0.5">
+                                                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tight shrink-0">
+                                                    Seleccionar del catálogo:
+                                                </span>
+                                                <select
+                                                    value={item.product_id || ''}
+                                                    onChange={(e) => {
+                                                        const pId = e.target.value;
+                                                        const prod = systemProducts.find(x => String(x.id) === String(pId));
+                                                        if (prod) handleSelectProductQuick(index, prod);
+                                                    }}
+                                                    className="flex-1 min-w-0 px-2 py-1 bg-white border border-slate-200 hover:border-indigo-300 rounded-lg text-[11px] text-slate-800 font-semibold focus:outline-none focus:border-indigo-500 truncate"
+                                                >
+                                                    <option value="">-- Elegir producto (huevo en cáscara u ovoproducto) --</option>
+                                                    {eggProductsList.map((ep) => (
+                                                        <option key={ep.id} value={ep.id}>
+                                                            {ep.nombre || ep.name} [SKU: {ep.codigo || 'S/C'}]
+                                                        </option>
+                                                    ))}
+                                                </select>
                                             </div>
 
                                             {/* Nombre del producto detectado/vinculado */}

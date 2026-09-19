@@ -31,6 +31,7 @@ import {
 } from 'lucide-react';
 import EggCustomerOrderModal from '../../components/egg/EggCustomerOrderModal';
 import RouteAutoInvoicingModal from '../../components/egg/RouteAutoInvoicingModal';
+import PdfViewerModal from '../../components/ui/PdfViewerModal';
 
 const PRODUCT_PROFILES = [
     'Huevo Entero Pasteurizado',
@@ -39,7 +40,8 @@ const PRODUCT_PROFILES = [
     'Clara de Huevo Pasteurizada',
     'Yema Azucarada',
     'Yema Salada',
-    'Huevo con Leche'
+    'Huevo con Leche',
+    'Huevo en Cáscara'
 ];
 
 const PRESENTATIONS = [
@@ -74,15 +76,109 @@ export default function EggDispatch() {
     const [orderPriorityFilter, setOrderPriorityFilter] = useState('todos');
     const [autoInvoiceModalOpen, setAutoInvoiceModalOpen] = useState(false);
 
-    const handlePrintOrderReceipt = (orderId) => {
-        if (!orderId) return;
-        window.open(`/api/egg-industrial/orders/${orderId}/delivery-receipt`, '_blank');
+    // Estados de impresión y visor PDF
+    const [pdfPreviewModal, setPdfPreviewModal] = useState({
+        isOpen: false,
+        url: null,
+        title: '',
+        subtitle: '',
+        fileName: '',
+        footerNote: ''
+    });
+    const [printingOrderId, setPrintingOrderId] = useState(null);
+    const [printingManifest, setPrintingManifest] = useState(false);
+
+    const handleClosePdfPreview = () => {
+        if (pdfPreviewModal.url) {
+            window.URL.revokeObjectURL(pdfPreviewModal.url);
+        }
+        setPdfPreviewModal({
+            isOpen: false,
+            url: null,
+            title: '',
+            subtitle: '',
+            fileName: '',
+            footerNote: ''
+        });
     };
 
-    const handlePrintRouteManifest = (routeId, format = 'pdf') => {
+    const handlePrintOrderReceipt = async (orderId) => {
+        if (!orderId) return;
+        setPrintingOrderId(orderId);
+        const toastId = toast.loading('Generando comprobante de entrega...');
+        try {
+            const res = await axios.get(`/api/egg-industrial/orders/${orderId}/delivery-receipt`, {
+                responseType: 'blob'
+            });
+            const blob = new Blob([res.data], { type: 'application/pdf' });
+            const blobUrl = window.URL.createObjectURL(blob);
+
+            setPdfPreviewModal({
+                isOpen: true,
+                url: blobUrl,
+                title: 'Comprobante de Despacho y Entrega',
+                subtitle: `Pedido #${orderId} • Ovoproductos y Huevo Industrial`,
+                fileName: `Comprobante_Entrega_Pedido_${orderId}.pdf`,
+                footerNote: 'Documento Operativo de Entrega • Planta Industrial de Ovoproductos'
+            });
+            toast.dismiss(toastId);
+        } catch (err) {
+            console.error('Error al generar comprobante de entrega:', err);
+            toast.error(err.response?.data?.message || 'Error al generar o visualizar el comprobante de entrega.', { id: toastId });
+        } finally {
+            setPrintingOrderId(null);
+        }
+    };
+
+    const handlePrintRouteManifest = async (routeId, format = 'pdf') => {
         if (!routeId) return;
-        const url = `/api/egg-industrial/dispatch/routes/${routeId}/manifest-pdf${format === 'excel' ? '?format=excel' : ''}`;
-        window.open(url, '_blank');
+        if (format === 'excel') {
+            const toastId = toast.loading('Exportando manifiesto a Excel...');
+            try {
+                const res = await axios.get(`/api/egg-industrial/dispatch/routes/${routeId}/manifest-pdf?format=excel`, {
+                    responseType: 'blob'
+                });
+                const blob = new Blob([res.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `Manifiesto_Ruta_${routeId}.xlsx`;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                window.URL.revokeObjectURL(url);
+                toast.success('Manifiesto exportado a Excel exitosamente.', { id: toastId });
+            } catch (err) {
+                console.error('Error al exportar a Excel:', err);
+                toast.error('Error al exportar el manifiesto a Excel.', { id: toastId });
+            }
+            return;
+        }
+
+        setPrintingManifest(true);
+        const toastId = toast.loading('Generando manifiesto de carga y ruta...');
+        try {
+            const res = await axios.get(`/api/egg-industrial/dispatch/routes/${routeId}/manifest-pdf`, {
+                responseType: 'blob'
+            });
+            const blob = new Blob([res.data], { type: 'application/pdf' });
+            const blobUrl = window.URL.createObjectURL(blob);
+
+            setPdfPreviewModal({
+                isOpen: true,
+                url: blobUrl,
+                title: 'Manifiesto de Carga y Hoja de Ruta',
+                subtitle: `Ruta de Despacho #${routeId} • Planta Industrial`,
+                fileName: `Manifiesto_Despacho_Ruta_${routeId}.pdf`,
+                footerNote: 'Control de Despacho y Logística • Hoja de Ruta Oficial'
+            });
+            toast.dismiss(toastId);
+        } catch (err) {
+            console.error('Error al generar manifiesto de ruta:', err);
+            toast.error(err.response?.data?.message || 'Error al generar o visualizar el manifiesto de ruta.', { id: toastId });
+        } finally {
+            setPrintingManifest(false);
+        }
     };
 
     const getOrderItems = (orderOrStop) => {
@@ -139,6 +235,7 @@ export default function EggDispatch() {
     const [routeModalOpen, setRouteModalOpen] = useState(false);
     const [editingRouteId, setEditingRouteId] = useState(null);
     const [optimizingRoute, setOptimizingRoute] = useState(false);
+    const [savingRoute, setSavingRoute] = useState(false);
 
     // Formulario de Ruta
     const [routeForm, setRouteForm] = useState({
@@ -235,6 +332,8 @@ export default function EggDispatch() {
     useEffect(() => {
         if (selectedRoute?.id) {
             fetchRouteDetail(selectedRoute.id);
+        } else {
+            setRouteDetail(null);
         }
     }, [selectedRoute]);
 
@@ -407,6 +506,7 @@ export default function EggDispatch() {
 
     const handleSaveRoute = async (e) => {
         e.preventDefault();
+        if (savingRoute) return;
 
         if (!routeForm.vehicle_id) {
             toast.error('Debe seleccionar un camión para la ruta.');
@@ -431,6 +531,7 @@ export default function EggDispatch() {
         });
 
         try {
+            setSavingRoute(true);
             const payload = {
                 ...routeForm,
                 stops: stopsPayload
@@ -439,17 +540,25 @@ export default function EggDispatch() {
             if (editingRouteId) {
                 await axios.put(`/api/egg-industrial/dispatch/routes/${editingRouteId}`, payload);
                 toast.success('Ruta actualizada exitosamente.');
+                setRouteModalOpen(false);
+                fetchRoutes();
+                fetchOrders();
+                fetchRouteDetail(editingRouteId);
             } else {
                 const res = await axios.post('/api/egg-industrial/dispatch/routes', payload);
                 toast.success(res.data?.message || 'Ruta de despacho creada exitosamente.');
+                setRouteModalOpen(false);
+                fetchRoutes();
+                fetchOrders();
+                if (res.data?.id) {
+                    fetchRouteDetail(res.data.id);
+                }
             }
-            setRouteModalOpen(false);
-            fetchRoutes();
-            fetchOrders();
-            if (editingRouteId) fetchRouteDetail(editingRouteId);
         } catch (error) {
             console.error('Error al guardar ruta:', error);
             toast.error(error.response?.data?.message || 'Error al guardar ruta de despacho.');
+        } finally {
+            setSavingRoute(false);
         }
     };
 
@@ -1089,10 +1198,15 @@ export default function EggDispatch() {
                                                         </button>
                                                         <button
                                                             onClick={() => handlePrintOrderReceipt(ord.id)}
+                                                            disabled={printingOrderId === ord.id}
                                                             title="Imprimir Comprobante de Entrega / Despacho"
-                                                            className="p-1.5 hover:bg-emerald-50 text-emerald-600 rounded-lg transition"
+                                                            className="p-1.5 hover:bg-emerald-50 text-emerald-600 rounded-lg transition disabled:opacity-50"
                                                         >
-                                                            <Printer className="w-3.5 h-3.5" />
+                                                            {printingOrderId === ord.id ? (
+                                                                <RefreshCw className="w-3.5 h-3.5 animate-spin text-emerald-600" />
+                                                            ) : (
+                                                                <Printer className="w-3.5 h-3.5" />
+                                                            )}
                                                         </button>
                                                         <button
                                                             onClick={() => handleDeleteOrder(ord.id)}
@@ -1186,10 +1300,15 @@ export default function EggDispatch() {
                                             <div className="flex items-center bg-indigo-50 border border-indigo-200 rounded-xl overflow-hidden p-0.5 shadow-xs">
                                                 <button
                                                     onClick={() => handlePrintRouteManifest(routeDetail.id, 'pdf')}
-                                                    className="flex items-center gap-1 text-xs font-bold text-indigo-700 hover:bg-indigo-600 hover:text-white px-2.5 py-1.5 rounded-lg transition"
+                                                    disabled={printingManifest}
+                                                    className="flex items-center gap-1 text-xs font-bold text-indigo-700 hover:bg-indigo-600 hover:text-white px-2.5 py-1.5 rounded-lg transition disabled:opacity-50"
                                                     title="Imprimir Manifiesto de Despacho en PDF Oficial"
                                                 >
-                                                    <Printer className="w-3.5 h-3.5" />
+                                                    {printingManifest ? (
+                                                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                                    ) : (
+                                                        <Printer className="w-3.5 h-3.5" />
+                                                    )}
                                                     <span>Imprimir Listado</span>
                                                 </button>
                                                 <button
@@ -1373,10 +1492,15 @@ export default function EggDispatch() {
                                                         </button>
                                                         <button
                                                             onClick={() => handlePrintOrderReceipt(stop.order_id)}
-                                                            className="p-1 text-slate-400 hover:text-emerald-600 hover:bg-slate-100 rounded"
+                                                            disabled={printingOrderId === stop.order_id}
+                                                            className="p-1 text-slate-400 hover:text-emerald-600 hover:bg-slate-100 rounded disabled:opacity-50"
                                                             title="Imprimir comprobante de entrega individual"
                                                         >
-                                                            <Printer className="w-3.5 h-3.5" />
+                                                            {printingOrderId === stop.order_id ? (
+                                                                <RefreshCw className="w-3.5 h-3.5 animate-spin text-emerald-600" />
+                                                            ) : (
+                                                                <Printer className="w-3.5 h-3.5" />
+                                                            )}
                                                         </button>
                                                         <button
                                                             onClick={() => handleRemoveStopFromRoute(stop.id, stop.order_id)}
@@ -2082,9 +2206,17 @@ export default function EggDispatch() {
                         </button>
                         <button
                             type="submit"
-                            className="text-xs font-bold bg-emerald-600 text-white px-5 py-2.5 rounded-xl shadow hover:bg-emerald-700 transition"
+                            disabled={savingRoute}
+                            className="text-xs font-bold bg-emerald-600 text-white px-5 py-2.5 rounded-xl shadow hover:bg-emerald-700 transition flex items-center gap-2 disabled:opacity-50"
                         >
-                            Crear Ruta de Despacho
+                            {savingRoute ? (
+                                <>
+                                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                    <span>Guardando Ruta...</span>
+                                </>
+                            ) : (
+                                <span>{editingRouteId ? 'Guardar Cambios' : 'Crear Ruta de Despacho'}</span>
+                            )}
                         </button>
                     </div>
                 </form>
@@ -2464,6 +2596,19 @@ export default function EggDispatch() {
                     fetchRoutes();
                     fetchOrders();
                 }}
+            />
+
+            {/* ========================================================================= */}
+            {/* MODAL 7: VISUALIZADOR E IMPRESOR INTERACTIVO DE PDF */}
+            {/* ========================================================================= */}
+            <PdfViewerModal
+                isOpen={pdfPreviewModal.isOpen}
+                onClose={handleClosePdfPreview}
+                title={pdfPreviewModal.title}
+                subtitle={pdfPreviewModal.subtitle}
+                pdfUrl={pdfPreviewModal.url}
+                fileName={pdfPreviewModal.fileName}
+                footerNote={pdfPreviewModal.footerNote}
             />
         </div>
     );

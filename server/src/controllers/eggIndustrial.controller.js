@@ -634,9 +634,32 @@ const getRawMaterialLab001Pdf = async (req, res) => {
         const { id } = req.params;
         const companyId = req.company_id || req.user?.company_id;
 
-        const data = await eggRawMaterialLabReport.getRawMaterialLab001Data(id, companyId);
+        let data = await eggRawMaterialLabReport.getRawMaterialLab001Data(id, companyId);
         if (!data) {
             return res.status(404).json({ message: 'Recepción de materia prima no encontrada.' });
+        }
+
+        // Si se envió un body (POST) o override con datos en edición, combinarlos con data
+        if (req.body && typeof req.body === 'object' && Object.keys(req.body).length > 0) {
+            const b = req.body;
+            data = {
+                ...data,
+                classification: b.egg_classification || data.classification,
+                farm_name: b.farm_name || data.farm_name,
+                remission_note: b.remission_note || data.remission_note,
+                production_date: b.production_date || data.production_date,
+                expiration_date: b.expiration_date || data.expiration_date,
+                total_boxes: b.total_boxes !== undefined ? b.total_boxes : data.total_boxes,
+                sample_egg_weight_g: b.sample_egg_weight_g || data.sample_egg_weight_g,
+                egg_color: (b.egg_color || data.egg_color || 'BLANCO').toUpperCase(),
+                egg_size: (b.egg_size || data.egg_size || 'L').toUpperCase(),
+                physicochemical: b.physicochemical || data.physicochemical,
+                organoleptic: b.organoleptic || data.organoleptic,
+                transport_storage: b.transport_storage || data.transport_storage,
+                observations: b.quality_notes || b.observations || data.observations,
+                inspector_name: b.inspector_name || b.quality_inspector_name || data.inspector_name,
+                reviewed_by: b.reviewed_by || b.quality_reviewed_by || data.reviewed_by
+            };
         }
 
         const safeLot = (data.provider_lot || `LOTE-${id}`).replace(/[^a-zA-Z0-9_-]/g, '_');
@@ -5404,6 +5427,147 @@ const deleteEggCustomerOrder = async (req, res) => {
     }
 };
 
+// 19.9.1 Consultar Precio Sugerido de Ovoproducto para Cliente (CRM / Historial de Pedidos / Última Factura)
+const getCustomerPricingForOrder = async (req, res) => {
+    try {
+        const company_id = req.company_id || req.user?.company_id;
+        const { customer_id, customer_name, product_type } = req.query;
+
+        if (!customer_id && !customer_name) {
+            return res.json({ price_per_lb: 0, source: null, description: 'Cliente no especificado.' });
+        }
+
+        const resolvedCustomerId = customer_id ? parseInt(customer_id) : null;
+        const resolvedCustomerName = (customer_name || '').trim();
+
+        // 1. Buscar en Acuerdos Comerciales del CRM (egg_costing_customer_agreements)
+        let agreementQuery = `
+            SELECT agreed_price_per_lb, agreed_unit_price, product_type, presentation, notes
+            FROM egg_costing_customer_agreements
+            WHERE company_id = ?
+              AND status = 'activo'
+              AND (
+                  (customer_id IS NOT NULL AND customer_id = ?)
+                  OR (customer_name IS NOT NULL AND LOWER(TRIM(customer_name)) = LOWER(TRIM(?)))
+              )
+        `;
+        const agreementParams = [company_id, resolvedCustomerId || 0, resolvedCustomerName];
+
+        if (product_type) {
+            agreementQuery += `
+                AND (
+                    product_type = ? 
+                    OR LOWER(product_type) LIKE LOWER(?) 
+                    OR LOWER(?) LIKE CONCAT('%', LOWER(product_type), '%')
+                )
+            `;
+            agreementParams.push(product_type, `%${product_type}%`, product_type);
+        }
+
+        agreementQuery += ` ORDER BY updated_at DESC LIMIT 1`;
+        const [agreements] = await pool.query(agreementQuery, agreementParams);
+
+        if (agreements.length > 0 && parseFloat(agreements[0].agreed_price_per_lb) > 0) {
+            const price = parseFloat(agreements[0].agreed_price_per_lb);
+            return res.json({
+                price_per_lb: price,
+                source: 'crm',
+                description: `Acuerdo Comercial CRM: $${price.toFixed(2)}/lb`,
+                agreement: agreements[0]
+            });
+        }
+
+        // 2. Si no hay CRM, buscar el último pedido del cliente en egg_customer_orders
+        let orderQuery = `
+            SELECT price_per_lb, product_type, presentation, required_delivery_date, created_at
+            FROM egg_customer_orders
+            WHERE company_id = ?
+              AND price_per_lb > 0
+              AND (
+                  (customer_id IS NOT NULL AND customer_id = ?)
+                  OR (customer_name IS NOT NULL AND LOWER(TRIM(customer_name)) = LOWER(TRIM(?)))
+              )
+        `;
+        const orderParams = [company_id, resolvedCustomerId || 0, resolvedCustomerName];
+
+        if (product_type) {
+            orderQuery += `
+                AND (
+                    product_type = ? 
+                    OR LOWER(product_type) LIKE LOWER(?) 
+                    OR LOWER(?) LIKE CONCAT('%', LOWER(product_type), '%')
+                )
+            `;
+            orderParams.push(product_type, `%${product_type}%`, product_type);
+        }
+
+        orderQuery += ` ORDER BY created_at DESC LIMIT 1`;
+        const [lastOrders] = await pool.query(orderQuery, orderParams);
+
+        if (lastOrders.length > 0 && parseFloat(lastOrders[0].price_per_lb) > 0) {
+            const price = parseFloat(lastOrders[0].price_per_lb);
+            const dateStr = lastOrders[0].created_at ? new Date(lastOrders[0].created_at).toISOString().split('T')[0] : '';
+            return res.json({
+                price_per_lb: price,
+                source: 'last_order',
+                description: `Último pedido registrado (${dateStr}): $${price.toFixed(2)}/lb`,
+                order: lastOrders[0]
+            });
+        }
+
+        // 3. Buscar en el historial de facturación de ventas (sales_headers + sales_items)
+        let saleQuery = `
+            SELECT si.precio_unitario, si.cantidad, si.descripcion, sh.fecha_emision, sh.created_at
+            FROM sales_headers sh
+            JOIN sales_items si ON sh.id = si.sale_id
+            WHERE sh.company_id = ?
+              AND sh.estado != 'anulado'
+              AND (
+                  (sh.customer_id IS NOT NULL AND sh.customer_id = ?)
+                  OR (sh.cliente_nombre IS NOT NULL AND LOWER(TRIM(sh.cliente_nombre)) = LOWER(TRIM(?)))
+              )
+        `;
+        const saleParams = [company_id, resolvedCustomerId || 0, resolvedCustomerName];
+
+        if (product_type) {
+            saleQuery += ` AND LOWER(si.descripcion) LIKE LOWER(?)`;
+            saleParams.push(`%${product_type}%`);
+        }
+
+        saleQuery += ` ORDER BY sh.id DESC LIMIT 1`;
+        const [sales] = await pool.query(saleQuery, saleParams);
+
+        if (sales.length > 0 && parseFloat(sales[0].precio_unitario) > 0) {
+            let unitPrice = parseFloat(sales[0].precio_unitario);
+            let factorLbs = 1;
+            const desc = (sales[0].descripcion || '').toLowerCase();
+            if (desc.includes('32')) factorLbs = 32;
+            else if (desc.includes('30')) factorLbs = 30;
+            else if (desc.includes('8') || desc.includes('galon') || desc.includes('galón')) factorLbs = 8;
+            else if (desc.includes('4') || desc.includes('medio')) factorLbs = 4;
+            else if (desc.includes('2') || desc.includes('litro')) factorLbs = 2;
+
+            const pricePerLb = factorLbs > 1 ? parseFloat((unitPrice / factorLbs).toFixed(4)) : unitPrice;
+            const dateStr = sales[0].fecha_emision || sales[0].created_at ? new Date(sales[0].fecha_emision || sales[0].created_at).toISOString().split('T')[0] : '';
+            return res.json({
+                price_per_lb: pricePerLb,
+                source: 'last_sale',
+                description: `Última factura (${dateStr}): $${pricePerLb.toFixed(2)}/lb`,
+                sale: sales[0]
+            });
+        }
+
+        return res.json({
+            price_per_lb: 0,
+            source: null,
+            description: 'Sin precio previo registrado.'
+        });
+    } catch (error) {
+        console.error('Error al obtener precio de cliente para ovoproductos:', error);
+        res.status(500).json({ message: error.message });
+    }
+};
+
 // 19.10 Usuarios de Fábrica para Asignación de Roles
 const getFactoryUsers = async (req, res) => {
     try {
@@ -7101,7 +7265,7 @@ const getOrderDeliveryReceipt = async (req, res) => {
              LEFT JOIN egg_dispatch_routes r ON o.dispatch_route_id = r.id
              LEFT JOIN delivery_vehicles v ON r.vehicle_id = v.id
              LEFT JOIN egg_production_batches b ON o.batch_id = b.id
-             LEFT JOIN sales_headers sh ON (o.sale_id = sh.id OR (o.dte_codigo_generacion IS NOT NULL AND o.dte_codigo_generacion = sh.codigo_generacion))
+             LEFT JOIN sales_headers sh ON (o.sale_id = sh.id OR (o.dte_codigo_generacion IS NOT NULL AND o.dte_codigo_generacion COLLATE utf8mb4_unicode_ci = sh.codigo_generacion COLLATE utf8mb4_unicode_ci))
              WHERE o.id = ? AND o.company_id = ?`,
             [id, company_id]
         );
@@ -7181,27 +7345,42 @@ const getOrderDeliveryReceipt = async (req, res) => {
         currentY += 105;
         doc.rect(35, currentY, 542, 16).fill('#1e293b');
         doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(7.5);
-        doc.text('#', 40, currentY + 4, { width: 20 });
-        doc.text('PRODUCTO SOLICITADO', 65, currentY + 4, { width: 165 });
-        doc.text('PRESENTACIÓN', 235, currentY + 4, { width: 90 });
-        doc.text('LOTE PROD.', 330, currentY + 4, { width: 75 });
-        doc.text('CANT. (LBS)', 410, currentY + 4, { width: 55, align: 'right' });
-        doc.text('CUBETAS', 470, currentY + 4, { width: 45, align: 'right' });
+        doc.text('#', 40, currentY + 4, { width: 15 });
+        doc.text('PRODUCTO SOLICITADO', 60, currentY + 4, { width: 145 });
+        doc.text('PRESENTACIÓN', 210, currentY + 4, { width: 80 });
+        doc.text('LOTE PROD.', 295, currentY + 4, { width: 65 });
+        doc.text('CANT (UDS)', 365, currentY + 4, { width: 45, align: 'right' });
+        doc.text('PESO (LBS)', 415, currentY + 4, { width: 50, align: 'right' });
+        doc.text('PESO (KG)', 470, currentY + 4, { width: 45, align: 'right' });
         doc.text('TOTAL ($)', 520, currentY + 4, { width: 50, align: 'right' });
 
         currentY += 16;
+        let totalUnits = 0;
         let totalLbs = 0;
-        let totalCubetas = 0;
+        let totalKg = 0;
         let totalMonto = 0;
 
         lineItems.forEach((it, idx) => {
-            const lbs = parseFloat(it.quantity_lbs) || 0;
-            const cubetas = Math.ceil(lbs / 30.0);
+            const pres = (it.presentation || '').toLowerCase();
+            let factorLbs = 30;
+            if (pres.includes('55')) factorLbs = 55;
+            else if (pres.includes('32')) factorLbs = 32;
+            else if (pres.includes('30')) factorLbs = 30;
+            else if (pres.includes('20')) factorLbs = 20;
+            else if (pres.includes('8')) factorLbs = 8;
+            else if (pres.includes('4')) factorLbs = 4;
+            else if (pres.includes('2')) factorLbs = 2;
+            else if (pres.includes('0.2') || pres.includes('unidad')) factorLbs = 0.20;
+
+            const units = it.quantity_units ? parseFloat(it.quantity_units) : (it.quantity_lbs ? Math.max(1, Math.round(parseFloat(it.quantity_lbs) / factorLbs)) : 0);
+            const lbs = it.quantity_lbs ? parseFloat(it.quantity_lbs) : (units * factorLbs);
+            const kg = it.quantity_kg ? parseFloat(it.quantity_kg) : (lbs * 0.45359237);
             const precio = parseFloat(it.price_per_lb) || 0;
             const subtotal = lbs * precio;
 
+            totalUnits += units;
             totalLbs += lbs;
-            totalCubetas += cubetas;
+            totalKg += kg;
             totalMonto += subtotal;
 
             if (idx % 2 === 1) {
@@ -7209,12 +7388,13 @@ const getOrderDeliveryReceipt = async (req, res) => {
             }
 
             doc.fillColor('#334155').font('Helvetica').fontSize(7.5);
-            doc.text(String(idx + 1), 40, currentY + 3, { width: 20 });
-            doc.font('Helvetica-Bold').fillColor('#0f172a').text(it.product_type || 'Huevo Entero Pasteurizado', 65, currentY + 3, { width: 165, ellipsis: true });
-            doc.font('Helvetica').fillColor('#334155').text(it.presentation || 'cubeta 30LB', 235, currentY + 3, { width: 90 });
-            doc.font('Helvetica-Bold').fillColor('#4338ca').text(it.lot_code || ord.lot_code || ord.linked_batch_code || 'Por asignar', 330, currentY + 3, { width: 75 });
-            doc.fillColor('#0f172a').text(lbs.toLocaleString() + ' Lb', 410, currentY + 3, { width: 55, align: 'right' });
-            doc.text(String(cubetas), 470, currentY + 3, { width: 45, align: 'right' });
+            doc.text(String(idx + 1), 40, currentY + 3, { width: 15 });
+            doc.font('Helvetica-Bold').fillColor('#0f172a').text(it.product_type || 'Huevo Entero Pasteurizado', 60, currentY + 3, { width: 145, ellipsis: true });
+            doc.font('Helvetica').fillColor('#334155').text(it.presentation || 'cubeta 30 lb', 210, currentY + 3, { width: 80 });
+            doc.font('Helvetica-Bold').fillColor('#4338ca').text(it.lot_code || ord.lot_code || ord.linked_batch_code || 'Por asignar', 295, currentY + 3, { width: 65 });
+            doc.fillColor('#0f172a').text(`${units.toLocaleString()} uds`, 365, currentY + 3, { width: 45, align: 'right' });
+            doc.text(`${lbs.toLocaleString()} lb`, 415, currentY + 3, { width: 50, align: 'right' });
+            doc.text(`${kg.toFixed(2)} kg`, 470, currentY + 3, { width: 45, align: 'right' });
             doc.text(subtotal > 0 ? `$${subtotal.toFixed(2)}` : '$0.00', 520, currentY + 3, { width: 50, align: 'right' });
 
             currentY += 15;
@@ -7224,8 +7404,9 @@ const getOrderDeliveryReceipt = async (req, res) => {
         doc.rect(35, currentY, 542, 18).fill('#e2e8f0');
         doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(8);
         doc.text('TOTALES DE ENTREGA:', 45, currentY + 5);
-        doc.text(`${totalLbs.toLocaleString()} Lbs`, 410, currentY + 5, { width: 55, align: 'right' });
-        doc.text(String(totalCubetas), 470, currentY + 5, { width: 45, align: 'right' });
+        doc.text(`${totalUnits.toLocaleString()} Uds`, 365, currentY + 5, { width: 45, align: 'right' });
+        doc.text(`${totalLbs.toLocaleString()} Lbs`, 415, currentY + 5, { width: 50, align: 'right' });
+        doc.text(`${totalKg.toFixed(2)} Kg`, 470, currentY + 5, { width: 45, align: 'right' });
         doc.text(totalMonto > 0 ? `$${totalMonto.toFixed(2)}` : '$0.00', 520, currentY + 5, { width: 50, align: 'right' });
 
         currentY += 28;
@@ -7367,6 +7548,7 @@ module.exports = {
     getTranslatedInventory,
     exportTranslatedInventory,
     getOrderDeliveryReceipt,
+    getCustomerPricingForOrder,
     // Trazabilidad 360° & Carta de Calidad
     getTraceability360List,
     getTraceability360Stats,

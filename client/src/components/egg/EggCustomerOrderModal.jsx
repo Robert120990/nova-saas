@@ -15,17 +15,39 @@ export const PRODUCT_PROFILES = [
     'Yema Pasteurizada',
     'Huevo Entero Plus',
     'Mezcla Especial Panadería',
-    'Huevo Formulado por Separación'
+    'Huevo Formulado por Separación',
+    'Huevo en Cáscara'
 ];
 
-export const PRESENTATIONS = [
-    'cubeta 30LB',
-    'cubeta 32LB',
-    'galon 8LB',
-    'granel',
-    'bolsa 5LB',
-    'otro'
-];
+export const PRESENTATION_CONFIG = {
+    'cubeta 30 lb': { label: 'cubeta 30 lb', lbs: 30, kg: 13.61 },
+    'cubeta 32 lb': { label: 'cubeta 32 lb', lbs: 32, kg: 14.51 },
+    'galon 8 lb': { label: 'galon 8 lb', lbs: 8, kg: 3.63 },
+    'medio galon 4 lb': { label: 'medio galon 4 lb', lbs: 4, kg: 1.81 },
+    'litro 2 lb': { label: 'litro 2 lb', lbs: 2, kg: 0.91 },
+    'carton 55 lb': { label: 'carton 55 lb', lbs: 55, kg: 24.95 },
+    'caja 32 lb': { label: 'caja 32 lb', lbs: 32, kg: 14.51 },
+    'carton 4 lb': { label: 'carton 4 lb (30 u)', lbs: 4, kg: 1.81 },
+    'unidad 0.20 lb': { label: 'unidad 0.20 lb', lbs: 0.20, kg: 0.09 }
+};
+
+export const PRESENTATIONS = Object.keys(PRESENTATION_CONFIG);
+
+export const getPresentationFactors = (pres) => {
+    if (!pres) return PRESENTATION_CONFIG['cubeta 30 lb'];
+    const clean = String(pres).toLowerCase().trim();
+    if (PRESENTATION_CONFIG[clean]) return PRESENTATION_CONFIG[clean];
+    if (clean.includes('55') || clean.includes('carton 55') || clean.includes('cartón 55')) return PRESENTATION_CONFIG['carton 55 lb'];
+    if (clean.includes('caja') || clean.includes('cajas')) return PRESENTATION_CONFIG['caja 32 lb'];
+    if (clean.includes('unidad') || clean.includes('unid')) return PRESENTATION_CONFIG['unidad 0.20 lb'];
+    if (clean.includes('32')) return PRESENTATION_CONFIG['cubeta 32 lb'];
+    if (clean.includes('30') && !clean.includes('carton') && !clean.includes('cartón')) return PRESENTATION_CONFIG['cubeta 30 lb'];
+    if (clean.includes('carton') || clean.includes('cartón')) return PRESENTATION_CONFIG['carton 55 lb'];
+    if (clean.includes('8') || clean.includes('galon 8') || clean.includes('galón 8')) return PRESENTATION_CONFIG['galon 8 lb'];
+    if (clean.includes('4') || clean.includes('medio')) return PRESENTATION_CONFIG['medio galon 4 lb'];
+    if (clean.includes('2') || clean.includes('litro')) return PRESENTATION_CONFIG['litro 2 lb'];
+    return PRESENTATION_CONFIG['cubeta 30 lb'];
+};
 
 export default function EggCustomerOrderModal({
     isOpen,
@@ -61,9 +83,12 @@ export default function EggCustomerOrderModal({
         {
             id: 'item-1',
             product_type: 'Huevo Entero Pasteurizado',
-            presentation: 'cubeta 30LB',
+            presentation: 'cubeta 30 lb',
+            quantity_units: '',
             quantity_lbs: '',
+            quantity_kg: '',
             price_per_lb: '',
+            price_source_note: '',
             batch_id: '',
             lot_code: ''
         }
@@ -149,23 +174,41 @@ export default function EggCustomerOrderModal({
             }
 
             if (Array.isArray(parsedItems) && parsedItems.length > 0) {
-                setItems(parsedItems.map((it, idx) => ({
-                    id: `edit-${idx}-${Date.now()}`,
-                    product_type: it.product_type || 'Huevo Entero Pasteurizado',
-                    presentation: it.presentation || 'cubeta 30LB',
-                    quantity_lbs: it.quantity_lbs || '',
-                    price_per_lb: it.price_per_lb !== undefined ? it.price_per_lb : '',
-                    batch_id: it.batch_id || '',
-                    lot_code: it.lot_code || ''
-                })));
+                setItems(parsedItems.map((it, idx) => {
+                    const factor = getPresentationFactors(it.presentation);
+                    const units = it.quantity_units 
+                        || (it.quantity_lbs ? Math.max(1, Math.round(parseFloat(it.quantity_lbs) / factor.lbs)) : '');
+                    const lbs = parseFloat(it.quantity_lbs) || (units ? (parseFloat(units) * factor.lbs) : '');
+                    const kg = lbs ? (parseFloat(lbs) * 0.453592) : '';
+                    return {
+                        id: `edit-${idx}-${Date.now()}`,
+                        product_type: it.product_type || 'Huevo Entero Pasteurizado',
+                        presentation: it.presentation || 'cubeta 30 lb',
+                        quantity_units: units,
+                        quantity_lbs: lbs,
+                        quantity_kg: kg,
+                        price_per_lb: it.price_per_lb !== undefined ? it.price_per_lb : '',
+                        price_source_note: it.price_source_note || '',
+                        batch_id: it.batch_id || '',
+                        lot_code: it.lot_code || ''
+                    };
+                }));
             } else {
+                const factor = getPresentationFactors(orderToEdit.presentation);
+                const units = orderToEdit.quantity_units 
+                    || (orderToEdit.quantity_lbs ? Math.max(1, Math.round(parseFloat(orderToEdit.quantity_lbs) / factor.lbs)) : '');
+                const lbs = parseFloat(orderToEdit.quantity_lbs) || (units ? (parseFloat(units) * factor.lbs) : '');
+                const kg = lbs ? (parseFloat(lbs) * 0.453592) : '';
                 setItems([
                     {
                         id: `single-${Date.now()}`,
                         product_type: orderToEdit.product_type || 'Huevo Entero Pasteurizado',
-                        presentation: orderToEdit.presentation || 'cubeta 30LB',
-                        quantity_lbs: orderToEdit.quantity_lbs || '',
+                        presentation: orderToEdit.presentation || 'cubeta 30 lb',
+                        quantity_units: units,
+                        quantity_lbs: lbs,
+                        quantity_kg: kg,
                         price_per_lb: orderToEdit.price_per_lb !== undefined ? orderToEdit.price_per_lb : '',
+                        price_source_note: '',
                         batch_id: orderToEdit.batch_id || '',
                         lot_code: orderToEdit.lot_code || ''
                     }
@@ -196,9 +239,12 @@ export default function EggCustomerOrderModal({
             {
                 id: `item-${Date.now()}`,
                 product_type: 'Huevo Entero Pasteurizado',
-                presentation: 'cubeta 30LB',
+                presentation: 'cubeta 30 lb',
+                quantity_units: '',
                 quantity_lbs: '',
+                quantity_kg: '',
                 price_per_lb: '',
+                price_source_note: '',
                 batch_id: '',
                 lot_code: ''
             }
@@ -238,6 +284,46 @@ export default function EggCustomerOrderModal({
         }
     };
 
+    // Consultar precio pactado en CRM o último precio facturado/pedido
+    const fetchCustomerPrice = async (custId, custName, prodType, pres) => {
+        try {
+            const res = await axios.get('/api/egg-industrial/orders/customer-pricing', {
+                params: {
+                    customer_id: custId || undefined,
+                    customer_name: custName || undefined,
+                    product_type: prodType || undefined,
+                    presentation: pres || undefined
+                }
+            });
+            return res.data;
+        } catch (e) {
+            console.error('Error obteniendo precio sugerido:', e);
+            return null;
+        }
+    };
+
+    const autoFillPricingForItems = async (custId, custName) => {
+        if (!custId && !custName) return;
+        setItems(prevItems => {
+            prevItems.forEach(async (it) => {
+                const pricing = await fetchCustomerPrice(custId, custName, it.product_type, it.presentation);
+                if (pricing && pricing.price_per_lb > 0) {
+                    setItems(curr => curr.map(item => {
+                        if (item.id === it.id && (!item.price_per_lb || parseFloat(item.price_per_lb) === 0)) {
+                            return {
+                                ...item,
+                                price_per_lb: pricing.price_per_lb,
+                                price_source_note: pricing.description
+                            };
+                        }
+                        return item;
+                    }));
+                }
+            });
+            return prevItems;
+        });
+    };
+
     const handleSelectCatalogCustomer = (cust) => {
         setSelectedCustomer(cust);
         setCustomerMode('catalog');
@@ -249,6 +335,7 @@ export default function EggCustomerOrderModal({
             customer_name: cust.nombre || cust.nombre_comercial || ''
         }));
         loadBranches(cust.id);
+        autoFillPricingForItems(cust.id, cust.nombre || cust.nombre_comercial);
     };
 
     const handleUseManualCustomer = (name) => {
@@ -256,30 +343,52 @@ export default function EggCustomerOrderModal({
         setCustomerMode('manual');
         setShowCustomerDropdown(false);
         setCustomerBranches([]);
+        const cleanName = name.trim();
         setOrderForm(prev => ({
             ...prev,
             customer_id: null,
-            customer_name: name.trim(),
+            customer_name: cleanName,
             customer_branch_id: null
         }));
+        autoFillPricingForItems(null, cleanName);
     };
 
     // ---------------------------------------------------------
     // 5. Manejo de Líneas de Productos / Presentaciones
     // ---------------------------------------------------------
     const handleAddItem = () => {
+        const newItemId = `item-${Date.now()}-${Math.random()}`;
+        const defaultProd = 'Huevo Entero Pasteurizado';
+        const defaultPres = 'cubeta 30 lb';
         setItems(prev => [
             ...prev,
             {
-                id: `item-${Date.now()}-${Math.random()}`,
-                product_type: 'Huevo Entero Pasteurizado',
-                presentation: 'cubeta 30LB',
+                id: newItemId,
+                product_type: defaultProd,
+                presentation: defaultPres,
+                quantity_units: '',
                 quantity_lbs: '',
+                quantity_kg: '',
                 price_per_lb: '',
+                price_source_note: '',
                 batch_id: '',
                 lot_code: ''
             }
         ]);
+
+        const custId = orderForm.customer_id;
+        const custName = orderForm.customer_name || customerSearchInput;
+        if (custId || custName) {
+            fetchCustomerPrice(custId, custName, defaultProd, defaultPres).then(p => {
+                if (p && p.price_per_lb > 0) {
+                    setItems(curr => curr.map(it => it.id === newItemId ? {
+                        ...it,
+                        price_per_lb: p.price_per_lb,
+                        price_source_note: p.description
+                    } : it));
+                }
+            });
+        }
     };
 
     const handleRemoveItem = (id) => {
@@ -295,6 +404,57 @@ export default function EggCustomerOrderModal({
             if (it.id !== id) return it;
             const updated = { ...it, [field]: value };
             
+            // Si cambia la cantidad en unidades, recalcular lbs y kg
+            if (field === 'quantity_units') {
+                const factor = getPresentationFactors(updated.presentation);
+                const units = parseFloat(value) || 0;
+                const lbs = units > 0 ? Math.round(units * factor.lbs * 100) / 100 : '';
+                const kg = lbs ? Math.round(lbs * 0.45359237 * 100) / 100 : '';
+                updated.quantity_lbs = lbs;
+                updated.quantity_kg = kg;
+            }
+
+            // Si cambia la presentación, recalcular peso y sugerir precio
+            if (field === 'presentation') {
+                const factor = getPresentationFactors(value);
+                const units = parseFloat(updated.quantity_units) || 0;
+                const lbs = units > 0 ? Math.round(units * factor.lbs * 100) / 100 : '';
+                const kg = lbs ? Math.round(lbs * 0.45359237 * 100) / 100 : '';
+                updated.quantity_lbs = lbs;
+                updated.quantity_kg = kg;
+
+                const custId = orderForm.customer_id;
+                const custName = orderForm.customer_name || customerSearchInput;
+                if (custId || custName) {
+                    fetchCustomerPrice(custId, custName, updated.product_type, value).then(p => {
+                        if (p && p.price_per_lb > 0) {
+                            setItems(curr => curr.map(item => item.id === id ? {
+                                ...item,
+                                price_per_lb: p.price_per_lb,
+                                price_source_note: p.description
+                            } : item));
+                        }
+                    });
+                }
+            }
+
+            // Si cambia el tipo de producto, consultar precio sugerido
+            if (field === 'product_type') {
+                const custId = orderForm.customer_id;
+                const custName = orderForm.customer_name || customerSearchInput;
+                if (custId || custName) {
+                    fetchCustomerPrice(custId, custName, value, updated.presentation).then(p => {
+                        if (p && p.price_per_lb > 0) {
+                            setItems(curr => curr.map(item => item.id === id ? {
+                                ...item,
+                                price_per_lb: p.price_per_lb,
+                                price_source_note: p.description
+                            } : item));
+                        }
+                    });
+                }
+            }
+
             // Si cambia el batch_id, auto-completar lot_code y sugerir tipo si coincide
             if (field === 'batch_id') {
                 const foundBatch = availableBatches.find(b => String(b.id) === String(value));
@@ -311,29 +471,30 @@ export default function EggCustomerOrderModal({
         }));
     };
 
-    // Cálculos de resumen
+    // Cálculos de resumen en Unidades, Libras, Kilogramos y Monto Total
     const totals = useMemo(() => {
+        let totalUnits = 0;
         let totalLbs = 0;
+        let totalKg = 0;
         let totalMoney = 0;
-        let totalCubetasEst = 0;
 
         items.forEach(it => {
+            const units = parseFloat(it.quantity_units) || 0;
             const lbs = parseFloat(it.quantity_lbs) || 0;
+            const kg = parseFloat(it.quantity_kg) || (lbs * 0.45359237);
             const price = parseFloat(it.price_per_lb) || 0;
-            totalLbs += lbs;
-            totalMoney += (lbs * price);
 
-            let factor = 30;
-            if (it.presentation?.includes('32')) factor = 32;
-            else if (it.presentation?.includes('8')) factor = 8;
-            else if (it.presentation?.includes('5')) factor = 5;
-            totalCubetasEst += Math.ceil(lbs / factor);
+            totalUnits += units;
+            totalLbs += lbs;
+            totalKg += kg;
+            totalMoney += (lbs * price);
         });
 
         return {
+            totalUnits: Math.round(totalUnits * 100) / 100,
             totalLbs: Math.round(totalLbs * 100) / 100,
-            totalMoney: Math.round(totalMoney * 100) / 100,
-            totalCubetasEst
+            totalKg: Math.round(totalKg * 100) / 100,
+            totalMoney: Math.round(totalMoney * 100) / 100
         };
     }, [items]);
 
@@ -352,9 +513,14 @@ export default function EggCustomerOrderModal({
         // Validar cantidades de cada línea
         for (let i = 0; i < items.length; i++) {
             const it = items[i];
-            const qty = parseFloat(it.quantity_lbs);
-            if (!qty || qty <= 0) {
-                toast.error(`La línea #${i + 1} (${it.product_type}) debe tener una cantidad mayor a 0 Lbs.`);
+            const qtyUnits = parseFloat(it.quantity_units);
+            const qtyLbs = parseFloat(it.quantity_lbs);
+            if (!qtyUnits || qtyUnits <= 0) {
+                toast.error(`La línea #${i + 1} (${it.product_type}) debe tener una cantidad mayor a 0 unidades.`);
+                return;
+            }
+            if (!qtyLbs || qtyLbs <= 0) {
+                toast.error(`La línea #${i + 1} (${it.product_type}) debe tener un peso válido calculado.`);
                 return;
             }
         }
@@ -371,15 +537,20 @@ export default function EggCustomerOrderModal({
                 notes: orderForm.notes,
                 product_type: items[0].product_type,
                 presentation: items[0].presentation,
+                quantity_units: totals.totalUnits,
                 quantity_lbs: totals.totalLbs,
+                quantity_kg: totals.totalKg,
                 price_per_lb: items[0].price_per_lb ? parseFloat(items[0].price_per_lb) : 0,
                 batch_id: items[0].batch_id || null,
                 lot_code: items[0].lot_code || null,
                 items: items.map(it => ({
                     product_type: it.product_type,
                     presentation: it.presentation,
+                    quantity_units: parseFloat(it.quantity_units) || 0,
                     quantity_lbs: parseFloat(it.quantity_lbs) || 0,
+                    quantity_kg: parseFloat(it.quantity_kg) || 0,
                     price_per_lb: it.price_per_lb ? parseFloat(it.price_per_lb) : 0,
+                    price_source_note: it.price_source_note || '',
                     batch_id: it.batch_id || null,
                     lot_code: it.lot_code || null
                 }))
@@ -400,7 +571,9 @@ export default function EggCustomerOrderModal({
                 setLastSavedSummary({
                     client: finalCustomerName.trim(),
                     itemsCount: items.length,
-                    totalLbs: totals.totalLbs
+                    totalUnits: totals.totalUnits,
+                    totalLbs: totals.totalLbs,
+                    totalKg: totals.totalKg
                 });
                 setShowConfirmAnother(true);
             }
@@ -691,21 +864,31 @@ export default function EggCustomerOrderModal({
                                         </select>
                                     </div>
 
-                                    {/* Cantidad Lbs (2 cols) */}
+                                    {/* Cantidad en Unidades (2 cols) */}
                                     <div className="sm:col-span-2">
                                         <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
-                                            Cantidad (Lbs) *
+                                            Cantidad (Uds) *
                                         </label>
                                         <input
                                             type="number"
                                             required
-                                            step="any"
-                                            min="0.1"
-                                            placeholder="Ej: 500"
-                                            value={it.quantity_lbs}
-                                            onChange={(e) => handleItemChange(it.id, 'quantity_lbs', e.target.value)}
+                                            step="1"
+                                            min="1"
+                                            placeholder="Ej: 10"
+                                            value={it.quantity_units}
+                                            onChange={(e) => handleItemChange(it.id, 'quantity_units', e.target.value)}
                                             className="w-full text-xs font-black border border-slate-200 rounded-lg px-2 py-1.5 text-indigo-700 outline-none focus:border-indigo-500"
                                         />
+                                        <div className="mt-1 flex items-center gap-1 text-[10px] font-bold text-slate-500">
+                                            <span className="text-indigo-600 bg-indigo-50 px-1 py-0.2 rounded border border-indigo-100">
+                                                = {it.quantity_lbs ? `${it.quantity_lbs.toLocaleString()} lb` : '0 lb'}
+                                            </span>
+                                            {it.quantity_kg ? (
+                                                <span className="text-emerald-700 bg-emerald-50 px-1 py-0.2 rounded border border-emerald-100">
+                                                    {it.quantity_kg.toLocaleString()} kg
+                                                </span>
+                                            ) : null}
+                                        </div>
                                     </div>
 
                                     {/* Precio Acordado / Lb (2 cols) */}
@@ -719,6 +902,16 @@ export default function EggCustomerOrderModal({
                                             placeholder="0.00"
                                             className="w-full text-xs font-bold border border-slate-200 rounded-lg px-2 py-1.5 text-slate-800 outline-none focus:border-indigo-500"
                                         />
+                                        <div className="mt-0.5">
+                                            {it.price_source_note ? (
+                                                <span className="text-[9px] font-semibold text-emerald-700 block truncate" title={it.price_source_note}>
+                                                    🏷️ {it.price_source_note}
+                                                </span>
+                                            ) : null}
+                                            <span className="text-[10px] font-bold text-slate-600 block">
+                                                Subtotal: <Money amount={(parseFloat(it.quantity_lbs) || 0) * (parseFloat(it.price_per_lb) || 0)} />
+                                            </span>
+                                        </div>
                                     </div>
 
                                     {/* Vincular Lote de Producción (2 cols) */}
@@ -758,15 +951,20 @@ export default function EggCustomerOrderModal({
 
                         {/* Barra de Totales */}
                         <div className="bg-indigo-50/60 p-3 rounded-xl border border-indigo-100 flex flex-wrap items-center justify-between gap-3 text-xs">
-                            <div className="flex items-center gap-4">
+                            <div className="flex flex-wrap items-center gap-4">
                                 <div>
-                                    <span className="text-[10px] font-bold text-slate-500 uppercase block">Total Lbs</span>
-                                    <span className="font-black text-indigo-900 text-sm">{totals.totalLbs.toLocaleString()} Lbs</span>
+                                    <span className="text-[10px] font-bold text-slate-500 uppercase block">Total Unidades</span>
+                                    <span className="font-black text-indigo-900 text-sm">{totals.totalUnits.toLocaleString()} Uds</span>
                                 </div>
                                 <div className="h-6 w-px bg-indigo-200/80" />
                                 <div>
-                                    <span className="text-[10px] font-bold text-slate-500 uppercase block">Estimado Cubetas</span>
-                                    <span className="font-black text-slate-800 text-sm">~{totals.totalCubetasEst} cubetas</span>
+                                    <span className="text-[10px] font-bold text-slate-500 uppercase block">Total Peso (Lbs)</span>
+                                    <span className="font-black text-indigo-950 text-sm">{totals.totalLbs.toLocaleString()} Lbs</span>
+                                </div>
+                                <div className="h-6 w-px bg-indigo-200/80" />
+                                <div>
+                                    <span className="text-[10px] font-bold text-slate-500 uppercase block">Total Peso (Kg)</span>
+                                    <span className="font-black text-slate-800 text-sm">{totals.totalKg.toLocaleString()} Kg</span>
                                 </div>
                                 <div className="h-6 w-px bg-indigo-200/80" />
                                 <div>
