@@ -20,7 +20,8 @@ import {
     Truck,
     HelpCircle,
     PlusCircle,
-    Trash2
+    Trash2,
+    Copy
 } from 'lucide-react';
 
 const DTE_TYPE_OPTIONS = [
@@ -39,6 +40,8 @@ export default function RouteAutoInvoicingModal({
     // Configuración por parada: { [stopId]: { selected, dte_type, condicion_operacion, dias_credito, items } }
     const [stopsConfig, setStopsConfig] = useState({});
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [billingResults, setBillingResults] = useState([]);
+    const [showResultsModal, setShowResultsModal] = useState(false);
 
     // Estado del Pop-up View Selector de Lotes
     const [lotPickerTarget, setLotPickerTarget] = useState(null); // { stopId, itemIndex, item, customerName }
@@ -397,11 +400,13 @@ export default function RouteAutoInvoicingModal({
             };
 
             const res = await axios.post(`/api/egg-industrial/dispatch/routes/${route.id}/auto-invoice`, payload);
+            const results = res.data?.results || [];
             toast.success(res.data?.message || 'Facturación automática completada exitosamente.');
+            setBillingResults(results);
+            setShowResultsModal(true);
             if (onInvoiceSuccess) {
-                onInvoiceSuccess(res.data?.results || []);
+                onInvoiceSuccess(results);
             }
-            onClose();
         } catch (error) {
             console.error('Error en facturación automática:', error);
             const msg = error.response?.data?.message || error.message || 'Error al facturar paradas.';
@@ -1011,6 +1016,193 @@ export default function RouteAutoInvoicingModal({
                                 className="px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 font-bold rounded-xl"
                             >
                                 Cerrar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* MODAL DE RESUMEN DE FACTURACIÓN Y RESPUESTA DE HACIENDA */}
+            {showResultsModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-xs p-4 animate-in fade-in duration-200">
+                    <div className="bg-white border border-slate-200 rounded-3xl p-5 md:p-6 shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto space-y-4">
+                        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                            <div className="flex items-center gap-2.5">
+                                <div className="p-2 bg-emerald-100 text-emerald-700 rounded-xl">
+                                    <CheckCircle2 size={22} />
+                                </div>
+                                <div>
+                                    <h3 className="text-base font-bold text-slate-900">
+                                        Resultado de Facturación de Ruta
+                                    </h3>
+                                    <p className="text-xs text-slate-500 font-medium">
+                                        Validación con Hacienda y Cuentas por Cobrar
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setShowResultsModal(false);
+                                    onClose();
+                                }}
+                                className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl"
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
+
+                        <div className="space-y-3">
+                            {billingResults.map((res, idx) => {
+                                const isAceptado = res.dte_status === 'ACEPTADO_HACIENDA';
+                                const isContingencia = res.dte_status === 'CONTINGENCIA';
+                                const isRechazado = res.dte_status === 'RECHAZADO_HACIENDA';
+                                const isPrevia = res.already_billed || res.dte_status === 'FACTURADA_PREVIAMENTE';
+
+                                return (
+                                    <div key={idx} className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2.5">
+                                        <div className="flex items-start justify-between gap-3">
+                                            <div>
+                                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                                                    Cliente #{res.order_id || res.stop_id}
+                                                </span>
+                                                <h4 className="text-xs font-bold text-slate-900">
+                                                    {res.customer_name}
+                                                </h4>
+                                                <div className="flex items-center gap-2 mt-1">
+                                                    <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-md text-[10px] font-bold">
+                                                        {res.numero_control}
+                                                    </span>
+                                                    <span className="px-2 py-0.5 bg-slate-200/80 text-slate-700 rounded-md text-[10px] font-bold">
+                                                        {res.condicion}
+                                                    </span>
+                                                </div>
+                                            </div>
+
+                                            <div className="text-right shrink-0">
+                                                <span className="text-xs font-black text-slate-900 block">
+                                                    <Money value={res.total} />
+                                                </span>
+                                                <span className="text-[10px] font-bold text-indigo-600 block">
+                                                    Venta #{res.sale_id}
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        {/* Estado en Hacienda */}
+                                        <div className="pt-2 border-t border-slate-200/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                                            <div className="flex items-center gap-1.5 flex-wrap">
+                                                {isAceptado && (
+                                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-full text-[10px] font-bold">
+                                                        <CheckCircle2 size={12} />
+                                                        Aceptado por Hacienda
+                                                    </span>
+                                                )}
+                                                {isContingencia && (
+                                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-amber-100 text-amber-800 border border-amber-300 rounded-full text-[10px] font-bold">
+                                                        <AlertTriangle size={12} />
+                                                        Contingencia
+                                                    </span>
+                                                )}
+                                                {isRechazado && (
+                                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-rose-100 text-rose-800 border border-rose-300 rounded-full text-[10px] font-bold">
+                                                        <X size={12} />
+                                                        Rechazado por Hacienda
+                                                    </span>
+                                                )}
+                                                {isPrevia && (
+                                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-blue-100 text-blue-800 border border-blue-300 rounded-full text-[10px] font-bold">
+                                                        <CheckCircle2 size={12} />
+                                                        Facturada Previamente
+                                                    </span>
+                                                )}
+                                                {!isAceptado && !isContingencia && !isRechazado && !isPrevia && (
+                                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-slate-100 text-slate-700 border border-slate-300 rounded-full text-[10px] font-bold">
+                                                        {res.dte_status || 'Procesado'}
+                                                    </span>
+                                                )}
+                                            </div>
+
+                                            <div className="text-[11px] text-slate-500 font-medium">
+                                                {res.cxc_status}
+                                            </div>
+                                        </div>
+
+                                        {/* Mensaje descriptivo de Hacienda o Sello */}
+                                        {res.hacienda_msg && (
+                                            <p className={`text-[11px] font-medium leading-relaxed ${isRechazado ? 'text-rose-700 bg-rose-50 p-2 rounded-lg border border-rose-200' : 'text-slate-600'}`}>
+                                                {res.hacienda_msg}
+                                            </p>
+                                        )}
+
+                                        {/* Detalles adicionales de validación de Hacienda si existen */}
+                                        {res.hacienda_details && (
+                                            <div className="text-[10px] bg-rose-100/60 border border-rose-200 text-rose-900 rounded-lg p-2 font-mono space-y-0.5">
+                                                <span className="font-bold block uppercase tracking-tight text-[9px] text-rose-800">
+                                                    Observaciones de Hacienda:
+                                                </span>
+                                                {Array.isArray(res.hacienda_details) ? (
+                                                    res.hacienda_details.map((d, dIdx) => (
+                                                        <div key={dIdx}>• {typeof d === 'object' ? JSON.stringify(d) : String(d)}</div>
+                                                    ))
+                                                ) : (
+                                                    <div>{typeof res.hacienda_details === 'object' ? JSON.stringify(res.hacienda_details) : String(res.hacienda_details)}</div>
+                                                )}
+                                            </div>
+                                        )}
+
+                                        {/* Sello y Código de Generación con botón de copia */}
+                                        <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-[10px] text-slate-500 font-mono">
+                                            {res.sello_recepcion && (
+                                                <div className="flex items-center gap-1 truncate max-w-[280px]">
+                                                    <span className="font-bold text-slate-400 shrink-0">Sello:</span>
+                                                    <span className="truncate">{res.sello_recepcion}</span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            navigator.clipboard.writeText(res.sello_recepcion);
+                                                            toast.success('Sello copiado');
+                                                        }}
+                                                        className="text-slate-400 hover:text-indigo-600 p-0.5"
+                                                        title="Copiar Sello"
+                                                    >
+                                                        <Copy size={11} />
+                                                    </button>
+                                                </div>
+                                            )}
+                                            {res.codigo_generacion && (
+                                                <div className="flex items-center gap-1 truncate max-w-[280px]">
+                                                    <span className="font-bold text-slate-400 shrink-0">UUID:</span>
+                                                    <span className="truncate">{res.codigo_generacion}</span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            navigator.clipboard.writeText(res.codigo_generacion);
+                                                            toast.success('Código de generación copiado');
+                                                        }}
+                                                        className="text-slate-400 hover:text-indigo-600 p-0.5"
+                                                        title="Copiar Código de Generación"
+                                                    >
+                                                        <Copy size={11} />
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+
+                        <div className="flex justify-end pt-2 border-t border-slate-100">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setShowResultsModal(false);
+                                    onClose();
+                                }}
+                                className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs"
+                            >
+                                Entendido, Cerrar
                             </button>
                         </div>
                     </div>

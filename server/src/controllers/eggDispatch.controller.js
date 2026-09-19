@@ -1925,10 +1925,10 @@ const autoInvoiceDispatchRoute = async (req, res) => {
 
         let resolvedBranchId = req.user?.branch_id;
         const [validBranch] = await connection.query(
-            'SELECT id FROM branches WHERE company_id = ? AND (id = ? OR is_active = 1) ORDER BY (id = ?) DESC, id ASC LIMIT 1',
-            [company_id, resolvedBranchId || 0, resolvedBranchId || 0]
+            'SELECT id FROM branches WHERE company_id = ? ORDER BY (id = ?) DESC, es_casa_matriz DESC, id ASC LIMIT 1',
+            [company_id, resolvedBranchId || 0]
         );
-        resolvedBranchId = validBranch.length > 0 ? validBranch[0].id : (company.branch_id || null);
+        resolvedBranchId = validBranch.length > 0 ? validBranch[0].id : null;
 
         // 4. Validar que cada producto a facturar tenga lote asignado (excluyendo detalles libres)
         for (const stop of stops) {
@@ -1954,6 +1954,18 @@ const autoInvoiceDispatchRoute = async (req, res) => {
 
         // 5. Procesar cada parada seleccionada
         for (const stop of stops) {
+            // Verificar si la parada ya fue facturada en una ejecución anterior (idempotencia y re-ejecución segura)
+            const [existingStopRows] = await connection.query(
+                `SELECT s.id, s.sale_id, s.dte_codigo_generacion, 
+                        sh.id as existing_sale_id, sh.codigo_generacion, sh.numero_control, 
+                        sh.sello_recepcion, sh.condicion_operacion, sh.total_pagar, sh.estado,
+                        sh.cliente_nombre
+                 FROM egg_dispatch_stops s 
+                 LEFT JOIN sales_headers sh ON sh.id = s.sale_id AND sh.estado != 'ANULADO' 
+                 WHERE s.id = ? AND s.dispatch_route_id = ?`,
+                [stop.stop_id, route_id]
+            );
+
             const [custRows] = await connection.query(
                 'SELECT * FROM customers WHERE id = ? AND company_id = ?',
                 [stop.customer_id, company_id]
@@ -1967,6 +1979,34 @@ const autoInvoiceDispatchRoute = async (req, res) => {
             const dteType = stop.dte_type || (customer.pais && customer.pais !== '9579' && customer.pais !== 'SV' ? '11' : customer.nrc ? '03' : '01');
             const condicionOperacion = parseInt(stop.condicion_operacion) || (customer.es_credito ? 2 : 1);
             const diasCredito = condicionOperacion === 2 ? (parseInt(stop.dias_credito) || parseInt(customer.dias_credito) || 15) : 0;
+
+            // Si la parada ya tiene una venta activa y no anulada, se reporta y no se duplica
+            if (existingStopRows.length > 0 && existingStopRows[0].existing_sale_id) {
+                const prev = existingStopRows[0];
+                const prevAceptado = !!prev.sello_recepcion;
+                const prevContingencia = !prevAceptado && !!(prev.codigo_generacion || prev.dte_codigo_generacion);
+
+                billedResults.push({
+                    stop_id: stop.stop_id,
+                    order_id: stop.order_id,
+                    sale_id: prev.existing_sale_id,
+                    customer_name: prev.cliente_nombre || customer.nombre,
+                    dte_type: dteType,
+                    numero_control: prev.numero_control || `VTA-${prev.existing_sale_id}`,
+                    codigo_generacion: prev.codigo_generacion || prev.dte_codigo_generacion,
+                    sello_recepcion: prev.sello_recepcion || null,
+                    dte_status: prevAceptado ? 'ACEPTADO_HACIENDA' : (prevContingencia ? 'CONTINGENCIA' : 'FACTURADA_PREVIAMENTE'),
+                    hacienda_msg: prevAceptado 
+                        ? `Facturada previamente y aceptada por Hacienda (Sello: ${prev.sello_recepcion})`
+                        : (prevContingencia ? 'Facturada previamente en contingencia' : 'Parada ya facturada en ejecución previa. Venta existente preservada.'),
+                    hacienda_details: null,
+                    condicion: prev.condicion_operacion === 2 ? 'Crédito' : 'Contado',
+                    cxc_status: prev.condicion_operacion === 2 ? 'Alimentado en Estado de Cuenta / Saldo Pendiente (CXC)' : 'Pagado al Contado',
+                    total: parseFloat(prev.total_pagar || 0),
+                    already_billed: true
+                });
+                continue;
+            }
 
             // Validaciones DTE si la empresa tiene DTE activo
             if (company.dte_active) {
@@ -2176,6 +2216,10 @@ const autoInvoiceDispatchRoute = async (req, res) => {
 
             // 5d. Emitir DTE si la empresa tiene DTE activo
             let dteInfo = {};
+            let dteHaciendaStatus = 'NO_DTE';
+            let dteHaciendaMsg = 'DTE no activo para la empresa';
+            let dteHaciendaDetails = null;
+
             if (company.dte_active) {
                 const dtePayload = {
                     header: {
@@ -2199,7 +2243,9 @@ const autoInvoiceDispatchRoute = async (req, res) => {
                     items: itemsProcessed,
                     payments: [{
                         codigo: '01',
-                        monto: totalPagar
+                        monto: totalPagar,
+                        plazo: condicionOperacion === 2 ? diasCredito : null,
+                        periodo: condicionOperacion === 2 ? '01' : null
                     }]
                 };
 
@@ -2207,6 +2253,10 @@ const autoInvoiceDispatchRoute = async (req, res) => {
                     const dteResult = await dteService.emitDTE(company, dtePayload, saleId);
                     if (dteResult && dteResult.success) {
                         dteInfo = dteResult.data;
+                        dteHaciendaStatus = dteResult.contingency ? 'CONTINGENCIA' : 'ACEPTADO_HACIENDA';
+                        dteHaciendaMsg = dteResult.contingency
+                            ? 'Emitido en contingencia por indisponibilidad de Hacienda'
+                            : `Aceptado por Hacienda con Sello: ${dteResult.data?.sello_recepcion || 'CONFIRMADO'}`;
                     } else if (dteResult && dteResult.codigo_generacion) {
                         dteInfo = {
                             codigo_generacion: dteResult.codigo_generacion,
@@ -2214,20 +2264,44 @@ const autoInvoiceDispatchRoute = async (req, res) => {
                             sello_recepcion: dteResult.data?.sello_recepcion || null,
                             fh_procesamiento: dteResult.data?.fh_procesamiento || null
                         };
+                        dteHaciendaStatus = 'RECHAZADO_HACIENDA';
+                        dteHaciendaMsg = dteResult.error || 'Rechazado por validación de Hacienda';
+                        dteHaciendaDetails = dteResult.details || null;
+                    } else {
+                        dteHaciendaStatus = 'ERROR_EMISION';
+                        dteHaciendaMsg = dteResult?.error || 'No se pudo comunicar con el servicio DTE';
+                        dteHaciendaDetails = dteResult?.details || null;
                     }
                 } catch (dteErr) {
                     console.error(`[AutoInvoice] Error emitiendo DTE para venta ${saleId}:`, dteErr.message);
+                    dteHaciendaStatus = 'ERROR_EXCEPCION';
+                    dteHaciendaMsg = dteErr.message;
                 }
             }
 
-            // 5e. Actualizar venta con datos DTE
+            // 5e. Actualizar venta con datos DTE y vincular tabla dtes
+            const saleEstadoFinal = dteHaciendaStatus === 'RECHAZADO_HACIENDA' 
+                ? 'rechazado' 
+                : (dteHaciendaStatus === 'CONTINGENCIA' ? 'contingencia' : 'emitido');
+
+            const saleObservacionesFinal = dteHaciendaStatus === 'RECHAZADO_HACIENDA'
+                ? `${saleObservaciones} | [RECHAZADO HACIENDA]: ${dteHaciendaMsg}${dteHaciendaDetails ? ' (' + (Array.isArray(dteHaciendaDetails) ? dteHaciendaDetails.join('; ') : JSON.stringify(dteHaciendaDetails)) + ')' : ''}`
+                : saleObservaciones;
+
+            await connection.query('UPDATE sales_headers SET ? WHERE id = ?', [{
+                codigo_generacion: dteInfo.codigo_generacion || null,
+                numero_control: dteInfo.numero_control || null,
+                sello_recepcion: dteInfo.sello_recepcion || null,
+                fh_procesamiento: dteInfo.fh_procesamiento || null,
+                estado: saleEstadoFinal,
+                observaciones: saleObservacionesFinal
+            }, saleId]);
+
             if (dteInfo.codigo_generacion) {
-                await connection.query('UPDATE sales_headers SET ? WHERE id = ?', [{
-                    codigo_generacion: dteInfo.codigo_generacion,
-                    numero_control: dteInfo.numero_control || null,
-                    sello_recepcion: dteInfo.sello_recepcion || null,
-                    fh_procesamiento: dteInfo.fh_procesamiento || null
-                }, saleId]);
+                await connection.query(
+                    'UPDATE dtes SET venta_id = ? WHERE codigo_generacion = ? AND company_id = ?',
+                    [saleId, dteInfo.codigo_generacion, company_id]
+                );
             }
 
             // 5f. Actualizar Parada (egg_dispatch_stops)
@@ -2276,6 +2350,12 @@ const autoInvoiceDispatchRoute = async (req, res) => {
                 dte_type: dteType,
                 numero_control: dteInfo.numero_control || `VTA-${saleId}`,
                 codigo_generacion: dteInfo.codigo_generacion || null,
+                sello_recepcion: dteInfo.sello_recepcion || null,
+                dte_status: dteHaciendaStatus,
+                hacienda_msg: dteHaciendaMsg,
+                hacienda_details: dteHaciendaDetails,
+                condicion: condicionOperacion === 2 ? `Crédito (${diasCredito} días)` : 'Contado',
+                cxc_status: condicionOperacion === 2 ? 'Alimentado en Estado de Cuenta / Saldo Pendiente (CXC)' : 'Pagado al Contado',
                 total: totalPagar
             });
         }
