@@ -3,7 +3,7 @@ import axios from 'axios';
 import { toast } from 'sonner';
 import Modal from '../ui/Modal';
 import Money from '../ui/Money';
-import { getIndustrialPresentationWeightLbs } from '../../constants/eggIndustrialCatalogs';
+import { getIndustrialPresentationWeightLbs, isBatchCompatibleWithProduct } from '../../constants/eggIndustrialCatalogs';
 import {
     CheckCircle2,
     AlertTriangle,
@@ -22,7 +22,8 @@ import {
     HelpCircle,
     PlusCircle,
     Trash2,
-    Copy
+    Copy,
+    Mail
 } from 'lucide-react';
 
 const DTE_TYPE_OPTIONS = [
@@ -87,14 +88,22 @@ export default function RouteAutoInvoicingModal({
                         ? JSON.parse(stop.items_json)
                         : stop.items_json;
                     if (Array.isArray(parsed) && parsed.length > 0) {
-                        items = parsed.map(it => ({
-                            product_type: it.product_type || 'Huevo Entero Pasteurizado',
-                            presentation: it.presentation || 'cubeta 30LB',
-                            quantity_lbs: parseFloat(it.quantity_lbs || 0),
-                            price_per_lb: parseFloat(it.price_per_lb || 0),
-                            batch_id: it.batch_id || stop.batch_id || stop.order_batch_id || null,
-                            lot_code: it.lot_code || stop.lot_code || stop.order_lot_code || stop.linked_batch_code || ''
-                        }));
+                        items = parsed.map(it => {
+                            const rawUnits = it.quantity_units ?? it.units;
+                            const parsedUnits = (rawUnits !== undefined && rawUnits !== null && rawUnits !== '' && parseFloat(rawUnits) > 0)
+                                ? parseFloat(rawUnits)
+                                : null;
+                            return {
+                                product_type: it.product_type || 'Huevo Entero Pasteurizado',
+                                presentation: it.presentation || 'cubeta 30LB',
+                                units: parsedUnits,
+                                quantity_units: parsedUnits,
+                                quantity_lbs: parseFloat(it.quantity_lbs || 0),
+                                price_per_lb: parseFloat(it.price_per_lb || 0),
+                                batch_id: it.batch_id || stop.batch_id || stop.order_batch_id || null,
+                                lot_code: it.lot_code || stop.lot_code || stop.order_lot_code || stop.linked_batch_code || ''
+                            };
+                        });
                     }
                 } catch (e) {
                     console.error('Error parseando items_json en parada:', e);
@@ -102,9 +111,15 @@ export default function RouteAutoInvoicingModal({
             }
 
             if (items.length === 0) {
+                const rawStopUnits = stop.quantity_units ?? stop.units;
+                const parsedStopUnits = (rawStopUnits !== undefined && rawStopUnits !== null && rawStopUnits !== '' && parseFloat(rawStopUnits) > 0)
+                    ? parseFloat(rawStopUnits)
+                    : null;
                 items = [{
                     product_type: stop.product_type || 'Huevo Entero Pasteurizado',
                     presentation: stop.presentation || 'cubeta 30LB',
+                    units: parsedStopUnits,
+                    quantity_units: parsedStopUnits,
                     quantity_lbs: parseFloat(stop.quantity_lbs || 0),
                     price_per_lb: parseFloat(stop.price_per_lb || 0),
                     batch_id: stop.batch_id || stop.order_batch_id || null,
@@ -315,6 +330,9 @@ export default function RouteAutoInvoicingModal({
         if (showOnlyInStockLots) {
             list = list.filter(l => l.has_stock && (l.units_in_stock > 0 || l.total_weight_lbs > 0));
         }
+        if (lotPickerTarget?.item?.product_type && !lotSearchTerm.trim()) {
+            list = list.filter(l => isBatchCompatibleWithProduct(l.product_type, lotPickerTarget.item.product_type));
+        }
         if (lotSearchTerm.trim()) {
             const term = lotSearchTerm.toLowerCase();
             list = list.filter(l =>
@@ -325,7 +343,7 @@ export default function RouteAutoInvoicingModal({
             );
         }
         return list;
-    }, [availableLots, showOnlyInStockLots, lotSearchTerm]);
+    }, [availableLots, showOnlyInStockLots, lotSearchTerm, lotPickerTarget]);
 
     // Resumen de estado de paradas
     const stats = useMemo(() => {
@@ -1261,6 +1279,43 @@ export default function RouteAutoInvoicingModal({
                                                 </div>
                                             )}
                                         </div>
+
+                                        {/* Envío formal de DTE por Correo Electrónico al Cliente */}
+                                        {(isAceptado || isContingencia) && (
+                                            <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-200/60 text-[11px]">
+                                                {res.customer_email ? (
+                                                    <div className="flex items-center gap-1.5 text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">
+                                                        <Mail size={12} className="text-emerald-600 shrink-0" />
+                                                        <span>DTE enviado por correo a: <strong>{res.customer_email}</strong></span>
+                                                    </div>
+                                                ) : (
+                                                    <div className="flex items-center gap-1.5 text-amber-800 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200">
+                                                        <Mail size={12} className="text-amber-500 shrink-0" />
+                                                        <span>Cliente sin correo electrónico configurado (envío omitido).</span>
+                                                    </div>
+                                                )}
+
+                                                {res.sale_id && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={async () => {
+                                                            const toastId = toast.loading('Reenviando DTE por correo...');
+                                                            try {
+                                                                await axios.post(`/api/sales/resend-email/${res.sale_id}`);
+                                                                toast.success('DTE enviado exitosamente al correo del cliente.', { id: toastId });
+                                                            } catch (err) {
+                                                                toast.error(err.response?.data?.message || 'Error al reenviar el correo.', { id: toastId });
+                                                            }
+                                                        }}
+                                                        className="flex items-center gap-1 text-[10px] font-bold text-indigo-700 hover:text-indigo-900 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1 rounded-lg border border-indigo-200 transition shrink-0"
+                                                        title="Reenviar el DTE oficial por correo electrónico al cliente"
+                                                    >
+                                                        <Mail size={11} />
+                                                        <span>Reenviar Correo</span>
+                                                    </button>
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
                                 );
                             })}

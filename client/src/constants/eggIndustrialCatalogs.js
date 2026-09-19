@@ -81,23 +81,41 @@ export const DEFAULT_INDUSTRIAL_MEASUREMENT_UNIT = INDUSTRIAL_MEASUREMENT_UNITS[
 const presentationAliases = new Map([
     ['cubeta', 'cubeta 32LB'],
     ['cubeta 32lb', 'cubeta 32LB'],
+    ['cubeta 32 lb', 'cubeta 32LB'],
     ['cubeta 30lb', 'cubeta 30LB'],
+    ['cubeta 30 lb', 'cubeta 30LB'],
     ['galon', 'galon 8LB'],
     ['galon 8lb', 'galon 8LB'],
+    ['galon 8 lb', 'galon 8LB'],
     ['galón', 'galon 8LB'],
     ['galón 8lb', 'galon 8LB'],
+    ['galón 8 lb', 'galon 8LB'],
     ['medio galon', 'medio galon 4LB'],
     ['medio galon 4lb', 'medio galon 4LB'],
+    ['medio galon 4 lb', 'medio galon 4LB'],
     ['medio galón', 'medio galon 4LB'],
     ['medio galón 4lb', 'medio galon 4LB'],
+    ['medio galón 4 lb', 'medio galon 4LB'],
     ['litro', 'litro 2LB'],
     ['litro 2lb', 'litro 2LB'],
+    ['litro 2 lb', 'litro 2LB'],
     ['carton 55lb', 'carton 55LB'],
+    ['carton 55 lb', 'carton 55LB'],
     ['carton', 'carton 55LB'],
     ['cartón', 'carton 55LB'],
+    ['cartón 55lb', 'carton 55LB'],
+    ['cartón 55 lb', 'carton 55LB'],
     ['caja 32lb', 'caja 32LB'],
+    ['caja 32 lb', 'caja 32LB'],
     ['caja', 'caja 32LB'],
+    ['carton 4 lb', 'carton 30U'],
+    ['carton 4lb', 'carton 30U'],
+    ['cartón 4 lb', 'carton 30U'],
+    ['cartón 4lb', 'carton 30U'],
     ['unidad', 'unidad 0.2LB'],
+    ['unidad 0.2lb', 'unidad 0.2LB'],
+    ['unidad 0.2 lb', 'unidad 0.2LB'],
+    ['unidad 0.20 lb', 'unidad 0.2LB'],
     ['huevo unidad', 'unidad 0.2LB']
 ]);
 
@@ -105,10 +123,25 @@ export const normalizeIndustrialPresentation = (presentation) => {
     const rawValue = String(presentation || '').trim();
     if (!rawValue) return DEFAULT_INDUSTRIAL_PRESENTATION;
 
-    const matched = INDUSTRIAL_PRESENTATIONS.find(item => item.value.toLowerCase() === rawValue.toLowerCase());
+    const lower = rawValue.toLowerCase();
+    const matched = INDUSTRIAL_PRESENTATIONS.find(item => item.value.toLowerCase() === lower);
     if (matched) return matched.value;
 
-    return presentationAliases.get(rawValue.toLowerCase()) || rawValue;
+    if (presentationAliases.has(lower)) {
+        return presentationAliases.get(lower);
+    }
+
+    const collapsed = lower.replace(/\s+/g, ' ');
+    if (presentationAliases.has(collapsed)) {
+        return presentationAliases.get(collapsed);
+    }
+
+    const noSpace = lower.replace(/\s*lb/g, 'lb');
+    if (presentationAliases.has(noSpace)) {
+        return presentationAliases.get(noSpace);
+    }
+
+    return rawValue;
 };
 
 export const getIndustrialPresentation = (presentation) => {
@@ -117,7 +150,26 @@ export const getIndustrialPresentation = (presentation) => {
 };
 
 export const getIndustrialPresentationWeightLbs = (presentation, fallback = 0) => {
-    return getIndustrialPresentation(presentation)?.weightLbs ?? fallback;
+    const direct = getIndustrialPresentation(presentation)?.weightLbs;
+    if (direct !== undefined && direct !== null && direct > 0) return direct;
+
+    const raw = String(presentation || '').trim().toLowerCase();
+    const match = raw.match(/(\d+(?:\.\d+)?)\s*(?:lb|lbs|libras)/i);
+    if (match) {
+        const parsed = parseFloat(match[1]);
+        if (Number.isFinite(parsed) && parsed > 0) return parsed;
+    }
+
+    if (raw.includes('galon') || raw.includes('galón')) return 8;
+    if (raw.includes('litro')) return 2;
+    if (raw.includes('medio')) return 4;
+    if (raw.includes('carton') || raw.includes('cartón')) return 55;
+    if (raw.includes('caja')) return 32;
+    if (raw.includes('bolsa')) return 5;
+    if (raw.includes('tanque')) return 2000;
+    if (raw.includes('unidad') || raw.includes('unid')) return 0.20;
+
+    return fallback;
 };
 
 export const poundsToKilograms = (pounds) => {
@@ -128,4 +180,54 @@ export const poundsToKilograms = (pounds) => {
 export const kilogramsToPounds = (kilograms) => {
     const numericKilograms = Number(kilograms);
     return Number.isFinite(numericKilograms) ? numericKilograms * POUNDS_PER_KILOGRAM : 0;
+};
+
+/**
+ * Determina si un lote de producción es compatible con el tipo de producto solicitado
+ * (ej. Huevo Entero solo vincula lotes de huevo entero, Clara con clara, Yema con yema).
+ */
+export const isBatchCompatibleWithProduct = (batchProductType, itemProductType) => {
+    if (!itemProductType) return true;
+    const bType = String(batchProductType || '').trim().toLowerCase();
+    const pType = String(itemProductType || '').trim().toLowerCase();
+
+    if (!bType) return true;
+    if (bType === pType) return true;
+
+    // Huevo entero / rápido
+    const isItemEntero = pType.includes('entero') || pType.includes('rapido') || pType.includes('rápido');
+    const isBatchEntero = bType.includes('entero') || bType.includes('rapido') || bType.includes('rápido');
+    if (isItemEntero || isBatchEntero) {
+        return isItemEntero && isBatchEntero;
+    }
+
+    // Clara / clara ppg
+    const isItemClara = pType.includes('clara');
+    const isBatchClara = bType.includes('clara');
+    if (isItemClara || isBatchClara) {
+        return isItemClara && isBatchClara;
+    }
+
+    // Yema / yema salada / yema azucarada
+    const isItemYema = pType.includes('yema');
+    const isBatchYema = bType.includes('yema');
+    if (isItemYema || isBatchYema) {
+        return isItemYema && isBatchYema;
+    }
+
+    // Fórmulas especiales / mezclas
+    const isItemFormula = pType.includes('formula') || pType.includes('fórmula') || pType.includes('mezcla') || pType.includes('formulad');
+    const isBatchFormula = bType.includes('formula') || bType.includes('fórmula') || bType.includes('mezcla') || bType.includes('formulad');
+    if (isItemFormula || isBatchFormula) {
+        return isItemFormula && isBatchFormula;
+    }
+
+    // Cáscara / cascarón / materia prima
+    const isItemCascara = pType.includes('cascara') || pType.includes('cáscara') || pType.includes('cascaron') || pType.includes('cascarón') || pType.includes('materia prima');
+    const isBatchCascara = bType.includes('cascara') || bType.includes('cáscara') || bType.includes('cascaron') || bType.includes('cascarón') || bType.includes('materia prima');
+    if (isItemCascara || isBatchCascara) {
+        return isItemCascara && isBatchCascara;
+    }
+
+    return bType.includes(pType) || pType.includes(bType);
 };

@@ -28,11 +28,13 @@ import {
     X,
     Receipt,
     CreditCard,
-    Files
+    Files,
+    Mail
 } from 'lucide-react';
 import EggCustomerOrderModal from '../../components/egg/EggCustomerOrderModal';
 import RouteAutoInvoicingModal from '../../components/egg/RouteAutoInvoicingModal';
 import PdfViewerModal from '../../components/ui/PdfViewerModal';
+import { getIndustrialPresentationWeightLbs } from '../../constants/eggIndustrialCatalogs';
 
 const PRODUCT_PROFILES = [
     'Huevo Entero Pasteurizado',
@@ -206,6 +208,26 @@ export default function EggDispatch() {
                 lot_code: orderOrStop.lot_code || orderOrStop.lot_code_display || orderOrStop.order_lot_code || orderOrStop.linked_batch_code || null
             }
         ];
+    };
+
+    const getItemUnits = (item) => {
+        const rawU = item?.quantity_units ?? item?.units;
+        if (rawU !== undefined && rawU !== null && rawU !== '' && parseFloat(rawU) > 0) {
+            return parseFloat(rawU);
+        }
+        const factor = getIndustrialPresentationWeightLbs(item?.presentation, 30) || 30;
+        const lbs = parseFloat(item?.quantity_lbs || 0);
+        return factor > 0 ? Math.max(1, Math.round(lbs / factor)) : 1;
+    };
+
+    const getOrderTotalUnits = (orderOrStop) => {
+        const items = getOrderItems(orderOrStop);
+        if (!items || items.length === 0) {
+            const factor = getIndustrialPresentationWeightLbs(orderOrStop?.presentation, 30) || 30;
+            const lbs = parseFloat(orderOrStop?.quantity_lbs || 0);
+            return factor > 0 ? Math.max(1, Math.round(lbs / factor)) : 1;
+        }
+        return items.reduce((sum, it) => sum + getItemUnits(it), 0);
     };
 
     // Formulario de Pedido
@@ -1083,7 +1105,7 @@ export default function EggDispatch() {
                                         <th className="p-3">Cliente / Sucursal</th>
                                         <th className="p-3">Producto / Presentación</th>
                                         <th className="p-3 text-right">Cantidad Lbs</th>
-                                        <th className="p-3 text-right">Cubetas</th>
+                                        <th className="p-3 text-right">Unidades</th>
                                         <th className="p-3 text-right">Precio / Lb</th>
                                         <th className="p-3">Estado / Ruta</th>
                                         <th className="p-3 text-center">Acciones</th>
@@ -1152,7 +1174,7 @@ export default function EggDispatch() {
                                                     {parseFloat(ord.quantity_lbs || 0).toLocaleString()} Lbs
                                                 </td>
                                                 <td className="p-3 text-right font-bold text-slate-700 whitespace-nowrap">
-                                                    {Math.ceil(parseFloat(ord.quantity_lbs || 0) / 30)}
+                                                    {getOrderTotalUnits(ord).toLocaleString()} Uds
                                                 </td>
                                                 <td className="p-3 text-right font-semibold text-slate-700 whitespace-nowrap">
                                                     <Money amount={parseFloat(ord.price_per_lb || 0)} />
@@ -1498,7 +1520,7 @@ export default function EggDispatch() {
                                                                          <div className="text-right whitespace-nowrap">
                                                                              <span className="font-black text-indigo-700">{parseFloat(item.quantity_lbs || 0).toLocaleString()} Lbs</span>
                                                                              <span className="text-[10px] text-slate-500 ml-1">
-                                                                                 ({Math.ceil(parseFloat(item.quantity_lbs || 0) / 30)} cub)
+                                                                                 ({getItemUnits(item).toLocaleString()} uds)
                                                                              </span>
                                                                          </div>
                                                                      </div>
@@ -1532,6 +1554,23 @@ export default function EggDispatch() {
                                                                 <Printer className="w-3.5 h-3.5" />
                                                             )}
                                                         </button>
+                                                        {isStopBilled && stop.sale_id && (
+                                                            <button
+                                                                onClick={async () => {
+                                                                    const toastId = toast.loading(`Enviando DTE a ${stop.customer_name}...`);
+                                                                    try {
+                                                                        await axios.post(`/api/sales/resend-email/${stop.sale_id}`);
+                                                                        toast.success('DTE enviado exitosamente al correo del cliente.', { id: toastId });
+                                                                    } catch (err) {
+                                                                        toast.error(err.response?.data?.message || 'Error al enviar correo del DTE.', { id: toastId });
+                                                                    }
+                                                                }}
+                                                                className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition"
+                                                                title="Enviar / Reenviar DTE oficial por correo al cliente"
+                                                            >
+                                                                <Mail className="w-3.5 h-3.5" />
+                                                            </button>
+                                                        )}
                                                         <button
                                                             onClick={() => handleRemoveStopFromRoute(stop.id, stop.order_id)}
                                                             className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition"
@@ -1947,7 +1986,7 @@ export default function EggDispatch() {
                                     <div className="flex items-center justify-between text-xs bg-slate-50 p-2.5 rounded-xl border border-slate-100">
                                         <span className="font-semibold text-slate-700">{stop.product_type}</span>
                                         <span className="font-black text-indigo-700">
-                                            {stop.quantity_lbs} Lbs ({Math.ceil((stop.quantity_lbs || 0) / 30)} cubetas)
+                                            {stop.quantity_lbs} Lbs ({getOrderTotalUnits(stop).toLocaleString()} Uds)
                                         </span>
                                     </div>
 
@@ -2216,7 +2255,7 @@ export default function EggDispatch() {
                                             <div className="text-right flex-shrink-0 ml-3">
                                                 <span className="font-black text-indigo-700 block">{parseFloat(ord.quantity_lbs || 0).toLocaleString()} Lbs</span>
                                                 <span className="text-[10px] text-slate-500 block">
-                                                    {Math.ceil(parseFloat(ord.quantity_lbs || 0) / 30)} Cubetas
+                                                    {getOrderTotalUnits(ord).toLocaleString()} Uds
                                                 </span>
                                             </div>
                                         </label>

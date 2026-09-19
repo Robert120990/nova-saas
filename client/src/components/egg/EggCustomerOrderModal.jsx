@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import Modal from '../ui/Modal';
 import Money, { MoneyInput } from '../ui/Money';
+import { isBatchCompatibleWithProduct } from '../../constants/eggIndustrialCatalogs';
 
 export const PRODUCT_PROFILES = [
     'Huevo Entero Pasteurizado',
@@ -438,8 +439,15 @@ export default function EggCustomerOrderModal({
                 }
             }
 
-            // Si cambia el tipo de producto, consultar precio sugerido
+            // Si cambia el tipo de producto, consultar precio sugerido y desvincular lote incompatible
             if (field === 'product_type') {
+                if (updated.batch_id) {
+                    const currentBatch = availableBatches.find(b => String(b.id) === String(updated.batch_id));
+                    if (currentBatch && !isBatchCompatibleWithProduct(currentBatch.product_type, value)) {
+                        updated.batch_id = '';
+                        updated.lot_code = '';
+                    }
+                }
                 const custId = orderForm.customer_id;
                 const custName = orderForm.customer_name || customerSearchInput;
                 if (custId || custName) {
@@ -925,11 +933,13 @@ export default function EggCustomerOrderModal({
                                             className="w-full text-[11px] font-semibold border border-slate-200 rounded-lg px-2 py-1.5 text-emerald-800 bg-emerald-50/20 outline-none focus:border-emerald-500"
                                         >
                                             <option value="">-- Sin asignar --</option>
-                                            {availableBatches.map(b => (
-                                                <option key={b.id} value={b.id}>
-                                                    {b.batch_code_display || b.lote} ({b.product_type || 'Ovoproducto'})
-                                                </option>
-                                            ))}
+                                            {availableBatches
+                                                .filter(b => String(b.id) === String(it.batch_id) || isBatchCompatibleWithProduct(b.product_type, it.product_type))
+                                                .map(b => (
+                                                    <option key={b.id} value={b.id}>
+                                                        {b.batch_code_display || b.lote} ({b.product_type || 'Ovoproducto'})
+                                                    </option>
+                                                ))}
                                         </select>
                                     </div>
 
