@@ -1895,7 +1895,42 @@ const autoInvoiceDispatchRoute = async (req, res) => {
             }
         }
 
-        // 4. Validar que cada producto a facturar tenga lote asignado
+        // Determinar vendedor y sucursal válidos para la empresa (protección Foreign Key sales_headers_ibfk_4 y sales_headers_ibfk_2)
+        let resolvedSellerId = null;
+        if (route.driver_name) {
+            const [sellerByName] = await connection.query(
+                'SELECT id FROM sellers WHERE company_id = ? AND status = ? AND LOWER(TRIM(nombre)) = LOWER(TRIM(?)) LIMIT 1',
+                [company_id, 'activo', route.driver_name]
+            );
+            if (sellerByName.length > 0) {
+                resolvedSellerId = sellerByName[0].id;
+            }
+        }
+        if (!resolvedSellerId && req.user?.nombre) {
+            const [sellerByUser] = await connection.query(
+                'SELECT id FROM sellers WHERE company_id = ? AND status = ? AND LOWER(TRIM(nombre)) = LOWER(TRIM(?)) LIMIT 1',
+                [company_id, 'activo', req.user.nombre]
+            );
+            if (sellerByUser.length > 0) {
+                resolvedSellerId = sellerByUser[0].id;
+            }
+        }
+        if (!resolvedSellerId) {
+            const [firstSeller] = await connection.query(
+                'SELECT id FROM sellers WHERE company_id = ? AND status = ? ORDER BY id ASC LIMIT 1',
+                [company_id, 'activo']
+            );
+            resolvedSellerId = firstSeller.length > 0 ? firstSeller[0].id : null;
+        }
+
+        let resolvedBranchId = req.user?.branch_id;
+        const [validBranch] = await connection.query(
+            'SELECT id FROM branches WHERE company_id = ? AND (id = ? OR is_active = 1) ORDER BY (id = ?) DESC, id ASC LIMIT 1',
+            [company_id, resolvedBranchId || 0, resolvedBranchId || 0]
+        );
+        resolvedBranchId = validBranch.length > 0 ? validBranch[0].id : (company.branch_id || null);
+
+        // 4. Validar que cada producto a facturar tenga lote asignado (excluyendo detalles libres)
         for (const stop of stops) {
             if (!stop.items || !Array.isArray(stop.items) || stop.items.length === 0) {
                 await connection.rollback();
@@ -1904,6 +1939,7 @@ const autoInvoiceDispatchRoute = async (req, res) => {
                 });
             }
             for (const it of stop.items) {
+                if (it.is_custom_detail) continue; // Los detalles libres no requieren lote de inventario
                 const lotCode = (it.lot_code || '').trim();
                 if (!lotCode) {
                     await connection.rollback();
@@ -1960,6 +1996,66 @@ const autoInvoiceDispatchRoute = async (req, res) => {
 
             for (let i = 0; i < stop.items.length; i++) {
                 const it = stop.items[i];
+                const isCustom = !!it.is_custom_detail;
+
+                if (isCustom) {
+                    const descCustom = (it.product_type || it.descripcion || it.description || 'Detalle libre').trim();
+                    const rawQty = parseFloat(it.quantity_lbs ?? it.quantity ?? 0);
+                    const rawPrice = parseFloat(it.price_per_lb ?? it.price ?? 0);
+
+                    // Si no tiene precio (precio 0 o vacío)
+                    if (rawPrice <= 0) {
+                        itemsProcessed.push({
+                            product_id: null,
+                            codigo: 'DET-LIBRE',
+                            descripcion: descCustom,
+                            cantidad: rawQty > 0 ? rawQty : 1,
+                            precio_unitario: 0,
+                            monto_descuento: 0,
+                            venta_gravada: 0,
+                            venta_exenta: 0,
+                            tributos: []
+                        });
+                    } else {
+                        // Tiene precio definido (ej: Flete, servicio especial, etc.)
+                        const qty = rawQty > 0 ? rawQty : 1;
+                        let itemTotal = Math.round(qty * rawPrice * 100) / 100;
+                        let ventaGravada = 0;
+                        let ivaItem = 0;
+                        let precioUnitario = rawPrice;
+
+                        if (dteType === '11') {
+                            ventaGravada = itemTotal;
+                            ivaItem = 0;
+                        } else if (dteType === '04') {
+                            ventaGravada = 0;
+                            ivaItem = 0;
+                            precioUnitario = 0.00001;
+                        } else {
+                            const gravNeto = Math.round((itemTotal / (1 + ivaRate)) * 100) / 100;
+                            ivaItem = Math.round((itemTotal - gravNeto) * 100) / 100;
+                            ventaGravada = gravNeto;
+                        }
+
+                        totalGravado += ventaGravada;
+                        totalIva += ivaItem;
+
+                        itemsProcessed.push({
+                            product_id: null,
+                            codigo: 'DET-LIBRE',
+                            descripcion: descCustom,
+                            cantidad: qty,
+                            precio_unitario: precioUnitario,
+                            monto_descuento: 0,
+                            venta_gravada: ventaGravada,
+                            venta_exenta: 0,
+                            tributos: dteType === '11' || dteType === '04' ? [] : ['20']
+                        });
+                    }
+                    continue;
+                }
+
+                // Ítem normal de producto de catálogo / inventario
                 const qty = parseFloat(it.quantity_lbs || 0);
                 const priceLb = parseFloat(it.price_per_lb || 0);
                 let itemTotal = Math.round(qty * priceLb * 100) / 100;
@@ -2013,8 +2109,15 @@ const autoInvoiceDispatchRoute = async (req, res) => {
                 }
             }
 
-            const sellerId = route.driver_id || req.user?.id || 1;
-            const branchId = req.user?.branch_id || (company.branches && company.branches[0]?.id) || 1;
+            const sellerId = resolvedSellerId;
+            const branchId = resolvedBranchId;
+
+            // Extraer notas de detalles libres para observaciones
+            const freeNotes = stop.items
+                .filter(it => it.is_custom_detail && (it.product_type || it.descripcion))
+                .map(it => (it.product_type || it.descripcion).trim());
+            const notesSuffix = freeNotes.length > 0 ? ` | Notas: ${freeNotes.join('; ')}` : '';
+            const saleObservaciones = `Facturación Automática de Despacho Ruta ${route.codigo_ruta} - Pedido ${stop.order_number || stop.order_id}${notesSuffix}`;
 
             // 5a. Insertar Cabecera de Venta
             const [saleResult] = await connection.query('INSERT INTO sales_headers SET ?', [{
@@ -2039,7 +2142,7 @@ const autoInvoiceDispatchRoute = async (req, res) => {
                 iva_retenido: retencion,
                 total_pagar: totalPagar,
                 cliente_nombre: customer.nombre,
-                observaciones: `Facturación Automática de Despacho Ruta ${route.codigo_ruta} - Pedido ${stop.order_number || stop.order_id}`,
+                observaciones: saleObservaciones,
                 remission_type: dteType === '04' ? '02' : null,
                 transporter_name: dteType === '04' ? (route.driver_name || 'Chofer Asignado') : null,
                 vehicle_plate: dteType === '04' ? (route.vehicle_placa || null) : null,

@@ -18,7 +18,9 @@ import {
     Sparkles,
     ShieldCheck,
     Truck,
-    HelpCircle
+    HelpCircle,
+    PlusCircle,
+    Trash2
 } from 'lucide-react';
 
 const DTE_TYPE_OPTIONS = [
@@ -215,6 +217,65 @@ export default function RouteAutoInvoicingModal({
         });
     };
 
+    // Funciones para Adicionar, Editar y Eliminar Detalles Libres (sin producto/cantidad/precio obligatorios)
+    const handleAddCustomDetail = (stopId) => {
+        setStopsConfig(prev => {
+            const currentStop = prev[stopId];
+            if (!currentStop || currentStop.is_billed) return prev;
+            const newItem = {
+                id: 'custom-' + Date.now(),
+                is_custom_detail: true,
+                product_type: '',
+                presentation: 'Detalle',
+                quantity_lbs: '',
+                price_per_lb: '',
+                batch_id: null,
+                lot_code: 'N/A'
+            };
+            return {
+                ...prev,
+                [stopId]: {
+                    ...currentStop,
+                    items: [...(currentStop.items || []), newItem]
+                }
+            };
+        });
+    };
+
+    const handleUpdateCustomDetail = (stopId, itemIndex, field, value) => {
+        setStopsConfig(prev => {
+            const currentStop = prev[stopId];
+            if (!currentStop || currentStop.is_billed) return prev;
+            const newItems = [...currentStop.items];
+            newItems[itemIndex] = {
+                ...newItems[itemIndex],
+                [field]: value
+            };
+            return {
+                ...prev,
+                [stopId]: {
+                    ...currentStop,
+                    items: newItems
+                }
+            };
+        });
+    };
+
+    const handleRemoveCustomDetail = (stopId, itemIndex) => {
+        setStopsConfig(prev => {
+            const currentStop = prev[stopId];
+            if (!currentStop || currentStop.is_billed) return prev;
+            const newItems = currentStop.items.filter((_, idx) => idx !== itemIndex);
+            return {
+                ...prev,
+                [stopId]: {
+                    ...currentStop,
+                    items: newItems
+                }
+            };
+        });
+    };
+
     // Filtrar lotes en el modal de selección
     const filteredLots = useMemo(() => {
         let list = availableLots;
@@ -254,8 +315,11 @@ export default function RouteAutoInvoicingModal({
                     cfg.items.forEach(it => {
                         const price = parseFloat(it.price_per_lb || 0);
                         const qty = parseFloat(it.quantity_lbs || 0);
-                        selectedTotal += (price * qty);
-                        if (!it.lot_code || !String(it.lot_code).trim()) {
+                        if (price > 0 && qty > 0) {
+                            selectedTotal += (price * qty);
+                        }
+                        // Solo los productos de catálogo requieren lote de inventario
+                        if (!it.is_custom_detail && (!it.lot_code || !String(it.lot_code).trim())) {
                             missingLotsCount++;
                         }
                     });
@@ -286,11 +350,18 @@ export default function RouteAutoInvoicingModal({
             return;
         }
 
-        // 2. Validar que no falte ningún lote
+        // 2. Validar que los productos de catálogo tengan lote asignado y detalles libres tengan descripción
         for (const stop of selectedStops) {
             const cfg = stopsConfig[stop.id];
             for (let i = 0; i < cfg.items.length; i++) {
                 const it = cfg.items[i];
+                if (it.is_custom_detail) {
+                    if (!it.product_type || !it.product_type.trim()) {
+                        toast.warning(`Hay un detalle libre sin descripción en la parada de "${stop.customer_name}". Ingrese un texto o elimínelo.`);
+                        return;
+                    }
+                    continue; // Exento de lote
+                }
                 if (!it.lot_code || !String(it.lot_code).trim()) {
                     toast.warning(
                         `Falta asignar lote para "${it.product_type}" en el pedido de "${stop.customer_name}". Se ha abierto el selector de lotes.`,
@@ -575,6 +646,102 @@ export default function RouteAutoInvoicingModal({
                                 {/* Desglose de Productos y Lotes */}
                                 <div className="mt-3 pt-2.5 border-t border-slate-100 space-y-1.5">
                                     {cfg.items?.map((it, itemIdx) => {
+                                        // 1. Caso: Detalle Libre (sin producto, ni cantidad, ni precio obligatorios)
+                                        if (it.is_custom_detail) {
+                                            const customQty = parseFloat(it.quantity_lbs || 0);
+                                            const customPrice = parseFloat(it.price_per_lb || 0);
+                                            const hasAmount = customQty > 0 && customPrice > 0;
+                                            const itemTotal = hasAmount ? (customQty * customPrice) : 0;
+
+                                            return (
+                                                <div
+                                                    key={it.id || itemIdx}
+                                                    className={`p-2.5 rounded-xl border flex flex-col md:flex-row md:items-center justify-between gap-2 text-xs transition-all ${
+                                                        isBilled
+                                                            ? 'bg-white/60 border-emerald-200'
+                                                            : 'bg-indigo-50/40 border-indigo-200/80 shadow-xs'
+                                                    }`}
+                                                >
+                                                    <div className="flex-1 flex flex-col sm:flex-row sm:items-center gap-2">
+                                                        <div className="flex items-center gap-1 text-indigo-600 font-bold shrink-0">
+                                                            <FileText className="w-3.5 h-3.5" />
+                                                            <span className="text-[10px] uppercase font-black tracking-wide">Detalle:</span>
+                                                        </div>
+                                                        {!isBilled ? (
+                                                            <input
+                                                                type="text"
+                                                                value={it.product_type || ''}
+                                                                onChange={(e) => handleUpdateCustomDetail(stop.id, itemIdx, 'product_type', e.target.value)}
+                                                                placeholder="Descripción libre (ej: Servicio de flete, observación, empaques...)"
+                                                                className="flex-1 min-w-[200px] text-xs font-semibold bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-slate-800 outline-none focus:border-indigo-500"
+                                                            />
+                                                        ) : (
+                                                            <span className="font-semibold text-slate-800">{it.product_type}</span>
+                                                        )}
+                                                    </div>
+
+                                                    <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+                                                        {!isBilled ? (
+                                                            <>
+                                                                <div className="flex items-center gap-1">
+                                                                    <span className="text-[10px] font-bold text-slate-400">Cant:</span>
+                                                                    <input
+                                                                        type="number"
+                                                                        min="0"
+                                                                        step="any"
+                                                                        value={it.quantity_lbs ?? ''}
+                                                                        onChange={(e) => handleUpdateCustomDetail(stop.id, itemIdx, 'quantity_lbs', e.target.value)}
+                                                                        placeholder="Opc"
+                                                                        className="w-16 text-xs font-bold bg-white border border-slate-200 rounded-lg px-1.5 py-1 text-center text-slate-800 outline-none focus:border-indigo-500"
+                                                                    />
+                                                                </div>
+                                                                <div className="flex items-center gap-1">
+                                                                    <span className="text-[10px] font-bold text-slate-400">Precio $:</span>
+                                                                    <input
+                                                                        type="number"
+                                                                        min="0"
+                                                                        step="0.01"
+                                                                        value={it.price_per_lb ?? ''}
+                                                                        onChange={(e) => handleUpdateCustomDetail(stop.id, itemIdx, 'price_per_lb', e.target.value)}
+                                                                        placeholder="$0.00"
+                                                                        className="w-20 text-xs font-bold bg-white border border-slate-200 rounded-lg px-1.5 py-1 text-center text-slate-800 outline-none focus:border-indigo-500"
+                                                                    />
+                                                                </div>
+                                                            </>
+                                                        ) : (
+                                                            hasAmount && (
+                                                                <span className="text-[11px] font-bold text-slate-600">
+                                                                    {customQty} x <Money value={customPrice} /> = <Money value={itemTotal} />
+                                                                </span>
+                                                            )
+                                                        )}
+
+                                                        {hasAmount && !isBilled && (
+                                                            <span className="text-xs font-black text-indigo-700 bg-indigo-100/70 px-2 py-0.5 rounded-md">
+                                                                <Money value={itemTotal} />
+                                                            </span>
+                                                        )}
+
+                                                        <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-md">
+                                                            Sin Lote
+                                                        </span>
+
+                                                        {!isBilled && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleRemoveCustomDetail(stop.id, itemIdx)}
+                                                                title="Eliminar este detalle libre"
+                                                                className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                                                            >
+                                                                <Trash2 className="w-3.5 h-3.5" />
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            );
+                                        }
+
+                                        // 2. Caso: Producto de Catálogo / Inventario
                                         const hasLot = !!(it.lot_code && String(it.lot_code).trim());
                                         const itemTotal = (parseFloat(it.quantity_lbs || 0) * parseFloat(it.price_per_lb || 0));
 
@@ -640,6 +807,20 @@ export default function RouteAutoInvoicingModal({
                                             </div>
                                         );
                                     })}
+
+                                    {/* Botón para Adicionar Detalle Libre */}
+                                    {!isBilled && (
+                                        <div className="pt-1.5 flex justify-end">
+                                            <button
+                                                type="button"
+                                                onClick={() => handleAddCustomDetail(stop.id)}
+                                                className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50/80 px-2.5 py-1 rounded-lg border border-dashed border-indigo-200 transition"
+                                            >
+                                                <PlusCircle className="w-3.5 h-3.5" />
+                                                <span>+ Adicionar Detalle / Nota Libre</span>
+                                            </button>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         );
