@@ -1805,30 +1805,7 @@ const EggConfig = () => {
                                                 </button>
                                             </div>
 
-                                            {/* Selector rápido directo de productos de huevo/sistema */}
-                                            <div className="flex items-center gap-1.5 pt-0.5">
-                                                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tight shrink-0">
-                                                    Seleccionar del catálogo:
-                                                </span>
-                                                <select
-                                                    value={item.product_id || ''}
-                                                    onChange={(e) => {
-                                                        const pId = e.target.value;
-                                                        const prod = systemProducts.find(x => String(x.id) === String(pId));
-                                                        if (prod) handleSelectProductQuick(index, prod);
-                                                    }}
-                                                    className="flex-1 min-w-0 px-2 py-1 bg-white border border-slate-200 hover:border-indigo-300 rounded-lg text-[11px] text-slate-800 font-semibold focus:outline-none focus:border-indigo-500 truncate"
-                                                >
-                                                    <option value="">-- Elegir producto (huevo en cáscara u ovoproducto) --</option>
-                                                    {eggProductsList.map((ep) => (
-                                                        <option key={ep.id} value={ep.id}>
-                                                            {ep.nombre || ep.name} [SKU: {ep.codigo || 'S/C'}]
-                                                        </option>
-                                                    ))}
-                                                </select>
-                                            </div>
-
-                                            {/* Nombre del producto detectado/vinculado */}
+                                            {/* Nombre del producto detectado/vinculado si existe */}
                                             {item.product_name && (
                                                 <div className="text-[11px] text-slate-600 font-medium flex items-center gap-1 pl-1">
                                                     <span className="text-slate-400">Producto:</span>
