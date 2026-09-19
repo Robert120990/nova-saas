@@ -2,6 +2,7 @@ const pool = require('../config/db');
 const reportPdfHelper = require('../utils/reportPdfHelper');
 const excelService = require('../services/excel.service');
 const dteService = require('../services/dte.service');
+const mailerService = require('../services/mailer.service');
 const { getSaleRTEEPdfBuffer } = require('./sales.controller');
 const { PDFDocument } = require('pdf-lib');
 
@@ -2033,6 +2034,7 @@ const autoInvoiceDispatchRoute = async (req, res) => {
         }
 
         const billedResults = [];
+        const successfulSalesForEmail = [];
 
         // 5. Procesar cada parada seleccionada
         for (const stop of stops) {
@@ -2478,11 +2480,23 @@ const autoInvoiceDispatchRoute = async (req, res) => {
                 }
             }
 
+            if (dteInfo.codigo_generacion && (dteHaciendaStatus === 'ACEPTADO_HACIENDA' || dteHaciendaStatus === 'CONTINGENCIA')) {
+                successfulSalesForEmail.push({
+                    saleId: safeInt(saleId),
+                    customerName: customer.nombre,
+                    customerEmail: customer.correo || null,
+                    codigoGeneracion: dteInfo.codigo_generacion,
+                    numeroControl: dteInfo.numero_control
+                });
+            }
+
             billedResults.push({
                 stop_id: stop.stop_id,
                 order_id: stop.order_id,
                 sale_id: saleId,
                 customer_name: customer.nombre,
+                customer_email: customer.correo || null,
+                email_queued: !!(dteInfo.codigo_generacion && (dteHaciendaStatus === 'ACEPTADO_HACIENDA' || dteHaciendaStatus === 'CONTINGENCIA') && customer.correo),
                 dte_type: dteType,
                 numero_control: dteInfo.numero_control || `VTA-${saleId}`,
                 codigo_generacion: dteInfo.codigo_generacion || null,
@@ -2497,6 +2511,25 @@ const autoInvoiceDispatchRoute = async (req, res) => {
         }
 
         await connection.commit();
+
+        // 6. Enviar correo formal con DTE a los clientes tras emisión exitosa (proceso formal idéntico al Punto de Venta)
+        if (successfulSalesForEmail.length > 0) {
+            (async () => {
+                for (const item of successfulSalesForEmail) {
+                    try {
+                        console.log(`[AutoInvoice] Enviando correo formal con DTE a cliente "${item.customerName}" para Venta #${item.saleId}...`);
+                        const mailResult = await mailerService.sendDTEEmail(item.saleId, company_id);
+                        if (mailResult?.success) {
+                            console.log(`[AutoInvoice] ✓ Correo DTE enviado exitosamente a "${item.customerName}" (${mailResult.email || item.customerEmail}) para Venta #${item.saleId}`);
+                        } else if (mailResult?.skip) {
+                            console.log(`[AutoInvoice] ℹ Cliente "${item.customerName}" sin correo registrado. Envío omitido para Venta #${item.saleId}`);
+                        }
+                    } catch (mailErr) {
+                        console.error(`[AutoInvoice] Error enviando correo DTE para Venta #${item.saleId}:`, mailErr.message);
+                    }
+                }
+            })();
+        }
 
         res.json({
             success: true,
