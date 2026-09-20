@@ -6,6 +6,7 @@ function getRrsPool() {
     if (rrsPool) return rrsPool;
     rrsPool = mysql.createPool({
         host: process.env.RRS_DB_HOST,
+        port: process.env.RRS_DB_PORT ? Number(process.env.RRS_DB_PORT) : 3306,
         user: process.env.RRS_DB_USER,
         password: process.env.RRS_DB_PASSWORD,
         database: process.env.RRS_DB_NAME || 'db_system_rrs',
