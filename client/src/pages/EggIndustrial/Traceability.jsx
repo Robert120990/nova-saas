@@ -165,7 +165,7 @@ const EggTraceability = () => {
         try {
             const [compRes, custRes] = await Promise.all([
                 axios.get('/api/companies'),
-                axios.get('/api/customers?limit=200')
+                axios.get('/api/customers', { params: { limit: 500, skip_count: 1 } })
             ]);
             if (compRes.data && compRes.data.length > 0) {
                 // Priorizar ANDELSA o la primera empresa

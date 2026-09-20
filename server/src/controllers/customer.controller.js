@@ -2,8 +2,10 @@ const pool = require('../config/db');
 
 const getCustomers = async (req, res) => {
     try {
-        const { search, nombre, nit, nrc, page = 1, limit = 15, es_credito, es_anticipado, es_trupput, ids_only } = req.query;
-        const offset = (page - 1) * limit;
+        const { search, nombre, nit, nrc, page = 1, limit = 15, es_credito, es_anticipado, es_trupput, ids_only, skip_count } = req.query;
+        const parsedLimit = Math.max(1, parseInt(limit, 10) || 15);
+        const parsedPage = Math.max(1, parseInt(page, 10) || 1);
+        const offset = (parsedPage - 1) * parsedLimit;
 
         let whereClause = 'WHERE c.company_id = ?';
         let params = [req.company_id];
@@ -55,9 +57,13 @@ const getCustomers = async (req, res) => {
             return res.json(rows.map(r => r.id));
         }
 
-        const countQuery = `SELECT COUNT(*) as total FROM customers c ${whereClause}`;
-        const [countResult] = await pool.query(countQuery, params);
-        const total = countResult[0].total;
+        let total = 0;
+        const shouldSkipCount = skip_count === '1' || skip_count === 'true';
+        if (!shouldSkipCount) {
+            const countQuery = `SELECT COUNT(*) as total FROM customers c ${whereClause}`;
+            const [countResult] = await pool.query(countQuery, params);
+            total = countResult[0]?.total || 0;
+        }
 
         const [rows] = await pool.query(`
             SELECT c.*,
@@ -74,13 +80,17 @@ const getCustomers = async (req, res) => {
             LEFT JOIN cat_029_tipo_persona tp ON c.tipo_persona = tp.code
             ${whereClause}
             ORDER BY c.nombre ASC LIMIT ? OFFSET ?
-        `, [...params, parseInt(limit), parseInt(offset)]);
+        `, [...params, parsedLimit, offset]);
+
+        if (shouldSkipCount) {
+            total = rows.length;
+        }
 
         res.json({
             data: rows,
             total,
-            page: parseInt(page),
-            totalPages: Math.ceil(total / limit)
+            page: parsedPage,
+            totalPages: Math.ceil(total / parsedLimit)
         });
     } catch (error) {
         console.error(error);
