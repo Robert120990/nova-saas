@@ -1,4 +1,6 @@
 const pool = require('../config/db');
+const { resolveEggCatalogProduct } = require('../utils/eggProductResolver');
+
 
 /**
  * Controlador de CRM: Acuerdos Comerciales de Precios con Clientes
@@ -121,6 +123,8 @@ const getActiveAgreementsByCustomer = async (req, res) => {
             LEFT JOIN products p ON a.product_id = p.id
             WHERE a.company_id = ? 
               AND a.status = 'activo'
+              AND (a.valid_from IS NULL OR a.valid_from <= CURDATE())
+              AND (a.valid_to IS NULL OR a.valid_to >= CURDATE())
               AND (
                   a.customer_id = ?
                   ${customerName ? `OR (a.customer_id IS NULL AND a.customer_name = ?)` : ''}
@@ -185,7 +189,8 @@ const saveAgreement = async (req, res) => {
             valid_to,
             change_reason,
             notes,
-            status
+            status,
+            items
         } = req.body;
 
         if (!customer_name || !customer_name.trim()) {
@@ -247,9 +252,15 @@ const saveAgreement = async (req, res) => {
                     unitPrice = pricePerLb * lbs;
                 }
 
-                const itemProductId = item.product_id || null;
                 const itemProductType = item.product_type || 'Huevo Entero Pasteurizado';
                 const itemPresentation = item.presentation || 'cubeta 30LB';
+                let itemProductId = item.product_id || null;
+                if (!itemProductId) {
+                    const resolvedProd = await resolveEggCatalogProduct(pool, companyId, itemProductType, itemPresentation);
+                    if (resolvedProd && resolvedProd.catalog_product_id) {
+                        itemProductId = resolvedProd.catalog_product_id;
+                    }
+                }
                 const itemMonthlyVolume = parseFloat(item.monthly_volume_lbs) || parseFloat(monthly_volume_lbs) || 0;
                 const itemTargetMargin = parseFloat(target_margin_pct) || 20;
                 const targetId = item.id || (items.length === 1 ? id : null);
@@ -427,6 +438,14 @@ const saveAgreement = async (req, res) => {
         }
 
         // Modo plano tradicional (1 solo producto)
+        let finalSingleProductId = product_id || null;
+        if (!finalSingleProductId) {
+            const resolvedSingle = await resolveEggCatalogProduct(pool, companyId, product_type, presentation);
+            if (resolvedSingle && resolvedSingle.catalog_product_id) {
+                finalSingleProductId = resolvedSingle.catalog_product_id;
+            }
+        }
+
         if (id) {
             // Guardar versión previa en historial
             try {
@@ -479,7 +498,7 @@ const saveAgreement = async (req, res) => {
             `, [
                 customer_id || null,
                 customer_name.trim(),
-                product_id || null,
+                finalSingleProductId,
                 product_type || 'Huevo Entero Pasteurizado',
                 presentation || 'cubeta 30LB',
                 pricePerLb,
@@ -520,7 +539,7 @@ const saveAgreement = async (req, res) => {
                 companyId,
                 customer_id || null,
                 customer_name.trim(),
-                product_id || null,
+                finalSingleProductId,
                 product_type || 'Huevo Entero Pasteurizado',
                 presentation || 'cubeta 30LB',
                 pricePerLb,

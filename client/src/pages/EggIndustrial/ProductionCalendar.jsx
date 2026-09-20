@@ -4,7 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import { toast } from 'sonner';
 import axios from 'axios';
 import Modal from '../../components/ui/Modal';
-import Money, { MoneyInput } from '../../components/ui/Money';
+import Money from '../../components/ui/Money';
 import {
     Calendar as CalendarIcon,
     ChevronLeft,
@@ -31,9 +31,6 @@ import {
     CalendarCheck,
     ArrowRightLeft,
     CheckSquare,
-    Check,
-    AlertCircle,
-    Building2,
     Truck
 } from 'lucide-react';
 
@@ -87,7 +84,7 @@ const PRESENTATIONS = [
 /**
  * Helper para buscar el acuerdo comercial activo de un cliente según el perfil o nombre de producto
  */
-const findAgreementForProduct = (agreementsList, productType) => {
+const _findAgreementForProduct = (agreementsList, productType) => {
     if (!agreementsList || agreementsList.length === 0 || !productType) return null;
 
     const clean = (s) => (s || '')
@@ -226,27 +223,6 @@ const ProductionCalendar = () => {
     const [newTaskRole, setNewTaskRole] = useState(FACTORY_ROLES[0]);
     const [newTaskUser, setNewTaskUser] = useState('');
     const [newTaskDesc, setNewTaskDesc] = useState(DEFAULT_PRESETS_BY_ROLE[FACTORY_ROLES[0]] || '');
-
-    // Customer order form & CRM Integration
-    const [orderForm, setOrderForm] = useState({
-        customer_id: '',
-        customer_name: '',
-        order_number: '',
-        product_type: 'Huevo Entero Pasteurizado',
-        presentation: 'cubeta 30LB',
-        quantity_lbs: '',
-        required_delivery_date: new Date().toISOString().split('T')[0],
-        price_per_lb: '',
-        notes: ''
-    });
-    const [customerSearchInput, setCustomerSearchInput] = useState('');
-    const [customerSearchResults, setCustomerSearchResults] = useState([]);
-    const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
-    const [loadingCustomers, setLoadingCustomers] = useState(false);
-    const [selectedCustomer, setSelectedCustomer] = useState(null);
-    const [customerAgreements, setCustomerAgreements] = useState([]);
-    const [loadingAgreements, setLoadingAgreements] = useState(false);
-    const [agreedPriceNotice, setAgreedPriceNotice] = useState(null);
 
     // Fetch primary data
     const fetchProductions = async () => {
@@ -696,171 +672,6 @@ const ProductionCalendar = () => {
             fetchProductions(); // Rollback
         } finally {
             setDraggedItem(null);
-        }
-    };
-
-    // Customer Orders & CRM Autocomplete Handlers
-    const searchCustomersList = async (query = '') => {
-        setLoadingCustomers(true);
-        try {
-            const res = await axios.get('/api/customers', {
-                params: {
-                    search: query || undefined,
-                    limit: 15
-                }
-            });
-            const list = res.data?.data || (Array.isArray(res.data) ? res.data : []);
-            setCustomerSearchResults(list);
-        } catch (error) {
-            console.error('Error buscando clientes:', error);
-        } finally {
-            setLoadingCustomers(false);
-        }
-    };
-
-    useEffect(() => {
-        if (isOrdersModalOpen) {
-            searchCustomersList('');
-        } else {
-            setShowCustomerDropdown(false);
-        }
-    }, [isOrdersModalOpen]);
-
-    const handleCustomerInputChange = (e) => {
-        const val = e.target.value;
-        setCustomerSearchInput(val);
-        setShowCustomerDropdown(true);
-
-        if (selectedCustomer && val !== selectedCustomer.nombre) {
-            setSelectedCustomer(null);
-            setCustomerAgreements([]);
-            setAgreedPriceNotice(null);
-            setOrderForm(prev => ({ ...prev, customer_id: '', customer_name: val, price_per_lb: '' }));
-        } else {
-            setOrderForm(prev => ({ ...prev, customer_name: val }));
-        }
-
-        searchCustomersList(val);
-    };
-
-    const handleSelectCustomer = async (cust) => {
-        setSelectedCustomer(cust);
-        setCustomerSearchInput(cust.nombre);
-        setShowCustomerDropdown(false);
-        setOrderForm(prev => ({
-            ...prev,
-            customer_id: cust.id,
-            customer_name: cust.nombre
-        }));
-
-        setLoadingAgreements(true);
-        try {
-            const res = await axios.get(`/api/crm/customer-agreements/active-by-customer/${cust.id}`);
-            const agreements = res.data || [];
-            setCustomerAgreements(agreements);
-
-            const match = findAgreementForProduct(agreements, orderForm.product_type);
-            if (match && parseFloat(match.agreed_price_per_lb) > 0) {
-                const price = match.agreed_price_per_lb;
-                setOrderForm(prev => ({ ...prev, customer_id: cust.id, customer_name: cust.nombre, price_per_lb: price }));
-                setAgreedPriceNotice({
-                    type: 'crm',
-                    price: price,
-                    product: match.product_type || match.product_name,
-                    label: `Precio pactado en CRM ($${parseFloat(price).toFixed(2)}/lb) jalado automáticamente`
-                });
-                toast.success(`Precio acordado de $${parseFloat(price).toFixed(2)}/lb jalado automáticamente desde CRM.`);
-            } else {
-                setOrderForm(prev => ({ ...prev, customer_id: cust.id, customer_name: cust.nombre, price_per_lb: '' }));
-                setAgreedPriceNotice({
-                    type: 'none',
-                    label: agreements.length > 0
-                        ? `Cliente con acuerdos para otros productos, sin precio pactado para ${orderForm.product_type}`
-                        : 'Cliente registrado sin acuerdos activos de precio en CRM'
-                });
-            }
-        } catch (error) {
-            console.error('Error al cargar acuerdos del cliente:', error);
-            setCustomerAgreements([]);
-        } finally {
-            setLoadingAgreements(false);
-        }
-    };
-
-    const handleProductTypeChange = (newProductType) => {
-        setOrderForm(prev => ({ ...prev, product_type: newProductType }));
-
-        if (selectedCustomer && customerAgreements.length > 0) {
-            const match = findAgreementForProduct(customerAgreements, newProductType);
-            if (match && parseFloat(match.agreed_price_per_lb) > 0) {
-                const price = match.agreed_price_per_lb;
-                setOrderForm(prev => ({ ...prev, product_type: newProductType, price_per_lb: price }));
-                setAgreedPriceNotice({
-                    type: 'crm',
-                    price: price,
-                    product: match.product_type || match.product_name,
-                    label: `Precio pactado en CRM ($${parseFloat(price).toFixed(2)}/lb) jalado automáticamente`
-                });
-                toast.info(`Precio acordado aplicado para ${newProductType}: $${parseFloat(price).toFixed(2)}/lb`);
-            } else {
-                setOrderForm(prev => ({ ...prev, product_type: newProductType, price_per_lb: '' }));
-                setAgreedPriceNotice({
-                    type: 'none',
-                    label: `Sin precio pactado en CRM para ${newProductType}`
-                });
-            }
-        }
-    };
-
-    const handleSaveOrder = async (e) => {
-        e.preventDefault();
-
-        let custId = orderForm.customer_id;
-        let custName = (orderForm.customer_name || customerSearchInput || '').trim();
-
-        if (!custId) {
-            const exact = customerSearchResults.find(c =>
-                c.nombre.toLowerCase().trim() === custName.toLowerCase().trim() ||
-                (c.nombre_comercial && c.nombre_comercial.toLowerCase().trim() === custName.toLowerCase().trim())
-            );
-            if (exact) {
-                custId = exact.id;
-                custName = exact.nombre;
-            } else {
-                toast.error('El cliente debe coincidir con un cliente registrado en el catálogo.');
-                setShowCustomerDropdown(true);
-                return;
-            }
-        }
-
-        try {
-            const payload = {
-                ...orderForm,
-                customer_id: custId,
-                customer_name: custName
-            };
-            const res = await axios.post('/api/egg-industrial/orders', payload);
-            toast.success(res.data.message || 'Pedido de cliente registrado exitosamente.');
-            setOrderForm({
-                customer_id: '',
-                customer_name: '',
-                order_number: '',
-                product_type: 'Huevo Entero Pasteurizado',
-                presentation: 'cubeta 30LB',
-                quantity_lbs: '',
-                required_delivery_date: new Date().toISOString().split('T')[0],
-                price_per_lb: '',
-                notes: ''
-            });
-            setSelectedCustomer(null);
-            setCustomerSearchInput('');
-            setCustomerAgreements([]);
-            setAgreedPriceNotice(null);
-            fetchOrders();
-            fetchSuggestions();
-        } catch (error) {
-            console.error('Error al guardar pedido:', error);
-            toast.error(error.response?.data?.message || 'Error al registrar pedido.');
         }
     };
 

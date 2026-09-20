@@ -1,10 +1,8 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
 import { toast } from 'sonner';
 import { 
-    X, Plus, Trash2, Search, Check, Sparkles, Building2, 
-    User, Calendar, Clock, AlertCircle, RefreshCw, Layers, 
-    DollarSign, Package, CheckCircle2, ChevronDown, MapPin
+    X, Plus, Trash2, Search, Check, Building2, RefreshCw, Package, CheckCircle2
 } from 'lucide-react';
 import Modal from '../ui/Modal';
 import Money, { MoneyInput } from '../ui/Money';
@@ -96,7 +94,7 @@ export default function EggCustomerOrderModal({
     ]);
 
     const [availableBatches, setAvailableBatches] = useState([]);
-    const [loadingBatches, setLoadingBatches] = useState(false);
+    const [_loadingBatches, setLoadingBatches] = useState(false);
     const [saving, setSaving] = useState(false);
 
     // Modal de confirmación "¿Desea registrar otro pedido?"

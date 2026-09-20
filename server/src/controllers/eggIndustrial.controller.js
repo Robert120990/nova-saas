@@ -9,6 +9,7 @@ const eggRawMaterialLabReport = require('../services/eggRawMaterialLabReport.ser
 const eggOriginCertificate = require('../services/eggOriginCertificate.service');
 const reportPdfHelper = require('../utils/reportPdfHelper');
 const excelService = require('../services/excel.service');
+const { resolveEggCatalogProduct } = require('../utils/eggProductResolver');
 
 // Helpers de sanitización numérica defensiva contra valores NaN / vacíos en MySQL
 const safeNum = (val, fallback = 0) => {
@@ -5372,6 +5373,16 @@ const saveEggCustomerOrder = async (req, res) => {
 
         if (itemList.length > 0) {
             totalQuantityLbs = itemList.reduce((sum, it) => sum + safeNum(it.quantity_lbs, 0), 0);
+            for (const it of itemList) {
+                if (!it.catalog_product_id) {
+                    const resolved = await resolveEggCatalogProduct(pool, company_id, it.product_type, it.presentation);
+                    if (resolved && resolved.catalog_product_id) {
+                        it.catalog_product_id = resolved.catalog_product_id;
+                        it.catalog_code = it.catalog_code || resolved.catalog_code;
+                        it.is_returnable = resolved.is_returnable;
+                    }
+                }
+            }
             const firstItem = itemList[0];
             primaryProductType = primaryProductType || firstItem.product_type || 'Huevo Entero Pasteurizado';
             primaryPresentation = primaryPresentation || firstItem.presentation || 'cubeta 30LB';
@@ -5408,20 +5419,50 @@ const saveEggCustomerOrder = async (req, res) => {
 
         // 3. Obtener precio pactado del CRM si no se ingresó manualmente
         if (primaryPrice <= 0 && resolvedCustomerId) {
-            const [agreements] = await pool.query(
+            // Intentar primero coincidencia de producto Y presentación activa y vigente
+            let [agreements] = await pool.query(
                 `SELECT agreed_price_per_lb 
                  FROM egg_costing_customer_agreements 
                  WHERE company_id = ? 
                    AND (customer_id = ? OR customer_name = ?)
                    AND status = 'activo'
+                   AND (valid_from IS NULL OR valid_from <= CURDATE())
+                   AND (valid_to IS NULL OR valid_to >= CURDATE())
                    AND (
                        product_type = ? 
                        OR LOWER(product_type) LIKE LOWER(?) 
                        OR LOWER(?) LIKE CONCAT('%', LOWER(product_type), '%')
                    )
+                   AND (
+                       presentation = ?
+                       OR LOWER(presentation) LIKE LOWER(?)
+                       OR LOWER(?) LIKE CONCAT('%', LOWER(presentation), '%')
+                   )
                  ORDER BY updated_at DESC LIMIT 1`,
-                [company_id, resolvedCustomerId, resolvedCustomerName, primaryProductType, `%${primaryProductType}%`, primaryProductType]
+                [company_id, resolvedCustomerId, resolvedCustomerName, primaryProductType, `%${primaryProductType}%`, primaryProductType, primaryPresentation, `%${primaryPresentation}%`, primaryPresentation]
             );
+
+            // Si no hay precio con presentación exacta, buscar por tipo de producto general
+            if (agreements.length === 0) {
+                const [genAgr] = await pool.query(
+                    `SELECT agreed_price_per_lb 
+                     FROM egg_costing_customer_agreements 
+                     WHERE company_id = ? 
+                       AND (customer_id = ? OR customer_name = ?)
+                       AND status = 'activo'
+                       AND (valid_from IS NULL OR valid_from <= CURDATE())
+                       AND (valid_to IS NULL OR valid_to >= CURDATE())
+                       AND (
+                           product_type = ? 
+                           OR LOWER(product_type) LIKE LOWER(?) 
+                           OR LOWER(?) LIKE CONCAT('%', LOWER(product_type), '%')
+                       )
+                     ORDER BY updated_at DESC LIMIT 1`,
+                    [company_id, resolvedCustomerId, resolvedCustomerName, primaryProductType, `%${primaryProductType}%`, primaryProductType]
+                );
+                agreements = genAgr;
+            }
+
             if (agreements.length > 0 && safeNum(agreements[0].agreed_price_per_lb, 0) > 0) {
                 primaryPrice = safeNum(agreements[0].agreed_price_per_lb, 0);
             }
@@ -5539,7 +5580,7 @@ const deleteEggCustomerOrder = async (req, res) => {
 const getCustomerPricingForOrder = async (req, res) => {
     try {
         const company_id = req.company_id || req.user?.company_id;
-        const { customer_id, customer_name, product_type } = req.query;
+        const { customer_id, customer_name, product_type, presentation } = req.query;
 
         if (!customer_id && !customer_name) {
             return res.json({ price_per_lb: 0, source: null, description: 'Cliente no especificado.' });
@@ -5554,6 +5595,8 @@ const getCustomerPricingForOrder = async (req, res) => {
             FROM egg_costing_customer_agreements
             WHERE company_id = ?
               AND status = 'activo'
+              AND (valid_from IS NULL OR valid_from <= CURDATE())
+              AND (valid_to IS NULL OR valid_to >= CURDATE())
               AND (
                   (customer_id IS NOT NULL AND customer_id = ?)
                   OR (customer_name IS NOT NULL AND LOWER(TRIM(customer_name)) = LOWER(TRIM(?)))
@@ -5572,15 +5615,28 @@ const getCustomerPricingForOrder = async (req, res) => {
             agreementParams.push(product_type, `%${product_type}%`, product_type);
         }
 
+        if (presentation) {
+            agreementQuery += `
+                AND (
+                    presentation = ? 
+                    OR LOWER(presentation) LIKE LOWER(?) 
+                    OR LOWER(?) LIKE CONCAT('%', LOWER(presentation), '%')
+                )
+            `;
+            agreementParams.push(presentation, `%${presentation}%`, presentation);
+        }
+
         agreementQuery += ` ORDER BY updated_at DESC LIMIT 1`;
         const [agreements] = await pool.query(agreementQuery, agreementParams);
 
         if (agreements.length > 0 && parseFloat(agreements[0].agreed_price_per_lb) > 0) {
             const price = parseFloat(agreements[0].agreed_price_per_lb);
+            const unitPrice = agreements[0].agreed_unit_price ? parseFloat(agreements[0].agreed_unit_price) : null;
             return res.json({
                 price_per_lb: price,
+                unit_price: unitPrice,
                 source: 'crm',
-                description: `Acuerdo Comercial CRM: $${price.toFixed(2)}/lb`,
+                description: `Acuerdo Comercial CRM: $${price.toFixed(2)}/lb${unitPrice ? ` ($${unitPrice.toFixed(2)}/ud)` : ''}`,
                 agreement: agreements[0]
             });
         }
@@ -5607,6 +5663,17 @@ const getCustomerPricingForOrder = async (req, res) => {
                 )
             `;
             orderParams.push(product_type, `%${product_type}%`, product_type);
+        }
+
+        if (presentation) {
+            orderQuery += `
+                AND (
+                    presentation = ? 
+                    OR LOWER(presentation) LIKE LOWER(?) 
+                    OR LOWER(?) LIKE CONCAT('%', LOWER(presentation), '%')
+                )
+            `;
+            orderParams.push(presentation, `%${presentation}%`, presentation);
         }
 
         orderQuery += ` ORDER BY created_at DESC LIMIT 1`;

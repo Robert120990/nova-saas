@@ -246,7 +246,7 @@ const EggConfig = () => {
         { type: 'huevo en cascara', label: 'Huevo en Cáscara / Cascarón' }
     ];
 
-    const eggProductsList = useMemo(() => {
+    const _eggProductsList = useMemo(() => {
         return (systemProducts || []).filter(p => {
             const t = `${p.nombre || ''} ${p.codigo || ''} ${p.codigo_barra || ''} ${p.category_name || ''}`.toLowerCase();
             return t.includes('huevo') || t.includes('clara') || t.includes('yema') || t.includes('ovoproducto') || t.includes('carton') || t.includes('cascara') || t.includes('caja');
@@ -617,7 +617,7 @@ const EggConfig = () => {
         });
     };
 
-    const handleSelectProductQuick = (index, product) => {
+    const _handleSelectProductQuick = (index, product) => {
         if (!product) return;
         const code = (product.codigo || product.codigo_barra || '').trim();
         const inferred = inferCategoryAndPresentation(product.nombre || product.name || '', code);

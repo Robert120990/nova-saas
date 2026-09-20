@@ -8,18 +8,12 @@ import {
     CheckCircle2,
     AlertTriangle,
     FileText,
-    CreditCard,
     Package,
     Search,
     Loader2,
     X,
     Receipt,
-    Calendar,
-    ChevronRight,
-    Sparkles,
-    ShieldCheck,
     Truck,
-    HelpCircle,
     PlusCircle,
     Trash2,
     Copy,
@@ -542,7 +536,7 @@ export default function RouteAutoInvoicingModal({
                 </div>
 
                 <div className="space-y-3 max-h-[420px] overflow-y-auto pr-1">
-                    {route?.stops?.map((stop, idx) => {
+                    {route?.stops?.map((stop, _idx) => {
                         const cfg = stopsConfig[stop.id] || {};
                         const isBilled = cfg.is_billed;
 

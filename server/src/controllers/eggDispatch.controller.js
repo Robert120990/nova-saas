@@ -5,6 +5,7 @@ const dteService = require('../services/dte.service');
 const mailerService = require('../services/mailer.service');
 const { getSaleRTEEPdfBuffer } = require('./sales.controller');
 const { PDFDocument } = require('pdf-lib');
+const { resolveEggCatalogProduct, parseDefaultPresentationWeightLbs } = require('../utils/eggProductResolver');
 
 // Helpers de sanitización numérica defensiva contra valores NaN / vacíos en MySQL
 const safeNum = (val, fallback = 0) => {
@@ -2198,16 +2199,27 @@ const autoInvoiceDispatchRoute = async (req, res) => {
                 // (Precio y Total van en sus columnas fiscales respectivas)
                 const itemDesc = `${productType} | Presentación: ${presentation} | Lote: ${lotCode} | Cant: ${units} Uds (${qtyLbs.toFixed(2)} Lbs)`;
 
+                // Resolver equivalencia con producto comercial del catálogo
+                const resolved = await resolveEggCatalogProduct(connection, company_id, productType, presentation);
+                const resolvedProductId = it.product_id || resolved.catalog_product_id || null;
+                const catalogCode = resolved.catalog_code || lotCode || 'OVO-01';
+                const isReturnable = resolved.is_returnable;
+                const unitOfMeasure = (resolved.unit_of_measure || '').toLowerCase();
+                const stockQty = ['cubeta', 'galon', 'unidad', 'caja', 'carton'].includes(unitOfMeasure) ? units : qtyLbs;
+
                 itemsProcessed.push({
-                    product_id: it.product_id || null,
-                    codigo: lotCode,
+                    product_id: resolvedProductId,
+                    codigo: catalogCode,
                     descripcion: itemDesc,
                     cantidad: qtyLbs,
                     precio_unitario: safeNum(precioUnitario, 0),
                     monto_descuento: 0,
                     venta_gravada: safeNum(ventaGravada, 0),
                     venta_exenta: 0,
-                    tributos: dteType === '11' || dteType === '04' ? [] : ['20']
+                    tributos: dteType === '11' || dteType === '04' ? [] : ['20'],
+                    is_returnable: isReturnable,
+                    returnable_units: Math.ceil(units),
+                    stock_qty: stockQty
                 });
             }
 
@@ -2279,7 +2291,7 @@ const autoInvoiceDispatchRoute = async (req, res) => {
             }]);
             const saleId = saleResult.insertId;
 
-            // 5b. Insertar Ítems
+            // 5b. Insertar Ítems y sincronizar inventario / Kardex / empaques retornables
             for (const item of itemsProcessed) {
                 await connection.query('INSERT INTO sales_items SET ?', [{
                     sale_id: saleId,
@@ -2293,6 +2305,71 @@ const autoInvoiceDispatchRoute = async (req, res) => {
                     venta_exenta: safeNum(item.venta_exenta, 0),
                     tributos: JSON.stringify(item.tributos || [])
                 }]);
+
+                // Actualizar inventario comercial y Kardex si no es remisión y tiene product_id
+                if (dteType !== '04' && item.product_id) {
+                    const stockQty = safeNum(item.stock_qty || item.cantidad, 1);
+                    await connection.query(
+                        `INSERT INTO inventory (company_id, branch_id, product_id, stock)
+                         VALUES (?, ?, ?, -?)
+                         ON DUPLICATE KEY UPDATE stock = stock - ?`,
+                        [company_id, branchId, item.product_id, stockQty, stockQty]
+                    );
+
+                    await connection.query('INSERT INTO inventory_movements SET ?', [{
+                        company_id: company_id,
+                        branch_id: branchId,
+                        product_id: item.product_id,
+                        tipo_movimiento: 'SALIDA',
+                        cantidad: stockQty,
+                        tipo_documento: `DTE-${dteType || '01'}`,
+                        documento_id: saleId,
+                        created_at: new Date()
+                    }]);
+                }
+
+                // Control de envases retornables (cubetas)
+                if (item.is_returnable && item.returnable_units > 0 && stop.customer_id) {
+                    try {
+                        const [retRows] = await connection.query(
+                            `SELECT id FROM egg_returnable_packaging 
+                             WHERE company_id = ? AND customer_id = ? AND packaging_type = 'cubeta_30lb'
+                             LIMIT 1`,
+                            [company_id, stop.customer_id]
+                        );
+                        let retId = retRows[0]?.id;
+                        if (!retId) {
+                            const [newRet] = await connection.query(
+                                `INSERT INTO egg_returnable_packaging (company_id, customer_id, customer_name, packaging_type, initial_balance, notes)
+                                 VALUES (?, ?, ?, 'cubeta_30lb', 0, 'Auto-creado desde Facturación de Despacho')`,
+                                [company_id, stop.customer_id, customer.nombre]
+                            );
+                            retId = newRet.insertId;
+                        }
+
+                        await connection.query(
+                            `INSERT INTO egg_returnable_movements (company_id, returnable_id, movement_type, quantity, reference_document, notes, registered_by)
+                             VALUES (?, ?, 'entrega', ?, ?, ?, ?)`,
+                            [
+                                company_id,
+                                retId,
+                                item.returnable_units,
+                                `DTE-${dteType || '01'} / Venta #${saleId}`,
+                                `Despacho automático de ${item.returnable_units} cubeta(s) de ovoproducto`,
+                                req.user?.nombre || 'Despacho Automático'
+                            ]
+                        );
+
+                        await connection.query(
+                            `UPDATE egg_returnable_packaging 
+                             SET delivered_qty = delivered_qty + ?, last_movement_date = CURDATE()
+                             WHERE id = ? AND company_id = ?`,
+                            [item.returnable_units, retId, company_id]
+                        );
+                    } catch (retErr) {
+                        console.warn('[AutoInvoice] Error registrando empaque retornable:', retErr.message);
+                    }
+                }
             }
 
             // 5c. Insertar Pago

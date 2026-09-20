@@ -2,6 +2,7 @@ const pool = require('../config/db');
 const nodemailer = require('nodemailer');
 const { generateQuotationPdf } = require('../services/crmQuotationPdf.service');
 const { generateQuotationDocx } = require('../services/crmQuotationDocx.service');
+const { resolveEggCatalogProduct, parseDefaultPresentationWeightLbs } = require('../utils/eggProductResolver');
 
 /**
  * Genera el correlativo anual de cotización para la empresa: COT-YYYY-0001
@@ -190,6 +191,17 @@ const createQuotation = async (req, res) => {
         expDate.setDate(expDate.getDate() + parseInt(validity_days, 10));
         const expiration_date = expDate.toISOString().split('T')[0];
 
+        // Auto-resolver product_id y product_code si no vienen provistos
+        for (const it of items) {
+            if (!it.product_id) {
+                const resolved = await resolveEggCatalogProduct(conn, companyId, it.product_name, it.presentation);
+                if (resolved && resolved.catalog_product_id) {
+                    it.product_id = resolved.catalog_product_id;
+                    it.product_code = it.product_code || resolved.catalog_code;
+                }
+            }
+        }
+
         // Procesar ítems y calcular costos/márgenes
         let subtotal = 0;
         let totalCost = 0;
@@ -343,6 +355,17 @@ const updateQuotation = async (req, res) => {
         const expDate = new Date(issueDate);
         expDate.setDate(expDate.getDate() + parseInt(validity_days, 10));
         const expiration_date = expDate.toISOString().split('T')[0];
+
+        // Auto-resolver product_id y product_code si no vienen provistos
+        for (const it of items) {
+            if (!it.product_id) {
+                const resolved = await resolveEggCatalogProduct(conn, companyId, it.product_name, it.presentation);
+                if (resolved && resolved.catalog_product_id) {
+                    it.product_id = resolved.catalog_product_id;
+                    it.product_code = it.product_code || resolved.catalog_code;
+                }
+            }
+        }
 
         let subtotal = 0;
         let totalCost = 0;
@@ -527,6 +550,24 @@ const convertToAgreement = async (req, res) => {
         let firstAgreementId = null;
 
         for (const item of items) {
+            const resolved = await resolveEggCatalogProduct(conn, companyId, item.product_name, item.presentation);
+            const resolvedProductId = item.product_id || resolved.catalog_product_id || null;
+            const unitWeightLbs = resolved.unit_weight_lbs > 0 ? resolved.unit_weight_lbs : parseDefaultPresentationWeightLbs(item.presentation);
+            const unitPrice = parseFloat(item.unit_price) || 0;
+            const uom = (item.unit_measure || resolved.unit_of_measure || '').toLowerCase();
+
+            // Si la cotización se expresó por LB, el unit_price es $/lb.
+            // Si se expresó por CUBETA/GALON/etc., $/lb = unit_price / unitWeightLbs
+            const pricePerLb = (uom === 'lb' || uom === 'libras')
+                ? unitPrice
+                : (unitWeightLbs > 0 ? Number((unitPrice / unitWeightLbs).toFixed(4)) : unitPrice);
+
+            const agreedUnitPrice = (uom === 'lb' || uom === 'libras')
+                ? Number((unitPrice * unitWeightLbs).toFixed(2))
+                : unitPrice;
+
+            const monthlyVolLbs = (parseFloat(item.quantity) || 1) * (unitWeightLbs > 0 ? unitWeightLbs : 30);
+
             const [insRes] = await conn.query(
                 `INSERT INTO egg_costing_customer_agreements (
                     company_id, customer_id, customer_name, product_id, product_type,
@@ -537,13 +578,13 @@ const convertToAgreement = async (req, res) => {
                     companyId,
                     quotation.customer_id,
                     quotation.customer_name,
-                    item.product_id || null,
+                    resolvedProductId,
                     item.product_name,
                     item.presentation,
-                    item.unit_price,
-                    item.total,
-                    (parseFloat(item.quantity) || 1) * 30, // Estimado mensual base
-                    item.margin_pct || 20.0,
+                    pricePerLb,
+                    agreedUnitPrice,
+                    monthlyVolLbs,
+                    parseFloat(item.margin_pct) || 20.0,
                     0.0000,
                     parseInt(quotation.validity_days, 10) || 30,
                     `Generado automáticamente desde Cotización N° ${quotation.quote_number}`

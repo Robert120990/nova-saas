@@ -295,6 +295,9 @@ export default function QuotationModal({ isOpen, onClose, onSaved, quotationId =
     // Listado de productos del catálogo del sistema
     const [catalogProducts, setCatalogProducts] = useState([]);
 
+    // Costo operacional en vivo de planta para ovoproductos
+    const [operationalCostData, setOperationalCostData] = useState(null);
+
     // Índice de fila que tiene el menú de autocompletado de catálogo abierto
     const [activeCatalogDropdownIdx, setActiveCatalogDropdownIdx] = useState(null);
 
@@ -342,6 +345,18 @@ export default function QuotationModal({ isOpen, onClose, onSaved, quotationId =
         axios.get('/api/products?limit=500').then(res => {
             setCatalogProducts(res.data?.data || res.data || []);
         }).catch(err => console.error('Error cargando catálogo:', err));
+
+        // Cargar costo operacional real de planta para ovoproductos
+        axios.get('/api/egg-industrial/costeo-libra/actual-operational-cost').then(res => {
+            if (res.data?.actual_cost_breakdown) {
+                setOperationalCostData({
+                    ...res.data.actual_cost_breakdown,
+                    operational_summary: res.data.operational_summary
+                });
+            }
+        }).catch(err => {
+            console.warn('Costo operacional no disponible:', err.message);
+        });
 
         // Cargar firma de usuario
         axios.get('/api/crm/user-signature').then(res => {
@@ -493,6 +508,16 @@ export default function QuotationModal({ isOpen, onClose, onSaved, quotationId =
         const found = PRESET_PRODUCTS.find(p => p.name === presetName);
         if (!found) return;
 
+        let dynamicCost = found.defaultCost;
+        if (operationalCostData?.total_actual_cost_per_lb > 0) {
+            const isOvo = (found.group || '').toLowerCase().includes('ovoproducto');
+            if (isOvo && found.unit_measure === 'LB') {
+                dynamicCost = Number(operationalCostData.total_actual_cost_per_lb.toFixed(4));
+            } else if (isOvo && found.unit_measure === 'KG') {
+                dynamicCost = Number((operationalCostData.total_actual_cost_per_lb * 2.20462).toFixed(4));
+            }
+        }
+
         const updated = [...formData.items];
         updated[index] = {
             ...updated[index],
@@ -501,12 +526,12 @@ export default function QuotationModal({ isOpen, onClose, onSaved, quotationId =
             product_name: found.name,
             unit_measure: found.unit_measure,
             presentation: found.presentation,
-            current_cost: found.defaultCost,
+            current_cost: dynamicCost,
             unit_price: found.defaultPrice
         };
         setFormData(prev => ({ ...prev, items: updated }));
         setActiveCatalogDropdownIdx(null);
-        toast.info(`Cargado: ${found.name}`);
+        toast.info(`Cargado: ${found.name}${dynamicCost !== found.defaultCost ? ` (Costo planta: $${dynamicCost}/lb)` : ''}`);
     };
 
     // Seleccionar producto real desde el catálogo de la empresa
@@ -1003,7 +1028,6 @@ export default function QuotationModal({ isOpen, onClose, onSaved, quotationId =
                             </div>
 
                             {/* Tabla Detallada de Ítems */}
-                            {/* Tabla Detallada de Ítems */}
                             <div>
                                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2.5">
                                     <div>
@@ -1011,9 +1035,18 @@ export default function QuotationModal({ isOpen, onClose, onSaved, quotationId =
                                             <Scale className="w-4 h-4 text-indigo-600" />
                                             Productos, Presentaciones y Precios Cotizados
                                         </h3>
-                                        <p className="text-xs text-slate-500">
+                                        <p className="text-xs text-slate-500 mb-1">
                                             Busca en el catálogo del sistema, elige predefinidos por talla o ingresa productos a la medida
                                         </p>
+                                        {operationalCostData?.total_actual_cost_per_lb > 0 && (
+                                            <div className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-amber-50 border border-amber-200 rounded-md text-[11px] text-amber-800 font-semibold">
+                                                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+                                                <span>Costo Planta en Vivo (Ovoproductos): <strong>${operationalCostData.total_actual_cost_per_lb.toFixed(2)}/lb</strong></span>
+                                                {operationalCostData.operational_summary?.actual_yield_pct && (
+                                                    <span className="text-amber-600 text-[10px] font-normal">(Rend. Quebrado: {operationalCostData.operational_summary.actual_yield_pct.toFixed(1)}%)</span>
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
                                     <button
                                         type="button"

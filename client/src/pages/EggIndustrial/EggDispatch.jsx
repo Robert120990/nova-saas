@@ -27,7 +27,6 @@ import {
     Search,
     X,
     Receipt,
-    CreditCard,
     Files,
     Mail
 } from 'lucide-react';
@@ -36,7 +35,7 @@ import RouteAutoInvoicingModal from '../../components/egg/RouteAutoInvoicingModa
 import PdfViewerModal from '../../components/ui/PdfViewerModal';
 import { getIndustrialPresentationWeightLbs } from '../../constants/eggIndustrialCatalogs';
 
-const PRODUCT_PROFILES = [
+const _PRODUCT_PROFILES = [
     'Huevo Entero Pasteurizado',
     'Huevo Formulado por Separación',
     'Huevo Entero Plus',
@@ -47,7 +46,7 @@ const PRODUCT_PROFILES = [
     'Huevo en Cáscara'
 ];
 
-const PRESENTATIONS = [
+const _PRESENTATIONS = [
     'cubeta 30LB',
     'cubeta 32LB',
     'galon 8LB',
@@ -230,26 +229,6 @@ export default function EggDispatch() {
         return items.reduce((sum, it) => sum + getItemUnits(it), 0);
     };
 
-    // Formulario de Pedido
-    const [orderForm, setOrderForm] = useState({
-        customer_id: '',
-        customer_branch_id: '',
-        customer_name: '',
-        order_number: '',
-        product_type: 'Huevo Entero Pasteurizado',
-        presentation: 'cubeta 30LB',
-        quantity_lbs: '',
-        required_delivery_date: new Date().toISOString().split('T')[0],
-        priority: 'normal',
-        price_per_lb: '',
-        notes: ''
-    });
-
-    const [customerSearch, setCustomerSearch] = useState('');
-    const [customerOptions, setCustomerOptions] = useState([]);
-    const [searchingCustomer, setSearchingCustomer] = useState(false);
-    const [customerBranches, setCustomerBranches] = useState([]);
-
     // =========================================================================
     // 2. ESTADO: RUTAS Y PLANIFICADOR
     // =========================================================================
@@ -377,68 +356,6 @@ export default function EggDispatch() {
         }
     };
 
-    const handleCustomerSearch = async (query) => {
-        setCustomerSearch(query);
-        if (!query || query.length < 2) {
-            setCustomerOptions([]);
-            return;
-        }
-        setSearchingCustomer(true);
-        try {
-            const res = await axios.get('/api/customers', { params: { search: query, limit: 10 } });
-            setCustomerOptions(res.data?.data || res.data || []);
-        } catch (error) {
-            console.error('Error buscando clientes:', error);
-        } finally {
-            setSearchingCustomer(false);
-        }
-    };
-
-    const handleSelectCustomer = async (cust) => {
-        setOrderForm(prev => ({
-            ...prev,
-            customer_id: cust.id,
-            customer_name: cust.nombre,
-            customer_branch_id: ''
-        }));
-        setCustomerSearch(cust.nombre);
-        setCustomerOptions([]);
-
-        // Cargar sucursales de este cliente
-        try {
-            const res = await axios.get('/api/egg-industrial/dispatch/customer-branches', {
-                params: { customer_id: cust.id }
-            });
-            const branches = res.data || [];
-            setCustomerBranches(branches);
-            if (branches.length > 0) {
-                setOrderForm(prev => ({ ...prev, customer_branch_id: branches[0].id }));
-            }
-        } catch (error) {
-            console.error('Error cargando sucursales:', error);
-        }
-    };
-
-    const handleSaveOrder = async (e) => {
-        e.preventDefault();
-        try {
-            const payload = { ...orderForm };
-            if (editingOrder?.id) {
-                await axios.put(`/api/egg-industrial/orders/${editingOrder.id}`, payload);
-                toast.success('Pedido actualizado exitosamente.');
-            } else {
-                await axios.post('/api/egg-industrial/orders', payload);
-                toast.success('Pedido creado exitosamente.');
-            }
-            setOrderModalOpen(false);
-            setEditingOrder(null);
-            fetchOrders();
-        } catch (error) {
-            console.error('Error al guardar pedido:', error);
-            toast.error(error.response?.data?.message || 'Error al guardar pedido.');
-        }
-    };
-
     const handleDeleteOrder = async (id) => {
         if (!window.confirm('¿Eliminar este pedido de cliente?')) return;
         try {
@@ -513,7 +430,7 @@ export default function EggDispatch() {
         setRouteModalOpen(true);
     };
 
-    const handleRemoveStopFromRoute = async (stopId, orderId) => {
+    const handleRemoveStopFromRoute = async (stopId, _orderId) => {
         if (!routeDetail?.id || !stopId) return;
         if (!window.confirm('¿Desea quitar este pedido de la ruta? El pedido volverá a quedar disponible para programar.')) return;
         try {
@@ -846,20 +763,6 @@ export default function EggDispatch() {
                 <div className="flex flex-wrap items-center gap-2">
                     <button
                         onClick={() => {
-                            setOrderForm({
-                                customer_id: '',
-                                customer_branch_id: '',
-                                customer_name: '',
-                                order_number: '',
-                                product_type: 'Huevo Entero Pasteurizado',
-                                presentation: 'cubeta 30LB',
-                                quantity_lbs: '',
-                                required_delivery_date: selectedDate,
-                                priority: 'normal',
-                                price_per_lb: '',
-                                notes: ''
-                            });
-                            setCustomerSearch('');
                             setEditingOrder(null);
                             setOrderModalOpen(true);
                         }}
