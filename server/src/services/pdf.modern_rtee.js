@@ -90,7 +90,7 @@ const generateRTEEModern = (data) => {
                 width: emisorBoxW - 20,
                 lineGap: 1
             });
-            const headerH = Math.max(124, Math.ceil(70 + 11 + dirEstHeight + 3 + 9 + 7));
+            const headerH = Math.max(126, Math.ceil(70 + 11 + dirEstHeight + 3 + 9 + 7));
 
             // Contenedor blanco con borde definido
             doc.roundedRect(emisorBoxX, headerY, emisorBoxW, headerH, 5)
@@ -217,7 +217,7 @@ const generateRTEEModern = (data) => {
             doc.fillColor(THEME.textMedium)
                .fontSize(6.5)
                .font('Helvetica-Bold')
-               .text(dirLabel, emisorBoxX + 10, dirY, { continued: true })
+               .text(dirLabel, emisorBoxX + 10, dirY, { width: emisorBoxW - 20, continued: true })
                .fillColor(THEME.navyDark)
                .font('Helvetica')
                .text(emisorUbicacion, {
@@ -226,7 +226,7 @@ const generateRTEEModern = (data) => {
                });
 
             // Fila 3: Contacto (Teléfono y Correo de la Sucursal prioritarios)
-            const contactY = Math.max(doc.y + 2, dirY + 10.5);
+            const contactY = doc.y + 2.5;
             const telFinal = emisor.sucursal_telefono || emisor.branch_telefono || emisor.telefono;
             const correoFinal = emisor.sucursal_correo || emisor.branch_correo || emisor.correo;
             const contactoParts = [];
