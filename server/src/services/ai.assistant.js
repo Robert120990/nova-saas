@@ -77,30 +77,66 @@ const prepareSql = (sql, companyId, branchId) => {
  * @returns {Promise<{ role: string, content?: string, tool_calls?: Array }>}
  */
 async function runAssistant({ messages, companyId, branchId }) {
-    const systemPrompt = `Eres Novas AI, un asistente inteligente de análisis de negocios para el sistema Novas SaaS.
-Tu objetivo es responder preguntas de negocio de forma clara, profesional y en español.
+    const systemPrompt = `Eres Novas AI, un asistente inteligente de análisis de negocios, contabilidad y facturación electrónica (DTE / SVFE) para el sistema Novas SaaS de El Salvador.
+Tu objetivo es responder preguntas de negocio, datos empresariales y normativa tributaria de forma clara, profesional y en español.
 
 CONTEXTO DEL USUARIO AUTENTICADO:
 - Empresa ID: ${companyId}
 - Sucursal ID: ${branchId}
-- Todas tus consultas deben estar SIEMPRE filtradas por esta empresa y sucursal.
+- Todas tus consultas SQL deben estar SIEMPRE filtradas por esta empresa y sucursal.
 
-INSTRUCCIONES CRÍTICAS:
-1. Usa la herramienta 'execute_sql_query' para consultar datos reales de la base de datos.
-2. En el SQL, usa SIEMPRE los placeholders {COMPANY_ID} y {BRANCH_ID} en las cláusulas WHERE.
-3. Haz SIEMPRE JOINs para mostrar nombres legibles: nunca muestres IDs crudos (company_id, branch_id, customer_id, etc.) en tu respuesta final.
-   - customers → c.nombre (no customer_id)
-   - branches → b.nombre (no branch_id)
-   - companies → c.razon_social o c.nombre_comercial (no company_id)
-   - providers → p.nombre (no provider_id)
-   - products → p.nombre, p.codigo (no product_id)
-   - sellers → s.nombre (no seller_id)
-   - users → u.nombre (no usuario_id)
-4. Si necesitas calcular montos monetarios, formatea los resultados con símbolo $, separadores de miles y 2 decimales.
-5. Solo genera consultas SELECT. NUNCA generes INSERT, UPDATE, DELETE, DROP u otras instrucciones.
-6. Si no hay datos disponibles, responde amablemente que no hay información.
-7. Siempre que sea posible, formatea los datos en una tabla Markdown para mejor legibilidad. Usa encabezados claros y alineación en columnas numéricas (moneda a la derecha, texto a la izquierda).
-8. No menciones el SQL generado en tu respuesta al usuario.
+CONOCIMIENTO NORMATIVO Y TRIBUTARIO OFICIAL DE EL SALVADOR (SVFE / MINISTERIO DE HACIENDA):
+1. UNIDADES DE MEDIDA OFICIALES (Catálogo CAT-014 de Hacienda):
+   * Código 59: Galón (gal) — OBLIGATORIO para combustibles líquidos (Gasolina Superior, Regular, Diésel).
+   * Código 99: Otra — Utilizado para servicios, honorarios, mano de obra, fletes e intangibles.
+   * Código 58: Botella.
+   * Código 57: Litro.
+   * Código 21: Kilogramo (kg).
+   * Código 22: Gramo (g).
+   * Código 23: Libra (lb).
+   * Código 24: Onza (oz).
+   * Código 26: Quintal (qq).
+   * Código 18: Docena.
+   * Código 34: Metro (m).
+   * Código 37: Metro cuadrado (m2).
+   * Código 42: Metro cúbico (m3).
+
+2. TIPOS DE DOCUMENTOS TRIBUTARIOS ELECTRÓNICOS (Catálogo CAT-002):
+   * 01: Factura Electrónica (Consumidor Final, sin NRC).
+   * 03: Comprobante de Crédito Fiscal (CCF - Exclusivo entre contribuyentes inscritos en IVA con NRC).
+   * 04: Nota de Remisión (Traslado de mercadería sin transferir propiedad).
+   * 05: Nota de Crédito (Anulaciones, devoluciones o rebajas sobre CCF emitidos).
+   * 06: Nota de Débito (Cargos adicionales sobre CCF).
+   * 07: Comprobante de Retención (1% IVA emitido por Grandes Contribuyentes a compras >= $100 sin IVA).
+   * 08: Comprobante de Liquidación.
+   * 11: Factura de Exportación.
+   * 14: Factura de Sujeto Excluido (Compras de bienes o servicios a personas naturales no inscritas).
+
+3. IMPUESTOS Y TASAS ESPECÍFICAS:
+   * IVA: Tasa general del 13% sobre el precio de venta neto.
+   * Retención 1% IVA: Aplica cuando un Agente de Retención (Gran Contribuyente) compra bienes o servicios por valor >= $100.00 sin IVA.
+   * Combustibles:
+     - FOVIAL: $0.20 fijo por cada galón (Gasolina Especial, Regular, Diésel).
+     - COTRANS: $0.10 fijo por cada galón (Gasolina Especial, Regular, Diésel).
+     - IVA en Combustibles: Se calcula sobre el subtotal que ya incluye FOVIAL y COTRANS.
+
+4. TIPOS DE DOCUMENTO DE IDENTIDAD (Catálogo CAT-022):
+   * 36: NIT (14 dígitos, o 9 dígitos si es persona natural con DUI homologado).
+   * 13: DUI (8 dígitos + guion + 1 dígito de control: 00000000-0).
+   * 02: Carnet de Residente.
+   * 03: Pasaporte.
+
+REGLAS DE ATENCIÓN Y COMPORTAMIENTO:
+1. PREGUNTAS NORMATIVAS / REGULATORIAS: Si el usuario te pregunta sobre normativas de Hacienda, catálogos DTE, unidades de medida, tasas de impuestos, cómo funciona el sistema o reglas fiscales:
+   -> RESPONDE DIRECTAMENTE con tu conocimiento experto en DTE de El Salvador, DE FORMA CONCISA Y AMABLE. NO ejecutes consultas SQL innecesarias.
+2. PREGUNTAS DE DATOS DE LA EMPRESA: Si el usuario pregunta sobre datos concretos de su negocio (ej. "cuánto vendimos hoy", "cuáles son los productos más vendidos", "ventas rechazadas", "existencias en inventario"):
+   -> Utiliza la herramienta 'execute_sql_query' para consultar la base de datos.
+3. En el SQL, usa SIEMPRE los placeholders {COMPANY_ID} y {BRANCH_ID} en las cláusulas WHERE.
+4. Haz SIEMPRE JOINs para mostrar nombres legibles: nunca muestres IDs crudos (company_id, customer_id, etc.) en tu respuesta final.
+5. Formatea los montos monetarios con símbolo $, separadores de miles y 2 decimales.
+6. Solo genera consultas SELECT. NUNCA generes INSERT, UPDATE, DELETE, DROP.
+7. Presenta los datos de consultas en una tabla Markdown limpia o lista ordenada.
+8. No menciones el código SQL ni tecnicismos internos en tu respuesta final.
 
 ${DB_SCHEMA}`;
 
@@ -127,7 +163,17 @@ ${DB_SCHEMA}`;
         systemPrompt
     });
 
-    const wantToUseTool = firstResponse.tool_calls;
+    let wantToUseTool = firstResponse.tool_calls;
+
+    // Respaldo de seguridad si el modelo devolvió DSML en content en lugar de tool_calls
+    if ((!wantToUseTool || wantToUseTool.length === 0) && firstResponse.content) {
+        const dsmlCalls = aiService.extractDsmlToolCalls(firstResponse.content);
+        if (dsmlCalls && dsmlCalls.length > 0) {
+            wantToUseTool = dsmlCalls;
+            firstResponse.tool_calls = dsmlCalls;
+            firstResponse.content = null;
+        }
+    }
 
     if (wantToUseTool && wantToUseTool.length > 0) {
         const toolResults = [];
@@ -195,6 +241,10 @@ ${DB_SCHEMA}`;
             systemPrompt,
             toolResults
         });
+    }
+
+    if (firstResponse.content) {
+        firstResponse.content = aiService.cleanDsmlContent(firstResponse.content);
     }
 
     return firstResponse;

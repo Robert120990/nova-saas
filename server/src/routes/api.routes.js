@@ -214,6 +214,7 @@ router.delete('/sellers/:id', sellerController.deleteSeller);
 
 // Customers
 router.get('/customers', customerController.getCustomers);
+router.get('/customers/:id', customerController.getCustomerById);
 router.post('/customers', customerController.createCustomer);
 router.put('/customers/:id', customerController.updateCustomer);
 router.delete('/customers/batch', checkPermission('manage_customers_batch_delete'), customerController.deleteBatchCustomers);
@@ -396,10 +397,12 @@ router.put('/sales/change-shift', checkPermission('manage_dte_shift_change'), sa
 router.get('/sales/dte-stats', salesController.getDteStats);
 
 router.get('/sales/:id', salesController.getSaleById);
+router.get('/sales/:id/dte-diagnosis', salesController.getDteDiagnosis);
 router.post('/sales/:id/void', salesController.voidSale);
 router.post('/sales/:id/retransmit', salesController.retransmitSaleDTE);
 router.post('/sales/:id/regenerate-dte', checkPermission('regenerate_dte'), salesController.regenerateDTE);
 router.put('/sales/:id/edit-dte-items', salesController.editDTEItems);
+router.put('/sales/:id/customer', salesController.updateSaleCustomer);
 
 // Contingency (proxy to dte-api)
 router.get('/contingency/status', salesController.getContingencyStatus);

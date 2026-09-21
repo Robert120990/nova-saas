@@ -9,11 +9,13 @@ import Modal from '../components/ui/Modal';
 import { 
     Search, FileText, Eye, Printer, Trash2,
     Mail, Terminal, Code, CheckCircle2, XCircle, AlertCircle, Info, Clock, Send, Ban, RefreshCcw,
-    ChevronDown, BarChart3, Filter, RotateCcw, X
+    ChevronDown, BarChart3, Filter, RotateCcw, X, Sparkles, User
 } from 'lucide-react';
 import Money from '../components/ui/Money';
 import SaleDetailModal from '../components/sales/SaleDetailModal';
 import DteStatsModal from '../components/sales/DteStatsModal';
+import DiagnosticoDteModal from '../components/sales/DiagnosticoDteModal';
+import EditarClienteDteModal from '../components/sales/EditarClienteDteModal';
 import { useAuth } from '../context/AuthContext';
 
 const formatDateTime = (dateStr) => {
@@ -110,6 +112,10 @@ const SalesHistory = () => {
     const [viewType, setViewType] = useState('detalle');
     const [isEditDTEModalOpen, setIsEditDTEModalOpen] = useState(false);
     const [isDteStatsOpen, setIsDteStatsOpen] = useState(false);
+    const [isDiagModalOpen, setIsDiagModalOpen] = useState(false);
+    const [selectedSaleForDiag, setSelectedSaleForDiag] = useState(null);
+    const [isEditCustomerModalOpen, setIsEditCustomerModalOpen] = useState(false);
+    const [selectedSaleForCustomerEdit, setSelectedSaleForCustomerEdit] = useState(null);
     const [editableItems, setEditableItems] = useState([]);
     const [editDTESaving, setEditDTESaving] = useState(false);
 
@@ -632,13 +638,31 @@ const SalesHistory = () => {
         }
     };
 
-    const getStatusBadge = (status) => {
+    const getStatusBadge = (status, sale) => {
         switch (status) {
             case 'ACCEPTED':
                 return <span className="flex items-center gap-1 px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-lg text-[9px] font-black uppercase tracking-wider"><CheckCircle2 size={11} /> Aceptado</span>;
             case 'REJECTED':
             case 'RECHAZADO':
-                return <span className="flex items-center gap-1 px-2 py-0.5 bg-rose-50 text-rose-700 rounded-lg text-[9px] font-black uppercase tracking-wider"><XCircle size={11} /> Rechazado</span>;
+                return (
+                    <button
+                        type="button"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedSaleForDiag(sale);
+                            setIsDiagModalOpen(true);
+                        }}
+                        className="group inline-flex items-center gap-1.5 px-2 py-0.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg text-[9px] font-black uppercase tracking-wider border border-rose-200 shadow-2xs hover:shadow transition-all cursor-pointer active:scale-95"
+                        title="Haga clic para ver el Diagnóstico Inteligente con IA de Hacienda"
+                    >
+                        <XCircle size={11} className="text-rose-600" />
+                        <span>Rechazado</span>
+                        <span className="inline-flex items-center gap-0.5 px-1 py-0.2 bg-gradient-to-r from-violet-600 to-indigo-600 text-white rounded text-[8px] font-black shadow-2xs tracking-tight ml-0.5 group-hover:scale-105 transition-transform">
+                            <Sparkles size={8} className="text-amber-300 animate-pulse" />
+                            <span>IA</span>
+                        </span>
+                    </button>
+                );
             case 'SENT':
                 return <span className="flex items-center gap-1 px-2 py-0.5 bg-blue-50 text-blue-700 rounded-lg text-[9px] font-black uppercase tracking-wider"><Clock size={11} /> Enviado</span>;
             case 'anulado':
@@ -972,7 +996,7 @@ const SalesHistory = () => {
                             </td>
                             <td className="px-4 py-1">
                                 <div className="flex items-center gap-2">
-                                    {getStatusBadge(sale.dte_status)}
+                                    {getStatusBadge(sale.dte_status, sale)}
                                     {sale.dte_status === 'ACCEPTED' && (
                                         <div 
                                             className={`p-1 rounded-full ${sale.dte_email_sent ? 'text-emerald-500 bg-emerald-50' : 'text-slate-300 bg-slate-50'}`}
@@ -1050,10 +1074,16 @@ const SalesHistory = () => {
                                                     )}
 
                                                     {(sale.dte_status === 'REJECTED' || sale.dte_status === 'RECHAZADO') && (
-                                                        <button onClick={() => { handleOpenRetransmitModal(sale); setMenuState(null); }} className="flex items-center gap-2 w-full p-1.5 text-left hover:bg-slate-50 rounded-xl transition-all group">
-                                                            <div className="p-1.5 bg-rose-50 text-rose-600 rounded-lg group-hover:scale-110 transition-transform"><RefreshCcw size={14} /></div>
-                                                            <span className="text-xs font-bold text-slate-600">Reintentar Envío</span>
-                                                        </button>
+                                                        <>
+                                                            <button onClick={() => { handleOpenRetransmitModal(sale); setMenuState(null); }} className="flex items-center gap-2 w-full p-1.5 text-left hover:bg-slate-50 rounded-xl transition-all group">
+                                                                <div className="p-1.5 bg-rose-50 text-rose-600 rounded-lg group-hover:scale-110 transition-transform"><RefreshCcw size={14} /></div>
+                                                                <span className="text-xs font-bold text-slate-600">Reintentar Envío</span>
+                                                            </button>
+                                                            <button onClick={() => { setSelectedSaleForCustomerEdit(sale); setIsEditCustomerModalOpen(true); setMenuState(null); }} className="flex items-center gap-2 w-full p-1.5 text-left hover:bg-slate-50 rounded-xl transition-all group">
+                                                                <div className="p-1.5 bg-blue-50 text-blue-600 rounded-lg group-hover:scale-110 transition-transform"><User size={14} /></div>
+                                                                <span className="text-xs font-bold text-slate-600">Corregir Cliente</span>
+                                                            </button>
+                                                        </>
                                                     )}
 
                                                     {sale.codigo_generacion && canRegenerateDTE && (
@@ -1567,6 +1597,33 @@ const SalesHistory = () => {
                 isOpen={isDteStatsOpen} 
                 onClose={() => setIsDteStatsOpen(false)} 
             />
+
+            {/* Modal de Diagnóstico Inteligente DTE */}
+            <DiagnosticoDteModal 
+                isOpen={isDiagModalOpen} 
+                onClose={() => {
+                    setIsDiagModalOpen(false);
+                    setSelectedSaleForDiag(null);
+                }} 
+                sale={selectedSaleForDiag}
+                onRetransmit={(sale) => handleOpenRetransmitModal(sale)}
+            />
+
+            {/* Modal para Corregir Datos de Cliente DTE */}
+            {isEditCustomerModalOpen && (
+                <EditarClienteDteModal
+                    isOpen={isEditCustomerModalOpen}
+                    onClose={() => {
+                        setIsEditCustomerModalOpen(false);
+                        setSelectedSaleForCustomerEdit(null);
+                    }}
+                    sale={selectedSaleForCustomerEdit}
+                    onSaved={({ retransmitted }) => {
+                        setIsEditCustomerModalOpen(false);
+                        setSelectedSaleForCustomerEdit(null);
+                    }}
+                />
+            )}
         </div>
     );
 };

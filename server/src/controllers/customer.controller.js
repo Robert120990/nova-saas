@@ -252,4 +252,34 @@ const deleteBatchCustomers = async (req, res) => {
     }
 };
 
-module.exports = { getCustomers, createCustomer, updateCustomer, deleteCustomer, deleteBatchCustomers };
+const getCustomerById = async (req, res) => {
+    const { id } = req.params;
+    try {
+        const [rows] = await pool.query(`
+            SELECT c.*,
+                   d.description AS departamento_nombre,
+                   m.description AS municipio_nombre,
+                   dist.description AS distrito_nombre,
+                   a.description AS actividad_nombre,
+                   tp.description AS tipo_persona_nombre
+            FROM customers c
+            LEFT JOIN cat_012_departamento d ON c.departamento = d.code
+            LEFT JOIN cat_013_municipio m ON c.municipio = m.code AND c.departamento = m.dep_code
+            LEFT JOIN cat_008_distrito dist ON c.distrito = dist.code AND c.departamento = dist.dep_code
+            LEFT JOIN cat_019_actividad_economica a ON c.codigo_actividad = a.code
+            LEFT JOIN cat_029_tipo_persona tp ON c.tipo_persona = tp.code
+            WHERE c.id = ? AND c.company_id = ?
+        `, [id, req.company_id]);
+
+        if (rows.length === 0) {
+            return res.status(404).json({ message: 'Cliente no encontrado' });
+        }
+        res.json(rows[0]);
+    } catch (error) {
+        console.error('Error al obtener cliente:', error.message);
+        res.status(500).json({ message: 'Error al obtener cliente: ' + error.message });
+    }
+};
+
+module.exports = { getCustomers, getCustomerById, createCustomer, updateCustomer, deleteCustomer, deleteBatchCustomers };
+

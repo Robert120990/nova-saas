@@ -2,6 +2,7 @@ const mailerService = require('../services/mailer.service');
 const pool = require('../config/db');
 const dteService = require('../services/dte.service');
 const pdfService = require('../services/pdf.service');
+const aiService = require('../services/ai.service');
 const path = require('path');
 const fs = require('fs');
 const jwt = require('jsonwebtoken');
@@ -4025,6 +4026,226 @@ const notifyDTEAccepted = async (req, res) => {
     }
 };
 
+/**
+ * Obtiene o genera el diagnóstico inteligente con IA para un DTE rechazado por Hacienda.
+ * Revisa primero el caché en `dte_diagnoses` (0 ms); si no existe, consulta DeepSeek / Gemini.
+ */
+const getDteDiagnosis = async (req, res) => {
+    const { id } = req.params;
+    const { force } = req.query;
+
+    try {
+        // 1. Verificar si ya existe en caché persistente en base de datos
+        if (force !== 'true') {
+            const [cached] = await pool.query(
+                'SELECT * FROM dte_diagnoses WHERE sale_id = ? AND company_id = ? ORDER BY id DESC LIMIT 1',
+                [id, req.company_id]
+            );
+            if (cached.length > 0) {
+                return res.json({
+                    success: true,
+                    cached: true,
+                    data: cached[0]
+                });
+            }
+        }
+
+        // 2. Obtener datos de la venta, cliente y respuesta de Hacienda
+        const [sales] = await pool.query(`
+            SELECT h.*, 
+                   COALESCE(c.nombre, h.cliente_nombre, 'Consumidor Final') as customer_name,
+                   c.tipo_documento as customer_tipo_doc,
+                   COALESCE(c.nit, c.numero_documento) as customer_nit,
+                   c.nrc as customer_nrc,
+                   c.codigo_actividad as customer_actividad_economica,
+                   c.direccion as customer_address,
+                   c.departamento as customer_departamento,
+                   c.municipio as customer_municipio,
+                   c.correo as customer_email,
+                   COALESCE(d_c.status, d_v.status) as dte_status,
+                   COALESCE(d_c.codigo_generacion, d_v.codigo_generacion, h.codigo_generacion) as dte_codigo_generacion,
+                   COALESCE(d_c.numero_control, d_v.numero_control, h.numero_control) as dte_numero_control,
+                   COALESCE(d_c.respuesta_hacienda, d_v.respuesta_hacienda) as dte_respuesta_hacienda
+            FROM sales_headers h
+            LEFT JOIN customers c ON h.customer_id = c.id
+            LEFT JOIN dtes d_c ON d_c.codigo_generacion = h.codigo_generacion AND d_c.company_id = h.company_id
+            LEFT JOIN dtes d_v ON (h.codigo_generacion IS NULL OR h.codigo_generacion = '') AND d_v.venta_id = h.id AND d_v.company_id = h.company_id
+            WHERE h.id = ? AND h.company_id = ?
+        `, [id, req.company_id]);
+
+        if (sales.length === 0) {
+            return res.status(404).json({ success: false, message: 'Venta no encontrada' });
+        }
+
+        const sale = sales[0];
+        let errorData = sale.dte_respuesta_hacienda;
+        if (typeof errorData === 'string') {
+            try { errorData = JSON.parse(errorData); } catch (e) {}
+        }
+
+        const tipoDocName = getDteTypeName(sale.tipo_documento);
+
+        // 3. Invocar al servicio de IA (DeepSeek en la nube con fallback a Gemini Flash y heurística)
+        const diagResult = await aiService.diagnoseDteError({
+            errorData: errorData || { mensaje: 'Documento en estado rechazado sin detalle de Hacienda' },
+            dteInfo: {
+                tipo_documento: sale.tipo_documento,
+                tipo_documento_name: tipoDocName,
+                codigo_generacion: sale.dte_codigo_generacion,
+                numero_control: sale.dte_numero_control,
+                total_pagar: sale.total_pagar
+            },
+            customerInfo: {
+                nombre: sale.customer_name,
+                tipo_documento: sale.customer_tipo_doc,
+                num_documento: sale.customer_nit,
+                nrc: sale.customer_nrc,
+                actividad_economica: sale.customer_actividad_economica,
+                direccion: sale.customer_address,
+                departamento: sale.customer_departamento,
+                municipio: sale.customer_municipio,
+                correo: sale.customer_email
+            }
+        });
+
+        // 4. Guardar en la tabla de caché dte_diagnoses
+        const codigoMsg = errorData?.codigoMsg || (typeof errorData === 'string' ? 'RECHAZO' : null);
+        const rawStr = typeof errorData === 'object' ? JSON.stringify(errorData) : String(errorData || '');
+
+        const insertData = {
+            sale_id: sale.id,
+            codigo_generacion: sale.dte_codigo_generacion || null,
+            company_id: req.company_id,
+            codigo_msg: codigoMsg,
+            error_raw: rawStr,
+            que_paso: diagResult.data.quePaso,
+            normativa: diagResult.data.normativa,
+            solucion: diagResult.data.solucion,
+            tipo_correccion: diagResult.data.tipoCorreccion,
+            provider: diagResult.provider
+        };
+
+        const [insertResult] = await pool.query('INSERT INTO dte_diagnoses SET ?', [insertData]);
+        insertData.id = insertResult.insertId;
+        insertData.created_at = new Date();
+
+        res.json({
+            success: true,
+            cached: false,
+            data: insertData
+        });
+    } catch (error) {
+        console.error('[getDteDiagnosis] Error generando diagnóstico:', error);
+        res.status(500).json({ success: false, message: 'Error al generar diagnóstico DTE con IA', error: error.message });
+    }
+};
+
+/**
+ * Actualiza los datos del cliente de una venta (y en la tabla customers)
+ * para corregir rechazos DTE de Hacienda, con opción de retransmisión inmediata.
+ */
+const updateSaleCustomer = async (req, res) => {
+    const { id } = req.params;
+    const {
+        nombre,
+        nombre_comercial,
+        tipo_documento,
+        numero_documento,
+        nit,
+        nrc,
+        codigo_actividad,
+        departamento,
+        municipio,
+        direccion,
+        telefono,
+        correo,
+        retransmit
+    } = req.body;
+
+    try {
+        const [sales] = await pool.query(
+            'SELECT id, customer_id, company_id, codigo_generacion FROM sales_headers WHERE id = ? AND company_id = ?',
+            [id, req.company_id]
+        );
+
+        if (sales.length === 0) {
+            return res.status(404).json({ success: false, message: 'Venta no encontrada' });
+        }
+
+        const sale = sales[0];
+        let customerId = sale.customer_id;
+
+        const customerPayload = {
+            company_id: req.company_id,
+            nombre: nombre ? String(nombre).trim() : null,
+            nombre_comercial: nombre_comercial ? String(nombre_comercial).trim() : null,
+            tipo_documento: tipo_documento || 'DUI',
+            numero_documento: numero_documento ? String(numero_documento).trim() : null,
+            nit: nit ? String(nit).trim() : (numero_documento ? String(numero_documento).trim() : null),
+            nrc: nrc ? String(nrc).trim() : null,
+            codigo_actividad: codigo_actividad ? String(codigo_actividad).trim() : null,
+            departamento: departamento || null,
+            municipio: municipio || null,
+            direccion: direccion ? String(direccion).trim() : null,
+            telefono: telefono ? String(telefono).trim() : null,
+            correo: correo ? String(correo).trim() : null
+        };
+
+        if (customerId) {
+            // Actualizar cliente existente
+            await pool.query('UPDATE customers SET ? WHERE id = ? AND company_id = ?', [customerPayload, customerId, req.company_id]);
+        } else {
+            // Crear cliente nuevo y asociarlo a la venta
+            const [insertResult] = await pool.query('INSERT INTO customers SET ?', [customerPayload]);
+            customerId = insertResult.insertId;
+        }
+
+        // Actualizar la cabecera de venta para reflejar el nombre y customer_id
+        await pool.query(
+            'UPDATE sales_headers SET customer_id = ?, cliente_nombre = ? WHERE id = ? AND company_id = ?',
+            [customerId, customerPayload.nombre, id, req.company_id]
+        );
+
+        // Si se solicita retransmisión inmediata:
+        let retransmitResult = null;
+        if (retransmit === true) {
+            const [updatedSales] = await pool.query(
+                `SELECT s.*, c.dte_active, d.status as dte_status 
+                 FROM sales_headers s 
+                 JOIN companies c ON s.company_id = c.id 
+                 LEFT JOIN dtes d ON s.codigo_generacion = d.codigo_generacion
+                 WHERE s.id = ? AND s.company_id = ?`,
+                [id, req.company_id]
+            );
+            if (updatedSales.length > 0 && updatedSales[0].codigo_generacion) {
+                const uSale = updatedSales[0];
+                retransmitResult = await dteService.retransmitDTE(uSale, uSale.codigo_generacion);
+                if (retransmitResult.success) {
+                    await pool.query(
+                        'UPDATE sales_headers SET sello_recepcion = ?, fh_procesamiento = ? WHERE id = ?',
+                        [retransmitResult.data.sello_recepcion, retransmitResult.data.fh_procesamiento, id]
+                    );
+                    await pool.query(
+                        'UPDATE dtes SET status = "ACCEPTED", respuesta_hacienda = NULL, sello_recepcion = ?, fh_procesamiento = ? WHERE codigo_generacion = ?',
+                        [retransmitResult.data.sello_recepcion, retransmitResult.data.fh_procesamiento, uSale.codigo_generacion]
+                    );
+                    mailerService.sendDTEEmail(id, req.company_id).catch(() => {});
+                }
+            }
+        }
+
+        return res.json({
+            success: true,
+            message: retransmitResult?.success ? 'Cliente actualizado y DTE transmitido con éxito a Hacienda' : 'Cliente actualizado correctamente',
+            customer_id: customerId,
+            retransmitResult
+        });
+    } catch (error) {
+        console.error('[updateSaleCustomer] Error:', error);
+        res.status(500).json({ success: false, message: 'Error al actualizar cliente de la venta', error: error.message });
+    }
+};
+
 module.exports = {
     notifyDTEAccepted,
     createSale,
@@ -4060,5 +4281,7 @@ module.exports = {
     getRetornoStatus,
     getDTEByCodigoGeneracion,
     changeSalesShift,
-    getDteStats
+    getDteStats,
+    getDteDiagnosis,
+    updateSaleCustomer
 };
