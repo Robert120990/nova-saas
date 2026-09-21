@@ -700,6 +700,7 @@ module.exports = {
             const reportData = {
                 emisor: {
                     nombre: venta.company_name,
+                    razon_social: venta.company_name,
                     nombre_comercial: dteJson.emisor?.nombreComercial || null,
                     sucursal_nombre: venta.branch_name || dteJson.emisor?.nombreComercial || null,
                     cod_establecimiento: venta.branch_codigo_mh || dteJson.emisor?.codEstable || dteJson.emisor?.codEstableMH || null,
@@ -710,8 +711,10 @@ module.exports = {
                     nrc: venta.company_nrc,
                     descActividad: dteJson.emisor.descActividad,
                     direccion: dteJson.emisor.direccion,
-                    telefono: dteJson.emisor.telefono || venta.branch_telefono,
-                    correo: dteJson.emisor.correo || venta.branch_correo,
+                    telefono: venta.branch_telefono || dteJson.emisor.telefono,
+                    correo: venta.branch_correo || dteJson.emisor.correo,
+                    sucursal_telefono: venta.branch_telefono || null,
+                    sucursal_correo: venta.branch_correo || null,
                     departamento_nombre: 'San Salvador',
                     municipio_nombre: 'San Salvador',
                     logoPath: venta.branch_logo_url || venta.company_logo_url || null
@@ -874,6 +877,7 @@ module.exports = {
             const reportData = {
                 emisor: {
                     nombre: venta.company_name,
+                    razon_social: venta.company_name,
                     nombre_comercial: dteJson.emisor?.nombreComercial || null,
                     sucursal_nombre: venta.branch_name || dteJson.emisor?.nombreComercial || null,
                     cod_establecimiento: venta.branch_codigo_mh || dteJson.emisor?.codEstable || dteJson.emisor?.codEstableMH || null,
@@ -884,8 +888,10 @@ module.exports = {
                     nrc: venta.company_nrc,
                     descActividad: dteJson.emisor.descActividad,
                     direccion: dteJson.emisor.direccion,
-                    telefono: dteJson.emisor.telefono || venta.branch_telefono,
-                    correo: dteJson.emisor.correo || venta.branch_correo,
+                    telefono: venta.branch_telefono || dteJson.emisor.telefono,
+                    correo: venta.branch_correo || dteJson.emisor.correo,
+                    sucursal_telefono: venta.branch_telefono || null,
+                    sucursal_correo: venta.branch_correo || null,
                     departamento_nombre: 'San Salvador',
                     municipio_nombre: 'San Salvador',
                     logoPath: venta.branch_logo_url || venta.company_logo_url || null

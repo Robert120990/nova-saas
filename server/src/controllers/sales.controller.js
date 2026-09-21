@@ -2157,7 +2157,8 @@ const getSaleRTEEPdfBuffer = async (id, companyId) => {
 
     const reportData = {
         emisor: {
-            razon_social: companyRow.nombre || companyRow.razon_social || dteJson.emisor?.nombre,
+            nombre: companyRow.razon_social || companyRow.nombre || dteJson.emisor?.nombre,
+            razon_social: companyRow.razon_social || companyRow.nombre || dteJson.emisor?.nombre,
             nombre_comercial: companyRow.nombre_comercial || dteJson.emisor?.nombreComercial,
             sucursal_nombre: branchRow.nombre || dteJson.emisor?.nombreComercial || null,
             cod_establecimiento: branchRow.codigo_mh || dteJson.emisor?.codEstable || dteJson.emisor?.codEstableMH || null,
@@ -2167,10 +2168,12 @@ const getSaleRTEEPdfBuffer = async (id, companyId) => {
             nit: companyRow.nit || dteJson.emisor?.nit,
             nrc: companyRow.nrc || dteJson.emisor?.nrc,
             descActividad: emisorDescActividad,
-            direccion: dteJson.emisor?.direccion || branchRow.direccion,
+            direccion: branchRow.direccion || dteJson.emisor?.direccion,
             direccion_completa: ubicacionInfo.textoCompleto,
-            telefono: dteJson.emisor?.telefono || branchRow.telefono,
-            correo: dteJson.emisor?.correo || branchRow.correo,
+            telefono: branchRow.telefono || branchRow.phone || dteJson.emisor?.telefono || companyRow.telefono || null,
+            correo: branchRow.correo || branchRow.email || dteJson.emisor?.correo || companyRow.correo || null,
+            sucursal_telefono: branchRow.telefono || branchRow.phone || null,
+            sucursal_correo: branchRow.correo || branchRow.email || null,
             departamento_nombre: ubicacionInfo.departamento_nombre,
             municipio_nombre: ubicacionInfo.municipio_nombre,
             logoPath: logoPath
@@ -2316,8 +2319,9 @@ const getPublicRTEE = async (req, res) => {
 
         const reportData = {
             emisor: {
-                nombre: companyRow.razon_social || dteJson.emisor?.nombre,
-                nombre_comercial: dteJson.emisor?.nombreComercial || companyRow.nombre_comercial || null,
+                nombre: companyRow.razon_social || companyRow.nombre || dteJson.emisor?.nombre,
+                razon_social: companyRow.razon_social || companyRow.nombre || dteJson.emisor?.nombre,
+                nombre_comercial: companyRow.nombre_comercial || dteJson.emisor?.nombreComercial || null,
                 sucursal_nombre: branchRow.nombre || dteJson.emisor?.nombreComercial || null,
                 cod_establecimiento: branchRow.codigo_mh || dteJson.emisor?.codEstable || dteJson.emisor?.codEstableMH || null,
                 cod_punto_venta: dteJson.emisor?.codPuntoVenta || dteJson.emisor?.codPuntoVentaMH || venta.pos_name || null,
@@ -2326,10 +2330,12 @@ const getPublicRTEE = async (req, res) => {
                 nit: companyRow.nit || dteJson.emisor?.nit,
                 nrc: companyRow.nrc || dteJson.emisor?.nrc,
                 descActividad: emisorDescActividad,
-                direccion: dteJson.emisor?.direccion || branchRow.direccion,
+                direccion: branchRow.direccion || dteJson.emisor?.direccion,
                 direccion_completa: ubicacionInfo.textoCompleto,
-                telefono: dteJson.emisor?.telefono || branchRow.telefono,
-                correo: dteJson.emisor?.correo || branchRow.correo,
+                telefono: branchRow.telefono || branchRow.phone || dteJson.emisor?.telefono || companyRow.telefono || null,
+                correo: branchRow.correo || branchRow.email || dteJson.emisor?.correo || companyRow.correo || null,
+                sucursal_telefono: branchRow.telefono || branchRow.phone || null,
+                sucursal_correo: branchRow.correo || branchRow.email || null,
                 departamento_nombre: ubicacionInfo.departamento_nombre,
                 municipio_nombre: ubicacionInfo.municipio_nombre,
                 logoPath: logoPath
@@ -3697,6 +3703,7 @@ const sendPublicDTEEmail = async (req, res) => {
         const reportData = {
             emisor: {
                 nombre: venta.company_name,
+                razon_social: venta.company_name,
                 nombre_comercial: dteJson.emisor?.nombreComercial || null,
                 sucursal_nombre: venta.branch_name || dteJson.emisor?.nombreComercial || null,
                 cod_establecimiento: venta.branch_codigo_mh || dteJson.emisor?.codEstable || dteJson.emisor?.codEstableMH || null,
@@ -3706,10 +3713,12 @@ const sendPublicDTEEmail = async (req, res) => {
                 nit: venta.company_nit,
                 nrc: venta.company_nrc,
                 descActividad: dteJson.emisor?.descActividad,
-                direccion: dteJson.emisor?.direccion || venta.branch_dir,
+                direccion: venta.branch_dir || dteJson.emisor?.direccion,
                 direccion_completa: ubicacionInfo.textoCompleto,
-                telefono: dteJson.emisor?.telefono || venta.branch_telefono,
-                correo: dteJson.emisor?.correo || venta.branch_correo,
+                telefono: venta.branch_telefono || dteJson.emisor?.telefono || venta.company_telefono,
+                correo: venta.branch_correo || dteJson.emisor?.correo || venta.company_correo,
+                sucursal_telefono: venta.branch_telefono || null,
+                sucursal_correo: venta.branch_correo || null,
                 departamento_nombre: ubicacionInfo.departamento_nombre,
                 municipio_nombre: ubicacionInfo.municipio_nombre,
                 logoPath: logoPath

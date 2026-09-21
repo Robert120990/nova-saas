@@ -70,12 +70,27 @@ const generateRTEEModern = (data) => {
             // 1. CABECERA SIMÉTRICA (Emisor Card + DTE Card)
             // ==========================================
             const headerY = 24;
-            const headerH = 124;
             const isProd = dte.ambiente === '01';
 
             // --- 1.A Tarjeta del Emisor (Lado Izquierdo: 318pt) ---
             const emisorBoxX = startX;
             const emisorBoxW = 318;
+
+            const isCasaMatriz = emisor.es_casa_matriz === 1 || emisor.es_casa_matriz === true || emisor.tipo_establecimiento === '02';
+            const dirLabel = isCasaMatriz ? 'DIR. MATRIZ: ' : 'DIR. SUCURSAL: ';
+            const emisorUbicacion = emisor.direccion_completa || [
+                emisor.direccion?.complemento || emisor.direccion || '',
+                emisor.municipio_nombre || emisor.direccion?.municipio_nombre || '',
+                emisor.departamento_nombre || emisor.direccion?.departamento_nombre || ''
+            ].filter(Boolean).join(', ') || 'El Salvador';
+
+            // Medición previa para soportar direcciones largas multilínea sin desbordamiento
+            doc.fontSize(6.5).font('Helvetica');
+            const dirEstHeight = doc.heightOfString(`${dirLabel}${emisorUbicacion}`, {
+                width: emisorBoxW - 20,
+                lineGap: 1
+            });
+            const headerH = Math.max(124, Math.ceil(70 + 11 + dirEstHeight + 3 + 9 + 7));
 
             // Contenedor blanco con borde definido
             doc.roundedRect(emisorBoxX, headerY, emisorBoxW, headerH, 5)
@@ -121,17 +136,18 @@ const generateRTEEModern = (data) => {
             }
 
             // Nombre comercial / Razón social (Alto contraste)
+            const nombreEmisor = (emisor.razon_social || emisor.nombre || emisor.company_name || emisor.nombre_comercial || 'EMISOR').trim();
+            const fontSizeNombre = nombreEmisor.length > 45 ? 8.5 : (nombreEmisor.length > 28 ? 9.2 : 10);
             doc.fillColor(THEME.navyDark)
-               .fontSize(10)
+               .fontSize(fontSizeNombre)
                .font('Helvetica-Bold')
-               .text(emisor.nombre ? emisor.nombre.toUpperCase() : 'EMISOR', textStartX, headerY + 9, {
+               .text(nombreEmisor.toUpperCase(), textStartX, headerY + 9, {
                    width: textMaxW,
                    lineGap: 1
                });
 
             // Sucursal / Establecimiento destacado
             const sucursalNombre = emisor.sucursal_nombre || emisor.branch_name;
-            const isCasaMatriz = emisor.es_casa_matriz === 1 || emisor.es_casa_matriz === true || emisor.tipo_establecimiento === '02';
             const sucursalTipoLabel = isCasaMatriz ? 'CASA MATRIZ' : 'SUCURSAL';
 
             if (sucursalNombre) {
@@ -156,7 +172,7 @@ const generateRTEEModern = (data) => {
             }
 
             // Divisor interno en la tarjeta del emisor
-            const emisorDividerY = headerY + 68;
+            const emisorDividerY = Math.max(headerY + 66, doc.y + 3);
             doc.moveTo(emisorBoxX + 10, emisorDividerY)
                .lineTo(emisorBoxX + emisorBoxW - 10, emisorDividerY)
                .lineWidth(0.5)
@@ -164,7 +180,7 @@ const generateRTEEModern = (data) => {
                .stroke();
 
             // Bloque inferior de la tarjeta del emisor (NIT, NRC, Establecimiento, Punto de Venta, Dirección y Contacto)
-            const metaY = emisorDividerY + 5;
+            const metaY = emisorDividerY + 4;
 
             // Fila 1: NIT, NRC, Establecimiento y Punto de Venta
             doc.fillColor(THEME.textMedium)
@@ -196,33 +212,33 @@ const generateRTEEModern = (data) => {
                 doc.text('', { continued: false });
             }
 
-            // Fila 2: Dirección de la Sucursal / Casa Matriz con etiqueta explícita
-            const dirLabel = isCasaMatriz ? 'DIR. MATRIZ: ' : 'DIR. SUCURSAL: ';
-            const emisorUbicacion = emisor.direccion_completa || [
-                emisor.direccion?.complemento || emisor.direccion || '',
-                emisor.municipio_nombre || emisor.direccion?.municipio_nombre || '',
-                emisor.departamento_nombre || emisor.direccion?.departamento_nombre || ''
-            ].filter(Boolean).join(', ');
-
+            // Fila 2: Dirección de la Sucursal / Casa Matriz multilínea con salto automático
+            const dirY = metaY + 11;
             doc.fillColor(THEME.textMedium)
-               .fontSize(6.8)
+               .fontSize(6.5)
                .font('Helvetica-Bold')
-               .text(dirLabel, emisorBoxX + 10, metaY + 12, { continued: true })
+               .text(dirLabel, emisorBoxX + 10, dirY, { continued: true })
                .fillColor(THEME.navyDark)
                .font('Helvetica')
-               .text(emisorUbicacion || 'El Salvador', {
+               .text(emisorUbicacion, {
                    width: emisorBoxW - 20,
-                   ellipsis: true
+                   lineGap: 1
                });
 
-            // Fila 3: Contacto (Teléfono y Correo)
-            const contactoTexto = `Tel: ${emisor.telefono || 'N/A'}   •   Email: ${emisor.correo || 'N/A'}`;
+            // Fila 3: Contacto (Teléfono y Correo de la Sucursal prioritarios)
+            const contactY = Math.max(doc.y + 2, dirY + 10.5);
+            const telFinal = emisor.sucursal_telefono || emisor.branch_telefono || emisor.telefono;
+            const correoFinal = emisor.sucursal_correo || emisor.branch_correo || emisor.correo;
+            const contactoParts = [];
+            if (telFinal && telFinal !== 'N/A' && String(telFinal).trim() !== '') contactoParts.push(`Tel: ${telFinal}`);
+            if (correoFinal && correoFinal !== 'N/A' && String(correoFinal).trim() !== '') contactoParts.push(`Email: ${correoFinal}`);
+            const contactoTexto = contactoParts.length > 0 ? contactoParts.join('   •   ') : 'Contacto: N/A';
+
             doc.fillColor(THEME.textMuted)
                .fontSize(6.5)
                .font('Helvetica')
-               .text(contactoTexto, emisorBoxX + 10, metaY + 23, {
-                   width: emisorBoxW - 20,
-                   ellipsis: true
+               .text(contactoTexto, emisorBoxX + 10, contactY, {
+                   width: emisorBoxW - 20
                });
 
             // --- 1.B Tarjeta del DTE (Lado Derecho: 224pt) ---
