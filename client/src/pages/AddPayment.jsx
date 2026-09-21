@@ -189,10 +189,17 @@ const AddPayment = () => {
     // Reset loop protection
     useEffect(() => {
         if (loadSuccess && Array.isArray(pendingDocs)) {
-            const currentIds = docRows.map(r => r.sale_id || r.id).sort().join(',');
-            const nextIds = pendingDocs.map(r => r.sale_id || r.id).sort().join(',');
+            const currentIds = docRows.map(r => r.sale_id ? `s_${r.sale_id}` : `g_${r.gas_credito_id || r.id}`).sort().join(',');
+            const nextIds = pendingDocs.map(r => r.sale_id ? `s_${r.sale_id}` : `g_${r.gas_credito_id || r.id}`).sort().join(',');
             if (currentIds !== nextIds || docRows.length === 0) {
-                 setDocRows(pendingDocs.map(d => ({ ...d, id: d.sale_id || d.id, abono: '', originalSaldo: d.saldo_pendiente })));
+                 setDocRows(pendingDocs.map(d => ({
+                     ...d,
+                     id: d.sale_id ? `s_${d.sale_id}` : `g_${d.gas_credito_id}`,
+                     sale_id: d.sale_id || null,
+                     gas_credito_id: d.gas_credito_id || null,
+                     abono: '',
+                     originalSaldo: d.saldo_pendiente
+                 })));
             }
         }
     }, [pendingDocs, loadSuccess]);
@@ -279,7 +286,13 @@ const AddPayment = () => {
     const handleSubmit = (e) => {
         e.preventDefault();
         if (!selectedCustomerId) return toast.error('Seleccione un cliente');
-        const abs = docRows.filter(r => parseFloat(r.abono || 0) > 0).map(r => ({ sale_id: r.id, monto: r.abono }));
+        const abs = docRows
+            .filter(r => parseFloat(r.abono || 0) > 0)
+            .map(r => ({
+                sale_id: r.sale_id || null,
+                gas_credito_id: r.gas_credito_id || null,
+                monto: r.abono
+            }));
         if (abs.length === 0) return toast.error('Ingrese un monto mayor a 0');
         paymentMutation.mutate({ 
             customer_id: selectedCustomerId, 

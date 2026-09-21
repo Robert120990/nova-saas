@@ -11,6 +11,8 @@ export default function GasStationConfig() {
     const [variacionPermitida, setVariacionPermitida] = useState('');
     const [cuentaBancariaPista, setCuentaBancariaPista] = useState('');
     const [empresaRrs, setEmpresaRrs] = useState('');
+    const [creditosAfectanCxc, setCreditosAfectanCxc] = useState(false);
+    const [creditosDesdeFecha, setCreditosDesdeFecha] = useState('');
 
     const { data: settings } = useQuery({
         queryKey: ['gas-station-settings'],
@@ -27,6 +29,14 @@ export default function GasStationConfig() {
         if (settings?.variacion_permitida) setVariacionPermitida(settings.variacion_permitida);
         if (settings?.cuenta_bancaria_pista) setCuentaBancariaPista(settings.cuenta_bancaria_pista);
         if (settings?.rrs_id_empresa) setEmpresaRrs(settings.rrs_id_empresa);
+        if (settings?.creditos_afectan_cxc !== undefined) {
+            setCreditosAfectanCxc(settings.creditos_afectan_cxc === '1');
+        }
+        if (settings?.creditos_afectan_cxc_desde) {
+            setCreditosDesdeFecha(settings.creditos_afectan_cxc_desde);
+        } else {
+            setCreditosDesdeFecha(new Date().toISOString().split('T')[0]);
+        }
     }, [settings]);
 
     const saveMutation = useMutation({
@@ -46,6 +56,8 @@ export default function GasStationConfig() {
             variacion_permitida: variacionPermitida || null,
             cuenta_bancaria_pista: cuentaBancariaPista || null,
             rrs_id_empresa: empresaRrs || null,
+            creditos_afectan_cxc: creditosAfectanCxc ? '1' : '0',
+            creditos_afectan_cxc_desde: creditosAfectanCxc ? (creditosDesdeFecha || null) : null,
         });
     };
 
@@ -129,6 +141,55 @@ export default function GasStationConfig() {
                     <p className="text-[10px] text-slate-400 mt-1">
                         Código de la empresa en la base RRS. Se usa en el envío de cierres de lecturas y remesas.
                     </p>
+                </div>
+
+                <div className="pt-4 border-t border-slate-100">
+                    <div className="flex items-start justify-between gap-4">
+                        <div>
+                            <span className="block text-[13px] font-bold text-slate-800">
+                                Afectar Cuentas por Cobrar (CxC) con Créditos del Turno
+                            </span>
+                            <p className="text-[11px] text-slate-500 mt-0.5">
+                                Indica si lo que se ingrese en la opción de cierre de lecturas &gt; créditos afecta las cuentas por cobrar (CxC) de los clientes. Por defecto está desactivado.
+                            </p>
+                        </div>
+                        <button
+                            type="button"
+                            role="switch"
+                            aria-checked={creditosAfectanCxc}
+                            onClick={() => {
+                                const next = !creditosAfectanCxc;
+                                setCreditosAfectanCxc(next);
+                                if (next && !creditosDesdeFecha) {
+                                    setCreditosDesdeFecha(new Date().toISOString().split('T')[0]);
+                                }
+                            }}
+                            className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${
+                                creditosAfectanCxc ? 'bg-indigo-600' : 'bg-slate-200'
+                            }`}
+                        >
+                            <span
+                                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                                    creditosAfectanCxc ? 'translate-x-5' : 'translate-x-0'
+                                }`}
+                            />
+                        </button>
+                    </div>
+
+                    {creditosAfectanCxc && (
+                        <div className="mt-3.5 p-3.5 bg-indigo-50/50 border border-indigo-100 rounded-xl space-y-2 animate-in fade-in duration-200">
+                            <label className={labelCls}>Afectar a partir de la fecha</label>
+                            <input
+                                type="date"
+                                value={creditosDesdeFecha}
+                                onChange={(e) => setCreditosDesdeFecha(e.target.value)}
+                                className={fieldCls + " bg-white"}
+                            />
+                            <p className="text-[10px] text-slate-500">
+                                Solo los créditos con fecha de turno igual o posterior a esta fecha entrarán a CxC. Si deja el campo vacío, se considerará todo el historial.
+                            </p>
+                        </div>
+                    )}
                 </div>
 
                 <div className="flex justify-end pt-2">

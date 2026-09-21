@@ -23,6 +23,28 @@ const extractDateYMD = (d) => {
     }
     return String(d).substring(0, 10);
 };
+
+/**
+ * Obtiene la configuración de gasolinera para determinar si los créditos de cierre afectan CxC.
+ */
+const getCreditosAfectanCxcConfig = async (companyId, branchId) => {
+    try {
+        const [rows] = await pool.query(
+            `SELECT setting_key, setting_value FROM gas_station_settings
+             WHERE company_id = ? AND (branch_id = ? OR branch_id IS NULL)
+               AND setting_key IN ('creditos_afectan_cxc', 'creditos_afectan_cxc_desde')
+             ORDER BY (branch_id = ?) DESC`,
+            [companyId, branchId, branchId]
+        );
+        const active = rows.find(r => r.setting_key === 'creditos_afectan_cxc')?.setting_value === '1';
+        const desdeFecha = rows.find(r => r.setting_key === 'creditos_afectan_cxc_desde')?.setting_value || null;
+        return { active, desdeFecha };
+    } catch (err) {
+        console.error('Error fetching gas station creditos_afectan_cxc config:', err);
+        return { active: false, desdeFecha: null };
+    }
+};
+
 /**
  * Obtiene el estado de cuenta de un cliente para una sucursal específica.
  */
@@ -38,6 +60,26 @@ const getCustomerStatement = async (req, res) => {
     const searchTerm = search ? `%${search}%` : null;
 
     try {
+        const { active: gasActive, desdeFecha } = await getCreditosAfectanCxcConfig(company_id, branch_id);
+
+        let countGasSql = '';
+        let countGasParams = [];
+        if (gasActive) {
+            countGasSql = `
+                UNION ALL
+                SELECT gcc.id FROM gas_station_closeout_creditos gcc
+                JOIN gas_station_closeouts c ON gcc.closeout_id = c.id
+                WHERE c.company_id = ? AND c.branch_id = ? AND gcc.cliente_id = ?
+                ${desdeFecha ? 'AND c.fecha_turno >= ?' : ''}
+                ${searchTerm ? 'AND (gcc.documento LIKE ? OR gcc.cliente_nombre LIKE ?)' : ''}
+            `;
+            countGasParams = [
+                company_id, branch_id, customer_id,
+                ...(desdeFecha ? [desdeFecha] : []),
+                ...(searchTerm ? [searchTerm, searchTerm] : [])
+            ];
+        }
+
         const [totalRows] = await pool.query(`
             SELECT COUNT(*) as total FROM (
                 SELECT h.id FROM sales_headers h
@@ -49,13 +91,27 @@ const getCustomerStatement = async (req, res) => {
                 UNION ALL
                 SELECT p.id FROM customer_payments p
                 WHERE p.company_id = ? AND p.branch_id = ? AND p.customer_id = ?
+                AND (
+                    p.gas_credito_id IS NULL OR (
+                        ? = 1 AND EXISTS (
+                            SELECT 1 FROM gas_station_closeout_creditos gcc2
+                            JOIN gas_station_closeouts c2 ON gcc2.closeout_id = c2.id
+                            WHERE gcc2.id = p.gas_credito_id
+                            ${desdeFecha ? 'AND c2.fecha_turno >= ?' : ''}
+                        )
+                    )
+                )
                 ${searchTerm ? 'AND (p.referencia LIKE ? OR p.notas LIKE ?)' : ''}
+                ${countGasSql}
             ) as combined
         `, [
             company_id, branch_id, customer_id,
             ...(searchTerm ? [searchTerm, searchTerm] : []),
             company_id, branch_id, customer_id,
-            ...(searchTerm ? [searchTerm, searchTerm] : [])
+            gasActive ? 1 : 0,
+            ...(gasActive && desdeFecha ? [desdeFecha] : []),
+            ...(searchTerm ? [searchTerm, searchTerm] : []),
+            ...countGasParams
         ]);
 
         const totalItems = totalRows[0].total;
@@ -79,6 +135,32 @@ const getCustomerStatement = async (req, res) => {
             ${searchTerm ? 'AND (h.numero_control LIKE ? OR h.id LIKE ?)' : ''}
         `, [company_id, branch_id, customer_id, ...(searchTerm ? [searchTerm, searchTerm] : [])]);
 
+        let gasCredits = [];
+        if (gasActive) {
+            const [gRows] = await pool.query(`
+                SELECT 
+                    gcc.id as doc_id,
+                    c.fecha_turno as fecha,
+                    gcc.tipo_documento as tipo,
+                    CONCAT('VALE/CRÉDITO #', COALESCE(NULLIF(gcc.documento, ''), gcc.id)) as numero,
+                    gcc.monto as cargo,
+                    0 as abono,
+                    CONCAT('CRÉDITO TURNO #', COALESCE(c.numero_turno, c.id), CASE WHEN gcc.producto_descripcion != '' THEN CONCAT(' - ', gcc.producto_descripcion) ELSE '' END) as concepto,
+                    COALESCE(cust.nombre, gcc.cliente_nombre, CONCAT('CLIENTE #', cust.id)) as cliente_nombre
+                FROM gas_station_closeout_creditos gcc
+                JOIN gas_station_closeouts c ON gcc.closeout_id = c.id
+                LEFT JOIN customers cust ON gcc.cliente_id = cust.id
+                WHERE c.company_id = ? AND c.branch_id = ? AND gcc.cliente_id = ?
+                ${desdeFecha ? 'AND c.fecha_turno >= ?' : ''}
+                ${searchTerm ? 'AND (gcc.documento LIKE ? OR gcc.cliente_nombre LIKE ?)' : ''}
+            `, [
+                company_id, branch_id, customer_id,
+                ...(desdeFecha ? [desdeFecha] : []),
+                ...(searchTerm ? [searchTerm, searchTerm] : [])
+            ]);
+            gasCredits = gRows;
+        }
+
         const [payments] = await pool.query(`
             SELECT 
                 p.id as doc_id,
@@ -92,10 +174,25 @@ const getCustomerStatement = async (req, res) => {
             FROM customer_payments p
             JOIN customers c ON p.customer_id = c.id
             WHERE p.company_id = ? AND p.branch_id = ? AND p.customer_id = ?
+            AND (
+                p.gas_credito_id IS NULL OR (
+                    ? = 1 AND EXISTS (
+                        SELECT 1 FROM gas_station_closeout_creditos gcc2
+                        JOIN gas_station_closeouts c2 ON gcc2.closeout_id = c2.id
+                        WHERE gcc2.id = p.gas_credito_id
+                        ${desdeFecha ? 'AND c2.fecha_turno >= ?' : ''}
+                    )
+                )
+            )
             ${searchTerm ? 'AND (p.referencia LIKE ? OR p.notas LIKE ?)' : ''}
-        `, [company_id, branch_id, customer_id, ...(searchTerm ? [searchTerm, searchTerm] : [])]);
+        `, [
+            company_id, branch_id, customer_id,
+            gasActive ? 1 : 0,
+            ...(gasActive && desdeFecha ? [desdeFecha] : []),
+            ...(searchTerm ? [searchTerm, searchTerm] : [])
+        ]);
 
-        const movementsAll = [...sales, ...payments].sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+        const movementsAll = [...sales, ...gasCredits, ...payments].sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
 
         let currentBalance = 0;
         const historyAll = movementsAll.map(m => {
@@ -122,7 +219,7 @@ const getCustomerStatement = async (req, res) => {
 };
 
 /**
- * Obtiene documentos pendientes (ventas a crédito con saldo > 0) ordenados del más antiguo al más reciente.
+ * Obtiene documentos pendientes (ventas a crédito y créditos de gasolinera con saldo > 0) ordenados del más antiguo al más reciente.
  */
 const getPendingDocuments = async (req, res) => {
     const { customer_id, branch_id } = req.query;
@@ -133,9 +230,12 @@ const getPendingDocuments = async (req, res) => {
     }
 
     try {
+        const { active: gasActive, desdeFecha } = await getCreditosAfectanCxcConfig(company_id, branch_id);
+
         const [rows] = await pool.query(`
             SELECT 
                 h.id as sale_id,
+                NULL as gas_credito_id,
                 h.fecha_emision as fecha,
                 COALESCE(cat.description, h.tipo_documento) as tipo,
                 COALESCE(${dteLatestColSql('h', 'numero_control')}, CONCAT('VTA-', h.id)) as documento,
@@ -154,7 +254,35 @@ const getPendingDocuments = async (req, res) => {
             ORDER BY h.fecha_emision ASC, h.id ASC
         `, [company_id, branch_id, customer_id]);
 
-        res.json(rows);
+        let gasPending = [];
+        if (gasActive) {
+            const [gRows] = await pool.query(`
+                SELECT 
+                    NULL as sale_id,
+                    gcc.id as gas_credito_id,
+                    c.fecha_turno as fecha,
+                    CONCAT('Crédito Turno - ', gcc.tipo_documento) as tipo,
+                    CONCAT('VALE/CRÉDITO #', COALESCE(NULLIF(gcc.documento, ''), gcc.id), ' (Turno #', COALESCE(c.numero_turno, c.id), ')') as documento,
+                    gcc.monto as total_original,
+                    COALESCE(SUM(p.monto), 0) as total_abonado,
+                    (gcc.monto - COALESCE(SUM(p.monto), 0)) as saldo_pendiente
+                FROM gas_station_closeout_creditos gcc
+                JOIN gas_station_closeouts c ON gcc.closeout_id = c.id
+                LEFT JOIN customer_payments p ON p.gas_credito_id = gcc.id
+                WHERE c.company_id = ? AND c.branch_id = ? AND gcc.cliente_id = ?
+                ${desdeFecha ? 'AND c.fecha_turno >= ?' : ''}
+                GROUP BY gcc.id, c.fecha_turno, gcc.tipo_documento, gcc.documento, c.numero_turno, c.id, gcc.monto
+                HAVING saldo_pendiente > 0.001
+                ORDER BY c.fecha_turno ASC, gcc.id ASC
+            `, [
+                company_id, branch_id, customer_id,
+                ...(desdeFecha ? [desdeFecha] : [])
+            ]);
+            gasPending = gRows;
+        }
+
+        const combined = [...rows, ...gasPending].sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+        res.json(combined);
     } catch (error) {
         console.error('Error in getPendingDocuments:', error);
         res.status(500).json({ message: 'Error al obtener documentos pendientes' });
@@ -185,11 +313,12 @@ const registerPayment = async (req, res) => {
         for (const doc of validDocs) {
             const [result] = await conn.query(`
                 INSERT INTO customer_payments 
-                (company_id, branch_id, customer_id, sale_id, monto, fecha_pago, metodo_pago, referencia, notas)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (company_id, branch_id, customer_id, sale_id, gas_credito_id, monto, fecha_pago, metodo_pago, referencia, notas)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `, [
                 company_id, branch_id, customer_id,
                 doc.sale_id || null,
+                doc.gas_credito_id || null,
                 parseFloat(doc.monto),
                 fecha_pago,
                 metodo_pago,
@@ -253,9 +382,9 @@ const getPaymentHistory = async (req, res) => {
         queryParams.push(branch_id);
     }
     if (search) {
-        whereClauses.push('(p.referencia LIKE ? OR (SELECT MAX(d2.numero_control) FROM dtes d2 WHERE d2.venta_id = h.id) LIKE ? OR c.nombre LIKE ? OR CONCAT("VTA-", h.id) LIKE ?)');
+        whereClauses.push('(p.referencia LIKE ? OR (SELECT MAX(d2.numero_control) FROM dtes d2 WHERE d2.venta_id = h.id) LIKE ? OR gcc.documento LIKE ? OR c.nombre LIKE ? OR CONCAT("VTA-", h.id) LIKE ?)');
         const s = `%${search}%`;
-        queryParams.push(s, s, s, s);
+        queryParams.push(s, s, s, s, s);
     }
 
     const whereStr = whereClauses.join(' AND ');
@@ -266,6 +395,7 @@ const getPaymentHistory = async (req, res) => {
             FROM customer_payments p
             LEFT JOIN customers c ON p.customer_id = c.id
             LEFT JOIN sales_headers h ON p.sale_id = h.id
+            LEFT JOIN gas_station_closeout_creditos gcc ON p.gas_credito_id = gcc.id
             WHERE ${whereStr}
         `, queryParams);
 
@@ -278,20 +408,35 @@ const getPaymentHistory = async (req, res) => {
                 p.referencia,
                 p.notas,
                 p.sale_id,
+                p.gas_credito_id,
                 p.created_at,
                 c.nombre as cliente_nombre,
                 b.nombre as sucursal_nombre,
-                COALESCE(
-                    (SELECT MAX(d2.numero_control) FROM dtes d2 WHERE d2.venta_id = h.id),
-                    CONCAT('VTA-', h.id)
-                ) as documento_aplicado,
-                h.fecha_emision as fecha_documento,
-                h.tipo_documento,
-                h.total_pagar as total_documento
+                CASE 
+                    WHEN p.gas_credito_id IS NOT NULL THEN CONCAT('VALE/CRÉDITO #', COALESCE(NULLIF(gcc.documento, ''), gcc.id), ' (Turno #', COALESCE(gsc.numero_turno, gsc.id), ')')
+                    ELSE COALESCE(
+                        (SELECT MAX(d2.numero_control) FROM dtes d2 WHERE d2.venta_id = h.id),
+                        CONCAT('VTA-', h.id)
+                    )
+                END as documento_aplicado,
+                CASE
+                    WHEN p.gas_credito_id IS NOT NULL THEN gsc.fecha_turno
+                    ELSE h.fecha_emision
+                END as fecha_documento,
+                CASE
+                    WHEN p.gas_credito_id IS NOT NULL THEN gcc.tipo_documento
+                    ELSE h.tipo_documento
+                END as tipo_documento,
+                CASE
+                    WHEN p.gas_credito_id IS NOT NULL THEN gcc.monto
+                    ELSE h.total_pagar
+                END as total_documento
             FROM customer_payments p
             LEFT JOIN customers c ON p.customer_id = c.id
             LEFT JOIN branches b ON p.branch_id = b.id
             LEFT JOIN sales_headers h ON p.sale_id = h.id
+            LEFT JOIN gas_station_closeout_creditos gcc ON p.gas_credito_id = gcc.id
+            LEFT JOIN gas_station_closeouts gsc ON gcc.closeout_id = gsc.id
             LEFT JOIN cat_002_tipo_dte cat ON h.tipo_documento = cat.code
             WHERE ${whereStr}
             ORDER BY p.fecha_pago DESC, p.id DESC
@@ -327,15 +472,32 @@ const getPaymentById = async (req, res) => {
                 c.nombre as cliente_nombre,
                 c.correo as cliente_correo,
                 b.nombre as sucursal_nombre,
-                COALESCE(cat.description, h.tipo_documento) as documento_tipo,
-                COALESCE(d.numero_control, CONCAT('VTA-', h.id)) as documento_aplicado,
-                h.fecha_emision as fecha_documento,
-                h.tipo_documento,
-                h.total_pagar as total_documento
+                CASE
+                    WHEN p.gas_credito_id IS NOT NULL THEN CONCAT('Crédito Turno - ', gcc.tipo_documento)
+                    ELSE COALESCE(cat.description, h.tipo_documento)
+                END as documento_tipo,
+                CASE
+                    WHEN p.gas_credito_id IS NOT NULL THEN CONCAT('VALE/CRÉDITO #', COALESCE(NULLIF(gcc.documento, ''), gcc.id))
+                    ELSE COALESCE(d.numero_control, CONCAT('VTA-', h.id))
+                END as documento_aplicado,
+                CASE
+                    WHEN p.gas_credito_id IS NOT NULL THEN gsc.fecha_turno
+                    ELSE h.fecha_emision
+                END as fecha_documento,
+                CASE
+                    WHEN p.gas_credito_id IS NOT NULL THEN gcc.tipo_documento
+                    ELSE h.tipo_documento
+                END as tipo_documento,
+                CASE
+                    WHEN p.gas_credito_id IS NOT NULL THEN gcc.monto
+                    ELSE h.total_pagar
+                END as total_documento
             FROM customer_payments p
             JOIN customers c ON p.customer_id = c.id
             JOIN branches b ON p.branch_id = b.id
             LEFT JOIN sales_headers h ON p.sale_id = h.id
+            LEFT JOIN gas_station_closeout_creditos gcc ON p.gas_credito_id = gcc.id
+            LEFT JOIN gas_station_closeouts gsc ON gcc.closeout_id = gsc.id
             LEFT JOIN cat_002_tipo_dte cat ON h.tipo_documento = cat.code
             LEFT JOIN dtes d ON h.id = d.venta_id
             WHERE p.id = ? AND p.company_id = ?
@@ -447,15 +609,29 @@ const exportPaymentPDF = async (req, res) => {
                    c.nombre AS customer_name,
                    b.nombre AS branch_name, b.logo_url AS branch_logo_url,
                    comp.razon_social AS company_name, comp.logo_url AS company_logo_url, comp.nit AS company_nit,
-                   COALESCE(cat.description, h.tipo_documento) as documento_tipo,
-                   COALESCE(d.numero_control, CONCAT('VTA-', h.id)) as documento_aplicado,
-                   h.fecha_emision as documento_fecha,
-                   h.total_pagar as documento_total
+                   CASE
+                       WHEN p.gas_credito_id IS NOT NULL THEN CONCAT('Crédito Turno - ', gcc.tipo_documento)
+                       ELSE COALESCE(cat.description, h.tipo_documento)
+                   END as documento_tipo,
+                   CASE
+                       WHEN p.gas_credito_id IS NOT NULL THEN CONCAT('VALE/CRÉDITO #', COALESCE(NULLIF(gcc.documento, ''), gcc.id))
+                       ELSE COALESCE(d.numero_control, CONCAT('VTA-', h.id))
+                   END as documento_aplicado,
+                   CASE
+                       WHEN p.gas_credito_id IS NOT NULL THEN gsc.fecha_turno
+                       ELSE h.fecha_emision
+                   END as documento_fecha,
+                   CASE
+                       WHEN p.gas_credito_id IS NOT NULL THEN gcc.monto
+                       ELSE h.total_pagar
+                   END as documento_total
             FROM customer_payments p
             JOIN customers c ON p.customer_id = c.id
             JOIN branches b ON p.branch_id = b.id
             JOIN companies comp ON b.company_id = comp.id
             LEFT JOIN sales_headers h ON p.sale_id = h.id
+            LEFT JOIN gas_station_closeout_creditos gcc ON p.gas_credito_id = gcc.id
+            LEFT JOIN gas_station_closeouts gsc ON gcc.closeout_id = gsc.id
             LEFT JOIN cat_002_tipo_dte cat ON h.tipo_documento = cat.code
             LEFT JOIN dtes d ON h.id = d.venta_id
             WHERE p.customer_id = ? AND p.branch_id = ? AND p.fecha_pago = ? 
@@ -539,6 +715,8 @@ const exportStatementPDF = async (req, res) => {
         if (!customerRows.length) return res.status(404).json({ message: 'Cliente no encontrado' });
         const customer = customerRows[0];
 
+        const { active: gasActive, desdeFecha } = await getCreditosAfectanCxcConfig(company_id, branch_id);
+
         const [sales] = await pool.query(`
             SELECT h.fecha_emision as fecha, h.tipo_documento as tipo, COALESCE(${dteLatestColSql('h', 'numero_control')}, h.id) as numero,
                    h.total_pagar as cargo, 0 as abono, 'VENTA' as concepto
@@ -548,14 +726,49 @@ const exportStatementPDF = async (req, res) => {
             AND ${dteValidoExistsSql('h')}
         `, [company_id, branch_id, customer_id]);
 
+        let gasCredits = [];
+        if (gasActive) {
+            const [gRows] = await pool.query(`
+                SELECT 
+                    c.fecha_turno as fecha,
+                    gcc.tipo_documento as tipo,
+                    CONCAT('VALE/CRÉDITO #', COALESCE(NULLIF(gcc.documento, ''), gcc.id)) as numero,
+                    gcc.monto as cargo,
+                    0 as abono,
+                    CONCAT('CRÉDITO TURNO #', COALESCE(c.numero_turno, c.id), CASE WHEN gcc.producto_descripcion != '' THEN CONCAT(' - ', gcc.producto_descripcion) ELSE '' END) as concepto
+                FROM gas_station_closeout_creditos gcc
+                JOIN gas_station_closeouts c ON gcc.closeout_id = c.id
+                WHERE c.company_id = ? AND c.branch_id = ? AND gcc.cliente_id = ?
+                ${desdeFecha ? 'AND c.fecha_turno >= ?' : ''}
+            `, [
+                company_id, branch_id, customer_id,
+                ...(desdeFecha ? [desdeFecha] : [])
+            ]);
+            gasCredits = gRows;
+        }
+
         const [payments] = await pool.query(`
             SELECT p.fecha_pago as fecha, 'RECIBO' as tipo, p.referencia as numero,
                    0 as cargo, p.monto as abono, 'ABONO' as concepto
             FROM customer_payments p
             WHERE p.company_id = ? AND p.branch_id = ? AND p.customer_id = ?
-        `, [company_id, branch_id, customer_id]);
+            AND (
+                p.gas_credito_id IS NULL OR (
+                    ? = 1 AND EXISTS (
+                        SELECT 1 FROM gas_station_closeout_creditos gcc2
+                        JOIN gas_station_closeouts c2 ON gcc2.closeout_id = c2.id
+                        WHERE gcc2.id = p.gas_credito_id
+                        ${desdeFecha ? 'AND c2.fecha_turno >= ?' : ''}
+                    )
+                )
+            )
+        `, [
+            company_id, branch_id, customer_id,
+            gasActive ? 1 : 0,
+            ...(gasActive && desdeFecha ? [desdeFecha] : [])
+        ]);
 
-        const movementsAll = [...sales, ...payments].sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+        const movementsAll = [...sales, ...gasCredits, ...payments].sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
 
         let initialBalance = 0;
         const inPeriodMovements = [];
@@ -660,9 +873,12 @@ const getAgingReport = async (req, res) => {
     }
 
     try {
+        const { active: gasActive, desdeFecha } = await getCreditosAfectanCxcConfig(company_id, branch_id);
+
         const [rows] = await pool.query(`
             SELECT 
                 h.id as sale_id,
+                NULL as gas_credito_id,
                 h.fecha_emision as fecha,
                 COALESCE(cat.description, h.tipo_documento) as tipo,
                 COALESCE(${dteLatestColSql('h', 'numero_control')}, CONCAT('VTA-', h.id)) as documento,
@@ -682,11 +898,41 @@ const getAgingReport = async (req, res) => {
             ORDER BY h.fecha_emision ASC
         `, [company_id, branch_id, customer_id]);
 
+        let gasRows = [];
+        if (gasActive) {
+            const [gRows] = await pool.query(`
+                SELECT 
+                    NULL as sale_id,
+                    gcc.id as gas_credito_id,
+                    c.fecha_turno as fecha,
+                    CONCAT('Crédito Turno - ', gcc.tipo_documento) as tipo,
+                    CONCAT('VALE/CRÉDITO #', COALESCE(NULLIF(gcc.documento, ''), gcc.id)) as documento,
+                    gcc.monto as total_original,
+                    COALESCE(SUM(p.monto), 0) as total_abonado,
+                    (gcc.monto - COALESCE(SUM(p.monto), 0)) as saldo_pendiente,
+                    DATEDIFF(NOW(), c.fecha_turno) as dias_antiguedad
+                FROM gas_station_closeout_creditos gcc
+                JOIN gas_station_closeouts c ON gcc.closeout_id = c.id
+                LEFT JOIN customer_payments p ON p.gas_credito_id = gcc.id
+                WHERE c.company_id = ? AND c.branch_id = ? AND gcc.cliente_id = ?
+                ${desdeFecha ? 'AND c.fecha_turno >= ?' : ''}
+                GROUP BY gcc.id, c.fecha_turno, gcc.tipo_documento, gcc.documento, gcc.monto
+                HAVING saldo_pendiente > 0.001
+                ORDER BY c.fecha_turno ASC
+            `, [
+                company_id, branch_id, customer_id,
+                ...(desdeFecha ? [desdeFecha] : [])
+            ]);
+            gasRows = gRows;
+        }
+
+        const allDocs = [...rows, ...gasRows].sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+
         const totals = {
             t0_30: 0, t31_60: 0, t61_90: 0, t91_180: 0, t181_365: 0, t365_plus: 0
         };
 
-        const documents = rows.map(r => {
+        const documents = allDocs.map(r => {
             const days = r.dias_antiguedad;
             const saldo = parseFloat(r.saldo_pendiente);
             const docBuckets = { d0_30: 0, d31_60: 0, d61_90: 0, d91_180: 0, d181_365: 0, d365_plus: 0 };
@@ -725,6 +971,8 @@ const exportAgingPDF = async (req, res) => {
         if (!customerRows.length) return res.status(404).json({ message: 'Cliente no encontrado' });
         const customer = customerRows[0];
 
+        const { active: gasActive, desdeFecha } = await getCreditosAfectanCxcConfig(company_id, branch_id);
+
         const [rows] = await pool.query(`
             SELECT 
                 h.id as sale_id, h.fecha_emision as fecha,
@@ -740,8 +988,33 @@ const exportAgingPDF = async (req, res) => {
             HAVING saldo_pendiente > 0.001 ORDER BY h.fecha_emision ASC
         `, [company_id, branch_id, customer_id]);
 
+        let gasRows = [];
+        if (gasActive) {
+            const [gRows] = await pool.query(`
+                SELECT 
+                    NULL as sale_id,
+                    gcc.id as gas_credito_id,
+                    c.fecha_turno as fecha,
+                    CONCAT('Crédito Turno - ', gcc.tipo_documento) as tipo,
+                    CONCAT('VALE/CRÉDITO #', COALESCE(NULLIF(gcc.documento, ''), gcc.id)) as documento,
+                    (gcc.monto - COALESCE((SELECT SUM(monto) FROM customer_payments WHERE gas_credito_id = gcc.id), 0)) as saldo_pendiente,
+                    DATEDIFF(NOW(), c.fecha_turno) as dias_antiguedad
+                FROM gas_station_closeout_creditos gcc
+                JOIN gas_station_closeouts c ON gcc.closeout_id = c.id
+                WHERE c.company_id = ? AND c.branch_id = ? AND gcc.cliente_id = ?
+                ${desdeFecha ? 'AND c.fecha_turno >= ?' : ''}
+                HAVING saldo_pendiente > 0.001 ORDER BY c.fecha_turno ASC
+            `, [
+                company_id, branch_id, customer_id,
+                ...(desdeFecha ? [desdeFecha] : [])
+            ]);
+            gasRows = gRows;
+        }
+
+        const allDocs = [...rows, ...gasRows].sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+
         const totals = { t0_30: 0, t31_60: 0, t61_90: 0, t91_180: 0, t181_365: 0, t365_plus: 0 };
-        const documents = rows.map(r => {
+        const documents = allDocs.map(r => {
             const days = r.dias_antiguedad;
             const saldo = parseFloat(r.saldo_pendiente);
             const b = { d0_30: 0, d31_60: 0, d61_90: 0, d91_180: 0, d181_365: 0, d365_plus: 0 };
@@ -830,6 +1103,8 @@ const sendAgingEmail = async (req, res) => {
             return res.status(400).json({ message: 'El cliente no tiene un correo electrónico registrado' });
         }
 
+        const { active: gasActive, desdeFecha } = await getCreditosAfectanCxcConfig(company_id, branch_id);
+
         const [rows] = await pool.query(`
             SELECT 
                 h.id as sale_id, h.fecha_emision as fecha,
@@ -845,8 +1120,33 @@ const sendAgingEmail = async (req, res) => {
             HAVING saldo_pendiente > 0.001 ORDER BY h.fecha_emision ASC
         `, [company_id, branch_id, customer_id]);
 
+        let gasRows = [];
+        if (gasActive) {
+            const [gRows] = await pool.query(`
+                SELECT 
+                    NULL as sale_id,
+                    gcc.id as gas_credito_id,
+                    c.fecha_turno as fecha,
+                    CONCAT('Crédito Turno - ', gcc.tipo_documento) as tipo,
+                    CONCAT('VALE/CRÉDITO #', COALESCE(NULLIF(gcc.documento, ''), gcc.id)) as documento,
+                    (gcc.monto - COALESCE((SELECT SUM(monto) FROM customer_payments WHERE gas_credito_id = gcc.id), 0)) as saldo_pendiente,
+                    DATEDIFF(NOW(), c.fecha_turno) as dias_antiguedad
+                FROM gas_station_closeout_creditos gcc
+                JOIN gas_station_closeouts c ON gcc.closeout_id = c.id
+                WHERE c.company_id = ? AND c.branch_id = ? AND gcc.cliente_id = ?
+                ${desdeFecha ? 'AND c.fecha_turno >= ?' : ''}
+                HAVING saldo_pendiente > 0.001 ORDER BY c.fecha_turno ASC
+            `, [
+                company_id, branch_id, customer_id,
+                ...(desdeFecha ? [desdeFecha] : [])
+            ]);
+            gasRows = gRows;
+        }
+
+        const allDocs = [...rows, ...gasRows].sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+
         const totals = { t0_30: 0, t31_60: 0, t61_90: 0, t91_180: 0, t181_365: 0, t365_plus: 0 };
-        const documents = rows.map(r => {
+        const documents = allDocs.map(r => {
             const days = r.dias_antiguedad;
             const saldo = parseFloat(r.saldo_pendiente);
             const b = { d0_30: 0, d31_60: 0, d61_90: 0, d91_180: 0, d181_365: 0, d365_plus: 0 };
@@ -904,6 +1204,25 @@ const getCustomerBalancesReport = async (req, res) => {
             return res.status(404).json({ message: 'Empresa o Sucursal no encontrada' });
         }
 
+        const { active: gasActive, desdeFecha } = await getCreditosAfectanCxcConfig(company_id, branch_id);
+
+        let gasSubqueryCargo = '0';
+        let gasCargoParams = [];
+        if (gasActive) {
+            gasSubqueryCargo = `
+                COALESCE((
+                    SELECT SUM(gcc.monto)
+                    FROM gas_station_closeout_creditos gcc
+                    JOIN gas_station_closeouts gsc ON gcc.closeout_id = gsc.id
+                    WHERE gcc.cliente_id = c.id
+                    AND gsc.branch_id = ?
+                    AND gsc.fecha_turno <= ?
+                    ${desdeFecha ? 'AND gsc.fecha_turno >= ?' : ''}
+                ), 0)
+            `;
+            gasCargoParams = [branch_id, endDate, ...(desdeFecha ? [desdeFecha] : [])];
+        }
+
         const [rows] = await pool.query(`
             SELECT 
                 c.id,
@@ -920,20 +1239,38 @@ const getCustomerBalancesReport = async (req, res) => {
                         AND h.estado != 'ANULADO'
                         AND h.fecha_emision <= ?
                         AND ${dteValidoExistsSql('h')}
-                    ), 0) - 
+                    ), 0) +
+                    ${gasSubqueryCargo} - 
                     COALESCE((
                         SELECT SUM(p.monto)
                         FROM customer_payments p
                         WHERE p.customer_id = c.id 
                         AND p.branch_id = ?
                         AND p.fecha_pago <= ?
+                        AND (
+                            p.gas_credito_id IS NULL OR (
+                                ? = 1 AND EXISTS (
+                                    SELECT 1 FROM gas_station_closeout_creditos gcc2
+                                    JOIN gas_station_closeouts c2 ON gcc2.closeout_id = c2.id
+                                    WHERE gcc2.id = p.gas_credito_id
+                                    ${desdeFecha ? 'AND c2.fecha_turno >= ?' : ''}
+                                )
+                            )
+                        )
                     ), 0)
                 ) as saldo
             FROM customers c
             WHERE c.company_id = ?
             HAVING saldo > 0.001 OR saldo < -0.001
             ORDER BY c.nombre ASC
-        `, [branch_id, endDate, branch_id, endDate, company_id]);
+        `, [
+            branch_id, endDate,
+            ...gasCargoParams,
+            branch_id, endDate,
+            gasActive ? 1 : 0,
+            ...(gasActive && desdeFecha ? [desdeFecha] : []),
+            company_id
+        ]);
 
 
         const pdfData = {
@@ -995,6 +1332,8 @@ const exportPendingDocumentsDetailedPDF = async (req, res) => {
             return res.status(404).json({ message: 'Empresa o Sucursal no encontrada' });
         }
 
+        const { active: gasActive, desdeFecha } = await getCreditosAfectanCxcConfig(company_id, branch_id);
+
         let sql = `
             SELECT 
                 h.fecha_emision as fecha,
@@ -1034,11 +1373,49 @@ const exportPendingDocumentsDetailedPDF = async (req, res) => {
 
         const [rows] = await pool.query(sql, params);
 
+        let gasRows = [];
+        if (gasActive) {
+            let gasSql = `
+                SELECT 
+                    c.fecha_turno as fecha,
+                    DATEDIFF(?, c.fecha_turno) as dias,
+                    CAST(CONCAT('Crédito Turno - ', gcc.tipo_documento) AS CHAR) COLLATE utf8mb4_unicode_ci as tipo,
+                    CAST(CONCAT('VALE/CRÉDITO #', COALESCE(NULLIF(gcc.documento, ''), gcc.id)) AS CHAR) COLLATE utf8mb4_unicode_ci as documento,
+                    gcc.monto as monto,
+                    (gcc.monto - COALESCE((
+                        SELECT SUM(monto) FROM customer_payments 
+                        WHERE gas_credito_id = gcc.id AND fecha_pago <= ?
+                    ), 0)) as saldo,
+                    cust.id as customer_id,
+                    CAST(cust.nombre AS CHAR) COLLATE utf8mb4_unicode_ci as customer_name
+                FROM gas_station_closeout_creditos gcc
+                JOIN gas_station_closeouts c ON gcc.closeout_id = c.id
+                JOIN customers cust ON gcc.cliente_id = cust.id
+                WHERE c.company_id = ? AND c.branch_id = ?
+                ${desdeFecha ? 'AND c.fecha_turno >= ?' : ''}
+                AND c.fecha_turno <= ?
+            `;
+            const gasParams = [
+                cutoffDate, cutoffDate, company_id, branch_id,
+                ...(desdeFecha ? [desdeFecha] : []),
+                cutoffDate
+            ];
+            if (customer_id && customer_id !== 'all' && customer_id !== 'undefined') {
+                gasSql += ' AND gcc.cliente_id = ?';
+                gasParams.push(customer_id);
+            }
+            gasSql += ' HAVING saldo > 0.001 ORDER BY cust.nombre, c.fecha_turno';
+            const [gRows] = await pool.query(gasSql, gasParams);
+            gasRows = gRows;
+        }
+
+        const combinedRows = [...rows, ...gasRows].sort((a, b) => a.customer_name.localeCompare(b.customer_name) || (new Date(a.fecha) - new Date(b.fecha)));
+
         // Group by customer
         const grouped = [];
         let grandTotal = 0;
 
-        rows.forEach(row => {
+        combinedRows.forEach(row => {
             let customer = grouped.find(c => c.customer_id === row.customer_id);
             if (!customer) {
                 customer = {
@@ -1064,7 +1441,7 @@ const exportPendingDocumentsDetailedPDF = async (req, res) => {
         };
 
         if (req.query.format === 'excel') {
-            const excelData = rows.map(r => ({
+            const excelData = combinedRows.map(r => ({
                 Cliente: r.customer_name,
                 Fecha: new Date(r.fecha).toLocaleDateString('es-SV'),
                 Días: r.dias,

@@ -78,6 +78,23 @@ const sendCustomerStatementEmail = async (customerId, branchId, companyId) => {
         const customer = customerRows[0];
         const smtp = await getSMTPSettings(branchId, companyId);
 
+        // Check gas station settings for creditos_afectan_cxc
+        let gasActive = false;
+        let desdeFecha = null;
+        try {
+            const [settingsRows] = await pool.query(
+                `SELECT setting_key, setting_value FROM gas_station_settings
+                 WHERE company_id = ? AND (branch_id = ? OR branch_id IS NULL)
+                   AND setting_key IN ('creditos_afectan_cxc', 'creditos_afectan_cxc_desde')
+                 ORDER BY (branch_id = ?) DESC`,
+                [companyId, branchId, branchId]
+            );
+            gasActive = settingsRows.find(r => r.setting_key === 'creditos_afectan_cxc')?.setting_value === '1';
+            desdeFecha = settingsRows.find(r => r.setting_key === 'creditos_afectan_cxc_desde')?.setting_value || null;
+        } catch (err) {
+            console.error('Error reading gas station settings in mailer:', err);
+        }
+
         // Fetch movements data
         const [sales] = await pool.query(`
             SELECT h.fecha_emision as fecha, h.tipo_documento as tipo, COALESCE(d.numero_control, h.id) as numero,
@@ -89,14 +106,49 @@ const sendCustomerStatementEmail = async (customerId, branchId, companyId) => {
             AND (d.status IS NULL OR d.status != 'INVALIDADO')
         `, [companyId, branchId, customerId]);
 
+        let gasCredits = [];
+        if (gasActive) {
+            const [gRows] = await pool.query(`
+                SELECT 
+                    c.fecha_turno as fecha,
+                    gcc.tipo_documento as tipo,
+                    CONCAT('VALE/CRÉDITO #', COALESCE(NULLIF(gcc.documento, ''), gcc.id)) as numero,
+                    gcc.monto as cargo,
+                    0 as abono,
+                    CONCAT('CRÉDITO TURNO #', COALESCE(c.numero_turno, c.id), CASE WHEN gcc.producto_descripcion != '' THEN CONCAT(' - ', gcc.producto_descripcion) ELSE '' END) as concepto
+                FROM gas_station_closeout_creditos gcc
+                JOIN gas_station_closeouts c ON gcc.closeout_id = c.id
+                WHERE c.company_id = ? AND c.branch_id = ? AND gcc.cliente_id = ?
+                ${desdeFecha ? 'AND c.fecha_turno >= ?' : ''}
+            `, [
+                companyId, branchId, customerId,
+                ...(desdeFecha ? [desdeFecha] : [])
+            ]);
+            gasCredits = gRows;
+        }
+
         const [payments] = await pool.query(`
             SELECT p.fecha_pago as fecha, 'RECIBO' as tipo, p.referencia as numero,
                    0 as cargo, p.monto as abono, 'ABONO' as concepto
             FROM customer_payments p
             WHERE p.company_id = ? AND p.branch_id = ? AND p.customer_id = ?
-        `, [companyId, branchId, customerId]);
+            AND (
+                p.gas_credito_id IS NULL OR (
+                    ? = 1 AND EXISTS (
+                        SELECT 1 FROM gas_station_closeout_creditos gcc2
+                        JOIN gas_station_closeouts c2 ON gcc2.closeout_id = c2.id
+                        WHERE gcc2.id = p.gas_credito_id
+                        ${desdeFecha ? 'AND c2.fecha_turno >= ?' : ''}
+                    )
+                )
+            )
+        `, [
+            companyId, branchId, customerId,
+            gasActive ? 1 : 0,
+            ...(gasActive && desdeFecha ? [desdeFecha] : [])
+        ]);
 
-        const movementsAll = [...sales, ...payments].sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+        const movementsAll = [...sales, ...gasCredits, ...payments].sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
         let currentBalance = 0;
         const history = movementsAll.map(m => {
             const cargo = parseFloat(m.cargo || 0);
@@ -406,13 +458,20 @@ const sendPaymentReceiptEmail = async (paymentId) => {
                    c.nombre AS customer_name, c.correo AS customer_email,
                    b.nombre AS branch_name, b.logo_url AS branch_logo_url, b.company_id,
                    comp.razon_social AS company_name, comp.logo_url AS company_logo_url, comp.nit AS company_nit,
-                   COALESCE(cat.description, h.tipo_documento) as documento_tipo,
-                   COALESCE(d.numero_control, CONCAT('VTA-', h.id)) as documento_aplicado
+                   CASE
+                       WHEN p.gas_credito_id IS NOT NULL THEN CONCAT('Crédito Turno - ', gcc.tipo_documento)
+                       ELSE COALESCE(cat.description, h.tipo_documento)
+                   END as documento_tipo,
+                   CASE
+                       WHEN p.gas_credito_id IS NOT NULL THEN CONCAT('VALE/CRÉDITO #', COALESCE(NULLIF(gcc.documento, ''), gcc.id))
+                       ELSE COALESCE(d.numero_control, CONCAT('VTA-', h.id))
+                   END as documento_aplicado
             FROM customer_payments p
             JOIN customers c ON p.customer_id = c.id
             JOIN branches b ON p.branch_id = b.id
             JOIN companies comp ON b.company_id = comp.id
             LEFT JOIN sales_headers h ON p.sale_id = h.id
+            LEFT JOIN gas_station_closeout_creditos gcc ON p.gas_credito_id = gcc.id
             LEFT JOIN cat_002_tipo_dte cat ON h.tipo_documento = cat.code
             LEFT JOIN dtes d ON h.id = d.venta_id
             WHERE p.id = ?

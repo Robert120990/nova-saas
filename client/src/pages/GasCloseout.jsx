@@ -424,6 +424,11 @@ const GasCloseout = () => {
         queryFn: () => axios.get('/api/gas-station/settings').then(r => r.data),
     });
 
+    const creditosAfectanCxcSetting = gasSettings?.creditos_afectan_cxc === '1';
+    const creditosDesdeFecha = gasSettings?.creditos_afectan_cxc_desde || null;
+    const currentTurnoFecha = String(editData?.fecha_turno || fechaTurno || '').split('T')[0];
+    const creditosAfectanCxc = creditosAfectanCxcSetting && (!creditosDesdeFecha || (currentTurnoFecha && currentTurnoFecha >= creditosDesdeFecha));
+
     const despachadorVentas = useMemo(() => {
         if (!despachadorNozzleAssignments.length || !readings.length) return {};
         const map = {};
@@ -4325,9 +4330,18 @@ const GasCloseout = () => {
                         <div className="fixed inset-0 bg-black/40" onClick={() => handleSafeCloseModal('creditos')} />
                         <div className="relative bg-white rounded-2xl shadow-2xl w-[95%] max-w-6xl min-h-[50vh] max-h-[95vh] flex flex-col">
                             <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 shrink-0">
-                                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2 flex-wrap">
                                     <CreditCard size={16} className="text-indigo-600" />
                                     Créditos del Turno
+                                    {creditosAfectanCxc ? (
+                                        <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-300 px-2 py-0.5 rounded-full flex items-center gap-1">
+                                            ✓ Afecta CxC {creditosDesdeFecha ? `(desde ${toDateStrDDMMYYYY(creditosDesdeFecha)})` : ''}
+                                        </span>
+                                    ) : (
+                                        <span className="text-[10px] font-bold text-slate-500 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-full">
+                                            Solo control de turno (no afecta CxC)
+                                        </span>
+                                    )}
                                     {isSectionDirty('creditos') && estado !== 'cerrado' && (
                                         <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-300 px-2 py-0.5 rounded-full flex items-center gap-1 animate-pulse">
                                             ● Cambios sin guardar

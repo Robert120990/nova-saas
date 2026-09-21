@@ -2839,7 +2839,7 @@ exports.saveCreditos = async (req, res) => {
         const { creditos } = req.body;
 
         const [closeouts] = await pool.query(
-            `SELECT estado, branch_id FROM gas_station_closeouts WHERE id = ? AND company_id = ?`,
+            `SELECT estado, branch_id, fecha_turno FROM gas_station_closeouts WHERE id = ? AND company_id = ?`,
             [id, req.company_id]
         );
         if (closeouts.length === 0) return res.status(404).json({ message: 'Cierre no encontrado' });
@@ -2850,37 +2850,148 @@ exports.saveCreditos = async (req, res) => {
             return res.status(404).json({ message: 'Cierre no encontrado' });
         }
 
-        const isReabierto = closeouts[0].estado === 'reabierto';
-        let beforeRows = [];
-        if (isReabierto) beforeRows = await getSectionRows(id, 'creditos');
+        const closeoutBranchId = closeouts[0].branch_id;
+        const fechaTurno = closeouts[0].fecha_turno ? (
+            typeof closeouts[0].fecha_turno === 'string'
+                ? closeouts[0].fecha_turno.substring(0, 10)
+                : closeouts[0].fecha_turno.toISOString().substring(0, 10)
+        ) : null;
 
-        await pool.query(`DELETE FROM gas_station_closeout_creditos WHERE closeout_id = ?`, [id]);
+        // Check if closeout credits affect CxC
+        const [settingsRows] = await pool.query(
+            `SELECT setting_key, setting_value FROM gas_station_settings
+             WHERE company_id = ? AND (branch_id = ? OR branch_id IS NULL)
+               AND setting_key IN ('creditos_afectan_cxc', 'creditos_afectan_cxc_desde')
+             ORDER BY (branch_id = ?) DESC`,
+            [req.company_id, closeoutBranchId, closeoutBranchId]
+        );
+        const affectsCxcActive = settingsRows.find(r => r.setting_key === 'creditos_afectan_cxc')?.setting_value === '1';
+        const desdeFecha = settingsRows.find(r => r.setting_key === 'creditos_afectan_cxc_desde')?.setting_value || null;
+        const isAffectingCxc = affectsCxcActive && (!desdeFecha || (fechaTurno && fechaTurno >= desdeFecha));
 
-        const invalidCreditos = creditos.filter(c => !c.despachador_id);
+        const incomingCreditos = Array.isArray(creditos) ? creditos : [];
+
+        const invalidCreditos = incomingCreditos.filter(c => !c.despachador_id);
         if (invalidCreditos.length > 0) {
             return res.status(400).json({ message: 'Todos los créditos deben tener un despachador asignado' });
         }
 
-        if (creditos && creditos.length > 0) {
-            const values = creditos.map(c => [
-                parseInt(id),
-                c.documento || '',
-                c.tipo_documento || 'FAC',
-                c.cliente_id ? parseInt(c.cliente_id) : null,
-                c.cliente_nombre || '',
-                c.producto_codigo || '',
-                c.producto_descripcion || '',
-                c.despachador_id ? parseInt(c.despachador_id) : null,
-                parseFloat(c.cantidad) || 0,
-                parseFloat(c.precio) || 0,
-                parseFloat(c.monto) || 0,
-                c.placa || '',
-                c.kilometraje || ''
-            ]);
-            await pool.query(
-                `INSERT INTO gas_station_closeout_creditos (closeout_id, documento, tipo_documento, cliente_id, cliente_nombre, producto_codigo, producto_descripcion, despachador_id, cantidad, precio, monto, placa, kilometraje) VALUES ?`,
-                [values]
-            );
+        if (isAffectingCxc) {
+            const sinCliente = incomingCreditos.filter(c => !c.cliente_id);
+            if (sinCliente.length > 0) {
+                return res.status(400).json({
+                    message: 'La configuración de gasolinera requiere que cada crédito tenga un cliente asignado para afectar Cuentas por Cobrar.'
+                });
+            }
+        }
+
+        const isReabierto = closeouts[0].estado === 'reabierto';
+        let beforeRows = [];
+        if (isReabierto) beforeRows = await getSectionRows(id, 'creditos');
+
+        // Check existing credits and any payments registered against them
+        const [existingCredits] = await pool.query(`
+            SELECT c.*, COALESCE(SUM(cp.monto), 0) as total_abonado
+            FROM gas_station_closeout_creditos c
+            LEFT JOIN customer_payments cp ON cp.gas_credito_id = c.id
+            WHERE c.closeout_id = ?
+            GROUP BY c.id
+        `, [id]);
+
+        const existingMap = new Map();
+        for (const ec of existingCredits) {
+            existingMap.set(ec.id, ec);
+        }
+
+        // Validate that no credit with payments was deleted
+        const incomingIdSet = new Set(incomingCreditos.map(c => parseInt(c.id)).filter(Boolean));
+        for (const ec of existingCredits) {
+            const totalAbonado = parseFloat(ec.total_abonado) || 0;
+            if (totalAbonado > 0 && !incomingIdSet.has(ec.id)) {
+                return res.status(400).json({
+                    message: `No se puede eliminar el crédito ${ec.documento ? '#' + ec.documento : 'ID ' + ec.id} (${ec.cliente_nombre}) porque ya tiene abonos registrados por $${totalAbonado.toFixed(2)} en Cuentas por Cobrar.`
+                });
+            }
+        }
+
+        // Validate that credits with payments are not modified in an invalid way
+        for (const c of incomingCreditos) {
+            const cId = parseInt(c.id);
+            if (cId && existingMap.has(cId)) {
+                const ec = existingMap.get(cId);
+                const totalAbonado = parseFloat(ec.total_abonado) || 0;
+                if (totalAbonado > 0) {
+                    if (c.cliente_id && parseInt(c.cliente_id) !== parseInt(ec.cliente_id)) {
+                        return res.status(400).json({
+                            message: `No se puede cambiar el cliente del crédito ${ec.documento ? '#' + ec.documento : 'ID ' + ec.id} porque ya tiene abonos registrados en Cuentas por Cobrar.`
+                        });
+                    }
+                    const newMonto = parseFloat(c.monto) || 0;
+                    if (newMonto < totalAbonado - 0.001) {
+                        return res.status(400).json({
+                            message: `El monto del crédito ${ec.documento ? '#' + ec.documento : 'ID ' + ec.id} ($${newMonto.toFixed(2)}) no puede ser menor a los abonos ya registrados en CxC ($${totalAbonado.toFixed(2)}).`
+                        });
+                    }
+                }
+            }
+        }
+
+        // Delete only removed credits that have 0 payments
+        const idsToDelete = existingCredits
+            .filter(ec => !incomingIdSet.has(ec.id) && (parseFloat(ec.total_abonado) || 0) === 0)
+            .map(ec => ec.id);
+
+        if (idsToDelete.length > 0) {
+            await pool.query(`DELETE FROM gas_station_closeout_creditos WHERE id IN (?) AND closeout_id = ?`, [idsToDelete, id]);
+        }
+
+        // Update existing or Insert new
+        for (const c of incomingCreditos) {
+            const cId = parseInt(c.id);
+            if (cId && existingMap.has(cId)) {
+                await pool.query(`
+                    UPDATE gas_station_closeout_creditos
+                    SET documento = ?, tipo_documento = ?, cliente_id = ?, cliente_nombre = ?,
+                        producto_codigo = ?, producto_descripcion = ?, despachador_id = ?,
+                        cantidad = ?, precio = ?, monto = ?, placa = ?, kilometraje = ?
+                    WHERE id = ? AND closeout_id = ?
+                `, [
+                    c.documento || '',
+                    c.tipo_documento || 'FAC',
+                    c.cliente_id ? parseInt(c.cliente_id) : null,
+                    c.cliente_nombre || '',
+                    c.producto_codigo || '',
+                    c.producto_descripcion || '',
+                    c.despachador_id ? parseInt(c.despachador_id) : null,
+                    parseFloat(c.cantidad) || 0,
+                    parseFloat(c.precio) || 0,
+                    parseFloat(c.monto) || 0,
+                    c.placa || '',
+                    c.kilometraje || '',
+                    cId,
+                    id
+                ]);
+            } else {
+                await pool.query(`
+                    INSERT INTO gas_station_closeout_creditos
+                    (closeout_id, documento, tipo_documento, cliente_id, cliente_nombre, producto_codigo, producto_descripcion, despachador_id, cantidad, precio, monto, placa, kilometraje)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                `, [
+                    parseInt(id),
+                    c.documento || '',
+                    c.tipo_documento || 'FAC',
+                    c.cliente_id ? parseInt(c.cliente_id) : null,
+                    c.cliente_nombre || '',
+                    c.producto_codigo || '',
+                    c.producto_descripcion || '',
+                    c.despachador_id ? parseInt(c.despachador_id) : null,
+                    parseFloat(c.cantidad) || 0,
+                    parseFloat(c.precio) || 0,
+                    parseFloat(c.monto) || 0,
+                    c.placa || '',
+                    c.kilometraje || ''
+                ]);
+            }
         }
 
         const [remaining] = await pool.query(`
@@ -2917,6 +3028,18 @@ exports.deleteCredito = async (req, res) => {
         }
         if (req.user.branch_id && closeouts[0].branch_id != req.user.branch_id) {
             return res.status(404).json({ message: 'Cierre no encontrado' });
+        }
+
+        // Check if there are abonos in customer_payments
+        const [payments] = await pool.query(
+            `SELECT COALESCE(SUM(monto), 0) as total_abonado FROM customer_payments WHERE gas_credito_id = ?`,
+            [creditoId]
+        );
+        const totalAbonado = parseFloat(payments[0]?.total_abonado) || 0;
+        if (totalAbonado > 0) {
+            return res.status(400).json({
+                message: `No se puede eliminar este crédito porque ya tiene abonos registrados por $${totalAbonado.toFixed(2)} en Cuentas por Cobrar.`
+            });
         }
 
         let deletedRow = null;
