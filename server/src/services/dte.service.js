@@ -68,8 +68,8 @@ class DteService {
                 condicionOperacion: payload.header.condicion_operacion || 1, // 1: Contado, 2: Crédito
                 dias_credito: payload.dias_credito != null ? parseInt(payload.dias_credito) || 15
                             : (payload.header.dias_credito != null ? parseInt(payload.header.dias_credito) || 15 : 15),
-                retencion: parseFloat(payload.header.total_retencion || 0),
-                percepcion: parseFloat(payload.header.total_percepcion || 0),
+                retencion: parseFloat(payload.header.total_retencion ?? payload.header.iva_retenido ?? 0),
+                percepcion: parseFloat(payload.header.total_percepcion ?? payload.header.iva_percibido ?? 0),
                 items: payload.header.dte_type === '07' 
                     ? (payload.linkedDocuments || []).map(doc => ({
                         tipoDte: doc.doc_type || '03',

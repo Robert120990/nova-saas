@@ -676,12 +676,27 @@ async function generateDTE(payload) {
 
         if (type === '01') {
             base.totalIva = totals.montoPorIVA;
-            base.ivaRete = 0;
+            const ret = round(payload.retencion ?? payload.header?.total_retencion ?? payload.header?.iva_retenido ?? 0);
+            base.ivaRete = ret;
+            if (ret > 0) {
+                const adjustedTotal = round(totals.totalPagar - ret);
+                base.totalPagar = adjustedTotal;
+                base.totalLetras = getAmountInWords(adjustedTotal);
+                if (base.pagos && base.pagos.length === 1) {
+                    base.pagos[0].montoPago = adjustedTotal;
+                } else if (base.pagos && base.pagos.length > 1) {
+                    let pSum = 0;
+                    for (let i = 0; i < base.pagos.length - 1; i++) {
+                        pSum = round(pSum + base.pagos[i].montoPago);
+                    }
+                    base.pagos[base.pagos.length - 1].montoPago = round(adjustedTotal - pSum);
+                }
+            }
             base.saldoFavor = 0;
             base.numPagoElectronico = null;
         } else if (type === '03') {
-            const ret = round(payload.retencion || 0);
-            const perc = round(payload.percepcion || 0);
+            const ret = round(payload.retencion ?? payload.header?.total_retencion ?? payload.header?.iva_retenido ?? 0);
+            const perc = round(payload.percepcion ?? payload.header?.total_percepcion ?? payload.header?.iva_percibido ?? 0);
             base.ivaPerci = perc;
             base.ivaRete = ret;
             if (ret > 0 || perc > 0) {
