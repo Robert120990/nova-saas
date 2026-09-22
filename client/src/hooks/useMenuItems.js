@@ -331,6 +331,20 @@ function buildTree(items) {
         });
     }
 
+    // Asegurar Reporte de Auditoría de Lubricantes en Reportes de Gasolinera
+    if (gasReportsNode && !gasReportsNode.children.some(c => c.path === '/gas-station/reporte-comparativo-lubricantes')) {
+        gasReportsNode.children.push({
+            id: 'virtual-gas-lubricants-comparison-report',
+            label: 'Auditoría de Lubricantes',
+            path: '/gas-station/reporte-comparativo-lubricantes',
+            permission: 'view_gas_lubricants_comparison_report',
+            permission_key: 'view_gas_lubricants_comparison_report',
+            hideInMenu: false,
+            icon: iconMap.ShieldCheck || iconMap.GitCompare || iconMap.Circle,
+            children: []
+        });
+    }
+
     // Asegurar Terminal del Servidor en Configuración
     const configNode = Object.values(itemMap).find(i => 
         !i.parent_id && (i.label === 'Configuración' || i.path === '/configuracion')

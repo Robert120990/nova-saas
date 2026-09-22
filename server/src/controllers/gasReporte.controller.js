@@ -2,6 +2,7 @@ const pool = require('../config/db');
 const pdfService = require('../services/pdf.service');
 const excelService = require('../services/excel.service');
 const { dteValidoExistsSql } = require('../services/dteQueryFilters');
+const reportPdfHelper = require('../utils/reportPdfHelper');
 
 exports.getReporteVentas = async (req, res) => {
     try {
@@ -2382,5 +2383,793 @@ exports.getVentasLecturasAnalyticsPDF = async (req, res) => {
     } catch (error) {
         console.error('Error en getVentasLecturasAnalyticsPDF:', error);
         res.status(500).json({ message: 'Error al generar PDF analítico de ventas según lecturas' });
+    }
+};
+
+/**
+ * Reporte Comparativo de Lubricantes: Cierres de Lecturas (Pista) vs Inventario (Kárdex)
+ */
+exports.getLubricantsComparisonReport = async (req, res) => {
+    const { start_date, end_date, branch_id, search, filter_mode, format } = req.query;
+    const companyId = req.company_id;
+
+    try {
+        if (!companyId) return res.status(401).json({ message: 'No session' });
+        if (!start_date || !end_date) return res.status(400).json({ message: 'Rango de fechas requerido' });
+
+        const company = await reportPdfHelper.getCompanyInfo(companyId);
+
+        let branchName = 'Todas las Sucursales';
+        if (branch_id && branch_id !== 'all') {
+            const [br] = await pool.query('SELECT nombre FROM branches WHERE id = ? AND company_id = ?', [branch_id, companyId]);
+            if (br.length > 0) branchName = br[0].nombre;
+        }
+
+        // 1. Obtener catálogo base de lubricantes de la empresa
+        // Se buscan productos asociados a la categoría de lubricantes o con lecturas registradas en cierres
+        let productsQuery = `
+            SELECT 
+                p.id,
+                p.codigo,
+                COALESCE(p.nombre, p.descripcion) AS descripcion,
+                p.unidad_medida,
+                COALESCE(p.costo, 0) AS costo,
+                COALESCE(pbp.precio_unitario, 0) AS precio_unitario,
+                p.category_id
+            FROM products p
+            LEFT JOIN product_branch_prices pbp ON p.id = pbp.product_id 
+                 ${branch_id && branch_id !== 'all' ? 'AND pbp.branch_id = ?' : 'AND pbp.branch_id = (SELECT id FROM branches WHERE company_id = p.company_id LIMIT 1)'}
+            WHERE p.company_id = ?
+              AND (
+                  p.category_id IN (
+                      SELECT setting_value FROM gas_station_settings 
+                      WHERE company_id = ? AND setting_key = 'lubricant_category_id'
+                  )
+                  OR p.category_id IN (
+                      SELECT id FROM product_categories 
+                      WHERE company_id = ? AND (LOWER(name) LIKE '%lubri%' OR LOWER(name) LIKE '%aceite%')
+                  )
+              )
+        `;
+
+        const productsParams = branch_id && branch_id !== 'all'
+            ? [branch_id, companyId, companyId, companyId]
+            : [companyId, companyId, companyId];
+
+        if (search && search.trim() !== '') {
+            productsQuery += ` AND (p.codigo LIKE ? OR p.nombre LIKE ? OR p.descripcion LIKE ?)`;
+            const term = `%${search.trim()}%`;
+            productsParams.push(term, term, term);
+        }
+
+        productsQuery += ` ORDER BY p.codigo ASC, p.nombre ASC`;
+        const [products] = await pool.query(productsQuery, productsParams);
+
+        // 2. Obtener lecturas de cierres de pista en el rango de fechas
+        const branchCloseoutFilter = branch_id && branch_id !== 'all' ? 'AND c.branch_id = ?' : '';
+        const branchCloseoutParams = branch_id && branch_id !== 'all' ? [branch_id] : [];
+
+        const [readingsRows] = await pool.query(`
+            SELECT 
+                lr.producto_id,
+                lr.producto_codigo,
+                lr.producto_descripcion,
+                lr.lectura_inicial,
+                lr.recarga,
+                lr.lectura_final,
+                lr.ventas,
+                lr.precio,
+                lr.total,
+                c.id AS closeout_id,
+                c.fecha_turno,
+                c.numero_turno,
+                c.branch_id
+            FROM gas_station_closeout_lubricant_readings lr
+            JOIN gas_station_closeouts c ON lr.closeout_id = c.id
+            WHERE c.company_id = ?
+              AND c.fecha_turno BETWEEN ? AND ?
+              AND c.estado IN ('cerrado', 'reabierto')
+              ${branchCloseoutFilter}
+            ORDER BY c.fecha_turno ASC, CAST(c.numero_turno AS UNSIGNED) ASC, c.id ASC
+        `, [companyId, start_date, end_date, ...branchCloseoutParams]);
+
+        // Procesar lecturas por producto ordenadas cronológicamente
+        const closeoutMap = {};
+        for (const r of readingsRows) {
+            const pid = r.producto_id;
+            if (!pid) continue;
+            if (!closeoutMap[pid]) {
+                closeoutMap[pid] = {
+                    inicial: parseFloat(r.lectura_inicial) || 0,
+                    recargas: 0,
+                    ventas: 0,
+                    final: parseFloat(r.lectura_final) || 0,
+                    precio: parseFloat(r.precio) || 0,
+                    count: 0
+                };
+            }
+            closeoutMap[pid].recargas += (parseFloat(r.recarga) || 0);
+            closeoutMap[pid].ventas += (parseFloat(r.ventas) || 0);
+            // El último turno cronológico determina la lectura final acumulada del período
+            closeoutMap[pid].final = parseFloat(r.lectura_final) || 0;
+            closeoutMap[pid].count++;
+            if (parseFloat(r.precio) > 0) {
+                closeoutMap[pid].precio = parseFloat(r.precio);
+            }
+        }
+
+        // Para productos sin turnos en el período, consultar la última lectura anterior conocida (si existe)
+        const [priorReadings] = await pool.query(`
+            SELECT lr.producto_id, lr.lectura_final
+            FROM gas_station_closeout_lubricant_readings lr
+            JOIN gas_station_closeouts c ON lr.closeout_id = c.id
+            WHERE c.company_id = ?
+              AND c.fecha_turno < ?
+              AND c.estado IN ('cerrado', 'reabierto')
+              ${branchCloseoutFilter}
+            ORDER BY c.fecha_turno DESC, CAST(c.numero_turno AS UNSIGNED) DESC, c.id DESC
+        `, [companyId, start_date, ...branchCloseoutParams]);
+
+        const priorReadingMap = {};
+        for (const pr of priorReadings) {
+            if (priorReadingMap[pr.producto_id] === undefined) {
+                priorReadingMap[pr.producto_id] = parseFloat(pr.lectura_final) || 0;
+            }
+        }
+
+        // 3. Obtener saldos y movimientos de inventario (Kardex)
+        const branchMovFilter = branch_id && branch_id !== 'all' ? 'AND m.branch_id = ?' : '';
+        const branchMovParams = branch_id && branch_id !== 'all' ? [branch_id] : [];
+
+        // Saldo inicial de kárdex antes de start_date (o INVENTARIO_INICIAL en start_date)
+        const [initialBalanceRows] = await pool.query(`
+            SELECT 
+                m.product_id,
+                SUM(CASE WHEN m.tipo_movimiento = 'ENTRADA' THEN m.cantidad ELSE -m.cantidad END) AS saldo_inicial
+            FROM inventory_movements m
+            JOIN products p ON m.product_id = p.id
+            WHERE p.company_id = ?
+              AND (
+                  DATE(m.created_at) < ?
+                  OR (DATE(m.created_at) = ? AND m.tipo_documento = 'INVENTARIO_INICIAL')
+              )
+              ${branchMovFilter}
+            GROUP BY m.product_id
+        `, [companyId, start_date, start_date, ...branchMovParams]);
+
+        const initialBalanceMap = {};
+        for (const ib of initialBalanceRows) {
+            initialBalanceMap[ib.product_id] = parseFloat(ib.saldo_inicial) || 0;
+        }
+
+        // Movimientos de kárdex en el período [start_date, end_date] (excluyendo INVENTARIO_INICIAL)
+        const [periodMovementsRows] = await pool.query(`
+            SELECT 
+                m.product_id,
+                SUM(CASE WHEN m.tipo_movimiento = 'ENTRADA' THEN m.cantidad ELSE 0 END) AS entradas,
+                SUM(CASE WHEN m.tipo_movimiento = 'SALIDA' THEN m.cantidad ELSE 0 END) AS salidas
+            FROM inventory_movements m
+            JOIN products p ON m.product_id = p.id
+            WHERE p.company_id = ?
+              AND DATE(m.created_at) BETWEEN ? AND ?
+              AND (m.tipo_documento IS NULL OR m.tipo_documento != 'INVENTARIO_INICIAL')
+              ${branchMovFilter}
+            GROUP BY m.product_id
+        `, [companyId, start_date, end_date, ...branchMovParams]);
+
+        const periodMovementsMap = {};
+        for (const pm of periodMovementsRows) {
+            periodMovementsMap[pm.product_id] = {
+                entradas: parseFloat(pm.entradas) || 0,
+                salidas: parseFloat(pm.salidas) || 0
+            };
+        }
+
+        // Stock físico actual registrado en tabla inventory (respaldo)
+        const branchInvFilter = branch_id && branch_id !== 'all' ? 'AND i.branch_id = ?' : '';
+        const branchInvParams = branch_id && branch_id !== 'all' ? [branch_id] : [];
+
+        const [inventoryStockRows] = await pool.query(`
+            SELECT 
+                i.product_id,
+                SUM(i.stock) AS stock_total
+            FROM inventory i
+            JOIN products p ON i.product_id = p.id
+            WHERE p.company_id = ?
+              ${branchInvFilter}
+            GROUP BY i.product_id
+        `, [companyId, ...branchInvParams]);
+
+        const inventoryStockMap = {};
+        for (const isr of inventoryStockRows) {
+            inventoryStockMap[isr.product_id] = parseFloat(isr.stock_total) || 0;
+        }
+
+        // 4. Consolidar matriz comparativa producto por producto
+        const comparisonRows = [];
+
+        for (const p of products) {
+            const pid = p.id;
+            const cData = closeoutMap[pid];
+            const pReading = priorReadingMap[pid];
+
+            // Cierres de Pista
+            let cierreIni = 0;
+            let cierreRec = 0;
+            let cierreVta = 0;
+            let cierreFin = 0;
+
+            if (cData) {
+                cierreIni = cData.inicial;
+                cierreRec = cData.recargas;
+                cierreVta = cData.ventas;
+                cierreFin = cData.final;
+            } else if (pReading !== undefined) {
+                cierreIni = pReading;
+                cierreRec = 0;
+                cierreVta = 0;
+                cierreFin = pReading;
+            }
+
+            // Inventario Kardex
+            const hasInitialMov = initialBalanceMap[pid] !== undefined;
+            const periodMov = periodMovementsMap[pid] || { entradas: 0, salidas: 0 };
+            const currentStock = inventoryStockMap[pid] || 0;
+
+            let invIni = 0;
+            if (hasInitialMov) {
+                invIni = initialBalanceMap[pid];
+            } else if (periodMov.entradas === 0 && periodMov.salidas === 0 && currentStock !== 0) {
+                invIni = currentStock;
+            }
+
+            const invEnt = periodMov.entradas;
+            const invSal = periodMov.salidas;
+            const invFin = invIni + invEnt - invSal;
+
+            // Discrepancias / Conciliación
+            const difVentas = cierreVta - invSal; // Ventas en pista vs Salidas en sistema
+            const difStock = cierreFin - invFin;  // Stock físico en pista vs Stock en sistema
+
+            const costoUnit = parseFloat(p.costo) || 0;
+            const precioUnit = parseFloat(cData?.precio || p.precio_unitario || 0);
+
+            const impactoCosto = difStock * costoUnit;
+            const impactoVenta = difStock * precioUnit;
+
+            let estado = 'CONCILIADO';
+            if (Math.abs(difStock) < 0.001 && Math.abs(difVentas) < 0.001) {
+                estado = 'CONCILIADO';
+            } else if (difStock < -0.001) {
+                estado = 'FALTANTE';
+            } else if (difStock > 0.001) {
+                estado = 'SOBRANTE';
+            } else {
+                estado = 'DESCUADRE VTAS';
+            }
+
+            const hasActivity = (
+                Math.abs(cierreIni) > 0.001 || Math.abs(cierreRec) > 0.001 || 
+                Math.abs(cierreVta) > 0.001 || Math.abs(cierreFin) > 0.001 ||
+                Math.abs(invIni) > 0.001 || Math.abs(invEnt) > 0.001 || 
+                Math.abs(invSal) > 0.001 || Math.abs(invFin) > 0.001
+            );
+
+            comparisonRows.push({
+                product_id: pid,
+                codigo: p.codigo || 'SIN-COD',
+                descripcion: p.descripcion || 'Sin descripción',
+                unidad: p.unidad_medida || 'UND',
+                cierre_ini: cierreIni,
+                cierre_rec: cierreRec,
+                cierre_vta: cierreVta,
+                cierre_fin: cierreFin,
+                inv_ini: invIni,
+                inv_ent: invEnt,
+                inv_sal: invSal,
+                inv_fin: invFin,
+                dif_ventas: difVentas,
+                dif_stock: difStock,
+                costo_unit: costoUnit,
+                precio_unit: precioUnit,
+                impacto_costo: impactoCosto,
+                impacto_venta: impactoVenta,
+                estado,
+                has_activity: hasActivity
+            });
+        }
+
+        // Filtro de presentación según parámetro
+        let filteredRows = comparisonRows;
+        if (filter_mode === 'only_differences') {
+            filteredRows = comparisonRows.filter(r => r.estado !== 'CONCILIADO');
+        } else if (filter_mode === 'all') {
+            filteredRows = comparisonRows;
+        } else {
+            // Por defecto: con movimientos o diferencias
+            filteredRows = comparisonRows.filter(r => r.has_activity || r.estado !== 'CONCILIADO');
+            if (filteredRows.length === 0 && comparisonRows.length > 0) {
+                filteredRows = comparisonRows;
+            }
+        }
+
+        // 5. Totales y KPIs para cuadro resumen
+        const summary = filteredRows.reduce((acc, r) => {
+            acc.cierre_ini += r.cierre_ini;
+            acc.cierre_rec += r.cierre_rec;
+            acc.cierre_vta += r.cierre_vta;
+            acc.cierre_fin += r.cierre_fin;
+
+            acc.inv_ini += r.inv_ini;
+            acc.inv_ent += r.inv_ent;
+            acc.inv_sal += r.inv_sal;
+            acc.inv_fin += r.inv_fin;
+
+            acc.dif_ventas += r.dif_ventas;
+            acc.dif_stock += r.dif_stock;
+            acc.impacto_costo += r.impacto_costo;
+            acc.impacto_venta += r.impacto_venta;
+
+            if (r.estado === 'CONCILIADO') acc.countConciliados++;
+            else if (r.estado === 'FALTANTE') acc.countFaltantes++;
+            else if (r.estado === 'SOBRANTE') acc.countSobrantes++;
+            else acc.countDescuadreVtas++;
+
+            return acc;
+        }, {
+            cierre_ini: 0,
+            cierre_rec: 0,
+            cierre_vta: 0,
+            cierre_fin: 0,
+            inv_ini: 0,
+            inv_ent: 0,
+            inv_sal: 0,
+            inv_fin: 0,
+            dif_ventas: 0,
+            dif_stock: 0,
+            impacto_costo: 0,
+            impacto_venta: 0,
+            countConciliados: 0,
+            countFaltantes: 0,
+            countSobrantes: 0,
+            countDescuadreVtas: 0
+        });
+
+        // 6. Exportación a Excel si format === 'excel'
+        if (format === 'excel') {
+            const excelRows = filteredRows.map(r => ({
+                codigo: r.codigo,
+                descripcion: r.descripcion,
+                cierre_ini: r.cierre_ini,
+                cierre_rec: r.cierre_rec,
+                cierre_vta: r.cierre_vta,
+                cierre_fin: r.cierre_fin,
+                inv_ini: r.inv_ini,
+                inv_ent: r.inv_ent,
+                inv_sal: r.inv_sal,
+                inv_fin: r.inv_fin,
+                dif_ventas: r.dif_ventas,
+                dif_stock: r.dif_stock,
+                impacto_costo: r.impacto_costo,
+                precio_unit: r.precio_unit,
+                impacto_venta: r.impacto_venta,
+                estado: r.estado
+            }));
+
+            // Fila de totales
+            excelRows.push({
+                codigo: 'TOTALES',
+                descripcion: `TOTAL PRODUCTOS: ${filteredRows.length}`,
+                cierre_ini: summary.cierre_ini,
+                cierre_rec: summary.cierre_rec,
+                cierre_vta: summary.cierre_vta,
+                cierre_fin: summary.cierre_fin,
+                inv_ini: summary.inv_ini,
+                inv_ent: summary.inv_ent,
+                inv_sal: summary.inv_sal,
+                inv_fin: summary.inv_fin,
+                dif_ventas: summary.dif_ventas,
+                dif_stock: summary.dif_stock,
+                impacto_costo: summary.impacto_costo,
+                precio_unit: '',
+                impacto_venta: summary.impacto_venta,
+                estado: ''
+            });
+
+            // Hoja 2: Resumen Consolidado
+            const summarySheetData = [
+                { indicador: 'Total Productos Evaluados', valor: filteredRows.length },
+                { indicador: 'Productos Conciliados (Sin Diferencias)', valor: summary.countConciliados },
+                { indicador: 'Productos con Faltante de Stock', valor: summary.countFaltantes },
+                { indicador: 'Productos con Sobrante de Stock', valor: summary.countSobrantes },
+                { indicador: 'Productos con Descuadre en Ventas', valor: summary.countDescuadreVtas },
+                { indicador: '----------------------------------------', valor: '------------' },
+                { indicador: 'Ventas Totales en Pista (Cierres)', valor: summary.cierre_vta },
+                { indicador: 'Salidas Totales en Kárdex (Sistema)', valor: summary.inv_sal },
+                { indicador: 'Diferencia Neta en Ventas/Salidas', valor: summary.dif_ventas },
+                { indicador: '----------------------------------------', valor: '------------' },
+                { indicador: 'Stock Final en Estantes (Pista)', valor: summary.cierre_fin },
+                { indicador: 'Stock Final en Kárdex (Sistema)', valor: summary.inv_fin },
+                { indicador: 'Diferencia Neta de Stock Final', valor: summary.dif_stock },
+                { indicador: '----------------------------------------', valor: '------------' },
+                { indicador: 'Impacto Financiero Neto al Costo ($)', valor: summary.impacto_costo },
+                { indicador: 'Impacto Financiero a Precio Venta ($)', valor: summary.impacto_venta }
+            ];
+
+            const buffer = await excelService.createExcelBuffer({
+                title: 'REPORTE DE AUDITORÍA DE LUBRICANTES - CIERRES VS INVENTARIO',
+                sheets: [
+                    {
+                        name: 'Auditoría Detallada',
+                        columns: [
+                            { header: 'Código', key: 'codigo', width: 14 },
+                            { header: 'Descripción del Producto', key: 'descripcion', width: 34 },
+                            { header: 'Cierre Ini', key: 'cierre_ini', width: 12 },
+                            { header: 'Cierre Rec', key: 'cierre_rec', width: 12 },
+                            { header: 'Cierre Vta', key: 'cierre_vta', width: 12 },
+                            { header: 'Cierre Fin', key: 'cierre_fin', width: 12 },
+                            { header: 'Inv Ini', key: 'inv_ini', width: 12 },
+                            { header: 'Inv Ent', key: 'inv_ent', width: 12 },
+                            { header: 'Inv Sal', key: 'inv_sal', width: 12 },
+                            { header: 'Inv Fin', key: 'inv_fin', width: 12 },
+                            { header: 'Dif Vtas', key: 'dif_ventas', width: 13 },
+                            { header: 'Dif Stock', key: 'dif_stock', width: 13 },
+                            { header: 'Impacto Costo ($)', key: 'impacto_costo', width: 16 },
+                            { header: 'Precio Vta ($)', key: 'precio_unit', width: 14 },
+                            { header: 'Impacto Venta ($)', key: 'impacto_venta', width: 16 },
+                            { header: 'Estado', key: 'estado', width: 16 }
+                        ],
+                        data: excelRows
+                    },
+                    {
+                        name: 'Cuadro Resumen',
+                        columns: [
+                            { header: 'Métrica / Indicador de Auditoría', key: 'indicador', width: 42 },
+                            { header: 'Valor / Resultado', key: 'valor', width: 22 }
+                        ],
+                        data: summarySheetData
+                    }
+                ]
+            });
+
+            return excelService.sendExcelResponse(
+                res, 
+                buffer, 
+                `Auditoria_Lubricantes_${start_date}_al_${end_date}.xlsx`
+            );
+        }
+
+        // 7. Generación en PDF (Estándar contable unificado)
+        const { doc, getBuffer } = reportPdfHelper.createPdfDocument('landscape');
+
+        const periodText = (start_date && end_date)
+            ? `DEL ${reportPdfHelper.formatDate(start_date)} AL ${reportPdfHelper.formatDate(end_date)}`
+            : (start_date ? `DESDE ${reportPdfHelper.formatDate(start_date)}` : (end_date ? `HASTA ${reportPdfHelper.formatDate(end_date)}` : 'HISTORIAL COMPLETO'));
+
+        const branchSubtitle = `SUCURSAL: ${branchName.toUpperCase()}`;
+
+        const startX = 30;
+        const totalW = 732;
+
+        // Distribución de columnas (total 732pt):
+        // Bloque Producto (152pt): codigo 44, descripcion 108
+        // Distribución de columnas optimizada sin columna de costo (total 732pt):
+        // 1. Bloque Catálogo (178pt): codigo 44, descripcion 134
+        // 2. Bloque Cierres Pista (152pt): ini 38, rec 38, vta 38, fin 38
+        // 3. Bloque Inventario Kárdex (152pt): ini 38, ent 38, sal 38, stk 38
+        // 4. Bloque Conciliación (250pt): difVta 48, difStk 48, imp 74, est 80
+        const colW = {
+            codigo: 44,
+            desc: 134,
+            cIni: 38,
+            cRec: 38,
+            cVta: 38,
+            cFin: 38,
+            iIni: 38,
+            iEnt: 38,
+            iSal: 38,
+            iFin: 38,
+            dVta: 48,
+            dStk: 48,
+            imp: 74,
+            est: 80
+        };
+
+        const colX = {
+            codigo: startX,
+            desc: startX + colW.codigo,
+            cIni: startX + colW.codigo + colW.desc,
+            cRec: startX + colW.codigo + colW.desc + colW.cIni,
+            cVta: startX + colW.codigo + colW.desc + colW.cIni + colW.cRec,
+            cFin: startX + colW.codigo + colW.desc + colW.cIni + colW.cRec + colW.cVta,
+            iIni: startX + colW.codigo + colW.desc + 152,
+            iEnt: startX + colW.codigo + colW.desc + 152 + colW.iIni,
+            iSal: startX + colW.codigo + colW.desc + 152 + colW.iIni + colW.iEnt,
+            iFin: startX + colW.codigo + colW.desc + 152 + colW.iIni + colW.iEnt + colW.iSal,
+            dVta: startX + colW.codigo + colW.desc + 304,
+            dStk: startX + colW.codigo + colW.desc + 304 + colW.dVta,
+            imp: startX + colW.codigo + colW.desc + 304 + colW.dVta + colW.dStk,
+            est: startX + colW.codigo + colW.desc + 304 + colW.dVta + colW.dStk + colW.imp
+        };
+
+        // Líneas divisorias verticales entre las 4 áreas (Catálogo | Cierres | Inventario | Conciliación)
+        const areaDividers = [colX.cIni, colX.iIni, colX.dVta];
+
+        const drawTableHeader = (y) => {
+            // Nivel 1: Categorías agrupadas
+            doc.rect(startX, y, totalW, 12).fill('#e2e8f0');
+            doc.font('Helvetica-Bold').fontSize(6.5).fillColor('#1e293b');
+
+            doc.text('CATÁLOGO DE PRODUCTO', startX + 4, y + 2.5, { width: 170, align: 'left' });
+            doc.text('CIERRES DE LECTURAS (PISTA)', colX.cIni, y + 2.5, { width: 152, align: 'center' });
+            doc.text('INVENTARIO (KÁRDEX)', colX.iIni, y + 2.5, { width: 152, align: 'center' });
+            doc.text('CONCILIACIÓN Y DIFERENCIAS', colX.dVta, y + 2.5, { width: 250, align: 'center' });
+
+            // Nivel 2: Sub-cabeceras de columnas
+            const y2 = y + 12;
+            doc.rect(startX, y2, totalW, 14).fill('#f1f5f9');
+            doc.font('Helvetica-Bold').fontSize(6).fillColor('#0f172a');
+
+            doc.text('CÓDIGO', colX.codigo + 2, y2 + 3.5, { width: colW.codigo - 2, align: 'left' });
+            doc.text('DESCRIPCIÓN', colX.desc, y2 + 3.5, { width: colW.desc - 6, align: 'left' });
+
+            // Cierres
+            doc.text('INI', colX.cIni, y2 + 3.5, { width: colW.cIni - 2, align: 'right' });
+            doc.text('REC', colX.cRec, y2 + 3.5, { width: colW.cRec - 2, align: 'right' });
+            doc.text('VTA', colX.cVta, y2 + 3.5, { width: colW.cVta - 2, align: 'right' });
+            doc.text('FIN', colX.cFin, y2 + 3.5, { width: colW.cFin - 4, align: 'right' });
+
+            // Inventario
+            doc.text('INI', colX.iIni, y2 + 3.5, { width: colW.iIni - 2, align: 'right' });
+            doc.text('ENT', colX.iEnt, y2 + 3.5, { width: colW.iEnt - 2, align: 'right' });
+            doc.text('SAL', colX.iSal, y2 + 3.5, { width: colW.iSal - 2, align: 'right' });
+            doc.text('STK', colX.iFin, y2 + 3.5, { width: colW.iFin - 4, align: 'right' });
+
+            // Conciliación
+            doc.text('DIF.VTA', colX.dVta, y2 + 3.5, { width: colW.dVta - 2, align: 'right' });
+            doc.text('DIF.STK', colX.dStk, y2 + 3.5, { width: colW.dStk - 2, align: 'right' });
+            doc.text('IMPACTO ($)', colX.imp, y2 + 3.5, { width: colW.imp - 2, align: 'right' });
+            doc.text('ESTADO', colX.est, y2 + 3.5, { width: colW.est - 2, align: 'center' });
+
+            // Línea divisoria horizontal entre niveles de cabecera
+            doc.moveTo(startX, y2).lineTo(startX + totalW, y2).lineWidth(0.5).strokeColor('#cbd5e1').stroke();
+            // Línea inferior de cabecera
+            doc.moveTo(startX, y2 + 14).lineTo(startX + totalW, y2 + 14).lineWidth(0.75).strokeColor('#94a3b8').stroke();
+
+            // Divisores verticales entre áreas en la cabecera
+            areaDividers.forEach(x => {
+                doc.moveTo(x, y).lineTo(x, y2 + 14).lineWidth(0.75).strokeColor('#cbd5e1').stroke();
+            });
+        };
+
+        // Renderizar encabezado inicial
+        let curY = reportPdfHelper.renderHeader(
+            doc, 
+            company, 
+            'REPORTE DE AUDITORÍA DE LUBRICANTES', 
+            periodText, 
+            'landscape', 
+            branchSubtitle
+        );
+
+        drawTableHeader(curY);
+        curY += 28;
+
+        const rowH = 14;
+        const pageLimitY = 505;
+
+        // Renderizado de filas
+        filteredRows.forEach((r, idx) => {
+            if (curY + rowH > pageLimitY) {
+                doc.addPage();
+                curY = reportPdfHelper.renderHeader(
+                    doc, 
+                    company, 
+                    'REPORTE DE AUDITORÍA DE LUBRICANTES', 
+                    periodText, 
+                    'landscape', 
+                    branchSubtitle
+                );
+                drawTableHeader(curY);
+                curY += 28;
+            }
+
+            // Alternancia de fondo
+            if (idx % 2 === 1) {
+                doc.rect(startX, curY, totalW, rowH).fill('#f8fafc');
+            }
+
+            // Divisores verticales entre áreas para cada fila
+            areaDividers.forEach(x => {
+                doc.moveTo(x, curY).lineTo(x, curY + rowH).lineWidth(0.5).strokeColor('#cbd5e1').stroke();
+            });
+
+            doc.font('Helvetica').fontSize(6).fillColor('#0f172a');
+
+            // Código y descripción
+            doc.text(r.codigo, colX.codigo + 4, curY + 3.5, { width: colW.codigo - 4, lineBreak: false });
+            const fitDesc = reportPdfHelper.fitText(doc, r.descripcion, colW.desc - 6);
+            doc.text(fitDesc, colX.desc, curY + 3.5, { width: colW.desc - 6, lineBreak: false });
+
+            // Cierres de lectura
+            doc.text(r.cierre_ini === 0 ? '- ' : r.cierre_ini.toFixed(1), colX.cIni, curY + 3.5, { width: colW.cIni - 2, align: 'right' });
+            doc.text(r.cierre_rec === 0 ? '- ' : r.cierre_rec.toFixed(1), colX.cRec, curY + 3.5, { width: colW.cRec - 2, align: 'right' });
+            doc.text(r.cierre_vta === 0 ? '- ' : r.cierre_vta.toFixed(1), colX.cVta, curY + 3.5, { width: colW.cVta - 2, align: 'right' });
+            doc.font('Helvetica-Bold').text(r.cierre_fin === 0 ? '- ' : r.cierre_fin.toFixed(1), colX.cFin, curY + 3.5, { width: colW.cFin - 4, align: 'right' });
+
+            // Inventario Kardex
+            doc.font('Helvetica');
+            doc.text(r.inv_ini === 0 ? '- ' : r.inv_ini.toFixed(1), colX.iIni, curY + 3.5, { width: colW.iIni - 2, align: 'right' });
+            doc.text(r.inv_ent === 0 ? '- ' : r.inv_ent.toFixed(1), colX.iEnt, curY + 3.5, { width: colW.iEnt - 2, align: 'right' });
+            doc.text(r.inv_sal === 0 ? '- ' : r.inv_sal.toFixed(1), colX.iSal, curY + 3.5, { width: colW.iSal - 2, align: 'right' });
+            doc.font('Helvetica-Bold').text(r.inv_fin === 0 ? '- ' : r.inv_fin.toFixed(1), colX.iFin, curY + 3.5, { width: colW.iFin - 4, align: 'right' });
+
+            // Conciliación
+            doc.font('Helvetica');
+            const difVtaColor = Math.abs(r.dif_ventas) < 0.001 ? '#64748b' : (r.dif_ventas > 0 ? '#1e40af' : '#b91c1c');
+            doc.fillColor(difVtaColor).text(r.dif_ventas === 0 ? '- ' : (r.dif_ventas > 0 ? `+${r.dif_ventas.toFixed(1)}` : r.dif_ventas.toFixed(1)), colX.dVta, curY + 3.5, { width: colW.dVta - 2, align: 'right' });
+
+            const difStkColor = Math.abs(r.dif_stock) < 0.001 ? '#64748b' : (r.dif_stock > 0 ? '#1e40af' : '#b91c1c');
+            doc.fillColor(difStkColor).font('Helvetica-Bold').text(r.dif_stock === 0 ? '- ' : (r.dif_stock > 0 ? `+${r.dif_stock.toFixed(1)}` : r.dif_stock.toFixed(1)), colX.dStk, curY + 3.5, { width: colW.dStk - 2, align: 'right' });
+
+            const impColor = Math.abs(r.impacto_costo) < 0.01 ? '#64748b' : (r.impacto_costo > 0 ? '#1e40af' : '#b91c1c');
+            doc.fillColor(impColor).font('Helvetica-Bold').text(reportPdfHelper.fmt(r.impacto_costo), colX.imp, curY + 3.5, { width: colW.imp - 2, align: 'right' });
+
+            // Estado badge
+            let badgeBg = '#ecfdf5';
+            let badgeFg = '#15803d';
+            if (r.estado === 'FALTANTE') {
+                badgeBg = '#fef2f2';
+                badgeFg = '#b91c1c';
+            } else if (r.estado === 'SOBRANTE') {
+                badgeBg = '#eff6ff';
+                badgeFg = '#1d4ed8';
+            } else if (r.estado === 'DESCUADRE VTAS') {
+                badgeBg = '#faf5ff';
+                badgeFg = '#7e22ce';
+            }
+
+            doc.roundedRect(colX.est + 4, curY + 2, colW.est - 8, 10, 2).fill(badgeBg);
+            doc.font('Helvetica-Bold').fontSize(5.5).fillColor(badgeFg).text(r.estado, colX.est + 4, curY + 3.5, { width: colW.est - 8, align: 'center' });
+
+            curY += rowH;
+        });
+
+        // Fila de totales principales
+        if (curY + 16 > pageLimitY) {
+            doc.addPage();
+            curY = reportPdfHelper.renderHeader(
+                doc, 
+                company, 
+                'REPORTE DE AUDITORÍA DE LUBRICANTES', 
+                periodText, 
+                'landscape', 
+                branchSubtitle
+            );
+            drawTableHeader(curY);
+            curY += 28;
+        }
+
+        doc.rect(startX, curY, totalW, 15).fill('#e2e8f0');
+        doc.font('Helvetica-Bold').fontSize(6).fillColor('#0f172a');
+        doc.text(`TOTALES (${filteredRows.length} ÍTEMS)`, startX + 4, curY + 4, { width: 170, align: 'left' });
+
+        doc.text(summary.cierre_ini.toFixed(1), colX.cIni, curY + 4, { width: colW.cIni - 2, align: 'right' });
+        doc.text(summary.cierre_rec.toFixed(1), colX.cRec, curY + 4, { width: colW.cRec - 2, align: 'right' });
+        doc.text(summary.cierre_vta.toFixed(1), colX.cVta, curY + 4, { width: colW.cVta - 2, align: 'right' });
+        doc.text(summary.cierre_fin.toFixed(1), colX.cFin, curY + 4, { width: colW.cFin - 4, align: 'right' });
+
+        doc.text(summary.inv_ini.toFixed(1), colX.iIni, curY + 4, { width: colW.iIni - 2, align: 'right' });
+        doc.text(summary.inv_ent.toFixed(1), colX.iEnt, curY + 4, { width: colW.iEnt - 2, align: 'right' });
+        doc.text(summary.inv_sal.toFixed(1), colX.iSal, curY + 4, { width: colW.iSal - 2, align: 'right' });
+        doc.text(summary.inv_fin.toFixed(1), colX.iFin, curY + 4, { width: colW.iFin - 4, align: 'right' });
+
+        const totDifVtaColor = Math.abs(summary.dif_ventas) < 0.001 ? '#0f172a' : (summary.dif_ventas > 0 ? '#1e40af' : '#b91c1c');
+        doc.fillColor(totDifVtaColor).text(summary.dif_ventas === 0 ? '0.0' : (summary.dif_ventas > 0 ? `+${summary.dif_ventas.toFixed(1)}` : summary.dif_ventas.toFixed(1)), colX.dVta, curY + 4, { width: colW.dVta - 2, align: 'right' });
+
+        const totDifStkColor = Math.abs(summary.dif_stock) < 0.001 ? '#0f172a' : (summary.dif_stock > 0 ? '#1e40af' : '#b91c1c');
+        doc.fillColor(totDifStkColor).text(summary.dif_stock === 0 ? '0.0' : (summary.dif_stock > 0 ? `+${summary.dif_stock.toFixed(1)}` : summary.dif_stock.toFixed(1)), colX.dStk, curY + 4, { width: colW.dStk - 2, align: 'right' });
+
+        doc.fillColor('#0f172a').text(reportPdfHelper.fmt(summary.impacto_costo), colX.imp, curY + 4, { width: colW.imp - 2, align: 'right' });
+
+        // Divisores verticales en totales
+        areaDividers.forEach(x => {
+            doc.moveTo(x, curY).lineTo(x, curY + 15).lineWidth(0.75).strokeColor('#cbd5e1').stroke();
+        });
+        // Línea inferior de totales
+        doc.moveTo(startX, curY + 15).lineTo(startX + totalW, curY + 15).lineWidth(0.75).strokeColor('#94a3b8').stroke();
+
+        curY += 22;
+
+        // 8. Cuadro Resumen Consolidado (Summary Card)
+        const summaryCardH = 82;
+        if (curY + summaryCardH > pageLimitY) {
+            doc.addPage();
+            curY = reportPdfHelper.renderHeader(
+                doc, 
+                company, 
+                'REPORTE DE AUDITORÍA DE LUBRICANTES', 
+                periodText, 
+                'landscape', 
+                branchSubtitle
+            );
+            curY += 10;
+        }
+
+        // Marco del Cuadro Resumen
+        doc.roundedRect(startX, curY, totalW, summaryCardH, 5).lineWidth(0.8).strokeColor('#cbd5e1').fillAndStroke('#f8fafc', '#94a3b8');
+
+        // Barra de título del cuadro resumen
+        doc.roundedRect(startX, curY, totalW, 16, 5).fill('#1e293b');
+        doc.font('Helvetica-Bold').fontSize(7.5).fillColor('#ffffff').text(
+            'CUADRO RESUMEN CONSOLIDADO - AUDITORÍA DE LUBRICANTES (PISTA VS KÁRDEX)', 
+            startX + 10, 
+            curY + 4.5, 
+            { width: totalW - 20, align: 'left' }
+        );
+
+        // 4 Bloques dentro del cuadro resumen
+        const blockW = (totalW - 20) / 4;
+        const bY = curY + 22;
+
+        // Bloque 1: Diagnóstico de Productos
+        doc.font('Helvetica-Bold').fontSize(6.5).fillColor('#334155').text('ESTADO DE PRODUCTOS', startX + 10, bY);
+        doc.font('Helvetica').fontSize(6).fillColor('#475569');
+        doc.text(`Total Evaluados: ${filteredRows.length}`, startX + 10, bY + 11);
+        doc.fillColor('#15803d').text(`Conciliados (Exactos): ${summary.countConciliados}`, startX + 10, bY + 21);
+        doc.fillColor('#b91c1c').text(`Con Faltante de Stock: ${summary.countFaltantes}`, startX + 10, bY + 31);
+        doc.fillColor('#1d4ed8').text(`Con Sobrante de Stock: ${summary.countSobrantes}`, startX + 10, bY + 41);
+        if (summary.countDescuadreVtas > 0) {
+            doc.fillColor('#7e22ce').text(`Descuadre en Ventas: ${summary.countDescuadreVtas}`, startX + 10, bY + 51);
+        }
+
+        // Bloque 2: Movimientos en Pista (Cierres)
+        const b2X = startX + 10 + blockW;
+        doc.font('Helvetica-Bold').fontSize(6.5).fillColor('#334155').text('CIERRES DE PISTA', b2X, bY);
+        doc.font('Helvetica').fontSize(6).fillColor('#475569');
+        doc.text(`Lectura Inicial: ${summary.cierre_ini.toFixed(1)} uds`, b2X, bY + 11);
+        doc.text(`Recargas Estante: ${summary.cierre_rec.toFixed(1)} uds`, b2X, bY + 21);
+        doc.text(`Ventas Registradas: ${summary.cierre_vta.toFixed(1)} uds`, b2X, bY + 31);
+        doc.font('Helvetica-Bold').fillColor('#0f172a').text(`Lectura Final: ${summary.cierre_fin.toFixed(1)} uds`, b2X, bY + 43);
+
+        // Bloque 3: Movimientos en Kárdex (Sistema)
+        const b3X = startX + 10 + (blockW * 2);
+        doc.font('Helvetica-Bold').fontSize(6.5).fillColor('#334155').text('INVENTARIO EN KÁRDEX', b3X, bY);
+        doc.font('Helvetica').fontSize(6).fillColor('#475569');
+        doc.text(`Saldo Inicial: ${summary.inv_ini.toFixed(1)} uds`, b3X, bY + 11);
+        doc.text(`Entradas Compras/Ajuste: ${summary.inv_ent.toFixed(1)} uds`, b3X, bY + 21);
+        doc.text(`Salidas Facturas/DTE: ${summary.inv_sal.toFixed(1)} uds`, b3X, bY + 31);
+        doc.font('Helvetica-Bold').fillColor('#0f172a').text(`Stock Final Sistema: ${summary.inv_fin.toFixed(1)} uds`, b3X, bY + 43);
+
+        // Bloque 4: Balance Financiero y Diferencias
+        const b4X = startX + 10 + (blockW * 3);
+        doc.font('Helvetica-Bold').fontSize(6.5).fillColor('#334155').text('BALANCE NETO Y AUDITORÍA', b4X, bY);
+        doc.font('Helvetica').fontSize(6);
+
+        const difVtaText = summary.dif_ventas === 0 ? '0.0 uds' : (summary.dif_ventas > 0 ? `+${summary.dif_ventas.toFixed(1)} uds` : `${summary.dif_ventas.toFixed(1)} uds`);
+        doc.fillColor(totDifVtaColor).text(`Dif. Neta Ventas: ${difVtaText}`, b4X, bY + 11);
+
+        const difStkText = summary.dif_stock === 0 ? '0.0 uds' : (summary.dif_stock > 0 ? `+${summary.dif_stock.toFixed(1)} uds` : `${summary.dif_stock.toFixed(1)} uds`);
+        doc.fillColor(totDifStkColor).text(`Dif. Neta Stock: ${difStkText}`, b4X, bY + 21);
+
+        doc.fillColor(summary.impacto_costo < 0 ? '#b91c1c' : '#0f172a').font('Helvetica-Bold');
+        doc.text(`Impacto al Costo: ${reportPdfHelper.fmt(summary.impacto_costo)}`, b4X, bY + 33);
+        doc.text(`Impacto a Venta: ${reportPdfHelper.fmt(summary.impacto_venta)}`, b4X, bY + 43);
+
+        curY += summaryCardH + 15;
+
+        // Pie de cierre sin firmas
+        reportPdfHelper.renderClosingFooter(doc, startX, curY, filteredRows.length, 'Lubricantes');
+        reportPdfHelper.renderPageNumbers(doc);
+
+        doc.end();
+        const pdfBuffer = await getBuffer();
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename=Auditoria_Lubricantes_${start_date}_al_${end_date}.pdf`);
+        res.send(pdfBuffer);
+    } catch (error) {
+        console.error('Error en getLubricantsComparisonReport:', error);
+        res.status(500).json({ message: 'Error al generar reporte de auditoría de lubricantes', error: error.message });
     }
 };
