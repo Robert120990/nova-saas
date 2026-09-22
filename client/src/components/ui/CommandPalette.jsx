@@ -67,8 +67,16 @@ const CommandPalette = ({ isOpen, onClose }) => {
             if (item.hide_in_menu) return;
 
             let groupLabel = '';
-            if (item.parent_id && parentMap[item.parent_id]) {
-                groupLabel = parentMap[item.parent_id];
+            if (item.parent_id) {
+                let curr = item;
+                const visited = new Set();
+                while (curr && curr.parent_id && !visited.has(curr.id)) {
+                    visited.add(curr.id);
+                    const p = flatItems.find(f => f.id === curr.parent_id);
+                    if (!p) break;
+                    curr = p;
+                }
+                groupLabel = curr?.label || '';
             } else if (item.path?.startsWith('/industrial/')) {
                 groupLabel = 'Huevo Industrial';
             } else if (item.path?.startsWith('/crm/')) {

@@ -62,7 +62,13 @@ const Sidebar = ({ onOpenSearch, isMobileOpen = false, onCloseMobile }) => {
 
     const hasPermission = (item) => {
         if (isSuperAdmin) return true;
-        if (!item.permission) return true;
+        if (!item.permission) {
+            // Si es un contenedor con subelementos, verificar si tiene al menos un hijo accesible
+            if (item.children && item.children.length > 0) {
+                return item.children.some(c => hasPermission(c));
+            }
+            return true;
+        }
         if (item.permission === 'manage_company_modules') {
             return permissions.includes('manage_company_modules') || permissions.includes('manage_system_settings');
         }
@@ -232,9 +238,12 @@ const Sidebar = ({ onOpenSearch, isMobileOpen = false, onCloseMobile }) => {
     const renderMenuItem = (item, depth = 0) => {
         if (!hasPermission(item) || item.hideInMenu || !isItemEnabled(item)) return null;
 
-        const visibleChildren = item.children?.filter(c => !c.hideInMenu && isItemEnabled(c)) || [];
+        const visibleChildren = item.children?.filter(c => !c.hideInMenu && isItemEnabled(c) && hasPermission(c)) || [];
         const hasChildren = visibleChildren.length > 0;
         const paddingLeft = effectiveCollapsed ? 'px-0 justify-center' : (depth === 0 ? 'pl-8 pr-4' : depth === 1 ? 'pl-12 pr-4' : 'pl-16 pr-4');
+        const isChildActive = hasChildren && visibleChildren.some(c => c.path && (
+            location.pathname === c.path || (c.path !== '/' && location.pathname.startsWith(c.path))
+        ));
 
         if (hasChildren) {
             // En móvil drawer (pantallas pequeñas táctiles): acordeón inline porque el flyout no cabe a la derecha
@@ -246,16 +255,20 @@ const Sidebar = ({ onOpenSearch, isMobileOpen = false, onCloseMobile }) => {
                             type="button"
                             onClick={() => setExpandedItems(prev => ({ ...prev, [item.id]: !prev[item.id] }))}
                             className={`w-full flex items-center justify-between ${paddingLeft} py-1.5 rounded-xl transition-all duration-200 ${
-                                isExpanded ? 'text-white bg-white/5' : 'text-slate-400 hover:bg-white/5 hover:text-white'
+                                isExpanded 
+                                ? 'text-white bg-white/5' 
+                                : isChildActive 
+                                ? 'text-indigo-300 bg-indigo-600/10 border border-indigo-600/20 font-semibold' 
+                                : 'text-slate-400 hover:bg-white/5 hover:text-white border border-transparent'
                             } group`}
                         >
                             <div className="flex items-center gap-3">
-                                <item.icon size={18} className={`transition-transform shrink-0 ${isExpanded ? 'text-indigo-400' : 'opacity-70 group-hover:opacity-100'}`} />
+                                <item.icon size={18} className={`transition-transform shrink-0 ${isExpanded || isChildActive ? 'text-indigo-400' : 'opacity-70 group-hover:opacity-100'}`} />
                                 <span className="font-semibold text-[12px] whitespace-nowrap tracking-tight">{item.label}</span>
                             </div>
                             {isExpanded
                                 ? <ChevronDown size={14} className="text-indigo-400 transition-transform" />
-                                : <ChevronRight size={14} className="opacity-40 group-hover:opacity-100 transition-all group-hover:translate-x-1" />}
+                                : <ChevronRight size={14} className={`${isChildActive ? 'text-indigo-400 opacity-90' : 'opacity-40 group-hover:opacity-100'} transition-all group-hover:translate-x-1`} />}
                         </button>
 
                         {isExpanded && (
@@ -301,16 +314,18 @@ const Sidebar = ({ onOpenSearch, isMobileOpen = false, onCloseMobile }) => {
                         className={`w-full flex items-center justify-between ${paddingLeft} py-1.5 rounded-xl transition-all duration-200 ${
                             isOpen
                             ? 'bg-indigo-600/20 text-indigo-300 font-semibold border border-indigo-500/30 shadow-sm'
+                            : isChildActive
+                            ? 'bg-indigo-600/10 text-indigo-300 font-semibold border border-indigo-600/20 shadow-sm'
                             : 'text-slate-400 hover:bg-white/5 hover:text-white border border-transparent'
                         } group`}
                         title={effectiveCollapsed ? item.label : ""}
                     >
                         <div className="flex items-center gap-3">
-                            <item.icon size={effectiveCollapsed ? 20 : 18} className={`transition-transform shrink-0 ${isOpen ? 'text-indigo-400 scale-110' : 'opacity-70 group-hover:opacity-100 group-hover:scale-110'}`} />
+                            <item.icon size={effectiveCollapsed ? 20 : 18} className={`transition-transform shrink-0 ${isOpen || isChildActive ? 'text-indigo-400 scale-110' : 'opacity-70 group-hover:opacity-100 group-hover:scale-110'}`} />
                             {!effectiveCollapsed && <span className="font-semibold text-[12px] whitespace-nowrap tracking-tight">{item.label}</span>}
                         </div>
                         {!effectiveCollapsed && (
-                            <ChevronRight size={14} className={`transition-all ${isOpen ? 'text-indigo-400 translate-x-1 opacity-100' : 'opacity-40 group-hover:opacity-100 transition-all group-hover:translate-x-1'}`} />
+                            <ChevronRight size={14} className={`transition-all ${isOpen ? 'text-indigo-400 translate-x-1 opacity-100' : isChildActive ? 'text-indigo-400 opacity-90' : 'opacity-40 group-hover:opacity-100 transition-all group-hover:translate-x-1'}`} />
                         )}
                     </button>
                 </div>
@@ -468,41 +483,48 @@ const Sidebar = ({ onOpenSearch, isMobileOpen = false, onCloseMobile }) => {
                         maxHeight: hoveredPos.maxHeight
                     }}
                 >
-                    <div className="px-3 py-2 mb-1.5 border-b border-white/10 flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                            <hoveredItem.icon size={15} className="text-indigo-400" />
-                            <span className="text-[11px] font-bold text-white uppercase tracking-wider">{hoveredItem.label}</span>
-                        </div>
-                        <span className="text-[10px] font-bold text-indigo-400 bg-indigo-950/60 border border-indigo-800/40 px-2 py-0.5 rounded-full">
-                            {hoveredItem.children.filter(c => c.path && !c.hideInMenu && isItemEnabled(c)).length}
-                        </span>
-                    </div>
-                    <div 
-                        className="space-y-0.5 overflow-y-auto custom-scrollbar pr-1"
-                        style={{ maxHeight: `calc(${hoveredPos.maxHeight}px - 54px)` }}
-                    >
-                        {hoveredItem.children.filter(child => child.path && !child.hideInMenu && isItemEnabled(child)).map(child => (
-                            <NavLink
-                                key={child.path}
-                                to={child.path}
-                                end
-                                onClick={() => {
-                                    setHoveredItem(null);
-                                    if (onCloseMobile) onCloseMobile();
-                                }}
-                                className={({ isActive }) =>
-                                    `flex items-center gap-2.5 px-3 py-2 rounded-xl transition-all duration-150 ${
-                                        isActive
-                                        ? 'bg-indigo-600/25 text-indigo-300 font-semibold border border-indigo-500/40 shadow-sm'
-                                        : 'text-slate-300 hover:bg-white/10 hover:text-white border border-transparent'
-                                    }`
-                                }
-                            >
-                                {child.icon && <child.icon size={15} className="opacity-75 shrink-0" />}
-                                <span className="text-[12px] font-medium tracking-tight truncate">{child.label}</span>
-                            </NavLink>
-                        ))}
-                    </div>
+                    {(() => {
+                        const flyoutChildren = hoveredItem.children?.filter(c => c.path && !c.hideInMenu && isItemEnabled(c) && hasPermission(c)) || [];
+                        return (
+                            <>
+                                <div className="px-3 py-2 mb-1.5 border-b border-white/10 flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <hoveredItem.icon size={15} className="text-indigo-400" />
+                                        <span className="text-[11px] font-bold text-white uppercase tracking-wider">{hoveredItem.label}</span>
+                                    </div>
+                                    <span className="text-[10px] font-bold text-indigo-400 bg-indigo-950/60 border border-indigo-800/40 px-2 py-0.5 rounded-full">
+                                        {flyoutChildren.length}
+                                    </span>
+                                </div>
+                                <div 
+                                    className="space-y-0.5 overflow-y-auto custom-scrollbar pr-1"
+                                    style={{ maxHeight: `calc(${hoveredPos.maxHeight}px - 54px)` }}
+                                >
+                                    {flyoutChildren.map(child => (
+                                        <NavLink
+                                            key={child.path}
+                                            to={child.path}
+                                            end
+                                            onClick={() => {
+                                                setHoveredItem(null);
+                                                if (onCloseMobile) onCloseMobile();
+                                            }}
+                                            className={({ isActive }) =>
+                                                `flex items-center gap-2.5 px-3 py-2 rounded-xl transition-all duration-150 ${
+                                                    isActive
+                                                    ? 'bg-indigo-600/25 text-indigo-300 font-semibold border border-indigo-500/40 shadow-sm'
+                                                    : 'text-slate-300 hover:bg-white/10 hover:text-white border border-transparent'
+                                                }`
+                                            }
+                                        >
+                                            {child.icon && <child.icon size={15} className="opacity-75 shrink-0" />}
+                                            <span className="text-[12px] font-medium tracking-tight truncate">{child.label}</span>
+                                        </NavLink>
+                                    ))}
+                                </div>
+                            </>
+                        );
+                    })()}
                 </div>
             )}
         </aside>

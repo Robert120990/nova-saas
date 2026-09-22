@@ -335,6 +335,14 @@ function buildTree(items) {
         });
     }
 
+    // Ordenar de forma determinista por sort_order
+    Object.values(itemMap).forEach(node => {
+        if (node.children && node.children.length > 0) {
+            node.children.sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+        }
+    });
+    roots.sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+
     return roots;
 }
 

@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import Table from '../components/ui/Table';
 import Modal from '../components/ui/Modal';
-import { Plus, Edit, Trash2, Phone, Mail, Home, Percent } from 'lucide-react';
+import { Plus, Edit, Trash2, Phone, Mail, Home, Percent, Info } from 'lucide-react';
 import { toast } from 'sonner';
 import { useConfirm } from '../context/ConfirmContext';
 
@@ -362,6 +362,20 @@ const Branches = () => {
                                         placeholder="Ej: 100.00 (opcional)" 
                                         className={fieldCls} 
                                     />
+                                </div>
+                                <div className="mt-2.5 p-3 bg-indigo-50/70 border border-indigo-100 rounded-xl text-[11px] text-slate-600 space-y-1.5 leading-relaxed">
+                                    <div className="flex items-center gap-1.5 font-bold text-indigo-900 uppercase text-[10px] tracking-wider">
+                                        <Info size={13} className="text-indigo-600 shrink-0" />
+                                        <span>Reglas de Aplicación y Control de Topes</span>
+                                    </div>
+                                    <ul className="list-disc list-inside space-y-1 pl-1 text-[10.5px]">
+                                        <li>
+                                            <strong className="text-slate-800">Porcentaje Máximo (%):</strong> Tope de margen por producto y general. Ningún ítem ni venta podrá superar este porcentaje de descuento sobre su base gravada.
+                                        </li>
+                                        <li>
+                                            <strong className="text-slate-800">Monto Máximo ($):</strong> Tope monetario máximo <em>acumulado por venta / ticket</em>. La suma de todos los descuentos otorgados (individuales y generales) en una misma venta no podrá exceder este valor.
+                                        </li>
+                                    </ul>
                                 </div>
                             </div>
                         </div>
