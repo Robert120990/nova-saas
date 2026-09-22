@@ -53,9 +53,15 @@ export const getLastDayOfMonth = (d = new Date()) => {
  */
 export const formatDateDMY = (dateStr) => {
     if (!dateStr) return '';
-    if (typeof dateStr === 'string' && /^\d{4}-\d{2}-\d{2}/.test(dateStr)) {
-        const [year, month, day] = dateStr.split('T')[0].split('-');
-        return `${day}/${month}/${year}`;
+    if (typeof dateStr === 'string') {
+        const cleanStr = dateStr.trim();
+        if (/^\d{4}-\d{2}-\d{2}/.test(cleanStr)) {
+            const datePart = cleanStr.split('T')[0].split(' ')[0];
+            const [year, month, day] = datePart.split('-');
+            if (year && month && day) {
+                return `${day.padStart(2, '0')}/${month.padStart(2, '0')}/${year}`;
+            }
+        }
     }
     const d = dateStr instanceof Date ? dateStr : new Date(dateStr);
     if (isNaN(d.getTime())) return String(dateStr);

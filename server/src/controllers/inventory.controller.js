@@ -642,11 +642,13 @@ const getInventoryStockReport = async (req, res) => {
                 p.nombre, 
                 c.name as categoria, 
                 ${asOfDate ? `
-                COALESCE(i.stock, 0) - COALESCE((
-                    SELECT SUM(CASE WHEN tipo_movimiento = 'ENTRADA' THEN cantidad ELSE -cantidad END)
-                    FROM inventory_movements
-                    WHERE product_id = p.id AND branch_id = ? AND created_at > ?
-                ), 0) as stock,
+                COALESCE(
+                    (SELECT SUM(CASE WHEN tipo_movimiento = 'ENTRADA' THEN cantidad ELSE -cantidad END)
+                     FROM inventory_movements
+                     WHERE product_id = p.id AND branch_id = ? AND created_at <= ?),
+                    i.stock,
+                    0
+                ) as stock,
                 ` : `
                 COALESCE(i.stock, 0) as stock,
                 `}
@@ -742,7 +744,7 @@ const getInventoryMovementsReport = async (req, res) => {
 
         let catFilter = '';
         const params = [
-            branch_id, startDate, // Inicial
+            branch_id, startDate, startDate, // Inicial
             branch_id, startDate, endDate, // Entradas
             branch_id, startDate, endDate, // Salidas
             branch_id, endDate, // Final
@@ -759,10 +761,10 @@ const getInventoryMovementsReport = async (req, res) => {
         }
 
         // The query calculates:
-        // - Initial: Movements before startDate
-        // - Entradas: Inward movements during range
+        // - Initial: Movements before startDate 00:00:00 or marked as INVENTARIO_INICIAL on startDate
+        // - Entradas: Inward movements during range (excluding INVENTARIO_INICIAL)
         // - Salidas: Outward movements during range
-        // - Final: All movements up to endDate
+        // - Final: All movements up to endDate 23:59:59
         const query = `
             SELECT 
                 p.id,
@@ -773,22 +775,32 @@ const getInventoryMovementsReport = async (req, res) => {
                 COALESCE((
                     SELECT SUM(CASE WHEN tipo_movimiento = 'ENTRADA' THEN cantidad ELSE -cantidad END)
                     FROM inventory_movements
-                    WHERE product_id = p.id AND branch_id = ? AND created_at < ?
+                    WHERE product_id = p.id AND branch_id = ? 
+                      AND (
+                          created_at < CONCAT(?, ' 00:00:00')
+                          OR (DATE(created_at) = ? AND tipo_documento = 'INVENTARIO_INICIAL')
+                      )
                 ), 0) as inicial,
                 COALESCE((
                     SELECT SUM(cantidad)
                     FROM inventory_movements
-                    WHERE product_id = p.id AND branch_id = ? AND created_at BETWEEN ? AND ? AND tipo_movimiento = 'ENTRADA'
+                    WHERE product_id = p.id AND branch_id = ? 
+                      AND created_at BETWEEN CONCAT(?, ' 00:00:00') AND CONCAT(?, ' 23:59:59')
+                      AND tipo_documento != 'INVENTARIO_INICIAL'
+                      AND tipo_movimiento = 'ENTRADA'
                 ), 0) as entradas,
                 COALESCE((
                     SELECT SUM(cantidad)
                     FROM inventory_movements
-                    WHERE product_id = p.id AND branch_id = ? AND created_at BETWEEN ? AND ? AND tipo_movimiento = 'SALIDA'
+                    WHERE product_id = p.id AND branch_id = ? 
+                      AND created_at BETWEEN CONCAT(?, ' 00:00:00') AND CONCAT(?, ' 23:59:59') 
+                      AND tipo_movimiento = 'SALIDA'
                 ), 0) as salidas,
                 COALESCE((
                     SELECT SUM(CASE WHEN tipo_movimiento = 'ENTRADA' THEN cantidad ELSE -cantidad END)
                     FROM inventory_movements
-                    WHERE product_id = p.id AND branch_id = ? AND created_at <= ?
+                    WHERE product_id = p.id AND branch_id = ? 
+                      AND created_at <= CONCAT(?, ' 23:59:59')
                 ), 0) as final
             FROM products p
             LEFT JOIN product_categories c ON p.category_id = c.id

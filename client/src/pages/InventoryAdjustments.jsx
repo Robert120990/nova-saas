@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { toast } from 'sonner';
@@ -26,9 +26,11 @@ import * as XLSX from 'xlsx';
 import PdfViewerModal from '../components/ui/PdfViewerModal';
 import Table from '../components/ui/Table';
 import Pagination from '../components/ui/Pagination';
+import ProductSearchModal from '../components/products/ProductSearchModal';
 import { useAuth } from '../context/AuthContext';
 import Money from '../components/ui/Money';
 import { useDirtyTracker } from '../hooks/useDirtyTracker';
+import { formatDateDMY } from '../utils/dateUtils';
 
 const InventoryAdjustments = () => {
     const { user } = useAuth();
@@ -72,9 +74,6 @@ const InventoryAdjustments = () => {
     // Product Modal state
     const [isProductModalOpen, setIsProductModalOpen] = useState(false);
     const [isMotivosModalOpen, setIsMotivosModalOpen] = useState(false);
-    const [productSearch, setProductSearch] = useState('');
-    const [debouncedProductSearch, setDebouncedProductSearch] = useState('');
-    const [modalPage, setModalPage] = useState(1);
 
     useDirtyTracker('ajustes', selectedItems.length > 0 || numero);
     
@@ -108,20 +107,6 @@ const InventoryAdjustments = () => {
         queryKey: ['inventory-motivos'],
         queryFn: async () => (await axios.get('/api/inventory/motivos')).data
     });
-
-    const { data: modalProductsData = { data: [], total: 0, totalPages: 0 }, isLoading: isLoadingModalProducts } = useQuery({
-        queryKey: ['adjustment-products', debouncedProductSearch, branchId, modalPage],
-        queryFn: async () => (await axios.get('/api/products', {
-            params: { search: debouncedProductSearch || undefined, branch_id: branchId || undefined, limit: 20, page: modalPage }
-        })).data,
-        enabled: isProductModalOpen
-    });
-    const modalProducts = modalProductsData.data.filter(p => p.status === 'activo');
-
-    React.useEffect(() => {
-        const timer = setTimeout(() => { setDebouncedProductSearch(productSearch); setModalPage(1); }, 500);
-        return () => clearTimeout(timer);
-    }, [productSearch]);
 
     const { data: adjustmentsData = { data: [], totalItems: 0, totalPages: 0 }, isLoading: loadingAdjustments } = useQuery({
         queryKey: ['inventory-adjustments', historySearch, historyPage, user?.branch_id],
@@ -313,7 +298,7 @@ const InventoryAdjustments = () => {
         const worksheet = XLSX.utils.json_to_sheet(adjustmentsData.data.map(a => ({
             Documento: `AJ-${String(a.id).padStart(6, '0')}`,
             Referencia: a.numero || '',
-            Fecha: new Date(a.fecha).toLocaleString(),
+            Fecha: formatDateDMY(a.fecha),
             Sucursal: a.branch_name,
             Motivo: a.motivo_name,
             Tipo: a.tipo,
@@ -733,8 +718,7 @@ const InventoryAdjustments = () => {
                                     </td>
                                     <td className="px-3 py-2">
                                         <span className="text-xs font-bold text-slate-600 whitespace-nowrap">
-                                            {new Date(a.fecha).toLocaleDateString('es-SV', { day: '2-digit', month: '2-digit', year: 'numeric' })} 
-                                            {new Date(a.fecha).toLocaleTimeString('es-SV', { hour: '2-digit', minute: '2-digit', hour12: false })}
+                                            {formatDateDMY(a.fecha)}
                                         </span>
                                     </td>
                                     <td className="px-3 py-2">
@@ -797,17 +781,14 @@ const InventoryAdjustments = () => {
                 </div>
             )}
 
-            <ProductSelectionModal 
+            <ProductSearchModal 
                 isOpen={isProductModalOpen}
                 onClose={() => setIsProductModalOpen(false)}
-                productSearch={productSearch}
-                setProductSearch={setProductSearch}
-                products={modalProducts}
-                isLoading={isLoadingModalProducts}
-                modalData={modalProductsData}
-                modalPage={modalPage}
-                setModalPage={setModalPage}
-                handleSelect={handleSelectProduct}
+                onSelectProduct={(product) => {
+                    handleSelectProduct(product);
+                }}
+                branchId={branchId}
+                mode="inventory"
             />
 
             <MotivosModal 
@@ -852,80 +833,6 @@ const InventoryAdjustments = () => {
 };
 
 /* Modals */
-const ProductSelectionModal = ({ isOpen, onClose, productSearch, setProductSearch, products, handleSelect, isLoading, modalData, modalPage, setModalPage }) => {
-    if (!isOpen) return null;
-    return (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-3xl w-full max-w-4xl max-h-[90vh] overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col">
-                <div className="p-6 border-b border-slate-100 flex items-center justify-between">
-                    <div>
-                        <h3 className="text-xl font-bold text-slate-900">Seleccionar Producto</h3>
-                        <p className="text-sm text-slate-500 font-medium text-[Spanish]">Solo se muestran productos activos autorizados para esta sucursal</p>
-                    </div>
-                    <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-xl transition-colors">
-                        <X size={20} className="text-slate-400" />
-                    </button>
-                </div>
-                
-                <div className="p-6 bg-slate-50/50 border-b border-slate-100">
-                    <div className="relative">
-                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
-                        <input 
-                            autoFocus
-                            type="text"
-                            placeholder="Buscar por nombre o código..."
-                            value={productSearch}
-                            onChange={(e) => setProductSearch(e.target.value)}
-                            className="w-full pl-12 pr-4 py-3 bg-white border border-slate-100 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-500/5 focus:border-indigo-400 transition-all font-medium"
-                        />
-                    </div>
-                </div>
-
-                <div className="flex-1 overflow-y-auto p-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {isLoading ? (
-                            <div className="col-span-full py-12 text-center text-slate-400 text-sm font-medium">Cargando productos...</div>
-                        ) : products.map(p => (
-                            <button 
-                                key={p.id}
-                                onClick={() => handleSelect(p)}
-                                className="flex items-start gap-4 p-4 rounded-2xl border border-slate-100 hover:border-indigo-200 hover:bg-indigo-50/30 transition-all text-left group"
-                            >
-                                <div className="bg-white p-2.5 rounded-xl border border-slate-100 shadow-sm group-hover:shadow-indigo-100 transition-all">
-                                    <Package size={20} className="text-slate-400 group-hover:text-indigo-500" />
-                                </div>
-                                <div>
-                                    <div className="text-sm font-bold text-slate-900 line-clamp-1">{p.nombre}</div>
-                                    <div className="text-xs font-mono font-bold text-indigo-500 mt-1">{p.codigo}</div>
-                                    <div className="mt-2 text-[10px] font-black uppercase text-slate-400">Stock Sugerido: <span className="text-slate-900">{p.stock || 0}</span></div>
-                                </div>
-                            </button>
-                        ))}
-                        {!isLoading && products.length === 0 && (
-                            <div className="col-span-full py-12 text-center text-slate-400">
-                                <Package size={40} className="mx-auto opacity-20 mb-2" />
-                                <p className="font-bold uppercase tracking-widest text-xs">Sin coincidencias</p>
-                            </div>
-                        )}
-                    </div>
-                </div>
-                {modalData?.totalPages > 1 && (
-                    <div className="border-t border-slate-100 p-4">
-                        <Pagination
-                            currentPage={modalPage}
-                            totalPages={modalData.totalPages}
-                            totalItems={modalData.total}
-                            onPageChange={setModalPage}
-                            itemsOnPage={products.length}
-                            isLoading={isLoading}
-                        />
-                    </div>
-                )}
-            </div>
-        </div>
-    );
-};
-
 const MotivosModal = ({ isOpen, onClose, tipo, motivos, handleCreateMotivo, labelCls, inputCls, queryClient }) => {
     const [editingId, setEditingId] = useState(null);
     const [editValue, setEditValue] = useState('');
@@ -1040,7 +947,7 @@ const MotivosModal = ({ isOpen, onClose, tipo, motivos, handleCreateMotivo, labe
 };
 
 const AdjustmentDetailModal = ({ adjustment, onClose }) => {
-    const { data: detail } = useQuery({
+    const { data: detail, isLoading } = useQuery({
         queryKey: ['adjustment-detail', adjustment?.id],
         queryFn: async () => (await axios.get(`/api/inventory/adjustments/${adjustment.id}`)).data,
         enabled: !!adjustment
@@ -1049,77 +956,111 @@ const AdjustmentDetailModal = ({ adjustment, onClose }) => {
     if (!adjustment) return null;
 
     return (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-3xl w-full max-w-4xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col">
-                <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-                    <div>
-                        <div className="flex items-center gap-2">
-                            <h3 className="text-xl font-bold text-slate-900">Detalle de Movimiento</h3>
-                            <span className="text-xs font-mono font-black text-indigo-600 bg-indigo-50 px-2 py-1 rounded">
-                                AJ-{String(adjustment.id).padStart(6, '0')}
-                            </span>
-                            {detail?.status === 'ANULADO' && (
-                                <span className="bg-rose-100 text-rose-600 px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest">Anulado</span>
-                            )}
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-[2rem] w-full max-w-2xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col border border-slate-200 animate-in zoom-in-95 duration-200">
+                <div className="p-5 border-b border-slate-100 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                        <div className="p-2 bg-indigo-50 rounded-xl text-indigo-600">
+                            <Eye size={16} />
                         </div>
-                        <p className="text-xs text-slate-500 font-bold uppercase mt-1">Registrado por {detail?.usuario_nombre} un {new Date(detail?.fecha).toLocaleString()}</p>
+                        <div>
+                            <h3 className="font-black text-slate-900 uppercase text-[10px] tracking-widest leading-none">Detalle de Movimiento</h3>
+                            <p className="text-[9px] font-bold text-slate-400 uppercase mt-1">Ref: AJ-{String(adjustment.id).padStart(6, '0')}</p>
+                        </div>
                     </div>
                     <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-xl transition-colors">
-                        <X size={20} className="text-slate-400" />
+                        <X size={16} />
                     </button>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 p-6 border-b border-slate-100 text-xs uppercase font-black text-slate-400">
-                    <div>
-                        <div className="mb-1 opacity-60">Sucursal</div>
-                        <div className="text-slate-900">{detail?.branch_name}</div>
-                    </div>
-                    <div>
-                        <div className="mb-1 opacity-60">Tipo/Motivo</div>
-                        <div className="text-slate-900">{detail?.tipo} - {detail?.motivo_name}</div>
-                    </div>
-                    <div>
-                        <div className="mb-1 opacity-60">Número Doc.</div>
-                        <div className="text-slate-900">{detail?.numero || 'N/A'}</div>
-                    </div>
-                    {detail?.observaciones && (
-                        <div className="col-span-full mt-2">
-                            <div className="mb-1 opacity-60">Notas</div>
-                            <div className="text-slate-600 italic normal-case font-medium">{detail.observaciones}</div>
+                <div className="p-6 overflow-y-auto space-y-6">
+                    {isLoading ? (
+                        <div className="py-20 text-center space-y-3">
+                            <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto" />
+                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Cargando información detallada...</p>
                         </div>
-                    )}
-                </div>
+                    ) : detail && (
+                        <>
+                            <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
+                                <div className="space-y-1">
+                                    <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest block">Sucursal</label>
+                                    <p className="text-[11px] font-bold text-slate-600 uppercase leading-tight">{detail.branch_name}</p>
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest block">Tipo / Motivo</label>
+                                    <p className="text-[11px] font-bold text-indigo-600 uppercase leading-tight">{detail.tipo} - {detail.motivo_name}</p>
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest block">Fecha</label>
+                                    <p className="text-[11px] font-bold text-slate-600 uppercase leading-tight">{formatDateDMY(detail.fecha)}</p>
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest block">Número Doc.</label>
+                                    <p className="text-[11px] font-bold text-slate-800 uppercase leading-tight font-mono">{detail.numero || '---'}</p>
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest block">Registrado Por</label>
+                                    <p className="text-[11px] font-bold text-slate-800 uppercase leading-tight">{detail.usuario_nombre || '---'}</p>
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest block">Estado</label>
+                                    <span className={`text-[8px] font-black px-2 py-0.5 rounded-full uppercase ${detail.status === 'ANULADO' ? 'bg-rose-50 text-rose-500' : 'bg-emerald-50 text-emerald-600'}`}>
+                                        {detail.status || 'COMPLETADO'}
+                                    </span>
+                                </div>
+                                {detail.observaciones && (
+                                    <div className="space-y-1 col-span-2 md:col-span-3">
+                                        <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest block">Notas / Observaciones</label>
+                                        <p className="text-[11px] font-medium text-slate-600 leading-tight bg-slate-50 p-2.5 rounded-xl border border-slate-200/60">
+                                            {detail.observaciones}
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
 
-                <div className="flex-1 overflow-auto p-0">
-                    <table className="w-full text-left">
-                        <thead className="sticky top-0 bg-slate-50 border-b border-slate-100 text-[10px] font-black text-slate-500 uppercase tracking-widest">
-                            <tr>
-                                <th className="px-6 py-3">Producto</th>
-                                <th className="px-6 py-3 text-center">Cantidad</th>
-                                <th className="px-6 py-3 text-right">Costo</th>
-                                <th className="px-6 py-3 text-right">Total</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-50">
-                            {detail?.items?.map(item => (
-                                <tr key={item.id} className="text-sm">
-                                    <td className="px-6 py-4">
-                                        <div className="font-bold text-slate-800">{item.nombre}</div>
-                                        <div className="text-[11px] font-mono text-slate-400">{item.codigo}</div>
-                                    </td>
-                                    <td className="px-6 py-4 text-center font-black">{item.cantidad}</td>
-                                    <td className="px-6 py-4 text-right font-medium text-slate-500"><Money value={item.costo} /></td>
-                                    <td className="px-6 py-4 text-right font-black text-slate-900"><Money value={item.total} /></td>
-                                </tr>
-                            ))}
-                        </tbody>
-                        <tfoot className="bg-slate-50 font-black border-t-2 border-slate-100">
-                            <tr>
-                                <td colSpan="3" className="px-6 py-4 text-right uppercase text-[10px] text-slate-500 tracking-widest">Total Movimiento</td>
-                                <td className="px-6 py-4 text-right text-lg text-slate-900"><Money value={detail?.items?.reduce((sum, i) => sum + i.total, 0)} /></td>
-                            </tr>
-                        </tfoot>
-                    </table>
+                            <div className="mt-8">
+                                <label className="text-[9px] font-black text-slate-900 uppercase tracking-[0.2em] mb-4 block border-b border-slate-100 pb-2">Productos del Movimiento</label>
+                                <div className="overflow-x-auto rounded-2xl border border-slate-100">
+                                    <table className="w-full text-left">
+                                        <thead className="bg-slate-50 border-b border-slate-100 text-[8px] font-black text-slate-400 uppercase tracking-widest">
+                                            <tr>
+                                                <th className="px-4 py-2">Producto</th>
+                                                <th className="px-4 py-2 text-right">Cant</th>
+                                                <th className="px-4 py-2 text-right">Costo</th>
+                                                <th className="px-4 py-2 text-right">Total</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-50">
+                                            {detail.items?.map((item, idx) => (
+                                                <tr key={item.id || idx} className="text-[10px] font-bold text-slate-600">
+                                                    <td className="px-4 py-2.5 uppercase italic">
+                                                        <div className="font-bold text-slate-800">{item.nombre}</div>
+                                                        <div className="text-[8px] font-mono text-slate-400 not-italic">{item.codigo}</div>
+                                                    </td>
+                                                    <td className="px-4 py-2.5 text-right font-black text-slate-800">{parseFloat(item.cantidad).toFixed(2)}</td>
+                                                    <td className="px-4 py-2.5 text-right text-slate-400"><Money value={item.costo} /></td>
+                                                    <td className="px-4 py-2.5 text-right font-black text-indigo-600"><Money value={item.total} /></td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            <div className="bg-slate-50 p-6 rounded-3xl flex justify-between items-center mt-6">
+                                <div className="space-y-1">
+                                    <p className="text-[10px] font-black text-slate-800 uppercase tracking-widest">Total Movimiento</p>
+                                    <div className="flex flex-wrap gap-3 text-[9px] font-bold text-slate-400 uppercase">
+                                        <span>Items: <strong className="text-slate-600">{detail.items?.length || 0}</strong></span>
+                                        <span>Total Unidades: <strong className="text-slate-600">{detail.items?.reduce((sum, i) => sum + parseFloat(i.cantidad || 0), 0).toFixed(2)}</strong></span>
+                                    </div>
+                                </div>
+                                <p className="text-2xl font-black tracking-tighter text-indigo-600">
+                                    <Money value={detail.items?.reduce((sum, i) => sum + (parseFloat(i.total) || 0), 0)} />
+                                </p>
+                            </div>
+                        </>
+                    )}
                 </div>
             </div>
         </div>
@@ -1133,7 +1074,7 @@ const EditAdjustmentModal = ({ adjustment, onClose, queryClient }) => {
         if (adjustment) {
             setForm({
                 numero: adjustment.numero || '',
-                fecha: adjustment.fecha ? adjustment.fecha.split('T')[0] : '',
+                fecha: adjustment.fecha ? adjustment.fecha.split('T')[0].split(' ')[0] : '',
                 observaciones: adjustment.observaciones || ''
             });
         }

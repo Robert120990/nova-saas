@@ -403,10 +403,11 @@ const createSale = async (req, res) => {
                     const effectiveProductId = await getEffectiveProductId(connection, ci.product_id);
                     
                     if (header.dte_type !== '04') {
-                        await connection.query(
-                            'UPDATE inventory SET stock = stock - ? WHERE product_id = ? AND branch_id = ?',
-                            [totalQty, effectiveProductId, req.user.branch_id]
-                        );
+                        await connection.query(`
+                            INSERT INTO inventory (company_id, product_id, branch_id, stock)
+                            VALUES (?, ?, ?, -?)
+                            ON DUPLICATE KEY UPDATE stock = stock - ?
+                        `, [req.company_id, effectiveProductId, req.user.branch_id, totalQty, totalQty]);
 
                         await connection.query('INSERT INTO inventory_movements SET ?', [{
                             company_id: req.company_id,
@@ -424,10 +425,11 @@ const createSale = async (req, res) => {
                 const effectiveProductId = await getEffectiveProductId(connection, item.product_id);
                 
                 if (header.dte_type !== '04') {
-                    await connection.query(
-                        'UPDATE inventory SET stock = stock - ? WHERE product_id = ? AND branch_id = ?',
-                        [item.cantidad, effectiveProductId, req.user.branch_id]
-                    );
+                    await connection.query(`
+                        INSERT INTO inventory (company_id, product_id, branch_id, stock)
+                        VALUES (?, ?, ?, -?)
+                        ON DUPLICATE KEY UPDATE stock = stock - ?
+                    `, [req.company_id, effectiveProductId, req.user.branch_id, item.cantidad, item.cantidad]);
 
                     await connection.query('INSERT INTO inventory_movements SET ?', [{
                         company_id: req.company_id,
@@ -2858,10 +2860,11 @@ const voidSale = async (req, res) => {
                         const totalQty = ci.quantity * item.cantidad;
                         const effectiveProductId = await getEffectiveProductId(connection, ci.product_id);
 
-                        await connection.query(
-                            'UPDATE inventory SET stock = stock + ? WHERE product_id = ? AND branch_id = ?',
-                            [totalQty, effectiveProductId, sale.branch_id]
-                        );
+                        await connection.query(`
+                            INSERT INTO inventory (company_id, product_id, branch_id, stock)
+                            VALUES (?, ?, ?, ?)
+                            ON DUPLICATE KEY UPDATE stock = stock + ?
+                        `, [req.company_id, effectiveProductId, sale.branch_id, totalQty, totalQty]);
 
                         await connection.query('INSERT INTO inventory_movements SET ?', [{
                             company_id: req.company_id,
@@ -2877,10 +2880,11 @@ const voidSale = async (req, res) => {
                 } else if (item.product_id) {
                     const effectiveProductId = await getEffectiveProductId(connection, item.product_id);
 
-                    await connection.query(
-                        'UPDATE inventory SET stock = stock + ? WHERE product_id = ? AND branch_id = ?',
-                        [item.cantidad, effectiveProductId, sale.branch_id]
-                    );
+                    await connection.query(`
+                        INSERT INTO inventory (company_id, product_id, branch_id, stock)
+                        VALUES (?, ?, ?, ?)
+                        ON DUPLICATE KEY UPDATE stock = stock + ?
+                    `, [req.company_id, effectiveProductId, sale.branch_id, item.cantidad, item.cantidad]);
 
                     await connection.query('INSERT INTO inventory_movements SET ?', [{
                         company_id: req.company_id,
@@ -3302,10 +3306,11 @@ const regenerateDTE = async (req, res) => {
                         const totalQty = ci.quantity * item.cantidad;
                         const effectiveProductId = await getEffectiveProductId(connection, ci.product_id);
                         if (sale.dte_type !== '04' && sale.tipo_documento !== '04') {
-                            await connection.query(
-                                'UPDATE inventory SET stock = stock - ? WHERE product_id = ? AND branch_id = ?',
-                                [totalQty, effectiveProductId, sale.branch_id]
-                            );
+                            await connection.query(`
+                                INSERT INTO inventory (company_id, product_id, branch_id, stock)
+                                VALUES (?, ?, ?, -?)
+                                ON DUPLICATE KEY UPDATE stock = stock - ?
+                            `, [req.company_id, effectiveProductId, sale.branch_id, totalQty, totalQty]);
                             await connection.query('INSERT INTO inventory_movements SET ?', [{
                                 company_id: req.company_id,
                                 branch_id: sale.branch_id,
@@ -3321,10 +3326,11 @@ const regenerateDTE = async (req, res) => {
                 } else if (item.product_id) {
                     const effectiveProductId = await getEffectiveProductId(connection, item.product_id);
                     if (sale.dte_type !== '04' && sale.tipo_documento !== '04') {
-                        await connection.query(
-                            'UPDATE inventory SET stock = stock - ? WHERE product_id = ? AND branch_id = ?',
-                            [item.cantidad, effectiveProductId, sale.branch_id]
-                        );
+                        await connection.query(`
+                            INSERT INTO inventory (company_id, product_id, branch_id, stock)
+                            VALUES (?, ?, ?, -?)
+                            ON DUPLICATE KEY UPDATE stock = stock - ?
+                        `, [req.company_id, effectiveProductId, sale.branch_id, item.cantidad, item.cantidad]);
                         await connection.query('INSERT INTO inventory_movements SET ?', [{
                             company_id: req.company_id,
                             branch_id: sale.branch_id,

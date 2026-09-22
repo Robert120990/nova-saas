@@ -96,7 +96,30 @@ const createAdjustment = async (req, res) => {
         if (!companyId) throw new Error('Contexto de empresa no encontrado');
         if (!req.user?.id) throw new Error('Usuario no identificado en la sesión');
 
-        console.log('Creating adjustment with items:', items.length);
+        // Determine movement timestamp and type based on fecha and motivo
+        let movementCreatedAt = new Date();
+        let docType = 'AJUSTE';
+
+        const [motivoRows] = await connection.query(
+            'SELECT nombre FROM inventory_adjustment_motivos WHERE id = ?',
+            [motivo_id]
+        );
+        const isInicial = motivoRows.length > 0 && motivoRows[0].nombre.toUpperCase().includes('INICIAL');
+
+        if (fecha) {
+            const fechaStr = typeof fecha === 'string' ? fecha.slice(0, 10) : new Date(fecha).toISOString().slice(0, 10);
+            if (isInicial) {
+                // Initial inventory for fecha takes effect at opening cutoff (23:59:59 of previous day)
+                const prevDay = new Date(`${fechaStr}T12:00:00Z`);
+                prevDay.setDate(prevDay.getDate() - 1);
+                const prevDayStr = prevDay.toISOString().slice(0, 10);
+                movementCreatedAt = `${prevDayStr} 23:59:59`;
+                docType = 'INVENTARIO_INICIAL';
+            } else {
+                const nowTime = new Date().toTimeString().slice(0, 8);
+                movementCreatedAt = `${fechaStr} ${nowTime}`;
+            }
+        }
 
         const [headerResult] = await connection.query(`
             INSERT INTO inventory_adjustment_headers 
@@ -168,9 +191,9 @@ const createAdjustment = async (req, res) => {
 
                 // Registrar en log de movimientos (Kardex) (usamos el ID efectivo)
                 await connection.query(`
-                    INSERT INTO inventory_movements (product_id, branch_id, tipo_movimiento, cantidad, precio_venta, tipo_documento, documento_id)
-                    VALUES (?, ?, ?, ?, ?, 'AJUSTE', ?)
-                `, [effectiveProductId, branch_id, tipo, qty, cost, adjustmentId]);
+                    INSERT INTO inventory_movements (company_id, product_id, branch_id, tipo_movimiento, cantidad, costo, precio_venta, tipo_documento, documento_id, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                `, [companyId, effectiveProductId, branch_id, tipo, qty, cost, cost, docType, adjustmentId, movementCreatedAt]);
             }
         }
 
@@ -348,9 +371,9 @@ const voidAdjustment = async (req, res) => {
             // Registrar movimiento de reversa en Kardex (usamos el ID efectivo)
             const reverseType = header.tipo === 'ENTRADA' ? 'SALIDA' : 'ENTRADA';
             await connection.query(`
-                INSERT INTO inventory_movements (product_id, branch_id, tipo_movimiento, cantidad, precio_venta, tipo_documento, documento_id)
-                VALUES (?, ?, ?, ?, ?, 'ANULACION_AJUSTE', ?)
-            `, [effectiveProductId, branch_id, reverseType, cantidad, costo, id]);
+                INSERT INTO inventory_movements (company_id, product_id, branch_id, tipo_movimiento, cantidad, costo, precio_venta, tipo_documento, documento_id, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'ANULACION_AJUSTE', ?, NOW())
+            `, [header.company_id, effectiveProductId, branch_id, reverseType, cantidad, costo, costo, id]);
         }
 
         // 4. Marcar como anulado

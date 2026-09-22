@@ -12,12 +12,12 @@ import {
     FileText as FilePdf,
     DollarSign,
     Barcode,
-    X,
-    Maximize2
+    X
 } from 'lucide-react';
 import { toast } from 'sonner';
 import Table from '../components/ui/Table';
 import Pagination from '../components/ui/Pagination';
+import ProductSearchModal from '../components/products/ProductSearchModal';
 import { useAuth } from '../context/AuthContext';
 import Money from '../components/ui/Money';
 import PdfViewerModal from '../components/ui/PdfViewerModal';
@@ -52,9 +52,6 @@ const Kardex = () => {
     const [currentPage, setCurrentPage] = useState(1);
     const [isProductModalOpen, setIsProductModalOpen] = useState(false);
     const [quickBarcode, setQuickBarcode] = useState('');
-    const [productSearchModal, setProductSearchModal] = useState('');
-    const [debouncedModalSearch, setDebouncedModalSearch] = useState('');
-    const [modalPage, setModalPage] = useState(1);
     const itemsPerPage = 15;
 
     // PDF Viewer States
@@ -74,20 +71,6 @@ const Kardex = () => {
         queryKey: ['branches'],
         queryFn: async () => (await axios.get('/api/branches')).data
     });
-
-    const { data: modalProductsData = { data: [], total: 0, totalPages: 0 }, isLoading: isLoadingModalProducts } = useQuery({
-        queryKey: ['kardex-products', debouncedModalSearch, branchId, modalPage],
-        queryFn: async () => (await axios.get('/api/products', {
-            params: { search: debouncedModalSearch || undefined, branch_id: branchId || undefined, limit: 20, page: modalPage }
-        })).data,
-        enabled: isProductModalOpen
-    });
-    const modalProducts = modalProductsData.data.filter(p => p.status === 'activo');
-
-    React.useEffect(() => {
-        const timer = setTimeout(() => { setDebouncedModalSearch(productSearchModal); setModalPage(1); }, 500);
-        return () => clearTimeout(timer);
-    }, [productSearchModal]);
 
     const { data: movements = [], isLoading } = useQuery({
         queryKey: ['kardex', branchId, productId],
@@ -338,79 +321,17 @@ const Kardex = () => {
             </div>
 
             {/* Product Selection Modal */}
-            {isProductModalOpen && (
-                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-                    <div className="bg-white rounded-[2.5rem] w-full max-w-3xl max-h-[85vh] overflow-hidden shadow-2xl flex flex-col">
-                        <div className="p-8 border-b bg-slate-50/30 flex justify-between items-center">
-                            <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight">Seleccionar Producto</h3>
-                            <button onClick={() => setIsProductModalOpen(false)} className="p-2 hover:bg-slate-100 rounded-xl transition-all cursor-pointer"><X size={20} /></button>
-                        </div>
-                        <div className="p-6">
-                            <div className="relative">
-                                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                                <input 
-                                    autoFocus
-                                    type="text"
-                                    placeholder="Buscar por nombre o código..."
-                                    value={productSearchModal}
-                                    onChange={(e) => setProductSearchModal(e.target.value)}
-                                    className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-500/5 font-bold transition-all"
-                                />
-                            </div>
-                        </div>
-                        <div className="flex-1 overflow-y-auto p-6 pt-0 space-y-2 custom-scrollbar">
-                            {isLoadingModalProducts ? (
-                                <div className="py-16 text-center text-slate-400 text-sm font-medium">Cargando productos...</div>
-                            ) : modalProducts.length === 0 ? (
-                                <div className="py-16 text-center text-slate-400 text-sm font-medium">No se encontraron productos para esta selección</div>
-                            ) : modalProducts.map(p => (
-                                    <button 
-                                        key={p.id} 
-                                        onClick={() => {
-                                            setProductId(p.id);
-                                            setSelectedProduct(p);
-                                            setIsProductModalOpen(false);
-                                            setProductSearchModal('');
-                                            setModalPage(1);
-                                        }} 
-                                        className="w-full flex items-center justify-between p-4 rounded-2xl border border-slate-50 hover:border-indigo-200 hover:bg-indigo-50/50 transition-all group text-left cursor-pointer"
-                                    >
-                                        <div className="flex items-center gap-4 min-w-0">
-                                            <div className="p-2.5 bg-white rounded-xl shadow-sm border border-slate-100 group-hover:text-indigo-600 transition-colors">
-                                                <Box size={20} />
-                                            </div>
-                                            <div className="truncate">
-                                                <p className="font-black text-slate-900 uppercase text-sm leading-tight truncate">{p.nombre}</p>
-                                                <p className="text-[10px] font-mono font-bold text-indigo-400 tracking-wider mt-0.5">{p.codigo}</p>
-                                            </div>
-                                        </div>
-                                        <div className="flex items-center gap-4 text-right shrink-0">
-                                            <div className="flex flex-col items-end">
-                                                <span className="text-[9px] font-black text-slate-400 uppercase">Precio</span>
-                                                <span className="text-sm font-black text-slate-900"><Money value={p.precio_unitario} /></span>
-                                            </div>
-                                            <div className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg group-hover:bg-indigo-600 group-hover:text-white transition-all shadow-sm">
-                                                <Maximize2 size={16} />
-                                            </div>
-                                        </div>
-                                    </button>
-                                ))}
-                        </div>
-                        {modalProductsData.totalPages > 1 && (
-                            <div className="border-t border-slate-100 p-4">
-                                <Pagination 
-                                    currentPage={modalPage}
-                                    totalPages={modalProductsData.totalPages}
-                                    totalItems={modalProductsData.total}
-                                    onPageChange={setModalPage}
-                                    itemsOnPage={modalProducts.length}
-                                    isLoading={isLoadingModalProducts}
-                                />
-                            </div>
-                        )}
-                    </div>
-                </div>
-            )}
+            <ProductSearchModal
+                isOpen={isProductModalOpen}
+                onClose={() => setIsProductModalOpen(false)}
+                onSelectProduct={(p) => {
+                    setProductId(p.id);
+                    setSelectedProduct(p);
+                    setIsProductModalOpen(false);
+                }}
+                branchId={branchId}
+                mode="kardex"
+            />
 
             {/* Tarjetas de Resumen Compactas */}
             {productId && branchId && (
