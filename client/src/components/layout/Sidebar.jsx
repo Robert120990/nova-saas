@@ -332,6 +332,8 @@ const Sidebar = ({ onOpenSearch, isMobileOpen = false, onCloseMobile }) => {
             );
         }
 
+        if (!item.path) return null;
+
         return (
             <NavLink
                 key={item.path || item.id}
