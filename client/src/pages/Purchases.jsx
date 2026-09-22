@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { toast } from 'sonner';
@@ -40,6 +40,7 @@ import { useConfirm } from '../context/ConfirmContext';
 import Money, { MoneyInput } from '../components/ui/Money';
 import { useDirtyTracker } from '../hooks/useDirtyTracker';
 import ProviderModal from '../components/providers/ProviderModal';
+import ProductSearchModal from '../components/products/ProductSearchModal';
 import { getTodayString } from '../utils/dateUtils';
 
 const formatDate = (dateStr) => {
@@ -124,9 +125,6 @@ const Purchases = () => {
     const [quickCosto, setQuickCosto] = useState('0');
     const [quickProd, setQuickProd] = useState(null);
     const [isProductModalOpen, setIsProductModalOpen] = useState(false);
-    const [productSearch, setProductSearch] = useState('');
-    const [debouncedProductSearch, setDebouncedProductSearch] = useState('');
-    const [modalPage, setModalPage] = useState(1);
 
     const barcodeInputRef = useRef(null);
     const descInputRef = useRef(null);
@@ -263,19 +261,6 @@ const Purchases = () => {
         queryKey: ['branches', user?.company_id],
         queryFn: async () => (await axios.get('/api/branches')).data
     });
-
-    const { data: modalProductsData = { data: [], total: 0, totalPages: 0 }, isLoading: isLoadingModalProducts } = useQuery({
-        queryKey: ['purchase-products', debouncedProductSearch, branchId, modalPage],
-        queryFn: async () => (await axios.get('/api/products', {
-            params: { search: debouncedProductSearch || undefined, branch_id: branchId || undefined, limit: 20, page: modalPage }
-        })).data,
-        enabled: isProductModalOpen
-    });
-
-    React.useEffect(() => {
-        const timer = setTimeout(() => { setDebouncedProductSearch(productSearch); setModalPage(1); }, 500);
-        return () => clearTimeout(timer);
-    }, [productSearch]);
 
     const { data: tipoDocs = [] } = useQuery({
         queryKey: ['catalog', '002'],
@@ -640,7 +625,6 @@ const Purchases = () => {
         setQuickDesc(product.nombre || '');
         setQuickCosto(product.costo || '0');
         setIsProductModalOpen(false);
-        setProductSearch('');
         setTimeout(() => qtyInputRef.current?.focus(), 100);
     };
 
@@ -652,18 +636,6 @@ const Purchases = () => {
         setQuickCant('1');
         setTimeout(() => descInputRef.current?.focus(), 100);
     };
-
-    const filteredProducts = useMemo(() => {
-        let list = modalProductsData.data.filter(p => p.status === 'activo');
-
-        // Filter by branch if selected
-        if (branchId) {
-            const bid = parseInt(branchId);
-            list = list.filter(p => p.branches?.includes(bid));
-        }
-
-        return list;
-    }, [modalProductsData, branchId]);
 
     const performBarcodeLookup = async () => {
         if (!quickBarcode) return;
@@ -850,12 +822,29 @@ const Purchases = () => {
                     let matchedCount = 0;
 
                     for (const item of body) {
-                        const code = (item.codigo || '').toUpperCase();
+                        const code = (item.codigo || '').trim().toUpperCase();
+                        const desc = (item.descripcion || '').trim();
                         let prod = null;
                         if (code && branchId) {
                             try {
                                 const { data } = await axios.get(`/api/products/lookup/${encodeURIComponent(code)}`, { params: { branch_id: branchId } });
                                 prod = data;
+                            } catch { prod = null; }
+                        }
+
+                        // Búsqueda secundaria por descripción en catálogo si no hubo coincidencia por código
+                        if (!prod && desc && desc.length > 2 && branchId) {
+                            try {
+                                const { data: searchRes } = await axios.get('/api/products', {
+                                    params: { search: desc, limit: 5, branch_id: branchId, status: 'activo' }
+                                });
+                                const exactMatch = (searchRes?.data || []).find(p => 
+                                    (p.nombre || '').trim().toLowerCase() === desc.toLowerCase() ||
+                                    (p.descripcion || '').trim().toLowerCase() === desc.toLowerCase()
+                                );
+                                if (exactMatch) {
+                                    prod = exactMatch;
+                                }
                             } catch { prod = null; }
                         }
                         
@@ -936,12 +925,27 @@ const Purchases = () => {
         e.target.value = null; 
     };
 
-    const handleSubmit = () => {
+    const handleSubmit = async () => {
         if (!branchId) return toast.error('Seleccione una sucursal');
         if (!providerId) return toast.error('Seleccione un proveedor');
         if (!numeroDoc) return toast.error('Ingrese el número de documento o factura');
         if (tipoDocId === '06' && !docAfectado) return toast.error('Documento afectado es requerido para Notas de Crédito');
         if (selectedItems.length === 0) return toast.error('Agregue productos');
+
+        // Validar si existen productos sin vincular al catálogo de inventario
+        const unlinkedItems = selectedItems.filter(it => !it.product_id);
+        if (unlinkedItems.length > 0) {
+            const sampleNames = unlinkedItems.slice(0, 3).map(it => `«${it.nombre}»`).join(', ');
+            const more = unlinkedItems.length > 3 ? ` y ${unlinkedItems.length - 3} más` : '';
+            const ok = await confirm({
+                title: 'Productos sin vincular al catálogo',
+                message: `Atención: Hay ${unlinkedItems.length} producto(s) sin código vinculado al inventario (${sampleNames}${more}).\n\nEstos ítems se guardarán como detalle contable de la compra, pero NO generarán entradas en el Kárdex ni aumentarán las existencias de inventario.\n\n¿Desea registrar la compra de todas formas?`,
+                confirmLabel: 'Sí, guardar sin inventario',
+                cancelLabel: 'Revisar y vincular',
+                variant: 'warning'
+            });
+            if (!ok) return;
+        }
 
         const d = fecha ? new Date(fecha) : new Date();
         const docYear = !isNaN(d.getTime()) ? d.getFullYear() : new Date().getFullYear();
@@ -968,6 +972,7 @@ const Purchases = () => {
             period_year: finalPeriodYear, period_month: finalPeriodMonth,
             items: selectedItems.map(it => ({
                 product_id: it.product_id || null,
+                codigo: it.codigo && it.codigo !== '—' ? it.codigo : null,
                 nombre: it.nombre,
                 descripcion: it.nombre,
                 cantidad: it.cantidad,
@@ -2142,17 +2147,12 @@ const Purchases = () => {
                     }
                 }}
             />
-            <ProductSelectionModal 
+            <ProductSearchModal 
                 isOpen={isProductModalOpen}
                 onClose={() => setIsProductModalOpen(false)}
-                productSearch={productSearch}
-                setProductSearch={setProductSearch}
-                products={filteredProducts}
-                handleSelect={handleSelectProduct}
-                isLoading={isLoadingModalProducts}
-                modalData={modalProductsData}
-                modalPage={modalPage}
-                setModalPage={setModalPage}
+                onSelectProduct={handleSelectProduct}
+                branchId={branchId}
+                mode="purchase"
             />
 
             {/* Modal de Visualización Interactiva de Reporte PDF */}
@@ -2184,90 +2184,6 @@ const Purchases = () => {
                 recognizeProducts={recognizeProducts}
                 onToggleRecognizeProducts={setRecognizeProducts}
             />
-        </div>
-    );
-};
-
-const ProductSelectionModal = ({ isOpen, onClose, productSearch, setProductSearch, products, handleSelect, isLoading, modalData, modalPage, setModalPage }) => {
-    if (!isOpen) return null;
-    return (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-3xl w-full max-w-4xl max-h-[90vh] overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col">
-                <div className="p-6 border-b border-slate-100 flex items-center justify-between">
-                    <div>
-                        <h3 className="text-xl font-bold text-slate-900 border-none">Seleccionar Producto</h3>
-                        <p className="text-xs text-slate-500 font-medium uppercase tracking-widest mt-1">Buscador rápido de ítems para compra</p>
-                    </div>
-                    <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-xl transition-colors">
-                        <X size={20} className="text-slate-400" />
-                    </button>
-                </div>
-                
-                <div className="p-6 bg-slate-50/50 border-b border-slate-100">
-                    <div className="relative">
-                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
-                        <input 
-                            autoFocus
-                            type="text"
-                            placeholder="Buscar por nombre o código..."
-                            value={productSearch}
-                            onChange={(e) => setProductSearch(e.target.value)}
-                            className="w-full pl-12 pr-4 py-3 bg-white border border-slate-100 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-500/5 focus:border-indigo-400 transition-all font-medium"
-                        />
-                    </div>
-                </div>
-
-                <div className="flex-1 overflow-y-auto p-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {isLoading ? (
-                            <div className="col-span-full py-12 text-center text-slate-400 text-sm font-medium">Cargando productos...</div>
-                        ) : products.map(p => (
-                            <button 
-                                key={p.id}
-                                onClick={() => handleSelect(p)}
-                                className="flex items-start gap-4 p-4 rounded-2xl border border-slate-100 hover:border-indigo-200 hover:bg-indigo-50/30 transition-all text-left group"
-                            >
-                                <div className="bg-white p-2.5 rounded-xl border border-slate-100 shadow-sm group-hover:shadow-indigo-100 transition-all">
-                                    <Package size={20} className="text-slate-400 group-hover:text-indigo-500" />
-                                </div>
-                                <div>
-                                    <div className="text-sm font-bold text-slate-900 line-clamp-1">{p.nombre}</div>
-                                    <div className="text-xs font-mono font-bold text-indigo-500 mt-1">{p.codigo}</div>
-                                    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] font-black uppercase text-slate-400">
-                                        <span>Stock: <span className="text-slate-900">{p.stock || 0}</span></span>
-                                        {p.costo !== undefined && (
-                                            <span>Últ. Costo: <span className="text-slate-900 font-bold"><Money value={p.costo || 0} /></span></span>
-                                        )}
-                                    </div>
-                                    {p.provider_name && (
-                                        <div className="text-[10px] text-slate-400 font-medium mt-1 truncate">
-                                            Prov: <span className="text-slate-600 font-bold">{p.provider_name}</span>
-                                        </div>
-                                    )}
-                                </div>
-                            </button>
-                        ))}
-                        {!isLoading && products.length === 0 && (
-                            <div className="col-span-full py-12 text-center text-slate-400">
-                                <Package size={40} className="mx-auto opacity-20 mb-2" />
-                                <p className="font-bold uppercase tracking-widest text-xs italic">Cargue productos en el inventario para que aparezcan aquí</p>
-                            </div>
-                        )}
-                    </div>
-                </div>
-                {modalData?.totalPages > 1 && (
-                    <div className="border-t border-slate-100 p-4">
-                        <Pagination
-                            currentPage={modalPage}
-                            totalPages={modalData.totalPages}
-                            totalItems={modalData.total}
-                            onPageChange={setModalPage}
-                            itemsOnPage={products.length}
-                            isLoading={isLoading}
-                        />
-                    </div>
-                )}
-            </div>
         </div>
     );
 };

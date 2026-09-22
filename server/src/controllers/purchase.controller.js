@@ -38,6 +38,39 @@ setInterval(() => {
 }, 10 * 60 * 1000);
 
 /**
+ * Intenta resolver el product_id de un ítem de compra si viene nulo o no asignado,
+ * buscando en el catálogo activo por código, código de barra o nombre exacto.
+ */
+const resolveProductId = async (connection, companyId, item) => {
+    let finalProductId = item.product_id ? parseInt(item.product_id, 10) : null;
+    if (finalProductId) return finalProductId;
+
+    const itemCode = (item.codigo || item.codigo_barra || '').trim();
+    if (itemCode && itemCode !== '—') {
+        const [matchedByCode] = await connection.query(
+            `SELECT id FROM products WHERE company_id = ? AND status = 'activo' AND (codigo = ? OR codigo_barra = ?) LIMIT 1`,
+            [companyId, itemCode, itemCode]
+        );
+        if (matchedByCode.length > 0) {
+            return matchedByCode[0].id;
+        }
+    }
+
+    const itemDesc = (item.descripcion || item.nombre || '').trim();
+    if (itemDesc) {
+        const [matchedByName] = await connection.query(
+            `SELECT id FROM products WHERE company_id = ? AND status = 'activo' AND (LOWER(nombre) = LOWER(?) OR LOWER(descripcion) = LOWER(?)) LIMIT 1`,
+            [companyId, itemDesc, itemDesc]
+        );
+        if (matchedByName.length > 0) {
+            return matchedByName[0].id;
+        }
+    }
+
+    return null;
+};
+
+/**
  * Obtener lista de compras con búsqueda y paginación
  */
 const getPurchases = async (req, res) => {
@@ -263,11 +296,11 @@ const createPurchase = async (req, res) => {
 
         // 2. Insertar Items y Actualizar Inventario
         for (const item of items) {
-            const { product_id, cantidad, precio_unitario, descripcion, nombre } = item;
+            const { cantidad, precio_unitario, descripcion, nombre } = item;
             const qty = parseFloat(cantidad);
             const price = parseFloat(precio_unitario);
             const total = Math.round(qty * price * 10000) / 10000;
-            const finalProductId = product_id ? parseInt(product_id, 10) : null;
+            const finalProductId = await resolveProductId(connection, companyId, item);
             const itemDesc = (descripcion || nombre || '').trim() || null;
 
             await connection.query(`
@@ -275,7 +308,7 @@ const createPurchase = async (req, res) => {
                 VALUES (?, ?, ?, ?, ?, ?)
             `, [purchaseId, finalProductId, itemDesc, qty, price, total]);
 
-            // Si no tiene product_id (ítem sin código), no afecta inventario ni kardex
+            // Si no tiene product_id (ítem sin código ni coincidencia en catálogo), no afecta inventario ni kardex
             if (!finalProductId) continue;
 
             // Determinar impacto (Entrada por defecto, Salida si es Nota de Crédito 05/06)
@@ -509,11 +542,12 @@ const updatePurchase = async (req, res) => {
 
         // 3. Insertar Nuevos Items y Aplicar NUEVO IMPACTO
         for (const item of items) {
-            const { product_id, cantidad, precio_unitario, descripcion, nombre } = item;
+            const { cantidad, precio_unitario, descripcion, nombre } = item;
             const qty = parseFloat(cantidad);
             const price = parseFloat(precio_unitario);
             const total = Math.round(qty * price * 10000) / 10000;
-            const finalProductId = product_id ? parseInt(product_id, 10) : null;
+            const finalProductId = await resolveProductId(connection, companyId, item);
+            item.product_id = finalProductId;
             const itemDesc = (descripcion || nombre || '').trim() || null;
 
             await connection.query(`
@@ -1163,15 +1197,18 @@ const matchProductsForItems = async (items, companyId) => {
     if (!items || !Array.isArray(items) || items.length === 0) return items;
     try {
         const [dbProducts] = await pool.query(
-            `SELECT id, codigo, nombre, tipo_combustible FROM products WHERE company_id = ? AND status = 'activo'`,
+            `SELECT id, codigo, codigo_barra, nombre, tipo_combustible FROM products WHERE company_id = ? AND status = 'activo'`,
             [companyId]
         );
         return items.map(item => {
             const rawCode = (item.codigo || '').trim().toLowerCase();
             const rawDesc = (item.descripcion || '').trim().toLowerCase();
             let matched = null;
-            if (rawCode) {
-                matched = dbProducts.find(p => (p.codigo || '').trim().toLowerCase() === rawCode);
+            if (rawCode && rawCode !== '—') {
+                matched = dbProducts.find(p => 
+                    (p.codigo || '').trim().toLowerCase() === rawCode ||
+                    (p.codigo_barra || '').trim().toLowerCase() === rawCode
+                );
             }
             if (!matched && rawDesc && rawDesc.length > 2) {
                 matched = dbProducts.find(p => (p.nombre || '').trim().toLowerCase() === rawDesc);
