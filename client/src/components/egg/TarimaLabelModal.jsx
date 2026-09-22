@@ -1,45 +1,18 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import {
     Printer,
     X,
-    Boxes,
     Calendar,
     User,
-    Truck,
-    Thermometer,
     Layers,
     ChevronLeft,
     ChevronRight,
-    CheckCircle2
+    CheckCircle2,
+    Package
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
-import JsBarcode from 'jsbarcode';
 import { toast } from 'sonner';
-
-/**
- * Genera el Código de Barras Code 128 como un string SVG vectorial independiente para impresión
- */
-const generateBarcodeSvg = (code, width = 1.35, height = 36) => {
-    try {
-        const svgNode = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-        JsBarcode(svgNode, String(code).trim(), {
-            format: 'CODE128',
-            lineColor: '#000000',
-            width: width,
-            height: height,
-            displayValue: true,
-            fontSize: 9,
-            font: 'monospace',
-            textMargin: 2,
-            margin: 2
-        });
-        return new XMLSerializer().serializeToString(svgNode);
-    } catch (e) {
-        console.warn('Error generando código de barras SVG:', e);
-        return `<div style="font-family: monospace; font-size: 9pt; font-weight: 900; text-align: center; border: 1px dashed #000; padding: 2mm;">*${code}*</div>`;
-    }
-};
 
 /**
  * Genera el Código QR como un string SVG vectorial independiente para impresión
@@ -78,33 +51,6 @@ const formatDate = (d) => {
     const month = String(dt.getMonth() + 1).padStart(2, '0');
     const year = dt.getFullYear();
     return `${day}/${month}/${year}`;
-};
-
-/**
- * Barcode subcomponent using JsBarcode on SVG
- */
-const BarcodeItem = ({ value, width = 1.6, height = 36 }) => {
-    const svgRef = useRef(null);
-
-    useEffect(() => {
-        if (!svgRef.current || !value) return;
-        try {
-            JsBarcode(svgRef.current, String(value).trim(), {
-                format: 'CODE128',
-                lineColor: '#000000',
-                width: width,
-                height: height,
-                displayValue: true,
-                fontSize: 10,
-                font: 'monospace',
-                margin: 0
-            });
-        } catch (e) {
-            console.warn('JsBarcode render error:', e);
-        }
-    }, [value, width, height]);
-
-    return <svg ref={svgRef} className="max-w-full h-auto mx-auto" />;
 };
 
 export default function TarimaLabelModal({
@@ -151,6 +97,7 @@ export default function TarimaLabelModal({
     const grossWeight = parseFloat(currentTarima?.gross_weight_lbs || 0);
     const tareWeight = parseFloat(currentTarima?.tare_weight_lbs || 0);
     const netWeight = parseFloat(currentTarima?.net_weight_lbs || (grossWeight - tareWeight > 0 ? grossWeight - tareWeight : 0));
+    const hasCaja = currentTarima?.has_caja !== undefined ? Boolean(currentTarima.has_caja) : true;
 
     // Datos de la empresa y proveedor
     const companyName = (receptionData.company_name || 'ANDELSA, S.A. DE C.V.').toUpperCase();
@@ -211,9 +158,9 @@ export default function TarimaLabelModal({
                     .tarima-wrapper:last-child { page-break-after: auto; }
                     .header-title { font-size: 11pt; font-weight: 900; text-align: center; text-transform: uppercase; margin: 0; color: #0f172a; letter-spacing: 0.5px; }
                     .header-sub { font-size: 7pt; font-weight: 700; text-align: center; text-transform: uppercase; color: #475569; margin-top: 1mm; margin-bottom: 2mm; letter-spacing: 1px; }
-                    .correlativo-banner { background: #0f172a; color: #fff; padding: 3mm; text-align: center; border-radius: 4px; margin-bottom: 2.5mm; }
-                    .correlativo-title { font-size: 15pt; font-weight: 900; letter-spacing: 1px; }
-                    .correlativo-code { font-size: 9pt; font-weight: 700; color: #93c5fd; letter-spacing: 1.5px; margin-top: 1mm; }
+                    .correlativo-banner { background: #fff; color: #000; border: 2.5px solid #000; padding: 2.5mm 1mm; text-align: center; border-radius: 4px; margin-bottom: 2.5mm; }
+                    .correlativo-title { font-size: 16pt; font-weight: 900; letter-spacing: 0.5px; color: #000; }
+                    .correlativo-code { font-size: 10pt; font-weight: 900; color: #000; font-family: monospace; letter-spacing: 1.5px; margin-top: 1mm; }
                     .info-grid { width: 100%; border-collapse: collapse; margin-bottom: 2.5mm; font-size: 8pt; }
                     .info-grid td { padding: 1.5mm 1mm; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
                     .info-label { font-weight: 800; color: #475569; text-transform: uppercase; font-size: 6.5pt; display: block; margin-bottom: 0.5mm; letter-spacing: 0.5px; }
@@ -225,13 +172,9 @@ export default function TarimaLabelModal({
                     .footer-codes { display: flex; justify-content: space-between; align-items: center; border-top: 1px dashed #94a3b8; padding-top: 2.5mm; margin-top: 2mm; }
                     .operator-seal { font-size: 7pt; color: #64748b; text-align: right; }
                     .codes-section { border-top: 2px solid #0f172a; padding-top: 2.5mm; margin-top: 2.5mm; margin-bottom: 2mm; }
-                    .barcode-block { text-align: center; margin-bottom: 2.5mm; padding: 1.5mm 0; background: #fff; }
-                    .barcode-block svg { max-width: 100%; height: auto; display: block; margin: 0 auto; }
-                    .code-title { font-size: 6pt; font-weight: 800; color: #475569; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 1mm; text-align: center; }
-                    .qr-footer-block { display: flex; align-items: center; justify-content: space-between; gap: 3mm; border-top: 1px dashed #cbd5e1; padding-top: 2mm; }
-                    .qr-box { border: 1px solid #94a3b8; background: #fff; padding: 1.5mm; border-radius: 4px; text-align: center; flex-shrink: 0; }
+                    .qr-footer-block { display: flex; align-items: center; justify-content: space-between; gap: 4mm; border-top: 2px solid #0f172a; padding-top: 2.5mm; }
+                    .qr-box { border: 2px solid #0f172a; background: #fff; padding: 2mm; border-radius: 4px; text-align: center; flex-shrink: 0; }
                     .qr-box svg { display: block; margin: 0 auto; }
-                    .qr-legend { font-size: 5pt; font-weight: 800; color: #475569; text-transform: uppercase; margin-top: 0.8mm; letter-spacing: 0.5px; }
                     .footer-meta { flex: 1; display: flex; flex-direction: column; justify-content: space-between; }
                 </style>
             </head>
@@ -244,6 +187,7 @@ export default function TarimaLabelModal({
                     const tBoxes = parseInt(tItem.boxes_count) || 0;
                     const tEggs = (tBoxes * unitsPerBox).toLocaleString();
                     const tCode = `TAR-${lotCode}-${String(tNum).padStart(2, '0')}`;
+                    const hasBox = tItem.has_caja !== undefined ? Boolean(tItem.has_caja) : true;
 
                     return `
                         <div class="tarima-wrapper">
@@ -314,47 +258,34 @@ export default function TarimaLabelModal({
                                     </table>
                                 </div>
 
-                                <table class="info-grid" style="margin-bottom: 1mm;">
-                                    <tr>
-                                        <td style="width: 50%;">
-                                            <span class="info-label">TEMP. HUEVO / TRANSPORTE</span>
-                                            <span class="info-value">${receptionData.temperature_c ? `${receptionData.temperature_c}°C` : 'N/R'} ${receptionData.truck_temperature_c ? `(Camión: ${receptionData.truck_temperature_c}°C)` : ''}</span>
-                                        </td>
-                                        <td style="width: 50%;">
-                                            <span class="info-label">TRANSPORTE / PLACA</span>
-                                            <span class="info-value">${receptionData.truck_plate || 'N/A'} ${receptionData.driver_name ? `• ${receptionData.driver_name}` : ''}</span>
-                                        </td>
-                                    </tr>
-                                </table>
-
-                                <!-- Códigos de Trazabilidad Barcode 1D y QR 2D para Escaneo en Planta -->
-                                <div class="codes-section">
-                                    <div class="barcode-block">
-                                        <div class="code-title">CÓDIGO DE BARRAS (ESCÁNER 1D / BARRAS)</div>
-                                        ${generateBarcodeSvg(tCode, labelFormat === '80mm' ? 1.35 : 1.6, labelFormat === '80mm' ? 38 : 46)}
+                                <!-- Código QR Agrandado (2x) y Código de Trazabilidad -->
+                                <div class="qr-footer-block">
+                                    <div class="qr-box">
+                                        ${generateQrSvg({
+                                            id: tCode,
+                                            lot: lotCode,
+                                            tarima: tNum,
+                                            net_lb: parseFloat(tNet),
+                                            boxes: tBoxes,
+                                            date: receptionDate
+                                        }, labelFormat === '80mm' ? 128 : 152)}
                                     </div>
-
-                                    <div class="qr-footer-block">
-                                        <div class="qr-box">
-                                            ${generateQrSvg({
-                                                id: tCode,
-                                                lot: lotCode,
-                                                tarima: tNum,
-                                                net_lb: parseFloat(tNet),
-                                                boxes: tBoxes,
-                                                date: receptionDate
-                                            }, labelFormat === '80mm' ? 64 : 76)}
-                                            <div class="qr-legend">QR ESCÁNER PLANTA</div>
+                                    <div class="footer-meta">
+                                        <div>
+                                            <span class="info-label">CÓDIGO DE TRAZABILIDAD</span>
+                                            <div style="font-family: monospace; font-size: 10pt; font-weight: 900; letter-spacing: 1px; color: #000; border: 1.5px solid #000; padding: 1.5mm; text-align: center; border-radius: 4px; background: #fff;">
+                                                *${tCode}*
+                                            </div>
                                         </div>
-                                        <div class="footer-meta">
-                                            <div>
-                                                <span class="info-label">CÓDIGO DE TRAZABILIDAD</span>
-                                                <span style="font-family: monospace; font-size: 8.5pt; font-weight: 900; letter-spacing: 0.5px; color: #0f172a;">*${tCode}*</span>
+                                        <div style="margin-top: 1.5mm;">
+                                            <span class="info-label">MODO DE EMPAQUE</span>
+                                            <div style="font-size: 8.5pt; font-weight: 800; color: #000;">
+                                                ${hasBox ? 'CON CAJA / JABA' : 'A GRANEL (SOLO SEPARADOR)'}
                                             </div>
-                                            <div class="operator-seal" style="margin-top: 1.5mm;">
-                                                <div><strong>RECIBIDO CONFORME:</strong> ${operator}</div>
-                                                <div style="margin-top: 0.8mm; font-size: 6pt; color: #94a3b8;">SISTEMA SIPEWEBgas • CONTROL DE BÁSCULA</div>
-                                            </div>
+                                        </div>
+                                        <div class="operator-seal" style="margin-top: 2mm;">
+                                            <div><strong>RECIBIDO CONFORME:</strong> ${operator}</div>
+                                            <div style="margin-top: 0.5mm; font-size: 6pt; color: #64748b;">SISTEMA SIPEWEB • CONTROL DE BÁSCULA</div>
                                         </div>
                                     </div>
                                 </div>
@@ -499,12 +430,12 @@ export default function TarimaLabelModal({
                             </p>
                         </div>
 
-                        {/* Banner Correlativo */}
-                        <div className="my-3 bg-slate-900 text-white rounded-xl p-3 text-center shadow-xs">
-                            <div className="text-lg font-black tracking-wide uppercase">
+                        {/* Banner Correlativo (Sin fondo oscuro, texto negro según requerimiento) */}
+                        <div className="my-3 border-2 border-slate-900 bg-white text-slate-900 rounded-xl p-3 text-center shadow-xs">
+                            <div className="text-lg font-black tracking-wide uppercase text-slate-900">
                                 Tarima #{String(tarimaNum).padStart(2, '0')} de {String(totalTarimasCount).padStart(2, '0')}
                             </div>
-                            <div className="text-xs font-bold text-sky-400 font-mono tracking-widest mt-0.5">
+                            <div className="text-xs font-bold text-slate-600 font-mono tracking-widest mt-0.5">
                                 {uniquePalletCode}
                             </div>
                         </div>
@@ -574,21 +505,15 @@ export default function TarimaLabelModal({
                             </div>
                         </div>
 
-                        {/* Datos de Inocuidad y Transporte */}
+                        {/* Modo de Empaque y Operador (Sin temp ni transporte) */}
                         <div className="grid grid-cols-2 gap-2 text-[10px] text-slate-600 bg-slate-50 p-2.5 rounded-xl border border-slate-200 mb-3">
                             <div className="flex items-center gap-1.5">
-                                <Thermometer size={13} className="text-rose-500 shrink-0" />
+                                <Package size={13} className="text-indigo-600 shrink-0" />
                                 <div>
-                                    <span className="font-bold text-slate-800">Temp:</span> {receptionData.temperature_c ? `${receptionData.temperature_c}°C` : 'N/R'}
+                                    <span className="font-bold text-slate-800">Modo:</span> {hasCaja ? 'Con Caja / Jaba' : 'A Granel'}
                                 </div>
                             </div>
                             <div className="flex items-center gap-1.5">
-                                <Truck size={13} className="text-indigo-600 shrink-0" />
-                                <div className="truncate">
-                                    <span className="font-bold text-slate-800">Placa:</span> {receptionData.truck_plate || 'N/A'}
-                                </div>
-                            </div>
-                            <div className="flex items-center gap-1.5 col-span-2 pt-1 border-t border-slate-200">
                                 <User size={13} className="text-slate-400 shrink-0" />
                                 <div className="truncate">
                                     <span className="font-bold text-slate-800">Operador:</span> {operator}
@@ -596,12 +521,9 @@ export default function TarimaLabelModal({
                             </div>
                         </div>
 
-                        {/* Códigos de Barras y QR para lectura en planta */}
-                        <div className="pt-2 border-t border-slate-200 flex items-center justify-between gap-3">
-                            <div className="flex-1 text-center">
-                                <BarcodeItem value={uniquePalletCode} width={1.4} height={32} />
-                            </div>
-                            <div className="p-1 bg-white border border-slate-200 rounded-lg shrink-0">
+                        {/* Código QR Agrandado (2x) y Código de Trazabilidad (Sin código de barras) */}
+                        <div className="pt-3 border-t border-slate-200 flex items-center justify-between gap-3">
+                            <div className="p-2 bg-white border-2 border-slate-900 rounded-xl shrink-0 flex items-center justify-center">
                                 <QRCodeSVG
                                     value={JSON.stringify({
                                         id: uniquePalletCode,
@@ -611,8 +533,22 @@ export default function TarimaLabelModal({
                                         boxes: boxesCount,
                                         date: receptionDate
                                     })}
-                                    size={48}
+                                    size={96}
                                 />
+                            </div>
+                            <div className="flex-1 flex flex-col justify-between py-1">
+                                <div>
+                                    <span className="text-[9px] font-black uppercase tracking-wider text-slate-500 block mb-1">
+                                        Código Trazabilidad
+                                    </span>
+                                    <div className="font-mono text-xs font-black text-slate-900 bg-white border-2 border-slate-900 rounded-lg px-2 py-1 text-center tracking-wider break-all">
+                                        *{uniquePalletCode}*
+                                    </div>
+                                </div>
+                                <div className="mt-2 text-[9px] font-semibold text-slate-500">
+                                    <span className="text-slate-700 font-bold">EMPAQUE: </span>
+                                    {hasCaja ? 'CON CAJA / JABA' : 'A GRANEL'}
+                                </div>
                             </div>
                         </div>
                     </div>

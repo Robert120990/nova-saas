@@ -34,7 +34,9 @@ import {
     ClipboardList,
     Check,
     Loader2,
-    ChevronDown
+    ChevronDown,
+    Scale,
+    Layers
 } from 'lucide-react';
 import TarimaLabelModal from '../../components/egg/TarimaLabelModal';
 import PdfViewerModal from '../../components/ui/PdfViewerModal';
@@ -55,8 +57,10 @@ const EggReception = () => {
     const todayStr = new Date().toISOString().split('T')[0];
 
     const [useTarimas, setUseTarimas] = useState(false);
+    const [globalHasCaja, setGlobalHasCaja] = useState(true);
+    const [bulkAddCount, setBulkAddCount] = useState(10);
     const [tarimas, setTarimas] = useState([
-        { id: 1, tarima_number: 1, gross_weight_lbs: '', tare_weight_lbs: 60, net_weight_lbs: 0, boxes_count: 24 }
+        { id: 1, tarima_number: 1, gross_weight_lbs: '', tare_weight_lbs: 78, net_weight_lbs: 0, boxes_count: 24, has_caja: true }
     ]);
 
     // Form state
@@ -753,17 +757,109 @@ const EggReception = () => {
         });
     };
 
+    // Helpers para cálculo y tasas de tara según configuración de proveedor
+    const getProviderTareRates = () => {
+        const provConfig = providerLotIntel?.config || providerLotConfigs.find(c => String(c.provider_id) === String(formData.provider_id));
+        const baseB = parseInt(provConfig?.base_boxes_per_tarima) || 24;
+        const sepTare = parseFloat(provConfig?.tare_separador_lbs !== undefined ? provConfig.tare_separador_lbs : 48);
+        const boxTare = parseFloat(provConfig?.tare_caja_lbs !== undefined ? provConfig.tare_caja_lbs : 30);
+        const defaultHasCaja = provConfig?.default_has_caja !== undefined ? Boolean(provConfig.default_has_caja) : true;
+        return {
+            baseB,
+            sepTare,
+            boxTare,
+            rateSep: baseB > 0 ? (sepTare / baseB) : 2.0,
+            rateBox: baseB > 0 ? (boxTare / baseB) : 1.25,
+            defaultHasCaja,
+            providerName: provConfig?.provider_name || providerLotIntel?.provider?.nombre || ''
+        };
+    };
+
+    const calculateTarimaTare = (boxes, hasCaja = globalHasCaja, customProvConfig = null) => {
+        let rateSep = 2.0;
+        let rateBox = 1.25;
+        if (customProvConfig) {
+            const baseB = parseInt(customProvConfig.base_boxes_per_tarima) || 24;
+            const sepTare = parseFloat(customProvConfig.tare_separador_lbs !== undefined ? customProvConfig.tare_separador_lbs : 48);
+            const boxTare = parseFloat(customProvConfig.tare_caja_lbs !== undefined ? customProvConfig.tare_caja_lbs : 30);
+            rateSep = baseB > 0 ? (sepTare / baseB) : 2.0;
+            rateBox = baseB > 0 ? (boxTare / baseB) : 1.25;
+        } else {
+            const rates = getProviderTareRates();
+            rateSep = rates.rateSep;
+            rateBox = rates.rateBox;
+        }
+        const b = parseInt(boxes) || 0;
+        const total = (b * rateSep) + (hasCaja ? (b * rateBox) : 0);
+        return Math.round(total * 100) / 100;
+    };
+
     // Helpers para tarimas
-    const addTarima = () => {
+    const addTarima = (boxes = 24, hasCaja = globalHasCaja) => {
         const nextNum = tarimas.length + 1;
-        setTarimas([...tarimas, {
-            id: Date.now(),
+        const calculatedTare = calculateTarimaTare(boxes, hasCaja);
+        const updated = [...tarimas, {
+            id: Date.now() + Math.random(),
             tarima_number: nextNum,
             gross_weight_lbs: '',
-            tare_weight_lbs: 60,
+            tare_weight_lbs: calculatedTare,
             net_weight_lbs: 0,
-            boxes_count: 24
-        }]);
+            boxes_count: boxes,
+            has_caja: hasCaja
+        }];
+        setTarimas(updated);
+        recalcTarimasTotals(updated);
+    };
+
+    const addMultipleTarimas = (count, boxes = 24, hasCaja = globalHasCaja) => {
+        const n = parseInt(count);
+        if (!n || n <= 0) {
+            toast.error('Ingrese una cantidad válida de tarimas a agregar.');
+            return;
+        }
+        if (n > 200) {
+            toast.error('El límite máximo por lote es de 200 tarimas.');
+            return;
+        }
+
+        const startNum = tarimas.length + 1;
+        const calculatedTare = calculateTarimaTare(boxes, hasCaja);
+        const newRows = [];
+        for (let i = 0; i < n; i++) {
+            newRows.push({
+                id: Date.now() + i + Math.random(),
+                tarima_number: startNum + i,
+                gross_weight_lbs: '',
+                tare_weight_lbs: calculatedTare,
+                net_weight_lbs: 0,
+                boxes_count: boxes,
+                has_caja: hasCaja
+            });
+        }
+        const updated = [...tarimas, ...newRows];
+        setTarimas(updated);
+        recalcTarimasTotals(updated);
+        toast.success(`Se agregaron ${n} tarimas (#${startNum} a #${startNum + n - 1}) con éxito.`);
+    };
+
+    const applyEmpaqueModeToAll = (newHasCaja) => {
+        setGlobalHasCaja(newHasCaja);
+        const updated = tarimas.map(t => {
+            const calculatedTare = calculateTarimaTare(t.boxes_count || 24, newHasCaja);
+            const gross = parseFloat(t.gross_weight_lbs) || 0;
+            return {
+                ...t,
+                has_caja: newHasCaja,
+                tare_weight_lbs: calculatedTare,
+                net_weight_lbs: gross > 0 ? Math.max(0, Math.round((gross - calculatedTare) * 100) / 100) : 0
+            };
+        });
+        setTarimas(updated);
+        recalcTarimasTotals(updated);
+        toast.info(newHasCaja 
+            ? 'Empaque con cajas aplicado a todas las tarimas (descuenta separador y caja).' 
+            : 'Empaque a granel aplicado a todas las tarimas (solo descuenta separadores).'
+        );
     };
 
     const removeTarima = (index) => {
@@ -777,11 +873,20 @@ const EggReception = () => {
 
     const updateTarima = (index, field, value) => {
         const updated = [...tarimas];
-        updated[index][field] = value;
-        
+        updated[index] = { ...updated[index], [field]: value };
+
+        if (field === 'boxes_count') {
+            const hasC = updated[index].has_caja !== undefined ? updated[index].has_caja : globalHasCaja;
+            const newTare = calculateTarimaTare(value, hasC);
+            updated[index].tare_weight_lbs = newTare;
+        } else if (field === 'has_caja') {
+            const newTare = calculateTarimaTare(updated[index].boxes_count || 24, value);
+            updated[index].tare_weight_lbs = newTare;
+        }
+
         const gross = parseFloat(updated[index].gross_weight_lbs) || 0;
         const tare = parseFloat(updated[index].tare_weight_lbs) || 0;
-        updated[index].net_weight_lbs = Math.max(0, gross - tare);
+        updated[index].net_weight_lbs = gross > 0 ? Math.max(0, Math.round((gross - tare) * 100) / 100) : 0;
 
         setTarimas(updated);
         recalcTarimasTotals(updated);
@@ -806,6 +911,10 @@ const EggReception = () => {
         try {
             const res = await axios.get(`/api/egg-industrial/providers/${providerId}/lot-intelligence`);
             setProviderLotIntel(res.data);
+            const provConfig = res.data?.config;
+            const provHasCaja = provConfig?.default_has_caja !== undefined ? Boolean(provConfig.default_has_caja) : true;
+            setGlobalHasCaja(provHasCaja);
+
             if (res.data?.suggested_lot) {
                 setFormData(prev => ({
                     ...prev,
@@ -813,6 +922,23 @@ const EggReception = () => {
                     provider_lot: res.data.suggested_lot
                 }));
             }
+
+            // Actualizar taras en curso según parámetros de tara del nuevo proveedor
+            setTarimas(prev => {
+                const updated = prev.map(t => {
+                    const hasC = t.has_caja !== undefined ? t.has_caja : provHasCaja;
+                    const calculatedTare = calculateTarimaTare(t.boxes_count || 24, hasC, provConfig);
+                    const gross = parseFloat(t.gross_weight_lbs) || 0;
+                    return {
+                        ...t,
+                        has_caja: hasC,
+                        tare_weight_lbs: calculatedTare,
+                        net_weight_lbs: gross > 0 ? Math.max(0, Math.round((gross - calculatedTare) * 100) / 100) : 0
+                    };
+                });
+                recalcTarimasTotals(updated);
+                return updated;
+            });
         } catch (e) {
             console.error('Error fetching provider lot intelligence:', e);
         }
@@ -916,7 +1042,9 @@ const EggReception = () => {
         setIsCreateModalOpen(false);
         setUseTarimas(false);
         setProviderLotIntel(null);
-        setTarimas([{ id: 1, tarima_number: 1, gross_weight_lbs: '', tare_weight_lbs: 60, net_weight_lbs: 0, boxes_count: 24 }]);
+        setGlobalHasCaja(true);
+        setBulkAddCount(10);
+        setTarimas([{ id: 1, tarima_number: 1, gross_weight_lbs: '', tare_weight_lbs: 78, net_weight_lbs: 0, boxes_count: 24, has_caja: true }]);
         setFormData({
             provider_id: '',
             provider_name: '',
@@ -973,11 +1101,17 @@ const EggReception = () => {
         });
 
         if (Array.isArray(parsedTarimas) && parsedTarimas.length > 0) {
-            setTarimas(parsedTarimas);
+            const normalized = parsedTarimas.map((t, idx) => ({
+                ...t,
+                tarima_number: t.tarima_number || (idx + 1),
+                has_caja: t.has_caja !== undefined ? Boolean(t.has_caja) : true
+            }));
+            setTarimas(normalized);
+            setGlobalHasCaja(normalized[0]?.has_caja !== undefined ? normalized[0].has_caja : true);
             setUseTarimas(true);
         } else {
             setUseTarimas(false);
-            setTarimas([{ id: 1, tarima_number: 1, gross_weight_lbs: rm.weight_lbs || '', tare_weight_lbs: 0, net_weight_lbs: rm.weight_lbs || 0, boxes_count: rm.total_boxes || 24 }]);
+            setTarimas([{ id: 1, tarima_number: 1, gross_weight_lbs: rm.weight_lbs || '', tare_weight_lbs: 0, net_weight_lbs: rm.weight_lbs || 0, boxes_count: rm.total_boxes || 24, has_caja: true }]);
         }
 
         setIsCreateModalOpen(true);
@@ -1576,94 +1710,202 @@ const EggReception = () => {
                                 </div>
                             ) : (
                                 <div className="space-y-3">
+                                    {/* Barra informativa de parámetros de tara del proveedor y modo de empaque */}
+                                    {(() => {
+                                        const rates = getProviderTareRates();
+                                        return (
+                                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 p-3 bg-white rounded-xl border border-indigo-100 shadow-xs text-xs">
+                                                <div className="flex items-center gap-2.5">
+                                                    <div className="p-2 bg-indigo-50 text-indigo-700 rounded-lg">
+                                                        <Scale size={16} />
+                                                    </div>
+                                                    <div>
+                                                        <div className="font-bold text-slate-900 flex flex-wrap items-center gap-2">
+                                                            <span>Taras de Proveedor:</span>
+                                                            <span className="font-mono text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded text-[11px] font-black">
+                                                                Sep: {rates.sepTare} lb ({rates.rateSep.toFixed(2)}/cj) + Caja: {rates.boxTare} lb ({rates.rateBox.toFixed(2)}/cj)
+                                                            </span>
+                                                        </div>
+                                                        <div className="text-[11px] text-slate-500 font-medium">
+                                                            Tarima base ({rates.baseB} cajas): <strong>{(rates.sepTare + rates.boxTare).toFixed(2)} lb</strong> (Con Caja) / <strong>{rates.sepTare.toFixed(2)} lb</strong> (A Granel)
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {/* Switch de modo de empaque rápido de remesa */}
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Empaque Remesa:</span>
+                                                    <div className="inline-flex rounded-lg border border-slate-200 p-0.5 bg-slate-50">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => applyEmpaqueModeToAll(true)}
+                                                            className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-all ${
+                                                                globalHasCaja
+                                                                    ? 'bg-indigo-600 text-white shadow-xs'
+                                                                    : 'text-slate-600 hover:text-slate-900'
+                                                            }`}
+                                                            title="Descuenta separador y caja (ej: 78 lb p/24 cajas)"
+                                                        >
+                                                            Con Cajas / Jabas
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => applyEmpaqueModeToAll(false)}
+                                                            className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-all ${
+                                                                !globalHasCaja
+                                                                    ? 'bg-amber-600 text-white shadow-xs'
+                                                                    : 'text-slate-600 hover:text-slate-900'
+                                                            }`}
+                                                            title="Descuenta únicamente separadores (ej: 48 lb p/24 cajas)"
+                                                        >
+                                                            A Granel (Solo Separador)
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })()}
+
                                     <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
                                         <table className="w-full text-left text-xs">
                                             <thead className="bg-slate-50 text-slate-600 text-[10px] uppercase font-bold border-b border-slate-200">
                                                 <tr>
                                                     <th className="p-2 text-center w-12">#</th>
-                                                    <th className="p-2 w-28">Cajas</th>
-                                                    <th className="p-2">Peso Bruto (lb)</th>
-                                                    <th className="p-2">Tara (lb)</th>
+                                                    <th className="p-2 w-28 text-center">Empaque</th>
+                                                    <th className="p-2 w-24">Cajas</th>
+                                                    <th className="p-2 w-32">Peso Bruto (lb)</th>
+                                                    <th className="p-2 w-36">Tara (lb)</th>
                                                     <th className="p-2 text-right">Peso Neto (lb)</th>
                                                     <th className="p-2 w-16 text-center">Acciones</th>
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-slate-100 font-semibold text-slate-800">
-                                                {tarimas.map((t, idx) => (
-                                                    <tr key={t.id || idx} className="hover:bg-slate-50">
-                                                        <td className="p-2 text-center text-slate-500 text-xs font-bold">{t.tarima_number}</td>
-                                                        <td className="p-2">
-                                                            <input
-                                                                type="number"
-                                                                value={t.boxes_count}
-                                                                onChange={(e) => updateTarima(idx, 'boxes_count', e.target.value)}
-                                                                className="w-full px-2 py-1 bg-white border border-slate-300 rounded-lg text-xs text-slate-800 font-bold text-center"
-                                                            />
-                                                        </td>
-                                                        <td className="p-2">
-                                                            <input
-                                                                type="number"
-                                                                step="0.1"
-                                                                placeholder="0.0"
-                                                                value={t.gross_weight_lbs}
-                                                                onChange={(e) => updateTarima(idx, 'gross_weight_lbs', e.target.value)}
-                                                                className="w-full px-2 py-1 bg-white border border-slate-300 rounded-lg text-xs text-slate-800 font-bold"
-                                                            />
-                                                        </td>
-                                                        <td className="p-2">
-                                                            <input
-                                                                type="number"
-                                                                step="0.1"
-                                                                value={t.tare_weight_lbs}
-                                                                onChange={(e) => updateTarima(idx, 'tare_weight_lbs', e.target.value)}
-                                                                className="w-full px-2 py-1 bg-white border border-slate-300 rounded-lg text-xs text-slate-600"
-                                                            />
-                                                        </td>
-                                                        <td className="p-2 text-right font-black text-emerald-700 text-xs">
-                                                            {parseFloat(t.net_weight_lbs || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} lb
-                                                        </td>
-                                                        <td className="p-2 text-center">
-                                                            <div className="flex items-center justify-center gap-1">
+                                                {tarimas.map((t, idx) => {
+                                                    const hasC = t.has_caja !== undefined ? t.has_caja : globalHasCaja;
+                                                    const rates = getProviderTareRates();
+                                                    const b = parseInt(t.boxes_count) || 0;
+                                                    const sepPart = (b * rates.rateSep).toFixed(1);
+                                                    const boxPart = (b * rates.rateBox).toFixed(1);
+
+                                                    return (
+                                                        <tr key={t.id || idx} className="hover:bg-slate-50">
+                                                            <td className="p-2 text-center text-slate-500 text-xs font-bold">{t.tarima_number}</td>
+                                                            <td className="p-2 text-center">
                                                                 <button
                                                                     type="button"
-                                                                    onClick={() => handleOpenPrintTarima(t, tarimas)}
-                                                                    className="p-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg border border-indigo-200 transition-colors shadow-xs"
-                                                                    title={`Imprimir Ficha / Etiqueta de Tarima #${t.tarima_number}`}
+                                                                    onClick={() => updateTarima(idx, 'has_caja', !hasC)}
+                                                                    className={`px-2 py-0.5 rounded-md text-[10px] font-bold border transition-colors ${
+                                                                        hasC
+                                                                            ? 'bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100'
+                                                                            : 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100'
+                                                                    }`}
+                                                                    title="Clic para alternar entre Con Caja y A Granel"
                                                                 >
-                                                                    <Printer size={14} />
+                                                                    {hasC ? 'Con Caja' : 'A Granel'}
                                                                 </button>
-                                                                {tarimas.length > 1 && (
+                                                            </td>
+                                                            <td className="p-2">
+                                                                <input
+                                                                    type="number"
+                                                                    value={t.boxes_count}
+                                                                    onChange={(e) => updateTarima(idx, 'boxes_count', e.target.value)}
+                                                                    className="w-full px-2 py-1 bg-white border border-slate-300 rounded-lg text-xs text-slate-800 font-bold text-center focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+                                                                />
+                                                            </td>
+                                                            <td className="p-2">
+                                                                <input
+                                                                    type="number"
+                                                                    step="0.1"
+                                                                    placeholder="0.0"
+                                                                    value={t.gross_weight_lbs}
+                                                                    onChange={(e) => updateTarima(idx, 'gross_weight_lbs', e.target.value)}
+                                                                    className="w-full px-2 py-1 bg-white border border-slate-300 rounded-lg text-xs text-slate-800 font-bold focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+                                                                />
+                                                            </td>
+                                                            <td className="p-2">
+                                                                <input
+                                                                    type="number"
+                                                                    step="0.01"
+                                                                    value={t.tare_weight_lbs}
+                                                                    onChange={(e) => updateTarima(idx, 'tare_weight_lbs', e.target.value)}
+                                                                    className="w-full px-2 py-1 bg-white border border-slate-300 rounded-lg text-xs text-slate-700 font-medium focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+                                                                    title="Tara editable. Se recalcula automáticamente por fórmula proporcional."
+                                                                />
+                                                                <div className="text-[9px] text-slate-400 mt-0.5 leading-none">
+                                                                    Sep: {sepPart} {hasC ? `+ Caja: ${boxPart}` : '(Granel)'}
+                                                                </div>
+                                                            </td>
+                                                            <td className="p-2 text-right font-black text-emerald-700 text-xs">
+                                                                {parseFloat(t.net_weight_lbs || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} lb
+                                                            </td>
+                                                            <td className="p-2 text-center">
+                                                                <div className="flex items-center justify-center gap-1">
                                                                     <button
                                                                         type="button"
-                                                                        onClick={() => removeTarima(idx)}
-                                                                        className="p-1 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition-colors"
-                                                                        title="Eliminar Tarima"
+                                                                        onClick={() => handleOpenPrintTarima(t, tarimas)}
+                                                                        className="p-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg border border-indigo-200 transition-colors shadow-xs"
+                                                                        title={`Imprimir Ficha / Etiqueta de Tarima #${t.tarima_number}`}
                                                                     >
-                                                                        <XCircle size={15} />
+                                                                        <Printer size={14} />
                                                                     </button>
-                                                                )}
-                                                            </div>
-                                                        </td>
-                                                    </tr>
-                                                ))}
+                                                                    {tarimas.length > 1 && (
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => removeTarima(idx)}
+                                                                            className="p-1 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition-colors"
+                                                                            title="Eliminar Tarima"
+                                                                        >
+                                                                            <XCircle size={15} />
+                                                                        </button>
+                                                                    )}
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
                                             </tbody>
                                         </table>
                                     </div>
 
-                                    <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
-                                        <div className="flex items-center gap-2">
+                                    <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 pt-2">
+                                        <div className="flex flex-wrap items-center gap-2">
                                             <button
                                                 type="button"
-                                                onClick={addTarima}
+                                                onClick={() => addTarima(24, globalHasCaja)}
                                                 className="px-3 py-1.5 bg-white hover:bg-slate-100 text-indigo-700 rounded-xl text-xs font-bold border border-slate-200 flex items-center gap-1.5 shadow-xs transition-all"
                                             >
                                                 <Plus size={14} />
                                                 Agregar Tarima #{tarimas.length + 1}
                                             </button>
+
+                                            {/* Control de adición de múltiples tarimas */}
+                                            <div className="inline-flex items-center gap-1.5 bg-white p-1 rounded-xl border border-slate-200 shadow-xs">
+                                                <span className="text-[11px] font-bold text-slate-500 pl-1.5">Lote:</span>
+                                                <input
+                                                    type="number"
+                                                    min="1"
+                                                    max="100"
+                                                    value={bulkAddCount}
+                                                    onChange={(e) => setBulkAddCount(Math.max(1, parseInt(e.target.value) || 1))}
+                                                    className="w-14 px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-center text-slate-800 focus:bg-white"
+                                                    placeholder="10"
+                                                    title="Cantidad de tarimas a generar en bloque"
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={() => addMultipleTarimas(bulkAddCount, 24, globalHasCaja)}
+                                                    className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-xs font-bold border border-indigo-200 flex items-center gap-1 transition-all"
+                                                    title={`Agregar ${bulkAddCount} tarimas de 24 cajas de un solo`}
+                                                >
+                                                    <Layers size={13} />
+                                                    + Agregar {bulkAddCount} Tarimas
+                                                </button>
+                                            </div>
+
                                             <button
                                                 type="button"
                                                 onClick={() => handleOpenPrintTarima(tarimas[0], tarimas)}
-                                                className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl text-xs font-bold border border-indigo-200 flex items-center gap-1.5 shadow-xs transition-all"
+                                                className="px-3 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-xl text-xs font-bold border border-slate-200 flex items-center gap-1.5 shadow-xs transition-all"
                                                 title="Imprimir etiquetas de todas las tarimas registradas"
                                             >
                                                 <Printer size={14} />

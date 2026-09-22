@@ -2973,20 +2973,29 @@ const saveProviderLotConfig = async (req, res) => {
         const { provider_id, lot_prefix, notes } = req.body;
         const format_pattern = req.body.format_pattern || req.body.suffix_format || 'correlativo';
         const next_correlative = req.body.next_correlative || 1;
+        const tare_separador_lbs = req.body.tare_separador_lbs !== undefined ? parseFloat(req.body.tare_separador_lbs) : 48.00;
+        const tare_caja_lbs = req.body.tare_caja_lbs !== undefined ? parseFloat(req.body.tare_caja_lbs) : 30.00;
+        const base_boxes_per_tarima = req.body.base_boxes_per_tarima !== undefined ? parseInt(req.body.base_boxes_per_tarima) : 24;
+        const default_has_caja = req.body.default_has_caja !== undefined ? (req.body.default_has_caja ? 1 : 0) : 1;
+
         if (!provider_id || !lot_prefix) {
             return res.status(400).json({ message: 'Proveedor y prefijo de lote son obligatorios.' });
         }
         await pool.query(
             `INSERT INTO egg_provider_lot_configurations 
-             (company_id, provider_id, lot_prefix, format_pattern, next_correlative, notes)
-             VALUES (?, ?, ?, ?, ?, ?)
+             (company_id, provider_id, lot_prefix, format_pattern, tare_separador_lbs, tare_caja_lbs, base_boxes_per_tarima, default_has_caja, next_correlative, notes)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON DUPLICATE KEY UPDATE 
                 lot_prefix = VALUES(lot_prefix),
                 format_pattern = VALUES(format_pattern),
+                tare_separador_lbs = VALUES(tare_separador_lbs),
+                tare_caja_lbs = VALUES(tare_caja_lbs),
+                base_boxes_per_tarima = VALUES(base_boxes_per_tarima),
+                default_has_caja = VALUES(default_has_caja),
                 next_correlative = VALUES(next_correlative),
                 notes = VALUES(notes),
                 updated_at = NOW()`,
-            [req.company_id, provider_id, lot_prefix.trim().toUpperCase(), format_pattern, next_correlative, notes || null]
+            [req.company_id, provider_id, lot_prefix.trim().toUpperCase(), format_pattern, tare_separador_lbs, tare_caja_lbs, base_boxes_per_tarima, default_has_caja, next_correlative, notes || null]
         );
         res.json({ success: true, message: 'Configuración de lote guardada correctamente.' });
     } catch (error) {

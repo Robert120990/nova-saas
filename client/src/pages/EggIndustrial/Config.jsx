@@ -42,7 +42,9 @@ import {
     Filter,
     X,
     AlertCircle,
-    Lock
+    Lock,
+    Scale,
+    Boxes
 } from 'lucide-react';
 
 const MONTH_NAMES = [
@@ -209,6 +211,10 @@ const EggConfig = () => {
         provider_nrc: '',
         lot_prefix: '',
         suffix_format: 'correlativo',
+        tare_separador_lbs: 48,
+        tare_caja_lbs: 30,
+        base_boxes_per_tarima: 24,
+        default_has_caja: true,
         notes: ''
     });
 
@@ -917,6 +923,10 @@ const EggConfig = () => {
                 provider_nrc: configItem.provider_nrc || '',
                 lot_prefix: configItem.lot_prefix || '',
                 suffix_format: configItem.format_pattern || configItem.suffix_format || 'correlativo',
+                tare_separador_lbs: configItem.tare_separador_lbs !== undefined ? configItem.tare_separador_lbs : 48,
+                tare_caja_lbs: configItem.tare_caja_lbs !== undefined ? configItem.tare_caja_lbs : 30,
+                base_boxes_per_tarima: configItem.base_boxes_per_tarima || 24,
+                default_has_caja: configItem.default_has_caja !== undefined ? Boolean(configItem.default_has_caja) : true,
                 notes: configItem.notes || ''
             });
         } else {
@@ -927,6 +937,10 @@ const EggConfig = () => {
                 provider_nrc: '',
                 lot_prefix: '',
                 suffix_format: 'correlativo',
+                tare_separador_lbs: 48,
+                tare_caja_lbs: 30,
+                base_boxes_per_tarima: 24,
+                default_has_caja: true,
                 notes: ''
             });
         }
@@ -944,9 +958,13 @@ const EggConfig = () => {
                 lot_prefix: lotConfigForm.lot_prefix.trim().toUpperCase(),
                 format_pattern: lotConfigForm.suffix_format,
                 suffix_format: lotConfigForm.suffix_format,
+                tare_separador_lbs: parseFloat(lotConfigForm.tare_separador_lbs) || 48,
+                tare_caja_lbs: parseFloat(lotConfigForm.tare_caja_lbs) || 30,
+                base_boxes_per_tarima: parseInt(lotConfigForm.base_boxes_per_tarima) || 24,
+                default_has_caja: lotConfigForm.default_has_caja ? 1 : 0,
                 notes: lotConfigForm.notes
             });
-            toast.success('Parametrización de lote para proveedor guardada.');
+            toast.success('Parametrización de lote y taras para proveedor guardada.');
             setIsLotConfigModalOpen(false);
             const res = await axios.get('/api/egg-industrial/provider-lot-configs');
             setProviderLotConfigs(Array.isArray(res.data) ? res.data : []);
@@ -1225,6 +1243,8 @@ const EggConfig = () => {
                                     <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase tracking-wider text-[10px]">
                                         <th className="px-4 py-3">Proveedor</th>
                                         <th className="px-4 py-3">Prefijo Configurado</th>
+                                        <th className="px-4 py-3">Taras Base (Por Tarima)</th>
+                                        <th className="px-4 py-3">Empaque Habitual</th>
                                         <th className="px-4 py-3">Último Lote Registrado</th>
                                         <th className="px-4 py-3">Formato de Sufijo</th>
                                         <th className="px-4 py-3">Notas / Identificación Granja</th>
@@ -1232,30 +1252,60 @@ const EggConfig = () => {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
-                                    {providerLotConfigs.map(item => (
-                                        <tr key={item.id} className="hover:bg-slate-50/75 transition-colors">
-                                            <td className="px-4 py-3">
-                                                <div className="flex flex-col">
-                                                    <span className="font-bold text-slate-900 text-xs">{item.provider_name || 'Proveedor sin nombre'}</span>
-                                                    {item.provider_nrc && (
-                                                        <span className="text-[10px] text-slate-400 font-medium">NRC: {item.provider_nrc}</span>
-                                                    )}
-                                                </div>
-                                            </td>
-                                            <td className="px-4 py-3">
-                                                <span className="inline-flex items-center px-2.5 py-1 rounded-md bg-indigo-50 border border-indigo-200 text-indigo-700 font-mono font-bold text-xs">
-                                                    {item.lot_prefix}
-                                                </span>
-                                            </td>
-                                            <td className="px-4 py-3">
-                                                {item.last_used_lot ? (
-                                                    <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200 text-slate-800 font-mono text-[11px] font-semibold">
-                                                        {item.last_used_lot}
+                                    {providerLotConfigs.map(item => {
+                                        const baseB = item.base_boxes_per_tarima || 24;
+                                        const sepTare = parseFloat(item.tare_separador_lbs !== undefined ? item.tare_separador_lbs : 48);
+                                        const boxTare = parseFloat(item.tare_caja_lbs !== undefined ? item.tare_caja_lbs : 30);
+                                        const hasBox = item.default_has_caja !== undefined ? Boolean(item.default_has_caja) : true;
+                                        const totalTare = sepTare + (hasBox ? boxTare : 0);
+
+                                        return (
+                                            <tr key={item.id} className="hover:bg-slate-50/75 transition-colors">
+                                                <td className="px-4 py-3">
+                                                    <div className="flex flex-col">
+                                                        <span className="font-bold text-slate-900 text-xs">{item.provider_name || 'Proveedor sin nombre'}</span>
+                                                        {item.provider_nrc && (
+                                                            <span className="text-[10px] text-slate-400 font-medium">NRC: {item.provider_nrc}</span>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                                <td className="px-4 py-3">
+                                                    <span className="inline-flex items-center px-2.5 py-1 rounded-md bg-indigo-50 border border-indigo-200 text-indigo-700 font-mono font-bold text-xs">
+                                                        {item.lot_prefix}
                                                     </span>
-                                                ) : (
-                                                    <span className="text-slate-400 italic text-[11px]">Sin lotes previos</span>
-                                                )}
-                                            </td>
+                                                </td>
+                                                <td className="px-4 py-3">
+                                                    <div className="flex flex-col gap-0.5 text-[11px]">
+                                                        <div className="flex items-center gap-1.5 font-bold text-slate-800">
+                                                            <span className="font-black text-indigo-700">{totalTare.toFixed(1)} lb</span>
+                                                            <span className="text-[10px] text-slate-400">({baseB} cjs)</span>
+                                                        </div>
+                                                        <div className="text-[10px] text-slate-500">
+                                                            Sep: <span className="font-semibold text-slate-700">{sepTare.toFixed(1)} lb</span> ({ (sepTare / baseB).toFixed(2) }/cj)
+                                                        </div>
+                                                        <div className="text-[10px] text-slate-500">
+                                                            Caja: <span className="font-semibold text-slate-700">{boxTare.toFixed(1)} lb</span> ({ (boxTare / baseB).toFixed(2) }/cj)
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                                <td className="px-4 py-3">
+                                                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                                        hasBox
+                                                            ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                                                            : 'bg-amber-50 text-amber-700 border border-amber-200'
+                                                    }`}>
+                                                        {hasBox ? 'Con Cajas / Jabas' : 'A Granel (Solo Separador)'}
+                                                    </span>
+                                                </td>
+                                                <td className="px-4 py-3">
+                                                    {item.last_used_lot ? (
+                                                        <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200 text-slate-800 font-mono text-[11px] font-semibold">
+                                                            {item.last_used_lot}
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-slate-400 italic text-[11px]">Sin lotes previos</span>
+                                                    )}
+                                                </td>
                                             <td className="px-4 py-3 capitalize">
                                                 <span className="text-slate-600 font-medium text-[11px]">
                                                     {(item.suffix_format === 'correlativo' || item.format_pattern === 'correlativo') && 'Correlativo numérico (-01, -02)'}
@@ -1286,7 +1336,8 @@ const EggConfig = () => {
                                                 </div>
                                             </td>
                                         </tr>
-                                    ))}
+                                    );
+                                })}
                                 </tbody>
                             </table>
                         </div>
@@ -2644,13 +2695,123 @@ const EggConfig = () => {
                                 </select>
                             </div>
 
+                            {/* Parámetros de Tara por Tarima Estándar */}
+                            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-3">
+                                <div className="flex items-center justify-between">
+                                    <label className="text-[11px] font-black text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
+                                        <Scale size={14} className="text-indigo-600" />
+                                        Parámetros de Tara por Tarima
+                                    </label>
+                                    <span className="text-[10px] text-slate-400 font-medium">Báscula y Recepción MP</span>
+                                </div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide block">
+                                            Cajas Base / Tarima
+                                        </label>
+                                        <input
+                                            type="number"
+                                            min="1"
+                                            value={lotConfigForm.base_boxes_per_tarima}
+                                            onChange={(e) => setLotConfigForm({ ...lotConfigForm, base_boxes_per_tarima: e.target.value })}
+                                            className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                            placeholder="24"
+                                        />
+                                    </div>
+
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide block">
+                                            Tara Separador (lb) *
+                                        </label>
+                                        <input
+                                            type="number"
+                                            step="0.01"
+                                            value={lotConfigForm.tare_separador_lbs}
+                                            onChange={(e) => setLotConfigForm({ ...lotConfigForm, tare_separador_lbs: e.target.value })}
+                                            className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-bold text-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                            placeholder="48.00"
+                                        />
+                                    </div>
+
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide block">
+                                            Tara Jaba / Caja (lb) *
+                                        </label>
+                                        <input
+                                            type="number"
+                                            step="0.01"
+                                            value={lotConfigForm.tare_caja_lbs}
+                                            onChange={(e) => setLotConfigForm({ ...lotConfigForm, tare_caja_lbs: e.target.value })}
+                                            className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-bold text-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                            placeholder="30.00"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="space-y-1">
+                                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide block">
+                                        Empaque Habitual de Envío
+                                    </label>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => setLotConfigForm({ ...lotConfigForm, default_has_caja: true })}
+                                            className={`px-3 py-1.5 rounded-lg border text-xs font-bold transition-all ${
+                                                lotConfigForm.default_has_caja
+                                                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                                                    : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                                            }`}
+                                        >
+                                            Con Cajas / Jabas
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setLotConfigForm({ ...lotConfigForm, default_has_caja: false })}
+                                            className={`px-3 py-1.5 rounded-lg border text-xs font-bold transition-all ${
+                                                !lotConfigForm.default_has_caja
+                                                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                                                    : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                                            }`}
+                                        >
+                                            A Granel (Solo Separador)
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* Resumen dinámico de tasas de tara */}
+                                <div className="p-2.5 bg-white border border-slate-200 rounded-lg text-[11px] text-slate-600 space-y-1">
+                                    <div className="flex justify-between items-center font-medium">
+                                        <span>Tasa Separador:</span>
+                                        <strong className="text-slate-900 font-mono">
+                                            {((parseFloat(lotConfigForm.tare_separador_lbs) || 0) / (parseInt(lotConfigForm.base_boxes_per_tarima) || 24)).toFixed(2)} lb/caja
+                                        </strong>
+                                    </div>
+                                    <div className="flex justify-between items-center font-medium">
+                                        <span>Tasa Jaba / Caja:</span>
+                                        <strong className="text-slate-900 font-mono">
+                                            {((parseFloat(lotConfigForm.tare_caja_lbs) || 0) / (parseInt(lotConfigForm.base_boxes_per_tarima) || 24)).toFixed(2)} lb/caja
+                                        </strong>
+                                    </div>
+                                    <div className="flex justify-between items-center pt-1 border-t border-slate-100 font-black text-indigo-700">
+                                        <span>Tara Tarima Estándar ({lotConfigForm.base_boxes_per_tarima || 24} cajas {lotConfigForm.default_has_caja ? 'con caja' : 'a granel'}):</span>
+                                        <span className="font-mono text-xs">
+                                            {(
+                                                (parseFloat(lotConfigForm.tare_separador_lbs) || 0) +
+                                                (lotConfigForm.default_has_caja ? (parseFloat(lotConfigForm.tare_caja_lbs) || 0) : 0)
+                                            ).toFixed(2)} lb
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+
                             <div className="space-y-1">
                                 <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block">Notas o Ubicación de Granja</label>
                                 <textarea
                                     value={lotConfigForm.notes}
                                     onChange={(e) => setLotConfigForm({ ...lotConfigForm, notes: e.target.value })}
                                     placeholder="Ej: Galpón principal, granja Sonsonate..."
-                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 h-20"
+                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 h-16"
                                 />
                             </div>
 
