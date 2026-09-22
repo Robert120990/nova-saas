@@ -368,15 +368,15 @@ const voidAdjustment = async (req, res) => {
                 );
             }
 
-            // Registrar movimiento de reversa en Kardex (usamos el ID efectivo)
-            const reverseType = header.tipo === 'ENTRADA' ? 'SALIDA' : 'ENTRADA';
-            await connection.query(`
-                INSERT INTO inventory_movements (company_id, product_id, branch_id, tipo_movimiento, cantidad, costo, precio_venta, tipo_documento, documento_id, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, 'ANULACION_AJUSTE', ?, NOW())
-            `, [header.company_id, effectiveProductId, branch_id, reverseType, cantidad, costo, costo, id]);
         }
 
-        // 4. Marcar como anulado
+        // 4. Eliminar los movimientos del kárdex para que el movimiento anulado ya no afecte entradas, salidas ni reportes
+        await connection.query(
+            'DELETE FROM inventory_movements WHERE documento_id = ? AND tipo_documento IN ("AJUSTE", "ANULACION_AJUSTE", "INVENTARIO_INICIAL")',
+            [id]
+        );
+
+        // 5. Marcar encabezado como anulado
         await connection.query(
             'UPDATE inventory_adjustment_headers SET status = "ANULADO" WHERE id = ?',
             [id]
