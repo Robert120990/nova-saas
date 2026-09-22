@@ -4,6 +4,7 @@ import Modal from '../ui/Modal';
 import { UserCheck, Save, Send, AlertCircle, RefreshCcw } from 'lucide-react';
 import { toast } from 'sonner';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { validateDocumentNumber } from '../../utils/svfeValidators';
 
 export default function EditarClienteDteModal({ isOpen, onClose, sale, onSaved }) {
     const queryClient = useQueryClient();
@@ -132,6 +133,45 @@ export default function EditarClienteDteModal({ isOpen, onClose, sale, onSaved }
         if (!formData.nombre.trim()) {
             toast.warning('El nombre o razón social es obligatorio');
             return;
+        }
+
+        if (formData.nit && String(formData.nit).trim()) {
+            const nitCheck = validateDocumentNumber(formData.nit, 'NIT');
+            if (!nitCheck.isValid) {
+                toast.error(`NIT no válido: ${nitCheck.error}`);
+                return;
+            }
+        }
+
+        if (formData.numero_documento && String(formData.numero_documento).trim()) {
+            const docCheck = validateDocumentNumber(formData.numero_documento, formData.tipo_documento);
+            if (!docCheck.isValid) {
+                toast.error(`Documento no válido: ${docCheck.error}`);
+                return;
+            }
+        }
+
+        // Validación específica según el tipo de documento de la venta
+        if (sale?.tipo_documento === '03') {
+            const rawNit = formData.nit || formData.numero_documento;
+            const nitCheck = validateDocumentNumber(rawNit, 'NIT');
+            if (!nitCheck.isValid) {
+                toast.error(`Para Crédito Fiscal se requiere NIT válido: ${nitCheck.error || 'campo requerido'}`);
+                return;
+            }
+            const cleanNrc = String(formData.nrc || '').replace(/\D/g, '');
+            if (!cleanNrc || /^0+$/.test(cleanNrc)) {
+                toast.error('Para Crédito Fiscal se requiere NRC válido');
+                return;
+            }
+        } else if (sale?.tipo_documento === '01') {
+            const isOver200 = parseFloat(sale?.total_pagar || 0) >= 200;
+            const hasDoc = (formData.numero_documento && String(formData.numero_documento).trim()) ||
+                           (formData.nit && String(formData.nit).trim());
+            if (isOver200 && !hasDoc) {
+                toast.error('Facturas mayores o iguales a $200.00 requieren DUI o NIT del cliente');
+                return;
+            }
         }
 
         const correoTrimmed = (formData.correo || '').trim();

@@ -1,4 +1,5 @@
 const pool = require('../config/db');
+const { validateDocumentNumber } = require('../utils/svfeValidators');
 
 const getCustomers = async (req, res) => {
     try {
@@ -116,10 +117,16 @@ const createCustomer = async (req, res) => {
     });
 
     if (data.nit) {
-        const nitRegex = /^\d{4}-\d{6}-\d{3}-\d{1}$/;
-        const duiRegex = /^\d{8}-\d{1}$/;
-        if (!nitRegex.test(data.nit) && !duiRegex.test(data.nit)) {
-            return res.status(400).json({ message: 'Formato de NIT o DUI inválido' });
+        const nitVal = validateDocumentNumber(data.nit, 'NIT');
+        if (!nitVal.isValid) {
+            return res.status(400).json({ message: `NIT inválido: ${nitVal.error}` });
+        }
+    }
+
+    if (data.numero_documento) {
+        const docVal = validateDocumentNumber(data.numero_documento, data.tipo_documento);
+        if (!docVal.isValid) {
+            return res.status(400).json({ message: `Documento inválido: ${docVal.error}` });
         }
     }
 
@@ -147,9 +154,19 @@ const createCustomer = async (req, res) => {
         }
     }
 
+    // Normalización de condición fiscal según NRC:
+    // Sin NRC no es contribuyente de IVA; se normaliza a 'otro' (consumidor final)
+    if (!data.nrc && (!data.condicion_fiscal || data.condicion_fiscal === 'contribuyente')) {
+        data.condicion_fiscal = 'otro';
+    } else if (data.nrc && data.condicion_fiscal === 'otro') {
+        data.condicion_fiscal = 'contribuyente';
+    }
+
     data.company_id = req.company_id;
     if (!data.tipo_persona) data.tipo_persona = '1';
     if (!data.pais) data.pais = '9579';
+    if (data.aplica_fovial === undefined || data.aplica_fovial === null) data.aplica_fovial = 1;
+    if (data.aplica_cotrans === undefined || data.aplica_cotrans === null) data.aplica_cotrans = 1;
 
     try {
         const [result] = await pool.query('INSERT INTO customers SET ?', [data]);
@@ -170,10 +187,16 @@ const updateCustomer = async (req, res) => {
     });
 
     if (data.nit) {
-        const nitRegex = /^\d{4}-\d{6}-\d{3}-\d{1}$/;
-        const duiRegex = /^\d{8}-\d{1}$/;
-        if (!nitRegex.test(data.nit) && !duiRegex.test(data.nit)) {
-            return res.status(400).json({ message: 'Formato de NIT o DUI inválido' });
+        const nitVal = validateDocumentNumber(data.nit, 'NIT');
+        if (!nitVal.isValid) {
+            return res.status(400).json({ message: `NIT inválido: ${nitVal.error}` });
+        }
+    }
+
+    if (data.numero_documento) {
+        const docVal = validateDocumentNumber(data.numero_documento, data.tipo_documento);
+        if (!docVal.isValid) {
+            return res.status(400).json({ message: `Documento inválido: ${docVal.error}` });
         }
     }
 
@@ -198,6 +221,15 @@ const updateCustomer = async (req, res) => {
         const actStr = String(data.codigo_actividad).trim();
         if (actStr.length === 4 && /^\d+$/.test(actStr)) {
             data.codigo_actividad = actStr.padStart(5, '0');
+        }
+    }
+
+    // Normalización de condición fiscal según NRC:
+    if (data.nrc !== undefined || data.condicion_fiscal !== undefined) {
+        if (!data.nrc && data.condicion_fiscal === 'contribuyente') {
+            data.condicion_fiscal = 'otro';
+        } else if (data.nrc && data.condicion_fiscal === 'otro') {
+            data.condicion_fiscal = 'contribuyente';
         }
     }
 
