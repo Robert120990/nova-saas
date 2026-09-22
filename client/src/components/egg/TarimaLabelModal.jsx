@@ -9,7 +9,8 @@ import {
     ChevronLeft,
     ChevronRight,
     CheckCircle2,
-    Package
+    Package,
+    Boxes
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { toast } from 'sonner';
@@ -66,7 +67,7 @@ export default function TarimaLabelModal({
         : (tarima ? [tarima] : [{ tarima_number: 1, boxes_count: 24, gross_weight_lbs: 0, tare_weight_lbs: 60, net_weight_lbs: 0 }]);
 
     const [currentIndex, setCurrentIndex] = useState(0);
-    const [labelFormat, setLabelFormat] = useState('4x6'); // '4x6', 'half_letter', '80mm'
+    const [labelFormat, setLabelFormat] = useState('80mm'); // '80mm' (por defecto según requerimiento), '4x6', 'half_letter'
     const unitsPerBox = 360; // Estándar industrial 360 huevos por caja (12 cartones x 30)
 
     useEffect(() => {
@@ -187,7 +188,9 @@ export default function TarimaLabelModal({
                     const tBoxes = parseInt(tItem.boxes_count) || 0;
                     const tEggs = (tBoxes * unitsPerBox).toLocaleString();
                     const tCode = `TAR-${lotCode}-${String(tNum).padStart(2, '0')}`;
-                    const hasBox = tItem.has_caja !== undefined ? Boolean(tItem.has_caja) : true;
+                    const tPallet = parseFloat(tItem.tare_pallet_lbs || 0);
+                    const tSep = parseFloat(tItem.tare_separador_lbs || 0);
+                    const tCaja = parseFloat(tItem.tare_caja_lbs || 0);
 
                     return `
                         <div class="tarima-wrapper">
@@ -249,6 +252,7 @@ export default function TarimaLabelModal({
                                             <td style="width: 30%; border-right: 1px solid #cbd5e1;">
                                                 <span class="info-label">TARA TARIMA</span>
                                                 <div style="font-size: 10pt; font-weight: 800; color: #64748b;">${tTare} lb</div>
+                                                ${(tPallet > 0 || tSep > 0) ? `<div style="font-size: 5.5pt; color: #64748b; margin-top: 1px;">${tPallet > 0 ? `Pallet: ${tPallet.toFixed(1)} + ` : ''}Sep: ${tSep.toFixed(1)}${hasBox ? ` + Caja: ${tCaja.toFixed(1)}` : ''}</div>` : ''}
                                             </td>
                                             <td style="width: 40%;">
                                                 <span class="info-label" style="color: #047857; font-weight: 900;">PESO NETO HUEVO</span>
@@ -497,6 +501,11 @@ export default function TarimaLabelModal({
                                 <div>
                                     <span className="text-[9px] font-black text-slate-500 uppercase tracking-wide block">Tara Tarima</span>
                                     <span className="font-bold text-slate-500 text-xs">{tareWeight.toFixed(2)} lb</span>
+                                    {parseFloat(currentTarima?.tare_pallet_lbs || 0) > 0 && (
+                                        <span className="text-[8px] text-slate-400 block font-mono mt-0.5">
+                                            P:{parseFloat(currentTarima.tare_pallet_lbs || 0).toFixed(0)} S:{parseFloat(currentTarima.tare_separador_lbs || 0).toFixed(0)} C:{parseFloat(currentTarima.tare_caja_lbs || 0).toFixed(0)}
+                                        </span>
+                                    )}
                                 </div>
                                 <div className="bg-white border border-emerald-300 rounded-lg py-1 px-2 shadow-xs">
                                     <span className="text-[9px] font-black text-emerald-800 uppercase tracking-wide block">PESO NETO</span>

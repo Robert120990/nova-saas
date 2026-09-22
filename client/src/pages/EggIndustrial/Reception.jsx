@@ -59,8 +59,12 @@ const EggReception = () => {
     const [useTarimas, setUseTarimas] = useState(false);
     const [globalHasCaja, setGlobalHasCaja] = useState(true);
     const [bulkAddCount, setBulkAddCount] = useState(10);
+    const [receptionTareTarima, setReceptionTareTarima] = useState(0);
+    const [receptionTareSep, setReceptionTareSep] = useState(48);
+    const [receptionTareCaja, setReceptionTareCaja] = useState(30);
+    const [receptionBaseBoxes, setReceptionBaseBoxes] = useState(24);
     const [tarimas, setTarimas] = useState([
-        { id: 1, tarima_number: 1, gross_weight_lbs: '', tare_weight_lbs: 78, net_weight_lbs: 0, boxes_count: 24, has_caja: true }
+        { id: 1, tarima_number: 1, gross_weight_lbs: '', tare_weight_lbs: 78, net_weight_lbs: 0, boxes_count: 24, has_caja: true, tare_pallet_lbs: 0, tare_separador_lbs: 48, tare_caja_lbs: 30 }
     ]);
 
     // Form state
@@ -757,15 +761,17 @@ const EggReception = () => {
         });
     };
 
-    // Helpers para cálculo y tasas de tara según configuración de proveedor
+    // Helpers para cálculo y tasas de tara según configuración de proveedor y ajustes de lote
     const getProviderTareRates = () => {
         const provConfig = providerLotIntel?.config || providerLotConfigs.find(c => String(c.provider_id) === String(formData.provider_id));
-        const baseB = parseInt(provConfig?.base_boxes_per_tarima) || 24;
-        const sepTare = parseFloat(provConfig?.tare_separador_lbs !== undefined ? provConfig.tare_separador_lbs : 48);
-        const boxTare = parseFloat(provConfig?.tare_caja_lbs !== undefined ? provConfig.tare_caja_lbs : 30);
+        const baseB = parseInt(receptionBaseBoxes || provConfig?.base_boxes_per_tarima) || 24;
+        const tarimaTare = parseFloat(receptionTareTarima !== undefined ? receptionTareTarima : (provConfig?.tare_tarima_lbs || 0));
+        const sepTare = parseFloat(receptionTareSep !== undefined ? receptionTareSep : (provConfig?.tare_separador_lbs || 48));
+        const boxTare = parseFloat(receptionTareCaja !== undefined ? receptionTareCaja : (provConfig?.tare_caja_lbs || 30));
         const defaultHasCaja = provConfig?.default_has_caja !== undefined ? Boolean(provConfig.default_has_caja) : true;
         return {
             baseB,
+            tarimaTare,
             sepTare,
             boxTare,
             rateSep: baseB > 0 ? (sepTare / baseB) : 2.0,
@@ -775,34 +781,90 @@ const EggReception = () => {
         };
     };
 
-    const calculateTarimaTare = (boxes, hasCaja = globalHasCaja, customProvConfig = null) => {
-        let rateSep = 2.0;
-        let rateBox = 1.25;
-        if (customProvConfig) {
-            const baseB = parseInt(customProvConfig.base_boxes_per_tarima) || 24;
-            const sepTare = parseFloat(customProvConfig.tare_separador_lbs !== undefined ? customProvConfig.tare_separador_lbs : 48);
-            const boxTare = parseFloat(customProvConfig.tare_caja_lbs !== undefined ? customProvConfig.tare_caja_lbs : 30);
-            rateSep = baseB > 0 ? (sepTare / baseB) : 2.0;
-            rateBox = baseB > 0 ? (boxTare / baseB) : 1.25;
-        } else {
-            const rates = getProviderTareRates();
-            rateSep = rates.rateSep;
-            rateBox = rates.rateBox;
+    const calculateTarimaTare = (boxes, hasCaja = globalHasCaja, customRates = null) => {
+        let baseB = receptionBaseBoxes || 24;
+        let tarimaTare = receptionTareTarima || 0;
+        let sepTare = receptionTareSep || 48;
+        let boxTare = receptionTareCaja || 30;
+
+        if (customRates) {
+            if (customRates.baseB !== undefined) baseB = parseInt(customRates.baseB) || 24;
+            if (customRates.tareTarima !== undefined) tarimaTare = parseFloat(customRates.tareTarima) || 0;
+            if (customRates.tareSep !== undefined) sepTare = parseFloat(customRates.tareSep) || 0;
+            if (customRates.tareCaja !== undefined) boxTare = parseFloat(customRates.tareCaja) || 0;
         }
+
+        const rateSep = baseB > 0 ? (sepTare / baseB) : 2.0;
+        const rateBox = baseB > 0 ? (boxTare / baseB) : 1.25;
         const b = parseInt(boxes) || 0;
-        const total = (b * rateSep) + (hasCaja ? (b * rateBox) : 0);
-        return Math.round(total * 100) / 100;
+        const sepPart = Math.round(b * rateSep * 100) / 100;
+        const boxPart = hasCaja ? Math.round(b * rateBox * 100) / 100 : 0;
+        const total = Math.round((tarimaTare + sepPart + boxPart) * 100) / 100;
+
+        return {
+            totalTare: total,
+            tarimaTare,
+            sepPart,
+            boxPart,
+            rateSep,
+            rateBox
+        };
+    };
+
+    const handleUpdateReceptionTare = (field, value) => {
+        const val = parseFloat(value) || 0;
+        let newTarima = receptionTareTarima;
+        let newSep = receptionTareSep;
+        let newCaja = receptionTareCaja;
+
+        if (field === 'tarima') {
+            newTarima = val;
+            setReceptionTareTarima(val);
+        } else if (field === 'separador') {
+            newSep = val;
+            setReceptionTareSep(val);
+        } else if (field === 'caja') {
+            newCaja = val;
+            setReceptionTareCaja(val);
+        }
+
+        const rates = {
+            baseB: receptionBaseBoxes,
+            tareTarima: newTarima,
+            tareSep: newSep,
+            tareCaja: newCaja
+        };
+
+        const updated = tarimas.map(t => {
+            const hasC = t.has_caja !== undefined ? t.has_caja : globalHasCaja;
+            const b = parseInt(t.boxes_count) || 24;
+            const calc = calculateTarimaTare(b, hasC, rates);
+            const gross = parseFloat(t.gross_weight_lbs) || 0;
+            return {
+                ...t,
+                tare_weight_lbs: calc.totalTare,
+                tare_pallet_lbs: calc.tarimaTare,
+                tare_separador_lbs: calc.sepPart,
+                tare_caja_lbs: calc.boxPart,
+                net_weight_lbs: gross > 0 ? Math.max(0, Math.round((gross - calc.totalTare) * 100) / 100) : 0
+            };
+        });
+        setTarimas(updated);
+        recalcTarimasTotals(updated);
     };
 
     // Helpers para tarimas
     const addTarima = (boxes = 24, hasCaja = globalHasCaja) => {
         const nextNum = tarimas.length + 1;
-        const calculatedTare = calculateTarimaTare(boxes, hasCaja);
+        const calc = calculateTarimaTare(boxes, hasCaja);
         const updated = [...tarimas, {
             id: Date.now() + Math.random(),
             tarima_number: nextNum,
             gross_weight_lbs: '',
-            tare_weight_lbs: calculatedTare,
+            tare_weight_lbs: calc.totalTare,
+            tare_pallet_lbs: calc.tarimaTare,
+            tare_separador_lbs: calc.sepPart,
+            tare_caja_lbs: calc.boxPart,
             net_weight_lbs: 0,
             boxes_count: boxes,
             has_caja: hasCaja
@@ -823,14 +885,17 @@ const EggReception = () => {
         }
 
         const startNum = tarimas.length + 1;
-        const calculatedTare = calculateTarimaTare(boxes, hasCaja);
+        const calc = calculateTarimaTare(boxes, hasCaja);
         const newRows = [];
         for (let i = 0; i < n; i++) {
             newRows.push({
                 id: Date.now() + i + Math.random(),
                 tarima_number: startNum + i,
                 gross_weight_lbs: '',
-                tare_weight_lbs: calculatedTare,
+                tare_weight_lbs: calc.totalTare,
+                tare_pallet_lbs: calc.tarimaTare,
+                tare_separador_lbs: calc.sepPart,
+                tare_caja_lbs: calc.boxPart,
                 net_weight_lbs: 0,
                 boxes_count: boxes,
                 has_caja: hasCaja
@@ -845,20 +910,24 @@ const EggReception = () => {
     const applyEmpaqueModeToAll = (newHasCaja) => {
         setGlobalHasCaja(newHasCaja);
         const updated = tarimas.map(t => {
-            const calculatedTare = calculateTarimaTare(t.boxes_count || 24, newHasCaja);
+            const b = parseInt(t.boxes_count) || 24;
+            const calc = calculateTarimaTare(b, newHasCaja);
             const gross = parseFloat(t.gross_weight_lbs) || 0;
             return {
                 ...t,
                 has_caja: newHasCaja,
-                tare_weight_lbs: calculatedTare,
-                net_weight_lbs: gross > 0 ? Math.max(0, Math.round((gross - calculatedTare) * 100) / 100) : 0
+                tare_weight_lbs: calc.totalTare,
+                tare_pallet_lbs: calc.tarimaTare,
+                tare_separador_lbs: calc.sepPart,
+                tare_caja_lbs: calc.boxPart,
+                net_weight_lbs: gross > 0 ? Math.max(0, Math.round((gross - calc.totalTare) * 100) / 100) : 0
             };
         });
         setTarimas(updated);
         recalcTarimasTotals(updated);
         toast.info(newHasCaja 
-            ? 'Empaque con cajas aplicado a todas las tarimas (descuenta separador y caja).' 
-            : 'Empaque a granel aplicado a todas las tarimas (solo descuenta separadores).'
+            ? 'Empaque con cajas aplicado a todas las tarimas (descuenta tarima, separador y caja).' 
+            : 'Empaque a granel aplicado a todas las tarimas (descuenta tarima y separadores).'
         );
     };
 
@@ -877,11 +946,18 @@ const EggReception = () => {
 
         if (field === 'boxes_count') {
             const hasC = updated[index].has_caja !== undefined ? updated[index].has_caja : globalHasCaja;
-            const newTare = calculateTarimaTare(value, hasC);
-            updated[index].tare_weight_lbs = newTare;
+            const calc = calculateTarimaTare(value, hasC);
+            updated[index].tare_weight_lbs = calc.totalTare;
+            updated[index].tare_pallet_lbs = calc.tarimaTare;
+            updated[index].tare_separador_lbs = calc.sepPart;
+            updated[index].tare_caja_lbs = calc.boxPart;
         } else if (field === 'has_caja') {
-            const newTare = calculateTarimaTare(updated[index].boxes_count || 24, value);
-            updated[index].tare_weight_lbs = newTare;
+            const b = parseInt(updated[index].boxes_count) || 24;
+            const calc = calculateTarimaTare(b, value);
+            updated[index].tare_weight_lbs = calc.totalTare;
+            updated[index].tare_pallet_lbs = calc.tarimaTare;
+            updated[index].tare_separador_lbs = calc.sepPart;
+            updated[index].tare_caja_lbs = calc.boxPart;
         }
 
         const gross = parseFloat(updated[index].gross_weight_lbs) || 0;
@@ -912,7 +988,16 @@ const EggReception = () => {
             const res = await axios.get(`/api/egg-industrial/providers/${providerId}/lot-intelligence`);
             setProviderLotIntel(res.data);
             const provConfig = res.data?.config;
+            const provTareTarima = parseFloat(provConfig?.tare_tarima_lbs !== undefined ? provConfig.tare_tarima_lbs : 0);
+            const provTareSep = parseFloat(provConfig?.tare_separador_lbs !== undefined ? provConfig.tare_separador_lbs : 48);
+            const provTareCaja = parseFloat(provConfig?.tare_caja_lbs !== undefined ? provConfig.tare_caja_lbs : 30);
+            const provBaseBoxes = parseInt(provConfig?.base_boxes_per_tarima) || 24;
             const provHasCaja = provConfig?.default_has_caja !== undefined ? Boolean(provConfig.default_has_caja) : true;
+
+            setReceptionTareTarima(provTareTarima);
+            setReceptionTareSep(provTareSep);
+            setReceptionTareCaja(provTareCaja);
+            setReceptionBaseBoxes(provBaseBoxes);
             setGlobalHasCaja(provHasCaja);
 
             if (res.data?.suggested_lot) {
@@ -923,17 +1008,28 @@ const EggReception = () => {
                 }));
             }
 
+            const rates = {
+                baseB: provBaseBoxes,
+                tareTarima: provTareTarima,
+                tareSep: provTareSep,
+                tareCaja: provTareCaja
+            };
+
             // Actualizar taras en curso según parámetros de tara del nuevo proveedor
             setTarimas(prev => {
                 const updated = prev.map(t => {
                     const hasC = t.has_caja !== undefined ? t.has_caja : provHasCaja;
-                    const calculatedTare = calculateTarimaTare(t.boxes_count || 24, hasC, provConfig);
+                    const b = parseInt(t.boxes_count) || 24;
+                    const calc = calculateTarimaTare(b, hasC, rates);
                     const gross = parseFloat(t.gross_weight_lbs) || 0;
                     return {
                         ...t,
                         has_caja: hasC,
-                        tare_weight_lbs: calculatedTare,
-                        net_weight_lbs: gross > 0 ? Math.max(0, Math.round((gross - calculatedTare) * 100) / 100) : 0
+                        tare_weight_lbs: calc.totalTare,
+                        tare_pallet_lbs: calc.tarimaTare,
+                        tare_separador_lbs: calc.sepPart,
+                        tare_caja_lbs: calc.boxPart,
+                        net_weight_lbs: gross > 0 ? Math.max(0, Math.round((gross - calc.totalTare) * 100) / 100) : 0
                     };
                 });
                 recalcTarimasTotals(updated);
@@ -1044,7 +1140,11 @@ const EggReception = () => {
         setProviderLotIntel(null);
         setGlobalHasCaja(true);
         setBulkAddCount(10);
-        setTarimas([{ id: 1, tarima_number: 1, gross_weight_lbs: '', tare_weight_lbs: 78, net_weight_lbs: 0, boxes_count: 24, has_caja: true }]);
+        setReceptionTareTarima(0);
+        setReceptionTareSep(48);
+        setReceptionTareCaja(30);
+        setReceptionBaseBoxes(24);
+        setTarimas([{ id: 1, tarima_number: 1, gross_weight_lbs: '', tare_weight_lbs: 78, net_weight_lbs: 0, boxes_count: 24, has_caja: true, tare_pallet_lbs: 0, tare_separador_lbs: 48, tare_caja_lbs: 30 }]);
         setFormData({
             provider_id: '',
             provider_name: '',
@@ -1079,6 +1179,12 @@ const EggReception = () => {
                 : (rm.tarimas_json || []);
         } catch (e) { parsedTarimas = []; }
 
+        const provCfg = providerLotConfigs.find(c => String(c.provider_id) === String(rm.provider_id));
+        setReceptionTareTarima(provCfg?.tare_tarima_lbs !== undefined ? parseFloat(provCfg.tare_tarima_lbs) : 0);
+        setReceptionTareSep(provCfg?.tare_separador_lbs !== undefined ? parseFloat(provCfg.tare_separador_lbs) : 48);
+        setReceptionTareCaja(provCfg?.tare_caja_lbs !== undefined ? parseFloat(provCfg.tare_caja_lbs) : 30);
+        setReceptionBaseBoxes(parseInt(provCfg?.base_boxes_per_tarima) || 24);
+
         setEditingId(rm.id);
         setFormData({
             provider_id: String(rm.provider_id || ''),
@@ -1111,7 +1217,7 @@ const EggReception = () => {
             setUseTarimas(true);
         } else {
             setUseTarimas(false);
-            setTarimas([{ id: 1, tarima_number: 1, gross_weight_lbs: rm.weight_lbs || '', tare_weight_lbs: 0, net_weight_lbs: rm.weight_lbs || 0, boxes_count: rm.total_boxes || 24, has_caja: true }]);
+            setTarimas([{ id: 1, tarima_number: 1, gross_weight_lbs: rm.weight_lbs || '', tare_weight_lbs: 0, net_weight_lbs: rm.weight_lbs || 0, boxes_count: rm.total_boxes || 24, has_caja: true, tare_pallet_lbs: 0, tare_separador_lbs: 0, tare_caja_lbs: 0 }]);
         }
 
         setIsCreateModalOpen(true);
@@ -1710,61 +1816,147 @@ const EggReception = () => {
                                 </div>
                             ) : (
                                 <div className="space-y-3">
-                                    {/* Barra informativa de parámetros de tara del proveedor y modo de empaque */}
-                                    {(() => {
-                                        const rates = getProviderTareRates();
-                                        return (
-                                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 p-3 bg-white rounded-xl border border-indigo-100 shadow-xs text-xs">
-                                                <div className="flex items-center gap-2.5">
-                                                    <div className="p-2 bg-indigo-50 text-indigo-700 rounded-lg">
-                                                        <Scale size={16} />
-                                                    </div>
-                                                    <div>
-                                                        <div className="font-bold text-slate-900 flex flex-wrap items-center gap-2">
-                                                            <span>Taras de Proveedor:</span>
-                                                            <span className="font-mono text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded text-[11px] font-black">
-                                                                Sep: {rates.sepTare} lb ({rates.rateSep.toFixed(2)}/cj) + Caja: {rates.boxTare} lb ({rates.rateBox.toFixed(2)}/cj)
-                                                            </span>
-                                                        </div>
-                                                        <div className="text-[11px] text-slate-500 font-medium">
-                                                            Tarima base ({rates.baseB} cajas): <strong>{(rates.sepTare + rates.boxTare).toFixed(2)} lb</strong> (Con Caja) / <strong>{rates.sepTare.toFixed(2)} lb</strong> (A Granel)
-                                                        </div>
-                                                    </div>
+                                    {/* Espacio Interactivo de Edición de las 3 Taras: Tarima (Pallet), Cartón (Separador) y Caja (Jaba) */}
+                                    <div className="p-3.5 bg-gradient-to-r from-slate-50 to-indigo-50/40 rounded-xl border border-indigo-200/70 shadow-xs space-y-3">
+                                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5 border-b border-indigo-100">
+                                            <div className="flex items-center gap-2">
+                                                <div className="p-1.5 bg-indigo-600 text-white rounded-lg shadow-xs">
+                                                    <Scale size={16} />
                                                 </div>
-
-                                                {/* Switch de modo de empaque rápido de remesa */}
-                                                <div className="flex items-center gap-2">
-                                                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Empaque Remesa:</span>
-                                                    <div className="inline-flex rounded-lg border border-slate-200 p-0.5 bg-slate-50">
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => applyEmpaqueModeToAll(true)}
-                                                            className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-all ${
-                                                                globalHasCaja
-                                                                    ? 'bg-indigo-600 text-white shadow-xs'
-                                                                    : 'text-slate-600 hover:text-slate-900'
-                                                            }`}
-                                                            title="Descuenta separador y caja (ej: 78 lb p/24 cajas)"
-                                                        >
-                                                            Con Cajas / Jabas
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => applyEmpaqueModeToAll(false)}
-                                                            className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-all ${
-                                                                !globalHasCaja
-                                                                    ? 'bg-amber-600 text-white shadow-xs'
-                                                                    : 'text-slate-600 hover:text-slate-900'
-                                                            }`}
-                                                            title="Descuenta únicamente separadores (ej: 48 lb p/24 cajas)"
-                                                        >
-                                                            A Granel (Solo Separador)
-                                                        </button>
-                                                    </div>
+                                                <div>
+                                                    <h4 className="text-xs font-black text-slate-900 uppercase tracking-wide">
+                                                        Taras de Recepción (Tarima, Cartón y Caja)
+                                                    </h4>
+                                                    <p className="text-[10px] text-slate-500 font-medium">
+                                                        Base: <span className="font-bold text-slate-700">{receptionBaseBoxes} Cajas</span> • Edita cualquier tara para recalcular automáticamente todas las tarimas.
+                                                    </p>
                                                 </div>
                                             </div>
-                                        );
-                                    })()}
+
+                                            {/* Switch de modo de empaque rápido de remesa */}
+                                            <div className="flex items-center gap-2 self-start sm:self-auto">
+                                                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Empaque:</span>
+                                                <div className="inline-flex rounded-lg border border-slate-200 p-0.5 bg-white shadow-2xs">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => applyEmpaqueModeToAll(true)}
+                                                        className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-all ${
+                                                            globalHasCaja
+                                                                ? 'bg-indigo-600 text-white shadow-xs'
+                                                                : 'text-slate-600 hover:text-slate-900'
+                                                        }`}
+                                                        title="Descuenta tarima, separador y caja (ej: 78 lb p/24 cajas)"
+                                                    >
+                                                        Con Cajas / Jabas
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => applyEmpaqueModeToAll(false)}
+                                                        className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-all ${
+                                                            !globalHasCaja
+                                                                ? 'bg-amber-600 text-white shadow-xs'
+                                                                : 'text-slate-600 hover:text-slate-900'
+                                                        }`}
+                                                        title="Descuenta únicamente tarima y separadores (A Granel)"
+                                                    >
+                                                        A Granel (Solo Separador)
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Los 3 campos interactivos de edición de tara */}
+                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                            {/* 1. Tara Tarima / Pallet */}
+                                            <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs">
+                                                <div className="flex items-center justify-between mb-1">
+                                                    <label className="text-[10px] font-black text-slate-600 uppercase tracking-wide">
+                                                        1. Tara Tarima (Pallet)
+                                                    </label>
+                                                    <span className="text-[9px] text-slate-400 font-semibold">Fijo p/tarima</span>
+                                                </div>
+                                                <div className="relative">
+                                                    <input
+                                                        type="number"
+                                                        step="0.1"
+                                                        min="0"
+                                                        value={receptionTareTarima}
+                                                        onChange={(e) => handleUpdateReceptionTare('tarima', e.target.value)}
+                                                        className="w-full px-2.5 py-1.5 bg-slate-50 focus:bg-white border border-slate-300 rounded-lg text-xs font-black text-slate-900 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all pr-8"
+                                                        placeholder="0.0"
+                                                    />
+                                                    <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] font-black text-slate-400">lb</span>
+                                                </div>
+                                                <p className="text-[9px] text-slate-400 mt-1">Pallet madera o plástico</p>
+                                            </div>
+
+                                            {/* 2. Tara Cartón / Separador */}
+                                            <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs">
+                                                <div className="flex items-center justify-between mb-1">
+                                                    <label className="text-[10px] font-black text-slate-600 uppercase tracking-wide">
+                                                        2. Tara Cartón / Separador
+                                                    </label>
+                                                    <span className="text-[9px] font-bold text-indigo-600 font-mono">
+                                                        {(receptionBaseBoxes > 0 ? (receptionTareSep / receptionBaseBoxes) : 2.0).toFixed(2)} lb/cj
+                                                    </span>
+                                                </div>
+                                                <div className="relative">
+                                                    <input
+                                                        type="number"
+                                                        step="0.1"
+                                                        min="0"
+                                                        value={receptionTareSep}
+                                                        onChange={(e) => handleUpdateReceptionTare('separador', e.target.value)}
+                                                        className="w-full px-2.5 py-1.5 bg-slate-50 focus:bg-white border border-slate-300 rounded-lg text-xs font-black text-slate-900 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all pr-8"
+                                                        placeholder="48.0"
+                                                    />
+                                                    <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] font-black text-slate-400">lb</span>
+                                                </div>
+                                                <p className="text-[9px] text-slate-400 mt-1">Base: {receptionBaseBoxes} cjs ({receptionTareSep} lb)</p>
+                                            </div>
+
+                                            {/* 3. Tara Caja / Jaba */}
+                                            <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs">
+                                                <div className="flex items-center justify-between mb-1">
+                                                    <label className="text-[10px] font-black text-slate-600 uppercase tracking-wide">
+                                                        3. Tara Caja / Jaba
+                                                    </label>
+                                                    <span className="text-[9px] font-bold text-indigo-600 font-mono">
+                                                        {globalHasCaja ? `${(receptionBaseBoxes > 0 ? (receptionTareCaja / receptionBaseBoxes) : 1.25).toFixed(2)} lb/cj` : '0.00 (Granel)'}
+                                                    </span>
+                                                </div>
+                                                <div className="relative">
+                                                    <input
+                                                        type="number"
+                                                        step="0.1"
+                                                        min="0"
+                                                        value={receptionTareCaja}
+                                                        onChange={(e) => handleUpdateReceptionTare('caja', e.target.value)}
+                                                        className="w-full px-2.5 py-1.5 bg-slate-50 focus:bg-white border border-slate-300 rounded-lg text-xs font-black text-slate-900 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all pr-8"
+                                                        placeholder="30.0"
+                                                    />
+                                                    <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] font-black text-slate-400">lb</span>
+                                                </div>
+                                                <p className="text-[9px] text-slate-400 mt-1">Base: {receptionBaseBoxes} cjs ({receptionTareCaja} lb)</p>
+                                            </div>
+                                        </div>
+
+                                        {/* Resumen de cálculo total en vivo para tarima estándar */}
+                                        <div className="flex flex-wrap items-center justify-between gap-2 p-2 bg-indigo-50/70 rounded-lg text-[11px] text-slate-700 font-semibold border border-indigo-100">
+                                            <div className="flex items-center gap-1.5">
+                                                <span className="text-slate-500">Tarima estándar ({receptionBaseBoxes} cjs):</span>
+                                                <span className="font-mono text-slate-800">
+                                                    Tarima ({receptionTareTarima.toFixed(1)} lb) + Cartón ({receptionTareSep.toFixed(1)} lb) + Caja ({globalHasCaja ? receptionTareCaja.toFixed(1) : '0.0'} lb) =
+                                                </span>
+                                                <span className="font-mono font-black text-indigo-700 bg-white px-1.5 py-0.5 rounded border border-indigo-200">
+                                                    {(receptionTareTarima + receptionTareSep + (globalHasCaja ? receptionTareCaja : 0)).toFixed(2)} lb
+                                                </span>
+                                            </div>
+                                            <span className="text-[10px] text-indigo-700 font-bold">
+                                                {globalHasCaja ? '✓ Modo Con Cajas activo' : '⚡ Modo A Granel (sin cajas) activo'}
+                                            </span>
+                                        </div>
+                                    </div>
 
                                     <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
                                         <table className="w-full text-left text-xs">
@@ -1784,6 +1976,7 @@ const EggReception = () => {
                                                     const hasC = t.has_caja !== undefined ? t.has_caja : globalHasCaja;
                                                     const rates = getProviderTareRates();
                                                     const b = parseInt(t.boxes_count) || 0;
+                                                    const palletPart = t.tare_pallet_lbs !== undefined ? parseFloat(t.tare_pallet_lbs) : rates.tarimaTare;
                                                     const sepPart = (b * rates.rateSep).toFixed(1);
                                                     const boxPart = (b * rates.rateBox).toFixed(1);
 
@@ -1828,10 +2021,11 @@ const EggReception = () => {
                                                                     step="0.01"
                                                                     value={t.tare_weight_lbs}
                                                                     onChange={(e) => updateTarima(idx, 'tare_weight_lbs', e.target.value)}
-                                                                    className="w-full px-2 py-1 bg-white border border-slate-300 rounded-lg text-xs text-slate-700 font-medium focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
-                                                                    title="Tara editable. Se recalcula automáticamente por fórmula proporcional."
+                                                                    className="w-full px-2 py-1 bg-white border border-slate-300 rounded-lg text-xs text-slate-700 font-bold focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+                                                                    title="Tara editable. Se recalcula automáticamente por fórmula proporcional de tarima, separador y caja."
                                                                 />
                                                                 <div className="text-[9px] text-slate-400 mt-0.5 leading-none">
+                                                                    {palletPart > 0 && `Tarima: ${palletPart.toFixed(1)} + `}
                                                                     Sep: {sepPart} {hasC ? `+ Caja: ${boxPart}` : '(Granel)'}
                                                                 </div>
                                                             </td>

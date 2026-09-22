@@ -211,6 +211,7 @@ const EggConfig = () => {
         provider_nrc: '',
         lot_prefix: '',
         suffix_format: 'correlativo',
+        tare_tarima_lbs: 0,
         tare_separador_lbs: 48,
         tare_caja_lbs: 30,
         base_boxes_per_tarima: 24,
@@ -923,6 +924,7 @@ const EggConfig = () => {
                 provider_nrc: configItem.provider_nrc || '',
                 lot_prefix: configItem.lot_prefix || '',
                 suffix_format: configItem.format_pattern || configItem.suffix_format || 'correlativo',
+                tare_tarima_lbs: configItem.tare_tarima_lbs !== undefined ? configItem.tare_tarima_lbs : 0,
                 tare_separador_lbs: configItem.tare_separador_lbs !== undefined ? configItem.tare_separador_lbs : 48,
                 tare_caja_lbs: configItem.tare_caja_lbs !== undefined ? configItem.tare_caja_lbs : 30,
                 base_boxes_per_tarima: configItem.base_boxes_per_tarima || 24,
@@ -937,6 +939,7 @@ const EggConfig = () => {
                 provider_nrc: '',
                 lot_prefix: '',
                 suffix_format: 'correlativo',
+                tare_tarima_lbs: 0,
                 tare_separador_lbs: 48,
                 tare_caja_lbs: 30,
                 base_boxes_per_tarima: 24,
@@ -958,6 +961,7 @@ const EggConfig = () => {
                 lot_prefix: lotConfigForm.lot_prefix.trim().toUpperCase(),
                 format_pattern: lotConfigForm.suffix_format,
                 suffix_format: lotConfigForm.suffix_format,
+                tare_tarima_lbs: parseFloat(lotConfigForm.tare_tarima_lbs) || 0,
                 tare_separador_lbs: parseFloat(lotConfigForm.tare_separador_lbs) || 48,
                 tare_caja_lbs: parseFloat(lotConfigForm.tare_caja_lbs) || 30,
                 base_boxes_per_tarima: parseInt(lotConfigForm.base_boxes_per_tarima) || 24,
@@ -1254,10 +1258,11 @@ const EggConfig = () => {
                                 <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
                                     {providerLotConfigs.map(item => {
                                         const baseB = item.base_boxes_per_tarima || 24;
+                                        const tarimaTare = parseFloat(item.tare_tarima_lbs !== undefined ? item.tare_tarima_lbs : 0);
                                         const sepTare = parseFloat(item.tare_separador_lbs !== undefined ? item.tare_separador_lbs : 48);
                                         const boxTare = parseFloat(item.tare_caja_lbs !== undefined ? item.tare_caja_lbs : 30);
                                         const hasBox = item.default_has_caja !== undefined ? Boolean(item.default_has_caja) : true;
-                                        const totalTare = sepTare + (hasBox ? boxTare : 0);
+                                        const totalTare = tarimaTare + sepTare + (hasBox ? boxTare : 0);
 
                                         return (
                                             <tr key={item.id} className="hover:bg-slate-50/75 transition-colors">
@@ -1280,6 +1285,11 @@ const EggConfig = () => {
                                                             <span className="font-black text-indigo-700">{totalTare.toFixed(1)} lb</span>
                                                             <span className="text-[10px] text-slate-400">({baseB} cjs)</span>
                                                         </div>
+                                                        {tarimaTare > 0 && (
+                                                            <div className="text-[10px] text-slate-500">
+                                                                Tarima: <span className="font-semibold text-slate-700">{tarimaTare.toFixed(1)} lb</span>
+                                                            </div>
+                                                        )}
                                                         <div className="text-[10px] text-slate-500">
                                                             Sep: <span className="font-semibold text-slate-700">{sepTare.toFixed(1)} lb</span> ({ (sepTare / baseB).toFixed(2) }/cj)
                                                         </div>
@@ -2705,10 +2715,10 @@ const EggConfig = () => {
                                     <span className="text-[10px] text-slate-400 font-medium">Báscula y Recepción MP</span>
                                 </div>
 
-                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                                     <div className="space-y-1">
                                         <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide block">
-                                            Cajas Base / Tarima
+                                            Cajas Base
                                         </label>
                                         <input
                                             type="number"
@@ -2717,6 +2727,20 @@ const EggConfig = () => {
                                             onChange={(e) => setLotConfigForm({ ...lotConfigForm, base_boxes_per_tarima: e.target.value })}
                                             className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
                                             placeholder="24"
+                                        />
+                                    </div>
+
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide block" title="Peso de la tarima/pallet físico de madera o plástico">
+                                            Tara Tarima (lb)
+                                        </label>
+                                        <input
+                                            type="number"
+                                            step="0.01"
+                                            value={lotConfigForm.tare_tarima_lbs}
+                                            onChange={(e) => setLotConfigForm({ ...lotConfigForm, tare_tarima_lbs: e.target.value })}
+                                            className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-bold text-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                            placeholder="0.00"
                                         />
                                     </div>
 
@@ -2782,6 +2806,12 @@ const EggConfig = () => {
                                 {/* Resumen dinámico de tasas de tara */}
                                 <div className="p-2.5 bg-white border border-slate-200 rounded-lg text-[11px] text-slate-600 space-y-1">
                                     <div className="flex justify-between items-center font-medium">
+                                        <span>Tara Pallet / Tarima:</span>
+                                        <strong className="text-slate-900 font-mono">
+                                            {(parseFloat(lotConfigForm.tare_tarima_lbs) || 0).toFixed(2)} lb
+                                        </strong>
+                                    </div>
+                                    <div className="flex justify-between items-center font-medium">
                                         <span>Tasa Separador:</span>
                                         <strong className="text-slate-900 font-mono">
                                             {((parseFloat(lotConfigForm.tare_separador_lbs) || 0) / (parseInt(lotConfigForm.base_boxes_per_tarima) || 24)).toFixed(2)} lb/caja
@@ -2797,6 +2827,7 @@ const EggConfig = () => {
                                         <span>Tara Tarima Estándar ({lotConfigForm.base_boxes_per_tarima || 24} cajas {lotConfigForm.default_has_caja ? 'con caja' : 'a granel'}):</span>
                                         <span className="font-mono text-xs">
                                             {(
+                                                (parseFloat(lotConfigForm.tare_tarima_lbs) || 0) +
                                                 (parseFloat(lotConfigForm.tare_separador_lbs) || 0) +
                                                 (lotConfigForm.default_has_caja ? (parseFloat(lotConfigForm.tare_caja_lbs) || 0) : 0)
                                             ).toFixed(2)} lb
