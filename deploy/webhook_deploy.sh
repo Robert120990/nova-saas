@@ -41,7 +41,7 @@ cd "$APP_DIR/dte-api" && pnpm install --prod --prefer-offline >> "$LOG_FILE" 2>&
 # 3. Ejecutar migraciones de base de datos
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] [DB] Ejecutando migraciones de base de datos..." >> "$LOG_FILE"
 cd "$APP_DIR/database"
-for mig in $(ls -v run_migration_v1*.js 2>/dev/null); do
+for mig in $(ls -v run_migration_v*.js 2>/dev/null); do
     ver=$(echo "$mig" | grep -oP 'v\K[0-9]+' || echo "0")
     if [ "$ver" -ge 167 ]; then
         echo "[$(date '+%Y-%m-%d %H:%M:%S')] [DB] Ejecutando $mig..." >> "$LOG_FILE"
