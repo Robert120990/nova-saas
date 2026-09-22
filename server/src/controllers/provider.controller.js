@@ -1,4 +1,5 @@
 const pool = require('../config/db');
+const { validateDocumentNumber } = require('../utils/svfeValidators');
 
 const getProviders = async (req, res) => {
     try {
@@ -55,7 +56,7 @@ const getProviders = async (req, res) => {
             totalPages: Math.ceil(total / limit)
         });
     } catch (error) {
-        console.error(error);
+        console.error('Error al obtener proveedores:', error);
         res.status(500).json({ message: 'Error al obtener proveedores' });
     }
 };
@@ -63,62 +64,115 @@ const getProviders = async (req, res) => {
 const validColumns = [
     'company_id', 'tipo_persona', 'pais', 'nombre', 'nombre_comercial', 
     'tipo_documento', 'numero_documento', 'nit', 'nrc', 
-    'codigo_actividad', 'departamento', 'municipio', 'distrito', 'direccion', 
+    'codigo_actividad', 'condicion_fiscal', 'departamento', 'municipio', 'distrito', 'direccion', 
     'telefono', 'correo', 'tipo_contribuyente', 'es_gran_contribuyente', 'exento_iva', 'es_credito', 'dias_credito'
 ];
 
-const createProvider = async (req, res) => {
+const sanitizeProviderPayload = (body, companyId) => {
     const data = {};
-    Object.keys(req.body).forEach(key => {
+    Object.keys(body).forEach(key => {
         if (validColumns.includes(key)) {
-            data[key] = req.body[key] === '' ? null : req.body[key];
+            data[key] = body[key] === '' ? null : body[key];
         }
     });
 
     if (data.nit) {
-        const nitRegex = /^\d{4}-\d{6}-\d{3}-\d{1}$/;
-        const duiRegex = /^\d{8}-\d{1}$/;
-        if (!nitRegex.test(data.nit) && !duiRegex.test(data.nit)) {
-            return res.status(400).json({ message: 'Formato de NIT o DUI inválido' });
+        const nitVal = validateDocumentNumber(data.nit, 'NIT');
+        if (!nitVal.isValid) {
+            throw new Error(`NIT inválido: ${nitVal.error}`);
         }
     }
 
-    data.company_id = req.company_id;
-    if (!data.tipo_persona) data.tipo_persona = '1';
+    if (data.numero_documento) {
+        const docVal = validateDocumentNumber(data.numero_documento, data.tipo_documento);
+        if (!docVal.isValid) {
+            throw new Error(`Documento inválido: ${docVal.error}`);
+        }
+    }
+
+    if (data.correo !== undefined) {
+        if (data.correo) {
+            const correoTrimmed = String(data.correo).trim();
+            if (correoTrimmed) {
+                const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+                if (!emailRegex.test(correoTrimmed)) {
+                    throw new Error('El correo electrónico no tiene un formato válido (ejemplo: proveedor@dominio.com)');
+                }
+                data.correo = correoTrimmed;
+            } else {
+                data.correo = null;
+            }
+        } else {
+            data.correo = null;
+        }
+    }
+
+    if (data.codigo_actividad) {
+        const actStr = String(data.codigo_actividad).trim();
+        if (actStr.length === 4 && /^\d+$/.test(actStr)) {
+            data.codigo_actividad = actStr.padStart(5, '0');
+        }
+    }
+
+    // Normalización de condición fiscal según NRC:
+    if (!data.nrc && (!data.condicion_fiscal || data.condicion_fiscal === 'contribuyente')) {
+        data.condicion_fiscal = 'otro';
+    } else if (data.nrc && data.condicion_fiscal === 'otro') {
+        data.condicion_fiscal = 'contribuyente';
+    }
+
+    // Sincronización con tipo_contribuyente y es_gran_contribuyente
+    if (data.condicion_fiscal === 'gran contribuyente') {
+        data.es_gran_contribuyente = 1;
+        data.tipo_contribuyente = 'Gran Contribuyente';
+    } else if (data.condicion_fiscal === 'extranjero') {
+        data.es_gran_contribuyente = 0;
+        data.tipo_contribuyente = 'No Domiciliado';
+    } else if (data.condicion_fiscal === 'exento IVA') {
+        data.es_gran_contribuyente = 0;
+        data.exento_iva = 1;
+        data.tipo_contribuyente = 'Otro';
+    } else {
+        data.es_gran_contribuyente = 0;
+        data.tipo_contribuyente = data.condicion_fiscal === 'contribuyente' ? 'Contribuyente' : 'Otro';
+    }
+
+    data.company_id = companyId;
+    if (!data.tipo_persona) {
+        data.tipo_persona = (data.tipo_documento === 'NIT' || data.nrc) ? '2' : '1';
+    }
     if (!data.pais) data.pais = '9579';
 
+    if (data.departamento) data.departamento = String(data.departamento).trim() || null;
+    if (data.municipio) data.municipio = String(data.municipio).trim() || null;
+    if (data.distrito) data.distrito = String(data.distrito).trim() || null;
+    if (data.direccion) data.direccion = String(data.direccion).trim() || null;
+
+    return data;
+};
+
+const createProvider = async (req, res) => {
     try {
+        const data = sanitizeProviderPayload(req.body, req.company_id);
         const [result] = await pool.query('INSERT INTO providers SET ?', [data]);
         res.status(201).json({ id: result.insertId, ...data });
     } catch (error) {
         console.error('Error al crear proveedor:', error.message, error.sqlMessage || '');
-        res.status(500).json({ message: 'Error al crear proveedor: ' + (error.sqlMessage || error.message) });
+        const statusCode = error.message.includes('inválido') || error.message.includes('formato') ? 400 : 500;
+        res.status(statusCode).json({ message: error.message });
     }
 };
 
 const updateProvider = async (req, res) => {
     const { id } = req.params;
-    const data = {};
-    Object.keys(req.body).forEach(key => {
-        if (validColumns.includes(key)) {
-            data[key] = req.body[key] === '' ? null : req.body[key];
-        }
-    });
-
-    if (data.nit) {
-        const nitRegex = /^\d{4}-\d{6}-\d{3}-\d{1}$/;
-        const duiRegex = /^\d{8}-\d{1}$/;
-        if (!nitRegex.test(data.nit) && !duiRegex.test(data.nit)) {
-            return res.status(400).json({ message: 'Formato de NIT o DUI inválido' });
-        }
-    }
-
     try {
+        const data = sanitizeProviderPayload(req.body, req.company_id);
         await pool.query('UPDATE providers SET ? WHERE id = ? AND company_id = ?', [data, id, req.company_id]);
-        res.json({ message: 'Proveedor actualizado' });
+        res.json({ message: 'Proveedor actualizado', data });
     } catch (error) {
         console.error('Error al actualizar proveedor:', error.message, error.sqlMessage || '');
-        res.status(500).json({ message: 'Error al actualizar proveedor: ' + (error.sqlMessage || error.message) });
+        const statusCode = error.message.includes('inválido') || error.message.includes('formato') ? 400 : 500;
+        res.status(statusCode).json({ message: error.message });
     }
 };
 
