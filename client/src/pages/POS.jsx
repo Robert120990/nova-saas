@@ -60,7 +60,10 @@ const POS = () => {
 
     const handleSubmit = (e) => {
         e.preventDefault();
-        const data = Object.fromEntries(new FormData(e.target));
+        const formData = new FormData(e.target);
+        const data = Object.fromEntries(formData);
+        data.allow_discounts = formData.get('allow_discounts') ? 1 : 0;
+        data.auto_print = formData.get('auto_print') ? 1 : 0;
         if (selectedPos) {
             updateMutation.mutate({ id: selectedPos.id, ...data });
         } else {
@@ -100,7 +103,7 @@ const POS = () => {
             </div>
 
             <Table 
-                headers={['Sucursal', 'Código', 'Terminal', 'Impresora', 'Estado', 'Acciones']}
+                headers={['Sucursal', 'Código', 'Terminal', 'Descuentos', 'Impresora', 'Estado', 'Acciones']}
                 data={posList}
                 isLoading={isLoading}
                 renderRow={(pos) => (
@@ -117,6 +120,17 @@ const POS = () => {
                             </span>
                         </td>
                         <td className="px-6 py-4 text-sm font-medium text-slate-700">{pos.nombre}</td>
+                        <td className="px-6 py-4">
+                            {pos.allow_discounts && Number(pos.allow_discounts) !== 0 ? (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                                    Habilitados
+                                </span>
+                            ) : (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-500 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-full">
+                                    Bloqueados
+                                </span>
+                            )}
+                        </td>
                         <td className="px-6 py-4">
                             {pos.auto_print ? (
                                 <span className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full" title={pos.printer_name}>
@@ -203,6 +217,26 @@ const POS = () => {
                             className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-400 transition-all" 
                             required 
                         />
+                    </div>
+
+                    <div className="border-t border-slate-100 pt-4">
+                        <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider ml-1 block mb-3">Políticas de Facturación</label>
+                        <div className="p-3 bg-slate-50 border border-slate-200/80 rounded-xl space-y-2">
+                            <label className="flex items-start gap-3 cursor-pointer">
+                                <input 
+                                    type="checkbox"
+                                    name="allow_discounts"
+                                    value="1"
+                                    defaultChecked={selectedPos ? Boolean(selectedPos.allow_discounts && Number(selectedPos.allow_discounts) !== 0) : false}
+                                    id="allow_discounts"
+                                    className="w-4 h-4 mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                                />
+                                <div>
+                                    <span className="text-xs font-bold text-slate-700 block">Habilitar Descuentos en esta Terminal</span>
+                                    <span className="text-[11px] text-slate-500 block font-medium">Permite a los usuarios con permisos aplicar descuentos por ítem y globales en las ventas de este POS.</span>
+                                </div>
+                            </label>
+                        </div>
                     </div>
 
                     <div className="border-t border-slate-100 pt-4">

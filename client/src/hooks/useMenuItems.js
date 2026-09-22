@@ -387,6 +387,8 @@ export const SPECIAL_PERM_KEYS = new Set([
     'send_sales_rrs',
     'close_pozo_cortes',
     'ai_assistant_access',
+    'apply_item_discount',
+    'apply_general_discount',
 ]);
 
 export const SPECIAL_PERM_LABELS = {
@@ -398,6 +400,8 @@ export const SPECIAL_PERM_LABELS = {
     send_sales_rrs: 'Enviar Ventas a RRS',
     close_pozo_cortes: 'Cerrar / Reabrir Cortes de Pozo',
     ai_assistant_access: 'Acceso a Asistente Novas AI',
+    apply_item_discount: 'Aplicar Descuentos por Ítem en POS',
+    apply_general_discount: 'Aplicar Descuento General en POS',
 };
 
 export function isSpecialItem(item, key) {

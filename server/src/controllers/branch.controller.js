@@ -57,6 +57,24 @@ const createBranch = asyncHandler(async (req, res) => {
     data.nombre = nombre;
     data.tipo_establecimiento = req.body.tipo_establecimiento || '01';
     data.company_id = req.company_id;
+    if (data.discount_percentages) {
+        if (typeof data.discount_percentages === 'string') {
+            try {
+                const parsed = JSON.parse(data.discount_percentages);
+                data.discount_percentages = JSON.stringify(parsed);
+            } catch (e) {
+                data.discount_percentages = JSON.stringify(data.discount_percentages.split(',').map(s => s.trim()).filter(Boolean));
+            }
+        } else if (Array.isArray(data.discount_percentages)) {
+            data.discount_percentages = JSON.stringify(data.discount_percentages);
+        }
+    }
+    if (data.max_discount_amount !== undefined) {
+        data.max_discount_amount = data.max_discount_amount !== null && data.max_discount_amount !== '' ? parseFloat(data.max_discount_amount) : null;
+    }
+    if (data.max_discount_percentage !== undefined) {
+        data.max_discount_percentage = data.max_discount_percentage !== null && data.max_discount_percentage !== '' ? parseFloat(data.max_discount_percentage) : null;
+    }
     if (req.file) {
         data.logo_url = '/uploads/' + req.file.filename;
     }
@@ -77,6 +95,24 @@ const createBranch = asyncHandler(async (req, res) => {
 const updateBranch = asyncHandler(async (req, res) => {
     const { id } = req.params;
     const data = cleanEmptyStrings(req.body);
+    if (data.discount_percentages !== undefined) {
+        if (typeof data.discount_percentages === 'string') {
+            try {
+                const parsed = JSON.parse(data.discount_percentages);
+                data.discount_percentages = JSON.stringify(parsed);
+            } catch (e) {
+                data.discount_percentages = JSON.stringify(data.discount_percentages.split(',').map(s => s.trim()).filter(Boolean));
+            }
+        } else if (Array.isArray(data.discount_percentages)) {
+            data.discount_percentages = JSON.stringify(data.discount_percentages);
+        }
+    }
+    if (data.max_discount_amount !== undefined) {
+        data.max_discount_amount = data.max_discount_amount !== null && data.max_discount_amount !== '' ? parseFloat(data.max_discount_amount) : null;
+    }
+    if (data.max_discount_percentage !== undefined) {
+        data.max_discount_percentage = data.max_discount_percentage !== null && data.max_discount_percentage !== '' ? parseFloat(data.max_discount_percentage) : null;
+    }
     if (req.file) {
         data.logo_url = '/uploads/' + req.file.filename;
     }
