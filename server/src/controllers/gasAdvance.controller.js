@@ -4,6 +4,7 @@ const reportPdfHelper = require('../utils/reportPdfHelper');
 const excelService = require('../services/excel.service');
 const pdfService = require('../services/pdf.service');
 const mailer = require('../services/mailer.service');
+const { syncAdvanceToRrs } = require('../services/gasAdvanceRrs.service');
 
 function generateNumero(day, month, correlative) {
     const dd = String(day).padStart(2, '0');
@@ -174,6 +175,9 @@ exports.createAdvance = async (req, res) => {
             sucursal: req.branch_name || ''
         }).catch(() => {});
 
+        // Sincronización silenciosa en paralelo con RRS cabecera_cxc
+        syncAdvanceToRrs(result.insertId, req.company_id, 'create');
+
         res.status(201).json(adv);
     } catch (error) {
         console.error('Error createAdvance:', error);
@@ -284,6 +288,9 @@ exports.updateAdvance = async (req, res) => {
             [id]
         );
 
+        // Sincronización silenciosa en paralelo con RRS cabecera_cxc
+        syncAdvanceToRrs(id, req.company_id, 'update');
+
         res.json(updated[0]);
     } catch (error) {
         console.error('Error updateAdvance:', error);
@@ -305,7 +312,12 @@ exports.deleteAdvance = async (req, res) => {
             return res.status(400).json({ message: `No se puede eliminar porque ya se han utilizado $${usedAmount.toFixed(2)} de este anticipo en cierres` });
         }
 
+        const advanceToDelete = existing[0];
         await pool.query(`DELETE FROM gas_station_advances WHERE id = ?`, [id]);
+
+        // Sincronización silenciosa en paralelo con RRS cabecera_cxc
+        syncAdvanceToRrs(id, req.company_id, 'delete', advanceToDelete);
+
         res.json({ message: 'Anticipo eliminado' });
     } catch (error) {
         console.error('Error deleteAdvance:', error);
