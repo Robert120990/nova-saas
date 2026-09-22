@@ -11,8 +11,6 @@ import {
     ChevronUp, 
     User, 
     FileText, 
-    CheckCircle2, 
-    ExternalLink,
     Zap,
     Cpu
 } from 'lucide-react';

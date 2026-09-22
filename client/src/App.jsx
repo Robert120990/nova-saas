@@ -41,6 +41,7 @@ import SalesTerminal from './pages/SalesTerminal';
 import SalesHistory from './pages/SalesHistory';
 import CustomerDiscounts from './pages/CustomerDiscounts';
 import DiscountRules from './pages/DiscountRules';
+import Promotions from './pages/Promotions';
 import ChartOfAccounts from './pages/ChartOfAccounts';
 import AccountingEntries from './pages/AccountingEntries';
 import AccountingGenerate from './pages/AccountingGenerate';
@@ -299,6 +300,7 @@ function App() {
                         <Route path="/ventas/combustibles" element={<FuelPrices />} />
                         <Route path="/ventas/descuentos" element={<CustomerDiscounts />} />
                         <Route path="/ventas/reglas-descuento" element={<DiscountRules />} />
+                        <Route path="/ventas/promociones" element={<Promotions />} />
                         <Route path="/ventas/contingencia" element={<Contingency />} />
                         <Route path="/ventas/retorno" element={<Eret />} />
                         <Route path="/ventas/configuracion" element={<SalesConfig />} />

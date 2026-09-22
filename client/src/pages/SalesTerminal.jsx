@@ -33,7 +33,8 @@ import {
     AlertTriangle,
     Layers,
     UserCheck,
-    Info
+    Info,
+    Sparkles
 } from 'lucide-react';
 import { toast } from 'sonner';
 import Modal from '../components/ui/Modal';
@@ -52,7 +53,9 @@ const ItemDiscountDialog = ({
     onRemove, 
     branchPercentages, 
     maxDiscountAmount, 
-    maxDiscountPercentage 
+    maxDiscountPercentage,
+    currentCartTotalDiscounts = 0,
+    currentGeneralDiscount = 0,
 }) => {
     const qty = parseFloat(item.cantidad) || 0;
     const price = parseFloat(item.precio) || 0;
@@ -62,8 +65,9 @@ const ItemDiscountDialog = ({
     const cotrans = isFuel ? Math.round(qty * 0.10 * 100) / 100 : 0;
     const fuelTaxes = fovial + cotrans;
     const discountableBase = Math.max(0, lineGross - fuelTaxes);
+    const unitDiscountableBase = qty > 0 ? (discountableBase / qty) : 0;
 
-    const [mode, setMode] = useState('percentage'); // 'percentage' | 'amount'
+    const [mode, setMode] = useState('percentage'); // 'percentage' | 'amount' | 'unit_amount'
     const [inputValue, setInputValue] = useState('');
 
     useEffect(() => {
@@ -85,11 +89,20 @@ const ItemDiscountDialog = ({
     let computedDiscount = 0;
     if (mode === 'percentage') {
         computedDiscount = Math.round((discountableBase * (numericInput / 100)) * 100) / 100;
+    } else if (mode === 'unit_amount') {
+        computedDiscount = Math.round((numericInput * qty) * 100) / 100;
     } else {
         computedDiscount = numericInput;
     }
     computedDiscount = Math.min(computedDiscount, discountableBase);
     const newLineTotal = Math.max(0, lineGross - computedDiscount);
+    const effectivePct = discountableBase > 0 ? (computedDiscount / discountableBase) * 100 : 0;
+    const effectiveUnitDiscount = qty > 0 ? (computedDiscount / qty) : 0;
+
+    // Descuentos ya otorgados a otros productos de la venta
+    const otherDiscounts = Math.max(0, (currentCartTotalDiscounts || 0) - (parseFloat(item.descuento) || 0)) + (currentGeneralDiscount || 0);
+    const projectedSaleDiscounts = otherDiscounts + computedDiscount;
+    const remainingTicketCupo = maxDiscountAmount !== null ? Math.max(0, maxDiscountAmount - otherDiscounts) : null;
 
     const handleApply = () => {
         if (computedDiscount <= 0) {
@@ -109,12 +122,15 @@ const ItemDiscountDialog = ({
         );
 
         if (!isFromRule) {
-            if (maxDiscountAmount && computedDiscount > maxDiscountAmount) {
-                toast.error(`El descuento excede el monto máximo configurado para la sucursal ($${maxDiscountAmount.toFixed(2)})`);
+            // 1. Tope de Margen (%): Valida que el porcentaje efectivo no exceda el % máximo permitido
+            if (maxDiscountPercentage && effectivePct > (maxDiscountPercentage + 0.01)) {
+                toast.error(`El descuento representa un ${effectivePct.toFixed(1)}%, superando el porcentaje máximo permitido (${maxDiscountPercentage}%)`);
                 return;
             }
-            if (mode === 'percentage' && maxDiscountPercentage && numericInput > maxDiscountPercentage) {
-                toast.error(`El porcentaje excede el máximo permitido para la sucursal (${maxDiscountPercentage}%)`);
+
+            // 2. Tope Acumulado por Ticket ($): Valida que el total acumulado en la venta no supere el monto máximo
+            if (maxDiscountAmount && projectedSaleDiscounts > (maxDiscountAmount + 0.01)) {
+                toast.error(`El descuento total acumulado de la venta ($${projectedSaleDiscounts.toFixed(2)}) excede el monto máximo permitido por ticket ($${maxDiscountAmount.toFixed(2)}). Cupo disponible: $${(remainingTicketCupo || 0).toFixed(2)}`);
                 return;
             }
         }
@@ -142,15 +158,15 @@ const ItemDiscountDialog = ({
 
                 {/* Límites de Sucursal */}
                 {(maxDiscountPercentage || maxDiscountAmount) && (
-                    <div className="flex gap-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                    <div className="flex flex-wrap gap-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
                         {maxDiscountPercentage && (
-                            <span className="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-lg border border-indigo-100">
-                                Máx. Sucursal: {maxDiscountPercentage}%
+                            <span className="bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-lg border border-indigo-100">
+                                Máx. Margen: {maxDiscountPercentage}%
                             </span>
                         )}
                         {maxDiscountAmount && (
-                            <span className="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-lg border border-indigo-100">
-                                Tope Monto: ${maxDiscountAmount.toFixed(2)}
+                            <span className="bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-lg border border-indigo-100">
+                                Tope Ticket: ${maxDiscountAmount.toFixed(2)} {remainingTicketCupo !== null && `(Disp: $${remainingTicketCupo.toFixed(2)})`}
                             </span>
                         )}
                     </div>
@@ -203,8 +219,8 @@ const ItemDiscountDialog = ({
                     </div>
                 )}
 
-                {/* Tabs Porcentaje / Monto */}
-                <div className="grid grid-cols-2 gap-1 p-1 bg-slate-100 rounded-xl">
+                {/* Tabs Porcentaje / Monto Total / Por Unidad */}
+                <div className={`grid ${qty > 1 ? 'grid-cols-3' : 'grid-cols-2'} gap-1 p-1 bg-slate-100 rounded-xl`}>
                     <button
                         type="button"
                         onClick={() => { setMode('percentage'); setInputValue(''); }}
@@ -225,8 +241,21 @@ const ItemDiscountDialog = ({
                                 : 'text-slate-600 hover:text-slate-900'
                         }`}
                     >
-                        Monto Fijo ($)
+                        {qty > 1 ? 'Total Línea ($)' : 'Monto Fijo ($)'}
                     </button>
+                    {qty > 1 && (
+                        <button
+                            type="button"
+                            onClick={() => { setMode('unit_amount'); setInputValue(''); }}
+                            className={`py-2 text-xs font-bold rounded-lg transition-all ${
+                                mode === 'unit_amount' 
+                                    ? 'bg-white text-indigo-600 shadow-sm' 
+                                    : 'text-slate-600 hover:text-slate-900'
+                            }`}
+                        >
+                            Por Unidad ($/u)
+                        </button>
+                    )}
                 </div>
 
                 {/* Botones de porcentajes rápidos */}
@@ -261,17 +290,27 @@ const ItemDiscountDialog = ({
                 {/* Input de Valor */}
                 <div>
                     <label className="text-xs font-bold text-slate-600 block mb-1">
-                        {mode === 'percentage' ? 'Porcentaje a Descontar (%)' : 'Monto en Dólares ($)'}
+                        {mode === 'percentage' 
+                            ? 'Porcentaje a Descontar (%)' 
+                            : mode === 'unit_amount' 
+                            ? `Monto a Descontar por Unidad ($/u) [x ${qty} u]` 
+                            : 'Monto Total de la Línea en Dólares ($)'}
                     </label>
                     <div className="relative">
                         <input
                             type="number"
                             step={mode === 'percentage' ? '1' : '0.01'}
                             min="0"
-                            max={mode === 'percentage' ? (maxDiscountPercentage || 100) : (maxDiscountAmount ? Math.min(maxDiscountAmount, discountableBase) : discountableBase)}
+                            max={
+                                mode === 'percentage' 
+                                    ? (maxDiscountPercentage || 100) 
+                                    : mode === 'unit_amount' 
+                                    ? unitDiscountableBase 
+                                    : discountableBase
+                            }
                             value={inputValue}
                             onChange={(e) => setInputValue(e.target.value)}
-                            placeholder={mode === 'percentage' ? 'Ej: 10' : 'Ej: 5.00'}
+                            placeholder={mode === 'percentage' ? 'Ej: 10' : mode === 'unit_amount' ? 'Ej: 1.00' : 'Ej: 5.00'}
                             className="w-full pl-8 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-400"
                             autoFocus
                         />
@@ -284,8 +323,20 @@ const ItemDiscountDialog = ({
                 {/* Preview */}
                 <div className="p-3 bg-indigo-50/60 rounded-xl border border-indigo-100/80 space-y-1">
                     <div className="flex justify-between text-xs text-slate-600">
-                        <span>Descuento aplicado:</span>
+                        <span>Descuento total aplicado:</span>
                         <span className="font-bold text-rose-600">-${computedDiscount.toFixed(2)}</span>
+                    </div>
+                    {qty > 1 && (
+                        <div className="flex justify-between text-[11px] text-slate-500">
+                            <span>Descuento unitario equivalente:</span>
+                            <span className="font-mono font-semibold text-slate-700">-${effectiveUnitDiscount.toFixed(2)} / u</span>
+                        </div>
+                    )}
+                    <div className="flex justify-between text-[11px] text-slate-500">
+                        <span>Porcentaje efectivo:</span>
+                        <span className={`font-mono font-bold ${maxDiscountPercentage && effectivePct > maxDiscountPercentage ? 'text-rose-600' : 'text-slate-700'}`}>
+                            {effectivePct.toFixed(1)}% {maxDiscountPercentage ? `(Máx. ${maxDiscountPercentage}%)` : ''}
+                        </span>
                     </div>
                     <div className="flex justify-between text-xs text-slate-900 font-bold border-t border-indigo-100 pt-1">
                         <span>Nuevo Total del Ítem:</span>
@@ -334,7 +385,8 @@ const GeneralDiscountDialog = ({
     gravadoBruto, 
     branchPercentages, 
     maxDiscountAmount, 
-    maxDiscountPercentage 
+    maxDiscountPercentage,
+    currentCartTotalDiscounts = 0
 }) => {
     const [mode, setMode] = useState('percentage'); // 'percentage' | 'amount'
     const [inputValue, setInputValue] = useState('');
@@ -366,6 +418,12 @@ const GeneralDiscountDialog = ({
     }
     computedDiscount = Math.min(computedDiscount, gravadoBruto);
     const newGravado = Math.max(0, gravadoBruto - computedDiscount);
+    const effectivePct = gravadoBruto > 0 ? (computedDiscount / gravadoBruto) * 100 : 0;
+
+    // Descuentos acumulados en ítems del carrito
+    const otherDiscounts = currentCartTotalDiscounts || 0;
+    const projectedSaleDiscounts = otherDiscounts + computedDiscount;
+    const remainingTicketCupo = maxDiscountAmount !== null ? Math.max(0, maxDiscountAmount - otherDiscounts) : null;
 
     const handleApply = () => {
         if (computedDiscount <= 0) {
@@ -376,12 +434,14 @@ const GeneralDiscountDialog = ({
             toast.error(`El descuento no puede superar el total gravado disponible ($${gravadoBruto.toFixed(2)})`);
             return;
         }
-        if (maxDiscountAmount && computedDiscount > maxDiscountAmount) {
-            toast.error(`El descuento excede el monto máximo configurado para la sucursal ($${maxDiscountAmount.toFixed(2)})`);
+        // 1. Tope de Margen (%): Valida que el porcentaje efectivo no exceda el % máximo permitido
+        if (maxDiscountPercentage && effectivePct > (maxDiscountPercentage + 0.01)) {
+            toast.error(`El descuento representa un ${effectivePct.toFixed(1)}%, superando el porcentaje máximo permitido (${maxDiscountPercentage}%)`);
             return;
         }
-        if (mode === 'percentage' && maxDiscountPercentage && numericInput > maxDiscountPercentage) {
-            toast.error(`El porcentaje excede el máximo permitido para la sucursal (${maxDiscountPercentage}%)`);
+        // 2. Tope Acumulado por Ticket ($): Valida que el total acumulado en la venta no supere el monto máximo
+        if (maxDiscountAmount && projectedSaleDiscounts > (maxDiscountAmount + 0.01)) {
+            toast.error(`El descuento total acumulado de la venta ($${projectedSaleDiscounts.toFixed(2)}) excede el monto máximo permitido por ticket ($${maxDiscountAmount.toFixed(2)}). Cupo disponible: $${(remainingTicketCupo || 0).toFixed(2)}`);
             return;
         }
         onApply(computedDiscount, mode === 'percentage' ? numericInput : null);
@@ -405,15 +465,15 @@ const GeneralDiscountDialog = ({
 
                 {/* Límites de Sucursal */}
                 {(maxDiscountPercentage || maxDiscountAmount) && (
-                    <div className="flex gap-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                    <div className="flex flex-wrap gap-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
                         {maxDiscountPercentage && (
-                            <span className="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-lg border border-indigo-100">
-                                Máx. Sucursal: {maxDiscountPercentage}%
+                            <span className="bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-lg border border-indigo-100">
+                                Máx. Margen: {maxDiscountPercentage}%
                             </span>
                         )}
                         {maxDiscountAmount && (
-                            <span className="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-lg border border-indigo-100">
-                                Tope Monto: ${maxDiscountAmount.toFixed(2)}
+                            <span className="bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-lg border border-indigo-100">
+                                Tope Ticket: ${maxDiscountAmount.toFixed(2)} {remainingTicketCupo !== null && `(Disp: $${remainingTicketCupo.toFixed(2)})`}
                             </span>
                         )}
                     </div>
@@ -484,7 +544,7 @@ const GeneralDiscountDialog = ({
                             type="number"
                             step={mode === 'percentage' ? '1' : '0.01'}
                             min="0"
-                            max={mode === 'percentage' ? (maxDiscountPercentage || 100) : (maxDiscountAmount ? Math.min(maxDiscountAmount, gravadoBruto) : gravadoBruto)}
+                            max={mode === 'percentage' ? (maxDiscountPercentage || 100) : (remainingTicketCupo !== null ? Math.min(remainingTicketCupo, gravadoBruto) : gravadoBruto)}
                             value={inputValue}
                             onChange={(e) => setInputValue(e.target.value)}
                             placeholder={mode === 'percentage' ? 'Ej: 10' : 'Ej: 15.00'}
@@ -502,6 +562,12 @@ const GeneralDiscountDialog = ({
                     <div className="flex justify-between text-xs text-slate-600">
                         <span>Descuento global resultante:</span>
                         <span className="font-bold text-rose-600">-${computedDiscount.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between text-[11px] text-slate-500">
+                        <span>Porcentaje efectivo:</span>
+                        <span className={`font-mono font-bold ${maxDiscountPercentage && effectivePct > maxDiscountPercentage ? 'text-rose-600' : 'text-slate-700'}`}>
+                            {effectivePct.toFixed(1)}% {maxDiscountPercentage ? `(Máx. ${maxDiscountPercentage}%)` : ''}
+                        </span>
                     </div>
                     <div className="flex justify-between text-xs text-slate-900 font-bold border-t border-indigo-100 pt-1">
                         <span>Nuevo Gravado Final:</span>
@@ -538,6 +604,181 @@ const GeneralDiscountDialog = ({
             </div>
         </Modal>
     );
+};
+
+const isPromoApplicableNow = (promo, now = new Date()) => {
+    if (!promo) return false;
+    const jsDay = now.getDay();
+    const currentIsoDay = jsDay === 0 ? 7 : jsDay;
+    if (Array.isArray(promo.days_of_week) && promo.days_of_week.length > 0) {
+        if (!promo.days_of_week.includes(currentIsoDay)) {
+            return false;
+        }
+    }
+    if (promo.start_time || promo.end_time) {
+        const currentMinutes = now.getHours() * 60 + now.getMinutes();
+        if (promo.start_time) {
+            const [sh, sm] = String(promo.start_time).split(':').map(Number);
+            if (currentMinutes < (sh * 60 + sm)) return false;
+        }
+        if (promo.end_time) {
+            const [eh, em] = String(promo.end_time).split(':').map(Number);
+            if (currentMinutes > (eh * 60 + em)) return false;
+        }
+    }
+    return true;
+};
+
+const computePromotionDiscount = (promo, qty, price, discountableBase) => {
+    if (!promo || qty <= 0 || price <= 0 || discountableBase <= 0) {
+        return { discount: 0, promoApplied: null, upsellPromo: null };
+    }
+
+    let discount = 0;
+    let promoApplied = null;
+    let upsellPromo = null;
+
+    const maxApps = promo.max_applications_per_sale && promo.max_applications_per_sale > 0 
+        ? promo.max_applications_per_sale 
+        : Infinity;
+
+    switch (promo.promotion_type) {
+        case 'nxm': {
+            const buyQty = Math.max(1, promo.buy_quantity || 2);
+            const payQty = Math.max(1, promo.pay_quantity || 1);
+            const freePerGroup = Math.max(0, buyQty - payQty);
+            const totalGroupsPossible = Math.floor(qty / buyQty);
+            const appliedGroups = Math.min(totalGroupsPossible, maxApps);
+
+            if (appliedGroups > 0 && freePerGroup > 0) {
+                const freeUnits = appliedGroups * freePerGroup;
+                discount = Math.round(freeUnits * price * 100) / 100;
+                discount = Math.min(discount, discountableBase);
+                promoApplied = {
+                    id: promo.id,
+                    name: promo.name,
+                    type: 'nxm',
+                    discount,
+                    details: `${buyQty}x${payQty}`
+                };
+            }
+
+            if (appliedGroups < maxApps) {
+                const remainder = qty % buyQty;
+                if (remainder > 0) {
+                    const missing = buyQty - remainder;
+                    upsellPromo = {
+                        promoId: promo.id,
+                        name: promo.name,
+                        hint: missing === 1 ? '¡Lleva 1 más y es gratis!' : `¡Lleva ${missing} más para promo ${buyQty}x${payQty}!`,
+                        targetQty: qty + missing
+                    };
+                }
+            }
+            break;
+        }
+
+        case 'second_unit_discount': {
+            const buyBase = Math.max(1, promo.buy_quantity || 1);
+            const cycleSize = buyBase + 1;
+            const pct = Math.max(0, Math.min(100, promo.discount_percentage || 50));
+            const totalCyclesPossible = Math.floor(qty / cycleSize);
+            const appliedCycles = Math.min(totalCyclesPossible, maxApps);
+
+            if (appliedCycles > 0 && pct > 0) {
+                const discPerCycle = Math.round(price * (pct / 100) * 100) / 100;
+                discount = Math.round(appliedCycles * discPerCycle * 100) / 100;
+                discount = Math.min(discount, discountableBase);
+                promoApplied = {
+                    id: promo.id,
+                    name: promo.name,
+                    type: 'second_unit_discount',
+                    discount,
+                    details: `2da al ${pct}%`
+                };
+            }
+
+            if (appliedCycles < maxApps) {
+                const remainder = qty % cycleSize;
+                if (remainder > 0) {
+                    const missing = cycleSize - remainder;
+                    upsellPromo = {
+                        promoId: promo.id,
+                        name: promo.name,
+                        hint: missing === 1 ? `¡Lleva 1 más al ${pct}% de desc.!` : `¡Lleva ${missing} más para descuento en siguiente unidad!`,
+                        targetQty: qty + missing
+                    };
+                }
+            }
+            break;
+        }
+
+        case 'bundle_fixed_price': {
+            const buyQty = Math.max(1, promo.buy_quantity || 2);
+            const bundlePrice = parseFloat(promo.bundle_price) || 0;
+            const normalBundlePrice = buyQty * price;
+            const savingsPerBundle = Math.max(0, normalBundlePrice - bundlePrice);
+
+            const totalGroupsPossible = Math.floor(qty / buyQty);
+            const appliedGroups = Math.min(totalGroupsPossible, maxApps);
+
+            if (appliedGroups > 0 && savingsPerBundle > 0) {
+                discount = Math.round(appliedGroups * savingsPerBundle * 100) / 100;
+                discount = Math.min(discount, discountableBase);
+                promoApplied = {
+                    id: promo.id,
+                    name: promo.name,
+                    type: 'bundle_fixed_price',
+                    discount,
+                    details: `${buyQty} por $${bundlePrice.toFixed(2)}`
+                };
+            }
+
+            if (appliedGroups < maxApps) {
+                const remainder = qty % buyQty;
+                if (remainder > 0) {
+                    const missing = buyQty - remainder;
+                    upsellPromo = {
+                        promoId: promo.id,
+                        name: promo.name,
+                        hint: `¡Lleva ${missing} más para paquete (${buyQty} por $${bundlePrice.toFixed(2)})!`,
+                        targetQty: qty + missing
+                    };
+                }
+            }
+            break;
+        }
+
+        case 'volume_tier': {
+            const minQty = Math.max(1, promo.buy_quantity || 1);
+            const pct = Math.max(0, Math.min(100, promo.discount_percentage || 0));
+
+            if (qty >= minQty && pct > 0) {
+                discount = Math.round(discountableBase * (pct / 100) * 100) / 100;
+                promoApplied = {
+                    id: promo.id,
+                    name: promo.name,
+                    type: 'volume_tier',
+                    discount,
+                    details: `Volumen ≥${minQty} (${pct}%)`
+                };
+            } else if (qty < minQty) {
+                const missing = Math.ceil(minQty - qty);
+                upsellPromo = {
+                    promoId: promo.id,
+                    name: promo.name,
+                    hint: `¡Lleva ${missing} más para obtener ${pct}% de desc. por volumen!`,
+                    targetQty: minQty
+                };
+            }
+            break;
+        }
+
+        default:
+            break;
+    }
+
+    return { discount, promoApplied, upsellPromo };
 };
 
 const SalesTerminal = () => {
@@ -984,6 +1225,28 @@ const SalesTerminal = () => {
         return productDiscountRules.find(r => r.product_id == productId && r.active);
     };
 
+    // Promociones comerciales de tienda activas (2x1, 2da al 50%, paquetes fijos, escala volumen)
+    const { data: activePromotions = [] } = useQuery({
+        queryKey: ['active-promotions-pos', sellerSession?.branch_id || user?.branch_id],
+        queryFn: async () => {
+            const bId = sellerSession?.branch_id || user?.branch_id;
+            const res = await axios.get('/api/promotions/active-pos', {
+                params: bId ? { branch_id: bId } : undefined
+            });
+            return Array.isArray(res.data) ? res.data : [];
+        },
+        staleTime: 60000,
+    });
+
+    const findPromotionForProduct = useCallback((productId) => {
+        if (!productId || !activePromotions?.length) return null;
+        const numId = Number(productId);
+        return activePromotions.find(promo => {
+            if (!isPromoApplicableNow(promo)) return false;
+            return Array.isArray(promo.product_ids) && promo.product_ids.some(id => Number(id) === numId);
+        }) || null;
+    }, [activePromotions]);
+
     const computeItemDiscount = useCallback((item, newQty, newPrice = null) => {
         const qty = parseFloat(newQty) || 0;
         const price = newPrice !== null ? parseFloat(newPrice) : (parseFloat(item.precio) || 0);
@@ -995,9 +1258,28 @@ const SalesTerminal = () => {
         const discountableBase = Math.max(0, lineGross - fuelTaxes);
 
         if (qty <= 0 || discountableBase <= 0) {
-            return { descuento: 0, unitDiscount: 0 };
+            return { descuento: 0, unitDiscount: 0, promoApplied: null, upsellPromo: null, discountApplied: false };
         }
 
+        // 1. Evaluar promoción comercial activa de tienda si no tiene descuento manual explícito
+        if (!item.isManual && !item.combo_id && item.id && !item.isManualDiscount) {
+            const promo = findPromotionForProduct(item.id);
+            if (promo) {
+                const promoRes = computePromotionDiscount(promo, qty, price, discountableBase);
+                if (promoRes.discount > 0 || promoRes.upsellPromo) {
+                    const unitDiscount = qty > 0 ? (promoRes.discount / qty) : 0;
+                    return {
+                        descuento: promoRes.discount,
+                        unitDiscount,
+                        promoApplied: promoRes.promoApplied,
+                        upsellPromo: promoRes.upsellPromo,
+                        discountApplied: promoRes.discount > 0
+                    };
+                }
+            }
+        }
+
+        // 2. Regla de descuento de producto si fue aplicada
         if (item.discountRule && item.discountApplied) {
             const rule = item.discountRule;
             let discountAmount = 0;
@@ -1011,22 +1293,52 @@ const SalesTerminal = () => {
             }
             discountAmount = Math.min(discountAmount, discountableBase);
             const unitDiscount = qty > 0 ? (discountAmount / qty) : 0;
-            return { descuento: discountAmount, unitDiscount };
+            return { descuento: discountAmount, unitDiscount, promoApplied: null, upsellPromo: null, discountApplied: true };
         }
 
+        // 3. Descuento manual previo por unidad
         if (item.unitDiscount > 0) {
             const discountAmount = Math.min(Math.round((item.unitDiscount * qty) * 100) / 100, discountableBase);
-            return { descuento: discountAmount, unitDiscount: item.unitDiscount };
+            return { descuento: discountAmount, unitDiscount: item.unitDiscount, promoApplied: null, upsellPromo: null, discountApplied: discountAmount > 0 };
         }
 
         if (item.descuento > 0 && item.cantidad > 0) {
             const prevUnit = item.descuento / item.cantidad;
             const discountAmount = Math.min(Math.round((prevUnit * qty) * 100) / 100, discountableBase);
-            return { descuento: discountAmount, unitDiscount: prevUnit };
+            return { descuento: discountAmount, unitDiscount: prevUnit, promoApplied: null, upsellPromo: null, discountApplied: discountAmount > 0 };
         }
 
-        return { descuento: 0, unitDiscount: 0 };
-    }, [taxSettings]);
+        return { descuento: 0, unitDiscount: 0, promoApplied: null, upsellPromo: null, discountApplied: false };
+    }, [taxSettings, findPromotionForProduct]);
+
+    // Re-evaluar promociones del carrito cuando se carguen o cambien las promociones activas
+    useEffect(() => {
+        if (!activePromotions?.length || !cart.length) return;
+        setCart(prevCart => {
+            let anyChanged = false;
+            const updated = prevCart.map(item => {
+                if (item.isManual || item.combo_id || item.isManualDiscount) return item;
+                const res = computeItemDiscount(item, item.cantidad, item.precio);
+                if (
+                    res.descuento !== (item.descuento || 0) ||
+                    JSON.stringify(res.promoApplied) !== JSON.stringify(item.promoApplied || null) ||
+                    JSON.stringify(res.upsellPromo) !== JSON.stringify(item.upsellPromo || null)
+                ) {
+                    anyChanged = true;
+                    return {
+                        ...item,
+                        descuento: res.descuento,
+                        unitDiscount: res.unitDiscount,
+                        promoApplied: res.promoApplied,
+                        upsellPromo: res.upsellPromo,
+                        discountApplied: res.descuento > 0
+                    };
+                }
+                return item;
+            });
+            return anyChanged ? updated : prevCart;
+        });
+    }, [activePromotions, computeItemDiscount]);
 
     const applyDiscountRule = (itemId) => {
         if (!posAllowsDiscounts) {
@@ -1095,6 +1407,9 @@ const SalesTerminal = () => {
                     ...item, 
                     descuento: discountAmount, 
                     discountApplied: discountAmount > 0,
+                    isManualDiscount: discountAmount > 0,
+                    promoApplied: null,
+                    upsellPromo: null,
                     unitDiscount: qty > 0 ? (discountAmount / qty) : 0
                 };
             }
@@ -1106,7 +1421,9 @@ const SalesTerminal = () => {
     const handleRemoveItemDiscount = (itemId) => {
         setCart(prev => prev.map(item => {
             if (item.id === itemId || item.combo_id === itemId) {
-                return { ...item, descuento: 0, unitDiscount: 0, discountApplied: false };
+                const cleanItem = { ...item, descuento: 0, unitDiscount: 0, discountApplied: false, isManualDiscount: false, promoApplied: null, upsellPromo: null };
+                const recomputed = computeItemDiscount(cleanItem, cleanItem.cantidad, cleanItem.precio);
+                return { ...cleanItem, ...recomputed };
             }
             return item;
         }));
@@ -1816,6 +2133,10 @@ const SalesTerminal = () => {
                 ${descuento > 0 ? ` (-$${descuento.toFixed(2)})` : ''}
                 = $${(cantidad * precio - descuento).toFixed(2)}
             </div>` : ''}
+            ${item.promoApplied && descuento > 0 ? `
+            <div style="font-size: 9px; color: #047857; margin-left: 8px; font-weight: bold;">
+                ↳ 🏷️ PROMO ${item.promoApplied.name.toUpperCase()}: -$${descuento.toFixed(2)}
+            </div>` : ''}
         `}).join('');
 
         const ticketHtml = `
@@ -1969,6 +2290,45 @@ const SalesTerminal = () => {
         if (tipoDte === '05' && referencingSale) {
             if (totals.total > (parseFloat(referencingSale.total_pagar) + 0.01)) {
                 return toast.error(`El monto de la Nota de Crédito ($${totals.total.toFixed(2)}) no puede ser mayor al documento original ($${parseFloat(referencingSale.total_pagar).toFixed(2)})`);
+            }
+        }
+
+        // 2b. Validaciones de límites de descuento de la sucursal (Margen y Tope Ticket)
+        if (maxDiscountAmount && totals.totalDescuentos > (maxDiscountAmount + 0.01)) {
+            const hasManualGeneral = generalDiscount > 0;
+            const hasManualItemDiscount = cart.some(item => parseFloat(item.descuento || 0) > 0 && !item.discountRule && !item.promoApplied);
+            if (hasManualGeneral || hasManualItemDiscount) {
+                return toast.error(`El total de descuentos aplicados ($${totals.totalDescuentos.toFixed(2)}) excede el monto máximo permitido por ticket en esta sucursal ($${maxDiscountAmount.toFixed(2)})`);
+            }
+        }
+
+        if (maxDiscountPercentage) {
+            for (const item of cart) {
+                const disc = parseFloat(item.descuento) || 0;
+                if (disc > 0 && !item.discountRule && !item.promoApplied) {
+                    const price = parseFloat(item.precio) || 0;
+                    const qty = parseFloat(item.cantidad) || 0;
+                    const lineGross = price * qty;
+                    let discountableBase = lineGross;
+                    if (item.tipo_combustible > 0 && tipoDte !== '04') {
+                        const itemFovial = Math.round(qty * parseFloat(taxSettings?.fovial_rate || 0.20) * 100) / 100;
+                        const itemCotrans = Math.round(qty * parseFloat(taxSettings?.cotrans_rate || 0.10) * 100) / 100;
+                        discountableBase = Math.max(0, lineGross - itemFovial - itemCotrans);
+                    }
+                    if (discountableBase > 0) {
+                        const itemPct = (disc / discountableBase) * 100;
+                        if (itemPct > (maxDiscountPercentage + 0.01)) {
+                            return toast.error(`El producto "${item.nombre}" tiene un descuento de ${itemPct.toFixed(1)}%, que supera el porcentaje máximo permitido (${maxDiscountPercentage}%)`);
+                        }
+                    }
+                }
+            }
+
+            if (generalDiscount > 0 && totals.gravadoBruto > 0) {
+                const genPct = (generalDiscount / totals.gravadoBruto) * 100;
+                if (genPct > (maxDiscountPercentage + 0.01)) {
+                    return toast.error(`El descuento general representa un ${genPct.toFixed(1)}%, que supera el porcentaje máximo permitido (${maxDiscountPercentage}%)`);
+                }
             }
         }
 
@@ -2261,15 +2621,16 @@ const SalesTerminal = () => {
             setCart(cart.map(item => {
                 if (isCombo ? item.combo_id === itemData.id : (item.id === itemData.id && !item.isManual && !item.combo_id)) {
                     const newQty = item.cantidad + 1;
-                    const { descuento: newDescuento, unitDiscount: newUnitDiscount } = (item.discountApplied || (parseFloat(item.descuento) || 0) > 0)
-                        ? computeItemDiscount(item, newQty, itemPrice)
-                        : { descuento: item.descuento || 0, unitDiscount: item.unitDiscount || 0 };
+                    const res = computeItemDiscount(item, newQty, itemPrice);
                     return { 
                         ...item, 
                         cantidad: newQty, 
                         precio: itemPrice, 
-                        descuento: newDescuento, 
-                        unitDiscount: newUnitDiscount, 
+                        descuento: res.descuento, 
+                        unitDiscount: res.unitDiscount, 
+                        promoApplied: res.promoApplied,
+                        upsellPromo: res.upsellPromo,
+                        discountApplied: res.discountApplied,
                         isAgreedPrice: !!agreedPriceInfo || item.isAgreedPrice 
                     };
                 }
@@ -2278,7 +2639,7 @@ const SalesTerminal = () => {
         } else {
             // Verificar regla de descuento de producto (solo marcar, no aplicar)
             const productRule = getProductDiscountRule(itemData.id);
-            setCart([...cart, {
+            const tempItem = {
                 id: isCombo ? null : itemData.id,
                 combo_id: isCombo ? itemData.id : null,
                 nombre: itemName,
@@ -2293,6 +2654,15 @@ const SalesTerminal = () => {
                 discountRule: productRule || null,
                 isAgreedPrice: !!agreedPriceInfo,
                 agreedPriceInfo: agreedPriceInfo || null
+            };
+            const res = computeItemDiscount(tempItem, 1, itemPrice);
+            setCart([...cart, {
+                ...tempItem,
+                descuento: res.descuento,
+                unitDiscount: res.unitDiscount,
+                promoApplied: res.promoApplied,
+                upsellPromo: res.upsellPromo,
+                discountApplied: res.discountApplied
             }]);
         }
         setIsProductModalOpen(false);
@@ -2408,15 +2778,16 @@ const SalesTerminal = () => {
             setCart(cart.map(item => {
                 if (isCombo ? item.combo_id === product.id : (item.id === product.id && !item.isManual && !item.combo_id)) {
                     const newQty = item.cantidad + 1;
-                    const { descuento: newDescuento, unitDiscount: newUnitDiscount } = (item.discountApplied || (parseFloat(item.descuento) || 0) > 0)
-                        ? computeItemDiscount(item, newQty, finalPrice)
-                        : { descuento: item.descuento || 0, unitDiscount: item.unitDiscount || 0 };
+                    const res = computeItemDiscount(item, newQty, finalPrice);
                     return { 
                         ...item, 
                         cantidad: newQty, 
                         precio: finalPrice, 
-                        descuento: newDescuento, 
-                        unitDiscount: newUnitDiscount, 
+                        descuento: res.descuento, 
+                        unitDiscount: res.unitDiscount, 
+                        promoApplied: res.promoApplied,
+                        upsellPromo: res.upsellPromo,
+                        discountApplied: res.discountApplied,
                         isAgreedPrice: isAgreed || item.isAgreedPrice 
                     };
                 }
@@ -2424,7 +2795,7 @@ const SalesTerminal = () => {
             }));
         } else {
             const productRule = getProductDiscountRule(product.id);
-            setCart([...cart, {
+            const tempItem = {
                 id: isCombo ? null : product.id,
                 combo_id: isCombo ? product.id : null,
                 nombre: (product.nombre || product.name),
@@ -2437,6 +2808,15 @@ const SalesTerminal = () => {
                 isManual: false,
                 discountRule: productRule || null,
                 isAgreedPrice: isAgreed
+            };
+            const res = computeItemDiscount(tempItem, 1, finalPrice);
+            setCart([...cart, {
+                ...tempItem,
+                descuento: res.descuento,
+                unitDiscount: res.unitDiscount,
+                promoApplied: res.promoApplied,
+                upsellPromo: res.upsellPromo,
+                discountApplied: res.discountApplied
             }]);
         }
 
@@ -2576,15 +2956,16 @@ const SalesTerminal = () => {
                 setCart(cart.map(item => {
                     if (isCombo ? item.combo_id === quickProd.id : (item.id === quickProd.id && !item.isManual && !item.combo_id)) {
                         const newQty = item.cantidad + qty;
-                        const { descuento: newDescuento, unitDiscount: newUnitDiscount } = (item.discountApplied || (parseFloat(item.descuento) || 0) > 0)
-                            ? computeItemDiscount(item, newQty, price)
-                            : { descuento: item.descuento || 0, unitDiscount: item.unitDiscount || 0 };
+                        const res = computeItemDiscount(item, newQty, price);
                         return { 
                             ...item, 
                             cantidad: newQty, 
                             precio: price, 
-                            descuento: newDescuento, 
-                            unitDiscount: newUnitDiscount, 
+                            descuento: res.descuento, 
+                            unitDiscount: res.unitDiscount, 
+                            promoApplied: res.promoApplied,
+                            upsellPromo: res.upsellPromo,
+                            discountApplied: res.discountApplied,
                             isAgreedPrice: isAgreed || item.isAgreedPrice 
                         };
                     }
@@ -2592,7 +2973,7 @@ const SalesTerminal = () => {
                 }));
             } else {
                 const productRule = !isCombo ? getProductDiscountRule(quickProd.id) : null;
-                setCart([...cart, {
+                const tempItem = {
                     id: isCombo ? null : quickProd.id,
                     combo_id: isCombo ? quickProd.id : null,
                     nombre: (quickProd.nombre || quickProd.name),
@@ -2606,6 +2987,15 @@ const SalesTerminal = () => {
                     discountRule: productRule || null,
                     isAgreedPrice: isAgreed,
                     agreedPriceInfo: agreedPriceInfo || quickProd.agreedPriceInfo || null
+                };
+                const res = computeItemDiscount(tempItem, qty, price);
+                setCart([...cart, {
+                    ...tempItem,
+                    descuento: res.descuento,
+                    unitDiscount: res.unitDiscount,
+                    promoApplied: res.promoApplied,
+                    upsellPromo: res.upsellPromo,
+                    discountApplied: res.discountApplied
                 }]);
             }
             toast.success(`${isCombo ? 'Combo' : 'Producto'} añadido al carrito`);
@@ -2673,18 +3063,30 @@ const SalesTerminal = () => {
 
                 if (field === 'cantidad') {
                     const newQty = parseFloat(value) || 0;
-                    if (item.discountApplied || (parseFloat(item.descuento) || 0) > 0) {
-                        const { descuento: newDescuento, unitDiscount: newUnitDiscount } = computeItemDiscount(item, newQty);
-                        return { ...item, cantidad: value, descuento: newDescuento, unitDiscount: newUnitDiscount };
-                    }
+                    const res = computeItemDiscount(item, newQty);
+                    return { 
+                        ...item, 
+                        cantidad: value, 
+                        descuento: res.descuento, 
+                        unitDiscount: res.unitDiscount,
+                        promoApplied: res.promoApplied,
+                        upsellPromo: res.upsellPromo,
+                        discountApplied: res.discountApplied
+                    };
                 }
 
                 if (field === 'precio') {
                     const newPrice = parseFloat(value) || 0;
-                    if (item.discountApplied || (parseFloat(item.descuento) || 0) > 0) {
-                        const { descuento: newDescuento, unitDiscount: newUnitDiscount } = computeItemDiscount(item, item.cantidad, newPrice);
-                        return { ...item, precio: value, descuento: newDescuento, unitDiscount: newUnitDiscount };
-                    }
+                    const res = computeItemDiscount(item, item.cantidad, newPrice);
+                    return { 
+                        ...item, 
+                        precio: value, 
+                        descuento: res.descuento, 
+                        unitDiscount: res.unitDiscount,
+                        promoApplied: res.promoApplied,
+                        upsellPromo: res.upsellPromo,
+                        discountApplied: res.discountApplied
+                    };
                 }
 
                 return { ...item, [field]: value };
@@ -3175,7 +3577,29 @@ const SalesTerminal = () => {
                                                             </span>
                                                         )}
                                                     </div>
-                                                    {item.discountRule && !item.discountApplied && (
+                                                    {item.promoApplied && (
+                                                        <div className="mt-1 flex items-center gap-1.5 text-[9px] font-extrabold text-emerald-800 bg-emerald-50 border border-emerald-300 px-2 py-0.5 rounded-md inline-flex shadow-xs">
+                                                            <Sparkles size={10} className="text-emerald-600" />
+                                                            <span>↳ 🏷️ PROMO {item.promoApplied.name.toUpperCase()}: -${parseFloat(item.descuento || 0).toFixed(2)}</span>
+                                                        </div>
+                                                    )}
+                                                    {item.upsellPromo && (
+                                                        <div className="mt-1 flex items-center gap-2 flex-wrap">
+                                                            <span className="inline-flex items-center gap-1 text-[9px] font-bold text-amber-800 bg-amber-50 border border-amber-300 px-2 py-0.5 rounded-md shadow-xs">
+                                                                <Sparkles size={10} className="text-amber-600" />
+                                                                {item.upsellPromo.hint}
+                                                            </span>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => updateItem(item.id, 'cantidad', item.upsellPromo.targetQty)}
+                                                                className="text-[9px] font-black uppercase text-indigo-700 hover:text-white bg-indigo-50 hover:bg-indigo-600 border border-indigo-200 hover:border-indigo-600 px-2 py-0.5 rounded transition-all shadow-xs active:scale-95"
+                                                                title={`Aumentar a ${item.upsellPromo.targetQty} unidades para completar la promoción`}
+                                                            >
+                                                                + Aplicar ({item.upsellPromo.targetQty}u)
+                                                            </button>
+                                                        </div>
+                                                    )}
+                                                    {!item.promoApplied && item.discountRule && !item.discountApplied && (
                                                         <button
                                                             type="button"
                                                             onClick={() => {
@@ -3203,7 +3627,7 @@ const SalesTerminal = () => {
                                                             }
                                                         </button>
                                                     )}
-                                                    {item.discountRule && item.discountApplied && (
+                                                    {!item.promoApplied && item.discountRule && item.discountApplied && (
                                                         <button
                                                             type="button"
                                                             onClick={() => handleRemoveItemDiscount(item.id)}
@@ -5222,6 +5646,8 @@ const SalesTerminal = () => {
                     branchPercentages={branchPercentages}
                     maxDiscountAmount={maxDiscountAmount}
                     maxDiscountPercentage={maxDiscountPercentage}
+                    currentCartTotalDiscounts={totals.totalItemDiscounts}
+                    currentGeneralDiscount={generalDiscount}
                 />
             )}
 
@@ -5238,6 +5664,7 @@ const SalesTerminal = () => {
                     branchPercentages={branchPercentages}
                     maxDiscountAmount={maxDiscountAmount}
                     maxDiscountPercentage={maxDiscountPercentage}
+                    currentCartTotalDiscounts={totals.totalItemDiscounts}
                 />
             )}
 

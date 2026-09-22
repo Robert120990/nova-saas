@@ -199,6 +199,144 @@ const createSale = async (req, res) => {
             if (pos.length > 0) codPuntoVentaMH = pos[0].codigo;
         }
 
+        // 0e. Validar límites de descuento de la sucursal (Tope de Margen % y Tope Acumulado por Ticket $)
+        const effectiveBranchId = header.branch_id || req.user.branch_id;
+        if (effectiveBranchId) {
+            const [branchRows] = await connection.query(
+                'SELECT id, nombre, max_discount_amount, max_discount_percentage FROM branches WHERE id = ? AND company_id = ?',
+                [effectiveBranchId, req.company_id]
+            );
+            const branch = branchRows[0];
+            if (branch) {
+                const maxAmount = branch.max_discount_amount !== null && branch.max_discount_amount !== undefined 
+                    ? parseFloat(branch.max_discount_amount) 
+                    : null;
+                const maxPercentage = branch.max_discount_percentage !== null && branch.max_discount_percentage !== undefined 
+                    ? parseFloat(branch.max_discount_percentage) 
+                    : null;
+
+                const totalItemDiscounts = items.reduce((acc, it) => acc + (parseFloat(it.monto_descuento) || 0), 0);
+                const generalDiscount = parseFloat(header.descuento_general || header.total_descuento || 0);
+                const totalDiscounts = totalItemDiscounts + generalDiscount;
+
+                // Validar tope de monto acumulado por ticket
+                if (maxAmount !== null && totalDiscounts > (maxAmount + 0.01)) {
+                    let hasManualDiscount = generalDiscount > 0;
+                    if (!hasManualDiscount) {
+                        for (const it of items) {
+                            const itDisc = parseFloat(it.monto_descuento) || 0;
+                            if (itDisc > 0 && it.product_id) {
+                                const [rules] = await connection.query(
+                                    `SELECT id FROM product_discount_rules 
+                                     WHERE product_id = ? AND company_id = ? AND active = 1
+                                     AND (start_date IS NULL OR start_date <= CURDATE())
+                                     AND (end_date IS NULL OR end_date >= CURDATE())`,
+                                    [it.product_id, req.company_id]
+                                );
+                                const [custRules] = await connection.query(
+                                    `SELECT id FROM customer_product_discounts 
+                                     WHERE customer_id = ? AND product_id = ? AND branch_id = ? AND company_id = ?`,
+                                    [header.customer_id || 0, it.product_id, effectiveBranchId, req.company_id]
+                                );
+                                const [promoRules] = await connection.query(
+                                    `SELECT sp.id 
+                                     FROM sales_promotions sp
+                                     JOIN sales_promotion_products spp ON sp.id = spp.promotion_id
+                                     WHERE spp.product_id = ? AND sp.company_id = ? AND sp.active = 1
+                                     AND (sp.branch_id IS NULL OR sp.branch_id = ?)
+                                     AND (sp.start_date IS NULL OR sp.start_date <= CURDATE())
+                                     AND (sp.end_date IS NULL OR sp.end_date >= CURDATE())`,
+                                    [it.product_id, req.company_id, effectiveBranchId]
+                                );
+                                if (rules.length === 0 && custRules.length === 0 && promoRules.length === 0) {
+                                    hasManualDiscount = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    if (hasManualDiscount) {
+                        await connection.rollback();
+                        return res.status(400).json({
+                            message: `El total de descuentos aplicados ($${totalDiscounts.toFixed(2)}) supera el monto máximo permitido por ticket para la sucursal ($${maxAmount.toFixed(2)}).`,
+                            success: false
+                        });
+                    }
+                }
+
+                // Validar porcentaje máximo de margen
+                if (maxPercentage !== null) {
+                    for (const it of items) {
+                        const itDisc = parseFloat(it.monto_descuento) || 0;
+                        if (itDisc > 0) {
+                            const qty = parseFloat(it.cantidad) || 1;
+                            const unitPrice = parseFloat(it.precio_unitario) || 0;
+                            const lineGross = qty * unitPrice;
+                            if (lineGross > 0) {
+                                const effectiveItemPct = (itDisc / lineGross) * 100;
+                                if (effectiveItemPct > (maxPercentage + 0.05)) {
+                                    let isAuthorizedRule = false;
+                                    if (it.product_id) {
+                                        const [prodRules] = await connection.query(
+                                            `SELECT id FROM product_discount_rules 
+                                             WHERE product_id = ? AND company_id = ? AND active = 1
+                                             AND (start_date IS NULL OR start_date <= CURDATE())
+                                             AND (end_date IS NULL OR end_date >= CURDATE())`,
+                                            [it.product_id, req.company_id]
+                                        );
+                                        if (prodRules.length > 0) isAuthorizedRule = true;
+                                    }
+                                    if (!isAuthorizedRule && header.customer_id && it.product_id) {
+                                        const [custRules] = await connection.query(
+                                            `SELECT id FROM customer_product_discounts 
+                                             WHERE customer_id = ? AND product_id = ? AND branch_id = ? AND company_id = ?`,
+                                            [header.customer_id, it.product_id, effectiveBranchId, req.company_id]
+                                        );
+                                        if (custRules.length > 0) isAuthorizedRule = true;
+                                    }
+                                    if (!isAuthorizedRule && it.product_id) {
+                                        const [promoRules] = await connection.query(
+                                            `SELECT sp.id 
+                                             FROM sales_promotions sp
+                                             JOIN sales_promotion_products spp ON sp.id = spp.promotion_id
+                                             WHERE spp.product_id = ? AND sp.company_id = ? AND sp.active = 1
+                                             AND (sp.branch_id IS NULL OR sp.branch_id = ?)
+                                             AND (sp.start_date IS NULL OR sp.start_date <= CURDATE())
+                                             AND (sp.end_date IS NULL OR sp.end_date >= CURDATE())`,
+                                            [it.product_id, req.company_id, effectiveBranchId]
+                                        );
+                                        if (promoRules.length > 0) isAuthorizedRule = true;
+                                    }
+                                    if (!isAuthorizedRule) {
+                                        await connection.rollback();
+                                        return res.status(400).json({
+                                            message: `El producto "${it.descripcion || 'Ítem'}" tiene un descuento de ${effectiveItemPct.toFixed(1)}%, que supera el porcentaje máximo autorizado para la sucursal (${maxPercentage}%).`,
+                                            success: false
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if (generalDiscount > 0) {
+                        const totalGravado = parseFloat(header.total_gravado || 0);
+                        const baseGeneral = totalGravado + generalDiscount;
+                        if (baseGeneral > 0) {
+                            const genPct = (generalDiscount / baseGeneral) * 100;
+                            if (genPct > (maxPercentage + 0.05)) {
+                                await connection.rollback();
+                                return res.status(400).json({
+                                    message: `El descuento general representa un ${genPct.toFixed(1)}%, superando el porcentaje máximo autorizado para la sucursal (${maxPercentage}%).`,
+                                    success: false
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // 1. Insertar Cabecera de Venta (sin DTE aún)
         const [saleResult] = await connection.query('INSERT INTO sales_headers SET ?', [{
             company_id: req.company_id,

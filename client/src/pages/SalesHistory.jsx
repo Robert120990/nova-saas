@@ -1618,7 +1618,7 @@ const SalesHistory = () => {
                         setSelectedSaleForCustomerEdit(null);
                     }}
                     sale={selectedSaleForCustomerEdit}
-                    onSaved={({ retransmitted }) => {
+                    onSaved={() => {
                         setIsEditCustomerModalOpen(false);
                         setSelectedSaleForCustomerEdit(null);
                     }}
