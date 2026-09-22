@@ -3,6 +3,7 @@ const { sendCloseoutToRrs } = require('../services/gasCloseoutRrs.service');
 const dteService = require('../services/dte.service');
 const notificationService = require('../services/notification.service');
 const { dteValidoExistsSql } = require('../services/dteQueryFilters');
+const { applyCloseoutLubricantsInventory, revertCloseoutLubricantsInventory } = require('../services/gasCloseoutInventory.service');
 
 // === Historial de cambios en cierres reabiertos ===
 
@@ -1475,6 +1476,9 @@ exports.deleteCloseout = async (req, res) => {
                 }
             }
 
+            // Revert any lubricant movements applied by this closeout
+            await revertCloseoutLubricantsInventory(connection, req.company_id, id);
+
             await connection.query(`DELETE FROM gas_station_closeout_adelantos WHERE closeout_id = ?`, [id]);
             await connection.query(`DELETE FROM gas_station_closeout_lubricant_readings WHERE closeout_id = ?`, [id]);
             await connection.query(`DELETE FROM gas_station_closeout_tank_readings WHERE closeout_id = ?`, [id]);
@@ -1613,6 +1617,9 @@ exports.closeCloseout = async (req, res) => {
             [id]
         );
 
+        // Deduct inventory for lubricants sold during this shift closeout
+        await applyCloseoutLubricantsInventory(pool, req.company_id, id);
+
         if (closeouts[0].estado === 'reabierto') {
             await logCloseoutChange(req, id, 'reclose', 'reclose', 'Cierre recerrado', {});
         }
@@ -1657,6 +1664,9 @@ exports.reopenCloseout = async (req, res) => {
             `UPDATE gas_station_closeouts SET estado = 'reabierto' WHERE id = ?`,
             [id]
         );
+
+        // Revert inventory deduction for lubricants when shift is reopened
+        await revertCloseoutLubricantsInventory(pool, req.company_id, id);
 
         await logCloseoutChange(req, id, 'reopen', 'reopen', 'Cierre reabierto', {});
 

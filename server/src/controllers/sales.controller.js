@@ -6,7 +6,7 @@ const aiService = require('../services/ai.service');
 const path = require('path');
 const fs = require('fs');
 const jwt = require('jsonwebtoken');
-const { getEffectiveProductId } = require('../utils/inventoryUtils');
+const { getEffectiveProductId, getLubricantCategoryIds, isLubricantProduct } = require('../utils/inventoryUtils');
 const excelService = require('../services/excel.service');
 const notificationService = require('../services/notification.service');
 const { dteValidoExistsSql, dteLatestColSql } = require('../services/dteQueryFilters');
@@ -377,6 +377,9 @@ const createSale = async (req, res) => {
         const saleId = saleResult.insertId;
 
         // 2. Procesar Ítems
+        const branchId = req.user?.branch_id || header.branch_id || null;
+        const lubricantCategoryIds = await getLubricantCategoryIds(connection, req.company_id, branchId);
+
         for (const item of items) {
             await connection.query('INSERT INTO sales_items SET ?', [{
                 sale_id: saleId,
@@ -401,8 +404,9 @@ const createSale = async (req, res) => {
                 for (const ci of comboItems) {
                     const totalQty = ci.quantity * item.cantidad;
                     const effectiveProductId = await getEffectiveProductId(connection, ci.product_id);
+                    const isLubricant = await isLubricantProduct(connection, req.company_id, branchId, effectiveProductId, lubricantCategoryIds);
                     
-                    if (header.dte_type !== '04') {
+                    if (header.dte_type !== '04' && !isLubricant) {
                         await connection.query(`
                             INSERT INTO inventory (company_id, product_id, branch_id, stock)
                             VALUES (?, ?, ?, -?)
@@ -423,8 +427,9 @@ const createSale = async (req, res) => {
                 }
             } else if (item.product_id) {
                 const effectiveProductId = await getEffectiveProductId(connection, item.product_id);
+                const isLubricant = await isLubricantProduct(connection, req.company_id, branchId, effectiveProductId, lubricantCategoryIds);
                 
-                if (header.dte_type !== '04') {
+                if (header.dte_type !== '04' && !isLubricant) {
                     await connection.query(`
                         INSERT INTO inventory (company_id, product_id, branch_id, stock)
                         VALUES (?, ?, ?, -?)
@@ -2848,6 +2853,7 @@ const voidSale = async (req, res) => {
             await connection.beginTransaction();
 
             const [items] = await connection.query('SELECT * FROM sales_items WHERE sale_id = ?', [id]);
+            const lubricantCategoryIds = await getLubricantCategoryIds(connection, req.company_id, sale.branch_id);
 
             for (const item of items) {
                 if (item.combo_id) {
@@ -2859,43 +2865,49 @@ const voidSale = async (req, res) => {
                     for (const ci of comboItems) {
                         const totalQty = ci.quantity * item.cantidad;
                         const effectiveProductId = await getEffectiveProductId(connection, ci.product_id);
+                        const isLubricant = await isLubricantProduct(connection, req.company_id, sale.branch_id, effectiveProductId, lubricantCategoryIds);
 
+                        if (!isLubricant) {
+                            await connection.query(`
+                                INSERT INTO inventory (company_id, product_id, branch_id, stock)
+                                VALUES (?, ?, ?, ?)
+                                ON DUPLICATE KEY UPDATE stock = stock + ?
+                            `, [req.company_id, effectiveProductId, sale.branch_id, totalQty, totalQty]);
+
+                            await connection.query('INSERT INTO inventory_movements SET ?', [{
+                                company_id: req.company_id,
+                                branch_id: sale.branch_id,
+                                product_id: effectiveProductId,
+                                tipo_movimiento: 'ENTRADA',
+                                cantidad: totalQty,
+                                tipo_documento: `Anulación Venta ${id} (COMBO)`,
+                                documento_id: id,
+                                created_at: new Date()
+                            }]);
+                        }
+                    }
+                } else if (item.product_id) {
+                    const effectiveProductId = await getEffectiveProductId(connection, item.product_id);
+                    const isLubricant = await isLubricantProduct(connection, req.company_id, sale.branch_id, effectiveProductId, lubricantCategoryIds);
+
+                    if (!isLubricant) {
                         await connection.query(`
                             INSERT INTO inventory (company_id, product_id, branch_id, stock)
                             VALUES (?, ?, ?, ?)
                             ON DUPLICATE KEY UPDATE stock = stock + ?
-                        `, [req.company_id, effectiveProductId, sale.branch_id, totalQty, totalQty]);
+                        `, [req.company_id, effectiveProductId, sale.branch_id, item.cantidad, item.cantidad]);
 
                         await connection.query('INSERT INTO inventory_movements SET ?', [{
                             company_id: req.company_id,
                             branch_id: sale.branch_id,
                             product_id: effectiveProductId,
                             tipo_movimiento: 'ENTRADA',
-                            cantidad: totalQty,
-                            tipo_documento: `Anulación Venta ${id} (COMBO)`,
+                            cantidad: item.cantidad,
+                            tipo_documento: `Anulación Venta ${id}`,
                             documento_id: id,
                             created_at: new Date()
                         }]);
                     }
-                } else if (item.product_id) {
-                    const effectiveProductId = await getEffectiveProductId(connection, item.product_id);
-
-                    await connection.query(`
-                        INSERT INTO inventory (company_id, product_id, branch_id, stock)
-                        VALUES (?, ?, ?, ?)
-                        ON DUPLICATE KEY UPDATE stock = stock + ?
-                    `, [req.company_id, effectiveProductId, sale.branch_id, item.cantidad, item.cantidad]);
-
-                    await connection.query('INSERT INTO inventory_movements SET ?', [{
-                        company_id: req.company_id,
-                        branch_id: sale.branch_id,
-                        product_id: effectiveProductId,
-                        tipo_movimiento: 'ENTRADA',
-                        cantidad: item.cantidad,
-                        tipo_documento: `Anulación Venta ${id}`,
-                        documento_id: id,
-                        created_at: new Date()
-                    }]);
                 }
             }
 
@@ -3278,6 +3290,8 @@ const regenerateDTE = async (req, res) => {
             const newSaleId = newSaleResult.insertId;
 
             // 2. Insertar ítems y descontar inventario
+            const lubricantCategoryIds = await getLubricantCategoryIds(connection, req.company_id, sale.branch_id);
+
             for (const item of items) {
                 await connection.query('INSERT INTO sales_items SET ?', [{
                     sale_id: newSaleId,
@@ -3305,7 +3319,9 @@ const regenerateDTE = async (req, res) => {
                     for (const ci of comboItems) {
                         const totalQty = ci.quantity * item.cantidad;
                         const effectiveProductId = await getEffectiveProductId(connection, ci.product_id);
-                        if (sale.dte_type !== '04' && sale.tipo_documento !== '04') {
+                        const isLubricant = await isLubricantProduct(connection, req.company_id, sale.branch_id, effectiveProductId, lubricantCategoryIds);
+
+                        if (sale.dte_type !== '04' && sale.tipo_documento !== '04' && !isLubricant) {
                             await connection.query(`
                                 INSERT INTO inventory (company_id, product_id, branch_id, stock)
                                 VALUES (?, ?, ?, -?)
@@ -3325,7 +3341,9 @@ const regenerateDTE = async (req, res) => {
                     }
                 } else if (item.product_id) {
                     const effectiveProductId = await getEffectiveProductId(connection, item.product_id);
-                    if (sale.dte_type !== '04' && sale.tipo_documento !== '04') {
+                    const isLubricant = await isLubricantProduct(connection, req.company_id, sale.branch_id, effectiveProductId, lubricantCategoryIds);
+
+                    if (sale.dte_type !== '04' && sale.tipo_documento !== '04' && !isLubricant) {
                         await connection.query(`
                             INSERT INTO inventory (company_id, product_id, branch_id, stock)
                             VALUES (?, ?, ?, -?)
