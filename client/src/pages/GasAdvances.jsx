@@ -14,12 +14,15 @@ import {
     Banknote, 
     CreditCard, 
     CheckSquare, 
-    Landmark 
+    Landmark,
+    Printer,
+    Mail
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useConfirm } from '../context/ConfirmContext';
 import Money from '../components/ui/Money';
 import { formatDateDMY, getTodayString } from '../utils/dateUtils';
+import PdfViewerModal from '../components/ui/PdfViewerModal';
 
 const GasAdvances = () => {
     const navigate = useNavigate();
@@ -31,6 +34,19 @@ const GasAdvances = () => {
     const [selectedClienteId, setSelectedClienteId] = useState('');
     const [selectedClienteNombre, setSelectedClienteNombre] = useState('');
     const [searchTerm, setSearchTerm] = useState('');
+
+    // Estado del visor de recibo PDF y envío de correo
+    const [receiptModal, setReceiptModal] = useState({
+        isOpen: false,
+        pdfUrl: null,
+        isLoading: false,
+        error: null,
+        title: 'Recibo de Anticipo',
+        subtitle: '',
+        fileName: 'Recibo_Anticipo.pdf',
+        advance: null
+    });
+    const [isSendingEmail, setIsSendingEmail] = useState(false);
 
     // Estado del formulario y desglose de pago
     const [fecha, setFecha] = useState(getTodayString());
@@ -75,11 +91,15 @@ const GasAdvances = () => {
             if (selectedItem) return axios.put(`/api/gas-station/advances/${selectedItem.id}`, data);
             return axios.post('/api/gas-station/advances', data);
         },
-        onSuccess: () => {
+        onSuccess: (res) => {
             queryClient.invalidateQueries(['gas-advances']);
             setIsModalOpen(false);
+            const isCreate = !selectedItem;
             setSelectedItem(null);
-            toast.success(selectedItem ? 'Anticipo actualizado correctamente' : 'Anticipo creado correctamente');
+            toast.success(isCreate ? 'Anticipo creado correctamente' : 'Anticipo actualizado correctamente');
+            if (isCreate && res?.data?.id) {
+                handlePrintReceipt(res.data);
+            }
         },
         onError: (error) => toast.error(error.response?.data?.message || 'Error al procesar anticipo')
     });
@@ -101,6 +121,74 @@ const GasAdvances = () => {
             variant: 'danger',
         });
         if (ok) deleteMutation.mutate(id);
+    };
+
+    const handlePrintReceipt = async (item) => {
+        if (!item?.id) return;
+        const clientName = item.cliente_nombre || item.customer_nombre || 'Cliente';
+        const numero = item.numero || item.id;
+        const fileName = `Recibo_Anticipo_${numero}.pdf`;
+
+        if (receiptModal.pdfUrl) {
+            window.URL.revokeObjectURL(receiptModal.pdfUrl);
+        }
+
+        setReceiptModal({
+            isOpen: true,
+            pdfUrl: null,
+            isLoading: true,
+            error: null,
+            title: `Recibo de Pago Anticipado #${numero}`,
+            subtitle: `Cliente: ${clientName}`,
+            fileName,
+            advance: item
+        });
+
+        try {
+            const res = await axios.get(`/api/gas-station/advances/${item.id}/receipt/pdf`, {
+                responseType: 'blob'
+            });
+            const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+            setReceiptModal(prev => ({
+                ...prev,
+                pdfUrl: url,
+                isLoading: false
+            }));
+        } catch (err) {
+            console.error('Error cargando recibo:', err);
+            setReceiptModal(prev => ({
+                ...prev,
+                isLoading: false,
+                error: 'Error al generar el recibo en PDF'
+            }));
+            toast.error('Error al generar el recibo en PDF');
+        }
+    };
+
+    const handleCloseReceiptModal = () => {
+        if (receiptModal.pdfUrl) {
+            window.URL.revokeObjectURL(receiptModal.pdfUrl);
+        }
+        setReceiptModal(prev => ({ ...prev, isOpen: false, pdfUrl: null, advance: null }));
+    };
+
+    const handleSendEmail = async (item) => {
+        const advanceId = item?.id;
+        if (!advanceId) return;
+        setIsSendingEmail(true);
+        const clientName = item.cliente_nombre || item.customer_nombre || 'Cliente';
+        const promise = axios.post(`/api/gas-station/advances/${advanceId}/send-email`);
+        toast.promise(promise, {
+            loading: `Enviando recibo por correo a ${clientName}...`,
+            success: () => {
+                setIsSendingEmail(false);
+                return 'Recibo de pago enviado exitosamente por correo';
+            },
+            error: (err) => {
+                setIsSendingEmail(false);
+                return err.response?.data?.message || 'Error al enviar el recibo por correo';
+            }
+        });
     };
 
     const handleOpenCreate = () => {
@@ -306,6 +394,20 @@ const GasAdvances = () => {
                                 </td>
                                 <td className="px-3 py-2 whitespace-nowrap text-right">
                                     <div className="flex items-center justify-end gap-1">
+                                        <button 
+                                            onClick={() => handlePrintReceipt(item)} 
+                                            className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
+                                            title="Imprimir / Ver Recibo de Anticipo"
+                                        >
+                                            <Printer size={14}/>
+                                        </button>
+                                        <button 
+                                            onClick={() => handleSendEmail(item)} 
+                                            className="p-1.5 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer"
+                                            title="Enviar Recibo por Correo"
+                                        >
+                                            <Mail size={14}/>
+                                        </button>
                                         <button 
                                             onClick={() => handleEdit(item)} 
                                             className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
@@ -535,6 +637,25 @@ const GasAdvances = () => {
                     </div>
                 </form>
             </Modal>
+
+            {/* Modal de Visualización e Impresión de Recibo PDF */}
+            <PdfViewerModal
+                isOpen={receiptModal.isOpen}
+                onClose={handleCloseReceiptModal}
+                title={receiptModal.title}
+                subtitle={receiptModal.subtitle}
+                badge="Comprobante Oficial"
+                pdfUrl={receiptModal.pdfUrl}
+                isLoading={receiptModal.isLoading}
+                loadingText="Generando recibo oficial de pago anticipado..."
+                error={receiptModal.error}
+                onRetry={() => receiptModal.advance && handlePrintReceipt(receiptModal.advance)}
+                fileName={receiptModal.fileName}
+                footerNote="Comprobante oficial de pago anticipado • Estación de Servicio"
+                onSendEmail={receiptModal.advance ? () => handleSendEmail(receiptModal.advance) : null}
+                isSendingEmail={isSendingEmail}
+                sendEmailLabel="Enviar por Correo"
+            />
         </div>
     );
 };

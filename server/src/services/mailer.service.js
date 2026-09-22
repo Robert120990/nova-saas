@@ -8,7 +8,8 @@ const {
     generateStatementPDF,
     generateProviderStatementPDF,
     generateTrupputStatementPDF,
-    generatePaymentReceiptPDF
+    generatePaymentReceiptPDF,
+    generateAdvanceReceiptPDF
 } = require('./pdf.service');
 
 // ── Private Helpers ─────────────────────────────────────────────────────────
@@ -596,12 +597,116 @@ const sendMail = async ({ branchId, to, subject, text, html, attachments }) => {
     }
 };
 
+/**
+ * Sends a customer advance receipt email
+ */
+const sendAdvanceReceiptEmail = async (advanceId, recipientEmail = null) => {
+    console.log(`[Mailer] Iniciando proceso de envío de recibo de anticipo ID: ${advanceId}`);
+    try {
+        const [rows] = await pool.query(`
+            SELECT a.*, 
+                   c.nombre AS customer_nombre, c.nrc, c.nit, c.direccion AS customer_direccion, 
+                   c.telefono AS customer_telefono, c.correo AS customer_email,
+                   b.nombre AS branch_name, b.direccion AS branch_direccion, b.telefono AS branch_telefono, b.logo_url AS branch_logo_url,
+                   comp.razon_social AS company_name, comp.nombre_comercial AS company_nombre_comercial, comp.nit AS company_nit, 
+                   comp.nrc AS company_nrc, comp.actividad_economica AS company_giro,
+                   comp.direccion AS company_direccion, comp.telefono AS company_telefono, comp.logo_url AS company_logo_url
+            FROM gas_station_advances a
+            LEFT JOIN customers c ON a.cliente_id = c.id
+            LEFT JOIN branches b ON a.branch_id = b.id
+            LEFT JOIN companies comp ON a.company_id = comp.id
+            WHERE a.id = ?
+        `, [advanceId]);
+
+        if (rows.length === 0) throw new Error('No se encontró el registro del anticipo indicado.');
+        const advance = rows[0];
+
+        const targetEmail = (recipientEmail && recipientEmail.trim()) || advance.customer_email;
+        if (!targetEmail || !targetEmail.trim()) {
+            throw new Error('El cliente no tiene un correo electrónico registrado y no se especificó ningún destinatario.');
+        }
+
+        const smtp = await getSMTPSettings(advance.branch_id, advance.company_id);
+        const pdfBuffer = await generateAdvanceReceiptPDF(advance);
+        const transporter = createTransporter(smtp);
+
+        const fechaStr = new Date(advance.fecha).toLocaleDateString('es-SV');
+        const companyName = advance.company_nombre_comercial || advance.company_name || 'Estación de Servicio';
+        const clientName = advance.cliente_nombre || advance.customer_nombre || 'Estimado(a) Cliente';
+        const montoNum = parseFloat(advance.monto || 0).toFixed(2);
+
+        await transporter.sendMail({
+            from: `"${smtp.from_name || companyName}" <${smtp.from_email || smtp.user}>`,
+            to: targetEmail.trim(),
+            subject: `Comprobante de Pago Anticipado No. ${advance.numero || advance.id} - ${companyName}`,
+            html: `
+                <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; padding: 24px; border: 1px solid #e2e8f0; border-radius: 16px; max-width: 600px; margin: auto; background-color: #ffffff;">
+                    <div style="text-align: center; margin-bottom: 20px;">
+                        <h2 style="color: #4f46e5; margin: 0 0 6px 0; font-size: 22px;">Confirmación de Pago Anticipado</h2>
+                        <span style="display: inline-block; background-color: #eef2ff; color: #4338ca; font-size: 11px; font-weight: bold; padding: 4px 12px; border-radius: 9999px; text-transform: uppercase; letter-spacing: 0.5px;">
+                            No. Anticipo: ${advance.numero || String(advance.id).padStart(6, '0')}
+                        </span>
+                    </div>
+
+                    <p style="font-size: 15px; color: #1e293b; line-height: 1.5;">Estimado(a) <b>${clientName}</b>,</p>
+                    <p style="font-size: 14px; color: #475569; line-height: 1.5;">
+                        Le confirmamos que hemos registrado satisfactoriamente su pago en concepto de anticipo para suministro de combustibles y productos en nuestra estación de servicio <b>${advance.branch_name || companyName}</b>.
+                    </p>
+
+                    <div style="background: #f8fafc; padding: 18px; border-radius: 12px; margin: 20px 0; border: 1px solid #e2e8f0;">
+                        <table style="width: 100%; font-size: 13px; border-collapse: collapse;">
+                            <tr>
+                                <td style="color: #64748b; padding: 6px 0;">Monto Recibido:</td>
+                                <td style="font-weight: 800; text-align: right; color: #0f172a; font-size: 16px;">$${montoNum}</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #64748b; padding: 6px 0;">Fecha:</td>
+                                <td style="font-weight: 600; text-align: right; color: #334155;">${fechaStr}</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #64748b; padding: 6px 0;">Sucursal:</td>
+                                <td style="font-weight: 600; text-align: right; color: #334155;">${advance.branch_name || 'Central'}</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #64748b; padding: 6px 0;">Saldo Disponible Actual:</td>
+                                <td style="font-weight: 700; text-align: right; color: #059669;">$${parseFloat(advance.monto_disponible || 0).toFixed(2)}</td>
+                            </tr>
+                        </table>
+                    </div>
+
+                    <p style="font-size: 13px; color: #64748b; text-align: center; margin-top: 16px;">
+                        Adjuntamos su comprobante de pago oficial en formato PDF.
+                    </p>
+
+                    <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid #f1f5f9; text-align: center;">
+                        <p style="font-size: 11px; color: #94a3b8; margin: 0;">
+                            ${companyName} • Sistema de Gestión y Facturación Electrónica Nova SaaS
+                        </p>
+                    </div>
+                </div>
+            `,
+            attachments: [{
+                filename: `Recibo_Anticipo_${advance.numero || advance.id}.pdf`,
+                content: pdfBuffer,
+                contentType: 'application/pdf'
+            }]
+        });
+
+        console.log(`[Mailer] Recibo de anticipo ${advanceId} enviado exitosamente a ${targetEmail}`);
+        return true;
+    } catch (error) {
+        console.error(`[Mailer] Error enviando recibo de anticipo ${advanceId}:`, error);
+        throw error;
+    }
+};
+
 module.exports = {
     sendCustomerStatementEmail,
     sendAnticiposStatementEmail,
     sendTrupputStatementEmail,
     sendProviderStatementEmail,
     sendPaymentReceiptEmail,
+    sendAdvanceReceiptEmail,
     sendProviderPaymentReceiptEmail,
     getSMTPSettings,
     createTransporter,

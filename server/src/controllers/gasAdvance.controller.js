@@ -2,6 +2,8 @@ const pool = require('../config/db');
 const notificationService = require('../services/notification.service');
 const reportPdfHelper = require('../utils/reportPdfHelper');
 const excelService = require('../services/excel.service');
+const pdfService = require('../services/pdf.service');
+const mailer = require('../services/mailer.service');
 
 function generateNumero(day, month, correlative) {
     const dd = String(day).padStart(2, '0');
@@ -725,5 +727,63 @@ exports.getAdvancesReportPDF = async (req, res) => {
     } catch (error) {
         console.error('Error getAdvancesReportPDF:', error);
         res.status(500).json({ message: 'Error al generar el reporte de anticipos: ' + error.message });
+    }
+};
+
+/**
+ * Genera el recibo de pago de anticipo en PDF
+ */
+exports.getAdvanceReceiptPDF = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const companyId = req.company_id;
+
+        if (!companyId) {
+            return res.status(400).json({ message: 'Contexto de empresa no encontrado' });
+        }
+
+        const [rows] = await pool.query(`
+            SELECT a.*, 
+                   c.nombre AS customer_nombre, c.nrc, c.nit, c.direccion AS customer_direccion, 
+                   c.telefono AS customer_telefono, c.correo AS customer_email,
+                   b.nombre AS branch_name, b.direccion AS branch_direccion, b.telefono AS branch_telefono, b.logo_url AS branch_logo_url,
+                   comp.razon_social AS company_name, comp.nombre_comercial AS company_nombre_comercial, comp.nit AS company_nit, 
+                   comp.nrc AS company_nrc, comp.actividad_economica AS company_giro,
+                   comp.direccion AS company_direccion, comp.telefono AS company_telefono, comp.logo_url AS company_logo_url
+            FROM gas_station_advances a
+            LEFT JOIN customers c ON a.cliente_id = c.id
+            LEFT JOIN branches b ON a.branch_id = b.id
+            LEFT JOIN companies comp ON a.company_id = comp.id
+            WHERE a.id = ? AND a.company_id = ?
+        `, [id, companyId]);
+
+        if (rows.length === 0) {
+            return res.status(404).json({ message: 'Anticipo no encontrado' });
+        }
+
+        const advance = rows[0];
+        const pdfBuffer = await pdfService.generateAdvanceReceiptPDF(advance);
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename=Recibo_Anticipo_${advance.numero || id}.pdf`);
+        return res.send(pdfBuffer);
+    } catch (error) {
+        console.error('Error getAdvanceReceiptPDF:', error);
+        res.status(500).json({ message: 'Error al generar recibo de anticipo: ' + error.message });
+    }
+};
+
+/**
+ * Envía el recibo de anticipo por correo electrónico al cliente
+ */
+exports.sendAdvanceReceiptEmail = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { email } = req.body || {};
+        await mailer.sendAdvanceReceiptEmail(id, email);
+        res.json({ message: 'Recibo enviado por correo exitosamente' });
+    } catch (error) {
+        console.error('Error sendAdvanceReceiptEmail:', error);
+        res.status(500).json({ message: error.message || 'Error al enviar el recibo por correo' });
     }
 };

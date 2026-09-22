@@ -6567,12 +6567,385 @@ const generateVentasLecturasAnalyticsPDF = async (data) => {
     return await getBuffer();
 };
 
+/**
+ * Generates a PDF buffer for a gas station customer advance payment receipt
+ */
+const generateAdvanceReceiptPDF = (data) => {
+    return new Promise((resolve, reject) => {
+        try {
+            const doc = new PDFDocument({
+                size: 'LETTER',
+                layout: 'portrait',
+                margins: { top: 35, bottom: 35, left: 35, right: 35 },
+                bufferPages: true,
+                autoFirstPage: true
+            });
+
+            const buffers = [];
+            doc.on('data', b => buffers.push(b));
+            doc.on('end', () => resolve(Buffer.concat(buffers)));
+            doc.on('error', err => reject(err));
+
+            const startX = 35;
+            const contentWidth = 542; // 612 - 70
+
+            // 1. --- LOGO Y ENCABEZADO EMPRESA ---
+            const logoPath = data.branch_logo_url || data.company_logo_url;
+            let logoDrawn = false;
+            if (logoPath) {
+                try {
+                    const fileName = logoPath.split('/').pop();
+                    const absoluteLogoPath = path.join(__dirname, '..', '..', 'uploads', fileName);
+                    if (fs.existsSync(absoluteLogoPath)) {
+                        doc.image(absoluteLogoPath, startX, 35, { fit: [95, 60], align: 'left', valign: 'center' });
+                        logoDrawn = true;
+                    }
+                } catch (e) {
+                    console.error('[Advance Receipt PDF] Error loading logo:', e.message);
+                }
+            }
+
+            const headerLeftX = logoDrawn ? startX + 105 : startX;
+            const companyBoxW = logoDrawn ? 260 : 365;
+
+            // Datos de la empresa / sucursal
+            const companyName = (data.company_name || 'ESTACIÓN DE SERVICIO').toUpperCase();
+            doc.font('Helvetica-Bold').fontSize(11).fillColor('#0f172a')
+               .text(companyName, headerLeftX, 35, { width: companyBoxW, ellipsis: true });
+
+            let curY = doc.y + 2;
+
+            doc.font('Helvetica').fontSize(7.5).fillColor('#64748b');
+            const taxParts = [];
+            if (data.company_nit && data.company_nit !== '---') taxParts.push(`NIT: ${data.company_nit}`);
+            if (data.company_nrc && data.company_nrc !== '---') taxParts.push(`NRC: ${data.company_nrc}`);
+            if (taxParts.length > 0) {
+                doc.text(taxParts.join('  •  '), headerLeftX, curY, { width: companyBoxW });
+                curY = doc.y + 1;
+            }
+
+            const branchName = data.branch_name || 'Estación Central';
+            doc.font('Helvetica-Bold').fontSize(8).fillColor('#334155')
+               .text(`SUCURSAL: ${branchName.toUpperCase()}`, headerLeftX, curY, { width: companyBoxW });
+            curY = doc.y + 1;
+
+            const addr = data.branch_direccion || data.company_direccion;
+            if (addr) {
+                doc.font('Helvetica').fontSize(7).fillColor('#64748b')
+                   .text(addr, headerLeftX, curY, { width: companyBoxW, maxLines: 2 });
+                curY = doc.y + 1;
+            }
+
+            const phone = data.branch_telefono || data.company_telefono;
+            if (phone) {
+                doc.font('Helvetica').fontSize(7).fillColor('#64748b')
+                   .text(`Tel: ${phone}`, headerLeftX, curY, { width: companyBoxW });
+            }
+
+            // --- RECUADRO SUPERIOR DERECHO: TÍTULO Y CORRELATIVO ---
+            const badgeW = 165;
+            const badgeX = startX + contentWidth - badgeW;
+            const badgeY = 35;
+            const badgeH = 68;
+
+            // Recuadro contenedor
+            doc.roundedRect(badgeX, badgeY, badgeW, badgeH, 6)
+               .lineWidth(1).strokeColor('#4f46e5').stroke();
+
+            // Cabecera del recuadro
+            doc.roundedRect(badgeX, badgeY, badgeW, 20, 6).fill('#4f46e5');
+            doc.rect(badgeX, badgeY + 12, badgeW, 8).fill('#4f46e5');
+
+            doc.font('Helvetica-Bold').fontSize(8.5).fillColor('#ffffff')
+               .text('RECIBO DE ANTICIPO', badgeX, badgeY + 5, { width: badgeW, align: 'center' });
+
+            // Número de Anticipo
+            doc.font('Helvetica-Bold').fontSize(7.5).fillColor('#64748b')
+               .text('NO. ANTICIPO', badgeX, badgeY + 24, { width: badgeW, align: 'center' });
+
+            doc.font('Helvetica-Bold').fontSize(13).fillColor('#4f46e5')
+               .text(`No. ${data.numero || String(data.id).padStart(6, '0')}`, badgeX, badgeY + 34, { width: badgeW, align: 'center' });
+
+            // Fecha
+            const fechaStr = reportPdfHelper.formatDate(data.fecha);
+            doc.font('Helvetica-Bold').fontSize(7.5).fillColor('#0f172a')
+               .text(`FECHA: ${fechaStr}`, badgeX, badgeY + 52, { width: badgeW, align: 'center' });
+
+            // 2. --- LÍNEA DIVISORIA DE ENCABEZADO ---
+            const lineY = Math.max(curY + 8, badgeY + badgeH + 10);
+            doc.moveTo(startX, lineY).lineTo(startX + contentWidth, lineY)
+               .lineWidth(0.75).strokeColor('#e2e8f0').stroke();
+
+            // 3. --- RECUADRO DATOS DEL CLIENTE ---
+            const clientBoxY = lineY + 8;
+            const clientBoxH = 58;
+
+            doc.roundedRect(startX, clientBoxY, contentWidth, clientBoxH, 6)
+               .fillAndStroke('#f8fafc', '#e2e8f0');
+
+            const clientPadX = startX + 12;
+            const clientPadY = clientBoxY + 8;
+
+            doc.font('Helvetica-Bold').fontSize(7.5).fillColor('#64748b')
+               .text('RECIBIMOS DE (CLIENTE):', clientPadX, clientPadY);
+
+            const clientName = (data.cliente_nombre || data.customer_nombre || 'CLIENTE GENERAL').toUpperCase();
+            doc.font('Helvetica-Bold').fontSize(10.5).fillColor('#0f172a')
+               .text(clientName, clientPadX, clientPadY + 11, { width: 330, ellipsis: true });
+
+            const clientAddr = data.customer_direccion;
+            if (clientAddr) {
+                doc.font('Helvetica').fontSize(7.5).fillColor('#475569')
+                   .text(`Dirección: ${clientAddr}`, clientPadX, clientPadY + 25, { width: 330, maxLines: 2 });
+            }
+
+            // Datos fiscales del cliente en la columna derecha
+            const clientTaxX = startX + 355;
+            doc.font('Helvetica-Bold').fontSize(7.5).fillColor('#475569');
+            
+            const nrcText = data.nrc && data.nrc !== '---' ? data.nrc : '---';
+            const nitText = data.nit && data.nit !== '---' ? data.nit : '---';
+            doc.text('NRC: ', clientTaxX, clientPadY + 11, { continued: true })
+               .font('Helvetica').text(nrcText);
+
+            doc.font('Helvetica-Bold').text('NIT/DUI: ', clientTaxX, clientPadY + 23, { continued: true })
+               .font('Helvetica').text(nitText);
+
+            if (data.customer_telefono) {
+                doc.font('Helvetica-Bold').text('Teléfono: ', clientTaxX, clientPadY + 35, { continued: true })
+                   .font('Helvetica').text(data.customer_telefono);
+            }
+
+            // 4. --- RECUADRO DE MONTO RECIBIDO Y CANTIDAD EN LETRAS ---
+            const amountBoxY = clientBoxY + clientBoxH + 8;
+            const amountBoxH = 48;
+
+            doc.roundedRect(startX, amountBoxY, contentWidth, amountBoxH, 6)
+               .fillAndStroke('#eef2ff', '#c7d2fe');
+
+            // Columna Izquierda: Cantidad en letras
+            const amtPadX = startX + 12;
+            const amtPadY = amountBoxY + 8;
+
+            doc.font('Helvetica-Bold').fontSize(7.5).fillColor('#4f46e5')
+               .text('POR LA CANTIDAD DE:', amtPadX, amtPadY);
+
+            const montoTotal = parseFloat(data.monto) || 0;
+            const letras = numberToWords(montoTotal);
+            doc.font('Helvetica-Bold').fontSize(8.5).fillColor('#1e293b')
+               .text(letras, amtPadX, amtPadY + 12, { width: 360, leading: 2 });
+
+            // Columna Derecha: Monto en Números
+            const bigAmtX = startX + contentWidth - 160;
+            doc.font('Helvetica-Bold').fontSize(7.5).fillColor('#4f46e5')
+               .text('TOTAL RECIBIDO', bigAmtX, amtPadY, { width: 148, align: 'right' });
+
+            doc.font('Helvetica-Bold').fontSize(16).fillColor('#1e1b4b')
+               .text(`$ ${montoTotal.toFixed(2)}`, bigAmtX, amtPadY + 11, { width: 148, align: 'right' });
+
+            // 5. --- CONCEPTO Y OBSERVACIONES ---
+            let nextY = amountBoxY + amountBoxH + 10;
+            doc.font('Helvetica-Bold').fontSize(8).fillColor('#334155')
+               .text('CONCEPTO / DESTINO DE FONDOS:', startX, nextY);
+
+            doc.font('Helvetica').fontSize(8).fillColor('#0f172a')
+               .text('Anticipo de fondos para consumo y suministro de combustibles (Gasolina / Diésel) y lubricantes en estación de servicio.', startX, nextY + 11, { width: contentWidth });
+
+            nextY = doc.y + 4;
+
+            if (data.notas && data.notas.trim()) {
+                doc.font('Helvetica-Bold').fontSize(8).fillColor('#334155')
+                   .text('NOTAS / OBSERVACIONES:', startX, nextY);
+                doc.font('Helvetica').fontSize(8).fillColor('#0f172a')
+                   .text(data.notas.trim(), startX, nextY + 11, { width: contentWidth });
+                nextY = doc.y + 6;
+            } else {
+                nextY += 4;
+            }
+
+            // 6. --- TABLA DE DESGLOSE DE FORMAS DE PAGO RECIBIDAS ---
+            doc.font('Helvetica-Bold').fontSize(8.5).fillColor('#0f172a')
+               .text('DESGLOSE DE FORMAS DE PAGO RECIBIDAS:', startX, nextY);
+            nextY = doc.y + 5;
+
+            const tableHdrY = nextY;
+            const tableHdrH = 18;
+
+            doc.rect(startX, tableHdrY, contentWidth, tableHdrH).fill('#f1f5f9');
+            doc.moveTo(startX, tableHdrY).lineTo(startX + contentWidth, tableHdrY).lineWidth(0.5).strokeColor('#cbd5e1').stroke();
+            doc.moveTo(startX, tableHdrY + tableHdrH).lineTo(startX + contentWidth, tableHdrY + tableHdrH).lineWidth(0.5).strokeColor('#cbd5e1').stroke();
+
+            const colW1 = 140;
+            const colW2 = 252;
+            const colW3 = 150;
+
+            doc.font('Helvetica-Bold').fontSize(7.5).fillColor('#334155');
+            doc.text('FORMA DE PAGO', startX + 10, tableHdrY + 5, { width: colW1 });
+            doc.text('REFERENCIA / NO. DOCUMENTO / AUTORIZACIÓN', startX + colW1 + 10, tableHdrY + 5, { width: colW2 });
+            doc.text('MONTO RECIBIDO ($)', startX + colW1 + colW2, tableHdrY + 5, { width: colW3 - 10, align: 'right' });
+
+            let rowY = tableHdrY + tableHdrH;
+
+            const ef = parseFloat(data.efectivo) || 0;
+            const tj = parseFloat(data.tarjeta) || 0;
+            const ch = parseFloat(data.cheque) || 0;
+            const tr = parseFloat(data.transferencia) || 0;
+
+            const paymentRows = [];
+            if (ef > 0) {
+                paymentRows.push({
+                    metodo: 'EFECTIVO',
+                    ref: 'Pago en efectivo recibido en caja',
+                    monto: ef
+                });
+            }
+            if (tj > 0) {
+                paymentRows.push({
+                    metodo: 'TARJETA (DÉBITO / CRÉDITO)',
+                    ref: data.tarjeta_referencia ? `Autorización / Ref: ${data.tarjeta_referencia}` : 'Terminal POS',
+                    monto: tj
+                });
+            }
+            if (ch > 0) {
+                paymentRows.push({
+                    metodo: 'CHEQUE',
+                    ref: data.cheque_referencia ? `No. Cheque: ${data.cheque_referencia}` : 'Cheque bancario',
+                    monto: ch
+                });
+            }
+            if (tr > 0) {
+                paymentRows.push({
+                    metodo: 'TRANSFERENCIA BANCARIA',
+                    ref: data.transferencia_referencia ? `Comprobante / Ref: ${data.transferencia_referencia}` : 'Depósito / Transferencia',
+                    monto: tr
+                });
+            }
+
+            if (paymentRows.length === 0 && montoTotal > 0) {
+                paymentRows.push({
+                    metodo: 'EFECTIVO',
+                    ref: 'Anticipo recibido en caja',
+                    monto: montoTotal
+                });
+            }
+
+            paymentRows.forEach((item, idx) => {
+                const bg = idx % 2 === 1 ? '#f8fafc' : '#ffffff';
+                doc.rect(startX, rowY, contentWidth, 18).fill(bg);
+
+                doc.font('Helvetica-Bold').fontSize(8).fillColor('#0f172a')
+                   .text(item.metodo, startX + 10, rowY + 5, { width: colW1 });
+
+                doc.font('Helvetica').fontSize(8).fillColor('#475569')
+                   .text(item.ref, startX + colW1 + 10, rowY + 5, { width: colW2, ellipsis: true });
+
+                doc.font('Helvetica-Bold').fontSize(8).fillColor('#0f172a')
+                   .text(`$ ${item.monto.toFixed(2)}`, startX + colW1 + colW2, rowY + 5, { width: colW3 - 10, align: 'right' });
+
+                rowY += 18;
+                doc.moveTo(startX, rowY).lineTo(startX + contentWidth, rowY).lineWidth(0.5).strokeColor('#f1f5f9').stroke();
+            });
+
+            // Fila de Total de la Tabla
+            doc.rect(startX, rowY, contentWidth, 20).fill('#f8fafc');
+            doc.moveTo(startX, rowY).lineTo(startX + contentWidth, rowY).lineWidth(0.75).strokeColor('#cbd5e1').stroke();
+
+            doc.font('Helvetica-Bold').fontSize(8.5).fillColor('#0f172a')
+               .text('TOTAL PAGADO:', startX + colW1, rowY + 6, { width: colW2, align: 'right' });
+
+            doc.font('Helvetica-Bold').fontSize(9.5).fillColor('#4f46e5')
+               .text(`$ ${montoTotal.toFixed(2)}`, startX + colW1 + colW2, rowY + 5, { width: colW3 - 10, align: 'right' });
+
+            rowY += 20;
+            doc.moveTo(startX, rowY).lineTo(startX + contentWidth, rowY).lineWidth(0.75).strokeColor('#cbd5e1').stroke();
+
+            // 7. --- RESUMEN DE SALDO DISPONIBLE Y CONSUMOS ---
+            const balanceBoxY = rowY + 12;
+            const balanceBoxH = 46;
+
+            doc.roundedRect(startX, balanceBoxY, contentWidth, balanceBoxH, 6)
+               .fillAndStroke('#ffffff', '#e2e8f0');
+
+            const colBalanceW = contentWidth / 3;
+            const disp = parseFloat(data.monto_disponible) || 0;
+            const consumido = Math.max(0, Math.round((montoTotal - disp) * 100) / 100);
+
+            // Col 1: Monto Anticipado
+            doc.font('Helvetica-Bold').fontSize(7).fillColor('#64748b')
+               .text('MONTO TOTAL ANTICIPADO', startX, balanceBoxY + 9, { width: colBalanceW, align: 'center' });
+            doc.font('Helvetica-Bold').fontSize(11).fillColor('#0f172a')
+               .text(`$ ${montoTotal.toFixed(2)}`, startX, balanceBoxY + 21, { width: colBalanceW, align: 'center' });
+
+            // Línea vertical separadora 1
+            doc.moveTo(startX + colBalanceW, balanceBoxY + 8).lineTo(startX + colBalanceW, balanceBoxY + balanceBoxH - 8)
+               .lineWidth(0.5).strokeColor('#e2e8f0').stroke();
+
+            // Col 2: Monto Consumido en Cierres
+            doc.font('Helvetica-Bold').fontSize(7).fillColor('#64748b')
+               .text('TOTAL CONSUMIDO EN TURNOS', startX + colBalanceW, balanceBoxY + 9, { width: colBalanceW, align: 'center' });
+            doc.font('Helvetica-Bold').fontSize(11).fillColor('#e11d48')
+               .text(`$ ${consumido.toFixed(2)}`, startX + colBalanceW, balanceBoxY + 21, { width: colBalanceW, align: 'center' });
+
+            // Línea vertical separadora 2
+            doc.moveTo(startX + (colBalanceW * 2), balanceBoxY + 8).lineTo(startX + (colBalanceW * 2), balanceBoxY + balanceBoxH - 8)
+               .lineWidth(0.5).strokeColor('#e2e8f0').stroke();
+
+            // Col 3: Saldo Disponible Actual
+            doc.font('Helvetica-Bold').fontSize(7).fillColor('#059669')
+               .text('SALDO DISPONIBLE ACTUAL', startX + (colBalanceW * 2), balanceBoxY + 9, { width: colBalanceW, align: 'center' });
+            doc.font('Helvetica-Bold').fontSize(12).fillColor('#059669')
+               .text(`$ ${disp.toFixed(2)}`, startX + (colBalanceW * 2), balanceBoxY + 20, { width: colBalanceW, align: 'center' });
+
+            // 8. --- FIRMAS (ENTREGADO Y RECIBIDO) ---
+            const sigY = balanceBoxY + balanceBoxH + 52;
+            const sigLineW = 190;
+            const sigLeftX = startX + 35;
+            const sigRightX = startX + contentWidth - sigLineW - 35;
+
+            // Línea izquierda: Cliente
+            doc.moveTo(sigLeftX, sigY).lineTo(sigLeftX + sigLineW, sigY)
+               .lineWidth(0.75).strokeColor('#94a3b8').stroke();
+
+            doc.font('Helvetica-Bold').fontSize(8).fillColor('#0f172a')
+               .text('ENTREGADO POR (CLIENTE)', sigLeftX, sigY + 5, { width: sigLineW, align: 'center' });
+            doc.font('Helvetica').fontSize(7).fillColor('#64748b')
+               .text('Nombre, Firma y DUI', sigLeftX, sigY + 16, { width: sigLineW, align: 'center' });
+
+            // Línea derecha: Estación de Servicio
+            doc.moveTo(sigRightX, sigY).lineTo(sigRightX + sigLineW, sigY)
+               .lineWidth(0.75).strokeColor('#94a3b8').stroke();
+
+            doc.font('Helvetica-Bold').fontSize(8).fillColor('#0f172a')
+               .text('RECIBIDO CONFORME (CAJERO / ESTACIÓN)', sigRightX, sigY + 5, { width: sigLineW, align: 'center' });
+            doc.font('Helvetica').fontSize(7).fillColor('#64748b')
+               .text('Nombre, Firma y Sello de Estación', sigRightX, sigY + 16, { width: sigLineW, align: 'center' });
+
+            // 9. --- LEYENDA LEGAL Y PIE DE PÁGINA ---
+            const footerY = 705;
+            doc.moveTo(startX, footerY).lineTo(startX + contentWidth, footerY)
+               .lineWidth(0.5).strokeColor('#e2e8f0').stroke();
+
+            const disclaimer = 'Este recibo certifica la recepción efectiva de fondos en concepto de pago anticipado para consumo de combustibles en pista o productos de tienda. No constituye Documento Tributario Electrónico (DTE); el documento tributario fiscal correspondiente será emitido de conformidad con la normativa del Ministerio de Hacienda al momento del suministro y despacho.';
+            doc.font('Helvetica-Oblique').fontSize(6.5).fillColor('#94a3b8')
+               .text(disclaimer, startX, footerY + 6, { width: contentWidth, align: 'center', lineGap: 1.5 });
+
+            const nowStr = new Date().toLocaleString('es-SV', { timeZone: 'America/El_Salvador' });
+            doc.font('Helvetica').fontSize(6.5).fillColor('#94a3b8')
+               .text(`Documento generado el ${nowStr} • Nova SaaS Gasolinera`, startX, footerY + 28, { width: contentWidth, align: 'center' });
+
+            doc.end();
+        } catch (err) {
+            reject(err);
+        }
+    });
+};
+
 module.exports = {
     generateTransferPDF, 
-      generateStatementPDF, 
-      generateAgingPDF,
-      generateProviderStatementPDF,
-      generateTrupputStatementPDF,
+    generateStatementPDF, 
+    generateAgingPDF,
+    generateProviderStatementPDF,
+    generateTrupputStatementPDF,
     generateProviderAgingPDF,
     generateStockReportPDF,
     generateMovementsReportPDF,
@@ -6582,6 +6955,7 @@ module.exports = {
     generateCustomerBalancesPDF,
     generateProviderBalancesPDF,
     generatePaymentReceiptPDF,
+    generateAdvanceReceiptPDF,
     generateDailySalesReportPDF,
     generateSalesByCustomerPDF,
     generateSalesByCategoryPDF,

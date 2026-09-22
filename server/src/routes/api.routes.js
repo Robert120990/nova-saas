@@ -765,6 +765,8 @@ router.get('/gas-station/advances/report/pdf', gasAdvanceController.getAdvancesR
 router.post('/gas-station/advances', gasAdvanceController.createAdvance);
 router.put('/gas-station/advances/:id', gasAdvanceController.updateAdvance);
 router.delete('/gas-station/advances/:id', gasAdvanceController.deleteAdvance);
+router.get('/gas-station/advances/:id/receipt/pdf', gasAdvanceController.getAdvanceReceiptPDF);
+router.post('/gas-station/advances/:id/send-email', gasAdvanceController.sendAdvanceReceiptEmail);
 router.get('/gas-station/advances/available/:cliente_id', gasAdvanceController.getAvailableAdvancesByClient);
 
 // Gas Station - Closeout Anticipos Despachados
