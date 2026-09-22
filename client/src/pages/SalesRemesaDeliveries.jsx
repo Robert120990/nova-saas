@@ -4,7 +4,7 @@ import axios from 'axios';
 import Modal from '../components/ui/Modal';
 import Pagination from '../components/ui/Pagination';
 import Table from '../components/ui/Table';
-import { Handshake, Plus, Trash2, Search, Save, X, Loader2, Eye, Barcode, Edit3, Printer, CheckCircle } from 'lucide-react';
+import { Handshake, Plus, Trash2, Search, Save, X, Loader2, Eye, Barcode, Edit3, Printer, CheckCircle, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
 import { useConfirm } from '../context/ConfirmContext';
@@ -18,6 +18,8 @@ const SalesRemesaDeliveries = () => {
     const queryClient = useQueryClient();
     const confirm = useConfirm();
     const { user } = useAuth();
+
+    const isSuperAdmin = user?.role === 'SuperAdmin';
 
     const [listSearch, setListSearch] = useState('');
     const [listPage, setListPage] = useState(1);
@@ -128,10 +130,32 @@ const SalesRemesaDeliveries = () => {
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['sales-remesa-deliveries'] });
             queryClient.invalidateQueries({ queryKey: ['sales-remesas-pending'] });
+            queryClient.invalidateQueries({ queryKey: ['sales-remesa-delivery'] });
             toast.success('Entrega marcada como entregada');
         },
         onError: (error) => toast.error(error.response?.data?.message || 'Error al marcar entrega'),
     });
+
+    const resendRrsMutation = useMutation({
+        mutationFn: (id) => axios.post(`/api/sales/remesa-deliveries/${id}/send-to-rrs`),
+        onSuccess: (res) => {
+            queryClient.invalidateQueries({ queryKey: ['sales-remesa-deliveries'] });
+            queryClient.invalidateQueries({ queryKey: ['sales-remesa-delivery', selectedDeliveryId] });
+            toast.success(res.data?.message || 'Entrega sincronizada con RRS exitosamente');
+        },
+        onError: (error) => toast.error(error.response?.data?.message || 'Error al sincronizar con RRS'),
+    });
+
+    const handleResendRrs = async () => {
+        if (!selectedDeliveryId) return;
+        const ok = await confirm({
+            title: '¿Reenviar a RRS?',
+            message: 'Se sincronizará esta entrega de remesas directamente con la base de datos de RRS.',
+            confirmLabel: 'Sí, sincronizar',
+            variant: 'info',
+        });
+        if (ok) resendRrsMutation.mutate(selectedDeliveryId);
+    };
 
     const isSaving = createMutation.isPending || updateMutation.isPending;
 
@@ -699,7 +723,23 @@ const SalesRemesaDeliveries = () => {
                                 </tbody>
                             </table>
                         </div>
-                        <div className="flex justify-end gap-2">
+                        <div className="flex flex-wrap justify-end gap-2 pt-2">
+                            {isSuperAdmin && (
+                                <button
+                                    type="button"
+                                    disabled={resendRrsMutation.isPending}
+                                    onClick={handleResendRrs}
+                                    className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-sky-700 bg-sky-50 hover:bg-sky-100 rounded-xl transition-all disabled:opacity-50"
+                                    title="Reenviar y sincronizar remesa a RRS (solo SuperAdmin)"
+                                >
+                                    {resendRrsMutation.isPending ? (
+                                        <Loader2 size={14} className="animate-spin" />
+                                    ) : (
+                                        <RefreshCw size={14} />
+                                    )}
+                                    Reenviar a RRS
+                                </button>
+                            )}
                             <button
                                 onClick={() => handlePrintPdf(deliveryDetail.id)}
                                 className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-xl transition-all"

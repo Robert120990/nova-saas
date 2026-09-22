@@ -39,6 +39,7 @@ const vatBooksController = require('../controllers/vatBooks.controller');
 const customerDiscountController = require('../controllers/customerDiscount.controller');
 const customerBranchController = require('../controllers/customerBranch.controller');
 const discountRulesController = require('../controllers/discountRules.controller');
+const promotionController = require('../controllers/promotion.controller');
 const accountingController = require('../controllers/accounting.controller');
 const accountingGenerationController = require('../controllers/accounting.generation.controller');
 const accountingCorrelativosController = require('../controllers/accounting.correlativos.controller');
@@ -384,6 +385,7 @@ router.post('/sales/remesa-deliveries', salesRemesaDeliveryController.createDeli
 router.put('/sales/remesa-deliveries/:id', salesRemesaDeliveryController.updateDelivery);
 router.get('/sales/remesa-deliveries/:id', salesRemesaDeliveryController.getDelivery);
 router.put('/sales/remesa-deliveries/:id/entregar', salesRemesaDeliveryController.entregarDelivery);
+router.post('/sales/remesa-deliveries/:id/send-to-rrs', salesRemesaDeliveryController.resendToRrs);
 router.get('/sales/remesa-deliveries/:id/pdf', salesRemesaDeliveryController.getDeliveryPdf);
 router.delete('/sales/remesa-deliveries/:id', salesRemesaDeliveryController.deleteDelivery);
 
@@ -454,6 +456,14 @@ router.get('/discount-rules', discountRulesController.getRules);
 router.post('/discount-rules', discountRulesController.createRule);
 router.put('/discount-rules/:id', discountRulesController.updateRule);
 router.delete('/discount-rules/:id', discountRulesController.deleteRule);
+
+// Sales Promotions
+router.get('/promotions', promotionController.getPromotions);
+router.get('/promotions/active-pos', promotionController.getActivePromotionsForPos);
+router.get('/promotions/:id', promotionController.getPromotionById);
+router.post('/promotions', promotionController.createPromotion);
+router.put('/promotions/:id', promotionController.updatePromotion);
+router.delete('/promotions/:id', promotionController.deletePromotion);
 
 // Accounts Receivable (CXC)
 router.get('/cxc/statement', cxcController.getCustomerStatement);
@@ -819,6 +829,7 @@ router.put('/gas-station/remesa-deliveries/:id', gasRemesaDeliveryController.upd
 router.get('/gas-station/remesa-deliveries/:id', gasRemesaDeliveryController.getDelivery);
 router.put('/gas-station/remesa-deliveries/:id/entregar', gasRemesaDeliveryController.entregarDelivery);
 router.put('/gas-station/remesa-deliveries/:id/revertir-entregado', gasRemesaDeliveryController.revertirEntregado);
+router.post('/gas-station/remesa-deliveries/:id/send-to-rrs', gasRemesaDeliveryController.resendToRrs);
 router.get('/gas-station/remesa-deliveries/:id/pdf', gasRemesaDeliveryController.getDeliveryPdf);
 router.delete('/gas-station/remesa-deliveries/:id', gasRemesaDeliveryController.deleteDelivery);
 
