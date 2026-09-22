@@ -419,6 +419,8 @@ function App() {
                         <Route path="/industrial/inventario" element={<EggInventory />} />
                         <Route path="/industrial/reportes" element={<EggReports />} />
                         <Route path="/industrial/configuracion" element={<EggConfig />} />
+                        <Route path="/egg-industrial/config" element={<Navigate to="/industrial/configuracion?tab=lot-prefixes" replace />} />
+
 
                         {/* CRM Comercial */}
                         <Route path="/crm/cotizaciones" element={<CrmQuotations />} />

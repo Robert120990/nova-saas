@@ -191,6 +191,7 @@ export default function TarimaLabelModal({
                     const tPallet = parseFloat(tItem.tare_pallet_lbs || 0);
                     const tSep = parseFloat(tItem.tare_separador_lbs || 0);
                     const tCaja = parseFloat(tItem.tare_caja_lbs || 0);
+                    const hasBox = tItem.has_caja !== undefined ? Boolean(tItem.has_caja) : hasCaja;
 
                     return `
                         <div class="tarima-wrapper">
@@ -301,25 +302,33 @@ export default function TarimaLabelModal({
             </html>
         `;
 
-        doc.open();
-        doc.write(htmlContent);
-        doc.close();
+        try {
+            doc.open();
+            doc.write(htmlContent);
+            doc.close();
 
-        iframe.contentWindow.focus();
-        setTimeout(() => {
-            try {
-                iframe.contentWindow.print();
-            } catch (err) {
-                console.error('Error invocando impresión nativa:', err);
-                toast.error('Error al abrir diálogo de impresión.');
-            } finally {
-                setTimeout(() => {
-                    if (document.body.contains(iframe)) {
-                        document.body.removeChild(iframe);
-                    }
-                }, 1500);
+            iframe.contentWindow.focus();
+            setTimeout(() => {
+                try {
+                    iframe.contentWindow.print();
+                } catch (err) {
+                    console.error('Error invocando impresión nativa:', err);
+                    toast.error('Error al abrir diálogo de impresión.');
+                } finally {
+                    setTimeout(() => {
+                        if (document.body.contains(iframe)) {
+                            document.body.removeChild(iframe);
+                        }
+                    }, 2000);
+                }
+            }, 350);
+        } catch (err) {
+            console.error('Error en proceso de impresión:', err);
+            toast.error('Error al preparar impresión: ' + err.message);
+            if (document.body.contains(iframe)) {
+                document.body.removeChild(iframe);
             }
-        }, 350);
+        }
     };
 
     return (

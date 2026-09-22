@@ -25,6 +25,7 @@ import {
     History,
     Printer,
     Eye,
+    EyeOff,
     Download,
     ShieldCheck,
     Award,
@@ -40,6 +41,7 @@ import {
 } from 'lucide-react';
 import TarimaLabelModal from '../../components/egg/TarimaLabelModal';
 import PdfViewerModal from '../../components/ui/PdfViewerModal';
+import ProviderLotConfigModal from '../../components/egg/ProviderLotConfigModal';
 
 const EggReception = () => {
     const { user } = useAuth();
@@ -50,6 +52,11 @@ const EggReception = () => {
     const [providers, setProviders] = useState([]);
     const [providerLotConfigs, setProviderLotConfigs] = useState([]);
     const [providerLotIntel, setProviderLotIntel] = useState(null);
+    const [lotConfigModalData, setLotConfigModalData] = useState({
+        isOpen: false,
+        config: null,
+        initialProviderId: ''
+    });
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [viewingReception, setViewingReception] = useState(null);
@@ -58,6 +65,7 @@ const EggReception = () => {
 
     const [useTarimas, setUseTarimas] = useState(false);
     const [globalHasCaja, setGlobalHasCaja] = useState(true);
+    const [showDetailedTares, setShowDetailedTares] = useState(false);
     const [bulkAddCount, setBulkAddCount] = useState(10);
     const [receptionTareTarima, setReceptionTareTarima] = useState(0);
     const [receptionTareSep, setReceptionTareSep] = useState(48);
@@ -765,13 +773,11 @@ const EggReception = () => {
     const getProviderTareRates = () => {
         const provConfig = providerLotIntel?.config || providerLotConfigs.find(c => String(c.provider_id) === String(formData.provider_id));
         const baseB = parseInt(receptionBaseBoxes || provConfig?.base_boxes_per_tarima) || 24;
-        const tarimaTare = parseFloat(receptionTareTarima !== undefined ? receptionTareTarima : (provConfig?.tare_tarima_lbs || 0));
         const sepTare = parseFloat(receptionTareSep !== undefined ? receptionTareSep : (provConfig?.tare_separador_lbs || 48));
         const boxTare = parseFloat(receptionTareCaja !== undefined ? receptionTareCaja : (provConfig?.tare_caja_lbs || 30));
         const defaultHasCaja = provConfig?.default_has_caja !== undefined ? Boolean(provConfig.default_has_caja) : true;
         return {
             baseB,
-            tarimaTare,
             sepTare,
             boxTare,
             rateSep: baseB > 0 ? (sepTare / baseB) : 2.0,
@@ -781,15 +787,13 @@ const EggReception = () => {
         };
     };
 
-    const calculateTarimaTare = (boxes, hasCaja = globalHasCaja, customRates = null) => {
+    const calculateTarimaTare = (boxes, hasCaja = globalHasCaja, palletTare = 0, customRates = null) => {
         let baseB = receptionBaseBoxes || 24;
-        let tarimaTare = receptionTareTarima || 0;
         let sepTare = receptionTareSep || 48;
         let boxTare = receptionTareCaja || 30;
 
         if (customRates) {
             if (customRates.baseB !== undefined) baseB = parseInt(customRates.baseB) || 24;
-            if (customRates.tareTarima !== undefined) tarimaTare = parseFloat(customRates.tareTarima) || 0;
             if (customRates.tareSep !== undefined) sepTare = parseFloat(customRates.tareSep) || 0;
             if (customRates.tareCaja !== undefined) boxTare = parseFloat(customRates.tareCaja) || 0;
         }
@@ -799,11 +803,12 @@ const EggReception = () => {
         const b = parseInt(boxes) || 0;
         const sepPart = Math.round(b * rateSep * 100) / 100;
         const boxPart = hasCaja ? Math.round(b * rateBox * 100) / 100 : 0;
-        const total = Math.round((tarimaTare + sepPart + boxPart) * 100) / 100;
+        const pTare = parseFloat(palletTare) || 0;
+        const total = Math.round((pTare + sepPart + boxPart) * 100) / 100;
 
         return {
             totalTare: total,
-            tarimaTare,
+            tarimaTare: pTare,
             sepPart,
             boxPart,
             rateSep,
@@ -813,14 +818,10 @@ const EggReception = () => {
 
     const handleUpdateReceptionTare = (field, value) => {
         const val = parseFloat(value) || 0;
-        let newTarima = receptionTareTarima;
         let newSep = receptionTareSep;
         let newCaja = receptionTareCaja;
 
-        if (field === 'tarima') {
-            newTarima = val;
-            setReceptionTareTarima(val);
-        } else if (field === 'separador') {
+        if (field === 'separador') {
             newSep = val;
             setReceptionTareSep(val);
         } else if (field === 'caja') {
@@ -830,7 +831,6 @@ const EggReception = () => {
 
         const rates = {
             baseB: receptionBaseBoxes,
-            tareTarima: newTarima,
             tareSep: newSep,
             tareCaja: newCaja
         };
@@ -838,12 +838,13 @@ const EggReception = () => {
         const updated = tarimas.map(t => {
             const hasC = t.has_caja !== undefined ? t.has_caja : globalHasCaja;
             const b = parseInt(t.boxes_count) || 24;
-            const calc = calculateTarimaTare(b, hasC, rates);
+            const pTare = parseFloat(t.tare_pallet_lbs) || 0;
+            const calc = calculateTarimaTare(b, hasC, pTare, rates);
             const gross = parseFloat(t.gross_weight_lbs) || 0;
             return {
                 ...t,
                 tare_weight_lbs: calc.totalTare,
-                tare_pallet_lbs: calc.tarimaTare,
+                tare_pallet_lbs: t.tare_pallet_lbs !== undefined ? t.tare_pallet_lbs : '',
                 tare_separador_lbs: calc.sepPart,
                 tare_caja_lbs: calc.boxPart,
                 net_weight_lbs: gross > 0 ? Math.max(0, Math.round((gross - calc.totalTare) * 100) / 100) : 0
@@ -856,13 +857,13 @@ const EggReception = () => {
     // Helpers para tarimas
     const addTarima = (boxes = 24, hasCaja = globalHasCaja) => {
         const nextNum = tarimas.length + 1;
-        const calc = calculateTarimaTare(boxes, hasCaja);
+        const calc = calculateTarimaTare(boxes, hasCaja, 0);
         const updated = [...tarimas, {
             id: Date.now() + Math.random(),
             tarima_number: nextNum,
             gross_weight_lbs: '',
+            tare_pallet_lbs: '',
             tare_weight_lbs: calc.totalTare,
-            tare_pallet_lbs: calc.tarimaTare,
             tare_separador_lbs: calc.sepPart,
             tare_caja_lbs: calc.boxPart,
             net_weight_lbs: 0,
@@ -885,15 +886,15 @@ const EggReception = () => {
         }
 
         const startNum = tarimas.length + 1;
-        const calc = calculateTarimaTare(boxes, hasCaja);
+        const calc = calculateTarimaTare(boxes, hasCaja, 0);
         const newRows = [];
         for (let i = 0; i < n; i++) {
             newRows.push({
                 id: Date.now() + i + Math.random(),
                 tarima_number: startNum + i,
                 gross_weight_lbs: '',
+                tare_pallet_lbs: '',
                 tare_weight_lbs: calc.totalTare,
-                tare_pallet_lbs: calc.tarimaTare,
                 tare_separador_lbs: calc.sepPart,
                 tare_caja_lbs: calc.boxPart,
                 net_weight_lbs: 0,
@@ -911,13 +912,14 @@ const EggReception = () => {
         setGlobalHasCaja(newHasCaja);
         const updated = tarimas.map(t => {
             const b = parseInt(t.boxes_count) || 24;
-            const calc = calculateTarimaTare(b, newHasCaja);
+            const pTare = parseFloat(t.tare_pallet_lbs) || 0;
+            const calc = calculateTarimaTare(b, newHasCaja, pTare);
             const gross = parseFloat(t.gross_weight_lbs) || 0;
             return {
                 ...t,
                 has_caja: newHasCaja,
+                tare_pallet_lbs: t.tare_pallet_lbs !== undefined ? t.tare_pallet_lbs : '',
                 tare_weight_lbs: calc.totalTare,
-                tare_pallet_lbs: calc.tarimaTare,
                 tare_separador_lbs: calc.sepPart,
                 tare_caja_lbs: calc.boxPart,
                 net_weight_lbs: gross > 0 ? Math.max(0, Math.round((gross - calc.totalTare) * 100) / 100) : 0
@@ -926,8 +928,8 @@ const EggReception = () => {
         setTarimas(updated);
         recalcTarimasTotals(updated);
         toast.info(newHasCaja 
-            ? 'Empaque con cajas aplicado a todas las tarimas (descuenta tarima, separador y caja).' 
-            : 'Empaque a granel aplicado a todas las tarimas (descuenta tarima y separadores).'
+            ? 'Empaque con cajas aplicado a todas las tarimas (descuenta separador, caja y tara de pallet).' 
+            : 'Empaque a granel aplicado a todas las tarimas (descuenta separador y tara de pallet).'
         );
     };
 
@@ -944,25 +946,47 @@ const EggReception = () => {
         const updated = [...tarimas];
         updated[index] = { ...updated[index], [field]: value };
 
+        const b = parseInt(field === 'boxes_count' ? value : updated[index].boxes_count) || 0;
+        const hasC = field === 'has_caja' ? value : (updated[index].has_caja !== undefined ? updated[index].has_caja : globalHasCaja);
+        const rates = getProviderTareRates();
+
+        let pTare = parseFloat(field === 'tare_pallet_lbs' ? value : updated[index].tare_pallet_lbs) || 0;
+        let sTare = parseFloat(field === 'tare_separador_lbs' ? value : updated[index].tare_separador_lbs);
+        let cTare = parseFloat(field === 'tare_caja_lbs' ? value : updated[index].tare_caja_lbs);
+
         if (field === 'boxes_count') {
-            const hasC = updated[index].has_caja !== undefined ? updated[index].has_caja : globalHasCaja;
-            const calc = calculateTarimaTare(value, hasC);
-            updated[index].tare_weight_lbs = calc.totalTare;
-            updated[index].tare_pallet_lbs = calc.tarimaTare;
-            updated[index].tare_separador_lbs = calc.sepPart;
-            updated[index].tare_caja_lbs = calc.boxPart;
+            sTare = Math.round(b * rates.rateSep * 100) / 100;
+            cTare = hasC ? Math.round(b * rates.rateBox * 100) / 100 : 0;
+            updated[index].tare_separador_lbs = sTare;
+            updated[index].tare_caja_lbs = cTare;
         } else if (field === 'has_caja') {
-            const b = parseInt(updated[index].boxes_count) || 24;
-            const calc = calculateTarimaTare(b, value);
-            updated[index].tare_weight_lbs = calc.totalTare;
-            updated[index].tare_pallet_lbs = calc.tarimaTare;
-            updated[index].tare_separador_lbs = calc.sepPart;
-            updated[index].tare_caja_lbs = calc.boxPart;
+            cTare = value ? Math.round(b * rates.rateBox * 100) / 100 : 0;
+            updated[index].tare_caja_lbs = cTare;
+        } else if (field === 'tare_pallet_lbs') {
+            updated[index].tare_pallet_lbs = value;
+            pTare = parseFloat(value) || 0;
+        } else if (field === 'tare_separador_lbs') {
+            updated[index].tare_separador_lbs = value;
+            sTare = parseFloat(value) || 0;
+        } else if (field === 'tare_caja_lbs') {
+            updated[index].tare_caja_lbs = value;
+            cTare = parseFloat(value) || 0;
+        }
+
+        if (isNaN(sTare)) sTare = Math.round(b * rates.rateSep * 100) / 100;
+        if (isNaN(cTare)) cTare = hasC ? Math.round(b * rates.rateBox * 100) / 100 : 0;
+
+        let totalTare = 0;
+        if (field === 'tare_weight_lbs') {
+            totalTare = parseFloat(value) || 0;
+            updated[index].tare_weight_lbs = value;
+        } else {
+            totalTare = Math.round((pTare + sTare + cTare) * 100) / 100;
+            updated[index].tare_weight_lbs = totalTare;
         }
 
         const gross = parseFloat(updated[index].gross_weight_lbs) || 0;
-        const tare = parseFloat(updated[index].tare_weight_lbs) || 0;
-        updated[index].net_weight_lbs = gross > 0 ? Math.max(0, Math.round((gross - tare) * 100) / 100) : 0;
+        updated[index].net_weight_lbs = gross > 0 ? Math.max(0, Math.round((gross - totalTare) * 100) / 100) : 0;
 
         setTarimas(updated);
         recalcTarimasTotals(updated);
@@ -1010,7 +1034,6 @@ const EggReception = () => {
 
             const rates = {
                 baseB: provBaseBoxes,
-                tareTarima: provTareTarima,
                 tareSep: provTareSep,
                 tareCaja: provTareCaja
             };
@@ -1020,13 +1043,14 @@ const EggReception = () => {
                 const updated = prev.map(t => {
                     const hasC = t.has_caja !== undefined ? t.has_caja : provHasCaja;
                     const b = parseInt(t.boxes_count) || 24;
-                    const calc = calculateTarimaTare(b, hasC, rates);
+                    const pTare = parseFloat(t.tare_pallet_lbs) || 0;
+                    const calc = calculateTarimaTare(b, hasC, pTare, rates);
                     const gross = parseFloat(t.gross_weight_lbs) || 0;
                     return {
                         ...t,
                         has_caja: hasC,
+                        tare_pallet_lbs: t.tare_pallet_lbs !== undefined ? t.tare_pallet_lbs : '',
                         tare_weight_lbs: calc.totalTare,
-                        tare_pallet_lbs: calc.tarimaTare,
                         tare_separador_lbs: calc.sepPart,
                         tare_caja_lbs: calc.boxPart,
                         net_weight_lbs: gross > 0 ? Math.max(0, Math.round((gross - calc.totalTare) * 100) / 100) : 0
@@ -1045,6 +1069,46 @@ const EggReception = () => {
             params: { search: search || undefined, page, limit: 50 }
         });
         return data;
+    };
+
+    const handleOpenLotConfig = (specificProviderId = null) => {
+        const targetId = specificProviderId || formData.provider_id;
+        const existingConfig = providerLotConfigs.find(c => String(c.provider_id) === String(targetId));
+        if (existingConfig) {
+            setLotConfigModalData({
+                isOpen: true,
+                config: existingConfig,
+                initialProviderId: targetId
+            });
+        } else {
+            setLotConfigModalData({
+                isOpen: true,
+                config: null,
+                initialProviderId: targetId || ''
+            });
+        }
+    };
+
+    const handleLotConfigSaved = async (savedPayload) => {
+        try {
+            const lotCfgRes = await axios.get('/api/egg-industrial/provider-lot-configs');
+            const configs = Array.isArray(lotCfgRes.data) ? lotCfgRes.data : [];
+            setProviderLotConfigs(configs);
+
+            const targetProvId = savedPayload?.provider_id || formData.provider_id;
+            if (targetProvId) {
+                if (String(formData.provider_id) !== String(targetProvId)) {
+                    setFormData(prev => ({
+                        ...prev,
+                        provider_id: targetProvId,
+                        provider_name: savedPayload.provider_name || prev.provider_name
+                    }));
+                }
+                await handleProviderSelect(targetProvId);
+            }
+        } catch (err) {
+            console.error('Error refreshing provider lot configs:', err);
+        }
     };
 
     // Fetch raw materials, providers and lot configurations on mount
@@ -1495,44 +1559,69 @@ const EggReception = () => {
                             </span>
                             <div className="flex items-center gap-2">
                                 <span className="text-[10px] text-slate-500 font-medium">Autocompleta proveedor y correlativo</span>
-                                <Link
-                                    to="/egg-industrial/config"
-                                    className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 underline"
+                                <button
+                                    type="button"
+                                    onClick={() => handleOpenLotConfig()}
+                                    className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 underline cursor-pointer bg-transparent border-0 p-0"
+                                    title="Parametrizar prefijo de lote y taras por proveedor"
                                 >
                                     <Settings size={11} />
                                     Parametrizar
-                                </Link>
+                                </button>
                             </div>
                         </div>
                         <div className="flex flex-wrap gap-2">
                             {providerLotConfigs.length > 0 ? (
                                 providerLotConfigs.map((cfg) => (
-                                    <button
+                                    <div
                                         key={cfg.id}
-                                        type="button"
-                                        onClick={() => handleProviderSelect(cfg.provider_id)}
-                                        className={`px-3 py-1.5 border rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-xs ${
+                                        className={`inline-flex items-center rounded-xl border shadow-xs transition-all ${
                                             String(formData.provider_id) === String(cfg.provider_id)
                                                 ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
                                                 : 'bg-white hover:bg-slate-100 text-slate-800 border-slate-200'
                                         }`}
                                     >
-                                        <span>📦 {cfg.provider_name}</span>
-                                        <span className={`text-[9px] px-1.5 py-0.5 rounded font-black ${
-                                            String(formData.provider_id) === String(cfg.provider_id)
-                                                ? 'bg-indigo-700 text-white'
-                                                : 'bg-indigo-50 border border-indigo-100 text-indigo-700'
-                                        }`}>
-                                            {cfg.lot_prefix}
-                                        </span>
-                                    </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleProviderSelect(cfg.provider_id)}
+                                            className="px-3 py-1.5 text-xs font-bold flex items-center gap-1.5 cursor-pointer bg-transparent border-0 text-inherit"
+                                        >
+                                            <span>📦 {cfg.provider_name}</span>
+                                            <span className={`text-[9px] px-1.5 py-0.5 rounded font-black ${
+                                                String(formData.provider_id) === String(cfg.provider_id)
+                                                    ? 'bg-indigo-700 text-white'
+                                                    : 'bg-indigo-50 border border-indigo-100 text-indigo-700'
+                                            }`}>
+                                                {cfg.lot_prefix}
+                                            </span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleOpenLotConfig(cfg.provider_id);
+                                            }}
+                                            title={`Editar parametrización de ${cfg.provider_name}`}
+                                            className={`pr-2.5 pl-1 py-1.5 cursor-pointer transition-opacity bg-transparent border-0 ${
+                                                String(formData.provider_id) === String(cfg.provider_id)
+                                                    ? 'text-indigo-200 hover:text-white'
+                                                    : 'text-slate-400 hover:text-indigo-600'
+                                            }`}
+                                        >
+                                            <Settings size={12} />
+                                        </button>
+                                    </div>
                                 ))
                             ) : (
                                 <div className="text-[11px] text-slate-500 italic flex items-center gap-2">
                                     <span>No hay proveedores con prefijo parametrizado aún.</span>
-                                    <Link to="/egg-industrial/config" className="text-indigo-600 font-bold underline">
+                                    <button
+                                        type="button"
+                                        onClick={() => handleOpenLotConfig()}
+                                        className="text-indigo-600 font-bold underline cursor-pointer bg-transparent border-0 p-0"
+                                    >
                                         Parametrizar en Configuración de Planta
-                                    </Link>
+                                    </button>
                                 </div>
                             )}
                         </div>
@@ -1817,144 +1906,67 @@ const EggReception = () => {
                             ) : (
                                 <div className="space-y-3">
                                     {/* Espacio Interactivo de Edición de las 3 Taras: Tarima (Pallet), Cartón (Separador) y Caja (Jaba) */}
-                                    <div className="p-3.5 bg-gradient-to-r from-slate-50 to-indigo-50/40 rounded-xl border border-indigo-200/70 shadow-xs space-y-3">
-                                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5 border-b border-indigo-100">
-                                            <div className="flex items-center gap-2">
-                                                <div className="p-1.5 bg-indigo-600 text-white rounded-lg shadow-xs">
-                                                    <Scale size={16} />
-                                                </div>
-                                                <div>
-                                                    <h4 className="text-xs font-black text-slate-900 uppercase tracking-wide">
-                                                        Taras de Recepción (Tarima, Cartón y Caja)
-                                                    </h4>
-                                                    <p className="text-[10px] text-slate-500 font-medium">
-                                                        Base: <span className="font-bold text-slate-700">{receptionBaseBoxes} Cajas</span> • Edita cualquier tara para recalcular automáticamente todas las tarimas.
-                                                    </p>
-                                                </div>
+                                    {/* Cabecera compacta de control de empaque y aviso de taras */}
+                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-gradient-to-r from-slate-50 to-indigo-50/40 border border-slate-200 rounded-xl shadow-2xs">
+                                        <div className="flex items-center gap-2">
+                                            <div className="p-1.5 bg-indigo-600 text-white rounded-lg shadow-xs">
+                                                <Scale size={16} />
                                             </div>
+                                            <div>
+                                                <h4 className="text-xs font-black text-slate-900 uppercase tracking-wide">
+                                                    Registro de Tarimas en Báscula
+                                                </h4>
+                                                <p className="text-[10px] text-slate-500 font-medium">
+                                                    Base proveedor: <span className="font-bold text-slate-700">{receptionBaseBoxes} Cajas</span> • Las taras (Tarima, Cartón y Caja) se calculan y editan directamente en la tabla de abajo.
+                                                </p>
+                                            </div>
+                                        </div>
 
-                                            {/* Switch de modo de empaque rápido de remesa */}
-                                            <div className="flex items-center gap-2 self-start sm:self-auto">
+                                        {/* Switch rápido de modo de empaque y visibilidad de desglose de taras */}
+                                        <div className="flex flex-wrap items-center gap-2.5 self-start sm:self-auto">
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowDetailedTares(!showDetailedTares)}
+                                                className={`px-2.5 py-1 rounded-md text-[11px] font-bold border transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs ${
+                                                    showDetailedTares
+                                                        ? 'bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100'
+                                                        : 'bg-white border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                                                }`}
+                                                title={showDetailedTares ? 'Ocultar columnas de Tara Cartón y Tara Caja' : 'Mostrar columnas de Tara Cartón y Tara Caja'}
+                                            >
+                                                {showDetailedTares ? <EyeOff size={13} /> : <Eye size={13} />}
+                                                <span>{showDetailedTares ? 'Ocultar Tara Cartón / Caja' : 'Ver Tara Cartón / Caja'}</span>
+                                            </button>
+
+                                            <div className="flex items-center gap-1.5">
                                                 <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Empaque:</span>
                                                 <div className="inline-flex rounded-lg border border-slate-200 p-0.5 bg-white shadow-2xs">
                                                     <button
                                                         type="button"
                                                         onClick={() => applyEmpaqueModeToAll(true)}
-                                                        className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-all ${
+                                                        className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer ${
                                                             globalHasCaja
                                                                 ? 'bg-indigo-600 text-white shadow-xs'
                                                                 : 'text-slate-600 hover:text-slate-900'
                                                         }`}
-                                                        title="Descuenta tarima, separador y caja (ej: 78 lb p/24 cajas)"
+                                                        title="Aplica modo Con Caja a todas las tarimas"
                                                     >
                                                         Con Cajas / Jabas
                                                     </button>
                                                     <button
                                                         type="button"
                                                         onClick={() => applyEmpaqueModeToAll(false)}
-                                                        className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-all ${
+                                                        className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer ${
                                                             !globalHasCaja
                                                                 ? 'bg-amber-600 text-white shadow-xs'
                                                                 : 'text-slate-600 hover:text-slate-900'
                                                         }`}
-                                                        title="Descuenta únicamente tarima y separadores (A Granel)"
+                                                        title="Aplica modo A Granel (sin cajas) a todas las tarimas"
                                                     >
                                                         A Granel (Solo Separador)
                                                     </button>
                                                 </div>
                                             </div>
-                                        </div>
-
-                                        {/* Los 3 campos interactivos de edición de tara */}
-                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                            {/* 1. Tara Tarima / Pallet */}
-                                            <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs">
-                                                <div className="flex items-center justify-between mb-1">
-                                                    <label className="text-[10px] font-black text-slate-600 uppercase tracking-wide">
-                                                        1. Tara Tarima (Pallet)
-                                                    </label>
-                                                    <span className="text-[9px] text-slate-400 font-semibold">Fijo p/tarima</span>
-                                                </div>
-                                                <div className="relative">
-                                                    <input
-                                                        type="number"
-                                                        step="0.1"
-                                                        min="0"
-                                                        value={receptionTareTarima}
-                                                        onChange={(e) => handleUpdateReceptionTare('tarima', e.target.value)}
-                                                        className="w-full px-2.5 py-1.5 bg-slate-50 focus:bg-white border border-slate-300 rounded-lg text-xs font-black text-slate-900 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all pr-8"
-                                                        placeholder="0.0"
-                                                    />
-                                                    <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] font-black text-slate-400">lb</span>
-                                                </div>
-                                                <p className="text-[9px] text-slate-400 mt-1">Pallet madera o plástico</p>
-                                            </div>
-
-                                            {/* 2. Tara Cartón / Separador */}
-                                            <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs">
-                                                <div className="flex items-center justify-between mb-1">
-                                                    <label className="text-[10px] font-black text-slate-600 uppercase tracking-wide">
-                                                        2. Tara Cartón / Separador
-                                                    </label>
-                                                    <span className="text-[9px] font-bold text-indigo-600 font-mono">
-                                                        {(receptionBaseBoxes > 0 ? (receptionTareSep / receptionBaseBoxes) : 2.0).toFixed(2)} lb/cj
-                                                    </span>
-                                                </div>
-                                                <div className="relative">
-                                                    <input
-                                                        type="number"
-                                                        step="0.1"
-                                                        min="0"
-                                                        value={receptionTareSep}
-                                                        onChange={(e) => handleUpdateReceptionTare('separador', e.target.value)}
-                                                        className="w-full px-2.5 py-1.5 bg-slate-50 focus:bg-white border border-slate-300 rounded-lg text-xs font-black text-slate-900 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all pr-8"
-                                                        placeholder="48.0"
-                                                    />
-                                                    <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] font-black text-slate-400">lb</span>
-                                                </div>
-                                                <p className="text-[9px] text-slate-400 mt-1">Base: {receptionBaseBoxes} cjs ({receptionTareSep} lb)</p>
-                                            </div>
-
-                                            {/* 3. Tara Caja / Jaba */}
-                                            <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs">
-                                                <div className="flex items-center justify-between mb-1">
-                                                    <label className="text-[10px] font-black text-slate-600 uppercase tracking-wide">
-                                                        3. Tara Caja / Jaba
-                                                    </label>
-                                                    <span className="text-[9px] font-bold text-indigo-600 font-mono">
-                                                        {globalHasCaja ? `${(receptionBaseBoxes > 0 ? (receptionTareCaja / receptionBaseBoxes) : 1.25).toFixed(2)} lb/cj` : '0.00 (Granel)'}
-                                                    </span>
-                                                </div>
-                                                <div className="relative">
-                                                    <input
-                                                        type="number"
-                                                        step="0.1"
-                                                        min="0"
-                                                        value={receptionTareCaja}
-                                                        onChange={(e) => handleUpdateReceptionTare('caja', e.target.value)}
-                                                        className="w-full px-2.5 py-1.5 bg-slate-50 focus:bg-white border border-slate-300 rounded-lg text-xs font-black text-slate-900 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all pr-8"
-                                                        placeholder="30.0"
-                                                    />
-                                                    <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] font-black text-slate-400">lb</span>
-                                                </div>
-                                                <p className="text-[9px] text-slate-400 mt-1">Base: {receptionBaseBoxes} cjs ({receptionTareCaja} lb)</p>
-                                            </div>
-                                        </div>
-
-                                        {/* Resumen de cálculo total en vivo para tarima estándar */}
-                                        <div className="flex flex-wrap items-center justify-between gap-2 p-2 bg-indigo-50/70 rounded-lg text-[11px] text-slate-700 font-semibold border border-indigo-100">
-                                            <div className="flex items-center gap-1.5">
-                                                <span className="text-slate-500">Tarima estándar ({receptionBaseBoxes} cjs):</span>
-                                                <span className="font-mono text-slate-800">
-                                                    Tarima ({receptionTareTarima.toFixed(1)} lb) + Cartón ({receptionTareSep.toFixed(1)} lb) + Caja ({globalHasCaja ? receptionTareCaja.toFixed(1) : '0.0'} lb) =
-                                                </span>
-                                                <span className="font-mono font-black text-indigo-700 bg-white px-1.5 py-0.5 rounded border border-indigo-200">
-                                                    {(receptionTareTarima + receptionTareSep + (globalHasCaja ? receptionTareCaja : 0)).toFixed(2)} lb
-                                                </span>
-                                            </div>
-                                            <span className="text-[10px] text-indigo-700 font-bold">
-                                                {globalHasCaja ? '✓ Modo Con Cajas activo' : '⚡ Modo A Granel (sin cajas) activo'}
-                                            </span>
                                         </div>
                                     </div>
 
@@ -1962,23 +1974,37 @@ const EggReception = () => {
                                         <table className="w-full text-left text-xs">
                                             <thead className="bg-slate-50 text-slate-600 text-[10px] uppercase font-bold border-b border-slate-200">
                                                 <tr>
-                                                    <th className="p-2 text-center w-12">#</th>
-                                                    <th className="p-2 w-28 text-center">Empaque</th>
-                                                    <th className="p-2 w-24">Cajas</th>
-                                                    <th className="p-2 w-32">Peso Bruto (lb)</th>
-                                                    <th className="p-2 w-36">Tara (lb)</th>
-                                                    <th className="p-2 text-right">Peso Neto (lb)</th>
+                                                    <th className="p-2 text-center w-10">#</th>
+                                                    <th className="p-2 w-24 text-center">Empaque</th>
+                                                    <th className="p-2 w-16 text-center">Cajas</th>
+                                                    <th className="p-2 w-24 text-right">Peso Bruto (lb)</th>
+                                                    <th className="p-2 w-24 text-right">Tara Tarima (lb)</th>
+                                                    {showDetailedTares && (
+                                                        <>
+                                                            <th className="p-2 w-24 text-right bg-indigo-50/50 text-indigo-900">Tara Cartón (lb)</th>
+                                                            <th className="p-2 w-24 text-right bg-indigo-50/50 text-indigo-900">Tara Caja (lb)</th>
+                                                        </>
+                                                    )}
+                                                    <th className="p-2 w-28 text-right">
+                                                        <div className="flex items-center justify-end gap-1">
+                                                            <span>Tara Total (lb)</span>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setShowDetailedTares(!showDetailedTares)}
+                                                                className="text-slate-400 hover:text-indigo-600 transition-colors p-0.5 cursor-pointer"
+                                                                title={showDetailedTares ? "Ocultar columnas de cartón y caja" : "Mostrar columnas de cartón y caja"}
+                                                            >
+                                                                {showDetailedTares ? <EyeOff size={12} /> : <Eye size={12} />}
+                                                            </button>
+                                                        </div>
+                                                    </th>
+                                                    <th className="p-2 text-right w-24">Peso Neto (lb)</th>
                                                     <th className="p-2 w-16 text-center">Acciones</th>
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-slate-100 font-semibold text-slate-800">
                                                 {tarimas.map((t, idx) => {
                                                     const hasC = t.has_caja !== undefined ? t.has_caja : globalHasCaja;
-                                                    const rates = getProviderTareRates();
-                                                    const b = parseInt(t.boxes_count) || 0;
-                                                    const palletPart = t.tare_pallet_lbs !== undefined ? parseFloat(t.tare_pallet_lbs) : rates.tarimaTare;
-                                                    const sepPart = (b * rates.rateSep).toFixed(1);
-                                                    const boxPart = (b * rates.rateBox).toFixed(1);
 
                                                     return (
                                                         <tr key={t.id || idx} className="hover:bg-slate-50">
@@ -2002,7 +2028,7 @@ const EggReception = () => {
                                                                     type="number"
                                                                     value={t.boxes_count}
                                                                     onChange={(e) => updateTarima(idx, 'boxes_count', e.target.value)}
-                                                                    className="w-full px-2 py-1 bg-white border border-slate-300 rounded-lg text-xs text-slate-800 font-bold text-center focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+                                                                    className="w-full px-1.5 py-1 bg-white border border-slate-300 rounded-lg text-xs text-slate-800 font-bold text-center focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
                                                                 />
                                                             </td>
                                                             <td className="p-2">
@@ -2012,22 +2038,58 @@ const EggReception = () => {
                                                                     placeholder="0.0"
                                                                     value={t.gross_weight_lbs}
                                                                     onChange={(e) => updateTarima(idx, 'gross_weight_lbs', e.target.value)}
-                                                                    className="w-full px-2 py-1 bg-white border border-slate-300 rounded-lg text-xs text-slate-800 font-bold focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+                                                                    className="w-full px-2 py-1 bg-white border border-slate-300 rounded-lg text-xs text-slate-800 font-bold text-right focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
                                                                 />
                                                             </td>
+                                                            <td className="p-2">
+                                                                <input
+                                                                    type="number"
+                                                                    step="0.1"
+                                                                    min="0"
+                                                                    placeholder="0.0"
+                                                                    value={t.tare_pallet_lbs !== undefined ? t.tare_pallet_lbs : ''}
+                                                                    onChange={(e) => updateTarima(idx, 'tare_pallet_lbs', e.target.value)}
+                                                                    className="w-full px-2 py-1 bg-white border border-slate-300 rounded-lg text-xs text-slate-800 font-bold text-right focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+                                                                    title="Tara física del pallet/tarima en báscula"
+                                                                />
+                                                            </td>
+                                                            {showDetailedTares && (
+                                                                <>
+                                                                    <td className="p-2 bg-indigo-50/20">
+                                                                        <input
+                                                                            type="number"
+                                                                            step="0.1"
+                                                                            min="0"
+                                                                            placeholder="0.0"
+                                                                            value={t.tare_separador_lbs !== undefined ? t.tare_separador_lbs : ''}
+                                                                            onChange={(e) => updateTarima(idx, 'tare_separador_lbs', e.target.value)}
+                                                                            className="w-full px-2 py-1 bg-white border border-indigo-200 rounded-lg text-xs text-slate-800 font-bold text-right focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+                                                                            title="Tara de separadores de cartón"
+                                                                        />
+                                                                    </td>
+                                                                    <td className="p-2 bg-indigo-50/20">
+                                                                        <input
+                                                                            type="number"
+                                                                            step="0.1"
+                                                                            min="0"
+                                                                            placeholder="0.0"
+                                                                            value={t.tare_caja_lbs !== undefined ? t.tare_caja_lbs : ''}
+                                                                            onChange={(e) => updateTarima(idx, 'tare_caja_lbs', e.target.value)}
+                                                                            className="w-full px-2 py-1 bg-white border border-indigo-200 rounded-lg text-xs text-slate-800 font-bold text-right focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+                                                                            title="Tara de cajas o jabas plásticas"
+                                                                        />
+                                                                    </td>
+                                                                </>
+                                                            )}
                                                             <td className="p-2">
                                                                 <input
                                                                     type="number"
                                                                     step="0.01"
                                                                     value={t.tare_weight_lbs}
                                                                     onChange={(e) => updateTarima(idx, 'tare_weight_lbs', e.target.value)}
-                                                                    className="w-full px-2 py-1 bg-white border border-slate-300 rounded-lg text-xs text-slate-700 font-bold focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
-                                                                    title="Tara editable. Se recalcula automáticamente por fórmula proporcional de tarima, separador y caja."
+                                                                    className="w-full px-2 py-1 bg-indigo-50/50 border border-indigo-200 rounded-lg text-xs text-indigo-900 font-black text-right focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+                                                                    title={`Tara Total: ${t.tare_weight_lbs} lb (Pallet: ${t.tare_pallet_lbs || 0} lb + Cartón: ${t.tare_separador_lbs || 0} lb + Caja: ${t.tare_caja_lbs || 0} lb)`}
                                                                 />
-                                                                <div className="text-[9px] text-slate-400 mt-0.5 leading-none">
-                                                                    {palletPart > 0 && `Tarima: ${palletPart.toFixed(1)} + `}
-                                                                    Sep: {sepPart} {hasC ? `+ Caja: ${boxPart}` : '(Granel)'}
-                                                                </div>
                                                             </td>
                                                             <td className="p-2 text-right font-black text-emerald-700 text-xs">
                                                                 {parseFloat(t.net_weight_lbs || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} lb
@@ -4098,6 +4160,17 @@ const EggReception = () => {
                 pdfUrl={pdfPreviewModal.url}
                 fileName={pdfPreviewModal.fileName}
                 footerNote="Laboratorio de Control de Calidad • Reporte Oficial de Materia Prima y Dictamen Técnico (LAB 001)"
+            />
+
+            {/* Modal de Parametrización de Proveedor y Taras */}
+            <ProviderLotConfigModal
+                isOpen={lotConfigModalData.isOpen}
+                onClose={() => setLotConfigModalData({ isOpen: false, config: null, initialProviderId: '' })}
+                configToEdit={lotConfigModalData.config}
+                initialProviderId={lotConfigModalData.initialProviderId}
+                providers={providers}
+                loadProvidersOptions={loadProvidersOptions}
+                onSaved={handleLotConfigSaved}
             />
         </div>
     );
