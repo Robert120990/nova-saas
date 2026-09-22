@@ -116,7 +116,25 @@ const createCustomer = async (req, res) => {
         }
     });
 
-    if (data.nit) {
+    const isForeign = data.tipo_documento === 'Pasaporte' || 
+                      data.tipo_documento === 'Carnet Resident' || 
+                      data.tipo_documento === 'Otro' || 
+                      data.tipo_documento === '03' || 
+                      data.tipo_documento === '02' || 
+                      data.tipo_documento === '37' || 
+                      data.condicion_fiscal === 'extranjero';
+
+    if (isForeign) {
+        data.nit = null;
+        if (!data.tipo_documento || data.tipo_documento === 'NIT' || data.tipo_documento === 'DUI') {
+            data.tipo_documento = 'Otro';
+        }
+        if (!data.departamento) data.departamento = '00';
+        if (!data.municipio) data.municipio = '00';
+        if (!data.distrito) data.distrito = '00';
+    }
+
+    if (data.nit && !isForeign) {
         const nitVal = validateDocumentNumber(data.nit, 'NIT');
         if (!nitVal.isValid) {
             return res.status(400).json({ message: `NIT inválido: ${nitVal.error}` });
@@ -186,7 +204,25 @@ const updateCustomer = async (req, res) => {
         }
     });
 
-    if (data.nit) {
+    const isForeign = data.tipo_documento === 'Pasaporte' || 
+                      data.tipo_documento === 'Carnet Resident' || 
+                      data.tipo_documento === 'Otro' || 
+                      data.tipo_documento === '03' || 
+                      data.tipo_documento === '02' || 
+                      data.tipo_documento === '37' || 
+                      data.condicion_fiscal === 'extranjero';
+
+    if (isForeign) {
+        data.nit = null;
+        if (!data.tipo_documento || data.tipo_documento === 'NIT' || data.tipo_documento === 'DUI') {
+            data.tipo_documento = 'Otro';
+        }
+        if (!data.departamento) data.departamento = '00';
+        if (!data.municipio) data.municipio = '00';
+        if (!data.distrito) data.distrito = '00';
+    }
+
+    if (data.nit && !isForeign) {
         const nitVal = validateDocumentNumber(data.nit, 'NIT');
         if (!nitVal.isValid) {
             return res.status(400).json({ message: `NIT inválido: ${nitVal.error}` });

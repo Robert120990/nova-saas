@@ -323,12 +323,16 @@ const Customers = () => {
     };
 
     const isForeign = docType === 'Pasaporte' || docType === 'Carnet Resident' || docType === 'Otro' || condicionFiscal === 'extranjero';
-    const isAddressRequired = condicionFiscal === 'contribuyente' || condicionFiscal === 'gran contribuyente' || !!nrcValue;
+    const isAddressRequired = (condicionFiscal === 'contribuyente' || condicionFiscal === 'gran contribuyente' || !!nrcValue) && !isForeign;
 
     const handleSubmit = (e) => {
         e.preventDefault();
         const formData = new FormData(e.target);
         const data = Object.fromEntries(formData);
+
+        const isForeignCust = docType === 'Pasaporte' || docType === 'Carnet Resident' || docType === 'Otro' || condicionFiscal === 'extranjero';
+        const effectiveDocType = isForeignCust && (docType === 'NIT' || docType === 'DUI') ? 'Otro' : docType;
+
         data.exento_iva = formData.get('exento_iva') === 'on';
         data.aplica_fovial = formData.get('aplica_fovial') === 'on';
         data.aplica_cotrans = formData.get('aplica_cotrans') === 'on';
@@ -337,29 +341,45 @@ const Customers = () => {
         data.es_trupput = formData.get('es_trupput') === 'on';
         data.dias_credito = data.es_credito ? parseInt(diasCredito) || 15 : 15;
         data.codigo_actividad = selectedActivity || null;
-        data.tipo_documento = docType;
+        data.tipo_documento = effectiveDocType;
+        data.condicion_fiscal = isForeignCust ? 'extranjero' : condicionFiscal;
 
-        // Documento unificado y homologación automática DUI = NIT
         const rawDoc = (docNumberValue || '').trim();
         data.numero_documento = rawDoc || null;
-        data.nit = rawDoc || null;
-        data.nrc = (nrcValue || data.nrc || '').trim() || null;
+
+        if (isForeignCust) {
+            data.nit = null; // No aplica NIT salvadoreño
+            data.nrc = null;
+            data.departamento = (data.departamento || selectedDept || '00').trim();
+            data.distrito = (data.distrito || selectedDistrito || '00').trim();
+            data.municipio = (data.municipio || selectedMun || '00').trim();
+        } else {
+            // Homologación automática DUI = NIT
+            data.nit = rawDoc || null;
+            data.nrc = (nrcValue || data.nrc || '').trim() || null;
+
+            // Normalización de condición fiscal: sin NRC no puede ser contribuyente de IVA (es consumidor final / 'otro')
+            if (!data.nrc && data.condicion_fiscal === 'contribuyente') {
+                data.condicion_fiscal = 'otro';
+            } else if (data.nrc && data.condicion_fiscal === 'otro') {
+                data.condicion_fiscal = 'contribuyente';
+            }
+        }
 
         // Inferencia automática de tipo de persona (2: Jurídica si tiene NIT o NRC, 1: Natural)
-        data.tipo_persona = (docType === 'NIT' || data.nrc) ? '2' : (selectedCustomer?.tipo_persona || '1');
+        data.tipo_persona = isForeignCust
+            ? (selectedCustomer?.tipo_persona || '1')
+            : ((docType === 'NIT' || data.nrc) ? '2' : (selectedCustomer?.tipo_persona || '1'));
 
-        // País: si no es extranjero, se asigna El Salvador (9579)
-        data.pais = isForeign ? (data.pais || selectedPais || '9579') : (selectedCustomer?.pais || '9579');
-
-        // Normalización de condición fiscal: sin NRC no puede ser contribuyente de IVA (es consumidor final / 'otro')
-        if (!data.nrc && data.condicion_fiscal === 'contribuyente') {
-            data.condicion_fiscal = 'otro';
-        } else if (data.nrc && data.condicion_fiscal === 'otro') {
-            data.condicion_fiscal = 'contribuyente';
+        // País
+        data.pais = isForeignCust ? (data.pais || selectedPais || null) : (selectedCustomer?.pais || '9579');
+        if (isForeignCust && (!data.pais || data.pais === '9579')) {
+            toast.error('Debe seleccionar el país de origen para un cliente extranjero');
+            return;
         }
 
         if (data.numero_documento) {
-            const docCheck = validateDocumentNumber(data.numero_documento, docType);
+            const docCheck = validateDocumentNumber(data.numero_documento, effectiveDocType);
             if (!docCheck.isValid) {
                 toast.error(`Documento no válido: ${docCheck.error}`);
                 return;

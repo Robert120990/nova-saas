@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import Table from '../components/ui/Table';
@@ -180,31 +180,49 @@ const Providers = () => {
         const formData = new FormData(e.target);
         const data = Object.fromEntries(formData);
 
+        const isForeignProv = docType === 'Pasaporte' || docType === 'Carnet Resident' || docType === 'Otro' || condicionFiscal === 'extranjero';
+        const effectiveDocType = isForeignProv && (docType === 'NIT' || docType === 'DUI') ? 'Otro' : docType;
+
         data.exento_iva = exentoIva ? 1 : 0;
         data.es_credito = esCredito ? 1 : 0;
         data.dias_credito = esCredito ? (parseInt(diasCredito, 10) || 0) : 0;
         data.codigo_actividad = selectedActivity || null;
-        data.tipo_documento = docType;
-        data.condicion_fiscal = condicionFiscal;
+        data.tipo_documento = effectiveDocType;
+        data.condicion_fiscal = isForeignProv ? 'extranjero' : condicionFiscal;
 
-        // Homologación automática DUI = NIT
         const rawDoc = (docNumberValue || '').trim();
         data.numero_documento = rawDoc || null;
-        data.nit = rawDoc || null;
-        data.nrc = (nrcValue || '').trim() || null;
 
-        // Normalización de condición fiscal: sin NRC no es contribuyente de IVA
-        if (!data.nrc && data.condicion_fiscal === 'contribuyente') {
-            data.condicion_fiscal = 'otro';
-        } else if (data.nrc && data.condicion_fiscal === 'otro') {
-            data.condicion_fiscal = 'contribuyente';
+        if (isForeignProv) {
+            data.nit = null; // Proveedores extranjeros no tienen NIT salvadoreño
+            data.nrc = null; // Proveedores extranjeros no tienen NRC salvadoreño
+            data.departamento = (data.departamento || selectedDept || '00').trim();
+            data.distrito = (data.distrito || selectedDistrito || '00').trim();
+            data.municipio = (data.municipio || selectedMun || '00').trim();
+        } else {
+            // Homologación automática DUI = NIT para salvadoreños
+            data.nit = rawDoc || null;
+            data.nrc = (nrcValue || '').trim() || null;
+
+            // Normalización de condición fiscal: sin NRC no es contribuyente de IVA
+            if (!data.nrc && data.condicion_fiscal === 'contribuyente') {
+                data.condicion_fiscal = 'otro';
+            } else if (data.nrc && data.condicion_fiscal === 'otro') {
+                data.condicion_fiscal = 'contribuyente';
+            }
         }
 
         // Inferencia de tipo de persona: 2: Jurídica si tiene NIT o NRC, 1: Natural si tiene DUI
-        data.tipo_persona = (docType === 'NIT' || data.nrc) ? '2' : (selectedProvider?.tipo_persona || '1');
+        data.tipo_persona = isForeignProv
+            ? (selectedProvider?.tipo_persona || '2')
+            : ((docType === 'NIT' || data.nrc) ? '2' : (selectedProvider?.tipo_persona || '1'));
 
         // País
-        data.pais = isForeign ? (data.pais || selectedPais || '9579') : (selectedProvider?.pais || '9579');
+        data.pais = isForeignProv ? (data.pais || selectedPais || null) : (selectedProvider?.pais || '9579');
+        if (isForeignProv && (!data.pais || data.pais === '9579')) {
+            toast.error('Debe seleccionar el país de origen para un proveedor extranjero');
+            return;
+        }
 
         // Correo electrónico
         const correoTrimmed = (data.correo || '').trim();
@@ -221,7 +239,7 @@ const Providers = () => {
 
         // Validación de documento
         if (data.numero_documento) {
-            const docCheck = validateDocumentNumber(data.numero_documento, docType);
+            const docCheck = validateDocumentNumber(data.numero_documento, effectiveDocType);
             if (!docCheck.isValid) {
                 toast.error(`Documento no válido: ${docCheck.error}`);
                 return;
@@ -234,14 +252,14 @@ const Providers = () => {
         data.municipio = (data.municipio || selectedMun || '').trim() || null;
         data.direccion = (data.direccion || '').trim() || null;
 
-        if (isAddressRequired) {
+        if (isAddressRequired && !isForeignProv) {
             if (!data.departamento || !data.distrito || !data.municipio || !data.direccion) {
                 toast.error('Departamento, distrito, municipio y dirección son obligatorios para contribuyentes');
                 return;
             }
         }
 
-        if (data.distrito) {
+        if (data.distrito && !isForeignProv) {
             const distritoSel = distritos.find(d => d.code === data.distrito);
             if (distritoSel && data.municipio && data.municipio !== distritoSel.muni_code) {
                 toast.error('El municipio seleccionado no corresponde al distrito');
@@ -508,43 +526,70 @@ const Providers = () => {
                                 onChange={(e) => {
                                     const nextType = e.target.value;
                                     setDocType(nextType);
-                                    setDocNumberValue(formatDocumentNumber(docNumberValue, nextType));
+                                    if (nextType === 'Pasaporte' || nextType === 'Carnet Resident' || nextType === 'Otro') {
+                                        if (condicionFiscal === 'contribuyente' || condicionFiscal === 'gran contribuyente') {
+                                            setCondicionFiscal('extranjero');
+                                        }
+                                        if (!selectedDept || selectedDept === '') {
+                                            setSelectedDept('00');
+                                            setSelectedMun('00');
+                                            setSelectedDistrito('00');
+                                        }
+                                        if (selectedPais === '9579') {
+                                            setSelectedPais('');
+                                        }
+                                    } else if (condicionFiscal === 'extranjero') {
+                                        setCondicionFiscal('contribuyente');
+                                        if (selectedDept === '00') {
+                                            setSelectedDept('');
+                                            setSelectedMun('');
+                                            setSelectedDistrito('');
+                                        }
+                                        setSelectedPais('9579');
+                                    }
+                                    setDocNumberValue(nextType === 'NIT' || nextType === 'DUI' ? formatDocumentNumber(docNumberValue, nextType) : docNumberValue);
                                 }}
                                 className={fieldCls}
                             >
                                 <option value="NIT">NIT (Empresa / Sociedad)</option>
                                 <option value="DUI">DUI (Persona Natural)</option>
-                                <option value="Pasaporte">Pasaporte</option>
-                                <option value="Carnet Resident">Carnet de Residente</option>
-                                <option value="Otro">Otro Documento</option>
+                                <option value="Pasaporte">Pasaporte (Extranjero)</option>
+                                <option value="Carnet Resident">Carnet de Residente (Extranjero)</option>
+                                <option value="Otro">Otro (Identificación Extranjera / Tax ID)</option>
                             </select>
                         </div>
 
                         <div>
-                            <label className={labelCls}>Número de Documento (DUI / NIT)</label>
+                            <label className={labelCls}>
+                                {isForeign ? 'Número de Documento / Tax ID Extranjero' : 'Número de Documento (DUI / NIT)'}
+                            </label>
                             <input 
                                 name="numero_documento" 
                                 value={docNumberValue} 
-                                onChange={(e) => setDocNumberValue(formatDocumentNumber(e.target.value, docType))}
-                                placeholder={docType === 'DUI' ? "00000000-0" : docType === 'NIT' ? "0000-000000-000-0" : "Número de documento"} 
+                                onChange={(e) => setDocNumberValue(isForeign ? e.target.value : formatDocumentNumber(e.target.value, docType))}
+                                placeholder={isForeign ? "Ej: Tax ID, Pasaporte, Carnet..." : docType === 'DUI' ? "00000000-0" : docType === 'NIT' ? "0000-000000-000-0" : "Número de documento"} 
                                 className={`${fieldCls} font-mono`} 
                                 maxLength={docType === 'DUI' ? 10 : docType === 'NIT' ? 17 : 25}
                             />
                             <p className="text-[10px] text-slate-400 mt-1 font-medium">
-                                {docType === 'DUI' 
+                                {isForeign 
+                                    ? 'Documento o identificación tributaria en el país de origen (3 a 20 caracteres).' 
+                                    : docType === 'DUI' 
                                     ? 'Persona Natural: DUI homologado (9 dígitos).' 
-                                    : docType === 'NIT' 
-                                    ? 'Empresas / Sociedades (S.A. de C.V.): NIT institucional (14 dígitos).' 
-                                    : 'Número de documento de identificación extranjera.'}
+                                    : 'Empresas / Sociedades (S.A. de C.V.): NIT institucional (14 dígitos).'}
                             </p>
                         </div>
 
                         <div>
-                            <label className={labelCls}>NRC (Registro de Contribuyente)</label>
+                            <label className={labelCls}>
+                                NRC (Registro de Contribuyente) {isForeign && <span className="text-slate-400 font-normal lowercase">(no aplica a extranjeros)</span>}
+                            </label>
                             <input 
                                 name="nrc" 
-                                value={nrcValue} 
+                                value={isForeign ? '' : nrcValue} 
+                                disabled={isForeign}
                                 onChange={(e) => {
+                                    if (isForeign) return;
                                     const formatted = formatNRC(e.target.value);
                                     setNrcValue(formatted);
                                     const clean = formatted.replace(/\D/g, '');
@@ -558,14 +603,16 @@ const Providers = () => {
                                         }
                                     }
                                 }}
-                                placeholder="000000-0" 
-                                className={`${fieldCls} font-mono`} 
+                                placeholder={isForeign ? "No aplica para extranjeros" : "000000-0"} 
+                                className={`${fieldCls} font-mono ${isForeign ? 'bg-slate-100/70 text-slate-400 cursor-not-allowed' : ''}`} 
                             />
                         </div>
 
                         {isForeign && (
                             <div className="sm:col-span-2">
-                                <label className={labelCls}>País de Origen</label>
+                                <label className={labelCls}>
+                                    País de Origen <span className="text-rose-500">*</span>
+                                </label>
                                 <select 
                                     name="pais" 
                                     value={selectedPais} 
@@ -573,7 +620,10 @@ const Providers = () => {
                                     className={fieldCls} 
                                     required
                                 >
-                                    {countries.map(t => <option key={t.code} value={t.code}>{t.description}</option>)}
+                                    <option value="">Seleccionar país de origen...</option>
+                                    {countries.filter(t => t.code !== '9579' && t.code !== 'SV').map(t => (
+                                        <option key={t.code} value={t.code}>{t.description}</option>
+                                    ))}
                                 </select>
                             </div>
                         )}
@@ -598,6 +648,28 @@ const Providers = () => {
                                     const val = e.target.value;
                                     setCondicionFiscal(val);
                                     if (val === 'exento IVA') setExentoIva(true);
+                                    if (val === 'extranjero') {
+                                        if (docType === 'NIT' || docType === 'DUI') {
+                                            setDocType('Otro');
+                                        }
+                                        setSelectedDept('00');
+                                        setSelectedMun('00');
+                                        setSelectedDistrito('00');
+                                        setNrcValue('');
+                                        if (selectedPais === '9579') {
+                                            setSelectedPais('');
+                                        }
+                                    } else {
+                                        if (docType === 'Otro' || docType === 'Pasaporte' || docType === 'Carnet Resident') {
+                                            setDocType('NIT');
+                                        }
+                                        if (selectedDept === '00') {
+                                            setSelectedDept('');
+                                            setSelectedMun('');
+                                            setSelectedDistrito('');
+                                        }
+                                        setSelectedPais('9579');
+                                    }
                                 }} 
                                 className={fieldCls}
                             >
