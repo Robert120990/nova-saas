@@ -27,7 +27,9 @@ import {
     ShieldCheck,
     Radio,
     AlertTriangle,
-    Layers
+    Layers,
+    UserCheck,
+    Info
 } from 'lucide-react';
 import { toast } from 'sonner';
 import Modal from '../components/ui/Modal';
@@ -37,6 +39,7 @@ import { printTicket } from '../utils/qzPrint';
 import { useAuth } from '../context/AuthContext';
 import Money, { MoneyInput } from '../components/ui/Money';
 import { useDirtyTracker } from '../hooks/useDirtyTracker';
+import { validateDocumentNumber, isValidDocumentNumber } from '../utils/svfeValidators';
 
 const SalesTerminal = () => {
     const navigate = useNavigate();
@@ -115,8 +118,10 @@ const SalesTerminal = () => {
     // Customer Management State
     const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
     const [editingCustomer, setEditingCustomer] = useState(null);
-    const [nitValue, setNitValue] = useState('');
+    const [docNumberValue, setDocNumberValue] = useState('');
     const [docType, setDocType] = useState('DUI');
+    const [nrcValue, setNrcValue] = useState('');
+    const [condicionFiscal, setCondicionFiscal] = useState('contribuyente');
     const [selectedDept, setSelectedDept] = useState('');
     const [selectedMun, setSelectedMun] = useState('');
     const [selectedDistrito, setSelectedDistrito] = useState('');
@@ -468,24 +473,30 @@ const SalesTerminal = () => {
         queryFn: async () => (await axios.get('/api/catalogs/cat_016_condicion_operacion')).data
     });
 
-    // Helper: Format NIT
-    const formatNIT = (value, type = 'DUI') => {
+    // Helper: Format NRC
+    const formatNRC = (value) => {
+        if (!value) return '';
         const digits = value.replace(/\D/g, '');
-        let formatted = '';
-        
-        if (type === 'DUI') {
-            // Formato DUI: 00000000-0
-            if (digits.length > 0) formatted += digits.substring(0, 8);
-            if (digits.length > 8) formatted += '-' + digits.substring(8, 9);
-        } else {
-            // Formato NIT: 0000-000000-000-0
-            if (digits.length > 0) formatted += digits.substring(0, 4);
-            if (digits.length > 4) formatted += '-' + digits.substring(4, 10);
-            if (digits.length > 10) formatted += '-' + digits.substring(10, 13);
-            if (digits.length > 13) formatted += '-' + digits.substring(13, 14);
-        }
-        return formatted;
+        if (digits.length <= 6) return digits;
+        return `${digits.slice(0, 6)}-${digits.slice(6, 7)}`;
     };
+
+    // Helper: Format Document Number (DUI / NIT)
+    const formatDocumentNumber = (value, type = 'DUI') => {
+        if (!value) return '';
+        const digits = value.replace(/\D/g, '');
+        if (type === 'DUI') {
+            if (digits.length <= 8) return digits;
+            return `${digits.slice(0, 8)}-${digits.slice(8, 9)}`;
+        } else if (type === 'NIT') {
+            if (digits.length <= 4) return digits;
+            if (digits.length <= 10) return `${digits.slice(0, 4)}-${digits.slice(4, 10)}`;
+            if (digits.length <= 13) return `${digits.slice(0, 4)}-${digits.slice(4, 10)}-${digits.slice(10, 13)}`;
+            return `${digits.slice(0, 4)}-${digits.slice(4, 10)}-${digits.slice(10, 13)}-${digits.slice(13, 14)}`;
+        }
+        return value;
+    };
+    const formatNIT = formatDocumentNumber;
 
     // Helper: Find selected customer data
     const selectedCustomerData = useMemo(() => {
@@ -555,7 +566,8 @@ const SalesTerminal = () => {
             const cust = option || customersCache[parseInt(value)];
             if (cust) {
                 const missing = getMissingLocationFields(cust);
-                if (missing.length > 0) {
+                // Solo alertar si no es Factura (01) o si la venta es >= $200
+                if (missing.length > 0 && (tipoDte !== '01' || (totals?.total || 0) >= 200)) {
                     toast.warning(`El cliente "${cust.nombre}" no tiene ${missing.join(', ')}. Complételos para facturar.`);
                 }
             }
@@ -596,11 +608,23 @@ const SalesTerminal = () => {
         setSelectedMun(selectedCustomerData.municipio || '');
         setSelectedDistrito(selectedCustomerData.distrito || '');
         setSelectedActivity(selectedCustomerData.codigo_actividad || '');
-        setDocType(selectedCustomerData.tipo_documento || 'DUI');
-        setNitValue(selectedCustomerData.nit || '');
+        setCondicionFiscal(selectedCustomerData.condicion_fiscal || (selectedCustomerData.nrc ? 'contribuyente' : 'otro'));
+        
+        // Carga transparente de documento histórico (si solo tenía nit, lo carga en el campo único)
+        const rawDoc = selectedCustomerData.numero_documento || selectedCustomerData.nit || '';
+        const cleanDigits = rawDoc.replace(/\D/g, '');
+        let inferredType = selectedCustomerData.tipo_documento || 'DUI';
+        if (!selectedCustomerData.tipo_documento && selectedCustomerData.nit) {
+            inferredType = cleanDigits.length === 14 ? 'NIT' : 'DUI';
+        }
+        setDocType(inferredType);
+        setDocNumberValue(formatDocumentNumber(rawDoc, inferredType));
+        setNrcValue(formatNRC(selectedCustomerData.nrc || ''));
         setSelectedPais(selectedCustomerData.pais || '9579');
         setIsCustomerModalOpen(true);
     };
+
+    const isCustomerForeign = docType === 'Pasaporte' || docType === 'Carnet Resident' || docType === 'Otro' || condicionFiscal === 'extranjero';
 
     const handleCustomerSubmit = async (e) => {
         e.preventDefault();
@@ -609,7 +633,28 @@ const SalesTerminal = () => {
         data.exento_iva = formData.get('exento_iva') === 'on';
         data.aplica_fovial = formData.get('aplica_fovial') === 'on';
         data.aplica_cotrans = formData.get('aplica_cotrans') === 'on';
-        data.codigo_actividad = selectedActivity;
+        data.codigo_actividad = selectedActivity || null;
+        data.tipo_documento = docType;
+        data.condicion_fiscal = condicionFiscal;
+
+        // Documento unificado y homologación automática DUI = NIT
+        const rawDoc = (docNumberValue || '').trim();
+        data.numero_documento = rawDoc || null;
+        data.nit = rawDoc || null;
+        data.nrc = (nrcValue || data.nrc || '').trim() || null;
+
+        // Normalización de condición fiscal: sin NRC no puede ser contribuyente de IVA (es consumidor final / 'otro')
+        if (!data.nrc && data.condicion_fiscal === 'contribuyente') {
+            data.condicion_fiscal = 'otro';
+        } else if (data.nrc && data.condicion_fiscal === 'otro') {
+            data.condicion_fiscal = 'contribuyente';
+        }
+
+        // Inferencia automática de tipo de persona (2: Jurídica si tiene NIT o NRC, 1: Natural)
+        data.tipo_persona = (docType === 'NIT' || data.nrc) ? '2' : (editingCustomer?.tipo_persona || '1');
+
+        // País: si no es extranjero, se asigna El Salvador (9579)
+        data.pais = isCustomerForeign ? (data.pais || selectedPais || '9579') : (editingCustomer?.pais || '9579');
 
         const correoTrimmed = (data.correo || '').trim();
         if (correoTrimmed) {
@@ -623,10 +668,25 @@ const SalesTerminal = () => {
             data.correo = null;
         }
 
-        const distritoSel = distritos.find(d => d.code === data.distrito);
-        if (distritoSel && data.municipio && data.municipio !== distritoSel.muni_code) {
-            toast.error('El municipio seleccionado no corresponde al distrito');
-            return;
+        data.departamento = (data.departamento || '').trim() || null;
+        data.distrito = (data.distrito || '').trim() || null;
+        data.municipio = (data.municipio || '').trim() || null;
+        data.direccion = (data.direccion || '').trim() || null;
+
+        if (data.distrito) {
+            const distritoSel = distritos.find(d => d.code === data.distrito);
+            if (distritoSel && data.municipio && data.municipio !== distritoSel.muni_code) {
+                toast.error('El municipio seleccionado no corresponde al distrito');
+                return;
+            }
+        }
+
+        if (data.numero_documento) {
+            const docCheck = validateDocumentNumber(data.numero_documento, docType);
+            if (!docCheck.isValid) {
+                toast.error(`Documento no válido: ${docCheck.error}`);
+                return;
+            }
         }
 
         try {
@@ -787,25 +847,70 @@ const SalesTerminal = () => {
         const normalizedActividad = (rawActividad.length === 4 && /^\d+$/.test(rawActividad)) ? rawActividad.padStart(5, '0') : rawActividad;
 
         if (tipoDte === '03') { // Crédito Fiscal
-            if (!customer.nit && !customer.numero_documento) missing.push('NIT o DUI');
-            if (!customer.nrc) missing.push('NRC');
+            const rawNit = customer.nit || customer.numero_documento;
+            const nitVal = validateDocumentNumber(rawNit, 'NIT');
+            if (!nitVal.isValid) {
+                missing.push(`NIT inválido: ${nitVal.error}`);
+            }
+            const cleanNrc = String(customer.nrc || '').replace(/\D/g, '');
+            if (!cleanNrc || /^0+$/.test(cleanNrc)) {
+                missing.push('NRC inválido');
+            }
             if (!normalizedActividad || normalizedActividad.length < 5) missing.push('Giro/Actividad');
             if (!customer.departamento) missing.push('Departamento');
             if (!customer.municipio) missing.push('Municipio');
             if (!customer.distrito) missing.push('Distrito');
             if (!customer.direccion) missing.push('Dirección');
         } else if (tipoDte === '01') { // Factura
-            if (!customer.numero_documento && !customer.nit) missing.push('DUI o NIT');
-            if (!customer.departamento) missing.push('Departamento');
-            if (!customer.municipio) missing.push('Municipio');
-            if (!customer.distrito) missing.push('Distrito');
-            if (!customer.direccion) missing.push('Dirección');
+            const isOver200 = (totals?.total || 0) >= 200;
+            const rawDoc = customer.numero_documento || customer.nit;
+            const cleanDoc = String(rawDoc || '').replace(/[-\s]/g, '');
+            const hasDoc = cleanDoc.length > 0;
+            const docVal = hasDoc ? validateDocumentNumber(cleanDoc, customer.tipo_documento) : null;
+            const hasValidDoc = docVal && docVal.isValid;
+
+            if (isOver200) {
+                if (!hasDoc) {
+                    missing.push('DUI o NIT (obligatorio para ventas ≥ $200.00)');
+                } else if (!hasValidDoc) {
+                    missing.push(`DUI/NIT inválido: ${docVal.error}`);
+                }
+            }
+
+            // Para Factura (01), la dirección solo es obligatoria por normativa si la venta es >= $200
+            if (isOver200) {
+                if (!customer.departamento) missing.push('Departamento');
+                if (!customer.municipio) missing.push('Municipio');
+                if (!customer.distrito) missing.push('Distrito');
+                if (!customer.direccion) missing.push('Dirección');
+            }
         } else if (tipoDte === '11') { // FEX
             if (!customer.numero_documento) missing.push('Doc. Identidad');
             if (!customer.pais || customer.pais === '059') missing.push('País de Destino (Extranjero)');
             if (!customer.direccion) missing.push('Dirección');
         } else if (tipoDte === '05') { // Nota de Crédito
-            if (!customer.nit && !customer.numero_documento) missing.push('NIT o DUI');
+            const isReferencingCCF = referencingSale?.tipo_documento === '03' || 
+                                     linkedDocs.some(d => d.doc_type === '03' || d.tipoDte === '03');
+            if (isReferencingCCF) {
+                const rawNit = customer.nit || customer.numero_documento;
+                const nitVal = validateDocumentNumber(rawNit, 'NIT');
+                if (!nitVal.isValid) {
+                    missing.push(`NIT inválido para NC sobre Crédito Fiscal: ${nitVal.error}`);
+                }
+                const cleanNrc = String(customer.nrc || '').replace(/\D/g, '');
+                if (!cleanNrc || /^0+$/.test(cleanNrc)) {
+                    missing.push('NRC inválido');
+                }
+            } else {
+                const rawDoc = customer.numero_documento || customer.nit;
+                const cleanDoc = String(rawDoc || '').replace(/[-\s]/g, '');
+                if (cleanDoc.length > 0) {
+                    const docVal = validateDocumentNumber(cleanDoc, customer.tipo_documento);
+                    if (!docVal.isValid) {
+                        missing.push(`Documento inválido: ${docVal.error}`);
+                    }
+                }
+            }
             if (!customer.departamento) missing.push('Departamento');
             if (!customer.municipio) missing.push('Municipio');
             if (!customer.distrito) missing.push('Distrito');
@@ -814,8 +919,14 @@ const SalesTerminal = () => {
             if (!customer.tipo_documento || (customer.tipo_documento !== 'NIT' && customer.tipo_documento !== '36')) {
                 missing.push('Tipo Documento debe ser NIT');
             }
-            if (!customer.nit) missing.push('NIT');
-            if (!customer.nrc) missing.push('NRC');
+            const nitVal = validateDocumentNumber(customer.nit, 'NIT');
+            if (!nitVal.isValid) {
+                missing.push(`NIT inválido: ${nitVal.error}`);
+            }
+            const cleanNrc = String(customer.nrc || '').replace(/\D/g, '');
+            if (!cleanNrc || /^0+$/.test(cleanNrc)) {
+                missing.push('NRC inválido');
+            }
             if (!normalizedActividad || normalizedActividad.length < 5) missing.push('Giro/Actividad');
             if (!customer.departamento) missing.push('Departamento');
             if (!customer.municipio) missing.push('Municipio');
@@ -1136,6 +1247,21 @@ const SalesTerminal = () => {
         }
 
 
+
+        if (tipoDte === '01' && (totals.total || 0) < 200 && selectedCustomerData?.id) {
+            const rawDoc = selectedCustomerData.numero_documento || selectedCustomerData.nit;
+            const cleanDoc = String(rawDoc || '').replace(/[-\s]/g, '');
+            if (cleanDoc.length > 0 && !isValidDocumentNumber(cleanDoc, selectedCustomerData.tipo_documento)) {
+                setCustomersCache(prev => ({
+                    ...prev,
+                    [selectedCustomerData.id]: {
+                        ...prev[selectedCustomerData.id],
+                        numero_documento: null,
+                        nit: null
+                    }
+                }));
+            }
+        }
 
         const saleData = {
             header: {
@@ -1827,8 +1953,10 @@ const SalesTerminal = () => {
                                     <button 
                                         onClick={() => {
                                             setEditingCustomer(null);
-                                            setNitValue('');
+                                            setDocNumberValue('');
+                                            setNrcValue('');
                                             setDocType('DUI');
+                                            setCondicionFiscal('otro');
                                             setSelectedDept('');
                                             setSelectedMun('');
                                             setSelectedDistrito('');
@@ -1913,9 +2041,11 @@ const SalesTerminal = () => {
 
                                         <div className="flex flex-col col-span-2 sm:col-span-1 border-t border-indigo-100/30 pt-1">
                                             <span className="text-[8px] font-black text-indigo-400 uppercase tracking-tighter">Condición Fiscal</span>
-                                            <span className="text-[10px] font-bold truncate uppercase" title={selectedCustomerData.condicion_fiscal || 'contribuyente'}
+                                            <span className="text-[10px] font-bold truncate uppercase" title={selectedCustomerData.condicion_fiscal || (selectedCustomerData.nrc ? 'contribuyente' : 'otro')}
                                                 style={{ color: selectedCustomerData.condicion_fiscal === 'gran contribuyente' ? '#d97706' : '#334155' }}>
-                                                {(selectedCustomerData.condicion_fiscal || 'contribuyente').toUpperCase()}
+                                                {selectedCustomerData.condicion_fiscal === 'otro' 
+                                                    ? 'CONSUMIDOR FINAL' 
+                                                    : (selectedCustomerData.condicion_fiscal || (selectedCustomerData.nrc ? 'CONTRIBUYENTE' : 'CONSUMIDOR FINAL')).toUpperCase()}
                                             </span>
                                         </div>
 
@@ -1938,7 +2068,7 @@ const SalesTerminal = () => {
                                             </span>
                                         </div>
                                     </div>
-                                    {selectedCustomerMissing.length > 0 && (
+                                    {selectedCustomerMissing.length > 0 && (tipoDte !== '01' || (totals?.total || 0) >= 200) && (
                                         <div className="mt-2 px-3 py-2 bg-amber-50 rounded-xl border border-amber-200 flex items-center justify-between gap-2 animate-in fade-in zoom-in-95 duration-200">
                                             <span className="text-[10px] font-bold text-amber-700">
                                                 Faltan: {selectedCustomerMissing.join(', ')} — obligatorio para facturar
@@ -3081,139 +3211,265 @@ const SalesTerminal = () => {
                 </div>
             )}
             {/* Modal de Gestión de Clientes */}
-            <Modal
-                isOpen={isCustomerModalOpen}
-                onClose={() => setIsCustomerModalOpen(false)}
-                title={editingCustomer ? 'Editar Cliente' : 'Nuevo Cliente'}
-                maxWidth="max-w-lg"
-            >
-                <form onSubmit={handleCustomerSubmit} className="space-y-4">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-xs font-semibold text-slate-500 mb-1">Tipo de Persona</label>
-                            <select name="tipo_persona" defaultValue={editingCustomer?.tipo_persona || '1'} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-sm" required>
-                                {personTypes.map(t => <option key={t.code} value={t.code}>{t.description}</option>)}
-                            </select>
-                        </div>
-                        <div>
-                            <label className="block text-xs font-semibold text-slate-500 mb-1">País</label>
-                            <select name="pais" value={selectedPais} onChange={(e) => setSelectedPais(e.target.value)} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-sm" required>
-                                {countries.map(t => <option key={t.code} value={t.code}>{t.description}</option>)}
-                            </select>
-                        </div>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-xs font-semibold text-slate-500 mb-1">Tipo Documento</label>
-                            <select 
-                                name="tipo_documento" 
-                                value={docType} 
-                                onChange={(e) => setDocType(e.target.value)}
-                                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-sm"
-                            >
-                                <option value="DUI">DUI</option>
-                                <option value="NIT">NIT</option>
-                                <option value="Pasaporte">Pasaporte</option>
-                                <option value="Carnet Resident">Carnet Residente</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label className="block text-xs font-semibold text-slate-500 mb-1">Número Documento</label>
-                            <input name="numero_documento" defaultValue={editingCustomer?.numero_documento} placeholder="00000000-0" className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-sm" />
-                        </div>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-xs font-semibold text-slate-500 mb-1">NIT</label>
-                            <input 
-                                name="nit" 
-                                value={nitValue} 
-                                onChange={(e) => setNitValue(formatNIT(e.target.value, docType))}
-                                placeholder={docType === 'DUI' ? "00000000-0" : "0000-000000-000-0"} 
-                                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-sm" 
-                                maxLength={docType === 'DUI' ? 10 : 17}
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-xs font-semibold text-slate-500 mb-1">NRC</label>
-                            <input name="nrc" defaultValue={editingCustomer?.nrc} placeholder="000000-0" className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-sm" />
-                        </div>
-                    </div>
-                    <div>
-                        <label className="block text-xs font-semibold text-slate-500 mb-1">Nombre / Razón Social</label>
-                        <input name="nombre" defaultValue={editingCustomer?.nombre} required className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-sm" />
-                    </div>
-                    <div>
-                        <label className="block text-xs font-semibold text-slate-500 mb-1">Nombre Comercial</label>
-                        <input name="nombre_comercial" defaultValue={editingCustomer?.nombre_comercial} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-sm" />
-                    </div>
-                    <div>
-                        <label className="block text-xs font-semibold text-slate-500 mb-1">Actividad Económica</label>
-                        <SearchableSelect 
-                            name="codigo_actividad" 
-                            options={activities} 
-                            value={selectedActivity} 
-                            onChange={(e) => setSelectedActivity(e.target.value)}
-                            placeholder="Seleccionar actividad"
-                        />
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-xs font-semibold text-slate-500 mb-1">Teléfono</label>
-                            <input name="telefono" defaultValue={editingCustomer?.telefono} placeholder="2200-0000" className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-sm" />
-                        </div>
-                        <div>
-                            <label className="block text-xs font-semibold text-slate-500 mb-1">Correo Electrónico</label>
-                            <input name="correo" type="email" defaultValue={editingCustomer?.correo} placeholder="cliente@ejemplo.com" className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-sm" />
-                        </div>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-xs font-semibold text-slate-500 mb-1">Departamento</label>
-                            <select name="departamento" className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-sm" value={selectedDept} onChange={(e) => { setSelectedDept(e.target.value); setSelectedMun(''); setSelectedDistrito(''); }} required>
-                                <option value="">Seleccionar</option>
-                                {departments?.map(d => <option key={d.code} value={d.code}>{d.description}</option>)}
-                            </select>
-                        </div>
-                        <div>
-                            <label className="block text-xs font-semibold text-slate-500 mb-1">Distrito</label>
-                            <select name="distrito" value={selectedDistrito} onChange={(e) => { const sel = distritos.find(d => d.code === e.target.value); setSelectedDistrito(e.target.value); setSelectedMun(sel?.muni_code || ''); }} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-sm" required>
-                                <option value="">Seleccionar</option>
-                                {distritos?.map(d => <option key={d.code} value={d.code}>{d.description}</option>)}
-                            </select>
-                        </div>
-                        <div>
-                            <label className="block text-xs font-semibold text-slate-500 mb-1">Municipio</label>
-                            <select name="municipio" value={selectedMun} onChange={(e) => setSelectedMun(e.target.value)} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-sm" required>
-                                <option value="">Seleccionar</option>
-                                {municipalities?.map(m => <option key={m.code} value={m.code}>{m.description}</option>)}
-                            </select>
-                        </div>
-                    </div>
-                    <div>
-                        <label className="block text-xs font-semibold text-slate-500 mb-1">Dirección Exacta</label>
-                        <textarea name="direccion" defaultValue={editingCustomer?.direccion} required placeholder="Dirección completa..." className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-sm h-16 resize-none" />
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                        {[
-                            { id: 'exento_iva', label: 'Exento de IVA', default: false },
-                            { id: 'aplica_fovial', label: 'Aplica FOVIAL', default: true },
-                            { id: 'aplica_cotrans', label: 'Aplica COTRANS', default: true }
-                        ].map(tax => (
-                            <label key={tax.id} className="flex items-center gap-2 p-2 bg-slate-50 rounded-lg border border-slate-100 cursor-pointer hover:border-indigo-200 transition-all text-xs font-semibold text-slate-600">
-                                <input type="checkbox" name={tax.id} defaultChecked={editingCustomer ? editingCustomer[tax.id] : tax.default} className="accent-indigo-600 w-4 h-4" />
-                                {tax.label}
-                            </label>
-                        ))}
-                    </div>
-                    <div className="flex justify-end gap-3 pt-2 border-t border-slate-100">
-                        <button type="button" onClick={() => setIsCustomerModalOpen(false)} className="px-4 py-2 text-slate-500 font-semibold hover:text-slate-700 transition-colors text-sm">Cancelar</button>
-                        <button type="submit" className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-lg font-bold transition-all text-sm active:scale-95">
-                            {editingCustomer ? 'Actualizar' : 'Registrar'}
-                        </button>
-                    </div>
-                </form>
-            </Modal>
+            {(() => {
+                const customerFieldCls = "w-full px-3 py-2 bg-slate-50/50 border border-slate-200 rounded-xl outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-[13px] font-medium text-slate-800";
+                const customerLabelCls = "block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5";
+                const isCustomerAddressRequired = condicionFiscal === 'contribuyente' || condicionFiscal === 'gran contribuyente' || Boolean(nrcValue && nrcValue.trim());
+
+                return (
+                    <Modal
+                        isOpen={isCustomerModalOpen}
+                        onClose={() => setIsCustomerModalOpen(false)}
+                        title={
+                            <div className="flex items-center gap-2.5">
+                                <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl">
+                                    <UserCheck size={20} />
+                                </div>
+                                <div>
+                                    <h3 className="text-base font-bold text-slate-900">
+                                        {editingCustomer ? 'Editar Cliente' : 'Nuevo Cliente'}
+                                    </h3>
+                                    <p className="text-xs text-slate-500">
+                                        {editingCustomer ? 'Actualizar información fiscal y comercial' : 'Registro de nuevo cliente o contribuyente'}
+                                    </p>
+                                </div>
+                            </div>
+                        }
+                        maxWidth="max-w-2xl"
+                    >
+                        <form onSubmit={handleCustomerSubmit} className="space-y-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                                <div className="sm:col-span-2">
+                                    <label className={customerLabelCls}>
+                                        Nombre / Razón Social <span className="text-rose-500">*</span>
+                                    </label>
+                                    <input 
+                                        name="nombre" 
+                                        defaultValue={editingCustomer?.nombre} 
+                                        required 
+                                        placeholder="Ej: Comercializadora San Salvador S.A. de C.V."
+                                        className={customerFieldCls} 
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className={customerLabelCls}>Nombre Comercial</label>
+                                    <input 
+                                        name="nombre_comercial" 
+                                        defaultValue={editingCustomer?.nombre_comercial} 
+                                        placeholder="Ej: Supertienda Central"
+                                        className={customerFieldCls} 
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className={customerLabelCls}>Tipo de Documento</label>
+                                    <select 
+                                        name="tipo_documento" 
+                                        value={docType} 
+                                        onChange={(e) => {
+                                            const nextType = e.target.value;
+                                            setDocType(nextType);
+                                            setDocNumberValue(formatDocumentNumber(docNumberValue, nextType));
+                                        }}
+                                        className={customerFieldCls}
+                                    >
+                                        <option value="DUI">DUI (Consumidor Final)</option>
+                                        <option value="NIT">NIT (Contribuyente / Empresa)</option>
+                                        <option value="Pasaporte">Pasaporte</option>
+                                        <option value="Carnet Resident">Carnet de Residente</option>
+                                        <option value="Otro">Otro Documento</option>
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label className={customerLabelCls}>Número de Documento (DUI / NIT)</label>
+                                    <input 
+                                        name="numero_documento" 
+                                        value={docNumberValue} 
+                                        onChange={(e) => setDocNumberValue(formatDocumentNumber(e.target.value, docType))}
+                                        placeholder={docType === 'DUI' ? "00000000-0" : docType === 'NIT' ? "0000-000000-000-0" : "Número de documento"} 
+                                        className={`${customerFieldCls} font-mono`} 
+                                        maxLength={docType === 'DUI' ? 10 : docType === 'NIT' ? 17 : 25}
+                                    />
+                                    <p className="text-[10px] text-slate-400 mt-1 font-medium">
+                                        {docType === 'DUI' 
+                                            ? 'Persona Natural: DUI homologado (9 dígitos).' 
+                                            : docType === 'NIT' 
+                                            ? 'Empresas / Sociedades (S.A. de C.V.): NIT institucional (14 dígitos).' 
+                                            : 'Número de documento de identificación extranjera.'}
+                                    </p>
+                                </div>
+
+                                <div>
+                                    <label className={customerLabelCls}>NRC (Registro de Contribuyente)</label>
+                                    <input 
+                                        name="nrc" 
+                                        value={nrcValue} 
+                                        onChange={(e) => {
+                                            const formatted = formatNRC(e.target.value);
+                                            setNrcValue(formatted);
+                                            const clean = formatted.replace(/\D/g, '');
+                                            if (clean.length > 0) {
+                                                if (condicionFiscal === 'otro') {
+                                                    setCondicionFiscal('contribuyente');
+                                                }
+                                            } else {
+                                                if (condicionFiscal === 'contribuyente') {
+                                                    setCondicionFiscal('otro');
+                                                }
+                                            }
+                                        }}
+                                        placeholder="000000-0" 
+                                        className={`${customerFieldCls} font-mono`} 
+                                    />
+                                </div>
+
+                                {isCustomerForeign && (
+                                    <div className="sm:col-span-2">
+                                        <label className={customerLabelCls}>País de Origen</label>
+                                        <select 
+                                            name="pais" 
+                                            value={selectedPais} 
+                                            onChange={(e) => setSelectedPais(e.target.value)} 
+                                            className={customerFieldCls} 
+                                            required
+                                        >
+                                            {countries.map(t => <option key={t.code} value={t.code}>{t.description}</option>)}
+                                        </select>
+                                    </div>
+                                )}
+
+                                <div>
+                                    <label className={customerLabelCls}>Actividad Económica (Giro - CAT-019)</label>
+                                    <SearchableSelect 
+                                        name="codigo_actividad" 
+                                        options={activities} 
+                                        value={selectedActivity} 
+                                        onChange={(e) => setSelectedActivity(e.target.value)}
+                                        placeholder="Seleccionar actividad económica"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className={customerLabelCls}>Condición Fiscal</label>
+                                    <select 
+                                        name="condicion_fiscal" 
+                                        value={condicionFiscal} 
+                                        onChange={(e) => setCondicionFiscal(e.target.value)} 
+                                        className={customerFieldCls}
+                                    >
+                                        <option value="contribuyente">Contribuyente</option>
+                                        <option value="gran contribuyente">Gran Contribuyente</option>
+                                        <option value="exento IVA">Exento IVA</option>
+                                        <option value="extranjero">Extranjero</option>
+                                        <option value="otro">Otro (Consumidor Final)</option>
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label className={customerLabelCls}>Teléfono</label>
+                                    <input 
+                                        name="telefono" 
+                                        defaultValue={editingCustomer?.telefono} 
+                                        placeholder="2200-0000" 
+                                        className={customerFieldCls} 
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className={customerLabelCls}>Correo Electrónico</label>
+                                    <input 
+                                        name="correo" 
+                                        type="email" 
+                                        defaultValue={editingCustomer?.correo} 
+                                        placeholder="cliente@ejemplo.com" 
+                                        className={customerFieldCls} 
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="w-full flex items-start gap-2 bg-slate-50 border border-slate-200 rounded-xl p-2.5">
+                                <Info size={14} className="text-slate-400 shrink-0 mt-0.5" />
+                                <div className="text-[10px] text-slate-500 leading-relaxed">
+                                    <p><span className="font-bold text-slate-600">Percepción</span> = tú eres el agente de percepción (GC cobrándole a uno pequeño).</p>
+                                    <p><span className="font-bold text-slate-600">Retención</span> = el cliente es el agente (GC grande reteniéndote a ti).</p>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                <div>
+                                    <label className={customerLabelCls}>
+                                        Departamento {isCustomerAddressRequired && <span className="text-rose-500">*</span>}
+                                    </label>
+                                    <select name="departamento" className={customerFieldCls} value={selectedDept} onChange={(e) => { setSelectedDept(e.target.value); setSelectedMun(''); setSelectedDistrito(''); }} required={isCustomerAddressRequired}>
+                                        <option value="">Seleccionar</option>
+                                        {departments?.map(d => <option key={d.code} value={d.code}>{d.description}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className={customerLabelCls}>
+                                        Distrito {isCustomerAddressRequired && <span className="text-rose-500">*</span>}
+                                    </label>
+                                    <select name="distrito" value={selectedDistrito} onChange={(e) => { const sel = distritos.find(d => d.code === e.target.value); setSelectedDistrito(e.target.value); setSelectedMun(sel?.muni_code || ''); }} className={customerFieldCls} required={isCustomerAddressRequired}>
+                                        <option value="">Seleccionar</option>
+                                        {distritos?.map(d => <option key={d.code} value={d.code}>{d.description}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className={customerLabelCls}>
+                                        Municipio {isCustomerAddressRequired && <span className="text-rose-500">*</span>}
+                                    </label>
+                                    <select name="municipio" value={selectedMun} onChange={(e) => setSelectedMun(e.target.value)} className={customerFieldCls} required={isCustomerAddressRequired}>
+                                        <option value="">Seleccionar</option>
+                                        {municipalities?.map(m => <option key={m.code} value={m.code}>{m.description}</option>)}
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className={customerLabelCls}>
+                                    Dirección Exacta {isCustomerAddressRequired && <span className="text-rose-500">*</span>}
+                                </label>
+                                <textarea 
+                                    name="direccion" 
+                                    defaultValue={editingCustomer?.direccion} 
+                                    required={isCustomerAddressRequired} 
+                                    placeholder={isCustomerAddressRequired ? "Dirección completa..." : "Dirección completa (opcional)..."} 
+                                    className={`${customerFieldCls} h-14 resize-none`} 
+                                />
+                            </div>
+
+                            {/* Impuestos y Exenciones Compactos */}
+                            <div className="p-3 bg-slate-50/70 border border-slate-200/80 rounded-xl flex flex-wrap items-center gap-x-5 gap-y-2">
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider shrink-0">Tributario:</span>
+                                {[
+                                    { id: 'exento_iva', label: 'Exento IVA', default: false },
+                                    { id: 'aplica_fovial', label: 'Aplica FOVIAL', default: true },
+                                    { id: 'aplica_cotrans', label: 'Aplica COTRANS', default: true }
+                                ].map(tax => (
+                                    <label key={tax.id} className="inline-flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-slate-700 hover:text-indigo-600 transition-colors select-none">
+                                        <input 
+                                            type="checkbox" 
+                                            name={tax.id} 
+                                            defaultChecked={editingCustomer ? (editingCustomer[tax.id] != null ? Boolean(editingCustomer[tax.id]) : tax.default) : tax.default} 
+                                            className="accent-indigo-600 rounded w-4 h-4 cursor-pointer" 
+                                        />
+                                        {tax.label}
+                                    </label>
+                                ))}
+                            </div>
+
+                            <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">
+                                <button type="button" onClick={() => setIsCustomerModalOpen(false)} className="px-5 py-2.5 text-slate-500 font-semibold hover:text-slate-700 transition-colors text-xs">Cancelar</button>
+                                <button type="submit" className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-xl font-bold transition-all text-xs shadow-md shadow-indigo-600/20 active:scale-95">
+                                    {editingCustomer ? 'Actualizar Cliente' : 'Registrar Cliente'}
+                                </button>
+                            </div>
+                        </form>
+                    </Modal>
+                );
+            })()}
             {/* Modal de Ingreso de Combustible */}
             {isFuelModalOpen && (
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[300] flex items-center justify-center p-4">

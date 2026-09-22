@@ -11,6 +11,7 @@ const excelService = require('../services/excel.service');
 const notificationService = require('../services/notification.service');
 const { dteValidoExistsSql, dteLatestColSql } = require('../services/dteQueryFilters');
 const reportPdfHelper = require('../utils/reportPdfHelper');
+const { validateDocumentNumber, isValidDocumentNumber } = require('../utils/svfeValidators');
 
 const dteTypeNames = {
     '01': 'Factura',
@@ -74,27 +75,100 @@ const createSale = async (req, res) => {
         `, [req.company_id]);
         const company = companies[0];
 
+        let customerRow = null;
+        if (header.customer_id) {
+            const [custRows] = await connection.query(
+                'SELECT id, nombre, nit, numero_documento, nrc, tipo_documento, departamento, municipio, distrito, direccion FROM customers WHERE id = ? AND company_id = ?',
+                [header.customer_id, req.company_id]
+            );
+            customerRow = custRows[0] || null;
+        }
+
+        // 0a. Limpieza silenciosa de documentos ficticios (ceros) en clientes para Facturas < $200
+        if (header.dte_type === '01' && customerRow && parseFloat(header.total_pagar || header.total || 0) < 200) {
+            const rawDoc = customerRow.numero_documento || customerRow.nit;
+            const cleanDoc = String(rawDoc || '').replace(/[-\s]/g, '');
+            if (cleanDoc.length > 0 && !isValidDocumentNumber(cleanDoc, customerRow.tipo_documento)) {
+                await connection.query(
+                    'UPDATE customers SET numero_documento = NULL, nit = NULL WHERE id = ? AND company_id = ?',
+                    [customerRow.id, req.company_id]
+                );
+                customerRow.numero_documento = null;
+                customerRow.nit = null;
+            }
+        }
+
         // 0b. Validar dirección del cliente seleccionado antes de crear la venta (requisito DTE)
         if (company && company.dte_active && header.customer_id && header.dte_type !== '11') {
-            const addressError = await dteService.validateCustomerAddress(header.customer_id, header.customer_branch_id || null);
-            if (addressError) {
-                await connection.rollback();
-                return res.status(400).json({ message: addressError, success: false });
+            const totalSale = parseFloat(header.total_pagar || header.total || 0);
+            const isFacturaMinor = header.dte_type === '01' && totalSale < 200;
+
+            if (!isFacturaMinor) {
+                const addressError = await dteService.validateCustomerAddress(header.customer_id, header.customer_branch_id || null);
+                if (addressError) {
+                    await connection.rollback();
+                    return res.status(400).json({ message: addressError, success: false });
+                }
             }
         }
 
         // 0c. Validar NIT del cliente para Crédito Fiscal (requisito Hacienda)
         if (company && company.dte_active && header.dte_type === '03' && header.customer_id) {
-            const [cust] = await connection.query(
-                'SELECT nit, nombre FROM customers WHERE id = ? AND company_id = ?',
-                [header.customer_id, req.company_id]
-            );
-            if (cust.length > 0 && !cust[0].nit) {
+            const rawNit = customerRow?.nit || customerRow?.numero_documento;
+            const nitVal = validateDocumentNumber(rawNit, 'NIT');
+            if (!nitVal.isValid) {
                 await connection.rollback();
                 return res.status(400).json({
-                    message: `El cliente "${cust[0].nombre}" no tiene NIT registrado. Para emitir Crédito Fiscal (CCF) el cliente debe tener NIT.`,
+                    message: `El cliente "${customerRow?.nombre || ''}" no tiene un NIT válido (${nitVal.error || 'requerido'}). Para emitir Crédito Fiscal (CCF) el cliente debe tener NIT registrado sin números ficticios.`,
                     success: false
                 });
+            }
+            const cleanNrc = String(customerRow?.nrc || '').replace(/\D/g, '');
+            if (!cleanNrc || /^0+$/.test(cleanNrc)) {
+                await connection.rollback();
+                return res.status(400).json({
+                    message: `El cliente "${customerRow?.nombre || ''}" no tiene un NRC válido registrado.`,
+                    success: false
+                });
+            }
+        }
+
+        // 0c2. Validar Factura (01) >= $200 o con documento
+        if (company && company.dte_active && header.dte_type === '01') {
+            const totalSale = parseFloat(header.total_pagar || header.total || 0);
+            const rawDoc = customerRow?.numero_documento || customerRow?.nit;
+            if (totalSale >= 200 && !rawDoc) {
+                await connection.rollback();
+                return res.status(400).json({
+                    message: 'Facturas mayores o iguales a $200.00 requieren DUI o NIT del cliente.',
+                    success: false
+                });
+            }
+            if (rawDoc) {
+                const docVal = validateDocumentNumber(rawDoc, customerRow?.tipo_documento);
+                if (!docVal.isValid) {
+                    await connection.rollback();
+                    return res.status(400).json({
+                        message: `Documento del cliente no válido: ${docVal.error}`,
+                        success: false
+                    });
+                }
+            }
+        }
+
+        // 0c3. Validar Nota de Crédito (05) sobre Crédito Fiscal
+        if (company && company.dte_active && header.dte_type === '05' && customerRow) {
+            const hasCCF = (linkedDocuments || []).some(d => d.doc_type === '03' || d.tipoDte === '03');
+            if (hasCCF) {
+                const rawNit = customerRow.nit || customerRow.numero_documento;
+                const nitVal = validateDocumentNumber(rawNit, 'NIT');
+                if (!nitVal.isValid) {
+                    await connection.rollback();
+                    return res.status(400).json({
+                        message: `Para emitir Nota de Crédito sobre un Crédito Fiscal, el cliente debe tener un NIT válido. Motivo: ${nitVal.error}`,
+                        success: false
+                    });
+                }
             }
         }
 
@@ -4174,6 +4248,19 @@ const updateSaleCustomer = async (req, res) => {
 
         const sale = sales[0];
         let customerId = sale.customer_id;
+
+        if (nit && String(nit).trim()) {
+            const nitVal = validateDocumentNumber(nit, 'NIT');
+            if (!nitVal.isValid) {
+                return res.status(400).json({ success: false, message: `NIT inválido: ${nitVal.error}` });
+            }
+        }
+        if (numero_documento && String(numero_documento).trim()) {
+            const docVal = validateDocumentNumber(numero_documento, tipo_documento);
+            if (!docVal.isValid) {
+                return res.status(400).json({ success: false, message: `Documento inválido: ${docVal.error}` });
+            }
+        }
 
         const customerPayload = {
             company_id: req.company_id,

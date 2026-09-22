@@ -2111,7 +2111,9 @@ const autoInvoiceDispatchRoute = async (req, res) => {
 
             // Validaciones DTE si la empresa tiene DTE activo
             if (company.dte_active) {
-                if (dteType !== '11') {
+                const stopTotal = parseFloat(prev?.total_pagar || 0);
+                const isFacturaMinor = dteType === '01' && stopTotal < 200;
+                if (dteType !== '11' && !isFacturaMinor) {
                     const addressError = await dteService.validateCustomerAddress(stop.customer_id, stop.customer_branch_id || null);
                     if (addressError) {
                         await connection.rollback();

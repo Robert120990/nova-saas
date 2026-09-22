@@ -923,8 +923,16 @@ async function generateDTE(payload) {
     }
 
     if (tipoDte !== '11' && tipoDte !== '07' && (tipoDte === '01' || tipoDte === '04' || tipoDte === '05')) {
-        // Consumidor Final sin documento: dejar campos como null
-        const isConsumidorFinal = !receptor.nit && !receptor.numDocumento;
+        // Consumidor Final sin documento o con documento ficticio en Factura < $200: sanitizar campos a null
+        const cleanNit = cleanNumbers(receptor.nit);
+        const cleanDoc = cleanNumbers(receptor.numDocumento);
+        const isFictitiousDoc = cleanDoc && (/^0+$/.test(cleanDoc) || /^(\d)\1+$/.test(cleanDoc) || cleanDoc.length < 9);
+        const isFictitiousNit = cleanNit && (/^0+$/.test(cleanNit) || /^(\d)\1+$/.test(cleanNit) || (cleanNit.length !== 9 && cleanNit.length !== 14));
+
+        const totalVenta = totals.totalPagar || 0;
+        const isConsumidorFinal = (!cleanNit || (tipoDte === '01' && totalVenta < 200 && isFictitiousNit)) &&
+                                  (!cleanDoc || (tipoDte === '01' && totalVenta < 200 && isFictitiousDoc));
+
         if (isConsumidorFinal && tipoDte === '01') {
             finalReceptor.tipoDocumento = null;
             finalReceptor.numDocumento = null;
