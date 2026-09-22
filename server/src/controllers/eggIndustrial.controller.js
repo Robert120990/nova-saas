@@ -2947,7 +2947,7 @@ const syncCostsSystemSources = async (req, res) => {
 const getProviderLotConfigs = async (req, res) => {
     try {
         const [rows] = await pool.query(
-            `SELECT c.*, p.nombre as provider_name, p.nombre_comercial,
+            `SELECT c.*, p.nombre as provider_name, p.nombre_comercial, p.nrc as provider_nrc,
                     (SELECT rm.provider_lot 
                      FROM egg_raw_materials rm 
                      WHERE rm.provider_id = c.provider_id AND rm.company_id = c.company_id 
@@ -2970,7 +2970,9 @@ const getProviderLotConfigs = async (req, res) => {
 
 const saveProviderLotConfig = async (req, res) => {
     try {
-        const { provider_id, lot_prefix, format_pattern, next_correlative, notes } = req.body;
+        const { provider_id, lot_prefix, notes } = req.body;
+        const format_pattern = req.body.format_pattern || req.body.suffix_format || 'correlativo';
+        const next_correlative = req.body.next_correlative || 1;
         if (!provider_id || !lot_prefix) {
             return res.status(400).json({ message: 'Proveedor y prefijo de lote son obligatorios.' });
         }
@@ -2984,7 +2986,7 @@ const saveProviderLotConfig = async (req, res) => {
                 next_correlative = VALUES(next_correlative),
                 notes = VALUES(notes),
                 updated_at = NOW()`,
-            [req.company_id, provider_id, lot_prefix.trim().toUpperCase(), format_pattern || 'PREFIX-DATE', next_correlative || 1, notes || null]
+            [req.company_id, provider_id, lot_prefix.trim().toUpperCase(), format_pattern, next_correlative, notes || null]
         );
         res.json({ success: true, message: 'Configuración de lote guardada correctamente.' });
     } catch (error) {

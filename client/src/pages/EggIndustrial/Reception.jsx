@@ -818,13 +818,20 @@ const EggReception = () => {
         }
     };
 
+    const loadProvidersOptions = async (search, page) => {
+        const { data } = await axios.get('/api/providers', {
+            params: { search: search || undefined, page, limit: 50 }
+        });
+        return data;
+    };
+
     // Fetch raw materials, providers and lot configurations on mount
     const fetchData = async () => {
         setLoading(true);
         try {
             const [rmRes, provRes, lotCfgRes] = await Promise.all([
                 axios.get('/api/egg-industrial/raw-materials'),
-                axios.get('/api/providers'),
+                axios.get('/api/providers', { params: { limit: 2000 } }),
                 axios.get('/api/egg-industrial/provider-lot-configs')
             ]);
             setRawMaterials(rmRes.data);
@@ -912,6 +919,7 @@ const EggReception = () => {
         setTarimas([{ id: 1, tarima_number: 1, gross_weight_lbs: '', tare_weight_lbs: 60, net_weight_lbs: 0, boxes_count: 24 }]);
         setFormData({
             provider_id: '',
+            provider_name: '',
             egg_type: 'huevo cáscara',
             egg_color: 'blanco',
             egg_size: 'L',
@@ -946,6 +954,7 @@ const EggReception = () => {
         setEditingId(rm.id);
         setFormData({
             provider_id: String(rm.provider_id || ''),
+            provider_name: rm.provider_name || '',
             egg_type: rm.egg_type || 'huevo cáscara',
             egg_color: rm.egg_color || 'blanco',
             egg_size: rm.egg_size || 'L',
@@ -1341,13 +1350,25 @@ const EggReception = () => {
                                 <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide">Proveedor de Origen *</label>
                                 <SearchableSelect
                                     options={providers}
+                                    loadOptions={loadProvidersOptions}
                                     value={formData.provider_id}
-                                    onChange={(e) => handleProviderSelect(e.target.value)}
+                                    onChange={(e, opt) => {
+                                        handleProviderSelect(e.target.value);
+                                        if (opt) {
+                                            setFormData(prev => ({
+                                                ...prev,
+                                                provider_id: e.target.value,
+                                                provider_name: opt.nombre || opt.label || prev.provider_name
+                                            }));
+                                        }
+                                    }}
                                     valueKey="id"
                                     labelKey="nombre"
                                     placeholder="Buscar proveedor..."
                                     codeKey="nrc"
                                     codeLabel="NRC"
+                                    selectedLabel={formData.provider_name}
+                                    dropdownWidth={460}
                                 />
                             </div>
 

@@ -3,8 +3,7 @@ const { validateDocumentNumber } = require('../utils/svfeValidators');
 
 const getProviders = async (req, res) => {
     try {
-        const { search, page = 1, limit = 15, es_credito } = req.query;
-        const offset = (page - 1) * limit;
+        const { search, page = 1, limit = 15, es_credito, all } = req.query;
 
         let query = `
             SELECT p.*,
@@ -39,21 +38,37 @@ const getProviders = async (req, res) => {
             params.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
         });
 
+        // Retornar lista completa sin paginar si se solicita all=true o limit=all
+        if (all === 'true' || limit === 'all') {
+            query += ` ORDER BY p.nombre ASC`;
+            const [rows] = await pool.query(query, params);
+            return res.json({
+                data: rows,
+                total: rows.length,
+                page: 1,
+                totalPages: 1
+            });
+        }
+
+        const parsedLimit = Math.max(1, parseInt(limit, 10) || 15);
+        const parsedPage = Math.max(1, parseInt(page, 10) || 1);
+        const offset = (parsedPage - 1) * parsedLimit;
+
         // Count total for pagination
         const countQuery = `SELECT COUNT(*) as total FROM (${query}) as sub`;
         const [countResult] = await pool.query(countQuery, params);
-        const total = countResult[0].total;
+        const total = countResult[0]?.total || 0;
 
         // Final query with pagination
         query += ` ORDER BY p.nombre ASC LIMIT ? OFFSET ?`;
-        params.push(parseInt(limit), parseInt(offset));
+        params.push(parsedLimit, offset);
 
         const [rows] = await pool.query(query, params);
         res.json({
             data: rows,
             total,
-            page: parseInt(page),
-            totalPages: Math.ceil(total / limit)
+            page: parsedPage,
+            totalPages: Math.ceil(total / parsedLimit)
         });
     } catch (error) {
         console.error('Error al obtener proveedores:', error);

@@ -205,10 +205,19 @@ const EggConfig = () => {
     const [editingLotConfig, setEditingLotConfig] = useState(null);
     const [lotConfigForm, setLotConfigForm] = useState({
         provider_id: '',
+        provider_name: '',
+        provider_nrc: '',
         lot_prefix: '',
         suffix_format: 'correlativo',
         notes: ''
     });
+
+    const loadProvidersOptions = async (search, page) => {
+        const { data } = await axios.get('/api/providers', {
+            params: { search: search || undefined, page, limit: 50 }
+        });
+        return data;
+    };
 
     // Mapeo de Códigos de Producto (Página 5 del documento)
     const [codeMappings, setCodeMappings] = useState([]);
@@ -282,7 +291,7 @@ const EggConfig = () => {
                 axios.get('/api/egg-industrial/product-config'),
                 axios.get('/api/egg-industrial/cost-concepts'),
                 axios.get('/api/egg-industrial/provider-lot-configs'),
-                axios.get('/api/providers'),
+                axios.get('/api/providers', { params: { limit: 2000 } }),
                 axios.get('/api/egg-industrial/code-mappings'),
                 axios.get('/api/products?limit=500&status=activo')
             ]);
@@ -904,14 +913,18 @@ const EggConfig = () => {
             setEditingLotConfig(configItem);
             setLotConfigForm({
                 provider_id: configItem.provider_id,
+                provider_name: configItem.provider_name || '',
+                provider_nrc: configItem.provider_nrc || '',
                 lot_prefix: configItem.lot_prefix || '',
-                suffix_format: configItem.suffix_format || 'correlativo',
+                suffix_format: configItem.format_pattern || configItem.suffix_format || 'correlativo',
                 notes: configItem.notes || ''
             });
         } else {
             setEditingLotConfig(null);
             setLotConfigForm({
                 provider_id: '',
+                provider_name: '',
+                provider_nrc: '',
                 lot_prefix: '',
                 suffix_format: 'correlativo',
                 notes: ''
@@ -929,6 +942,7 @@ const EggConfig = () => {
             await axios.post('/api/egg-industrial/provider-lot-configs', {
                 provider_id: lotConfigForm.provider_id,
                 lot_prefix: lotConfigForm.lot_prefix.trim().toUpperCase(),
+                format_pattern: lotConfigForm.suffix_format,
                 suffix_format: lotConfigForm.suffix_format,
                 notes: lotConfigForm.notes
             });
@@ -1244,10 +1258,10 @@ const EggConfig = () => {
                                             </td>
                                             <td className="px-4 py-3 capitalize">
                                                 <span className="text-slate-600 font-medium text-[11px]">
-                                                    {item.suffix_format === 'correlativo' && 'Correlativo numérico (-01, -02)'}
-                                                    {item.suffix_format === 'fecha-juliana' && 'Fecha Juliana (J-DDD)'}
-                                                    {item.suffix_format === 'secuencial' && 'Secuencial continuo'}
-                                                    {!item.suffix_format && 'Correlativo estándar'}
+                                                    {(item.suffix_format === 'correlativo' || item.format_pattern === 'correlativo') && 'Correlativo numérico (-01, -02)'}
+                                                    {(item.suffix_format === 'fecha-juliana' || item.format_pattern === 'fecha-juliana') && 'Fecha Juliana (J-DDD)'}
+                                                    {(item.suffix_format === 'secuencial' || item.format_pattern === 'secuencial') && 'Secuencial continuo'}
+                                                    {!item.suffix_format && !item.format_pattern && 'Correlativo estándar'}
                                                 </span>
                                             </td>
                                             <td className="px-4 py-3 text-slate-500 text-[11px]">
@@ -2579,13 +2593,25 @@ const EggConfig = () => {
                                 <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block">Proveedor Avícola *</label>
                                 <SearchableSelect
                                     options={providers}
+                                    loadOptions={loadProvidersOptions}
                                     value={lotConfigForm.provider_id}
-                                    onChange={(e) => setLotConfigForm({ ...lotConfigForm, provider_id: e.target.value })}
+                                    onChange={(e, opt) => setLotConfigForm(prev => ({
+                                        ...prev,
+                                        provider_id: e.target.value,
+                                        provider_name: opt ? (opt.nombre || opt.label) : prev.provider_name,
+                                        provider_nrc: opt ? opt.nrc : prev.provider_nrc
+                                    }))}
                                     valueKey="id"
                                     labelKey="nombre"
                                     placeholder="Seleccionar proveedor de huevo..."
                                     codeKey="nrc"
                                     codeLabel="NRC"
+                                    selectedLabel={
+                                        lotConfigForm.provider_name
+                                            ? `${lotConfigForm.provider_nrc ? `NRC: ${lotConfigForm.provider_nrc} - ` : ''}${lotConfigForm.provider_name}`
+                                            : (editingLotConfig?.provider_name ? `${editingLotConfig?.provider_nrc ? `NRC: ${editingLotConfig.provider_nrc} - ` : ''}${editingLotConfig.provider_name}` : null)
+                                    }
+                                    dropdownWidth={460}
                                 />
                             </div>
 
