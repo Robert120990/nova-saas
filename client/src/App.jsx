@@ -118,6 +118,7 @@ import GasDespachadores from './pages/GasDespachadores';
 import GasDespachadorNozzles from './pages/GasDespachadorNozzles';
 import GasPosTypes from './pages/GasPosTypes';
 import GasAdvances from './pages/GasAdvances';
+import GasAdvancesReport from './pages/GasAdvancesReport';
 import GasTrupput from './pages/GasTrupput';
 import ReporteVentasCombustible from './pages/ReporteVentasCombustible';
 import GasCloseoutDetailReport from './pages/GasCloseoutDetailReport';
@@ -352,6 +353,7 @@ function App() {
                         <Route path="/gas-station/reporte-lubricantes-vendidos" element={<GasLubricantsReport />} />
                         <Route path="/gas-station/reporte-complementarias" element={<GasComplementariasReport />} />
                         <Route path="/gas-station/reporte-analitico-ventas" element={<GasVentasAnalyticsReport />} />
+                        <Route path="/gas-station/reporte-anticipos" element={<GasAdvancesReport />} />
 
                         {/* Control de Pozo */}
                         <Route path="/pozo/servicios" element={<PozoServicios />} />

@@ -317,6 +317,20 @@ function buildTree(items) {
         });
     }
 
+    // Asegurar Reporte de Pagos Anticipados en Reportes de Gasolinera
+    if (gasReportsNode && !gasReportsNode.children.some(c => c.path === '/gas-station/reporte-anticipos')) {
+        gasReportsNode.children.push({
+            id: 'virtual-gas-advances-report',
+            label: 'Pagos Anticipados',
+            path: '/gas-station/reporte-anticipos',
+            permission: 'view_gas_advances_report',
+            permission_key: 'view_gas_advances_report',
+            hideInMenu: false,
+            icon: iconMap.Receipt || iconMap.Circle,
+            children: []
+        });
+    }
+
     // Asegurar Terminal del Servidor en Configuración
     const configNode = Object.values(itemMap).find(i => 
         !i.parent_id && (i.label === 'Configuración' || i.path === '/configuracion')

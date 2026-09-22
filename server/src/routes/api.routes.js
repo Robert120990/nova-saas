@@ -761,6 +761,7 @@ router.delete('/gas-station/closeouts/:id/vales/:valeId', gasCloseoutController.
 
 // Gas Station - Advances
 router.get('/gas-station/advances', gasAdvanceController.getAdvances);
+router.get('/gas-station/advances/report/pdf', gasAdvanceController.getAdvancesReportPDF);
 router.post('/gas-station/advances', gasAdvanceController.createAdvance);
 router.put('/gas-station/advances/:id', gasAdvanceController.updateAdvance);
 router.delete('/gas-station/advances/:id', gasAdvanceController.deleteAdvance);
