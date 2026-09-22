@@ -45,14 +45,33 @@ async function buildPayloadFromSale(dteRecord, newReceptor, companyId) {
         'SELECT * FROM sales_linked_documents WHERE sale_id = ? ORDER BY id',
         [ventaId]
     );
-    const documentoRelacionado = linkedRows.map(doc => ({
-        tipoDocumento: doc.doc_type || '03',
-        tipoGeneracion: parseInt(doc.generation_type) || 2,
-        numeroDocumento: doc.doc_number || '',
-        fechaEmision: doc.emission_date instanceof Date
-            ? `${doc.emission_date.getFullYear()}-${String(doc.emission_date.getMonth() + 1).padStart(2, '0')}-${String(doc.emission_date.getDate()).padStart(2, '0')}`
-            : String(doc.emission_date || '').substring(0, 10)
-    }));
+    const documentoRelacionado = [];
+    for (const doc of linkedRows) {
+        let docNum = (doc.doc_number || '').trim().toUpperCase();
+        let genType = parseInt(doc.generation_type) || 2;
+        if (docNum.startsWith('DTE-')) {
+            const [origDte] = await pool.query(
+                'SELECT codigo_generacion FROM dtes WHERE (numero_control = ? OR codigo_generacion = ?) AND company_id = ? LIMIT 1',
+                [docNum, docNum, companyId]
+            );
+            if (origDte.length > 0 && origDte[0].codigo_generacion) {
+                docNum = origDte[0].codigo_generacion;
+                genType = 1;
+                await pool.query('UPDATE sales_linked_documents SET doc_number = ?, generation_type = 1 WHERE id = ?', [docNum, doc.id]).catch(() => {});
+            }
+        } else if (/^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$/.test(docNum)) {
+            genType = 1;
+        }
+
+        documentoRelacionado.push({
+            tipoDocumento: doc.doc_type || '03',
+            tipoGeneracion: genType,
+            numeroDocumento: docNum,
+            fechaEmision: doc.emission_date instanceof Date
+                ? `${doc.emission_date.getFullYear()}-${String(doc.emission_date.getMonth() + 1).padStart(2, '0')}-${String(doc.emission_date.getDate()).padStart(2, '0')}`
+                : String(doc.emission_date || '').substring(0, 10)
+        });
+    }
 
     // 4. Obtener cliente (si existe) y sucursal de cliente (si aplica)
     let customer = null;
@@ -214,6 +233,7 @@ async function buildPayloadFromSale(dteRecord, newReceptor, companyId) {
         pagos: mappedPayments,
         retencion: parseFloat(sale.iva_retenido) || 0,
         percepcion: parseFloat(sale.iva_percibido) || 0,
+        descuento_general: parseFloat(sale.descuento_general) || 0,
         condicionOperacion: sale.condicion_operacion || 1,
         documentoRelacionado: documentoRelacionado.length > 0 ? documentoRelacionado : null,
         dias_credito: customer && customer.dias_credito != null ? parseInt(customer.dias_credito) || 15 : 15,
@@ -373,4 +393,4 @@ async function retransmit(req, res) {
     }
 }
 
-module.exports = { retransmit };
+module.exports = { retransmit, buildPayloadFromSale };

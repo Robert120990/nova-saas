@@ -463,9 +463,20 @@ async function generateDTE(payload) {
             itemTributos = ['20'];
         }
 
-        const relatedDoc = (payload.documentoRelacionado && payload.documentoRelacionado.length > 0)
-            ? payload.documentoRelacionado[0].numeroDocumento
-            : ".";
+        const relatedDocs = (payload.documentoRelacionado && payload.documentoRelacionado.length > 0)
+            ? payload.documentoRelacionado
+            : [];
+        const firstRelatedNum = relatedDocs.length > 0
+            ? String(relatedDocs[0].numeroDocumento || relatedDocs[0].doc_number || '').trim().toUpperCase()
+            : null;
+
+        let itemNumeroDoc = item.referencedDoc ? String(item.referencedDoc).trim().toUpperCase() : null;
+        if (tipoDte === '05') {
+            // En Nota de Crédito, el número de documento de cada ítem DEBE coincidir con documentoRelacionado
+            if (relatedDocs.length === 1 || !itemNumeroDoc) {
+                itemNumeroDoc = firstRelatedNum;
+            }
+        }
 
         let itemFinalTributos;
         if (tipoDte === '04') {
@@ -484,7 +495,7 @@ async function generateDTE(payload) {
         const baseItem = {
             numItem: index + 1,
             tipoItem: item.tipoItem || 1, // 1: Gravada
-            numeroDocumento: item.referencedDoc || (tipoDte === '05' ? relatedDoc : null),
+            numeroDocumento: itemNumeroDoc || (tipoDte === '05' ? firstRelatedNum : null),
             cantidad: round4(item.cantidad),
             codigo: item.codigo || `P-${index + 1}`,
             codTributo: item.codTributo || null,
@@ -559,7 +570,9 @@ async function generateDTE(payload) {
             resumenTaxes.push({ codigo: 'C8', descripcion: 'COTRANS', valor: round(itemFuelTax.C8) });
         }
     }
-    totals = calculateTotals(calculatedItems, resumenTaxes, tipoDte);
+    const generalDiscount = payload.descuento_general ?? payload.descuentoGeneral ?? payload.header?.descuento_general ?? 0;
+    const generalDiscountPercentage = payload.porcentajeDescuento ?? payload.porcentaje_descuento ?? payload.header?.porcentajeDescuento ?? payload.header?.porcentaje_descuento ?? null;
+    totals = calculateTotals(calculatedItems, resumenTaxes, tipoDte, generalDiscount, ivaRate, generalDiscountPercentage);
     
     // Payments mapping
     pagos = (payload.pagos || [
@@ -615,11 +628,11 @@ async function generateDTE(payload) {
             totalExenta: totals.totalExenta,
             totalGravada: totals.totalGravada,
             subTotalVentas: totals.subTotalVentas,
-            descuNoSuj: 0,
-            descuExenta: 0,
-            descuGravada: 0,
-            porcentajeDescuento: 0,
-            totalDescu: totals.totalDescu,
+            descuNoSuj: totals.descuNoSuj || 0,
+            descuExenta: totals.descuExenta || 0,
+            descuGravada: totals.descuGravada || 0,
+            porcentajeDescuento: totals.porcentajeDescuento || 0,
+            totalDescu: totals.totalDescu || 0,
             observaciones: 'Ninguna',
             tributos: (() => {
                 const isFactura = type === '01';
@@ -987,7 +1000,20 @@ async function generateDTE(payload) {
     }
 
     if (tipoDte !== '11' && tipoDte !== '07') {
-        dte.documentoRelacionado = (payload.documentoRelacionado && payload.documentoRelacionado.length > 0) ? payload.documentoRelacionado : null;
+        if (payload.documentoRelacionado && payload.documentoRelacionado.length > 0) {
+            dte.documentoRelacionado = payload.documentoRelacionado.map(doc => {
+                const rawNum = String(doc.numeroDocumento || doc.doc_number || doc.numDocumento || '').trim().toUpperCase();
+                const isUUID = /^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$/.test(rawNum);
+                return {
+                    tipoDocumento: String(doc.tipoDocumento || doc.doc_type || '03'),
+                    tipoGeneracion: parseInt(doc.tipoGeneracion ?? doc.generation_type) || (isUUID ? 1 : 2),
+                    numeroDocumento: rawNum,
+                    fechaEmision: String(doc.fechaEmision || doc.emission_date || '').substring(0, 10)
+                };
+            });
+        } else {
+            dte.documentoRelacionado = null;
+        }
     }
 
     if (tipoDte === '11') {

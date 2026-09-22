@@ -717,22 +717,41 @@ const generateRTEEModern = (data) => {
                 // 5. RESUMEN FINANCIERO Y CÓDIGO QR
                 // ==========================================
                 let gravadasDisplay = parseFloat(venta.total_gravado) || 0;
-                let sumaOperacionesDisplay = gravadasDisplay;
+                let sumaOperacionesDisplay = parseFloat(venta.subtotal_ventas) || gravadasDisplay;
+                const descGeneral = parseFloat(venta.descuento_general) || (
+                    parseFloat(venta.total_descuento) > 0 && !items.some(i => (parseFloat(i.montoDescuento) || 0) > 0)
+                        ? parseFloat(venta.total_descuento)
+                        : 0
+                );
+                const pctDesc = parseFloat(venta.porcentaje_descuento) || 0;
+                let pctFormatted = 0;
+                if (pctDesc > 0) {
+                    if (Math.abs(pctDesc - Math.round(pctDesc)) <= 0.1) {
+                        pctFormatted = Math.round(pctDesc);
+                    } else {
+                        pctFormatted = Number(pctDesc.toFixed(2));
+                    }
+                }
 
                 if (esConsumidorFinal && tieneImpuestosCombustible) {
                     const totalPagarNum = parseFloat(venta.total_pagar) || 0;
                     const totalExentoNum = parseFloat(venta.total_exento) || 0;
                     const totalNoSujNum = parseFloat(venta.total_nosujetas) || 0;
                     gravadasDisplay = Math.max(0, Math.round((totalPagarNum - fovialVenta - cotransVenta - totalExentoNum - totalNoSujNum) * 100) / 100);
-                    const descNum = parseFloat(venta.total_descuento) || 0;
+                    const descNum = descGeneral > 0 ? descGeneral : (parseFloat(venta.total_descuento) || 0);
                     sumaOperacionesDisplay = Math.round((gravadasDisplay + descNum) * 100) / 100;
+                } else if (descGeneral > 0) {
+                    sumaOperacionesDisplay = parseFloat(venta.subtotal_ventas) || Math.round((gravadasDisplay + (parseFloat(venta.total_exento) || 0) + (parseFloat(venta.total_nosujetas) || 0)) * 100) / 100;
+                    gravadasDisplay = Math.max(0, Math.round((gravadasDisplay - descGeneral) * 100) / 100);
                 }
 
                 const lines = [];
                 lines.push({ label: 'SUMA DE OPERACIONES:', val: sumaOperacionesDisplay, isBold: false });
 
-                const totalDesc = parseFloat(venta.total_descuento) || 0;
-                if (totalDesc > 0) lines.push({ label: '(-) DESCUENTOS:', val: totalDesc, isNegative: true });
+                if (descGeneral > 0) {
+                    const descLabel = pctFormatted > 0 ? `(-) DESCUENTO GENERAL (${pctFormatted}%):` : '(-) DESCUENTO GENERAL:';
+                    lines.push({ label: descLabel, val: descGeneral, isNegative: true });
+                }
 
                 lines.push({ label: 'VENTAS GRAVADAS:', val: gravadasDisplay, isBold: false });
 

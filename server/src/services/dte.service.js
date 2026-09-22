@@ -75,6 +75,15 @@ class DteService {
                             : (payload.header.dias_credito != null ? parseInt(payload.header.dias_credito) || 15 : 15),
                 retencion: parseFloat(payload.header.total_retencion ?? payload.header.iva_retenido ?? 0),
                 percepcion: parseFloat(payload.header.total_percepcion ?? payload.header.iva_percibido ?? 0),
+                descuento_general: parseFloat(payload.header.descuento_general ?? payload.header.total_descuento ?? payload.descuento_general ?? 0),
+                descuGravada: payload.header.descuGravada !== undefined ? parseFloat(payload.header.descuGravada) : undefined,
+                porcentajeDescuento: (payload.header.porcentajeDescuento !== undefined && payload.header.porcentajeDescuento !== null)
+                    ? parseFloat(payload.header.porcentajeDescuento)
+                    : ((payload.header.porcentaje_descuento !== undefined && payload.header.porcentaje_descuento !== null)
+                        ? parseFloat(payload.header.porcentaje_descuento)
+                        : ((payload.porcentaje_descuento !== undefined && payload.porcentaje_descuento !== null)
+                            ? parseFloat(payload.porcentaje_descuento)
+                            : undefined)),
                 items: payload.header.dte_type === '07' 
                     ? (payload.linkedDocuments || []).map(doc => ({
                         tipoDte: doc.doc_type || '03',
@@ -85,20 +94,27 @@ class DteService {
                         ivaRetenido: doc.ivaRetenido || doc.iva_retenido || 0,
                         descripcion: doc.descripcion || `RETENCION AL DOCUMENTO ${doc.doc_number || ''}`
                     }))
-                    : payload.items.map(item => ({
-                    descripcion: item.descripcion || item.nombre,
-                    codigo: item.codigo,
-                    cantidad: item.cantidad,
-                    precioUnitario: item.precio_unitario || item.precio,
-                    montoDescu: item.monto_descuento || item.descuento || 0,
-                    referencedDoc: item.referencedDoc || null,
-                    // Preservar tributos específicos o usar IVA por defecto
-                    tributos: payload.header.dte_type === '11' ? []
-                        : (item.tributos && Array.isArray(item.tributos) && item.tributos.length > 0
-                            ? item.tributos 
-                            : (item.exento ? [] : ["20"])),
-                    tipoItem: payload.header.dte_type === '11' ? 1 : (item.exento ? 2 : 1) // 1: Gravado, 2: Exento
-                })),
+                    : (payload.items || []).map(item => {
+                        const fallbackRef = (payload.header?.dte_type === '05' && payload.linkedDocuments && payload.linkedDocuments.length === 1)
+                            ? payload.linkedDocuments[0].doc_number
+                            : null;
+                        return {
+                            descripcion: item.descripcion || item.nombre,
+                            codigo: item.codigo,
+                            cantidad: item.cantidad,
+                            precioUnitario: item.precio_unitario || item.precio,
+                            montoDescu: item.monto_descuento || item.descuento || 0,
+                            referencedDoc: (payload.header?.dte_type === '05' && fallbackRef)
+                                ? (item.referencedDoc || fallbackRef)
+                                : (item.referencedDoc || null),
+                            // Preservar tributos específicos o usar IVA por defecto
+                            tributos: payload.header.dte_type === '11' ? []
+                                : (item.tributos && Array.isArray(item.tributos) && item.tributos.length > 0
+                                    ? item.tributos 
+                                    : (item.exento ? [] : ["20"])),
+                            tipoItem: payload.header.dte_type === '11' ? 1 : (item.exento ? 2 : 1) // 1: Gravado, 2: Exento
+                        };
+                    }),
                 pagos: payload.payments || [],
                 totalLetras: payload.header.total_letras || '',
                 taxes: [...(payload.header.taxes || []), ...extraTaxes],
@@ -120,12 +136,16 @@ class DteService {
                     nombreChofer: payload.header.transporter_name,
                     numPlaca: payload.header.vehicle_plate
                 } : null,
-                documentoRelacionado: (payload.linkedDocuments || []).map(doc => ({
-                    tipoDocumento: doc.doc_type,
-                    tipoGeneracion: doc.generation_type || 1,
-                    numeroDocumento: doc.doc_number,
-                    fechaEmision: doc.emission_date
-                }))
+                documentoRelacionado: (payload.linkedDocuments || []).map(doc => {
+                    const rawDocNum = String(doc.doc_number || doc.numeroDocumento || '').trim().toUpperCase();
+                    const isUUID = /^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$/.test(rawDocNum);
+                    return {
+                        tipoDocumento: doc.doc_type || doc.tipoDocumento || '03',
+                        tipoGeneracion: doc.generation_type || (isUUID ? 1 : 2),
+                        numeroDocumento: rawDocNum,
+                        fechaEmision: doc.emission_date || doc.fechaEmision
+                    };
+                })
             };
 
             console.log(`[DteService] Llamando a dte-api para emisión...`);
