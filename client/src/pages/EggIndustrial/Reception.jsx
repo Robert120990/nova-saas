@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { toast } from 'sonner';
 import axios from 'axios';
@@ -67,7 +66,7 @@ const EggReception = () => {
     const [globalHasCaja, setGlobalHasCaja] = useState(true);
     const [showDetailedTares, setShowDetailedTares] = useState(false);
     const [bulkAddCount, setBulkAddCount] = useState(10);
-    const [receptionTareTarima, setReceptionTareTarima] = useState(0);
+    const [_receptionTareTarima, setReceptionTareTarima] = useState(0);
     const [receptionTareSep, setReceptionTareSep] = useState(48);
     const [receptionTareCaja, setReceptionTareCaja] = useState(30);
     const [receptionBaseBoxes, setReceptionBaseBoxes] = useState(24);
@@ -816,7 +815,7 @@ const EggReception = () => {
         };
     };
 
-    const handleUpdateReceptionTare = (field, value) => {
+    const _handleUpdateReceptionTare = (field, value) => {
         const val = parseFloat(value) || 0;
         let newSep = receptionTareSep;
         let newCaja = receptionTareCaja;

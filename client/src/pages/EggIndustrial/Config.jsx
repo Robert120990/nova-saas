@@ -3,7 +3,6 @@ import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { toast } from 'sonner';
 import axios from 'axios';
-import SearchableSelect from '../../components/ui/SearchableSelect';
 import ProviderLotConfigModal from '../../components/egg/ProviderLotConfigModal';
 import Money from '../../components/ui/Money';
 import {
@@ -44,9 +43,7 @@ import {
     Filter,
     X,
     AlertCircle,
-    Lock,
-    Scale,
-    Boxes
+    Lock
 } from 'lucide-react';
 
 const MONTH_NAMES = [
