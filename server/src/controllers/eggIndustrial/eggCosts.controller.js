@@ -13,7 +13,8 @@ const {
     resolveEggCatalogProduct,
     safeNum,
     safeInt,
-    computeJulianLotCode
+    computeJulianLotCode,
+    ensureEggSchema
 } = require('./eggUtils');
 
 

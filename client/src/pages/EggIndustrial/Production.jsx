@@ -306,7 +306,7 @@ const EggProduction = () => {
             .then(res => {
                 if (res.data) setAvailableRemanentes(res.data);
             })
-            .catch(() => {});
+            .catch(() => { });
 
         setCipBlockedError(null);
         setIsNewBatchModalOpen(true);
@@ -702,17 +702,40 @@ const EggProduction = () => {
         setLoading(true);
         try {
             const [bRes, rmRes, cRes, cfgRes, remRes] = await Promise.all([
-                axios.get('/api/egg-industrial/batches'),
-                axios.get('/api/egg-industrial/raw-materials', { params: { only_with_stock: 'true' } }),
-                axios.get('/api/egg-industrial/cip'),
-                axios.get('/api/egg-industrial/product-config'),
-                axios.get('/api/egg-industrial/remanentes/available').catch(() => ({ data: [] }))
+                axios.get('/api/egg-industrial/batches').catch(err => {
+                    console.error('Error fetching batches:', err);
+                    return { data: [] };
+                }),
+                axios.get('/api/egg-industrial/raw-materials', { params: { only_with_stock: 'true' } }).catch(err => {
+                    console.error('Error fetching raw materials:', err);
+                    return { data: [] };
+                }),
+                axios.get('/api/egg-industrial/cip').catch(err => {
+                    console.error('Error fetching cip:', err);
+                    return { data: [] };
+                }),
+                axios.get('/api/egg-industrial/product-config').catch(err => {
+                    console.error('Error fetching product-config:', err);
+                    return { data: {} };
+                }),
+                axios.get('/api/egg-industrial/remanentes/available').catch(err => {
+                    console.error('Error fetching remanentes:', err);
+                    return { data: [] };
+                })
             ]);
-            setBatches(bRes.data);
-            setRawMaterials(rmRes.data.filter(rm => rm.status === 'aprobado'));
-            setCipLogs(cRes.data);
-            setProductConfig(cfgRes.data);
-            setAvailableRemanentes(remRes.data || []);
+            const batchesList = Array.isArray(bRes.data) ? bRes.data : (bRes.data?.data || []);
+            setBatches(batchesList);
+
+            const rawMaterialsList = Array.isArray(rmRes.data) ? rmRes.data : (rmRes.data?.data || []);
+            setRawMaterials(rawMaterialsList.filter(rm => rm && rm.status === 'aprobado'));
+
+            const cipList = Array.isArray(cRes.data) ? cRes.data : (cRes.data?.data || []);
+            setCipLogs(cipList);
+
+            setProductConfig(cfgRes.data?.data || cfgRes.data || {});
+
+            const remList = Array.isArray(remRes.data) ? remRes.data : (remRes.data?.data || []);
+            setAvailableRemanentes(remList);
         } catch (error) {
             console.error('Error fetching production data:', error);
             toast.error('Error al cargar datos del módulo de producción.');
@@ -726,7 +749,7 @@ const EggProduction = () => {
             const res = await axios.get('/api/egg-industrial/calendar', {
                 params: { status: 'programado' }
             });
-            setScheduledProductions(res.data || []);
+            setScheduledProductions(Array.isArray(res.data) ? res.data : (res.data?.data || []));
         } catch (err) {
             console.error('Error al cargar producciones programadas:', err);
         }
@@ -1068,7 +1091,7 @@ const EggProduction = () => {
     };
 
     // Lotes disponibles con stock aprobados (ordenados por FIFO desde el backend)
-    const availableRawLots = rawMaterials.filter(m => !m.is_depleted && parseFloat(m.stock_lbs || 0) > 0.01);
+    const availableRawLots = (Array.isArray(rawMaterials) ? rawMaterials : []).filter(m => !m.is_depleted && parseFloat(m.stock_lbs || 0) > 0.01);
     const oldestFifoLot = availableRawLots[0] || null;
     const oldestAALot = availableRawLots.find(m => (m.egg_classification || '').toLowerCase().includes('aa')) || null;
     const isCurrentSeparation = isSeparationProduct(batchForm.product_type);
@@ -1370,7 +1393,8 @@ const EggProduction = () => {
         }
     };
 
-    const filteredBatches = batches.filter(b =>
+    const filteredBatches = (Array.isArray(batches) ? batches : []).filter(b =>
+        b.batch_code_display?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         b.batch_uuid?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         b.product_type?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         b.presentation?.toLowerCase().includes(searchTerm.toLowerCase())
@@ -1424,7 +1448,7 @@ const EggProduction = () => {
                             const startOfYear = new Date(today.getFullYear(), 0, 0);
                             const diff = today - startOfYear;
                             const dayOfYear = Math.floor(diff / (1000 * 60 * 60 * 24));
-                            const todayBatches = batches.filter(b => {
+                            const todayBatches = (Array.isArray(batches) ? batches : []).filter(b => {
                                 if (!b.batch_code_display) return false;
                                 const parts = b.batch_code_display.split('-').map(s => s.trim());
                                 return parts.length === 3 && parseInt(parts[1], 10) === dayOfYear;
@@ -1853,9 +1877,9 @@ const EggProduction = () => {
                         </div>
 
                         <div className="space-y-3 overflow-y-auto max-h-[520px] pr-1">
-                            {cipLogs.length === 0 ? (
+                            {(Array.isArray(cipLogs) ? cipLogs : []).length === 0 ? (
                                 <p className="text-xs text-slate-500 text-center py-6">No hay registros de limpieza disponibles.</p>
-                            ) : cipLogs.map(log => (
+                            ) : (Array.isArray(cipLogs) ? cipLogs : []).map(log => (
                                 <div key={log.id} className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col md:flex-row justify-between gap-4">
                                     <div className="space-y-1.5">
                                         <div className="flex items-center gap-2">
@@ -2079,8 +2103,8 @@ const EggProduction = () => {
                                                         setBatchForm({ ...batchForm, presentations: updated, presentation: updated.join(', ') });
                                                     }}
                                                     className={`px-2 py-0.5 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1 border ${isSelected
-                                                            ? 'bg-indigo-50 border-indigo-300 text-indigo-700 shadow-2xs'
-                                                            : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100'
+                                                        ? 'bg-indigo-50 border-indigo-300 text-indigo-700 shadow-2xs'
+                                                        : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100'
                                                         }`}
                                                 >
                                                     {isSelected && <Check size={11} className="text-indigo-600" />}
@@ -2143,11 +2167,10 @@ const EggProduction = () => {
                                                             🔄 Rotación FIFO (Más Antiguo)
                                                         </span>
                                                     )}
-                                                    <span className={`text-[10px] font-black px-1.5 py-0.5 rounded border ${
-                                                        (recommendedLot.storage_location || 'abajo') === 'abajo'
+                                                    <span className={`text-[10px] font-black px-1.5 py-0.5 rounded border ${(recommendedLot.storage_location || 'abajo') === 'abajo'
                                                             ? 'bg-blue-50 text-blue-700 border-blue-200'
                                                             : 'bg-amber-50 text-amber-700 border-amber-200'
-                                                    }`}>
+                                                        }`}>
                                                         Estiba: {(recommendedLot.storage_location || 'abajo') === 'abajo' ? '⬇ Abajo (Piso)' : '⬆ Arriba (Rack)'}
                                                     </span>
                                                 </div>
@@ -2314,19 +2337,18 @@ const EggProduction = () => {
                                                                         disabled={isAdded || isDepleted}
                                                                         onClick={() => handleAddSpecificTarimaToRm(idx, t)}
                                                                         className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 border ${isAdded
-                                                                                ? 'bg-emerald-50 border-emerald-300 text-emerald-700 shadow-2xs'
-                                                                                : isDepleted
-                                                                                    ? 'bg-slate-100 border-slate-200 text-slate-400 opacity-60 cursor-not-allowed line-through'
-                                                                                    : 'bg-white hover:bg-indigo-50 border-slate-300 hover:border-indigo-400 text-slate-700 hover:text-indigo-700 shadow-2xs'
+                                                                            ? 'bg-emerald-50 border-emerald-300 text-emerald-700 shadow-2xs'
+                                                                            : isDepleted
+                                                                                ? 'bg-slate-100 border-slate-200 text-slate-400 opacity-60 cursor-not-allowed line-through'
+                                                                                : 'bg-white hover:bg-indigo-50 border-slate-300 hover:border-indigo-400 text-slate-700 hover:text-indigo-700 shadow-2xs'
                                                                             }`}
                                                                         title={isDepleted ? 'Tarima 100% consumida en corridas anteriores' : isAdded ? 'Tarima ya agregada' : 'Hacer clic para agregar a esta corrida'}
                                                                     >
                                                                         <span>Tarima #{t.tarima_number}</span>
-                                                                        <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${
-                                                                            (t.storage_location || selectedLot?.storage_location || 'abajo') === 'abajo'
+                                                                        <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${(t.storage_location || selectedLot?.storage_location || 'abajo') === 'abajo'
                                                                                 ? 'bg-blue-50 text-blue-700 border border-blue-200'
                                                                                 : 'bg-amber-50 text-amber-700 border border-amber-200'
-                                                                        }`}>
+                                                                            }`}>
                                                                             {(t.storage_location || selectedLot?.storage_location || 'abajo') === 'abajo' ? '⬇ Abajo' : '⬆ Arriba'}
                                                                         </span>
                                                                         <span className="text-[10px] font-semibold opacity-80">
@@ -2365,11 +2387,10 @@ const EggProduction = () => {
                                                                                 <div className="flex items-center gap-2 flex-wrap">
                                                                                     <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-md font-bold text-xs flex items-center gap-1.5">
                                                                                         <span>Tarima #{t.tarima_number}</span>
-                                                                                        <span className={`text-[9px] font-black px-1 py-0.2 rounded ${
-                                                                                            (t.storage_location || selectedLot?.storage_location || 'abajo') === 'abajo'
+                                                                                        <span className={`text-[9px] font-black px-1 py-0.2 rounded ${(t.storage_location || selectedLot?.storage_location || 'abajo') === 'abajo'
                                                                                                 ? 'bg-blue-100 text-blue-800'
                                                                                                 : 'bg-amber-100 text-amber-800'
-                                                                                        }`}>
+                                                                                            }`}>
                                                                                             {(t.storage_location || selectedLot?.storage_location || 'abajo') === 'abajo' ? '⬇ Abajo' : '⬆ Arriba'}
                                                                                         </span>
                                                                                     </span>
@@ -2468,10 +2489,10 @@ const EggProduction = () => {
                                     <div>
                                         <label className="text-xs font-bold text-teal-900 uppercase tracking-wide flex items-center gap-1.5">
                                             <Sparkles className="w-4 h-4 text-teal-600" />
-                                            <span>Incorporar Remanentes / Sobrantes Disponibles (Producciones Previas)</span>
+                                            <span>Materia prima en proceso (Producciones Previas)</span>
                                         </label>
                                         <p className="text-[11px] text-teal-700">
-                                            Sobrantes guardados (huevo en leche, mezclas previas) listos para integrarse en esta formulación.
+                                            Materia prima en proceso (huevo en leche, mezclas previas) listos para integrarse en esta formulación.
                                         </p>
                                     </div>
                                     <div className="flex items-center gap-2">
@@ -2485,13 +2506,12 @@ const EggProduction = () => {
                                                         params: nextVal ? { all: 'true' } : (editingBatch ? { include_batch_id: editingBatch.id } : {})
                                                     });
                                                     setAvailableRemanentes(res.data || []);
-                                                } catch (e) {}
+                                                } catch (e) { }
                                             }}
-                                            className={`text-[11px] px-2.5 py-1 rounded-lg border font-semibold transition-all ${
-                                                showAllRemanentes 
-                                                    ? 'bg-teal-700 text-white border-teal-700' 
+                                            className={`text-[11px] px-2.5 py-1 rounded-lg border font-semibold transition-all ${showAllRemanentes
+                                                    ? 'bg-teal-700 text-white border-teal-700'
                                                     : 'bg-white text-teal-800 border-teal-300 hover:bg-teal-100'
-                                            }`}
+                                                }`}
                                         >
                                             {showAllRemanentes ? 'Ver Solo Disponibles' : 'Ver Todos / Historial'}
                                         </button>
@@ -2519,13 +2539,12 @@ const EggProduction = () => {
                                                         const updated = isSelected ? current.filter(id => id !== rem.id) : [...current, rem.id];
                                                         setBatchForm({ ...batchForm, remanente_ids: updated });
                                                     }}
-                                                    className={`p-3 rounded-xl border transition-all flex items-start justify-between gap-2 ${
-                                                        isSelected
+                                                    className={`p-3 rounded-xl border transition-all flex items-start justify-between gap-2 ${isSelected
                                                             ? 'bg-white border-teal-500 shadow-sm ring-2 ring-teal-500/20 cursor-pointer'
                                                             : isAssigned
-                                                            ? 'bg-slate-100/80 border-slate-200 text-slate-500 cursor-default opacity-85'
-                                                            : 'bg-white/70 border-teal-200/70 hover:bg-white cursor-pointer'
-                                                    }`}
+                                                                ? 'bg-slate-100/80 border-slate-200 text-slate-500 cursor-default opacity-85'
+                                                                : 'bg-white/70 border-teal-200/70 hover:bg-white cursor-pointer'
+                                                        }`}
                                                 >
                                                     <div className="space-y-1">
                                                         <div className="flex items-center gap-2">
@@ -3011,11 +3030,10 @@ const EggProduction = () => {
                                                 <span className="font-bold text-xs text-indigo-700 group-hover:text-indigo-900">
                                                     Tarima #{t.tarima_number}
                                                 </span>
-                                                <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${
-                                                    (t.storage_location || tarimaPickerModal.lot?.storage_location || 'abajo') === 'abajo'
+                                                <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${(t.storage_location || tarimaPickerModal.lot?.storage_location || 'abajo') === 'abajo'
                                                         ? 'bg-blue-100 text-blue-800'
                                                         : 'bg-amber-100 text-amber-800'
-                                                }`}>
+                                                    }`}>
                                                     {(t.storage_location || tarimaPickerModal.lot?.storage_location || 'abajo') === 'abajo' ? '⬇ Abajo' : '⬆ Arriba'}
                                                 </span>
                                             </div>
@@ -3059,7 +3077,7 @@ const EggProduction = () => {
             )}
 
             {/* MODAL VISUALIZADOR Y CONTROL DE ETAPAS DEL PROCESO */}
-                        {/* MODAL BALANCE Y ETAPAS DEL LOTE */}
+            {/* MODAL BALANCE Y ETAPAS DEL LOTE */}
             <EggBatchStagesModal
                 isOpen={stagesModal.isOpen}
                 onClose={() => setStagesModal({ isOpen: false, batch: null, data: null, loading: false })}
