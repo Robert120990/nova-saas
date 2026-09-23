@@ -2175,8 +2175,12 @@ const autoInvoiceDispatchRoute = async (req, res) => {
 
             // Validaciones DTE si la empresa tiene DTE activo
             if (company.dte_active) {
-                const stopTotal = parseFloat(prev?.total_pagar || 0);
-                const isFacturaMinor = dteType === '01' && stopTotal < 200;
+                const stopEstimatedTotal = (stop.items || []).reduce((sum, it) => {
+                    const rawQty = safeNum(it.quantity_lbs ?? it.quantity ?? 0, 0);
+                    const rawPrice = safeNum(it.price_per_lb ?? it.price ?? 0, 0);
+                    return sum + (rawQty * rawPrice);
+                }, 0);
+                const isFacturaMinor = dteType === '01' && stopEstimatedTotal < 200;
                 if (dteType !== '11' && !isFacturaMinor) {
                     const addressError = await dteService.validateCustomerAddress(stop.customer_id, stop.customer_branch_id || null);
                     if (addressError) {
