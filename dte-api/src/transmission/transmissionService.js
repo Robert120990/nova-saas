@@ -3,7 +3,7 @@
  */
 
 const axios = require('axios');
-const qs = require('qs');
+const qs = require('querystring');
 const { getEndpoint } = require('../config/haciendaConfig');
 
 async function authenticate(apiUser, apiPassword, ambiente) {
