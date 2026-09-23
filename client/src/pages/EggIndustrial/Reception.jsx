@@ -33,7 +33,9 @@ import {
     Loader2,
     ChevronDown,
     Scale,
-    Layers
+    Layers,
+    Check,
+    Clock
 } from 'lucide-react';
 import EggReceptionDetailModal from '../../components/egg/EggReceptionDetailModal';
 import EggQualityEvaluationModal from '../../components/egg/EggQualityEvaluationModal';
@@ -1603,6 +1605,8 @@ const EggReception = () => {
     // Helpers to style status badge
     const getStatusBadge = (status) => {
         switch (status) {
+            case 'pendiente_aprobacion':
+                return 'bg-amber-50 text-amber-800 border border-amber-300';
             case 'aprobado':
                 return 'bg-emerald-50 text-emerald-700 border border-emerald-200';
             case 'cuarentena':
@@ -1618,6 +1622,8 @@ const EggReception = () => {
 
     const getStatusIcon = (status) => {
         switch (status) {
+            case 'pendiente_aprobacion':
+                return <Clock className="h-3.5 w-3.5 text-amber-600" />;
             case 'aprobado':
                 return <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />;
             case 'cuarentena':
@@ -1628,6 +1634,36 @@ const EggReception = () => {
                 return <Ban className="h-3.5 w-3.5 text-slate-500" />;
             default:
                 return null;
+        }
+    };
+
+    const getStatusLabel = (status) => {
+        switch (status) {
+            case 'pendiente_aprobacion':
+                return 'Pendiente Aprobación';
+            case 'aprobado':
+                return 'Aprobado';
+            case 'cuarentena':
+                return 'Cuarentena';
+            case 'rechazado':
+                return 'Rechazado';
+            case 'anulado':
+                return 'Anulado';
+            default:
+                return status || 'N/A';
+        }
+    };
+
+    const handleQuickApprove = async (rm) => {
+        try {
+            await axios.put(`/api/egg-industrial/raw-materials/${rm.id}/approve`, {
+                notes: 'Aprobación directa de lote para producción'
+            });
+            toast.success(`Lote ${rm.provider_lot || '#' + rm.id} aprobado con éxito para uso en producción.`);
+            fetchData();
+        } catch (error) {
+            console.error('Error al aprobar lote de materia prima:', error);
+            toast.error(error.response?.data?.message || 'Error al aprobar el lote.');
         }
     };
 
@@ -2399,9 +2435,10 @@ const EggReception = () => {
                                     onChange={(e) => setFormData({ ...formData, status: e.target.value })}
                                     className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 shadow-xs"
                                 >
-                                    <option value="aprobado">Aprobado para Producción</option>
-                                    <option value="cuarentena">En Cuarentena</option>
-                                    <option value="rechazado">Rechazado (No Apto)</option>
+                                    <option value="pendiente_aprobacion">⏳ Pendiente de Aprobación (Por defecto)</option>
+                                    <option value="aprobado">✅ Aprobado para Producción</option>
+                                    <option value="cuarentena">⚠️ En Cuarentena</option>
+                                    <option value="rechazado">❌ Rechazado (No Apto)</option>
                                 </select>
                             </div>
 
@@ -2567,7 +2604,7 @@ const EggReception = () => {
                                                     <div className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-tight">
                                                         <span className={`flex items-center gap-1 px-2 py-0.5 rounded-full font-bold ${getStatusBadge(rm.status)}`}>
                                                             {getStatusIcon(rm.status)}
-                                                            {rm.status}
+                                                            {getStatusLabel(rm.status)}
                                                         </span>
                                                     </div>
                                                 </td>
@@ -2801,6 +2838,18 @@ const EggReception = () => {
                                                                 </>
                                                             )}
                                                         </div>
+
+                                                        {/* Botón Rápido de Aprobación para Producción */}
+                                                        {['pendiente_aprobacion', 'cuarentena'].includes(rm.status) && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleQuickApprove(rm)}
+                                                                className="p-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg border border-emerald-300 transition-colors shadow-xs"
+                                                                title="Aprobar Lote para Producción"
+                                                            >
+                                                                <Check size={13} />
+                                                            </button>
+                                                        )}
 
                                                         {/* 3. Editar Recepción */}
                                                         {rm.status !== 'anulado' && (

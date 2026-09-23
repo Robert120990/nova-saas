@@ -175,6 +175,24 @@ export default function TarimaLabelModal({
                     const tCaja = parseFloat(tItem.tare_caja_lbs || 0);
                     const hasBox = tItem.has_caja !== undefined ? Boolean(tItem.has_caja) : hasCaja;
 
+                    const rawLoc = (tItem.storage_location || receptionData.storage_location || 'abajo').toLowerCase();
+                    let locBg = '#eff6ff';
+                    let locBorder = '#3b82f6';
+                    let locColor = '#1e40af';
+                    let locText = '⬇ ABAJO (NIVEL INFERIOR / PISO)';
+
+                    if (rawLoc === 'arriba') {
+                        locBg = '#fef3c7';
+                        locBorder = '#f59e0b';
+                        locColor = '#92400e';
+                        locText = '⬆ ARRIBA (NIVEL RACK SUPERIOR)';
+                    } else if (rawLoc === 'cont' || rawLoc.includes('cont')) {
+                        locBg = '#ecfdf5';
+                        locBorder = '#10b981';
+                        locColor = '#065f46';
+                        locText = '📦 CONTENEDOR (CAP. 10 TARIMAS)';
+                    }
+
                     return `
                         <div class="tarima-wrapper">
                             <div class="label-card">
@@ -186,9 +204,9 @@ export default function TarimaLabelModal({
                                     <div class="correlativo-code">${tCode}</div>
                                 </div>
 
-                                <div style="background: ${(tItem.storage_location || receptionData.storage_location || 'abajo') === 'arriba' ? '#fef3c7' : '#eff6ff'}; border: 1.5px solid ${(tItem.storage_location || receptionData.storage_location || 'abajo') === 'arriba' ? '#f59e0b' : '#3b82f6'}; padding: 1.5mm 2mm; text-align: center; border-radius: 4px; margin-bottom: 2.5mm;">
-                                    <span style="font-size: 8.5pt; font-weight: 900; color: ${(tItem.storage_location || receptionData.storage_location || 'abajo') === 'arriba' ? '#92400e' : '#1e40af'}; letter-spacing: 0.5px; text-transform: uppercase;">
-                                        ESTIBA / UBICACIÓN: ${(tItem.storage_location || receptionData.storage_location || 'abajo') === 'arriba' ? '⬆ ARRIBA (NIVEL RACK SUPERIOR)' : '⬇ ABAJO (NIVEL INFERIOR / PISO)'}
+                                <div style="background: ${locBg}; border: 1.5px solid ${locBorder}; padding: 1.5mm 2mm; text-align: center; border-radius: 4px; margin-bottom: 2.5mm;">
+                                    <span style="font-size: 8.5pt; font-weight: 900; color: ${locColor}; letter-spacing: 0.5px; text-transform: uppercase;">
+                                        ESTIBA / UBICACIÓN: ${locText}
                                     </span>
                                 </div>
 
@@ -442,13 +460,28 @@ export default function TarimaLabelModal({
                         </div>
 
                         {/* Ubicación / Estiba en Almacén */}
-                        <div className={`mb-3 py-1.5 px-3 rounded-xl border text-center font-black text-xs uppercase tracking-wide flex items-center justify-center gap-1.5 shadow-2xs ${
-                            (currentTarima?.storage_location || receptionData?.storage_location || 'abajo') === 'arriba'
-                                ? 'bg-amber-50 border-amber-300 text-amber-800'
-                                : 'bg-blue-50 border-blue-300 text-blue-800'
-                        }`}>
-                            <span>{(currentTarima?.storage_location || receptionData?.storage_location || 'abajo') === 'arriba' ? '⬆ Estiba / Ubicación: Arriba (Rack Superior)' : '⬇ Estiba / Ubicación: Abajo (Nivel Piso)'}</span>
-                        </div>
+                        {(() => {
+                            const curLoc = (currentTarima?.storage_location || receptionData?.storage_location || 'abajo').toLowerCase();
+                            const isArriba = curLoc === 'arriba';
+                            const isCont = curLoc === 'cont' || curLoc.includes('cont');
+                            return (
+                                <div className={`mb-3 py-1.5 px-3 rounded-xl border text-center font-black text-xs uppercase tracking-wide flex items-center justify-center gap-1.5 shadow-2xs ${
+                                    isArriba
+                                        ? 'bg-amber-50 border-amber-300 text-amber-800'
+                                        : (isCont
+                                            ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
+                                            : 'bg-blue-50 border-blue-300 text-blue-800')
+                                }`}>
+                                    <span>
+                                        {isArriba
+                                            ? '⬆ Estiba / Ubicación: Arriba (Rack Superior)'
+                                            : (isCont
+                                                ? '📦 Estiba / Ubicación: Contenedor (Cap. 10)'
+                                                : '⬇ Estiba / Ubicación: Abajo (Nivel Piso)')}
+                                    </span>
+                                </div>
+                            );
+                        })()}
 
                         {/* Ficha técnica estructurada */}
                         <div className="grid grid-cols-2 gap-2 text-xs border border-slate-200 rounded-xl p-3 bg-slate-50/50">

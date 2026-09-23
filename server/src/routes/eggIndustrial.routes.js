@@ -7,6 +7,7 @@ router.get('/raw-materials', eggController.getRawMaterials);
 router.post('/raw-materials', eggController.createRawMaterial);
 router.put('/raw-materials/:id', eggController.updateRawMaterial);
 router.put('/raw-materials/:id/quality-classification', eggController.saveQualityClassification);
+router.put('/raw-materials/:id/approve', eggController.approveRawMaterial);
 router.get('/raw-materials/:id/lab-001-pdf', eggController.getRawMaterialLab001Pdf);
 router.post('/raw-materials/:id/lab-001-pdf', eggController.getRawMaterialLab001Pdf);
 router.get('/raw-materials/:id/origin-certificate', eggController.getOriginCertificate);

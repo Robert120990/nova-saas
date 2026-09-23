@@ -190,15 +190,26 @@ const createProductionBatch = async (req, res) => {
             });
         }
 
-        // Validate stock availability for each raw material
+        // Validate stock availability and MANDATORY APPROVAL STATUS for each raw material
         for (const rm of raw_materials) {
             const [rows] = await connection.query(
-                'SELECT id, stock_lbs, total_boxes, egg_type, provider_lot FROM egg_raw_materials WHERE id = ? AND company_id = ? FOR UPDATE',
+                'SELECT id, stock_lbs, total_boxes, egg_type, provider_lot, status FROM egg_raw_materials WHERE id = ? AND company_id = ? FOR UPDATE',
                 [rm.raw_material_id, company_id]
             );
             if (rows.length === 0) {
                 await connection.rollback();
                 return res.status(400).json({ message: `Materia prima #${rm.raw_material_id} no encontrada.` });
+            }
+
+            // --- REGLA CRÍTICA DE INOCUIDAD: SOLO MATERIA PRIMA APROBADA ---
+            if (rows[0].status !== 'aprobado') {
+                await connection.rollback();
+                const statusLabel = rows[0].status === 'pendiente_aprobacion'
+                    ? 'Pendiente de Aprobación'
+                    : (rows[0].status ? rows[0].status.toUpperCase() : 'NO APROBADO');
+                return res.status(400).json({
+                    message: `BLOQUEO DE INOCUIDAD: El lote de materia prima ${rows[0].provider_lot || '#' + rows[0].id} (${rows[0].egg_type}) no puede ser utilizado porque se encuentra en estado "${statusLabel}". Se requiere que el lote esté APROBADO por Control de Calidad antes de iniciar producción.`
+                });
             }
             const currentStock = parseFloat(rows[0].stock_lbs || 0);
             if (currentStock <= 0.01) {
@@ -260,6 +271,10 @@ const createProductionBatch = async (req, res) => {
         const runNumber = String(chosenRun).padStart(2, '0');
         const batch_code_display = `${runNumber} - ${dayOfYearStr} - ${year2Digit}`;
 
+        const resolvedProductType = Array.isArray(product_type)
+            ? product_type.join(', ')
+            : (product_type || 'huevo entero');
+
         const resolvedPresentation = Array.isArray(presentation)
             ? presentation.join(', ')
             : (presentation || 'cubeta 30LB');
@@ -277,7 +292,7 @@ const createProductionBatch = async (req, res) => {
                 ) 
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'en_proceso', ?, ?, ?, ?)`,
                 [
-                    company_id, branch_id, batch_uuid, batch_code_display, scheduled_production_id, product_type,
+                    company_id, branch_id, batch_uuid, batch_code_display, scheduled_production_id, resolvedProductType,
                     resolvedPresentation, JSON.stringify(ingredients_json || {}), totalInputWeight,
                     target_brix || null, target_solids_pct || null, operator_name
                 ]
@@ -293,7 +308,7 @@ const createProductionBatch = async (req, res) => {
                 ) 
                  VALUES (?, ?, ?, ?, ?, ?, ?, 'en_proceso', ?, ?, ?, ?)`,
                 [
-                    company_id, branch_id, batch_uuid, batch_code_display, product_type,
+                    company_id, branch_id, batch_uuid, batch_code_display, resolvedProductType,
                     resolvedPresentation, JSON.stringify(ingredients_json || {}), totalInputWeight,
                     target_brix || null, target_solids_pct || null, operator_name
                 ]
@@ -413,8 +428,8 @@ const createProductionBatch = async (req, res) => {
             id: batchId,
             batch_uuid,
             batch_code_display,
-            product_type,
-            presentation,
+            product_type: resolvedProductType,
+            presentation: resolvedPresentation,
             status: 'en_proceso',
             totalInputWeight
         });
@@ -636,6 +651,20 @@ const updateProductionBatch = async (req, res) => {
 
         let inputWeightLbs = existing[0].input_weight_lbs;
         if (Array.isArray(raw_materials) && raw_materials.length > 0) {
+            // Verificar que toda materia prima vinculada esté aprobada
+            for (const rm of raw_materials) {
+                if (rm.raw_material_id) {
+                    const [rmCheck] = await connection.query('SELECT status, provider_lot, egg_type FROM egg_raw_materials WHERE id = ?', [rm.raw_material_id]);
+                    if (rmCheck.length > 0 && rmCheck[0].status !== 'aprobado') {
+                        await connection.rollback();
+                        const statusLabel = rmCheck[0].status === 'pendiente_aprobacion' ? 'Pendiente de Aprobación' : (rmCheck[0].status || 'NO APROBADO');
+                        return res.status(400).json({
+                            message: `BLOQUEO DE INOCUIDAD: El lote de materia prima ${rmCheck[0].provider_lot || '#' + rm.raw_material_id} (${rmCheck[0].egg_type}) no está aprobado (estado actual: "${statusLabel}"). Se requiere un lote en estado APROBADO para producción.`
+                        });
+                    }
+                }
+            }
+
             const calculatedTotal = raw_materials.reduce((sum, rm) => sum + parseFloat(rm.quantity_lbs || 0), 0);
             if (calculatedTotal > 0) {
                 inputWeightLbs = calculatedTotal;
@@ -673,6 +702,14 @@ const updateProductionBatch = async (req, res) => {
             }
         }
 
+        const resolvedProductType = product_type !== undefined
+            ? (Array.isArray(product_type) ? product_type.join(', ') : product_type)
+            : existing[0].product_type;
+
+        const resolvedPresentation = presentation !== undefined
+            ? (Array.isArray(presentation) ? presentation.join(', ') : presentation)
+            : existing[0].presentation;
+
         const resolvedIngredients = ingredients
             ? JSON.stringify(ingredients)
             : (ingredients_json
@@ -691,7 +728,7 @@ const updateProductionBatch = async (req, res) => {
                  input_weight_lbs = ?
              WHERE id = ? AND company_id = ?`,
             [
-                product_type, presentation, operator_name,
+                resolvedProductType, resolvedPresentation, operator_name,
                 target_brix || null, target_solids_pct || null,
                 notes, resolvedIngredients, inputWeightLbs, id, company_id
             ]
