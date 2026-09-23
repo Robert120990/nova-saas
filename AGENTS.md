@@ -119,6 +119,16 @@ Para evitar errores de tiempo de ejecución como `X.map is not a function`:
 - En el renderizado JSX, blindar siempre defensivamente cualquier iteración:
   `{(Array.isArray(items) ? items : []).map(...)}`
 
+### Modularización Obligatoria de Modales en Frontend (Zero Inline Modals) — OBLIGATORIO
+Queda estrictamente prohibido incrustar la estructura JSX y lógica interna de modales directamente dentro de las pantallas en `client/src/pages/`:
+- **Componente Separado**: Todo modal que contenga formularios, tablas, escáneres, subida de archivos o flujos interactivos DEBE crearse en su propio archivo independiente dentro de `client/src/components/<modulo>/`.
+- **Nomenclatura**: Debe nombrarse en CamelCase finalizando obligatoriamente con el sufijo `Modal.jsx` (ej. `GasReadingsModal.jsx`, `EggAgreementModal.jsx`, `SaleDetailModal.jsx`).
+- **Contrato de Props Estándar**: Cada modal debe ser un componente controlado que reciba como mínimo:
+  - `open` (o `isOpen`): booleano de visibilidad con retorno temprano `if (!open) return null;` (o render condicional en el padre).
+  - `onClose`: función callback para cerrarlo y resetear su estado.
+  - `onSave` / `onSubmit` / `onSuccess`: callback de confirmación o guardado.
+- **Barrel Exports**: Si el módulo contiene múltiples componentes o modales, se debe mantener un archivo `index.js` en `client/src/components/<modulo>/` para centralizar y limpiar las importaciones en las páginas.
+
 ### DTE Integration (per .opencode/skills/dte/DTE_API_RULES.md)
 - Main server calls DTE API endpoints with JWT auth and `x-company-id` header
 - DTE API URL: `http://localhost:5000/api`
