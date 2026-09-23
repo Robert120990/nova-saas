@@ -8,7 +8,7 @@ import Modal from '../ui/Modal';
 import Money, { MoneyInput } from '../ui/Money';
 import { isBatchCompatibleWithProduct } from '../../constants/eggIndustrialCatalogs';
 
-export const PRODUCT_PROFILES = [
+const PRODUCT_PROFILES = [
     'Huevo Entero Pasteurizado',
     'Clara Pasteurizada',
     'Yema Pasteurizada',
@@ -18,7 +18,7 @@ export const PRODUCT_PROFILES = [
     'Huevo en Cáscara'
 ];
 
-export const PRESENTATION_CONFIG = {
+const PRESENTATION_CONFIG = {
     'cubeta 30 lb': { label: 'cubeta 30 lb', lbs: 30, kg: 13.61 },
     'cubeta 32 lb': { label: 'cubeta 32 lb', lbs: 32, kg: 14.51 },
     'galon 8 lb': { label: 'galon 8 lb', lbs: 8, kg: 3.63 },
@@ -30,9 +30,9 @@ export const PRESENTATION_CONFIG = {
     'unidad 0.20 lb': { label: 'unidad 0.20 lb', lbs: 0.20, kg: 0.09 }
 };
 
-export const PRESENTATIONS = Object.keys(PRESENTATION_CONFIG);
+const PRESENTATIONS = Object.keys(PRESENTATION_CONFIG);
 
-export const getPresentationFactors = (pres) => {
+const getPresentationFactors = (pres) => {
     if (!pres) return PRESENTATION_CONFIG['cubeta 30 lb'];
     const clean = String(pres).toLowerCase().trim();
     if (PRESENTATION_CONFIG[clean]) return PRESENTATION_CONFIG[clean];

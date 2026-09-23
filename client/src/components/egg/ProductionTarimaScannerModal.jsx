@@ -37,7 +37,7 @@ const playSuccessBeep = () => {
 /**
  * Parser for scanned text (supports JSON QR from TarimaLabelModal, Code128 barcodes TAR-LOT-NUM, or plain codes)
  */
-export const parseTarimaScan = (rawText) => {
+const parseTarimaScan = (rawText) => {
     const text = String(rawText || '').trim();
     if (!text) return null;
 
