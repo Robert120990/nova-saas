@@ -1,3 +1,4 @@
+import { formatDate } from '../../utils/dateUtils';
 import React, { useState, useEffect } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import {
@@ -33,25 +34,6 @@ const generateQrSvg = (payloadObj, size = 68) => {
         console.warn('Error generando QR SVG:', e);
         return '';
     }
-};
-
-/**
- * Helper to format date to DD/MM/YYYY
- */
-const formatDate = (d) => {
-    if (!d) return '---';
-    if (typeof d === 'string') {
-        const parts = d.split('T')[0].split('-');
-        if (parts.length === 3) {
-            return `${parts[2]}/${parts[1]}/${parts[0]}`;
-        }
-    }
-    const dt = new Date(d);
-    if (isNaN(dt.getTime())) return '---';
-    const day = String(dt.getDate()).padStart(2, '0');
-    const month = String(dt.getMonth() + 1).padStart(2, '0');
-    const year = dt.getFullYear();
-    return `${day}/${month}/${year}`;
 };
 
 export default function TarimaLabelModal({

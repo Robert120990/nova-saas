@@ -173,7 +173,7 @@ const Liquidaciones = () => {
         return Math.max(0, Math.ceil((new Date(hasta) - new Date(desde)) / (1000 * 60 * 60 * 24)) + 1);
     };
 
-    const formatDate = (d) => {
+    const toInputDate = (d) => {
         if (!d) return '';
         if (typeof d === 'string') return d.substring(0, 10);
         try {
@@ -204,11 +204,11 @@ const Liquidaciones = () => {
                 const ultima = ultRes.data;
                 if (ultima && (ultima.periodo_indemnizacion_hasta || ultima.periodo_indemnizacion_desde)) {
                     if (ultima.periodo_indemnizacion_hasta) {
-                        fechaInicio = formatDate(ultima.periodo_indemnizacion_hasta);
+                        fechaInicio = toInputDate(ultima.periodo_indemnizacion_hasta);
                     }
                     ultimaInfo = {
-                        desde: formatDate(ultima.periodo_indemnizacion_desde),
-                        hasta: formatDate(ultima.periodo_indemnizacion_hasta)
+                        desde: toInputDate(ultima.periodo_indemnizacion_desde),
+                        hasta: toInputDate(ultima.periodo_indemnizacion_hasta)
                     };
                 }
             } catch (err) {
@@ -217,7 +217,7 @@ const Liquidaciones = () => {
 
             // Si no existe última liquidación con indemnización, tomar fecha de ingreso
             if (!fechaInicio && emp.fecha_ingreso) {
-                fechaInicio = formatDate(emp.fecha_ingreso);
+                fechaInicio = toInputDate(emp.fecha_ingreso);
             }
 
             setPeriodoIndemnizacion(prev => {
@@ -292,9 +292,9 @@ const Liquidaciones = () => {
             sueldo_base: item.sueldo_base, cargo_nombre: item.cargo_nombre,
             departamento_nombre: item.departamento_nombre
         });
-        setPeriodoIndemnizacion({ desde: formatDate(item.periodo_indemnizacion_desde), hasta: formatDate(item.periodo_indemnizacion_hasta) });
-        setPeriodoVacaciones({ desde: formatDate(item.periodo_vacaciones_desde), hasta: formatDate(item.periodo_vacaciones_hasta) });
-        setPeriodoAguinaldo({ desde: formatDate(item.periodo_aguinaldo_desde), hasta: formatDate(item.periodo_aguinaldo_hasta) });
+        setPeriodoIndemnizacion({ desde: toInputDate(item.periodo_indemnizacion_desde), hasta: toInputDate(item.periodo_indemnizacion_hasta) });
+        setPeriodoVacaciones({ desde: toInputDate(item.periodo_vacaciones_desde), hasta: toInputDate(item.periodo_vacaciones_hasta) });
+        setPeriodoAguinaldo({ desde: toInputDate(item.periodo_aguinaldo_desde), hasta: toInputDate(item.periodo_aguinaldo_hasta) });
         setDiasIndemnizacion(item.dias_indemnizacion || 0);
         setDiasVacaciones(item.dias_vacaciones || 0);
         setDiasAguinaldo(item.dias_aguinaldo || 0);

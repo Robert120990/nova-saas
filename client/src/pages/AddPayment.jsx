@@ -1,3 +1,4 @@
+import { formatDate } from '../utils/dateUtils';
 import { useState, useEffect, useMemo } from 'react';
 import { Search, Plus, Calendar, DollarSign, FileText, Eye, Check, X, History, FilterX, Printer, Mail, Trash2 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -11,18 +12,7 @@ import { useDirtyTracker } from '../hooks/useDirtyTracker';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-const formatDate = (dateStr) => {
-    if (!dateStr) return '';
-    try {
-        const date = new Date(dateStr);
-        if (isNaN(date.getTime())) return String(dateStr);
-        // Use UTC to avoid timezone shift for date-only strings
-        const d = date.getUTCDate().toString().padStart(2, '0');
-        const m = (date.getUTCMonth() + 1).toString().padStart(2, '0');
-        const y = date.getUTCFullYear();
-        return `${d}/${m}/${y}`;
-    } catch (e) { return String(dateStr); }
-};
+
 
 const metodoBadge = (m) => {
     const map = {

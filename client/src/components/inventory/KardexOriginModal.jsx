@@ -1,3 +1,4 @@
+import { formatDate, formatTime } from '../../utils/dateUtils';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
@@ -24,28 +25,9 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 
-const formatDate = (dateString) => {
-    if (!dateString) return '---';
-    const date = new Date(dateString);
-    if (isNaN(date.getTime())) return '---';
-    return new Intl.DateTimeFormat('es-SV', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric'
-    }).format(date);
-};
 
-const formatTime = (dateString) => {
-    if (!dateString) return '';
-    const date = new Date(dateString);
-    if (isNaN(date.getTime())) return '';
-    return new Intl.DateTimeFormat('es-SV', {
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false
-    }).format(date);
-};
+
+
 
 const KardexOriginModal = ({ movementId, movement, isOpen, onClose }) => {
     const [copiedUUID, setCopiedUUID] = useState(false);

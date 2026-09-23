@@ -37,14 +37,9 @@ import { useDirtyTracker } from '../hooks/useDirtyTracker';
 import ProviderModal from '../components/providers/ProviderModal';
 import ProductSearchModal from '../components/products/ProductSearchModal';
 import QrScanModal from '../components/purchases/QrScanModal';
-import { getTodayString } from '../utils/dateUtils';
+import { getTodayString, formatDate } from '../utils/dateUtils';
 
-const formatDate = (dateStr) => {
-    if (!dateStr) return '';
-    const d = new Date(dateStr);
-    if (isNaN(d.getTime())) return '';
-    return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
-};
+
 
 const MONTHS = [
     { value: 1, label: '01 - ENE' },

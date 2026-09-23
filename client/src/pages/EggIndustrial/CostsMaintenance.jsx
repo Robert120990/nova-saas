@@ -1,3 +1,4 @@
+import { formatDate } from '../../utils/dateUtils';
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -28,13 +29,6 @@ const EggCostsMaintenance = () => {
     const { user } = useAuth();
     const navigate = useNavigate();
     const companyId = user?.company_id || 1;
-
-    const formatDate = (dateStr) => {
-        if (!dateStr) return 'N/A';
-        const d = new Date(dateStr);
-        if (isNaN(d.getTime())) return 'N/A';
-        return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
-    };
 
     // Lists
     const [, setCosts] = useState([]);

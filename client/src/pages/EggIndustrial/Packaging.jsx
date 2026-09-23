@@ -1,3 +1,4 @@
+import { formatDate } from '../../utils/dateUtils';
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { toast } from 'sonner';
@@ -26,16 +27,6 @@ import {
 const EggPackaging = () => {
     const { user } = useAuth();
     const companyId = user?.company_id || 1;
-
-    const formatDate = (dateStr) => {
-        if (!dateStr) return 'N/A';
-        const d = new Date(dateStr);
-        if (isNaN(d.getTime())) return 'N/A';
-        const day = String(d.getDate()).padStart(2, '0');
-        const month = String(d.getMonth() + 1).padStart(2, '0');
-        const year = d.getFullYear();
-        return `${day}/${month}/${year}`;
-    };
 
     const formatDateTime = (dateStr) => {
         if (!dateStr) return 'N/A';

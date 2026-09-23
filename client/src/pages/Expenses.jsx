@@ -35,19 +35,9 @@ import { useConfirm } from '../context/ConfirmContext';
 import Money from '../components/ui/Money';
 import { useDirtyTracker } from '../hooks/useDirtyTracker';
 import ProviderModal from '../components/providers/ProviderModal';
-import { getTodayString } from '../utils/dateUtils';
+import { getTodayString, formatDate } from '../utils/dateUtils';
 
-// Helper for date formatting DD/MM/YYYY
-const formatDate = (dateStr) => {
-    if (!dateStr) return '---';
-    try {
-        const datePart = String(dateStr).split('T')[0];
-        const [year, month, day] = datePart.split('-');
-        return `${day}/${month}/${year}`;
-    } catch {
-        return dateStr;
-    }
-};
+
 
 // 12 Months catalog
 const MONTHS = [

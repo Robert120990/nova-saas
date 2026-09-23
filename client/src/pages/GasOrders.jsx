@@ -1,3 +1,4 @@
+import { formatDate } from '../utils/dateUtils';
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
@@ -30,13 +31,7 @@ function formatNumber(val) {
     return num.toLocaleString('es-SV', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 }
 
-function formatDate(val) {
-    if (!val) return '—';
-    const s = String(val).substring(0, 10);
-    const [y, m, d] = s.split('-');
-    if (!y || !m || !d) return s;
-    return `${d}/${m}/${y}`;
-}
+
 
 function calculateOrderCost(order) {
     if (!order) return 0;

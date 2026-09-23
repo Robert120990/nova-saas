@@ -1,3 +1,4 @@
+import { formatDate } from '../utils/dateUtils';
 import React, { useState } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import axios from 'axios';
@@ -25,12 +26,7 @@ const formatDateTime = (dateStr) => {
     return `${day}/${month}/${year} ${hours}:${minutes}`;
 };
 
-const formatDate = (dateStr) => {
-    if (!dateStr) return 'N/A';
-    const date = new Date(dateStr);
-    if (isNaN(date.getTime())) return 'N/A';
-    return date.toLocaleDateString('es-SV');
-};
+
 
 const getStatusBadge = (status) => {
     switch (status) {
