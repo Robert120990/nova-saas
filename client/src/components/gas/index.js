@@ -13,3 +13,4 @@ export { default as GasValesModal } from './GasValesModal';
 export { default as GasDiferenciasModal } from './GasDiferenciasModal';
 export { default as GasAnticiposModal } from './GasAnticiposModal';
 export { default as GasTrupputModal } from './GasTrupputModal';
+export * from './orders';
