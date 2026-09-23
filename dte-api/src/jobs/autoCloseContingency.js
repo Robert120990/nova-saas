@@ -72,7 +72,11 @@ let autoCloseWorker = null;
 
 function startAutoCloseWorker(intervalMs = 300000) {
     if (autoCloseWorker) return;
-    autoCloseWorker = setInterval(checkAndAutoCloseContingencies, intervalMs);
+    autoCloseWorker = setInterval(() => {
+        checkAndAutoCloseContingencies().catch(err => {
+            console.error('[AutoContingencyCloser] Error no capturado en worker:', err.message);
+        });
+    }, intervalMs);
     console.log(`[AutoContingencyCloser] Started (interval: ${intervalMs}ms, min cooldown: ${MIN_OPEN_MINUTES}m)`);
 }
 

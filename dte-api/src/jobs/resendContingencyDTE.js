@@ -12,22 +12,23 @@ const { getMHAmbiente } = require('../config/haciendaConfig');
 const MAX_RETRIES = 5;
 
 async function processContingencyQueue() {
-    console.log('[ContingencyWorker] Processing queue...');
+    try {
+        console.log('[ContingencyWorker] Processing queue...');
 
-    // 1. Get pending contingency documents (solo de empresas cuya contingencia esté CERRADA)
-    const [tasks] = await pool.query(
-        'SELECT cd.*, c.api_user, c.api_password, d.ambiente, d.id as dte_id, d.venta_id, d.company_id ' +
-        'FROM dte_contingency_documents cd ' +
-        'JOIN dtes d ON cd.codigo_generacion = d.codigo_generacion ' +
-        'JOIN companies c ON d.company_id = c.id ' +
-        'WHERE cd.estado_envio = "PENDING" AND (cd.retry_count IS NULL OR cd.retry_count < ?) ' +
-        '  AND NOT EXISTS (' +
-        '      SELECT 1 FROM dte_contingencies dc ' +
-        '      WHERE dc.company_id = d.company_id AND dc.estado = "OPEN"' +
-        '  ) ' +
-        'ORDER BY cd.created_at ASC LIMIT 10',
-        [MAX_RETRIES]
-    );
+        // 1. Get pending contingency documents (solo de empresas cuya contingencia esté CERRADA)
+        const [tasks] = await pool.query(
+            'SELECT cd.*, c.api_user, c.api_password, d.ambiente, d.id as dte_id, d.venta_id, d.company_id ' +
+            'FROM dte_contingency_documents cd ' +
+            'JOIN dtes d ON cd.codigo_generacion = d.codigo_generacion ' +
+            'JOIN companies c ON d.company_id = c.id ' +
+            'WHERE cd.estado_envio = "PENDING" AND (cd.retry_count IS NULL OR cd.retry_count < ?) ' +
+            '  AND NOT EXISTS (' +
+            '      SELECT 1 FROM dte_contingencies dc ' +
+            '      WHERE dc.company_id = d.company_id AND dc.estado = "OPEN"' +
+            '  ) ' +
+            'ORDER BY cd.created_at ASC LIMIT 10',
+            [MAX_RETRIES]
+        );
 
     if (tasks.length === 0) return;
 
@@ -139,6 +140,8 @@ async function processContingencyQueue() {
                 );
             }
         }
+    } catch (err) {
+        console.error('[ContingencyWorker] Error general en cola de contingencia:', err.message);
     }
 }
 
@@ -146,7 +149,11 @@ let contingencyWorker = null;
 
 function startContingencyWorker(intervalMs = 300000) {
     if (contingencyWorker) return;
-    contingencyWorker = setInterval(processContingencyQueue, intervalMs);
+    contingencyWorker = setInterval(() => {
+        processContingencyQueue().catch(err => {
+            console.error('[ContingencyWorker] Error no capturado en worker:', err.message);
+        });
+    }, intervalMs);
     console.log(`[ContingencyWorker] Started (interval: ${intervalMs}ms, max retries: ${MAX_RETRIES})`);
 }
 

@@ -16,17 +16,18 @@ async function addToQueue(dteId) {
 }
 
 async function processQueue() {
-    console.log('Processing DTE transmission queue...');
+    try {
+        console.log('Processing DTE transmission queue...');
 
-    // 1. Get pending tasks
-    const [tasks] = await pool.query(
-        'SELECT tq.*, d.venta_id, d.company_id, d.codigo_generacion, d.tipo_dte, d.ambiente, d.json_original, d.json_firmado, c.api_user, c.api_password ' +
-        'FROM transmission_queue tq ' +
-        'JOIN dtes d ON tq.dte_id = d.id ' +
-        'JOIN companies c ON d.company_id = c.id ' +
-        'WHERE tq.status IN ("WAITING", "FAILED") AND tq.attempts < tq.max_attempts AND tq.next_attempt_at <= NOW() ' +
-        'LIMIT 10'
-    );
+        // 1. Get pending tasks
+        const [tasks] = await pool.query(
+            'SELECT tq.*, d.venta_id, d.company_id, d.codigo_generacion, d.tipo_dte, d.ambiente, d.json_original, d.json_firmado, c.api_user, c.api_password ' +
+            'FROM transmission_queue tq ' +
+            'JOIN dtes d ON tq.dte_id = d.id ' +
+            'JOIN companies c ON d.company_id = c.id ' +
+            'WHERE tq.status IN ("WAITING", "FAILED") AND tq.attempts < tq.max_attempts AND tq.next_attempt_at <= NOW() ' +
+            'LIMIT 10'
+        );
 
     for (const task of tasks) {
         try {
@@ -118,13 +119,20 @@ async function processQueue() {
             await pool.query('INSERT INTO dte_errors (dte_id, codigo_error, mensaje_error) VALUES (?, "TRANS_ERR", ?)', [task.dte_id, error.message]);
         }
     }
+    } catch (queueErr) {
+        console.error('[TransmissionQueue] Error al procesar cola de transmisión:', queueErr.message);
+    }
 }
 
 let queueInterval = null;
 
 function startQueueWorker(intervalMs = 60000) {
     if (queueInterval) return;
-    queueInterval = setInterval(processQueue, intervalMs);
+    queueInterval = setInterval(() => {
+        processQueue().catch(err => {
+            console.error('[TransmissionQueue] Error no capturado en worker:', err.message);
+        });
+    }, intervalMs);
     console.log(`Queue worker started (interval: ${intervalMs}ms)`);
 }
 
