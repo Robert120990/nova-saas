@@ -204,6 +204,12 @@ export default function TarimaLabelModal({
                                     <div class="correlativo-code">${tCode}</div>
                                 </div>
 
+                                <div style="background: ${(tItem.storage_location || receptionData.storage_location || 'abajo') === 'arriba' ? '#fef3c7' : '#eff6ff'}; border: 1.5px solid ${(tItem.storage_location || receptionData.storage_location || 'abajo') === 'arriba' ? '#f59e0b' : '#3b82f6'}; padding: 1.5mm 2mm; text-align: center; border-radius: 4px; margin-bottom: 2.5mm;">
+                                    <span style="font-size: 8.5pt; font-weight: 900; color: ${(tItem.storage_location || receptionData.storage_location || 'abajo') === 'arriba' ? '#92400e' : '#1e40af'}; letter-spacing: 0.5px; text-transform: uppercase;">
+                                        ESTIBA / UBICACIÓN: ${(tItem.storage_location || receptionData.storage_location || 'abajo') === 'arriba' ? '⬆ ARRIBA (NIVEL RACK SUPERIOR)' : '⬇ ABAJO (NIVEL INFERIOR / PISO)'}
+                                    </span>
+                                </div>
+
                                 <table class="info-grid">
                                     <tr>
                                         <td style="width: 50%;">
@@ -451,6 +457,15 @@ export default function TarimaLabelModal({
                             <div className="text-xs font-bold text-slate-600 font-mono tracking-widest mt-0.5">
                                 {uniquePalletCode}
                             </div>
+                        </div>
+
+                        {/* Ubicación / Estiba en Almacén */}
+                        <div className={`mb-3 py-1.5 px-3 rounded-xl border text-center font-black text-xs uppercase tracking-wide flex items-center justify-center gap-1.5 shadow-2xs ${
+                            (currentTarima?.storage_location || receptionData?.storage_location || 'abajo') === 'arriba'
+                                ? 'bg-amber-50 border-amber-300 text-amber-800'
+                                : 'bg-blue-50 border-blue-300 text-blue-800'
+                        }`}>
+                            <span>{(currentTarima?.storage_location || receptionData?.storage_location || 'abajo') === 'arriba' ? '⬆ Estiba / Ubicación: Arriba (Rack Superior)' : '⬇ Estiba / Ubicación: Abajo (Nivel Piso)'}</span>
                         </div>
 
                         {/* Ficha técnica estructurada */}

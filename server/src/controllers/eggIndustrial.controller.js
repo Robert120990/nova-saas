@@ -146,6 +146,24 @@ const ensureEggSchema = async () => {
             console.log("[EggIndustrial] Auto-migrated quality classification columns in egg_raw_materials.");
         }
 
+        // Columna storage_location en egg_raw_materials
+        const [locCols] = await pool.query(
+            "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'egg_raw_materials' AND COLUMN_NAME = 'storage_location'"
+        );
+        if (locCols.length === 0) {
+            await pool.query("ALTER TABLE egg_raw_materials ADD COLUMN storage_location VARCHAR(50) DEFAULT 'abajo' AFTER total_boxes");
+            console.log("[EggIndustrial] Auto-migrated storage_location in egg_raw_materials.");
+        }
+
+        // Columna storage_location en egg_raw_material_tarimas
+        const [locTarimaCols] = await pool.query(
+            "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'egg_raw_material_tarimas' AND COLUMN_NAME = 'storage_location'"
+        );
+        if (locTarimaCols.length === 0) {
+            await pool.query("ALTER TABLE egg_raw_material_tarimas ADD COLUMN storage_location VARCHAR(50) DEFAULT 'abajo' AFTER boxes_count");
+            console.log("[EggIndustrial] Auto-migrated storage_location in egg_raw_material_tarimas.");
+        }
+
         // Tablas y columnas de mermas, remanentes y mapeos de códigos (Mejoras Integrales v199)
         await pool.query(`
             CREATE TABLE IF NOT EXISTS egg_batch_waste_logs (
@@ -267,8 +285,10 @@ const getRawMaterials = async (req, res) => {
         if (only_with_stock === 'true') {
             sql += ' AND rm.status = ? AND rm.stock_lbs > 0';
             params.push('aprobado');
+            sql += ' ORDER BY rm.fecha ASC, rm.created_at ASC, rm.id ASC';
+        } else {
+            sql += ' ORDER BY rm.created_at DESC';
         }
-        sql += ' ORDER BY rm.created_at DESC';
         const [rows] = await pool.query(sql, params);
 
         // Consultar consumos previos por lote y tarima en batch_raw_materials
@@ -323,7 +343,8 @@ const getRawMaterials = async (req, res) => {
                 originalTarimas = [{
                     tarima_number: 1,
                     boxes_count: origBoxes,
-                    net_weight_lbs: origLbs
+                    net_weight_lbs: origLbs,
+                    storage_location: rm.storage_location || 'abajo'
                 }];
             }
 
@@ -348,6 +369,7 @@ const getRawMaterials = async (req, res) => {
                     available_boxes: availBoxes,
                     available_lbs: availLbs,
                     barcode: barcode,
+                    storage_location: t.storage_location || rm.storage_location || 'abajo',
                     is_depleted: isDepleted
                 };
             });
@@ -377,15 +399,23 @@ const createRawMaterial = async (req, res) => {
             provider_id, egg_type, egg_color, egg_size, weight_lbs,
             temperature_c, truck_temperature_c, truck_plate, driver_name,
             total_boxes, tarimas_json, provider_lot, certificate_urls,
-            operator_name, status, fecha
+            operator_name, status, fecha, storage_location
         } = req.body;
 
-        // Si viene desglose de tarimas, calcular el peso neto total y cajas
+        const mainStorageLocation = storage_location || 'abajo';
+
+        // Si viene desglose de tarimas, calcular el peso neto total, cajas y asegurar storage_location
         let finalWeightLbs = weight_lbs;
         let finalBoxes = total_boxes || 0;
+        let cleanTarimas = [];
         if (Array.isArray(tarimas_json) && tarimas_json.length > 0) {
-            const sumNet = tarimas_json.reduce((acc, t) => acc + (parseFloat(t.net_weight_lbs) || 0), 0);
-            const sumBoxes = tarimas_json.reduce((acc, t) => acc + (parseInt(t.boxes_count) || 0), 0);
+            cleanTarimas = tarimas_json.map((t, idx) => ({
+                ...t,
+                tarima_number: t.tarima_number || (idx + 1),
+                storage_location: t.storage_location || mainStorageLocation
+            }));
+            const sumNet = cleanTarimas.reduce((acc, t) => acc + (parseFloat(t.net_weight_lbs) || 0), 0);
+            const sumBoxes = cleanTarimas.reduce((acc, t) => acc + (parseInt(t.boxes_count) || 0), 0);
             if (sumNet > 0) finalWeightLbs = sumNet;
             if (sumBoxes > 0) finalBoxes = sumBoxes;
         }
@@ -399,17 +429,17 @@ const createRawMaterial = async (req, res) => {
         const [result] = await pool.query(
             `INSERT INTO egg_raw_materials (
                 company_id, branch_id, provider_id, egg_type, egg_color, egg_size, 
-                fecha, weight_lbs, total_boxes, stock_lbs, temperature_c, truck_temperature_c, 
+                fecha, weight_lbs, total_boxes, storage_location, stock_lbs, temperature_c, truck_temperature_c, 
                 truck_plate, driver_name, provider_lot, certificate_urls, tarimas_json, operator_name, status
             ) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
                 req.company_id, branchId, provider_id, egg_type,
                 egg_color || 'blanco', egg_size || 'L', fecha || new Date().toISOString().split('T')[0],
-                finalWeightLbs, finalBoxes, finalWeightLbs, temperature_c || null,
+                finalWeightLbs, finalBoxes, mainStorageLocation, finalWeightLbs, temperature_c || null,
                 truck_temperature_c || null, truck_plate || null, driver_name || null,
                 provider_lot, JSON.stringify(certificate_urls || []),
-                JSON.stringify(tarimas_json || []), operator_name, status || 'aprobado'
+                JSON.stringify(cleanTarimas.length > 0 ? cleanTarimas : (tarimas_json || [])), operator_name, status || 'aprobado'
             ]
         );
 
@@ -425,7 +455,7 @@ const createRawMaterial = async (req, res) => {
             ]
         );
 
-        res.status(201).json({ id: result.insertId, weight_lbs: finalWeightLbs, total_boxes: finalBoxes, ...req.body });
+        res.status(201).json({ id: result.insertId, weight_lbs: finalWeightLbs, total_boxes: finalBoxes, storage_location: mainStorageLocation, ...req.body });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -438,7 +468,7 @@ const updateRawMaterial = async (req, res) => {
             provider_id, egg_type, egg_color, egg_size, weight_lbs,
             temperature_c, truck_temperature_c, truck_plate, driver_name,
             total_boxes, tarimas_json, provider_lot, certificate_urls,
-            operator_name, status, fecha
+            operator_name, status, fecha, storage_location
         } = req.body;
 
         const [existing] = await pool.query(
@@ -449,11 +479,19 @@ const updateRawMaterial = async (req, res) => {
             return res.status(404).json({ message: 'Recepción no encontrada.' });
         }
 
+        const mainStorageLocation = storage_location || existing[0].storage_location || 'abajo';
+
         let finalWeightLbs = weight_lbs;
         let finalBoxes = total_boxes || existing[0].total_boxes || 0;
+        let cleanTarimas = [];
         if (Array.isArray(tarimas_json) && tarimas_json.length > 0) {
-            const sumNet = tarimas_json.reduce((acc, t) => acc + (parseFloat(t.net_weight_lbs) || 0), 0);
-            const sumBoxes = tarimas_json.reduce((acc, t) => acc + (parseInt(t.boxes_count) || 0), 0);
+            cleanTarimas = tarimas_json.map((t, idx) => ({
+                ...t,
+                tarima_number: t.tarima_number || (idx + 1),
+                storage_location: t.storage_location || mainStorageLocation
+            }));
+            const sumNet = cleanTarimas.reduce((acc, t) => acc + (parseFloat(t.net_weight_lbs) || 0), 0);
+            const sumBoxes = cleanTarimas.reduce((acc, t) => acc + (parseInt(t.boxes_count) || 0), 0);
             if (sumNet > 0) finalWeightLbs = sumNet;
             if (sumBoxes > 0) finalBoxes = sumBoxes;
         }
@@ -469,16 +507,16 @@ const updateRawMaterial = async (req, res) => {
         await pool.query(
             `UPDATE egg_raw_materials SET 
                 provider_id = ?, egg_type = ?, egg_color = ?, egg_size = ?, 
-                fecha = ?, weight_lbs = ?, total_boxes = ?, stock_lbs = ?, 
+                fecha = ?, weight_lbs = ?, total_boxes = ?, storage_location = ?, stock_lbs = ?, 
                 temperature_c = ?, truck_temperature_c = ?, truck_plate = ?, driver_name = ?, 
                 provider_lot = ?, certificate_urls = ?, tarimas_json = ?, operator_name = ?, status = ?
              WHERE id = ? AND company_id = ?`,
             [
                 provider_id, egg_type, egg_color || 'blanco', egg_size || 'L',
-                fecha || existing[0].fecha, finalWeightLbs, finalBoxes, updatedStock,
+                fecha || existing[0].fecha, finalWeightLbs, finalBoxes, mainStorageLocation, updatedStock,
                 temperature_c, truck_temperature_c || null, truck_plate || null, driver_name || null,
                 provider_lot, JSON.stringify(certificate_urls || []),
-                JSON.stringify(tarimas_json || []), operator_name, status || 'aprobado',
+                JSON.stringify(cleanTarimas.length > 0 ? cleanTarimas : (tarimas_json || [])), operator_name, status || 'aprobado',
                 id, req.company_id
             ]
         );

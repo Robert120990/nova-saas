@@ -66,12 +66,15 @@ const EggReception = () => {
     const [globalHasCaja, setGlobalHasCaja] = useState(true);
     const [showDetailedTares, setShowDetailedTares] = useState(false);
     const [bulkAddCount, setBulkAddCount] = useState(10);
-    const [_receptionTareTarima, setReceptionTareTarima] = useState(0);
+    const [receptionTareTarima, setReceptionTareTarima] = useState(0);
     const [receptionTareSep, setReceptionTareSep] = useState(48);
     const [receptionTareCaja, setReceptionTareCaja] = useState(30);
     const [receptionBaseBoxes, setReceptionBaseBoxes] = useState(24);
+    const [globalStorageLocation, setGlobalStorageLocation] = useState('abajo');
+    const [lastDraftSavedAt, setLastDraftSavedAt] = useState(null);
+    const [hasRestoredDraft, setHasRestoredDraft] = useState(false);
     const [tarimas, setTarimas] = useState([
-        { id: 1, tarima_number: 1, gross_weight_lbs: '', tare_weight_lbs: 78, net_weight_lbs: 0, boxes_count: 24, has_caja: true, tare_pallet_lbs: 0, tare_separador_lbs: 48, tare_caja_lbs: 30 }
+        { id: 1, tarima_number: 1, gross_weight_lbs: '', tare_weight_lbs: 78, net_weight_lbs: 0, boxes_count: 24, has_caja: true, tare_pallet_lbs: 0, tare_separador_lbs: 48, tare_caja_lbs: 30, storage_location: 'abajo' }
     ]);
 
     // Form state
@@ -84,6 +87,7 @@ const EggReception = () => {
         fecha: todayStr,
         weight_lbs: '',
         total_boxes: 0,
+        storage_location: 'abajo',
         temperature_c: '',
         truck_temperature_c: '',
         truck_plate: '',
@@ -107,6 +111,86 @@ const EggReception = () => {
         allTarimas: [],
         receptionData: {}
     });
+
+    const DRAFT_STORAGE_KEY = `egg_reception_draft_${companyId}`;
+
+    // Efecto de autoguardado dinámico resiliente en localStorage (protección contra cierres accidentales)
+    useEffect(() => {
+        if (!isCreateModalOpen || editingId) return;
+
+        // Comprobar si hay contenido significativo ingresado por el usuario
+        const hasData = Boolean(
+            formData.provider_id ||
+            formData.provider_lot?.trim() ||
+            formData.weight_lbs ||
+            tarimas.some(t => t.gross_weight_lbs !== '' && parseFloat(t.gross_weight_lbs) > 0)
+        );
+
+        if (!hasData) return;
+
+        const timer = setTimeout(() => {
+            try {
+                const nowTime = new Date().toLocaleTimeString('es-SV', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                const draftPayload = {
+                    formData,
+                    tarimas,
+                    useTarimas,
+                    globalHasCaja,
+                    globalStorageLocation,
+                    receptionTareTarima,
+                    receptionTareSep,
+                    receptionTareCaja,
+                    receptionBaseBoxes,
+                    savedAt: nowTime
+                };
+                localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draftPayload));
+                setLastDraftSavedAt(nowTime);
+            } catch (err) {
+                console.warn('Error guardando borrador dinámico en localStorage:', err);
+            }
+        }, 400);
+
+        return () => clearTimeout(timer);
+    }, [
+        isCreateModalOpen, editingId, formData, tarimas, useTarimas,
+        globalHasCaja, globalStorageLocation, receptionTareTarima,
+        receptionTareSep, receptionTareCaja, receptionBaseBoxes, DRAFT_STORAGE_KEY
+    ]);
+
+    const checkForDraft = () => {
+        try {
+            const raw = localStorage.getItem(DRAFT_STORAGE_KEY);
+            if (!raw) return false;
+            const draft = JSON.parse(raw);
+            if (!draft || !draft.tarimas || !Array.isArray(draft.tarimas)) return false;
+
+            if (draft.formData) setFormData(prev => ({ ...prev, ...draft.formData }));
+            if (draft.tarimas && draft.tarimas.length > 0) setTarimas(draft.tarimas);
+            if (draft.useTarimas !== undefined) setUseTarimas(draft.useTarimas);
+            if (draft.globalHasCaja !== undefined) setGlobalHasCaja(draft.globalHasCaja);
+            if (draft.globalStorageLocation) setGlobalStorageLocation(draft.globalStorageLocation);
+            if (draft.receptionTareTarima !== undefined) setReceptionTareTarima(draft.receptionTareTarima);
+            if (draft.receptionTareSep !== undefined) setReceptionTareSep(draft.receptionTareSep);
+            if (draft.receptionTareCaja !== undefined) setReceptionTareCaja(draft.receptionTareCaja);
+            if (draft.receptionBaseBoxes !== undefined) setReceptionBaseBoxes(draft.receptionBaseBoxes);
+            setLastDraftSavedAt(draft.savedAt || 'reciente');
+            setHasRestoredDraft(true);
+            return true;
+        } catch (e) {
+            console.warn('Error restaurando borrador de recepción:', e);
+            return false;
+        }
+    };
+
+    const discardDraft = () => {
+        try {
+            localStorage.removeItem(DRAFT_STORAGE_KEY);
+        } catch (e) { }
+        setHasRestoredDraft(false);
+        setLastDraftSavedAt(null);
+        resetForm();
+        toast.info('Borrador descartado. Formulario reiniciado a valores iniciales.');
+    };
 
     // Roles y Permisos (Página 3 del documento adjunto)
     const userPermissions = Array.isArray(user?.permissions)
@@ -854,7 +938,7 @@ const EggReception = () => {
     };
 
     // Helpers para tarimas
-    const addTarima = (boxes = 24, hasCaja = globalHasCaja) => {
+    const addTarima = (boxes = 24, hasCaja = globalHasCaja, loc = globalStorageLocation) => {
         const nextNum = tarimas.length + 1;
         const calc = calculateTarimaTare(boxes, hasCaja, 0);
         const updated = [...tarimas, {
@@ -867,13 +951,14 @@ const EggReception = () => {
             tare_caja_lbs: calc.boxPart,
             net_weight_lbs: 0,
             boxes_count: boxes,
-            has_caja: hasCaja
+            has_caja: hasCaja,
+            storage_location: loc
         }];
         setTarimas(updated);
         recalcTarimasTotals(updated);
     };
 
-    const addMultipleTarimas = (count, boxes = 24, hasCaja = globalHasCaja) => {
+    const addMultipleTarimas = (count, boxes = 24, hasCaja = globalHasCaja, loc = globalStorageLocation) => {
         const n = parseInt(count);
         if (!n || n <= 0) {
             toast.error('Ingrese una cantidad válida de tarimas a agregar.');
@@ -898,13 +983,27 @@ const EggReception = () => {
                 tare_caja_lbs: calc.boxPart,
                 net_weight_lbs: 0,
                 boxes_count: boxes,
-                has_caja: hasCaja
+                has_caja: hasCaja,
+                storage_location: loc
             });
         }
         const updated = [...tarimas, ...newRows];
         setTarimas(updated);
         recalcTarimasTotals(updated);
         toast.success(`Se agregaron ${n} tarimas (#${startNum} a #${startNum + n - 1}) con éxito.`);
+    };
+
+    const applyStorageLocationToAll = (newLoc) => {
+        setGlobalStorageLocation(newLoc);
+        const updated = tarimas.map(t => ({
+            ...t,
+            storage_location: newLoc
+        }));
+        setTarimas(updated);
+        toast.info(newLoc === 'abajo' 
+            ? 'Ubicación Abajo (Piso) aplicada a todas las tarimas.' 
+            : 'Ubicación Arriba (Rack) aplicada a todas las tarimas.'
+        );
     };
 
     const applyEmpaqueModeToAll = (newHasCaja) => {
@@ -1165,8 +1264,14 @@ const EggReception = () => {
                 ? formData.certificate_urls.split(',').map(url => url.trim())
                 : [];
 
+            const cleanTarimas = useTarimas ? tarimas.map(t => ({
+                ...t,
+                storage_location: t.storage_location || globalStorageLocation || 'abajo'
+            })) : null;
+
             const payload = {
                 ...formData,
+                storage_location: globalStorageLocation || formData.storage_location || 'abajo',
                 provider_lot: formData.provider_lot.trim().toUpperCase(),
                 weight_lbs: parsedWeight,
                 total_boxes: formData.total_boxes || 0,
@@ -1174,7 +1279,7 @@ const EggReception = () => {
                 truck_temperature_c: formData.truck_temperature_c ? parseFloat(formData.truck_temperature_c) : null,
                 truck_plate: formData.truck_plate || null,
                 driver_name: formData.driver_name || null,
-                tarimas_json: useTarimas ? tarimas : null,
+                tarimas_json: cleanTarimas,
                 certificate_urls: urlsArray
             };
 
@@ -1185,6 +1290,12 @@ const EggReception = () => {
                 await axios.post('/api/egg-industrial/raw-materials', payload);
                 toast.success('Recepción de materia prima registrada con éxito.');
             }
+
+            try {
+                localStorage.removeItem(DRAFT_STORAGE_KEY);
+            } catch (e) { }
+            setLastDraftSavedAt(null);
+            setHasRestoredDraft(false);
 
             resetForm();
             fetchData();
@@ -1202,12 +1313,14 @@ const EggReception = () => {
         setUseTarimas(false);
         setProviderLotIntel(null);
         setGlobalHasCaja(true);
+        setGlobalStorageLocation('abajo');
         setBulkAddCount(10);
         setReceptionTareTarima(0);
         setReceptionTareSep(48);
         setReceptionTareCaja(30);
         setReceptionBaseBoxes(24);
-        setTarimas([{ id: 1, tarima_number: 1, gross_weight_lbs: '', tare_weight_lbs: 78, net_weight_lbs: 0, boxes_count: 24, has_caja: true, tare_pallet_lbs: 0, tare_separador_lbs: 48, tare_caja_lbs: 30 }]);
+        setHasRestoredDraft(false);
+        setTarimas([{ id: 1, tarima_number: 1, gross_weight_lbs: '', tare_weight_lbs: 78, net_weight_lbs: 0, boxes_count: 24, has_caja: true, tare_pallet_lbs: 0, tare_separador_lbs: 48, tare_caja_lbs: 30, storage_location: 'abajo' }]);
         setFormData({
             provider_id: '',
             provider_name: '',
@@ -1218,6 +1331,7 @@ const EggReception = () => {
             fecha: new Date().toISOString().split('T')[0],
             weight_lbs: '',
             total_boxes: 0,
+            storage_location: 'abajo',
             temperature_c: '',
             truck_temperature_c: '',
             truck_plate: '',
@@ -1227,6 +1341,17 @@ const EggReception = () => {
             operator_name: user?.nombre || '',
             status: 'aprobado'
         });
+    };
+
+    const handleOpenNewReception = () => {
+        setEditingId(null);
+        const restored = checkForDraft();
+        if (restored) {
+            toast.info('Se ha restaurado el borrador guardado automáticamente.', { duration: 4000 });
+        } else {
+            resetForm();
+        }
+        setIsCreateModalOpen(true);
     };
 
     const handleEdit = (rm) => {
@@ -1248,6 +1373,9 @@ const EggReception = () => {
         setReceptionTareCaja(provCfg?.tare_caja_lbs !== undefined ? parseFloat(provCfg.tare_caja_lbs) : 30);
         setReceptionBaseBoxes(parseInt(provCfg?.base_boxes_per_tarima) || 24);
 
+        const mainLoc = rm.storage_location || 'abajo';
+        setGlobalStorageLocation(mainLoc);
+
         setEditingId(rm.id);
         setFormData({
             provider_id: String(rm.provider_id || ''),
@@ -1259,6 +1387,7 @@ const EggReception = () => {
             fecha: rm.fecha ? rm.fecha.split('T')[0] : (rm.created_at ? rm.created_at.split('T')[0] : todayStr),
             weight_lbs: String(rm.weight_lbs || ''),
             total_boxes: rm.total_boxes || 0,
+            storage_location: mainLoc,
             temperature_c: rm.temperature_c !== null && rm.temperature_c !== undefined ? String(rm.temperature_c) : '',
             truck_temperature_c: rm.truck_temperature_c !== null && rm.truck_temperature_c !== undefined ? String(rm.truck_temperature_c) : '',
             truck_plate: rm.truck_plate || '',
@@ -1273,14 +1402,16 @@ const EggReception = () => {
             const normalized = parsedTarimas.map((t, idx) => ({
                 ...t,
                 tarima_number: t.tarima_number || (idx + 1),
-                has_caja: t.has_caja !== undefined ? Boolean(t.has_caja) : true
+                has_caja: t.has_caja !== undefined ? Boolean(t.has_caja) : true,
+                storage_location: t.storage_location || mainLoc
             }));
             setTarimas(normalized);
             setGlobalHasCaja(normalized[0]?.has_caja !== undefined ? normalized[0].has_caja : true);
+            setGlobalStorageLocation(normalized[0]?.storage_location || mainLoc);
             setUseTarimas(true);
         } else {
             setUseTarimas(false);
-            setTarimas([{ id: 1, tarima_number: 1, gross_weight_lbs: rm.weight_lbs || '', tare_weight_lbs: 0, net_weight_lbs: rm.weight_lbs || 0, boxes_count: rm.total_boxes || 24, has_caja: true, tare_pallet_lbs: 0, tare_separador_lbs: 0, tare_caja_lbs: 0 }]);
+            setTarimas([{ id: 1, tarima_number: 1, gross_weight_lbs: rm.weight_lbs || '', tare_weight_lbs: 0, net_weight_lbs: rm.weight_lbs || 0, boxes_count: rm.total_boxes || 24, has_caja: true, tare_pallet_lbs: 0, tare_separador_lbs: 0, tare_caja_lbs: 0, storage_location: mainLoc }]);
         }
 
         setIsCreateModalOpen(true);
@@ -1371,9 +1502,11 @@ const EggReception = () => {
             const tarimaRows = parsedTarimas.map((t, idx) => {
                 const tNum = t.tarima_number || (idx + 1);
                 const code = `TAR-${(rm.provider_lot || 'LOT').toUpperCase()}-${String(tNum).padStart(2, '0')}`;
+                const tLoc = (t.storage_location || rm.storage_location || 'abajo') === 'arriba' ? 'ARRIBA' : 'ABAJO';
                 return [
                     `Tarima #${tNum}`,
                     code,
+                    tLoc,
                     `${t.boxes_count || 0} cajas`,
                     `${parseFloat(t.gross_weight_lbs || 0).toLocaleString()} Lbs`,
                     `${parseFloat(t.tare_weight_lbs || 0).toLocaleString()} Lbs`,
@@ -1386,13 +1519,14 @@ const EggReception = () => {
                 theme: 'striped',
                 headStyles: { fillColor: [15, 23, 42], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
                 bodyStyles: { fontSize: 7.5, textColor: [30, 41, 59], cellPadding: 2 },
-                head: [['# Tarima', 'Código Identificador', 'Cajas', 'Peso Bruto', 'Tara', 'Peso Neto']],
+                head: [['# Tarima', 'Código Identificador', 'Ubicación', 'Cajas', 'Peso Bruto', 'Tara', 'Peso Neto']],
                 body: tarimaRows.length > 0 ? tarimaRows : [
-                    ['Tarima #1 (Global)', `TAR-${(rm.provider_lot || 'LOT').toUpperCase()}-01`, `${rm.total_boxes || 0} cajas`, `${parseFloat(rm.weight_lbs || 0).toLocaleString()} Lbs`, '0.00 Lbs', `${parseFloat(rm.weight_lbs || 0).toLocaleString()} Lbs`]
+                    ['Tarima #1 (Global)', `TAR-${(rm.provider_lot || 'LOT').toUpperCase()}-01`, (rm.storage_location || 'abajo') === 'arriba' ? 'ARRIBA' : 'ABAJO', `${rm.total_boxes || 0} cajas`, `${parseFloat(rm.weight_lbs || 0).toLocaleString()} Lbs`, '0.00 Lbs', `${parseFloat(rm.weight_lbs || 0).toLocaleString()} Lbs`]
                 ],
                 foot: [[
                     'TOTALES CONSOLIDADOS',
                     `${tarimaRows.length || 1} Tarimas`,
+                    '-',
                     `${rm.total_boxes || 0} cajas`,
                     '-',
                     '-',
@@ -1524,7 +1658,7 @@ const EggReception = () => {
                 </div>
                 
                 <button 
-                    onClick={() => setIsCreateModalOpen(true)}
+                    onClick={handleOpenNewReception}
                     className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-2"
                 >
                     <Plus size={16} />
@@ -1627,6 +1761,33 @@ const EggReception = () => {
                     </div>
                     
                     <form onSubmit={handleSubmit} className="space-y-6">
+                        {/* Banner de Borrador Dinámico Restaurado */}
+                        {hasRestoredDraft && (
+                            <div className="p-3.5 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-300 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-amber-900 shadow-2xs">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2 bg-amber-200 text-amber-900 rounded-lg shrink-0">
+                                        <AlertTriangle size={18} />
+                                    </div>
+                                    <div>
+                                        <p className="font-extrabold text-amber-950 text-xs">
+                                            Borrador de Pesaje Restaurado ({lastDraftSavedAt})
+                                        </p>
+                                        <p className="text-[11px] text-amber-800">
+                                            Se restauraron automáticamente {tarimas.length} tarimas y datos ingresados de la sesión previa para proteger tu trabajo contra cierres accidentales.
+                                        </p>
+                                    </div>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={discardDraft}
+                                    className="px-3 py-1.5 bg-white hover:bg-rose-50 text-rose-700 border border-rose-300 rounded-lg text-xs font-bold transition-all shadow-2xs cursor-pointer self-start sm:self-auto shrink-0"
+                                    title="Descartar el borrador y volver al formulario vacío"
+                                >
+                                    Descartar Borrador
+                                </button>
+                            </div>
+                        )}
+
                         {/* Datos del Transporte (LOG-004) */}
                         <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
                             <h3 className="text-xs font-bold text-indigo-700 uppercase tracking-wide flex items-center gap-2">
@@ -1879,7 +2040,7 @@ const EggReception = () => {
                             </div>
 
                             {!useTarimas ? (
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                     <div className="space-y-1">
                                         <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide">Total Cajas de Huevo</label>
                                         <input
@@ -1901,27 +2062,46 @@ const EggReception = () => {
                                             step="0.01"
                                         />
                                     </div>
+                                    <div className="space-y-1">
+                                        <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide">Ubicación de Almacenamiento</label>
+                                        <select
+                                            value={formData.storage_location || 'abajo'}
+                                            onChange={(e) => setFormData({ ...formData, storage_location: e.target.value })}
+                                            className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 shadow-xs"
+                                        >
+                                            <option value="abajo">⬇ Abajo (Nivel 1 / Piso)</option>
+                                            <option value="arriba">⬆ Arriba (Nivel 2 / Rack Superior)</option>
+                                        </select>
+                                    </div>
                                 </div>
                             ) : (
                                 <div className="space-y-3">
                                     {/* Espacio Interactivo de Edición de las 3 Taras: Tarima (Pallet), Cartón (Separador) y Caja (Jaba) */}
                                     {/* Cabecera compacta de control de empaque y aviso de taras */}
                                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-gradient-to-r from-slate-50 to-indigo-50/40 border border-slate-200 rounded-xl shadow-2xs">
-                                        <div className="flex items-center gap-2">
+                                        <div className="flex items-center gap-2 flex-wrap">
                                             <div className="p-1.5 bg-indigo-600 text-white rounded-lg shadow-xs">
                                                 <Scale size={16} />
                                             </div>
                                             <div>
-                                                <h4 className="text-xs font-black text-slate-900 uppercase tracking-wide">
-                                                    Registro de Tarimas en Báscula
-                                                </h4>
+                                                <div className="flex items-center gap-2">
+                                                    <h4 className="text-xs font-black text-slate-900 uppercase tracking-wide">
+                                                        Registro de Tarimas en Báscula
+                                                    </h4>
+                                                    {lastDraftSavedAt && (
+                                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-full text-[10px] font-bold shadow-2xs" title="Taras y pesajes guardados dinámicamente en borrador local">
+                                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                                                            Autoguardado {lastDraftSavedAt}
+                                                        </span>
+                                                    )}
+                                                </div>
                                                 <p className="text-[10px] text-slate-500 font-medium">
-                                                    Base proveedor: <span className="font-bold text-slate-700">{receptionBaseBoxes} Cajas</span> • Las taras (Tarima, Cartón y Caja) se calculan y editan directamente en la tabla de abajo.
+                                                    Base proveedor: <span className="font-bold text-slate-700">{receptionBaseBoxes} Cajas</span> • Las taras y ubicaciones se calculan y editan directamente en la tabla de abajo.
                                                 </p>
                                             </div>
                                         </div>
 
-                                        {/* Switch rápido de modo de empaque y visibilidad de desglose de taras */}
+                                        {/* Switch rápido de modo de empaque, ubicación masiva y visibilidad de desglose de taras */}
                                         <div className="flex flex-wrap items-center gap-2.5 self-start sm:self-auto">
                                             <button
                                                 type="button"
@@ -1938,31 +2118,61 @@ const EggReception = () => {
                                             </button>
 
                                             <div className="flex items-center gap-1.5">
+                                                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Ubicación:</span>
+                                                <div className="inline-flex rounded-lg border border-slate-200 p-0.5 bg-white shadow-2xs">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => applyStorageLocationToAll('abajo')}
+                                                        className={`px-2 py-1 rounded-md text-[10px] font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                                                            globalStorageLocation === 'abajo'
+                                                                ? 'bg-blue-600 text-white shadow-xs'
+                                                                : 'text-slate-600 hover:text-slate-900'
+                                                        }`}
+                                                        title="Aplica ubicación Abajo (Piso) a todas las tarimas"
+                                                    >
+                                                        ⬇ Abajo (Piso)
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => applyStorageLocationToAll('arriba')}
+                                                        className={`px-2 py-1 rounded-md text-[10px] font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                                                            globalStorageLocation === 'arriba'
+                                                                ? 'bg-amber-600 text-white shadow-xs'
+                                                                : 'text-slate-600 hover:text-slate-900'
+                                                        }`}
+                                                        title="Aplica ubicación Arriba (Rack) a todas las tarimas"
+                                                    >
+                                                        ⬆ Arriba (Rack)
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            <div className="flex items-center gap-1.5">
                                                 <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Empaque:</span>
                                                 <div className="inline-flex rounded-lg border border-slate-200 p-0.5 bg-white shadow-2xs">
                                                     <button
                                                         type="button"
                                                         onClick={() => applyEmpaqueModeToAll(true)}
-                                                        className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer ${
+                                                        className={`px-2 py-1 rounded-md text-[10px] font-bold transition-all cursor-pointer ${
                                                             globalHasCaja
                                                                 ? 'bg-indigo-600 text-white shadow-xs'
                                                                 : 'text-slate-600 hover:text-slate-900'
                                                         }`}
                                                         title="Aplica modo Con Caja a todas las tarimas"
                                                     >
-                                                        Con Cajas / Jabas
+                                                        Con Cajas
                                                     </button>
                                                     <button
                                                         type="button"
                                                         onClick={() => applyEmpaqueModeToAll(false)}
-                                                        className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer ${
+                                                        className={`px-2 py-1 rounded-md text-[10px] font-bold transition-all cursor-pointer ${
                                                             !globalHasCaja
                                                                 ? 'bg-amber-600 text-white shadow-xs'
                                                                 : 'text-slate-600 hover:text-slate-900'
                                                         }`}
                                                         title="Aplica modo A Granel (sin cajas) a todas las tarimas"
                                                     >
-                                                        A Granel (Solo Separador)
+                                                        A Granel
                                                     </button>
                                                 </div>
                                             </div>
@@ -1974,7 +2184,8 @@ const EggReception = () => {
                                             <thead className="bg-slate-50 text-slate-600 text-[10px] uppercase font-bold border-b border-slate-200">
                                                 <tr>
                                                     <th className="p-2 text-center w-10">#</th>
-                                                    <th className="p-2 w-24 text-center">Empaque</th>
+                                                    <th className="p-2 w-20 text-center">Empaque</th>
+                                                    <th className="p-2 w-20 text-center">Ubicación</th>
                                                     <th className="p-2 w-16 text-center">Cajas</th>
                                                     <th className="p-2 w-24 text-right">Peso Bruto (lb)</th>
                                                     <th className="p-2 w-24 text-right">Tara Tarima (lb)</th>
@@ -2020,6 +2231,20 @@ const EggReception = () => {
                                                                     title="Clic para alternar entre Con Caja y A Granel"
                                                                 >
                                                                     {hasC ? 'Con Caja' : 'A Granel'}
+                                                                </button>
+                                                            </td>
+                                                            <td className="p-2 text-center">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => updateTarima(idx, 'storage_location', (t.storage_location || 'abajo') === 'abajo' ? 'arriba' : 'abajo')}
+                                                                    className={`px-2 py-0.5 rounded-md text-[10px] font-bold border transition-colors cursor-pointer inline-flex items-center gap-1 shadow-2xs ${
+                                                                        (t.storage_location || 'abajo') === 'abajo'
+                                                                            ? 'bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100'
+                                                                            : 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100'
+                                                                    }`}
+                                                                    title="Clic para alternar entre Abajo (Piso) y Arriba (Rack)"
+                                                                >
+                                                                    {(t.storage_location || 'abajo') === 'abajo' ? '⬇ Abajo' : '⬆ Arriba'}
                                                                 </button>
                                                             </td>
                                                             <td className="p-2">

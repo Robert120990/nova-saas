@@ -371,6 +371,7 @@ const EggProduction = () => {
             quantity_lbs: availLbs.toFixed(2),
             available_lbs: availLbs,
             barcode: tarimaObj.barcode || '',
+            storage_location: tarimaObj.storage_location || rm.storage_location || 'abajo',
             is_partial: false
         };
 
@@ -415,6 +416,7 @@ const EggProduction = () => {
                 quantity_lbs: availLbs.toFixed(2),
                 available_lbs: availLbs,
                 barcode: t.barcode || '',
+                storage_location: t.storage_location || rm.storage_location || 'abajo',
                 is_partial: false
             };
         });
@@ -822,6 +824,7 @@ const EggProduction = () => {
             quantity_lbs: availLbs.toFixed(2),
             available_lbs: availLbs,
             barcode: tarimaObj.barcode || '',
+            storage_location: tarimaObj.storage_location || rm.storage_location || 'abajo',
             is_partial: false
         };
 
@@ -865,6 +868,7 @@ const EggProduction = () => {
                 quantity_lbs: availLbs.toFixed(2),
                 available_lbs: availLbs,
                 barcode: t.barcode || '',
+                storage_location: t.storage_location || rm.storage_location || 'abajo',
                 is_partial: false
             };
         });
@@ -1053,6 +1057,92 @@ const EggProduction = () => {
             handleAddSpecificTarimaToRm(rmIdx, targetTarima);
         }
         setScannerModalOpen(false);
+    };
+
+    // Helper para determinar si un producto requiere separación de clara y yema
+    const isSeparationProduct = (productType) => {
+        const p = (productType || '').toLowerCase();
+        return p.includes('clara') || p.includes('yema') || p.includes('separad');
+    };
+
+    // Lotes disponibles con stock aprobados (ordenados por FIFO desde el backend)
+    const availableRawLots = rawMaterials.filter(m => !m.is_depleted && parseFloat(m.stock_lbs || 0) > 0.01);
+    const oldestFifoLot = availableRawLots[0] || null;
+    const oldestAALot = availableRawLots.find(m => (m.egg_classification || '').toLowerCase().includes('aa')) || null;
+    const isCurrentSeparation = isSeparationProduct(batchForm.product_type);
+
+    const recommendedLot = isCurrentSeparation
+        ? (oldestAALot || oldestFifoLot)
+        : oldestFifoLot;
+
+    const recommendationReason = isCurrentSeparation
+        ? (oldestAALot
+            ? '⭐ Grado AA recomendado para separación (membrana vitelina firme que previene roturas de yema en claras).'
+            : '⚠️ No hay lotes Grado AA en bodega. Se sugiere el lote FIFO más antiguo con precaución de supervisión.')
+        : '🔄 Rotación FIFO: Lote recepcionado más antiguo para garantizar rotación de inventario en bodega.';
+
+    // Lote no AA seleccionado para producto de separación (alerta de calidad informativa)
+    const nonAALotSelectedForSeparation = isCurrentSeparation && (batchForm.raw_materials || []).some(rm => {
+        if (!rm.raw_material_id) return false;
+        const lot = rawMaterials.find(m => String(m.id) === String(rm.raw_material_id));
+        return lot && !(lot.egg_classification || '').toLowerCase().includes('aa');
+    });
+
+    const nonAALotObj = isCurrentSeparation
+        ? rawMaterials.find(m => (batchForm.raw_materials || []).some(r => String(r.raw_material_id) === String(m.id) && !(m.egg_classification || '').toLowerCase().includes('aa')))
+        : null;
+
+    // Aplicar lote recomendado con 1 clic al formulario de producción
+    const handleApplyRecommendedLot = (lot) => {
+        if (!lot) return;
+        let lotTarimas = lot.tarimas_available || [];
+        if (lotTarimas.length === 0 && lot.tarimas_json) {
+            try {
+                lotTarimas = typeof lot.tarimas_json === 'string'
+                    ? JSON.parse(lot.tarimas_json || '[]')
+                    : (lot.tarimas_json || []);
+            } catch (e) { lotTarimas = []; }
+        }
+
+        const validTarimas = lotTarimas.filter(t => !t.is_depleted && !(t.available_boxes <= 0 && t.available_lbs <= 0.01));
+
+        if (validTarimas.length > 0) {
+            const mappedTarimas = validTarimas.map(t => ({
+                tarima_number: t.tarima_number,
+                barcode: t.barcode,
+                boxes_count: t.available_boxes ?? t.boxes_count ?? 0,
+                quantity_lbs: parseFloat(t.available_lbs ?? t.net_weight_lbs ?? t.gross_weight_lbs ?? 0).toFixed(2),
+                available_boxes: t.available_boxes ?? t.boxes_count ?? 0,
+                available_lbs: parseFloat(t.available_lbs ?? t.net_weight_lbs ?? t.gross_weight_lbs ?? 0),
+                storage_location: t.storage_location || lot.storage_location || 'abajo',
+                is_partial: false
+            }));
+
+            const totalLbs = mappedTarimas.reduce((sum, t) => sum + parseFloat(t.quantity_lbs || 0), 0);
+            const totalBoxes = mappedTarimas.reduce((sum, t) => sum + (parseInt(t.boxes_count) || 0), 0);
+
+            setBatchForm(prev => ({
+                ...prev,
+                raw_materials: [{
+                    raw_material_id: String(lot.id),
+                    quantity_lbs: totalLbs.toFixed(2),
+                    boxes_count: String(totalBoxes),
+                    tarimas: mappedTarimas
+                }]
+            }));
+        } else {
+            setBatchForm(prev => ({
+                ...prev,
+                raw_materials: [{
+                    raw_material_id: String(lot.id),
+                    quantity_lbs: String(lot.stock_lbs || ''),
+                    boxes_count: String(lot.total_boxes || ''),
+                    tarimas: []
+                }]
+            }));
+        }
+
+        toast.success(`Lote ${lot.provider_lot} aplicado (${lot.egg_classification || 'Grado A'}) según rotación.`);
     };
 
     // Handle new / edit production batch with optional bypass
@@ -2030,6 +2120,71 @@ const EggProduction = () => {
                                     </div>
                                 </div>
 
+                                {/* Banner de recomendación inteligente: FIFO y Grado AA para Separación */}
+                                {recommendedLot && (
+                                    <div className="p-3.5 bg-gradient-to-r from-blue-50/90 via-indigo-50/90 to-purple-50/90 rounded-xl border border-indigo-200/90 flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-2xs">
+                                        <div className="flex items-start gap-2.5">
+                                            <div className="p-2 bg-indigo-600 text-white rounded-lg shrink-0 mt-0.5 shadow-xs">
+                                                <Sparkles size={16} />
+                                            </div>
+                                            <div>
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                    <span className="text-[11px] font-black uppercase text-indigo-900 tracking-wide">
+                                                        Lote Sugerido para Corrida:
+                                                    </span>
+                                                    {isCurrentSeparation ? (
+                                                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-purple-100 text-purple-800 border border-purple-300">
+                                                            ⭐ Prioridad Grado AA (Separación)
+                                                        </span>
+                                                    ) : (
+                                                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-blue-100 text-blue-800 border border-blue-300">
+                                                            🔄 Rotación FIFO (Más Antiguo)
+                                                        </span>
+                                                    )}
+                                                    <span className={`text-[10px] font-black px-1.5 py-0.5 rounded border ${
+                                                        (recommendedLot.storage_location || 'abajo') === 'abajo'
+                                                            ? 'bg-blue-50 text-blue-700 border-blue-200'
+                                                            : 'bg-amber-50 text-amber-700 border-amber-200'
+                                                    }`}>
+                                                        Estiba: {(recommendedLot.storage_location || 'abajo') === 'abajo' ? '⬇ Abajo (Piso)' : '⬆ Arriba (Rack)'}
+                                                    </span>
+                                                </div>
+                                                <p className="text-xs text-slate-800 mt-0.5">
+                                                    <strong>Lote {recommendedLot.provider_lot}</strong> ({recommendedLot.provider_name || 'Proveedor'}) • {recommendedLot.egg_type} • <span className="font-semibold text-purple-900">{recommendedLot.egg_classification || 'Grado A'}</span> • Saldo: <strong>{parseFloat(recommendedLot.stock_lbs || 0).toFixed(0)} Lbs</strong> ({recommendedLot.total_boxes || 0} cjs)
+                                                </p>
+                                                <span className="text-[11px] text-slate-600 font-medium block mt-0.5">
+                                                    {recommendationReason}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleApplyRecommendedLot(recommendedLot)}
+                                            className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition-all shadow-sm flex items-center justify-center gap-1.5 shrink-0"
+                                            title="Cargar automáticamente este lote y todas sus tarimas con saldo a la producción"
+                                        >
+                                            <Check size={14} />
+                                            <span>Aplicar Lote Recomendado</span>
+                                        </button>
+                                    </div>
+                                )}
+
+                                {/* Aviso no bloqueante si en producto de separación se seleccionó un lote que no es Grado AA */}
+                                {nonAALotSelectedForSeparation && nonAALotObj && (
+                                    <div className="p-3 bg-amber-50/95 rounded-xl border border-amber-300 text-amber-900 flex items-start gap-2.5 text-xs shadow-2xs">
+                                        <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                                        <div className="space-y-0.5">
+                                            <strong className="font-bold block text-amber-950">Aviso de Calidad para Separación de Clara / Yema:</strong>
+                                            <p className="text-amber-900 leading-relaxed">
+                                                El lote seleccionado <strong>{nonAALotObj.provider_lot}</strong> tiene clasificación <u>{nonAALotObj.egg_classification || 'No Grado AA'}</u>. Para el quebraje y separación de claras y yemas se recomienda estrictamente <strong>Huevo Grado AA</strong> con membrana vitelina firme para evitar la ruptura accidental de la yema y la contaminación grasa en las claras.
+                                            </p>
+                                            <span className="text-[11px] font-semibold text-amber-800 block">
+                                                (Puede continuar con este lote si supervisión de planta autoriza el quebraje).
+                                            </span>
+                                        </div>
+                                    </div>
+                                )}
+
                                 {batchForm.raw_materials.map((rm, idx) => {
                                     const selectedLot = rawMaterials.find(m => String(m.id) === String(rm.raw_material_id));
                                     let lotTarimas = selectedLot?.tarimas_available || [];
@@ -2065,17 +2220,22 @@ const EggProduction = () => {
                                                         className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-semibold focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10"
                                                     >
                                                         <option value="">Seleccionar lote recepcionado...</option>
-                                                        {rawMaterials.map(m => {
+                                                        {rawMaterials.map((m, mIdx) => {
                                                             const isAgotado = m.is_depleted || parseFloat(m.stock_lbs || 0) <= 0.01;
                                                             const isAlreadyChosen = batchForm.raw_materials.some((r, i) => i !== idx && r.raw_material_id === String(m.id));
+                                                            const isFifoOldest = mIdx === 0;
+                                                            const isAA = (m.egg_classification || '').toLowerCase().includes('aa');
+                                                            const locTag = (m.storage_location || 'abajo') === 'abajo' ? '⬇ Abajo' : '⬆ Arriba';
                                                             return (
                                                                 <option
                                                                     key={m.id}
                                                                     value={m.id}
                                                                     disabled={isAgotado || isAlreadyChosen}
-                                                                    className={isAgotado ? 'text-slate-400 bg-slate-50' : 'text-slate-900'}
+                                                                    className={isAgotado ? 'text-slate-400 bg-slate-50' : 'text-slate-900 font-semibold'}
                                                                 >
-                                                                    {m.egg_type} - Lote: {m.provider_lot} ({m.provider_name || 'Prov.'}) | {isAgotado ? '🚫 [AGOTADO - 0 Lbs]' : `Stock: ${parseFloat(m.stock_lbs || 0).toFixed(0)} Lbs (${m.total_boxes || 0} cjs)`}
+                                                                    {isFifoOldest ? '[FIFO] ' : ''}
+                                                                    {isAA ? '[⭐ Grado AA] ' : ''}
+                                                                    [{locTag}] Lote: {m.provider_lot} - {m.egg_type} ({m.provider_name || 'Prov.'}) | {isAgotado ? '🚫 [AGOTADO - 0 Lbs]' : `Stock: ${parseFloat(m.stock_lbs || 0).toFixed(0)} Lbs (${m.total_boxes || 0} cjs)`}
                                                                 </option>
                                                             );
                                                         })}
@@ -2160,6 +2320,13 @@ const EggProduction = () => {
                                                                         title={isDepleted ? 'Tarima 100% consumida en corridas anteriores' : isAdded ? 'Tarima ya agregada' : 'Hacer clic para agregar a esta corrida'}
                                                                     >
                                                                         <span>Tarima #{t.tarima_number}</span>
+                                                                        <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${
+                                                                            (t.storage_location || selectedLot?.storage_location || 'abajo') === 'abajo'
+                                                                                ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                                                                                : 'bg-amber-50 text-amber-700 border border-amber-200'
+                                                                        }`}>
+                                                                            {(t.storage_location || selectedLot?.storage_location || 'abajo') === 'abajo' ? '⬇ Abajo' : '⬆ Arriba'}
+                                                                        </span>
                                                                         <span className="text-[10px] font-semibold opacity-80">
                                                                             ({availBoxes} cjs • {parseFloat(availLbs).toFixed(0)} Lbs)
                                                                         </span>
@@ -2194,8 +2361,15 @@ const EggProduction = () => {
                                                                         <div key={ti} className="bg-white p-2.5 rounded-xl border border-slate-200/90 shadow-2xs space-y-1.5">
                                                                             <div className="flex items-center justify-between gap-2">
                                                                                 <div className="flex items-center gap-2 flex-wrap">
-                                                                                    <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-md font-bold text-xs">
-                                                                                        Tarima #{t.tarima_number}
+                                                                                    <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-md font-bold text-xs flex items-center gap-1.5">
+                                                                                        <span>Tarima #{t.tarima_number}</span>
+                                                                                        <span className={`text-[9px] font-black px-1 py-0.2 rounded ${
+                                                                                            (t.storage_location || selectedLot?.storage_location || 'abajo') === 'abajo'
+                                                                                                ? 'bg-blue-100 text-blue-800'
+                                                                                                : 'bg-amber-100 text-amber-800'
+                                                                                        }`}>
+                                                                                            {(t.storage_location || selectedLot?.storage_location || 'abajo') === 'abajo' ? '⬇ Abajo' : '⬆ Arriba'}
+                                                                                        </span>
                                                                                     </span>
                                                                                     {t.barcode && (
                                                                                         <span className="font-mono text-[10px] text-slate-500 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-200">
@@ -2831,9 +3005,18 @@ const EggProduction = () => {
                                         className="p-3.5 bg-white hover:bg-indigo-50 border-2 border-slate-200 hover:border-indigo-500 rounded-xl text-left transition-all group shadow-xs"
                                     >
                                         <div className="flex items-center justify-between mb-1.5">
-                                            <span className="font-bold text-xs text-indigo-700 group-hover:text-indigo-900">
-                                                Tarima #{t.tarima_number}
-                                            </span>
+                                            <div className="flex items-center gap-1.5">
+                                                <span className="font-bold text-xs text-indigo-700 group-hover:text-indigo-900">
+                                                    Tarima #{t.tarima_number}
+                                                </span>
+                                                <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${
+                                                    (t.storage_location || tarimaPickerModal.lot?.storage_location || 'abajo') === 'abajo'
+                                                        ? 'bg-blue-100 text-blue-800'
+                                                        : 'bg-amber-100 text-amber-800'
+                                                }`}>
+                                                    {(t.storage_location || tarimaPickerModal.lot?.storage_location || 'abajo') === 'abajo' ? '⬇ Abajo' : '⬆ Arriba'}
+                                                </span>
+                                            </div>
                                             <span className="text-[10px] font-bold bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded">
                                                 {availBoxes} cjs
                                             </span>
@@ -3237,8 +3420,16 @@ const EggProduction = () => {
                                                 {Array.isArray(rmPrev.tarimas) && rmPrev.tarimas.length > 0 ? (
                                                     <div className="flex flex-wrap gap-1 mt-1">
                                                         {rmPrev.tarimas.map((t, ti) => (
-                                                            <span key={ti} className="bg-indigo-50 border border-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded text-[10px] font-semibold">
-                                                                Tarima #{t.tarima_number} ({t.boxes_count || 0} cjs • {parseFloat(t.quantity_lbs || 0).toFixed(0)} Lbs)
+                                                            <span key={ti} className="bg-indigo-50 border border-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded text-[10px] font-semibold inline-flex items-center gap-1">
+                                                                <span>Tarima #{t.tarima_number}</span>
+                                                                {t.storage_location && (
+                                                                    <span className={`text-[9px] font-bold px-1 py-0.2 rounded ${
+                                                                        t.storage_location === 'abajo' ? 'bg-blue-100 text-blue-800' : 'bg-amber-100 text-amber-800'
+                                                                    }`}>
+                                                                        {t.storage_location === 'abajo' ? '⬇ Abajo' : '⬆ Arriba'}
+                                                                    </span>
+                                                                )}
+                                                                <span>({t.boxes_count || 0} cjs • {parseFloat(t.quantity_lbs || 0).toFixed(0)} Lbs)</span>
                                                             </span>
                                                         ))}
                                                     </div>
@@ -3456,6 +3647,13 @@ const EggProduction = () => {
                                                                         title={isDepleted ? 'Tarima 100% consumida' : isAdded ? 'Tarima ya agregada' : 'Hacer clic para agregar'}
                                                                     >
                                                                         <span>Tarima #{t.tarima_number}</span>
+                                                                        <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${
+                                                                            (t.storage_location || 'abajo') === 'abajo'
+                                                                                ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                                                                                : 'bg-amber-50 text-amber-700 border border-amber-200'
+                                                                        }`}>
+                                                                            {(t.storage_location || 'abajo') === 'abajo' ? '⬇ Abajo' : '⬆ Arriba'}
+                                                                        </span>
                                                                         <span className="text-[10px] font-semibold opacity-80">
                                                                             ({availBoxes} cjs • {parseFloat(availLbs).toFixed(0)} Lbs)
                                                                         </span>
@@ -3490,8 +3688,15 @@ const EggProduction = () => {
                                                                         <div key={ti} className="bg-slate-50 p-2.5 rounded-xl border border-slate-200/90 space-y-1.5">
                                                                             <div className="flex items-center justify-between gap-2">
                                                                                 <div className="flex items-center gap-2 flex-wrap">
-                                                                                    <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-md font-bold text-xs">
-                                                                                        Tarima #{t.tarima_number}
+                                                                                    <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-md font-bold text-xs flex items-center gap-1.5">
+                                                                                        <span>Tarima #{t.tarima_number}</span>
+                                                                                        <span className={`text-[9px] font-black px-1 py-0.2 rounded ${
+                                                                                            (t.storage_location || 'abajo') === 'abajo'
+                                                                                                ? 'bg-blue-100 text-blue-800'
+                                                                                                : 'bg-amber-100 text-amber-800'
+                                                                                        }`}>
+                                                                                            {(t.storage_location || 'abajo') === 'abajo' ? '⬇ Abajo' : '⬆ Arriba'}
+                                                                                        </span>
                                                                                     </span>
                                                                                     {t.barcode && (
                                                                                         <span className="font-mono text-[10px] text-slate-500 bg-white px-1.5 py-0.5 rounded border border-slate-200">
@@ -3643,6 +3848,11 @@ const EggProduction = () => {
                                                 <span className="font-bold text-slate-900 text-xs">{lot.egg_type}</span>
                                                 <span className="text-slate-500 text-xs ml-1.5 font-mono">Lote: <strong>{lot.provider_lot}</strong></span>
                                                 <span className="text-slate-400 text-[11px] ml-1.5">({lot.provider_name || 'Proveedor'})</span>
+                                                <span className={`text-[9px] font-bold ml-1.5 px-1.5 py-0.5 rounded ${
+                                                    (lot.storage_location || 'abajo') === 'abajo' ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-amber-50 text-amber-700 border border-amber-200'
+                                                }`}>
+                                                    {(lot.storage_location || 'abajo') === 'abajo' ? '⬇ Abajo' : '⬆ Arriba'}
+                                                </span>
                                             </div>
                                             <div className="flex items-center gap-2 text-xs">
                                                 <span className="bg-white border border-slate-200 px-2 py-0.5 rounded font-bold text-indigo-700">
@@ -3656,9 +3866,16 @@ const EggProduction = () => {
                                                 {activeTarimas.map(t => (
                                                     <div key={t.tarima_number} className="bg-white border border-slate-200 rounded-lg p-2.5 flex items-center justify-between gap-2 shadow-2xs">
                                                         <div>
-                                                            <div className="text-xs font-bold text-slate-800 flex items-center gap-1">
+                                                            <div className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                                                                 <Barcode size={12} className="text-indigo-500" />
-                                                                Tarima #{t.tarima_number}
+                                                                <span>Tarima #{t.tarima_number}</span>
+                                                                <span className={`text-[9px] font-black px-1 py-0.2 rounded ${
+                                                                    (t.storage_location || lot.storage_location || 'abajo') === 'abajo'
+                                                                        ? 'bg-blue-100 text-blue-800'
+                                                                        : 'bg-amber-100 text-amber-800'
+                                                                }`}>
+                                                                    {(t.storage_location || lot.storage_location || 'abajo') === 'abajo' ? '⬇ Abajo' : '⬆ Arriba'}
+                                                                </span>
                                                             </div>
                                                             <div className="text-[11px] text-slate-500">
                                                                 {t.available_boxes ?? t.boxes_count} cjs • <strong className="text-emerald-700">{parseFloat(t.available_lbs ?? t.net_weight_lbs ?? t.gross_weight_lbs ?? 0).toFixed(1)} Lbs</strong>
