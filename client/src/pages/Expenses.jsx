@@ -26,7 +26,7 @@ import {
     RotateCcw,
     Sparkles
 } from 'lucide-react';
-import * as XLSX from 'xlsx';
+import { exportJsonToExcel } from '../utils/excelExport';
 import SearchableSelect from '../components/ui/SearchableSelect';
 import Pagination from '../components/ui/Pagination';
 import Modal from '../components/ui/Modal';
@@ -1044,10 +1044,7 @@ const Expenses = () => {
             ESTADO: e.status,
             PERIODO: `${e.period_month || ''}/${e.period_year || ''}`
         }));
-        const ws = XLSX.utils.json_to_sheet(data);
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "Gastos");
-        XLSX.writeFile(wb, `Historial_Gastos_${filterMonth}_${filterYear}.xlsx`);
+        exportJsonToExcel(data, `Historial_Gastos_${filterMonth}_${filterYear}`, 'Gastos');
     };
 
     const inputCls = "w-full px-3 py-2 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-[12px] font-semibold text-slate-800 uppercase";

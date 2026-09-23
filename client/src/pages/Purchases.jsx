@@ -31,7 +31,7 @@ import {
     RefreshCw
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
-import * as XLSX from 'xlsx';
+import { exportJsonToExcel } from '../utils/excelExport';
 import SearchableSelect from '../components/ui/SearchableSelect';
 import Table from '../components/ui/Table';
 import Pagination from '../components/ui/Pagination';
@@ -1072,8 +1072,8 @@ const Purchases = () => {
     };
 
     const handleExportExcel = () => {
-        if (!purchasesData.data || purchasesData.data.length === 0) {
-            return toast.error('No hay datos para exportar');
+        if (!purchasesData?.data || purchasesData.data.length === 0) {
+            return toast.warning('No hay compras para exportar');
         }
 
         const dataToExport = purchasesData.data.map(p => ({
@@ -1096,10 +1096,7 @@ const Purchases = () => {
             'ESTADO': p.status === 'voided' ? 'ANULADO' : 'ACTIVO'
         }));
 
-        const ws = XLSX.utils.json_to_sheet(dataToExport);
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, 'COMPRAS');
-        XLSX.writeFile(wb, `Reporte_Compras_${new Date().toISOString().split('T')[0]}.xlsx`);
+        exportJsonToExcel(dataToExport, `Reporte_Compras_${new Date().toISOString().split('T')[0]}`, 'COMPRAS');
     };
 
     const handleOpenPdfModal = async () => {

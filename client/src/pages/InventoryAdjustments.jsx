@@ -22,7 +22,7 @@ import {
     FileSpreadsheet,
     FileText as FilePdf
 } from 'lucide-react';
-import * as XLSX from 'xlsx';
+import { exportJsonToExcel } from '../utils/excelExport';
 import PdfViewerModal from '../components/ui/PdfViewerModal';
 import Table from '../components/ui/Table';
 import Pagination from '../components/ui/Pagination';
@@ -293,9 +293,11 @@ const InventoryAdjustments = () => {
     };
     
     const exportToExcel = () => {
-        if (!adjustmentsData?.data?.length) return;
+        if (!adjustmentsData?.data?.length) {
+            return toast.warning('No hay movimientos para exportar');
+        }
         
-        const worksheet = XLSX.utils.json_to_sheet(adjustmentsData.data.map(a => ({
+        const rows = adjustmentsData.data.map(a => ({
             Documento: `AJ-${String(a.id).padStart(6, '0')}`,
             Referencia: a.numero || '',
             Fecha: formatDateDMY(a.fecha),
@@ -304,11 +306,9 @@ const InventoryAdjustments = () => {
             Tipo: a.tipo,
             Items: a.items_count,
             Estado: a.status || 'COMPLETADO'
-        })));
+        }));
         
-        const workbook = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(workbook, worksheet, "Movimientos");
-        XLSX.writeFile(workbook, `Movimientos_Inventario_${new Date().toISOString().split('T')[0]}.xlsx`);
+        exportJsonToExcel(rows, `Movimientos_Inventario_${new Date().toISOString().split('T')[0]}`, 'Movimientos');
     };
     
     const handleOpenPdfModal = async () => {

@@ -29,7 +29,7 @@ import {
     Check,
     List
 } from 'lucide-react';
-import * as XLSX from 'xlsx';
+import { exportAoaToExcel } from '../utils/excelExport';
 import { useAuth } from '../context/AuthContext';
 import { useConfirm } from '../context/ConfirmContext';
 import Table from '../components/ui/Table';
@@ -538,16 +538,7 @@ const PhysicalInventory = () => {
                 aoa.push([]); // Separation row
             });
 
-            const ws = XLSX.utils.aoa_to_sheet(aoa);
-            
-            ws['!cols'] = [
-                { wch: 20 }, { wch: 45 }, { wch: 15 }, 
-                { wch: 15 }, { wch: 15 }, { wch: 18 }, { wch: 18 }
-            ];
-
-            const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, "Inventario Físico");
-            XLSX.writeFile(wb, `Inventario_Fisico_${(inv.branch_name || 'Sucursal').replace(/[^a-zA-Z0-9]/g, '_')}_INV${inv.id}.xlsx`);
+            exportAoaToExcel(aoa, `Inventario_Fisico_${(inv.branch_name || 'Sucursal').replace(/[^a-zA-Z0-9]/g, '_')}_INV${inv.id}`, "Inventario Físico");
             
             toast.dismiss('excel-export');
             toast.success('Excel exportado correctamente');

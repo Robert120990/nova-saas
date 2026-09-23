@@ -444,13 +444,37 @@ const GasCouponLiquidation = () => {
     };
 
     // Exportar PDF
-    const handleDownloadPDF = (id) => {
-        window.open(`/api/gas-station/coupon-liquidations/${id}/pdf`, '_blank');
+    const handleDownloadPDF = async (id) => {
+        try {
+            const res = await axios.get(`/api/gas-station/coupon-liquidations/${id}/pdf`, { responseType: 'blob' });
+            const blob = new Blob([res.data], { type: 'application/pdf' });
+            const url = window.URL.createObjectURL(blob);
+            window.open(url, '_blank');
+            setTimeout(() => window.URL.revokeObjectURL(url), 10000);
+        } catch (err) {
+            console.error('Error al generar PDF de liquidación:', err);
+            toast.error('Error al descargar el PDF');
+        }
     };
 
     // Exportar Excel
-    const handleDownloadExcel = (id) => {
-        window.open(`/api/gas-station/coupon-liquidations/${id}/excel`, '_blank');
+    const handleDownloadExcel = async (id) => {
+        try {
+            const res = await axios.get(`/api/gas-station/coupon-liquidations/${id}/excel`, { responseType: 'blob' });
+            const blob = new Blob([res.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `liquidacion_cupones_${id}.xlsx`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            setTimeout(() => window.URL.revokeObjectURL(url), 10000);
+            toast.success('Liquidación exportada a Excel');
+        } catch (err) {
+            console.error('Error al exportar Excel de liquidación:', err);
+            toast.error('Error al exportar el archivo Excel');
+        }
     };
 
     return (

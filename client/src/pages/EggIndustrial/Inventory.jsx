@@ -61,8 +61,32 @@ const EggInventory = () => {
     }, []);
 
     // Exportar a PDF o Excel
-    const handleExport = (format) => {
-        window.open(`/api/egg-industrial/inventory-translated/export?format=${format}`, '_blank');
+    const handleExport = async (format) => {
+        try {
+            const res = await axios.get(`/api/egg-industrial/inventory-translated/export?format=${format}`, {
+                responseType: 'blob'
+            });
+            const isPdf = format === 'pdf';
+            const blob = new Blob([res.data], {
+                type: isPdf ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            });
+            const url = window.URL.createObjectURL(blob);
+            if (isPdf) {
+                window.open(url, '_blank');
+            } else {
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `inventario_industrial_${new Date().toISOString().split('T')[0]}.xlsx`;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+            }
+            setTimeout(() => window.URL.revokeObjectURL(url), 10000);
+            toast.success(`Reporte exportado en formato ${format.toUpperCase()}`);
+        } catch (err) {
+            console.error(`Error al exportar inventario a ${format}:`, err);
+            toast.error(`Error al exportar a ${format.toUpperCase()}`);
+        }
     };
 
     // 1. Filtrar lista agrupada por vinculación (egg_product_code_mappings)

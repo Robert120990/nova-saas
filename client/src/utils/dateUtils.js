@@ -71,9 +71,57 @@ export const formatDateDMY = (dateStr) => {
     return `${day}/${month}/${year}`;
 };
 
+/**
+ * Standard date formatter for UI tables and modals.
+ * @param {Date|string} dateStr
+ * @param {string} [fallback='---']
+ * @returns {string}
+ */
+export const formatDate = (dateStr, fallback = '---') => {
+    if (!dateStr) return fallback;
+    const formatted = formatDateDMY(dateStr);
+    return formatted || fallback;
+};
+
+/**
+ * Formats a date and time to DD/MM/YYYY HH:mm:ss.
+ * @param {Date|string} dateStr
+ * @param {string} [fallback='---']
+ * @returns {string}
+ */
+export const formatDateTime = (dateStr, fallback = '---') => {
+    if (!dateStr) return fallback;
+    const d = dateStr instanceof Date ? dateStr : new Date(dateStr);
+    if (isNaN(d.getTime())) return fallback;
+    const dateFormatted = formatDateDMY(d);
+    const hours = String(d.getHours()).padStart(2, '0');
+    const minutes = String(d.getMinutes()).padStart(2, '0');
+    const seconds = String(d.getSeconds()).padStart(2, '0');
+    return `${dateFormatted} ${hours}:${minutes}:${seconds}`;
+};
+
+/**
+ * Formats time only to HH:mm:ss.
+ * @param {Date|string} dateStr
+ * @param {string} [fallback='']
+ * @returns {string}
+ */
+export const formatTime = (dateStr, fallback = '') => {
+    if (!dateStr) return fallback;
+    const d = dateStr instanceof Date ? dateStr : new Date(dateStr);
+    if (isNaN(d.getTime())) return fallback;
+    const hours = String(d.getHours()).padStart(2, '0');
+    const minutes = String(d.getMinutes()).padStart(2, '0');
+    const seconds = String(d.getSeconds()).padStart(2, '0');
+    return `${hours}:${minutes}:${seconds}`;
+};
+
 export default {
     getTodayString,
     getFirstDayOfMonth,
     getLastDayOfMonth,
-    formatDateDMY
+    formatDateDMY,
+    formatDate,
+    formatDateTime,
+    formatTime
 };

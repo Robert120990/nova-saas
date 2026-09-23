@@ -22,7 +22,7 @@ import {
     FileText as FilePdf,
     Barcode
 } from 'lucide-react';
-import * as XLSX from 'xlsx';
+import { exportJsonToExcel } from '../utils/excelExport';
 import PdfViewerModal from '../components/ui/PdfViewerModal';
 import Table from '../components/ui/Table';
 import Pagination from '../components/ui/Pagination';
@@ -164,8 +164,10 @@ const Transfers = () => {
     };
 
     const exportToExcel = () => {
-        if (!transfersData?.data?.length) return;
-        const worksheet = XLSX.utils.json_to_sheet(transfersData.data.map(t => ({
+        if (!transfersData?.data?.length) {
+            return toast.warning('No hay traslados para exportar');
+        }
+        const rows = transfersData.data.map(t => ({
             Documento: `TR-${String(t.id).padStart(6, '0')}`,
             Fecha: new Date(t.fecha).toLocaleString(),
             Origen: t.origen_nombre,
@@ -173,10 +175,8 @@ const Transfers = () => {
             Usuario: t.usuario_nombre,
             Items: t.items_count,
             Estado: t.status
-        })));
-        const workbook = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(workbook, worksheet, "Traslados");
-        XLSX.writeFile(workbook, `Traslados_${new Date().toISOString().split('T')[0]}.xlsx`);
+        }));
+        exportJsonToExcel(rows, `Traslados_${new Date().toISOString().split('T')[0]}`, 'Traslados');
     };
 
     const handleOpenPdfModal = async () => {
