@@ -3734,6 +3734,407 @@ const generateAguinaldoRecibosPDF = (data) => {
     });
 };
 
+const generateQuincena25PDF = async (data) => {
+    const { doc, getBuffer } = reportPdfHelper.createPdfDocument('landscape');
+
+    const startX = 30;
+    const contentWidth = 732;
+    const items = data.items || [];
+    const company = data.company || {
+        razon_social: data.company_name || 'EMPRESA REGISTRADA',
+        nit: data.company_nit || '0000-000000-000-0',
+        nrc: data.company_nrc || '000000-0'
+    };
+
+    const title = 'PLANILLA DE QUINCENA VEINTICINCO (PLANILLA 25)';
+    const periodText = `EJERCICIO FISCAL: ${data.anio || new Date().getFullYear()} • LEY ESPECIAL QUINCENA 25 (D.L. Nº 499)`;
+    let subtitle = null;
+    if (data.departamento_label && data.departamento_label !== 'Todos') {
+        subtitle = `DEPARTAMENTO: ${data.departamento_label}`;
+    }
+    if (data.sucursal_label && data.sucursal_label !== 'Todas') {
+        subtitle = subtitle ? `${subtitle}   |   SUCURSAL: ${data.sucursal_label}` : `SUCURSAL: ${data.sucursal_label}`;
+    }
+
+    reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+
+    const colW = {
+        num: 20,
+        codigo: 42,
+        nombre: 152,
+        cargo: 90,
+        depto: 85,
+        ingreso: 50,
+        dias: 38,
+        condicion: 60,
+        sueldo: 65,
+        monto: 65,
+        recibir: 65
+    };
+
+    const drawTableHeader = (yPos) => {
+        doc.rect(startX, yPos, contentWidth, 14).fill('#f1f5f9');
+        doc.fontSize(7).font('Helvetica-Bold').fillColor('#0f172a');
+        let x = startX + 2;
+        doc.text('Nº', x, yPos + 3.5, { width: colW.num, align: 'center' }); x += colW.num;
+        doc.text('CÓDIGO', x, yPos + 3.5, { width: colW.codigo }); x += colW.codigo;
+        doc.text('EMPLEADO', x, yPos + 3.5, { width: colW.nombre }); x += colW.nombre;
+        doc.text('CARGO', x, yPos + 3.5, { width: colW.cargo }); x += colW.cargo;
+        doc.text('DEPARTAMENTO', x, yPos + 3.5, { width: colW.depto }); x += colW.depto;
+        doc.text('F. INGRESO', x, yPos + 3.5, { width: colW.ingreso, align: 'center' }); x += colW.ingreso;
+        doc.text('DÍAS COMP.', x, yPos + 3.5, { width: colW.dias, align: 'center' }); x += colW.dias;
+        doc.text('CONDICIÓN', x, yPos + 3.5, { width: colW.condicion, align: 'center' }); x += colW.condicion;
+        doc.text('SUELDO BASE', x, yPos + 3.5, { width: colW.sueldo - 3, align: 'right' }); x += colW.sueldo;
+        doc.text('MONTO Q25', x, yPos + 3.5, { width: colW.monto - 3, align: 'right' }); x += colW.monto;
+        doc.text('TOTAL A PAGAR', x, yPos + 3.5, { width: colW.recibir - 3, align: 'right' });
+
+        doc.strokeColor('#cbd5e1').lineWidth(0.5).moveTo(startX, yPos + 14).lineTo(startX + contentWidth, yPos + 14).stroke();
+        return yPos + 17;
+    };
+
+    let y = drawTableHeader(doc.y + 4);
+
+    if (items.length === 0) {
+        doc.fontSize(8.5).font('Helvetica').fillColor('#64748b');
+        doc.text('No se encontraron registros de Quincena 25 para el período seleccionado.', startX, y + 10);
+        y += 30;
+    } else {
+        let totalSueldo = 0;
+        let totalMontoQ25 = 0;
+        let totalRecibir = 0;
+        let globalIndex = 0;
+
+        for (const item of items) {
+            globalIndex++;
+            if (y > 525) {
+                doc.addPage();
+                reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+                y = drawTableHeader(doc.y + 4);
+            }
+
+            const sueldo = parseFloat(item.sueldo_base || 0);
+            const montoQ25 = parseFloat(item.monto_quincena25 || 0);
+            const recibir = parseFloat(item.monto_recibir || 0);
+
+            totalSueldo += sueldo;
+            totalMontoQ25 += montoQ25;
+            totalRecibir += recibir;
+
+            if (globalIndex % 2 === 0) {
+                doc.rect(startX, y - 1.5, contentWidth, 12).fill('#f8fafc');
+            }
+
+            doc.fontSize(7).font('Helvetica').fillColor('#1e293b');
+            let rx = startX + 2;
+            doc.text(String(globalIndex), rx, y, { width: colW.num, align: 'center' }); rx += colW.num;
+            doc.text(item.codigo || '', rx, y, { width: colW.codigo }); rx += colW.codigo;
+            const empNombre = `${item.nombres || ''} ${item.apellidos || ''}`.trim();
+            doc.text(empNombre.substring(0, 32), rx, y, { width: colW.nombre - 3, ellipsis: true }); rx += colW.nombre;
+            const cargoNombre = item.cargo_nombre || 'GENERAL';
+            doc.text(cargoNombre.substring(0, 18), rx, y, { width: colW.cargo - 3, ellipsis: true }); rx += colW.cargo;
+            const deptoNombre = item.departamento_nombre || 'GENERAL';
+            doc.text(deptoNombre.substring(0, 18), rx, y, { width: colW.depto - 3, ellipsis: true }); rx += colW.depto;
+            doc.text(reportPdfHelper.formatDate(item.fecha_ingreso), rx, y, { width: colW.ingreso, align: 'center' }); rx += colW.ingreso;
+            doc.text(String(item.dias_laborados_anio || 0), rx, y, { width: colW.dias, align: 'center' }); rx += colW.dias;
+            const condText = item.es_proporcional ? 'PROPORCIONAL' : '100% LEY';
+            doc.text(condText, rx, y, { width: colW.condicion, align: 'center' }); rx += colW.condicion;
+            doc.text(reportPdfHelper.fmt(sueldo), rx, y, { width: colW.sueldo - 3, align: 'right' }); rx += colW.sueldo;
+            doc.text(reportPdfHelper.fmt(montoQ25), rx, y, { width: colW.monto - 3, align: 'right' }); rx += colW.monto;
+            doc.font('Helvetica-Bold').text(reportPdfHelper.fmt(recibir), rx, y, { width: colW.recibir - 3, align: 'right' });
+            y += 12;
+        }
+
+        // Totales generales
+        if (y > 510) {
+            doc.addPage();
+            reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+            y = doc.y + 10;
+        }
+
+        doc.strokeColor('#0f172a').lineWidth(1).moveTo(startX, y).lineTo(startX + contentWidth, y).stroke();
+        y += 4;
+        doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#0f172a');
+        doc.text('TOTALES GENERALES:', startX + 2, y);
+
+        let tx = startX + colW.num + colW.codigo + colW.nombre + colW.cargo + colW.depto + colW.ingreso + colW.dias + colW.condicion;
+        doc.text(reportPdfHelper.fmt(totalSueldo), tx, y, { width: colW.sueldo - 3, align: 'right' }); tx += colW.sueldo;
+        doc.text(reportPdfHelper.fmt(totalMontoQ25), tx, y, { width: colW.monto - 3, align: 'right' }); tx += colW.monto;
+        doc.text(reportPdfHelper.fmt(totalRecibir), tx, y, { width: colW.recibir - 3, align: 'right' });
+
+        y += 18;
+    }
+
+    reportPdfHelper.renderClosingFooter(doc, startX, y, items.length, 'Empleados');
+    reportPdfHelper.renderPageNumbers(doc);
+
+    doc.end();
+    return getBuffer();
+};
+
+const generateQuincena25RecibosPDF = (data) => {
+    return new Promise((resolve, reject) => {
+        try {
+            const doc = new PDFDocument({ margin: 20, size: 'LETTER' });
+            const buffers = [];
+            doc.on('data', buffers.push.bind(buffers));
+            doc.on('end', () => resolve(Buffer.concat(buffers)));
+            doc.on('error', (err) => reject(err));
+
+            const items = data.items || [];
+            const anio = data.anio || new Date().getFullYear();
+            const responsable = data.responsable_nombre || 'RECURSOS HUMANOS';
+            const firmaPath = data.firma_url || '';
+            const selloPath = data.sello_url || '';
+            const logoPath = data.logo_url;
+
+            const M = 28;
+            const W = 556;
+
+            const fmtDate = (d) => {
+                if (!d) return '—';
+                try {
+                    const date = new Date(d);
+                    if (isNaN(date.getTime())) return String(d);
+                    const dd = date.getUTCDate().toString().padStart(2, '0');
+                    const mm = (date.getUTCMonth() + 1).toString().padStart(2, '0');
+                    const yy = date.getUTCFullYear();
+                    return `${dd}/${mm}/${yy}`;
+                } catch (e) { return String(d); }
+            };
+
+            for (let i = 0; i < items.length; i++) {
+                if (i > 0) doc.addPage();
+                const item = items[i];
+                const sueldo = parseFloat(item.sueldo_base || 0);
+                const sueldoDiario = sueldo / 30;
+                const montoQ25 = parseFloat(item.monto_quincena25 || 0);
+                const ajuste = parseFloat(item.ajuste || 0);
+                const monto = parseFloat(item.monto_recibir || 0);
+                const dias = item.dias_laborados_anio || 365;
+                const depto = item.departamento_nombre || 'GENERAL';
+                const cargo = item.cargo_nombre || 'GENERAL';
+                const nombre = `${item.nombres || ''} ${item.apellidos || ''}`.trim();
+                const montoLetras = numberToWords ? numberToWords(monto) : '';
+
+                const drawCopy = (yStart, label) => {
+                    let y = yStart;
+
+                    // --- 1. Header (Logo, Company, Title Pill) ---
+                    let logoRendered = false;
+                    if (logoPath) {
+                        try {
+                            const f = logoPath.split('/').pop();
+                            const p = path.join(__dirname, '..', '..', 'uploads', f);
+                            if (fs.existsSync(p)) {
+                                doc.image(p, M, y, { fit: [60, 26] });
+                                logoRendered = true;
+                            }
+                        } catch (e) { /* ignore */ }
+                    }
+
+                    const companyX = logoRendered ? M + 68 : M;
+                    const companyMaxW = logoRendered ? 270 : 330;
+
+                    doc.fontSize(9).font('Helvetica-Bold').fillColor('#0f172a');
+                    doc.text(data.company_name?.toUpperCase() || 'EMPRESA REGISTRADA', companyX, y, { width: companyMaxW, ellipsis: true });
+                    doc.fontSize(6.5).font('Helvetica').fillColor('#64748b');
+                    doc.text(data.company_nit ? `NIT: ${data.company_nit}` : '', companyX, y + 11);
+
+                    // Right header pill: Titulo & Periodo
+                    const rightPillW = 230;
+                    const rightPillX = M + W - rightPillW;
+                    doc.fontSize(8).font('Helvetica-Bold').fillColor('#312e81');
+                    doc.text('RECIBO DE PAGO DE QUINCENA 25', rightPillX, y, { width: rightPillW, align: 'right' });
+                    doc.fontSize(6.8).font('Helvetica-Bold').fillColor('#4338ca');
+                    doc.text(`EJERCICIO: ${anio}   •   D.L. Nº 499 (PRESTACIÓN DE LEY)`, rightPillX, y + 11, { width: rightPillW, align: 'right' });
+
+                    y += 24;
+                    doc.strokeColor('#cbd5e1').lineWidth(0.5).moveTo(M, y).lineTo(M + W, y).stroke();
+                    y += 4;
+
+                    // --- 2. Employee Info Card ---
+                    const cardH = 34;
+                    doc.rect(M, y, W, cardH).fill('#f8fafc').stroke('#e2e8f0');
+
+                    // Row 1
+                    doc.fontSize(6).font('Helvetica-Bold').fillColor('#64748b');
+                    doc.text('EMPLEADO:', M + 8, y + 3.5);
+                    doc.fontSize(7.2).font('Helvetica-Bold').fillColor('#0f172a');
+                    doc.text(nombre.substring(0, 32), M + 8, y + 11.5, { width: 175, ellipsis: true });
+
+                    doc.fontSize(6).font('Helvetica-Bold').fillColor('#64748b');
+                    doc.text('CARGO / DEPTO:', M + 190, y + 3.5);
+                    doc.fontSize(6.8).font('Helvetica').fillColor('#1e293b');
+                    const cargoDepto = `${cargo} • ${depto}`;
+                    doc.text(cargoDepto.substring(0, 32), M + 190, y + 11.5, { width: 175, ellipsis: true });
+
+                    doc.fontSize(6).font('Helvetica-Bold').fillColor('#64748b');
+                    doc.text('CONDICIÓN / DÍAS:', M + 375, y + 3.5);
+                    doc.fontSize(6.8).font('Helvetica-Bold').fillColor('#1e293b');
+                    const condicionLabel = item.es_proporcional ? `PROPORCIONAL (${dias} DÍAS)` : '100% LEY (1 AÑO+)';
+                    doc.text(condicionLabel, M + 375, y + 11.5);
+
+                    doc.fontSize(6).font('Helvetica-Bold').fillColor('#64748b');
+                    doc.text('SUELDO MENSUAL:', M + 465, y + 3.5);
+                    doc.fontSize(7.2).font('Helvetica-Bold').fillColor('#0f172a');
+                    doc.text(`$ ${sueldo.toFixed(2)}`, M + 465, y + 11.5);
+
+                    // Row 2
+                    doc.fontSize(6.2).font('Helvetica').fillColor('#64748b');
+                    const metaLine = `CÓD: ${item.codigo || '—'}   |   DUI: ${item.num_dui || '—'}   |   NIT: ${item.num_nit || '—'}   |   INGRESO: ${fmtDate(item.fecha_ingreso)}   |   S. DIARIO: $ ${sueldoDiario.toFixed(2)}`;
+                    doc.text(metaLine, M + 8, y + 23);
+
+                    y += cardH + 5;
+
+                    // --- 3. Two Columns: PERCEPCIONES & DEDUCCIONES ---
+                    const colW = 270;
+                    const colGutter = 16;
+                    const leftX = M;
+                    const rightX = M + colW + colGutter;
+                    const headerH = 12;
+                    const rowH = 10;
+
+                    // Headers
+                    doc.rect(leftX, y, colW, headerH).fill('#f1f5f9');
+                    doc.fontSize(6.8).font('Helvetica-Bold').fillColor('#1e293b');
+                    doc.text('PERCEPCIONES (INGRESOS)', leftX + 4, y + 3, { width: 180 });
+                    doc.text('VALOR', leftX + 190, y + 3, { width: 75, align: 'right' });
+
+                    doc.rect(rightX, y, colW, headerH).fill('#f1f5f9');
+                    doc.text('DEDUCCIONES Y RETENCIONES', rightX + 4, y + 3, { width: 180 });
+                    doc.text('VALOR', rightX + 190, y + 3, { width: 75, align: 'right' });
+
+                    y += headerH + 3;
+
+                    // Left Column: Quincena 25
+                    let percY = y;
+                    doc.font('Helvetica').fontSize(6.5).fillColor('#334155');
+                    const descQ25 = item.es_proporcional
+                        ? `Quincena 25 Proporcional (${dias} días de servicio - D.L. 499)`
+                        : `Quincena 25 (50% Salario Mensual - D.L. 499)`;
+                    doc.text(descQ25, leftX + 4, percY, { width: 185, ellipsis: true });
+                    doc.text(`$ ${montoQ25.toFixed(2)}`, leftX + 190, percY, { width: 75, align: 'right' });
+                    percY += rowH;
+
+                    if (ajuste !== 0) {
+                        doc.text('Ajuste o Bonificación Complementaria', leftX + 4, percY, { width: 185, ellipsis: true });
+                        doc.text(`$ ${ajuste.toFixed(2)}`, leftX + 190, percY, { width: 75, align: 'right' });
+                        percY += rowH;
+                    }
+
+                    // Right Column: Sin Deducciones
+                    let dedY = y;
+                    doc.font('Helvetica').fontSize(6.5).fillColor('#64748b');
+                    doc.text('Prestación Exenta de Renta, ISSS y AFP (0.00)', rightX + 4, dedY, { width: 185 });
+                    doc.text('$ 0.00', rightX + 190, dedY, { width: 75, align: 'right' });
+                    dedY += rowH;
+
+                    // Subtotals
+                    const maxRowY = Math.max(percY, dedY) + 2;
+
+                    doc.strokeColor('#cbd5e1').lineWidth(0.5).moveTo(leftX, maxRowY).lineTo(leftX + colW, maxRowY).stroke();
+                    doc.font('Helvetica-Bold').fontSize(7).fillColor('#0f172a');
+                    doc.text('TOTAL DEVENGADO', leftX + 4, maxRowY + 3, { width: 180 });
+                    doc.text(`$ ${monto.toFixed(2)}`, leftX + 190, maxRowY + 3, { width: 75, align: 'right' });
+
+                    doc.strokeColor('#cbd5e1').lineWidth(0.5).moveTo(rightX, maxRowY).lineTo(rightX + colW, maxRowY).stroke();
+                    doc.font('Helvetica-Bold').fontSize(7).fillColor('#0f172a');
+                    doc.text('TOTAL DEDUCCIONES', rightX + 4, maxRowY + 3, { width: 180 });
+                    doc.text('$ 0.00', rightX + 190, maxRowY + 3, { width: 75, align: 'right' });
+
+                    y = maxRowY + 16;
+
+                    // --- 4. Líquido a Recibir ---
+                    const netH = 17;
+                    doc.rect(M, y, W, netH).fill('#eef2ff').stroke('#c7d2fe');
+                    doc.fontSize(7.8).font('Helvetica-Bold').fillColor('#3730a3');
+                    doc.text('LÍQUIDO A RECIBIR (NETO A PAGAR):', M + 8, y + 4.5);
+                    doc.fontSize(9.5).font('Helvetica-Bold').fillColor('#1e1b4b');
+                    doc.text(`$ ${monto.toFixed(2)}`, M + W - 140, y + 4, { width: 130, align: 'right' });
+
+                    y += netH + 3;
+                    doc.fontSize(6.2).font('Helvetica-Oblique').fillColor('#475569');
+                    doc.text(`Son: ${montoLetras}`, M + 4, y, { width: W - 8 });
+
+                    y += 9;
+                    doc.fontSize(5.5).font('Helvetica').fillColor('#64748b');
+                    doc.text(`Dinero que recibo a mi entera satisfacción en concepto de la prestación económica extraordinaria Quincena Veinticinco del ejercicio ${anio}, en cumplimiento del Decreto Legislativo N° 499, haciéndose constar que dicho beneficio no admite descuentos de seguridad social ni tributarios.`, M + 4, y, { width: W - 8 });
+
+                    // --- 5. Signatures ---
+                    y += 34;
+                    const sigLineY = y;
+                    const sigW = 200;
+
+                    // Empleado
+                    doc.strokeColor('#94a3b8').lineWidth(0.5).moveTo(M + 15, sigLineY).lineTo(M + 15 + sigW, sigLineY).stroke();
+                    doc.fontSize(6.2).font('Helvetica-Bold').fillColor('#334155');
+                    doc.text('RECIBÍ CONFORME', M + 15, sigLineY + 2.5, { width: sigW, align: 'center' });
+                    doc.fontSize(6.8).font('Helvetica-Bold').fillColor('#0f172a');
+                    doc.text(nombre, M + 15, sigLineY + 10.5, { width: sigW, align: 'center' });
+                    doc.fontSize(5.8).font('Helvetica').fillColor('#64748b');
+                    doc.text(`DUI: ${item.num_dui || '—'}   |   NIT: ${item.num_nit || '—'}`, M + 15, sigLineY + 18.5, { width: sigW, align: 'center' });
+
+                    // Empresa / RRHH
+                    const rightSigX = M + W - sigW - 15;
+
+                    if (firmaPath) {
+                        try {
+                            const fFile = firmaPath.split('/').pop();
+                            const fAbs = path.join(__dirname, '..', '..', 'uploads', fFile);
+                            if (fs.existsSync(fAbs)) {
+                                doc.image(fAbs, rightSigX + 15, sigLineY - 30, { fit: [90, 28] });
+                            }
+                        } catch (e) {}
+                    }
+                    if (selloPath) {
+                        try {
+                            const sFile = selloPath.split('/').pop();
+                            const sAbs = path.join(__dirname, '..', '..', 'uploads', sFile);
+                            if (fs.existsSync(sAbs)) {
+                                doc.image(sAbs, rightSigX + 115, sigLineY - 30, { fit: [75, 28] });
+                            }
+                        } catch (e) {}
+                    }
+
+                    doc.strokeColor('#94a3b8').lineWidth(0.5).moveTo(rightSigX, sigLineY).lineTo(rightSigX + sigW, sigLineY).stroke();
+                    doc.fontSize(6.2).font('Helvetica-Bold').fillColor('#334155');
+                    doc.text('AUTORIZADO POR', rightSigX, sigLineY + 2.5, { width: sigW, align: 'center' });
+                    doc.fontSize(6.8).font('Helvetica-Bold').fillColor('#0f172a');
+                    doc.text(responsable.toUpperCase(), rightSigX, sigLineY + 10.5, { width: sigW, align: 'center' });
+                    doc.fontSize(5.8).font('Helvetica').fillColor('#64748b');
+                    doc.text('DEPARTAMENTO DE RECURSOS HUMANOS', rightSigX, sigLineY + 18.5, { width: sigW, align: 'center' });
+
+                    // Copy label at bottom
+                    doc.fontSize(6).font('Helvetica-Bold').fillColor('#818cf8');
+                    doc.text(`• ${label} •`, M, sigLineY + 27, { width: W, align: 'center' });
+                };
+
+                // Top Copy (Copia Empleado)
+                drawCopy(22, 'COPIA EMPLEADO');
+
+                // Middle dashed divider line
+                const PAGE_MID = 396;
+                doc.save()
+                   .strokeColor('#cbd5e1')
+                   .lineWidth(0.6)
+                   .dash(4, { space: 3 })
+                   .moveTo(M, PAGE_MID)
+                   .lineTo(M + W, PAGE_MID)
+                   .stroke()
+                   .undash()
+                   .restore();
+
+                // Bottom Copy (Original Empresa)
+                drawCopy(PAGE_MID + 14, 'ORIGINAL EMPRESA');
+            }
+
+            doc.end();
+        } catch (err) {
+            reject(err);
+        }
+    });
+};
+
 const generateCloseoutDetailPDF = async (data) => {
     const { doc, getBuffer } = reportPdfHelper.createPdfDocument('landscape');
     const company = await resolveCompanyInfo(data);
@@ -6981,6 +7382,8 @@ module.exports = {
     generateVentasLecturasAnalyticsPDF,
     generatePlanillaPDF,
     generatePlanillaReciboPDF,
-    generateArqueosReportPDF
+    generateArqueosReportPDF,
+    generateQuincena25PDF,
+    generateQuincena25RecibosPDF
 };
 

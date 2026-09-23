@@ -25,20 +25,32 @@ const PlanillaReportModal = ({ isOpen, onClose, periodo }) => {
     const departamento_nombre = periodo?.departamento_nombre;
     const tipo = periodo?.tipo || 'planilla';
     const isAguinaldo = tipo === 'aguinaldo' || tipo === 'aguinaldo-recibos';
-    const isRecibos = tipo === 'recibos' || tipo === 'aguinaldo-recibos';
+    const isQuincena25 = tipo === 'quincena25' || tipo === 'quincena25-recibos';
+    const isRecibos = tipo === 'recibos' || tipo === 'aguinaldo-recibos' || tipo === 'quincena25-recibos';
 
     const mesLabel = MONTH_NAMES[parseInt(mes)] || `Mes ${mes}`;
     const quincenaLabel = quincena === 'primera' ? '1ra Quincena' : '2da Quincena';
 
     const fetchReport = async () => {
-        if (!anio || (!isAguinaldo && (!mes || !quincena))) return;
+        if (!anio || (!isAguinaldo && !isQuincena25 && (!mes || !quincena))) return;
         setIsLoading(true);
         setError(null);
         try {
             let endpoint = '';
             let params = {};
 
-            if (tipo === 'aguinaldo') {
+            if (tipo === 'quincena25') {
+                endpoint = '/api/rh/planilla-quincena25/pdf';
+                params = { año: anio };
+                if (departamento_id && departamento_id !== '0' && departamento_id !== 'all') params.departamento_id = departamento_id;
+                if (periodo?.branch_id && periodo.branch_id !== '0' && periodo.branch_id !== 'all') params.branch_id = periodo.branch_id;
+            } else if (tipo === 'quincena25-recibos') {
+                endpoint = '/api/rh/planilla-quincena25/recibos';
+                params = { año: anio };
+                if (periodo?.empleado_id) params.empleado_id = periodo.empleado_id;
+                if (departamento_id && departamento_id !== '0' && departamento_id !== 'all') params.departamento_id = departamento_id;
+                if (periodo?.branch_id && periodo.branch_id !== '0' && periodo.branch_id !== 'all') params.branch_id = periodo.branch_id;
+            } else if (tipo === 'aguinaldo') {
                 endpoint = '/api/rh/planilla-aguinaldos/pdf';
                 params = { año: anio, mes: mes || 12 };
                 if (departamento_id && departamento_id !== '0') params.departamento_id = departamento_id;
@@ -209,28 +221,34 @@ const PlanillaReportModal = ({ isOpen, onClose, periodo }) => {
                         <div className="min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
                                 <h3 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight truncate">
-                                    {isAguinaldo
-                                        ? (isRecibos ? 'Recibos de Aguinaldo Masivos' : 'Planilla de Aguinaldos')
-                                        : (isRecibos ? 'Recibos de Pago Masivos' : 'Planilla de Sueldos y Salarios')}
+                                    {isQuincena25
+                                        ? (isRecibos ? 'Recibos de Quincena 25' : 'Planilla de Quincena 25')
+                                        : isAguinaldo
+                                            ? (isRecibos ? 'Recibos de Aguinaldo Masivos' : 'Planilla de Aguinaldos')
+                                            : (isRecibos ? 'Recibos de Pago Masivos' : 'Planilla de Sueldos y Salarios')}
                                 </h3>
                                 <span className={`text-[10px] font-bold ${
                                     isRecibos
                                         ? 'text-purple-700 bg-purple-50 border-purple-200/70'
                                         : 'text-indigo-700 bg-indigo-50 border-indigo-200/70'
                                 } border px-2 py-0.5 rounded-full uppercase tracking-wider shrink-0`}>
-                                    {isAguinaldo
-                                        ? (isRecibos ? 'Boletas de Aguinaldo' : 'Formato Oficial')
-                                        : (isRecibos ? 'Boletas de Pago' : 'Formato Oficial')}
+                                    {isQuincena25
+                                        ? (isRecibos ? 'Boletas Quincena 25' : 'D.L. 499')
+                                        : isAguinaldo
+                                            ? (isRecibos ? 'Boletas de Aguinaldo' : 'Formato Oficial')
+                                            : (isRecibos ? 'Boletas de Pago' : 'Formato Oficial')}
                                 </span>
                             </div>
                             <p className="text-xs text-slate-500 font-medium truncate">
-                                {isAguinaldo
-                                    ? `Período: ${mesLabel} ${anio}${departamento_nombre && departamento_nombre !== 'Todos' ? ' • Depto: ' + departamento_nombre : ' • Todos los Departamentos'}`
-                                    : `Período: ${mesLabel} ${anio} • ${quincenaLabel}${
-                                        periodo?.departamento_ids && periodo.departamento_ids.length > 1
-                                            ? ` • ${periodo.departamento_ids.length} Deptos. (Páginas separadas)`
-                                            : (periodo?.departamento_ids && periodo.departamento_ids.length === 1 ? ' • 1 Depto.' : '')
-                                    }`}
+                                {isQuincena25
+                                    ? `Ejercicio: ${anio}${departamento_nombre && departamento_nombre !== 'Todos' ? ' • Depto: ' + departamento_nombre : ' • Todos los Departamentos'}`
+                                    : isAguinaldo
+                                        ? `Período: ${mesLabel} ${anio}${departamento_nombre && departamento_nombre !== 'Todos' ? ' • Depto: ' + departamento_nombre : ' • Todos los Departamentos'}`
+                                        : `Período: ${mesLabel} ${anio} • ${quincenaLabel}${
+                                            periodo?.departamento_ids && periodo.departamento_ids.length > 1
+                                                ? ` • ${periodo.departamento_ids.length} Deptos. (Páginas separadas)`
+                                                : (periodo?.departamento_ids && periodo.departamento_ids.length === 1 ? ' • 1 Depto.' : '')
+                                        }`}
                             </p>
                         </div>
                     </div>
