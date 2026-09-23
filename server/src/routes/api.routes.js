@@ -398,6 +398,7 @@ router.delete('/sales/remesa-deliveries/:id', salesRemesaDeliveryController.dele
 // Sales - Ventas Tienda por fecha (Envío a RRS) — antes de /sales/:id
 router.get('/sales/tienda/ventas', checkPermission('send_sales_rrs'), tiendaVentasController.getVentasByDate);
 router.post('/sales/tienda/ventas/rrs', checkPermission('send_sales_rrs'), tiendaVentasController.sendVentasToRrs);
+router.post('/sales/tienda/sync-auto', checkPermission('send_sales_rrs'), tiendaVentasController.syncAutoNow);
 
 router.put('/sales/change-shift', checkPermission('manage_dte_shift_change'), salesController.changeSalesShift);
 
