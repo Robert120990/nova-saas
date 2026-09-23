@@ -2255,6 +2255,678 @@ const exportSalesDetailPDF = async (req, res) => {
     }
 };
 
+/**
+ * Consulta autoritativa para el Reporte de Descuentos en Ventas (KPIs, resumen y líneas).
+ */
+async function fetchSalesDiscountsPayload(companyId, query) {
+    const { start_date, end_date, branch_id, pos_id, seller_id, customer_id, mode = 'summary' } = query;
+
+    const company = await reportPdfHelper.getCompanyInfo(companyId);
+
+    let branchName = 'Todas las sucursales';
+    if (branch_id && branch_id !== 'all') {
+        const [bRows] = await pool.query('SELECT nombre FROM branches WHERE id = ?', [branch_id]);
+        if (bRows.length > 0) branchName = bRows[0].nombre;
+    }
+
+    let posLabel = 'Todos los puntos de venta';
+    if (pos_id && pos_id !== 'all') {
+        const [pRows] = await pool.query('SELECT nombre FROM points_of_sale WHERE id = ?', [pos_id]);
+        if (pRows.length > 0) posLabel = pRows[0].nombre;
+    }
+
+    let sellerLabel = 'Todos los vendedores';
+    if (seller_id && seller_id !== 'all') {
+        const [sRows] = await pool.query('SELECT nombre FROM sellers WHERE id = ?', [seller_id]);
+        if (sRows.length > 0) sellerLabel = sRows[0].nombre;
+    }
+
+    let customerLabel = 'Todos los clientes';
+    if (customer_id && customer_id !== 'all') {
+        const [cRows] = await pool.query('SELECT nombre FROM customers WHERE id = ?', [customer_id]);
+        if (cRows.length > 0) customerLabel = cRows[0].nombre;
+    }
+
+    let extraFilters = '';
+    const filterParams = [];
+
+    if (branch_id && branch_id !== 'all') {
+        extraFilters += ' AND h.branch_id = ?';
+        filterParams.push(branch_id);
+    }
+    if (pos_id && pos_id !== 'all') {
+        extraFilters += ' AND h.pos_id = ?';
+        filterParams.push(pos_id);
+    }
+    if (seller_id && seller_id !== 'all') {
+        extraFilters += ' AND h.seller_id = ?';
+        filterParams.push(seller_id);
+    }
+    if (customer_id && customer_id !== 'all') {
+        extraFilters += ' AND h.customer_id = ?';
+        filterParams.push(customer_id);
+    }
+
+    // 1. Resumen por Documento
+    const docsSql = `
+        SELECT
+            h.id AS sale_id,
+            h.fecha_emision,
+            h.hora_emision,
+            h.tipo_documento,
+            cat.description AS tipo_dte,
+            COALESCE(${dteLatestColSql('h', 'numero_control')}, CONCAT('VTA-', h.id)) AS numero_control,
+            COALESCE(b.nombre, 'Sin Sucursal') AS sucursal,
+            COALESCE(pos.nombre, 'Sin POS') AS pos,
+            COALESCE(s.nombre, 'Sin Asignar') AS vendedor,
+            COALESCE(c.nombre, h.cliente_nombre, 'CONSUMIDOR FINAL') AS cliente,
+            h.descuento_general,
+            h.total_pagar,
+            h.total_gravado,
+            h.total_exento,
+            h.total_nosujetas,
+            h.total_iva,
+            h.fovial,
+            h.cotrans,
+            COALESCE(item_agg.total_item_discount, 0) AS descuento_items,
+            COALESCE(item_agg.total_gross_items, 0) AS subtotal_bruto_items,
+            COALESCE(item_agg.items_count, 0) AS items_count
+        FROM sales_headers h
+        JOIN (
+            SELECT 
+                sale_id,
+                SUM(monto_descuento) AS total_item_discount,
+                SUM(cantidad * precio_unitario) AS total_gross_items,
+                COUNT(*) AS items_count
+            FROM sales_items
+            GROUP BY sale_id
+        ) item_agg ON h.id = item_agg.sale_id
+        LEFT JOIN branches b ON h.branch_id = b.id
+        LEFT JOIN points_of_sale pos ON h.pos_id = pos.id
+        LEFT JOIN sellers s ON h.seller_id = s.id
+        LEFT JOIN customers c ON h.customer_id = c.id
+        LEFT JOIN cat_002_tipo_dte cat ON h.tipo_documento = cat.code
+        WHERE h.company_id = ?
+          AND LOWER(h.estado) = 'emitido'
+          AND ${dteValidoExistsSql('h')}
+          AND h.fecha_emision BETWEEN ? AND ?
+          AND (h.descuento_general > 0 OR item_agg.total_item_discount > 0)
+          ${extraFilters}
+        ORDER BY h.fecha_emision ASC, h.id ASC
+    `;
+
+    const [docRows] = await pool.query(docsSql, [companyId, start_date, end_date, ...filterParams]);
+
+    const shortDteNames = {
+        '01': 'Factura',
+        '03': 'Crédito Fiscal',
+        '04': 'Nota Remisión',
+        '05': 'Nota Crédito',
+        '06': 'Nota Débito',
+        '07': 'Comp. Retención',
+        '08': 'Comp. Liquidación',
+        '11': 'Fact. Exportación',
+        '14': 'Fact. Suj. Excl.'
+    };
+
+    const documents = docRows.map(r => {
+        const descGen = parseFloat(r.descuento_general) || 0;
+        const descItems = parseFloat(r.descuento_items) || 0;
+        const descTotal = descGen + descItems;
+        const totalPagar = parseFloat(r.total_pagar) || 0;
+        const subtotalBruto = totalPagar + descTotal;
+        const pctDesc = subtotalBruto > 0 ? (descTotal / subtotalBruto) * 100 : 0;
+        const tipoDteName = shortDteNames[r.tipo_documento] || r.tipo_dte || getDteTypeName(r.tipo_documento) || 'Documento';
+        return {
+            sale_id: r.sale_id,
+            fecha: reportPdfHelper.formatDate(r.fecha_emision),
+            hora: r.hora_emision ? String(r.hora_emision).substring(0, 5) : '',
+            tipo_documento: r.tipo_documento,
+            tipo_dte: tipoDteName,
+            numero_control: String(r.numero_control || '---'),
+            sucursal: String(r.sucursal || '---'),
+            pos: String(r.pos || '---'),
+            vendedor: String(r.vendedor || '---'),
+            cliente: String(r.cliente || 'CONSUMIDOR FINAL').toUpperCase(),
+            subtotal_bruto: subtotalBruto,
+            descuento_items: descItems,
+            descuento_general: descGen,
+            descuento_total: descTotal,
+            total_pagar: totalPagar,
+            porcentaje_descuento: pctDesc,
+            items_count: r.items_count
+        };
+    });
+
+    // 2. Detalle por Ítem
+    const itemsSql = `
+        SELECT
+            h.id AS sale_id,
+            h.fecha_emision,
+            h.tipo_documento,
+            cat.description AS tipo_dte,
+            COALESCE(${dteLatestColSql('h', 'numero_control')}, CONCAT('VTA-', h.id)) AS numero_control,
+            COALESCE(b.nombre, 'Sin Sucursal') AS sucursal,
+            COALESCE(pos.nombre, 'Sin POS') AS pos,
+            COALESCE(s.nombre, 'Sin Asignar') AS vendedor,
+            COALESCE(c.nombre, h.cliente_nombre, 'CONSUMIDOR FINAL') AS cliente,
+            si.id AS item_id,
+            COALESCE(si.codigo, p.codigo, '---') AS codigo_producto,
+            COALESCE(si.descripcion, p.descripcion, 'Producto') AS descripcion,
+            si.cantidad,
+            si.precio_unitario,
+            si.monto_descuento,
+            si.venta_gravada,
+            si.venta_exenta,
+            h.descuento_general
+        FROM sales_headers h
+        JOIN sales_items si ON h.id = si.sale_id
+        LEFT JOIN products p ON si.product_id = p.id
+        LEFT JOIN branches b ON h.branch_id = b.id
+        LEFT JOIN points_of_sale pos ON h.pos_id = pos.id
+        LEFT JOIN sellers s ON h.seller_id = s.id
+        LEFT JOIN customers c ON h.customer_id = c.id
+        LEFT JOIN cat_002_tipo_dte cat ON h.tipo_documento = cat.code
+        WHERE h.company_id = ?
+          AND LOWER(h.estado) = 'emitido'
+          AND ${dteValidoExistsSql('h')}
+          AND h.fecha_emision BETWEEN ? AND ?
+          AND (si.monto_descuento > 0 OR h.descuento_general > 0)
+          ${extraFilters}
+        ORDER BY h.fecha_emision ASC, h.id ASC, si.id ASC
+    `;
+
+    const [itemRows] = await pool.query(itemsSql, [companyId, start_date, end_date, ...filterParams]);
+
+    const items = itemRows.map(r => {
+        const qty = parseFloat(r.cantidad) || 0;
+        const price = parseFloat(r.precio_unitario) || 0;
+        const gross = qty * price;
+        const descItem = parseFloat(r.monto_descuento) || 0;
+        const pctItem = gross > 0 ? (descItem / gross) * 100 : 0;
+        const net = (parseFloat(r.venta_gravada) || 0) + (parseFloat(r.venta_exenta) || 0);
+        const tipoDteName = shortDteNames[r.tipo_documento] || r.tipo_dte || getDteTypeName(r.tipo_documento) || 'Documento';
+        return {
+            sale_id: r.sale_id,
+            fecha: reportPdfHelper.formatDate(r.fecha_emision),
+            tipo_documento: r.tipo_documento,
+            tipo_dte: tipoDteName,
+            numero_control: String(r.numero_control || '---'),
+            sucursal: String(r.sucursal || '---'),
+            pos: String(r.pos || '---'),
+            vendedor: String(r.vendedor || '---'),
+            cliente: String(r.cliente || 'CONSUMIDOR FINAL').toUpperCase(),
+            codigo_producto: String(r.codigo_producto || '---'),
+            descripcion: String(r.descripcion || 'Producto'),
+            cantidad: qty,
+            precio_unitario: price,
+            subtotal_bruto: gross,
+            descuento_item: descItem,
+            porcentaje_descuento: pctItem,
+            subtotal_neto: net
+        };
+    });
+
+    let totalSubtotalBruto = 0;
+    let totalDescItems = 0;
+    let totalDescGen = 0;
+    let totalDescGlobal = 0;
+    let totalNetoFacturado = 0;
+
+    documents.forEach(d => {
+        totalSubtotalBruto += d.subtotal_bruto;
+        totalDescItems += d.descuento_items;
+        totalDescGen += d.descuento_general;
+        totalDescGlobal += d.descuento_total;
+        totalNetoFacturado += d.total_pagar;
+    });
+
+    const kpis = {
+        total_documentos: documents.length,
+        total_lineas: items.length,
+        total_subtotal_bruto: totalSubtotalBruto,
+        total_descuento_items: totalDescItems,
+        total_descuento_general: totalDescGen,
+        gran_total_descuento: totalDescGlobal,
+        total_facturado_neto: totalNetoFacturado,
+        porcentaje_promedio: totalSubtotalBruto > 0 ? (totalDescGlobal / totalSubtotalBruto) * 100 : 0
+    };
+
+    return {
+        company,
+        meta: {
+            start_date,
+            end_date,
+            branchName,
+            posLabel,
+            sellerLabel,
+            customerLabel,
+            mode
+        },
+        kpis,
+        documents,
+        items
+    };
+}
+
+/**
+ * Endpoint JSON para métricas y preview de descuentos.
+ */
+const getSalesDiscountsData = async (req, res) => {
+    try {
+        const companyId = req.company_id || req.user?.company_id;
+        if (!companyId) return res.status(401).json({ message: 'No autorizado' });
+
+        const { start_date, end_date } = req.query;
+        if (!start_date || !end_date) {
+            return res.status(400).json({ message: 'Rango de fechas es requerido' });
+        }
+
+        const payload = await fetchSalesDiscountsPayload(companyId, req.query);
+        return res.json({ success: true, ...payload });
+    } catch (error) {
+        console.error('Error in getSalesDiscountsData:', error);
+        res.status(500).json({ message: 'Error al consultar datos de descuentos', error: error.message });
+    }
+};
+
+/**
+ * Reporte "Descuentos en Ventas" (PDF y Excel).
+ * Params: start_date, end_date, branch_id, pos_id, seller_id, customer_id, mode (summary|detailed), format=excel
+ */
+const exportSalesDiscountsReport = async (req, res) => {
+    try {
+        const companyId = req.company_id || req.user?.company_id;
+        if (!companyId) return res.status(401).json({ message: 'No autorizado' });
+
+        const { start_date, end_date, mode = 'summary', format } = req.query;
+        if (!start_date || !end_date) {
+            return res.status(400).json({ message: 'Rango de fechas es requerido' });
+        }
+
+        const payload = await fetchSalesDiscountsPayload(companyId, req.query);
+        const { company, meta, kpis, documents, items } = payload;
+
+        // 1. Exportación a Excel si format === 'excel'
+        if (format === 'excel') {
+            const buffer = await excelService.createExcelBuffer({
+                sheets: [
+                    {
+                        name: 'Resumen por Documento',
+                        columns: [
+                            { header: 'Fecha', key: 'fecha', width: 14 },
+                            { header: 'Tipo DTE', key: 'tipo_dte', width: 18 },
+                            { header: 'N° Control', key: 'numero_control', width: 22 },
+                            { header: 'Sucursal', key: 'sucursal', width: 20 },
+                            { header: 'Punto de Venta', key: 'pos', width: 18 },
+                            { header: 'Vendedor', key: 'vendedor', width: 22 },
+                            { header: 'Cliente', key: 'cliente', width: 32 },
+                            { header: 'Subtotal Bruto ($)', key: 'subtotal_bruto', width: 16 },
+                            { header: 'Descuento Ítems ($)', key: 'descuento_items', width: 18 },
+                            { header: 'Descuento General ($)', key: 'descuento_general', width: 18 },
+                            { header: 'Descuento Total ($)', key: 'descuento_total', width: 18 },
+                            { header: 'Total Facturado ($)', key: 'total_pagar', width: 18 },
+                            { header: '% Descuento Efectivo', key: 'porcentaje_descuento', width: 18 }
+                        ],
+                        data: documents.map(d => ({
+                            fecha: d.fecha,
+                            tipo_dte: d.tipo_dte,
+                            numero_control: d.numero_control,
+                            sucursal: d.sucursal,
+                            pos: d.pos,
+                            vendedor: d.vendedor,
+                            cliente: d.cliente,
+                            subtotal_bruto: d.subtotal_bruto.toFixed(2),
+                            descuento_items: d.descuento_items.toFixed(2),
+                            descuento_general: d.descuento_general.toFixed(2),
+                            descuento_total: d.descuento_total.toFixed(2),
+                            total_pagar: d.total_pagar.toFixed(2),
+                            porcentaje_descuento: `${d.porcentaje_descuento.toFixed(2)}%`
+                        }))
+                    },
+                    {
+                        name: 'Detalle por Ítem',
+                        columns: [
+                            { header: 'Fecha', key: 'fecha', width: 14 },
+                            { header: 'Tipo DTE', key: 'tipo_dte', width: 18 },
+                            { header: 'N° Control', key: 'numero_control', width: 22 },
+                            { header: 'Sucursal', key: 'sucursal', width: 20 },
+                            { header: 'Vendedor', key: 'vendedor', width: 22 },
+                            { header: 'Cliente', key: 'cliente', width: 30 },
+                            { header: 'Código', key: 'codigo_producto', width: 16 },
+                            { header: 'Descripción', key: 'descripcion', width: 35 },
+                            { header: 'Cantidad', key: 'cantidad', width: 12 },
+                            { header: 'Precio Lista ($)', key: 'precio_unitario', width: 16 },
+                            { header: 'Subtotal Bruto ($)', key: 'subtotal_bruto', width: 16 },
+                            { header: 'Descuento Ítem ($)', key: 'descuento_item', width: 18 },
+                            { header: '% Descuento', key: 'porcentaje_descuento', width: 14 },
+                            { header: 'Subtotal Neto ($)', key: 'subtotal_neto', width: 16 }
+                        ],
+                        data: items.map(it => ({
+                            fecha: it.fecha,
+                            tipo_dte: it.tipo_dte,
+                            numero_control: it.numero_control,
+                            sucursal: it.sucursal,
+                            vendedor: it.vendedor,
+                            cliente: it.cliente,
+                            codigo_producto: it.codigo_producto,
+                            descripcion: it.descripcion,
+                            cantidad: it.cantidad.toFixed(4),
+                            precio_unitario: it.precio_unitario.toFixed(2),
+                            subtotal_bruto: it.subtotal_bruto.toFixed(2),
+                            descuento_item: it.descuento_item.toFixed(2),
+                            porcentaje_descuento: `${it.porcentaje_descuento.toFixed(2)}%`,
+                            subtotal_neto: it.subtotal_neto.toFixed(2)
+                        }))
+                    }
+                ]
+            });
+            return excelService.sendExcelResponse(res, buffer, `Reporte_Descuentos_${start_date}_al_${end_date}.xlsx`);
+        }
+
+        // 2. Exportación a PDF (Estándar contable unificado en orientación horizontal)
+        const { doc, getBuffer } = reportPdfHelper.createPdfDocument('landscape');
+        const startX = 30;
+        const contentWidth = 732;
+
+        const periodText = `DEL ${reportPdfHelper.formatDate(start_date)} AL ${reportPdfHelper.formatDate(end_date)}`;
+        
+        const subParts = [];
+        if (meta.branchName && !meta.branchName.toLowerCase().includes('todas')) {
+            subParts.push(`SUCURSAL: ${meta.branchName}`);
+        }
+        if (req.query.pos_id && req.query.pos_id !== 'all' && meta.posLabel && !meta.posLabel.toLowerCase().includes('todos')) {
+            subParts.push(`POS: ${meta.posLabel}`);
+        }
+        if (req.query.seller_id && req.query.seller_id !== 'all' && meta.sellerLabel && !meta.sellerLabel.toLowerCase().includes('todos')) {
+            subParts.push(`VENDEDOR: ${meta.sellerLabel}`);
+        }
+        if (req.query.customer_id && req.query.customer_id !== 'all' && meta.customerLabel && !meta.customerLabel.toLowerCase().includes('todos')) {
+            subParts.push(`CLIENTE: ${meta.customerLabel}`);
+        }
+        subParts.push(mode === 'detailed' ? 'MODO: DETALLADO POR ÍTEM' : 'MODO: RESUMEN POR DOCUMENTO');
+        const subtitle = subParts.join('   |   ');
+
+        reportPdfHelper.renderHeader(doc, company, 'Reporte de Descuentos en Ventas', periodText, 'landscape', subtitle);
+
+        // ========================================================
+        // CUADRO RESUMEN AL FINAL DEL REPORTE
+        // ========================================================
+        const renderDiscountsSummaryBox = (curY) => {
+            const summaryBoxH = 86;
+            if (curY + summaryBoxH > 505) {
+                doc.addPage();
+                reportPdfHelper.renderHeader(doc, company, 'Reporte de Descuentos en Ventas', periodText, 'landscape', subtitle);
+                curY = doc.y + 6;
+            }
+
+            const boxX = startX;
+            const boxW = contentWidth;
+
+            // Fondo y borde del cuadro resumen
+            doc.rect(boxX, curY, boxW, summaryBoxH).fillAndStroke('#f8fafc', '#cbd5e1');
+
+            // Barra de título del cuadro resumen
+            doc.rect(boxX, curY, boxW, 16).fill('#1e293b');
+            doc.font('Helvetica-Bold').fontSize(7.5).fillColor('#ffffff');
+            doc.text('CUADRO RESUMEN DE DESCUENTOS DEL PERÍODO', boxX + 12, curY + 4, { lineBreak: false });
+
+            const cardY = curY + 22;
+            const col1X = boxX + 16;
+            const col1W = 335;
+            const col2X = boxX + 380;
+            const col2W = 335;
+
+            // Columna 1: Desglose Monetario
+            doc.font('Helvetica-Bold').fontSize(6.5).fillColor('#475569');
+            doc.text('DESGLOSE MONETARIO DE DESCUENTOS', col1X, cardY, { lineBreak: false });
+            doc.moveTo(col1X, cardY + 9).lineTo(col1X + col1W, cardY + 9).lineWidth(0.5).strokeColor('#e2e8f0').stroke();
+
+            let lY = cardY + 12;
+            const printLine = (label, amount, isBold = false, color = '#0f172a') => {
+                doc.font(isBold ? 'Helvetica-Bold' : 'Helvetica').fontSize(6.5).fillColor(color);
+                doc.text(label, col1X, lY, { width: 220, lineBreak: false });
+                doc.text(reportPdfHelper.fmt(amount), col1X + 220, lY, { width: 115, align: 'right', lineBreak: false });
+                lY += 10.5;
+            };
+
+            printLine('Subtotal Bruto Original (Venta Sin Descuento):', kpis.total_subtotal_bruto);
+            printLine('(-) Descuentos Otorgados en Ítems / Productos:', kpis.total_descuento_items);
+            printLine('(-) Descuentos Generales (Pie de Documento):', kpis.total_descuento_general);
+
+            doc.moveTo(col1X, lY).lineTo(col1X + col1W, lY).lineWidth(0.75).strokeColor('#0f172a').stroke();
+            lY += 2;
+            printLine('(=) TOTAL AHORRO / DESCUENTO CONCEDIDO:', kpis.gran_total_descuento, true, '#b91c1c');
+
+            // Columna 2: Liquidación y Efectividad
+            doc.font('Helvetica-Bold').fontSize(6.5).fillColor('#475569');
+            doc.text('RESUMEN DE FACTURACIÓN Y EFECTIVIDAD', col2X, cardY, { lineBreak: false });
+            doc.moveTo(col2X, cardY + 9).lineTo(col2X + col2W, cardY + 9).lineWidth(0.5).strokeColor('#e2e8f0').stroke();
+
+            let rY = cardY + 12;
+            const printStat = (label, valStr, isBold = false, color = '#0f172a') => {
+                doc.font(isBold ? 'Helvetica-Bold' : 'Helvetica').fontSize(6.5).fillColor(color);
+                doc.text(label, col2X, rY, { width: 210, lineBreak: false });
+                doc.text(valStr, col2X + 210, rY, { width: 125, align: 'right', lineBreak: false });
+                rY += 10.5;
+            };
+
+            printStat('Total Facturado Neto (Cobrado):', reportPdfHelper.fmt(kpis.total_facturado_neto), true, '#047857');
+            printStat('Documentos Emitidos con Descuento:', `${kpis.total_documentos} documentos`);
+            printStat('Líneas / Ítems con Descuento:', `${kpis.total_lineas} líneas`);
+
+            doc.moveTo(col2X, rY).lineTo(col2X + col2W, rY).lineWidth(0.75).strokeColor('#0f172a').stroke();
+            rY += 2;
+            printStat('Porcentaje de Descuento Efectivo:', `${kpis.porcentaje_promedio.toFixed(2)}%`, true, '#0f172a');
+
+            doc.font('Helvetica-Oblique').fontSize(5.5).fillColor('#64748b');
+            doc.text('* Representa el ahorro total concedido a clientes respecto a los precios de venta brutos.', col2X, rY + 1, { width: col2W, lineBreak: false });
+
+            return curY + summaryBoxH + 14;
+        };
+
+        if (mode === 'detailed') {
+            // MODO DETALLADO POR ÍTEM (Ancho total: 732pt)
+            const colW = {
+                fecha: 42,
+                tipoDte: 54,
+                control: 118,
+                cliente: 92,
+                vendedor: 58,
+                codigo: 46,
+                desc: 110,
+                cant: 30,
+                precio: 40,
+                bruto: 46,
+                descuento: 56,
+                pct: 40
+            };
+
+            const drawTableHeader = (yPos) => {
+                doc.rect(startX, yPos, contentWidth, 14).fill('#f1f5f9');
+                doc.fontSize(7).font('Helvetica-Bold').fillColor('#0f172a');
+                let x = startX + 4;
+                doc.text('FECHA', x, yPos + 3.5, { width: colW.fecha - 4, lineBreak: false }); x += colW.fecha;
+                doc.text('TIPO DTE', x, yPos + 3.5, { width: colW.tipoDte - 4, lineBreak: false }); x += colW.tipoDte;
+                doc.text('N° CONTROL', x, yPos + 3.5, { width: colW.control - 4, lineBreak: false }); x += colW.control;
+                doc.text('CLIENTE', x, yPos + 3.5, { width: colW.cliente - 4, lineBreak: false }); x += colW.cliente;
+                doc.text('VENDEDOR', x, yPos + 3.5, { width: colW.vendedor - 4, lineBreak: false }); x += colW.vendedor;
+                doc.text('CÓDIGO', x, yPos + 3.5, { width: colW.codigo - 4, lineBreak: false }); x += colW.codigo;
+                doc.text('DESCRIPCIÓN', x, yPos + 3.5, { width: colW.desc - 4, lineBreak: false }); x += colW.desc;
+                doc.text('CANT.', x, yPos + 3.5, { width: colW.cant - 4, align: 'right', lineBreak: false }); x += colW.cant;
+                doc.text('PRECIO', x, yPos + 3.5, { width: colW.precio - 4, align: 'right', lineBreak: false }); x += colW.precio;
+                doc.text('BRUTO', x, yPos + 3.5, { width: colW.bruto - 4, align: 'right', lineBreak: false }); x += colW.bruto;
+                doc.text('DESCUENTO', x, yPos + 3.5, { width: colW.descuento - 2, align: 'right', lineBreak: false }); x += colW.descuento;
+                doc.text('% DESC', x, yPos + 3.5, { width: colW.pct - 4, align: 'right', lineBreak: false });
+                return yPos + 17;
+            };
+
+            let currentY = drawTableHeader(doc.y + 4);
+
+            if (items.length === 0) {
+                doc.fontSize(8.5).font('Helvetica').fillColor('#64748b');
+                doc.text('No se encontraron líneas con descuentos en el período y filtros seleccionados.', startX, currentY + 10);
+                currentY += 30;
+            } else {
+                items.forEach((r, idx) => {
+                    if (currentY > 515) {
+                        doc.addPage();
+                        reportPdfHelper.renderHeader(doc, company, 'Reporte de Descuentos en Ventas', periodText, 'landscape', subtitle);
+                        currentY = drawTableHeader(doc.y + 4);
+                    }
+
+                    if (idx % 2 === 1) {
+                        doc.rect(startX, currentY - 2, contentWidth, 12).fill('#f8fafc');
+                    }
+
+                    doc.fontSize(6.5).font('Helvetica').fillColor('#1e293b');
+                    let lx = startX + 4;
+                    doc.text(r.fecha, lx, currentY, { width: colW.fecha - 4, height: 9.5, ellipsis: true, lineBreak: false }); lx += colW.fecha;
+                    doc.text(r.tipo_dte, lx, currentY, { width: colW.tipoDte - 4, height: 9.5, ellipsis: true, lineBreak: false }); lx += colW.tipoDte;
+                    doc.fontSize(6).text(r.numero_control, lx, currentY + 0.3, { width: colW.control + 2, lineBreak: false }); doc.fontSize(6.5); lx += colW.control;
+                    doc.text(r.cliente, lx, currentY, { width: colW.cliente - 4, height: 9.5, ellipsis: true, lineBreak: false }); lx += colW.cliente;
+                    doc.text(r.vendedor, lx, currentY, { width: colW.vendedor - 4, height: 9.5, ellipsis: true, lineBreak: false }); lx += colW.vendedor;
+                    doc.text(r.codigo_producto, lx, currentY, { width: colW.codigo - 4, height: 9.5, ellipsis: true, lineBreak: false }); lx += colW.codigo;
+                    doc.text(r.descripcion, lx, currentY, { width: colW.desc - 4, height: 9.5, ellipsis: true, lineBreak: false }); lx += colW.desc;
+                    doc.text(r.cantidad.toFixed(2), lx, currentY, { width: colW.cant - 4, align: 'right', lineBreak: false }); lx += colW.cant;
+                    doc.text(reportPdfHelper.fmt(r.precio_unitario), lx, currentY, { width: colW.precio - 4, align: 'right', lineBreak: false }); lx += colW.precio;
+                    doc.text(reportPdfHelper.fmt(r.subtotal_bruto), lx, currentY, { width: colW.bruto - 4, align: 'right', lineBreak: false }); lx += colW.bruto;
+                    doc.text(reportPdfHelper.fmt(r.descuento_item), lx, currentY, { width: colW.descuento - 2, align: 'right', lineBreak: false }); lx += colW.descuento;
+                    doc.text(`${r.porcentaje_descuento.toFixed(1)}%`, lx, currentY, { width: colW.pct - 4, align: 'right', lineBreak: false });
+                    currentY += 12;
+                });
+
+                // Fila de totales por líneas
+                if (currentY > 500) {
+                    doc.addPage();
+                    reportPdfHelper.renderHeader(doc, company, 'Reporte de Descuentos en Ventas', periodText, 'landscape', subtitle);
+                    currentY = drawTableHeader(doc.y + 4);
+                }
+
+                doc.strokeColor('#0f172a').lineWidth(1).moveTo(startX, currentY + 1).lineTo(startX + contentWidth, currentY + 1).stroke();
+                currentY += 4;
+                doc.fontSize(7).font('Helvetica-Bold').fillColor('#0f172a');
+                const labelWidth = colW.fecha + colW.tipoDte + colW.control + colW.cliente + colW.vendedor + colW.codigo + colW.desc + colW.cant + colW.precio;
+                doc.text(`TOTALES (${items.length} LÍNEAS):`, startX + 4, currentY, { width: labelWidth - 8, align: 'right', lineBreak: false });
+                let tx = startX + 4 + labelWidth;
+                doc.text(reportPdfHelper.fmt(kpis.total_subtotal_bruto), tx, currentY, { width: colW.bruto - 4, align: 'right', lineBreak: false }); tx += colW.bruto;
+                doc.text(reportPdfHelper.fmt(kpis.total_descuento_items), tx, currentY, { width: colW.descuento - 2, align: 'right', lineBreak: false }); tx += colW.descuento;
+                doc.text(`${kpis.porcentaje_promedio.toFixed(1)}%`, tx, currentY, { width: colW.pct - 4, align: 'right', lineBreak: false });
+                currentY += 16;
+
+                // Cuadro Resumen al final del reporte
+                currentY = renderDiscountsSummaryBox(currentY);
+            }
+
+            reportPdfHelper.renderClosingFooter(doc, startX, currentY, items.length, 'Líneas');
+        } else {
+            // MODO RESUMEN POR DOCUMENTO (Ancho total: 732pt)
+            const colW = {
+                fecha: 44,
+                tipoDte: 58,
+                control: 120,
+                sucursal: 70,
+                vendedor: 68,
+                cliente: 116,
+                bruto: 50,
+                descItem: 50,
+                descGen: 50,
+                descTot: 50,
+                neto: 56
+            };
+
+            const drawTableHeader = (yPos) => {
+                doc.rect(startX, yPos, contentWidth, 14).fill('#f1f5f9');
+                doc.fontSize(7).font('Helvetica-Bold').fillColor('#0f172a');
+                let x = startX + 4;
+                doc.text('FECHA', x, yPos + 3.5, { width: colW.fecha - 4, lineBreak: false }); x += colW.fecha;
+                doc.text('TIPO DTE', x, yPos + 3.5, { width: colW.tipoDte - 4, lineBreak: false }); x += colW.tipoDte;
+                doc.text('N° CONTROL', x, yPos + 3.5, { width: colW.control - 4, lineBreak: false }); x += colW.control;
+                doc.text('SUCURSAL', x, yPos + 3.5, { width: colW.sucursal - 4, lineBreak: false }); x += colW.sucursal;
+                doc.text('VENDEDOR', x, yPos + 3.5, { width: colW.vendedor - 4, lineBreak: false }); x += colW.vendedor;
+                doc.text('CLIENTE', x, yPos + 3.5, { width: colW.cliente - 4, lineBreak: false }); x += colW.cliente;
+                doc.text('BRUTO', x, yPos + 3.5, { width: colW.bruto - 4, align: 'right', lineBreak: false }); x += colW.bruto;
+                doc.text('DESC. ÍTEM', x, yPos + 3.5, { width: colW.descItem - 4, align: 'right', lineBreak: false }); x += colW.descItem;
+                doc.text('DESC. GEN.', x, yPos + 3.5, { width: colW.descGen - 4, align: 'right', lineBreak: false }); x += colW.descGen;
+                doc.text('TOT. DESC.', x, yPos + 3.5, { width: colW.descTot - 4, align: 'right', lineBreak: false }); x += colW.descTot;
+                doc.text('FACTURADO', x, yPos + 3.5, { width: colW.neto - 6, align: 'right', lineBreak: false });
+                return yPos + 17;
+            };
+
+            let currentY = drawTableHeader(doc.y + 4);
+
+            if (documents.length === 0) {
+                doc.fontSize(8.5).font('Helvetica').fillColor('#64748b');
+                doc.text('No se encontraron ventas con descuentos en el período y filtros seleccionados.', startX, currentY + 10);
+                currentY += 30;
+            } else {
+                documents.forEach((r, idx) => {
+                    if (currentY > 515) {
+                        doc.addPage();
+                        reportPdfHelper.renderHeader(doc, company, 'Reporte de Descuentos en Ventas', periodText, 'landscape', subtitle);
+                        currentY = drawTableHeader(doc.y + 4);
+                    }
+
+                    if (idx % 2 === 1) {
+                        doc.rect(startX, currentY - 2, contentWidth, 12).fill('#f8fafc');
+                    }
+
+                    doc.fontSize(6.5).font('Helvetica').fillColor('#1e293b');
+                    let lx = startX + 4;
+                    doc.text(r.fecha, lx, currentY, { width: colW.fecha - 4, height: 9.5, ellipsis: true, lineBreak: false }); lx += colW.fecha;
+                    doc.text(r.tipo_dte, lx, currentY, { width: colW.tipoDte - 4, height: 9.5, ellipsis: true, lineBreak: false }); lx += colW.tipoDte;
+                    doc.fontSize(6).text(r.numero_control, lx, currentY + 0.3, { width: colW.control + 2, lineBreak: false }); doc.fontSize(6.5); lx += colW.control;
+                    doc.text(r.sucursal, lx, currentY, { width: colW.sucursal - 4, height: 9.5, ellipsis: true, lineBreak: false }); lx += colW.sucursal;
+                    doc.text(r.vendedor, lx, currentY, { width: colW.vendedor - 4, height: 9.5, ellipsis: true, lineBreak: false }); lx += colW.vendedor;
+                    doc.text(r.cliente, lx, currentY, { width: colW.cliente - 4, height: 9.5, ellipsis: true, lineBreak: false }); lx += colW.cliente;
+                    doc.text(reportPdfHelper.fmt(r.subtotal_bruto), lx, currentY, { width: colW.bruto - 4, align: 'right', lineBreak: false }); lx += colW.bruto;
+                    doc.text(reportPdfHelper.fmt(r.descuento_items), lx, currentY, { width: colW.descItem - 4, align: 'right', lineBreak: false }); lx += colW.descItem;
+                    doc.text(reportPdfHelper.fmt(r.descuento_general), lx, currentY, { width: colW.descGen - 4, align: 'right', lineBreak: false }); lx += colW.descGen;
+                    doc.text(reportPdfHelper.fmt(r.descuento_total), lx, currentY, { width: colW.descTot - 4, align: 'right', lineBreak: false }); lx += colW.descTot;
+                    doc.text(reportPdfHelper.fmt(r.total_pagar), lx, currentY, { width: colW.neto - 6, align: 'right', lineBreak: false });
+                    currentY += 12;
+                });
+
+                // Fila de totales por documentos
+                if (currentY > 500) {
+                    doc.addPage();
+                    reportPdfHelper.renderHeader(doc, company, 'Reporte de Descuentos en Ventas', periodText, 'landscape', subtitle);
+                    currentY = drawTableHeader(doc.y + 4);
+                }
+
+                doc.strokeColor('#0f172a').lineWidth(1).moveTo(startX, currentY + 1).lineTo(startX + contentWidth, currentY + 1).stroke();
+                currentY += 4;
+                doc.fontSize(7).font('Helvetica-Bold').fillColor('#0f172a');
+                const labelWidth = colW.fecha + colW.tipoDte + colW.control + colW.sucursal + colW.vendedor + colW.cliente;
+                doc.text(`TOTALES (${documents.length} DOCUMENTOS):`, startX + 4, currentY, { width: labelWidth - 8, align: 'right', lineBreak: false });
+                let tx = startX + 4 + labelWidth;
+                doc.text(reportPdfHelper.fmt(kpis.total_subtotal_bruto), tx, currentY, { width: colW.bruto - 4, align: 'right', lineBreak: false }); tx += colW.bruto;
+                doc.text(reportPdfHelper.fmt(kpis.total_descuento_items), tx, currentY, { width: colW.descItem - 4, align: 'right', lineBreak: false }); tx += colW.descItem;
+                doc.text(reportPdfHelper.fmt(kpis.total_descuento_general), tx, currentY, { width: colW.descGen - 4, align: 'right', lineBreak: false }); tx += colW.descGen;
+                doc.text(reportPdfHelper.fmt(kpis.gran_total_descuento), tx, currentY, { width: colW.descTot - 4, align: 'right', lineBreak: false }); tx += colW.descTot;
+                doc.text(reportPdfHelper.fmt(kpis.total_facturado_neto), tx, currentY, { width: colW.neto - 6, align: 'right', lineBreak: false });
+                currentY += 16;
+
+                // Cuadro Resumen al final del reporte
+                currentY = renderDiscountsSummaryBox(currentY);
+            }
+
+            reportPdfHelper.renderClosingFooter(doc, startX, currentY, documents.length, 'Documentos');
+        }
+
+        reportPdfHelper.renderPageNumbers(doc);
+        doc.end();
+
+        const buffer = await getBuffer();
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename=Reporte_Descuentos_${start_date}_al_${end_date}.pdf`);
+        res.send(buffer);
+    } catch (error) {
+        console.error('Error in exportSalesDiscountsReport:', error);
+        res.status(500).json({ message: 'Error al generar reporte de descuentos', error: error.message });
+    }
+};
+
 async function resolveRTEELogo(companyId, branchId, branchLogo, compLogo) {
     const checkFile = (rawUrl) => {
         if (!rawUrl) return null;
@@ -4552,6 +5224,8 @@ module.exports = {
     getSalesByPOS,
     exportSalesByPOSPDF,
     exportSalesDetailPDF,
+    getSalesDiscountsData,
+    exportSalesDiscountsReport,
     exportRTEE,
     getSaleRTEEPdfBuffer,
     getPublicRTEE,
