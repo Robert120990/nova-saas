@@ -10,7 +10,6 @@ import {
     History, 
     FileText, 
     Search, 
-    X,
     Barcode,
     Check,
     Package,
@@ -23,7 +22,11 @@ import {
     FileText as FilePdf
 } from 'lucide-react';
 import { exportJsonToExcel } from '../utils/excelExport';
-import AdjustmentDetailModal from '../components/inventory/AdjustmentDetailModal';
+import {
+    AdjustmentDetailModal,
+    AdjustmentMotivosModal,
+    AdjustmentEditModal,
+} from '../components/inventory';
 import PdfViewerModal from '../components/ui/PdfViewerModal';
 import Table from '../components/ui/Table';
 import Pagination from '../components/ui/Pagination';
@@ -253,17 +256,6 @@ const InventoryAdjustments = () => {
             observaciones: String(observaciones || ''),
             items: selectedItems
         });
-    };
-
-    const handleCreateMotivo = async (nombre) => {
-        try {
-            await axios.post('/api/inventory/motivos', { nombre, tipo });
-            toast.success('Motivo creado');
-            queryClient.invalidateQueries(['inventory-motivos']);
-            setIsMotivosModalOpen(false);
-        } catch (error) {
-            toast.error('Error al crear motivo');
-        }
     };
 
     const totalAjuste = selectedItems.reduce((acc, item) => acc + item.total, 0);
@@ -793,15 +785,11 @@ const InventoryAdjustments = () => {
                 mode="inventory"
             />
 
-            <MotivosModal 
-                isOpen={isMotivosModalOpen}
+            <AdjustmentMotivosModal 
+                open={isMotivosModalOpen}
                 onClose={() => setIsMotivosModalOpen(false)}
                 tipo={tipo}
                 motivos={motivos}
-                handleCreateMotivo={handleCreateMotivo}
-                labelCls={labelCls}
-                inputCls={inputCls}
-                queryClient={queryClient}
             />
 
             <AdjustmentDetailModal 
@@ -809,10 +797,10 @@ const InventoryAdjustments = () => {
                 onClose={() => setViewingAdjustment(null)}
             />
 
-            <EditAdjustmentModal 
+            <AdjustmentEditModal 
+                open={!!editingAdjustment}
                 adjustment={editingAdjustment}
                 onClose={() => setEditingAdjustment(null)}
-                queryClient={queryClient}
             />
 
             {/* Modal de Visualización Interactiva de Reporte PDF */}
@@ -830,194 +818,6 @@ const InventoryAdjustments = () => {
                 fileName={`Movimientos_Inventario_${new Date().toISOString().split('T')[0]}.pdf`}
                 footerNote="Formato contable estándar oficial • Presentación Carta sin firmas"
             />
-        </div>
-    );
-};
-
-/* Modals */
-const MotivosModal = ({ isOpen, onClose, tipo, motivos, handleCreateMotivo, labelCls, inputCls, queryClient }) => {
-    const [editingId, setEditingId] = useState(null);
-    const [editValue, setEditValue] = useState('');
-    const confirm = useConfirm();
-
-    if (!isOpen) return null;
-
-    const handleDelete = async (id) => {
-        const ok = await confirm({
-            title: '¿Eliminar motivo?',
-            message: 'Este motivo será eliminado permanentemente y no podrá ser recuperado.',
-            confirmLabel: 'Sí, eliminar',
-            variant: 'danger',
-        });
-        if (!ok) return;
-        try {
-            await axios.delete(`/api/inventory/motivos/${id}`);
-            toast.success('Motivo eliminado');
-            queryClient.invalidateQueries(['inventory-motivos']);
-        } catch (error) {
-            toast.error(error.response?.data?.message || 'Error al eliminar');
-        }
-    };
-
-
-    const handleUpdate = async (id) => {
-        try {
-            await axios.put(`/api/inventory/motivos/${id}`, { nombre: editValue });
-            toast.success('Motivo actualizado');
-            setEditingId(null);
-            queryClient.invalidateQueries(['inventory-motivos']);
-        } catch (error) {
-            toast.error('Error al actualizar');
-        }
-    };
-
-    return (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-3xl w-full max-w-md overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
-                <div className="p-6 border-b border-slate-100 flex items-center justify-between">
-                    <h3 className="text-xl font-bold text-slate-900">Gestión de Motivos</h3>
-                    <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-xl transition-colors">
-                        <X size={20} className="text-slate-400" />
-                    </button>
-                </div>
-                <div className="p-6 space-y-6">
-                    <form onSubmit={(e) => {
-                        e.preventDefault();
-                        handleCreateMotivo(e.target.nombre.value);
-                        e.target.reset();
-                    }} className="space-y-4">
-                        <div>
-                            <label className={labelCls}>Nuevo Motivo ({tipo})</label>
-                            <div className="flex gap-2">
-                                <input 
-                                    name="nombre"
-                                    required
-                                    type="text" 
-                                    placeholder="Ej: Ajuste por Daño"
-                                    className={inputCls}
-                                />
-                                <button type="submit" className="bg-indigo-600 text-white p-2 rounded-xl hover:bg-indigo-500 transition-all shadow-lg shadow-indigo-600/20">
-                                    <Plus size={20} />
-                                </button>
-                            </div>
-                        </div>
-                    </form>
-
-                    <div className="space-y-2">
-                        <label className={labelCls}>Existentes para {tipo}</label>
-                        <div className="space-y-1 max-h-60 overflow-y-auto pr-2">
-                            {motivos.filter(m => m.tipo === tipo).map(m => (
-                                <div key={m.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100 group">
-                                    {editingId === m.id ? (
-                                        <div className="flex-1 flex gap-2">
-                                            <input 
-                                                autoFocus
-                                                className="flex-1 px-2 py-1 text-sm rounded border"
-                                                value={editValue}
-                                                onChange={(e) => setEditValue(e.target.value)}
-                                            />
-                                            <button onClick={() => handleUpdate(m.id)} className="text-emerald-600 p-1 hover:bg-emerald-50 rounded"><Save size={14}/></button>
-                                            <button onClick={() => setEditingId(null)} className="text-slate-400 p-1 hover:bg-slate-100 rounded"><X size={14}/></button>
-                                        </div>
-                                    ) : (
-                                        <>
-                                            <span className="text-sm font-bold text-slate-700">{m.nombre}</span>
-                                            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                <button 
-                                                    onClick={() => { setEditingId(m.id); setEditValue(m.nombre); }}
-                                                    className="p-1.5 text-amber-600 hover:bg-amber-50 rounded"
-                                                >
-                                                    <Edit2 size={14} />
-                                                </button>
-                                                <button 
-                                                    onClick={() => handleDelete(m.id)}
-                                                    className="p-1.5 text-rose-600 hover:bg-rose-50 rounded"
-                                                >
-                                                    <Trash2 size={14} />
-                                                </button>
-                                            </div>
-                                        </>
-                                    )}
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-};
-
-const EditAdjustmentModal = ({ adjustment, onClose, queryClient }) => {
-    const [form, setForm] = useState({ numero: '', fecha: '', observaciones: '' });
-    
-    useEffect(() => {
-        if (adjustment) {
-            setForm({
-                numero: adjustment.numero || '',
-                fecha: adjustment.fecha ? adjustment.fecha.split('T')[0].split(' ')[0] : '',
-                observaciones: adjustment.observaciones || ''
-            });
-        }
-    }, [adjustment]);
-
-    const mutation = useMutation({
-        mutationFn: (data) => axios.put(`/api/inventory/adjustments/${adjustment.id}`, data),
-        onSuccess: () => {
-            toast.success('Cambios guardados');
-            queryClient.invalidateQueries(['inventory-adjustments']);
-            onClose();
-        },
-        onError: () => toast.error('Error al actualizar')
-    });
-
-    if (!adjustment) return null;
-
-    return (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-3xl w-full max-w-md overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
-                <div className="p-6 border-b border-slate-100">
-                    <h3 className="text-xl font-bold text-slate-900">Editar Movimiento</h3>
-                    <p className="text-xs text-slate-500 font-medium">Actualice información informativa del encabezado</p>
-                </div>
-                <div className="p-6 space-y-4">
-                    <div>
-                        <label className="text-[10px] font-black uppercase text-slate-500 ml-1 mb-1 block">Número de Documento</label>
-                        <input 
-                            className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/10 text-sm font-bold"
-                            value={form.numero}
-                            onChange={(e) => setForm({...form, numero: e.target.value})}
-                        />
-                    </div>
-                    <div>
-                        <label className="text-[10px] font-black uppercase text-slate-500 ml-1 mb-1 block">Fecha</label>
-                        <input 
-                            type="date"
-                            className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/10 text-sm font-bold"
-                            value={form.fecha}
-                            onChange={(e) => setForm({...form, fecha: e.target.value})}
-                        />
-                    </div>
-                    <div>
-                        <label className="text-[10px] font-black uppercase text-slate-500 ml-1 mb-1 block">Observaciones</label>
-                        <textarea 
-                            className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/10 text-sm font-medium h-24 resize-none"
-                            value={form.observaciones}
-                            onChange={(e) => setForm({...form, observaciones: e.target.value})}
-                        />
-                    </div>
-                    <div className="flex gap-2 pt-2">
-                        <button onClick={onClose} className="flex-1 py-2.5 rounded-xl font-bold text-slate-500 hover:bg-slate-50 transition-all text-sm uppercase tracking-widest text-[Spanish]">Cancelar</button>
-                        <button 
-                            onClick={() => mutation.mutate(form)}
-                            disabled={mutation.isPending}
-                            className="flex-1 bg-indigo-600 text-white py-2.5 rounded-xl font-black text-sm uppercase tracking-widest shadow-lg shadow-indigo-600/20 hover:bg-indigo-500 text-[Spanish]"
-                        >
-                            {mutation.isPending ? 'Guardando...' : 'Guardar'}
-                        </button>
-                    </div>
-                </div>
-            </div>
         </div>
     );
 };
