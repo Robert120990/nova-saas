@@ -107,6 +107,23 @@ MySQL migrations versioned as `migration_vN_<description>.{sql|js}` with one `ru
 - Frontend: Use `<Table />` with loading state, `<Pagination />`, search with 500ms debounce
 - TanStack Query: `queryKey: ['resource', search, page]`
 
+### Modularización Obligatoria de Pantallas en Frontend (Component-Driven Architecture, Máx. 350 Líneas) — OBLIGATORIO
+Toda nueva pantalla en `client/src/pages/<PageName>.jsx` (y cualquier refactorización de pantallas existentes) DEBE ser modular y NO debe exceder las **350 líneas de código**.
+La modularización en componentes separados dentro de `client/src/components/<modulo>/` es obligatoria cuando se cumpla CUALQUIERA de las siguientes condiciones:
+1. **Pantallas con Pestañas (Tabs o Vistas Conmutables)**: Si la pantalla contiene 2 o más pestañas o sub-vistas, cada pestaña DEBE residir en su propio componente bajo `client/src/components/<modulo>/tabs/<TabName>.jsx`.
+2. **Umbral de Extensión (> 350 Líneas)**: Si el archivo de la página supera las 350 líneas, sus secciones visuales (filtros, resúmenes, tablas especializadas) deben extraerse a subcomponentes independientes en `client/src/components/<modulo>/`.
+3. **Flujos Transaccionales y Maestro-Detalle (Header-Detail)**: Desacoplar obligatoriamente en `<ModuloHeader />`, `<ModuloItemsTable />`, `<ModuloTotalsSidebar />`, `<ModuloActionBar />`.
+4. **Barrel Exports**: Toda carpeta `client/src/components/<modulo>/` debe mantener un archivo `index.js`.
+5. **Zero Inline Modals**: Todo modal debe residir en su propio archivo `<Nombre>Modal.jsx`.
+
+### Modularización Obligatoria en Backend (Controllers y Services Desacoplados, Máx. 350 Líneas) — OBLIGATORIO
+Todo nuevo controlador en `server/src/controllers/` o `dte-api/src/controllers/` (y refactorizaciones) DEBE respetar el principio de responsabilidad única y NO debe exceder las **350 líneas de código**.
+La división en submódulos especializados es obligatoria si se cumple CUALQUIERA de las siguientes condiciones:
+1. **Umbral de Extensión (> 350 Líneas)**: Si un controlador supera las 350 líneas, DEBE dividirse en una subcarpeta dedicada `src/controllers/<modulo>/` agrupando por dominio (ej: `<modulo>Core.controller.js`, `<modulo>Reports.controller.js`, `<modulo>Audits.controller.js`).
+2. **Múltiples Responsabilidades en un Solo Módulo**: Desacoplar operaciones CRUD de analítica, cálculos y reportes PDF/Excel.
+3. **Patrón Fachada / Barrel Export Obligatorio**: Mantener el archivo raíz `src/controllers/<modulo>.controller.js` como una fachada limpia que reexporte todas las funciones de los subcontroladores (`module.exports = { ...moduloCore, ...moduloReports }`), asegurando 0 roturas en `routes/api.routes.js`.
+4. **Desacoplamiento de Lógica Pesada a Servicios (`services/`)**: Cálculos matemáticos, algoritmos de asignación y generación de documentos residen en `src/services/<modulo>.service.js`.
+
 ### DTE Integration (per .opencode/skills/dte/DTE_API_RULES.md)
 - Main server calls DTE API endpoints with JWT auth and `x-company-id` header
 - DTE API URL: `http://localhost:5000/api`

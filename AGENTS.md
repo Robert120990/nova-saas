@@ -129,6 +129,36 @@ Queda estrictamente prohibido incrustar la estructura JSX y lógica interna de m
   - `onSave` / `onSubmit` / `onSuccess`: callback de confirmación o guardado.
 - **Barrel Exports**: Si el módulo contiene múltiples componentes o modales, se debe mantener un archivo `index.js` en `client/src/components/<modulo>/` para centralizar y limpiar las importaciones en las páginas.
 
+### Modularización Obligatoria de Pantallas en Frontend (Component-Driven Architecture, Máx. 350 Líneas) — OBLIGATORIO
+Toda nueva pantalla en `client/src/pages/<PageName>.jsx` (y cualquier refactorización de pantallas existentes) DEBE ser modular y NO debe exceder las **350 líneas de código**.
+La modularización en componentes separados dentro de `client/src/components/<modulo>/` es obligatoria cuando se cumpla CUALQUIERA de las siguientes condiciones:
+1. **Pantallas con Pestañas (Tabs o Vistas Conmutables)**:
+   - Si la pantalla contiene 2 o más pestañas o sub-vistas (ej. *Listado*, *Historial*, *Resumen*, *Configuración*), queda estrictamente prohibido incrustar la lógica y JSX de las pestañas en la página principal.
+   - Cada pestaña DEBE residir en su propio componente bajo `client/src/components/<modulo>/tabs/<TabName>.jsx`.
+   - La página en `pages/` actúa únicamente como orquestador del estado del tab activo y renderizado condicional.
+2. **Umbral de Extensión (> 350 Líneas)**:
+   - Si el archivo de la página supera las 350 líneas, sus secciones visuales (filtros avanzados, resúmenes/KPIs, barras de herramientas, formularios) deben extraerse a subcomponentes independientes en `client/src/components/<modulo>/` (ej. `<ModuloFiltersBar />`, `<ModuloSummaryCards />`, etc.).
+3. **Flujos Transaccionales y Maestro-Detalle (Header-Detail)**:
+   - Pantallas operativas (facturación, compras, recepción, caja, despachos, órdenes) deben estructurarse obligatoriamente en subcomponentes:
+     - Cabecera de metadatos: `<ModuloHeader />`
+     - Grilla/Tabla editable de partidas: `<ModuloItemsTable />`
+     - Barra lateral de totales y liquidación: `<ModuloTotalsSidebar />`
+     - Barra de atajos o acciones: `<ModuloActionBar />`
+4. **Barrel Exports**:
+   - Toda carpeta `client/src/components/<modulo>/` debe mantener un archivo `index.js` que centralice y exponga limpiamente todos los subcomponentes y modales.
+
+### Modularización Obligatoria en Backend (Controllers y Services Desacoplados, Máx. 350 Líneas) — OBLIGATORIO
+Todo nuevo controlador en `server/src/controllers/` o `dte-api/src/controllers/` (y refactorizaciones) DEBE respetar el principio de responsabilidad única y NO debe exceder las **350 líneas de código**.
+La división en submódulos especializados es obligatoria si se cumple CUALQUIERA de las siguientes condiciones:
+1. **Umbral de Extensión (> 350 Líneas)**:
+   - Si un controlador supera las 350 líneas, DEBE dividirse en una subcarpeta dedicada `src/controllers/<modulo>/` agrupando por dominio (ej: `<modulo>Core.controller.js`, `<modulo>Reports.controller.js`, `<modulo>Audits.controller.js`).
+2. **Múltiples Responsabilidades en un Solo Módulo**:
+   - Si un módulo agrupa operaciones CRUD básicas junto con analítica avanzada, liquidaciones complejas o generación de reportes en PDF/Excel, cada dominio debe desacoplarse en su propio subcontrolador.
+3. **Patrón Fachada / Barrel Export Obligatorio**:
+   - Todo controlador modularizado DEBE mantener o crear el archivo raíz `src/controllers/<modulo>.controller.js` como una fachada limpia que reexporte todas las funciones de los subcontroladores (`module.exports = { ...moduloCore, ...moduloReports }`). Esto garantiza compatibilidad absoluta con `routes/api.routes.js` sin alterar las rutas existentes.
+4. **Desacoplamiento de Lógica Pesada a Servicios (`services/`)**:
+   - Cálculos matemáticos o financieros (algoritmos FIFO, depreciaciones, deducciones de nómina), transformaciones masivas de datos y generadores de documentos deben residir exclusivamente en `src/services/<modulo>.service.js`, manteniendo los controladores ligeros y enfocados en validar entradas y responder solicitudes HTTP.
+
 ### Formateo Unificado de Fechas en Frontend (dateUtils) — OBLIGATORIO
 Toda modificación o nueva pantalla, componente o modal en `client/` DEBE utilizar obligatoriamente los formateadores centralizados de `client/src/utils/dateUtils.js`:
 - `formatDate(date, options)`: para fechas convencionales (`DD/MM/YYYY`).
