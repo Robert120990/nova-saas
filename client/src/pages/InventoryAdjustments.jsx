@@ -32,6 +32,7 @@ import { useAuth } from '../context/AuthContext';
 import Money from '../components/ui/Money';
 import { useDirtyTracker } from '../hooks/useDirtyTracker';
 import { formatDateDMY } from '../utils/dateUtils';
+import { unwrapList } from '../utils/apiUtils';
 
 const InventoryAdjustments = () => {
     const { user } = useAuth();
@@ -101,12 +102,12 @@ const InventoryAdjustments = () => {
     // Queries
     const { data: branches = [] } = useQuery({
         queryKey: ['branches'],
-        queryFn: async () => (await axios.get('/api/branches')).data
+        queryFn: async () => unwrapList(await axios.get('/api/branches'))
     });
 
     const { data: motivos = [] } = useQuery({
         queryKey: ['inventory-motivos'],
-        queryFn: async () => (await axios.get('/api/inventory/motivos')).data
+        queryFn: async () => unwrapList(await axios.get('/api/inventory/motivos'))
     });
 
     const { data: adjustmentsData = { data: [], totalItems: 0, totalPages: 0 }, isLoading: loadingAdjustments } = useQuery({

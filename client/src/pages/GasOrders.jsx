@@ -1,4 +1,5 @@
 import { formatDate } from '../utils/dateUtils';
+import { unwrapList } from '../utils/apiUtils';
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
@@ -128,7 +129,7 @@ export default function GasOrders() {
         queryKey: ['gas-station-banks'],
         queryFn: async () => {
             const res = await axios.get('/api/gas-station/banks');
-            return res.data?.data || [];
+            return unwrapList(res);
         },
         staleTime: 10 * 60 * 1000,
     });
@@ -139,7 +140,7 @@ export default function GasOrders() {
         queryFn: async () => {
             const params = selectedBank ? { bank_id: selectedBank } : {};
             const res = await axios.get('/api/gas-station/bank-accounts', { params });
-            return res.data?.data || [];
+            return unwrapList(res);
         },
         staleTime: 5 * 60 * 1000,
     });
@@ -149,7 +150,7 @@ export default function GasOrders() {
         queryKey: ['gas-station-all-accounts'],
         queryFn: async () => {
             const res = await axios.get('/api/gas-station/bank-accounts');
-            return res.data?.data || [];
+            return unwrapList(res);
         },
         staleTime: 5 * 60 * 1000,
     });

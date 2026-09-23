@@ -34,6 +34,7 @@ import { useAuth } from '../context/AuthContext';
 import { useConfirm } from '../context/ConfirmContext';
 import Money, { MoneyInput } from '../components/ui/Money';
 import { useDirtyTracker } from '../hooks/useDirtyTracker';
+import { unwrapList } from '../utils/apiUtils';
 import ProviderModal from '../components/providers/ProviderModal';
 import ProductSearchModal from '../components/products/ProductSearchModal';
 import QrScanModal from '../components/purchases/QrScanModal';
@@ -198,7 +199,7 @@ const Purchases = () => {
     // Queries
     const { data: currentCompany } = useQuery({
         queryKey: ['company', user?.company_id],
-        queryFn: async () => (await axios.get(`/api/companies`)).data.find(c => c.id === user.company_id),
+        queryFn: async () => unwrapList(await axios.get(`/api/companies`)).find(c => c.id === user.company_id),
         enabled: !!user?.company_id
     });
 
@@ -251,17 +252,17 @@ const Purchases = () => {
 
     const { data: branches = [] } = useQuery({
         queryKey: ['branches', user?.company_id],
-        queryFn: async () => (await axios.get('/api/branches')).data
+        queryFn: async () => unwrapList(await axios.get('/api/branches'))
     });
 
     const { data: tipoDocs = [] } = useQuery({
         queryKey: ['catalog', '002'],
-        queryFn: async () => (await axios.get('/api/catalogs/cat_002_tipo_dte')).data
+        queryFn: async () => unwrapList(await axios.get('/api/catalogs/cat_002_tipo_dte'))
     });
 
     const { data: condiciones = [] } = useQuery({
         queryKey: ['catalog', '016'],
-        queryFn: async () => (await axios.get('/api/catalogs/cat_016_condicion_operacion')).data
+        queryFn: async () => unwrapList(await axios.get('/api/catalogs/cat_016_condicion_operacion'))
     });
 
     const applyExtractedDteData = (data) => {
@@ -475,9 +476,9 @@ const Purchases = () => {
         retry: false
     });
 
-    const { data: taxSettings } = useQuery({
+    const { data: taxSettings = [] } = useQuery({
         queryKey: ['tax-settings'],
-        queryFn: async () => (await axios.get('/api/taxes')).data,
+        queryFn: async () => unwrapList(await axios.get('/api/taxes')),
     });
 
     // Mutations

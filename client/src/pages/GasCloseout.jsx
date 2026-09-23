@@ -16,6 +16,7 @@ import Money from '../components/ui/Money';
 import { useDirtyTracker } from '../hooks/useDirtyTracker';
 import * as XLSX from 'xlsx';
 import { getTodayString } from '../utils/dateUtils';
+import { unwrapList } from '../utils/apiUtils';
 import {
     GasNozzleAssignModal,
     GasRemesasModal,
@@ -353,12 +354,12 @@ const GasCloseout = () => {
 
     const { data: sellers = [] } = useQuery({
         queryKey: ['sellers-all'],
-        queryFn: async () => (await axios.get('/api/sellers', { params: { limit: 200 } })).data?.data || []
+        queryFn: async () => unwrapList(await axios.get('/api/sellers', { params: { limit: 200 } }))
     });
 
     const { data: allDespachadores = [] } = useQuery({
         queryKey: ['gas-despachadores-all', user?.branch_id],
-        queryFn: async () => (await axios.get('/api/gas-station/despachadores', { params: { limit: 999 } })).data?.data || []
+        queryFn: async () => unwrapList(await axios.get('/api/gas-station/despachadores', { params: { limit: 999 } }))
     });
 
     // Opciones de despachadores para selectores de modales (Remesas, Tarjetas, Créditos, etc.)
@@ -427,13 +428,13 @@ const GasCloseout = () => {
 
     const { data: posTypesList = [] } = useQuery({
         queryKey: ['gas-pos-types', user?.branch_id],
-        queryFn: async () => (await axios.get('/api/gas-station/pos-types')).data,
+        queryFn: async () => unwrapList(await axios.get('/api/gas-station/pos-types')),
         enabled: !!(closeoutId || editId)
     });
 
     const { data: liveNozzleAssignments = [] } = useQuery({
         queryKey: ['gas-despachador-nozzles-all', user?.branch_id],
-        queryFn: async () => (await axios.get('/api/gas-station/despachador-nozzles/all')).data || []
+        queryFn: async () => unwrapList(await axios.get('/api/gas-station/despachador-nozzles/all'))
     });
 
     const { data: gasSettings } = useQuery({
@@ -1225,7 +1226,7 @@ const GasCloseout = () => {
         return () => { active = false; };
     }, [showDiferenciasModal, targetShiftId, closeoutId]);
 
-    const selectedTargetShift = dayShiftsQuery.data?.data?.find(s => String(s.id) === String(targetShiftId)) || null;
+    const selectedTargetShift = (Array.isArray(dayShiftsQuery.data) ? dayShiftsQuery.data : (dayShiftsQuery.data?.data || [])).find(s => String(s.id) === String(targetShiftId)) || null;
 
     const lubricantTotal = useMemo(() =>
         lubricantReadings.reduce((s, r) => s + (parseFloat(r.total) || 0), 0),
@@ -1704,15 +1705,15 @@ const GasCloseout = () => {
 
     const { data: distributorsData } = useQuery({
         queryKey: ['gas-distributors-all', user?.branch_id],
-        queryFn: async () => (await axios.get('/api/gas-station/distributors', { params: { limit: 999 } })).data?.data || [],
+        queryFn: async () => unwrapList(await axios.get('/api/gas-station/distributors', { params: { limit: 999 } })),
     });
     const distributors = distributorsData || [];
 
     const { data: nozzlesRes } = useQuery({
         queryKey: ['gas-nozzles-all', user?.branch_id],
-        queryFn: async () => (await axios.get('/api/gas-station/nozzles', { params: { limit: 999 } })).data,
+        queryFn: async () => unwrapList(await axios.get('/api/gas-station/nozzles', { params: { limit: 999 } })),
     });
-    const nozzlesData = nozzlesRes?.data || [];
+    const nozzlesData = Array.isArray(nozzlesRes) ? nozzlesRes : (nozzlesRes?.data || []);
 
     const fuelProducts = useMemo(() => {
         const map = {};

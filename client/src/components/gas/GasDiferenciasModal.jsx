@@ -22,6 +22,8 @@ const GasDiferenciasModal = ({
 }) => {
     if (!isOpen) return null;
 
+    const shiftsList = Array.isArray(dayShiftsQuery?.data) ? dayShiftsQuery.data : (dayShiftsQuery?.data?.data || []);
+
     return (
         <>
             <div className="fixed inset-0 z-50 flex items-start justify-center pt-8 pb-8">
@@ -49,7 +51,7 @@ const GasDiferenciasModal = ({
                                                 <span className="flex items-center gap-2 text-[11px] font-medium text-slate-500">
                                                     <Loader2 size={12} className="animate-spin" /> Cargando turnos...
                                                 </span>
-                                            ) : (dayShiftsQuery.data?.data || []).length === 0 ? (
+                                            ) : shiftsList.length === 0 ? (
                                                 <span className="flex items-center gap-2 text-[11px] font-bold text-amber-700">
                                                     <AlertTriangle size={12} /> No hay turnos para esta fecha en la sucursal
                                                 </span>
@@ -61,7 +63,7 @@ const GasDiferenciasModal = ({
                                                         className="text-[12px] font-bold text-slate-700 border border-slate-200 rounded-xl px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300"
                                                     >
                                                         <option value="">Seleccione un turno</option>
-                                                        {dayShiftsQuery.data.data.map(s => (
+                                                        {shiftsList.map(s => (
                                                             <option key={s.id} value={s.id}>
                                                                 Turno #{s.shift_number} — {toDateStrDDMMYYYY(s.shift_date)}{formatHora(s.start_time) ? ` ${formatHora(s.start_time)}` : ''} — {s.pos_name}{s.seller_name ? ` — ${s.seller_name}` : ''} — {shiftEstado(s)}
                                                             </option>
