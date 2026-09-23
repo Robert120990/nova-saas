@@ -646,7 +646,6 @@ const getInventoryStockReport = async (req, res) => {
                     (SELECT SUM(CASE WHEN tipo_movimiento = 'ENTRADA' THEN cantidad ELSE -cantidad END)
                      FROM inventory_movements
                      WHERE product_id = p.id AND branch_id = ? AND created_at <= ?),
-                    i.stock,
                     0
                 ) as stock,
                 ` : `
@@ -1065,6 +1064,14 @@ const getInventoryValuationReport = async (req, res) => {
             return res.status(400).json({ message: 'La sucursal es requerida' });
         }
 
+        let asOfDate = null;
+        if (as_of) {
+            const parsed = new Date(as_of);
+            if (!isNaN(parsed.getTime())) {
+                asOfDate = `${as_of} 23:59:59`;
+            }
+        }
+
         const [companyRows] = await pool.query('SELECT razon_social as nombre, nit, nrc FROM companies WHERE id = ?', [company_id]);
         const [branchRows] = await pool.query('SELECT nombre FROM branches WHERE id = ?', [branch_id]);
 
@@ -1081,7 +1088,16 @@ const getInventoryValuationReport = async (req, res) => {
                 p.codigo,
                 p.nombre,
                 c.name as categoria,
+                ${asOfDate ? `
+                COALESCE(
+                    (SELECT SUM(CASE WHEN tipo_movimiento = 'ENTRADA' THEN cantidad ELSE -cantidad END)
+                     FROM inventory_movements
+                     WHERE product_id = p.id AND branch_id = ? AND created_at <= ?),
+                    0
+                ) as stock,
+                ` : `
                 COALESCE(i.stock, 0) as stock,
+                `}
                 p.costo,
                 COALESCE(pbp.precio_unitario, 0) as precio_venta
             FROM products p
@@ -1091,7 +1107,9 @@ const getInventoryValuationReport = async (req, res) => {
             JOIN product_branch pb ON p.id = pb.product_id AND pb.branch_id = ?
             WHERE p.company_id = ? AND p.status = 'activo'
         `;
-        const params = [branch_id, branch_id, branch_id, company_id];
+        const params = asOfDate
+            ? [branch_id, asOfDate, branch_id, branch_id, branch_id, company_id]
+            : [branch_id, branch_id, branch_id, company_id];
 
         if (category_ids) {
             const ids = category_ids.split(',').map(id => parseInt(id)).filter(Boolean);
@@ -1102,7 +1120,11 @@ const getInventoryValuationReport = async (req, res) => {
         }
 
         if (only_in_stock === 'true' || only_in_stock === true) {
-            query += ` AND COALESCE(i.stock, 0) > 0`;
+            if (asOfDate) {
+                query += ` HAVING stock > 0`;
+            } else {
+                query += ` AND COALESCE(i.stock, 0) > 0`;
+            }
         }
 
         query += ` ORDER BY c.name ASC, p.nombre ASC`;
@@ -1516,10 +1538,12 @@ const getKardexOriginDetail = async (req, res) => {
                    p.nombre as producto_nombre, 
                    p.codigo as producto_codigo, 
                    p.unidad_medida,
+                   cat_u.description as unidad_medida_nombre,
                    p.costo as producto_costo_actual,
                    b.nombre as branch_nombre
             FROM inventory_movements m
             LEFT JOIN products p ON m.product_id = p.id
+            LEFT JOIN cat_014_unidad_medida cat_u ON p.unidad_medida COLLATE utf8mb4_unicode_ci = cat_u.code COLLATE utf8mb4_unicode_ci
             LEFT JOIN branches b ON m.branch_id = b.id
             WHERE m.id = ?
         `, [id]);
@@ -1575,9 +1599,11 @@ const getKardexOriginDetail = async (req, res) => {
                         SELECT si.*, 
                                p.nombre as producto_nombre, 
                                p.codigo as producto_codigo,
-                               p.unidad_medida
+                               p.unidad_medida,
+                               cat_u.description as unidad_medida_nombre
                         FROM sales_items si
                         LEFT JOIN products p ON si.product_id = p.id
+                        LEFT JOIN cat_014_unidad_medida cat_u ON p.unidad_medida COLLATE utf8mb4_unicode_ci = cat_u.code COLLATE utf8mb4_unicode_ci
                         WHERE si.sale_id = ?
                     `, [docId]);
 
@@ -1629,9 +1655,11 @@ const getKardexOriginDetail = async (req, res) => {
                     SELECT pi.*, 
                            COALESCE(NULLIF(pi.descripcion, ''), p.nombre, 'Sin descripción') as nombre, 
                            COALESCE(p.codigo, '—') as codigo,
-                           p.unidad_medida
+                           p.unidad_medida,
+                           cat_u.description as unidad_medida_nombre
                     FROM purchase_items pi
                     LEFT JOIN products p ON pi.product_id = p.id
+                    LEFT JOIN cat_014_unidad_medida cat_u ON p.unidad_medida COLLATE utf8mb4_unicode_ci = cat_u.code COLLATE utf8mb4_unicode_ci
                     WHERE pi.purchase_id = ?
                 `, [docId]);
 
@@ -1670,9 +1698,11 @@ const getKardexOriginDetail = async (req, res) => {
                     SELECT i.*, 
                            p.nombre as producto_nombre, 
                            p.codigo as producto_codigo,
-                           p.unidad_medida
+                           p.unidad_medida,
+                           cat_u.description as unidad_medida_nombre
                     FROM inventory_adjustment_items i
                     JOIN products p ON i.product_id = p.id
+                    LEFT JOIN cat_014_unidad_medida cat_u ON p.unidad_medida COLLATE utf8mb4_unicode_ci = cat_u.code COLLATE utf8mb4_unicode_ci
                     WHERE i.adjustment_id = ?
                 `, [docId]);
 
@@ -1709,9 +1739,11 @@ const getKardexOriginDetail = async (req, res) => {
                     SELECT i.*, 
                            p.nombre as producto_nombre, 
                            p.codigo as producto_codigo,
-                           p.unidad_medida
+                           p.unidad_medida,
+                           cat_u.description as unidad_medida_nombre
                     FROM inventory_transfer_items i
                     JOIN products p ON i.product_id = p.id
+                    LEFT JOIN cat_014_unidad_medida cat_u ON p.unidad_medida COLLATE utf8mb4_unicode_ci = cat_u.code COLLATE utf8mb4_unicode_ci
                     WHERE i.transfer_id = ?
                 `, [docId]);
 
@@ -1743,9 +1775,11 @@ const getKardexOriginDetail = async (req, res) => {
                     SELECT pii.*, 
                            p.nombre as producto_nombre, 
                            p.codigo as producto_codigo,
-                           p.unidad_medida
+                           p.unidad_medida,
+                           cat_u.description as unidad_medida_nombre
                     FROM physical_inventory_items pii
                     JOIN products p ON pii.product_id = p.id
+                    LEFT JOIN cat_014_unidad_medida cat_u ON p.unidad_medida COLLATE utf8mb4_unicode_ci = cat_u.code COLLATE utf8mb4_unicode_ci
                     WHERE pii.physical_inventory_id = ?
                 `, [docId]);
 
