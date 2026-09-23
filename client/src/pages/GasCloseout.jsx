@@ -2,7 +2,7 @@ import { useState, useRef, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import {
-    Calculator, Lock, Unlock, Loader2, User, Calendar, Hash, X, RefreshCw,
+    Calculator, Lock, Unlock, Loader2, User, Calendar, Hash, X,
     Fuel, Receipt, CreditCard, Gift, Percent, Truck, Droplets,
     FlaskConical, Banknote, ArrowLeft, Plus, Trash2, Save, UserCheck, Printer, BarChart3, FileText, LockOpen, Upload, AlertTriangle, ShieldCheck
 } from 'lucide-react';
@@ -16,6 +16,15 @@ import Money, { MoneyInput } from '../components/ui/Money';
 import { useDirtyTracker } from '../hooks/useDirtyTracker';
 import * as XLSX from 'xlsx';
 import { getTodayString } from '../utils/dateUtils';
+import {
+    GasNozzleAssignModal,
+    GasRemesasModal,
+    GasGastosModal,
+    GasLubricantesModal,
+    GasTankReadingsModal,
+    GasCuponesModal,
+    GasAdelantosModal
+} from '../components/gas';
 
 const parseDecimal = (value) => {
     if (value == null) return NaN;
@@ -2117,148 +2126,6 @@ const GasCloseout = () => {
         setShowNozzleAssignModal(false);
     };
 
-    const modalSelectedNozzleIds = modalAssignments
-        .filter(a => a.despachador_id === parseInt(modalSelectedDespachadorId))
-        .map(a => a.nozzle_id);
-
-    const nozzleOccupancyMap = {};
-    modalAssignments.forEach(a => { nozzleOccupancyMap[a.nozzle_id] = a.despachador_id; });
-
-    const renderNozzleAssignModal = () => {
-        if (!showNozzleAssignModal) return null;
-        return (
-            <div className="fixed inset-0 z-50 flex items-start justify-center pt-8 pb-8">
-                <div className="fixed inset-0 bg-black/40" onClick={() => setShowNozzleAssignModal(false)} />
-                <div className="relative bg-white rounded-2xl shadow-2xl w-[95%] max-w-2xl max-h-[90vh] flex flex-col">
-                    <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 shrink-0">
-                        <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                            <Fuel size={16} className="text-indigo-600" />
-                            Asignación de Mangueras al Turno
-                        </h3>
-                        <button
-                            onClick={() => setShowNozzleAssignModal(false)}
-                            className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
-                        >
-                            <X size={18} />
-                        </button>
-                    </div>
-                    <div className="p-5 overflow-y-auto">
-                        <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                            Despachador
-                        </label>
-                        <select
-                            value={modalSelectedDespachadorId}
-                            onChange={(e) => setModalSelectedDespachadorId(e.target.value)}
-                            className="w-full border border-slate-300 rounded-xl px-3 py-2 text-[13px] font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                        >
-                            <option value="">-- Seleccionar despachador --</option>
-                            {despachadoresOptions.map(d => (
-                                <option key={d.id} value={d.id}>
-                                    {d.label}
-                                </option>
-                            ))}
-                        </select>
-                        {modalSelectedDespachadorId && (
-                            <div className="mt-5 border-t border-slate-100 pt-4">
-                                <h3 className="text-xs font-bold text-slate-600 uppercase tracking-wider mb-3">Mangueras</h3>
-                                {nozzlesData.length === 0 ? (
-                                    <p className="text-xs text-slate-400 py-4 text-center">No hay mangueras registradas.</p>
-                                ) : (
-                                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
-                                        {nozzlesData.map(n => {
-                                            const occupancy = nozzleOccupancyMap[n.id];
-                                            const isAssignedToCurrent = modalSelectedNozzleIds.includes(n.id);
-                                            const isOccupied = occupancy && occupancy !== parseInt(modalSelectedDespachadorId);
-
-                                            if (isOccupied) {
-                                                const otherDesp = closeoutDespachadores.find(d => d.despachador_id === occupancy);
-                                                const otherDespAll = allDespachadores.find(a => a.id === occupancy);
-                                                const otherLabel = otherDesp?.nombre || otherDespAll?.codigo || `ID ${occupancy}`;
-                                                return (
-                                                    <div
-                                                        key={n.id}
-                                                        className="flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-100 bg-slate-50 text-xs text-slate-400 cursor-not-allowed"
-                                                        title={`Asignada a ${otherLabel}`}
-                                                    >
-                                                        <Lock size={14} className="text-slate-300" />
-                                                        <div className="text-left leading-tight">
-                                                            <span className="font-bold">{n.codigo}</span>
-                                                            {n.product_nombre && (
-                                                                <span className="text-[10px] text-slate-400 block">{n.product_nombre}</span>
-                                                            )}
-                                                            {n.island_codigo && (
-                                                                <span className="text-[10px] text-slate-400 block">Isla: {n.island_codigo}</span>
-                                                            )}
-                                                            <span className="text-[10px] text-amber-500 block">{otherLabel}</span>
-                                                        </div>
-                                                    </div>
-                                                );
-                                            }
-
-                                            return (
-                                                <button
-                                                    key={n.id}
-                                                    onClick={() => {
-                                                        setModalAssignments(prev => {
-                                                            const exists = prev.find(a =>
-                                                                a.despachador_id === parseInt(modalSelectedDespachadorId) &&
-                                                                a.nozzle_id === n.id
-                                                            );
-                                                            if (exists) {
-                                                                return prev.filter(a =>
-                                                                    !(a.despachador_id === parseInt(modalSelectedDespachadorId) && a.nozzle_id === n.id)
-                                                                );
-                                                            }
-                                                            return [...prev, { despachador_id: parseInt(modalSelectedDespachadorId), nozzle_id: n.id }];
-                                                        });
-                                                    }}
-                                                    className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-medium transition-all ${
-                                                        isAssignedToCurrent
-                                                            ? 'bg-indigo-50 border-indigo-300 text-indigo-700 shadow-sm'
-                                                            : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50 hover:border-slate-300'
-                                                    }`}
-                                                >
-                                                    <Fuel size={14} className={isAssignedToCurrent ? 'text-indigo-500' : 'text-slate-300'} />
-                                                    <div className="text-left leading-tight">
-                                                        <span className="font-bold">{n.codigo}</span>
-                                                        {n.product_nombre && (
-                                                            <span className="text-[10px] text-slate-500 block">{n.product_nombre}</span>
-                                                        )}
-                                                        {n.island_codigo && (
-                                                            <span className="text-[10px] text-slate-400 block">Isla: {n.island_codigo}</span>
-                                                        )}
-                                                    </div>
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
-                                )}
-                                <p className="text-xs text-slate-400 mt-3">
-                                    <Lock size={10} className="inline mr-1" />
-                                    Mangueras ocupadas por otro despachador.
-                                </p>
-                            </div>
-                        )}
-                    </div>
-                    <div className="flex items-center justify-end gap-3 px-5 py-3 border-t border-slate-100 shrink-0">
-                        <button
-                            onClick={() => setShowNozzleAssignModal(false)}
-                            className="px-4 py-2 text-xs font-bold text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition-colors"
-                        >
-                            Cancelar
-                        </button>
-                        <button
-                            onClick={handleModalSave}
-                            className="px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-all shadow-sm"
-                        >
-                            {closeoutId ? 'Guardar' : 'Aplicar'}
-                        </button>
-                    </div>
-                </div>
-            </div>
-        );
-    };
-
     if (editLoading) {
         return (
             <div className="flex items-center justify-center py-20">
@@ -2995,538 +2862,60 @@ const GasCloseout = () => {
                     </div>
                 )}
 
-                {showGastosModal && (
-                    <div className="fixed inset-0 z-50 flex items-start justify-center pt-8 pb-8">
-                        <div className="fixed inset-0 bg-black/40" onClick={() => handleSafeCloseModal('gastos')} />
-                        <div className="relative bg-white rounded-2xl shadow-2xl w-[95%] max-w-4xl min-h-[65vh] max-h-[95vh] flex flex-col">
-                            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 shrink-0">
-                                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                                    <Receipt size={16} className="text-indigo-600" />
-                                    Gastos del Turno
-                                    {isSectionDirty('gastos') && estado !== 'cerrado' && (
-                                        <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-300 px-2 py-0.5 rounded-full flex items-center gap-1 animate-pulse">
-                                            ● Cambios sin guardar
-                                        </span>
-                                    )}
-                                    {estado === 'cerrado' && (
-                                        <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">Solo lectura</span>
-                                    )}
-                                </h3>
-                                <button
-                                    onClick={() => handleSafeCloseModal('gastos')}
-                                    className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors"
-                                >
-                                    <X size={16} className="text-slate-400" />
-                                </button>
-                            </div>
-                            <div className="overflow-auto px-4 pb-4 flex-1">
-                                <table className="w-full text-left border-separate border-spacing-0 table-cards">
-                                    <thead className="sticky top-0 z-20">
-                                        <tr className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-36">Rubro</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-24">Fecha</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-24">Documento</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-16">Tipo</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-36">Proveedor</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-44">Despachador</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 text-right w-20">Valor</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-32">Comentario</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-10"></th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-50">
-                                        {gastos.length === 0 && (
-                                            <tr>
-                                                <td colSpan={9} className="px-3 py-8 text-center text-xs text-slate-400">
-                                                    No hay gastos registrados. Agregue un gasto para comenzar.
-                                                </td>
-                                            </tr>
-                                        )}
-                                        {gastos.map(g => (
-                                            <tr key={g.id} className="text-[11px] hover:bg-slate-50 transition-colors">
-                                                <td className="px-1.5 py-1" data-label="Rubro">
-                                                    {showNewCategoryInput ? (
-                                                        <div className="flex gap-1">
-                                                            <input
-                                                                type="text"
-                                                                value={newCategoryName}
-                                                                onChange={(e) => setNewCategoryName(e.target.value)}
-                                                                onKeyDown={(e) => { if (e.key === 'Enter') handleCreateCategory(); if (e.key === 'Escape') setShowNewCategoryInput(false); }}
-                                                                placeholder="Nuevo rubro..."
-                                                                className="w-full px-1.5 py-0.5 bg-white border border-indigo-300 rounded text-[11px] outline-none focus:ring-2 focus:ring-indigo-500/20"
-                                                                autoFocus
-                                                            />
-                                                            <button onClick={handleCreateCategory} className="p-0.5 text-indigo-600 hover:text-indigo-800">
-                                                                <Plus size={14} />
-                                                            </button>
-                                                        </div>
-                                                    ) : (
-                                                        <select
-                                                            value={g.rubro}
-                                                            onChange={(e) => {
-                                                                if (e.target.value === '__new__') {
-                                                                    setShowNewCategoryInput(true);
-                                                                    setNewCategoryName('');
-                                                                } else {
-                                                                    handleGastoChange(g.id, 'rubro', e.target.value);
-                                                                }
-                                                            }}
-                                                            disabled={estado === 'cerrado'}
-                                                            className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
-                                                        >
-                                                            <option value="">Seleccionar...</option>
-                                                            {expenseCategories.map(c => (
-                                                                <option key={c.id} value={c.name}>{c.name}</option>
-                                                            ))}
-                                                            <option value="__new__">+ Nuevo rubro...</option>
-                                                        </select>
-                                                    )}
-                                                </td>
-                                                <td className="px-1.5 py-1" data-label="Fecha">
-                                                    <input
-                                                        type="date"
-                                                        value={g.fecha}
-                                                        onChange={(e) => handleGastoChange(g.id, 'fecha', e.target.value)}
-                                                        disabled={estado === 'cerrado'}
-                                                        className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
-                                                    />
-                                                </td>
-                                                <td className="px-1.5 py-1" data-label="Documento">
-                                                    <input
-                                                        type="text"
-                                                        value={g.documento}
-                                                        onChange={(e) => handleGastoChange(g.id, 'documento', e.target.value)}
-                                                        disabled={estado === 'cerrado'}
-                                                        placeholder="N° documento"
-                                                        className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
-                                                    />
-                                                </td>
-                                                <td className="px-1.5 py-1" data-label="Tipo">
-                                                    <select
-                                                        value={g.tipo}
-                                                        onChange={(e) => handleGastoChange(g.id, 'tipo', e.target.value)}
-                                                        disabled={estado === 'cerrado'}
-                                                        className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
-                                                    >
-                                                        <option value="ccf">CCF</option>
-                                                        <option value="cmp">CMP</option>
-                                                        <option value="fac">FAC</option>
-                                                        <option value="tic">TIC</option>
-                                                    </select>
-                                                </td>
-                                                <td className="px-1.5 py-1" data-label="Proveedor">
-                                                    <SearchableSelect
-                                                        loadOptions={loadProviders}
-                                                        value={g.provider_id}
-                                                        onChange={(e, opt) => {
-                                                            handleGastoChange(g.id, 'provider_id', e.target.value);
-                                                            handleGastoChange(g.id, 'proveedor', opt ? opt.nombre : '');
-                                                        }}
-                                                        disabled={estado === 'cerrado'}
-                                                        placeholder="Buscar proveedor..."
-                                                        valueKey="id"
-                                                        labelKey="nombre"
-                                                        displayKey="nombre"
-                                                        codeKey="nrc"
-                                                        codeLabel="NRC"
-                                                        selectedLabel={g.proveedor}
-                                                        dropdownWidth={380}
-                                                    />
-                                                </td>
-                                                <td className="px-1.5 py-1" data-label="Despachador">
-                                                    <select
-                                                        value={g.despachador_id || ''}
-                                                        onChange={(e) => handleGastoChange(g.id, 'despachador_id', e.target.value)}
-                                                        disabled={estado === 'cerrado'}
-                                                        className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
-                                                    >
-                                                        {despachadoresOptions.length === 0 && <option value="">Sin despachador</option>}
-                                                        {despachadoresOptions.map(d => (
-                                                            <option key={d.id} value={d.id}>{d.label}</option>
-                                                        ))}
-                                                    </select>
-                                                </td>
-                                                <td className="px-1.5 py-1 text-right" data-label="Valor">
-                                                    <MoneyInput
-                                                        step="0.01"
-                                                        value={g.valor || ''}
-                                                        onChange={(e) => handleGastoChange(g.id, 'valor', parseFloat(e.target.value) || 0)}
-                                                        onFocus={(e) => e.target.select()}
-                                                        disabled={estado === 'cerrado'}
-                                                        placeholder="0.00"
-                                                        className="w-20 text-right bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20 font-mono"
-                                                    />
-                                                </td>
-                                                <td className="px-1.5 py-1" data-label="Comentario">
-                                                    <input
-                                                        type="text"
-                                                        value={g.comentario || ''}
-                                                        onChange={(e) => handleGastoChange(g.id, 'comentario', e.target.value)}
-                                                        disabled={estado === 'cerrado'}
-                                                        placeholder="Comentario"
-                                                        className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
-                                                    />
-                                                </td>
-                                                <td className="px-1.5 py-1 text-center" data-label="">
-                                                    {estado !== 'cerrado' && (
-                                                        <button
-                                                            onClick={() => handleRemoveGasto(g.id)}
-                                                            className="p-0.5 text-slate-600 hover:text-red-500 transition-colors"
-                                                        >
-                                                            <Trash2 size={14} />
-                                                        </button>
-                                                    )}
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                                {estado !== 'cerrado' && (
-                                    <div className="flex items-center justify-between mt-3">
-                                        <button
-                                            onClick={handleAddGastoRow}
-                                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-xl transition-all"
-                                        >
-                                            <Plus size={14} />
-                                            Agregar Gasto
-                                        </button>
-                                        <div className="flex items-center gap-4">
-                                            <span className="text-xs text-slate-500">
-                                                Total Gastos: <strong className="text-red-600 font-mono text-sm"><Money value={gastosTotal} /></strong>
-                                            </span>
-                                            <button
-                                                onClick={() => handleSaveSection('gastos')}
-                                                disabled={saveExpensesMutation.isPending}
-                                                className={`flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold rounded-xl transition-all disabled:opacity-50 ${
-                                                    isSectionDirty('gastos')
-                                                        ? 'text-white bg-amber-600 hover:bg-amber-700 shadow-md shadow-amber-500/20 ring-2 ring-amber-400/50 animate-pulse'
-                                                        : 'text-white bg-indigo-600 hover:bg-indigo-700'
-                                                }`}
-                                            >
-                                                {saveExpensesMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-                                                {saveExpensesMutation.isPending ? 'Guardando...' : (isSectionDirty('gastos') ? 'Guardar Gastos (Pendiente)' : 'Guardar Gastos')}
-                                            </button>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-                )}
+                <GasGastosModal
+                    isOpen={showGastosModal}
+                    onClose={() => handleSafeCloseModal('gastos')}
+                    isDirty={isSectionDirty('gastos')}
+                    estado={estado}
+                    gastos={gastos}
+                    expenseCategories={expenseCategories}
+                    newCategoryName={newCategoryName}
+                    setNewCategoryName={setNewCategoryName}
+                    showNewCategoryInput={showNewCategoryInput}
+                    setShowNewCategoryInput={setShowNewCategoryInput}
+                    handleCreateCategory={handleCreateCategory}
+                    handleGastoChange={handleGastoChange}
+                    loadProviders={loadProviders}
+                    despachadoresOptions={despachadoresOptions}
+                    handleRemoveGasto={handleRemoveGasto}
+                    handleAddGastoRow={handleAddGastoRow}
+                    gastosTotal={gastosTotal}
+                    handleSaveSection={handleSaveSection}
+                    isSaving={saveExpensesMutation.isPending}
+                />
 
-                {showRemesasModal && (
-                    <div className="fixed inset-0 z-50 flex items-start justify-center pt-8 pb-8">
-                        <div className="fixed inset-0 bg-black/40" onClick={() => handleSafeCloseModal('remesas')} />
-                        <div className="relative bg-white rounded-2xl shadow-2xl w-[95%] max-w-3xl min-h-[50vh] max-h-[95vh] flex flex-col">
-                            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 shrink-0">
-                                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                                    <Banknote size={16} className="text-indigo-600" />
-                                    Remesas del Turno
-                                    {isSectionDirty('remesas') && estado !== 'cerrado' && (
-                                        <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-300 px-2 py-0.5 rounded-full flex items-center gap-1 animate-pulse">
-                                            ● Cambios sin guardar
-                                        </span>
-                                    )}
-                                    {estado === 'cerrado' && (
-                                        <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">Solo lectura</span>
-                                    )}
-                                </h3>
-                                <button
-                                    onClick={() => handleSafeCloseModal('remesas')}
-                                    className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors"
-                                >
-                                    <X size={16} className="text-slate-400" />
-                                </button>
-                            </div>
-                            <div className="overflow-auto px-4 pb-4 flex-1">
-                                <table className="w-full text-left border-separate border-spacing-0 table-cards">
-                                    <thead className="sticky top-0 z-20">
-                                        <tr className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-28">Código</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-28">Documento</th>
-<th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-44">Despachador</th>
-                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-44">Tipo de Operación</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 text-right w-24">Monto</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-10"></th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-50">
-                                        {remesas.length === 0 && (
-                                            <tr>
-                                                <td colSpan={6} className="px-3 py-8 text-center text-xs text-slate-400">
-                                                    No hay remesas registradas. Agregue una remesa para comenzar.
-                                                </td>
-                                            </tr>
-                                        )}
-                                        {remesas.map(r => (
-                                            <tr key={r.id} className="text-[11px] hover:bg-slate-50 transition-colors">
-                                                <td className="px-1.5 py-1" data-label="Código">
-                                                    <span className="text-[11px] font-mono text-slate-600">${escHtml(r.codigo || '—')}</span>
-                                                </td>
-                                                <td className="px-1.5 py-1" data-label="Documento">
-                                                    <input
-                                                        type="text"
-                                                        value={r.documento}
-                                                        onChange={(e) => handleRemesaChange(r.id, 'documento', e.target.value)}
-                                                        disabled={estado === 'cerrado'}
-                                                        placeholder="N° documento"
-                                                        className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
-                                                    />
-                                                </td>
-                                                <td className="px-1.5 py-1" data-label="Despachador">
-                                                    <select
-                                                        value={r.despachador_id || ''}
-                                                        onChange={(e) => handleRemesaChange(r.id, 'despachador_id', e.target.value)}
-                                                        disabled={estado === 'cerrado'}
-                                                        className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
-                                                    >
-                                                        {despachadoresOptions.length === 0 && <option value="">Sin despachador</option>}
-                                                        {despachadoresOptions.map(disp => (
-                                                            <option key={disp.id} value={disp.id}>{disp.label}</option>
-                                                        ))}
-                                                    </select>
-                                                </td>
-                                                <td className="px-1.5 py-1" data-label="Tipo de Operación">
-                                                    <select
-                                                        value={r.tipo_operacion}
-                                                        onChange={(e) => handleRemesaChange(r.id, 'tipo_operacion', e.target.value)}
-                                                        disabled={estado === 'cerrado'}
-                                                        className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
-                                                    >
-                                                        <option value="venta_combustible">Venta de Combustible</option>
-                                                        <option value="recuperacion_credito">Recuperación de Crédito</option>
-                                                        <option value="pago_anticipado">Pago Anticipado</option>
-                                                    </select>
-                                                </td>
-                                                <td className="px-1.5 py-1 text-right" data-label="Monto">
-                                                    <MoneyInput
-                                                        step="0.01"
-                                                        value={r.monto || ''}
-                                                        onChange={(e) => handleRemesaChange(r.id, 'monto', parseFloat(e.target.value) || 0)}
-                                                        onFocus={(e) => e.target.select()}
-                                                        disabled={estado === 'cerrado'}
-                                                        placeholder="0.00"
-                                                        className="w-full text-right bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20 font-mono"
-                                                    />
-                                                </td>
-                                                <td className="px-1.5 py-1 text-center" data-label="">
-                                                    <div className="flex items-center justify-center gap-0.5">
-                                                        <button
-                                                            onClick={() => handlePrintRemesaLabel(r)}
-                                                            className="p-0.5 text-slate-600 hover:text-indigo-500 transition-colors"
-                                                            title="Imprimir etiqueta"
-                                                        >
-                                                            <Printer size={14} />
-                                                        </button>
-                                                        {estado !== 'cerrado' && (
-                                                            <button
-                                                                onClick={() => handleRemoveRemesa(r.id)}
-                                                                className="p-0.5 text-slate-600 hover:text-red-500 transition-colors"
-                                                            >
-                                                                <Trash2 size={14} />
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                                {estado !== 'cerrado' && (
-                                    <div className="flex items-center justify-between mt-3">
-                                        <button
-                                            onClick={handleAddRemesaRow}
-                                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-xl transition-all"
-                                        >
-                                            <Plus size={14} />
-                                            Agregar Remesa
-                                        </button>
-                                        <div className="flex items-center gap-4">
-                                            <span className="text-xs text-slate-500">
-                                                Total Remesas: <strong className="text-red-600 font-mono text-sm"><Money value={remesasTotal} /></strong>
-                                            </span>
-                                            <button
-                                                onClick={() => handleSaveSection('remesas')}
-                                                disabled={saveRemesasMutation.isPending}
-                                                className={`flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold rounded-xl transition-all disabled:opacity-50 ${
-                                                    isSectionDirty('remesas')
-                                                        ? 'text-white bg-amber-600 hover:bg-amber-700 shadow-md shadow-amber-500/20 ring-2 ring-amber-400/50 animate-pulse'
-                                                        : 'text-white bg-indigo-600 hover:bg-indigo-700'
-                                                }`}
-                                            >
-                                                {saveRemesasMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-                                                {saveRemesasMutation.isPending ? 'Guardando...' : (isSectionDirty('remesas') ? 'Guardar Remesas (Pendiente)' : 'Guardar Remesas')}
-                                            </button>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-                )}
+                <GasRemesasModal
+                    isOpen={showRemesasModal}
+                    onClose={() => handleSafeCloseModal('remesas')}
+                    isDirty={isSectionDirty('remesas')}
+                    estado={estado}
+                    remesas={remesas}
+                    despachadoresOptions={despachadoresOptions}
+                    onRemesaChange={handleRemesaChange}
+                    onPrintLabel={handlePrintRemesaLabel}
+                    onRemoveRemesa={handleRemoveRemesa}
+                    onAddRemesa={handleAddRemesaRow}
+                    remesasTotal={remesasTotal}
+                    onSave={() => handleSaveSection('remesas')}
+                    isSaving={saveRemesasMutation.isPending}
+                />
 
-                {showCuponesModal && (
-                    <div className="fixed inset-0 z-50 flex items-start justify-center pt-8 pb-8">
-                        <div className="fixed inset-0 bg-black/40" onClick={() => handleSafeCloseModal('cupones')} />
-                        <div className="relative bg-white rounded-2xl shadow-2xl w-[95%] max-w-4xl min-h-[50vh] max-h-[95vh] flex flex-col">
-                            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 shrink-0">
-                                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                                    <CreditCard size={16} className="text-indigo-600" />
-                                    Cupones del Turno
-                                    {isSectionDirty('cupones') && estado !== 'cerrado' && (
-                                        <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-300 px-2 py-0.5 rounded-full flex items-center gap-1 animate-pulse">
-                                            ● Cambios sin guardar
-                                        </span>
-                                    )}
-                                    {estado === 'cerrado' && (
-                                        <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">Solo lectura</span>
-                                    )}
-                                </h3>
-                                <button
-                                    onClick={() => handleSafeCloseModal('cupones')}
-                                    className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors"
-                                >
-                                    <X size={16} className="text-slate-400" />
-                                </button>
-                            </div>
-                            <div className="overflow-auto px-4 pb-4 flex-1">
-                                <table className="w-full text-left border-separate border-spacing-0 table-cards">
-                                    <thead className="sticky top-0 z-20">
-                                        <tr className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-28">Cupón</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-32">Distribuidora</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-28">Producto</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-44">Despachador</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 text-right w-20">Monto</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-10"></th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-50">
-                                        {cupones.length === 0 && (
-                                            <tr>
-                                                <td colSpan={6} className="px-3 py-8 text-center text-xs text-slate-400">
-                                                    No hay cupones registrados. Agregue un cupón para comenzar.
-                                                </td>
-                                            </tr>
-                                        )}
-                                        {cupones.map(c => (
-                                            <tr key={c.id} className="text-[11px] hover:bg-slate-50 transition-colors">
-                                                <td className="px-1.5 py-1" data-label="Cupón">
-                                                    <input
-                                                        type="text"
-                                                        value={c.cupon}
-                                                        onChange={(e) => handleCuponChange(c.id, 'cupon', e.target.value)}
-                                                        disabled={estado === 'cerrado'}
-                                                        placeholder="N° cupón"
-                                                        className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
-                                                    />
-                                                </td>
-                                                <td className="px-1.5 py-1" data-label="Distribuidora">
-                                                    <select
-                                                        value={c.distribuidora_id}
-                                                        onChange={(e) => {
-                                                            const id = e.target.value;
-                                                            const dist = distributors.find(d => d.id === parseInt(id));
-                                                            handleCuponChange(c.id, 'distribuidora_id', id);
-                                                            handleCuponChange(c.id, 'distribuidora_nombre', dist ? dist.descripcion : '');
-                                                        }}
-                                                        disabled={estado === 'cerrado'}
-                                                        className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
-                                                    >
-                                                        <option value="">Seleccionar...</option>
-                                                        {distributors.map(d => (
-                                                            <option key={d.id} value={d.id}>{d.codigo} — {d.descripcion}</option>
-                                                        ))}
-                                                    </select>
-                                                </td>
-                                                <td className="px-1.5 py-1" data-label="Producto">
-                                                    <select
-                                                        value={c.producto_codigo}
-                                                        onChange={(e) => {
-                                                            const cod = e.target.value;
-                                                            const prod = fuelProducts.find(p => p.codigo === cod);
-                                                            handleCuponChange(c.id, 'producto_codigo', cod);
-                                                            handleCuponChange(c.id, 'producto_descripcion', prod ? prod.descripcion : '');
-                                                        }}
-                                                        disabled={estado === 'cerrado'}
-                                                        className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
-                                                    >
-                                                        <option value="">Seleccionar...</option>
-                                                        {fuelProducts.map(p => (
-                                                            <option key={p.codigo} value={p.codigo}>{p.codigo} — {p.descripcion}</option>
-                                                        ))}
-                                                    </select>
-                                                </td>
-                                                <td className="px-1.5 py-1" data-label="Despachador">
-                                                    <select
-                                                        value={c.despachador_id || ''}
-                                                        onChange={(e) => handleCuponChange(c.id, 'despachador_id', e.target.value)}
-                                                        disabled={estado === 'cerrado'}
-                                                        className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
-                                                    >
-                                                        {despachadoresOptions.length === 0 && <option value="">Sin despachador</option>}
-                                                        {despachadoresOptions.map(d => (
-                                                            <option key={d.id} value={d.id}>{d.label}</option>
-                                                        ))}
-                                                    </select>
-                                                </td>
-                                                <td className="px-1.5 py-1 text-right" data-label="Monto">
-                                                    <MoneyInput
-                                                        step="0.01"
-                                                        value={c.monto || ''}
-                                                        onChange={(e) => handleCuponChange(c.id, 'monto', parseFloat(e.target.value) || 0)}
-                                                        onFocus={(e) => e.target.select()}
-                                                        disabled={estado === 'cerrado'}
-                                                        placeholder="0.00"
-                                                        className="w-full text-right bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20 font-mono"
-                                                    />
-                                                </td>
-                                                <td className="px-1.5 py-1 text-center" data-label="">
-                                                    {estado !== 'cerrado' && (
-                                                        <button
-                                                            onClick={() => handleRemoveCupon(c.id)}
-                                                            className="p-0.5 text-slate-600 hover:text-red-500 transition-colors"
-                                                        >
-                                                            <Trash2 size={14} />
-                                                        </button>
-                                                    )}
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                                {estado !== 'cerrado' && (
-                                    <div className="flex items-center justify-between mt-3">
-                                        <button
-                                            onClick={handleAddCuponRow}
-                                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-xl transition-all"
-                                        >
-                                            <Plus size={14} />
-                                            Agregar Cupón
-                                        </button>
-                                        <div className="flex items-center gap-4">
-                                            <span className="text-xs text-slate-500">
-                                                Total Cupones: <strong className="text-red-600 font-mono text-sm"><Money value={cuponesTotal} /></strong>
-                                            </span>
-                                            <button
-                                                onClick={() => handleSaveSection('cupones')}
-                                                disabled={saveCuponesMutation.isPending}
-                                                className={`flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold rounded-xl transition-all disabled:opacity-50 ${
-                                                    isSectionDirty('cupones')
-                                                        ? 'text-white bg-amber-600 hover:bg-amber-700 shadow-md shadow-amber-500/20 ring-2 ring-amber-400/50 animate-pulse'
-                                                        : 'text-white bg-indigo-600 hover:bg-indigo-700'
-                                                }`}
-                                            >
-                                                {saveCuponesMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-                                                {saveCuponesMutation.isPending ? 'Guardando...' : (isSectionDirty('cupones') ? 'Guardar Cupones (Pendiente)' : 'Guardar Cupones')}
-                                            </button>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-                )}
+                <GasCuponesModal
+                    isOpen={showCuponesModal}
+                    onClose={() => handleSafeCloseModal('cupones')}
+                    isDirty={isSectionDirty('cupones')}
+                    estado={estado}
+                    cupones={cupones}
+                    distributors={distributors}
+                    fuelProducts={fuelProducts}
+                    despachadoresOptions={despachadoresOptions}
+                    handleCuponChange={handleCuponChange}
+                    handleRemoveCupon={handleRemoveCupon}
+                    handleAddCuponRow={handleAddCuponRow}
+                    cuponesTotal={cuponesTotal}
+                    handleSaveSection={handleSaveSection}
+                    isSaving={saveCuponesMutation.isPending}
+                />
 
                 {showDescuentosModal && (
                     <div className="fixed inset-0 z-50 flex items-start justify-center pt-8 pb-8">
@@ -3709,130 +3098,20 @@ const GasCloseout = () => {
                     </div>
                 )}
 
-                {showAdelantosModal && (
-                    <div className="fixed inset-0 z-50 flex items-start justify-center pt-8 pb-8">
-                        <div className="fixed inset-0 bg-black/40" onClick={() => handleSafeCloseModal('adelantos')} />
-                        <div className="relative bg-white rounded-2xl shadow-2xl w-[95%] max-w-2xl min-h-[40vh] max-h-[95vh] flex flex-col">
-                            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 shrink-0">
-                                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                                    <Banknote size={16} className="text-indigo-600" />
-                                    Adelantos del Turno
-                                    {isSectionDirty('adelantos') && estado !== 'cerrado' && (
-                                        <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-300 px-2 py-0.5 rounded-full flex items-center gap-1 animate-pulse">
-                                            ● Cambios sin guardar
-                                        </span>
-                                    )}
-                                    {estado === 'cerrado' && (
-                                        <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">Solo lectura</span>
-                                    )}
-                                </h3>
-                                <button
-                                    onClick={() => handleSafeCloseModal('adelantos')}
-                                    className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors"
-                                >
-                                    <X size={16} className="text-slate-400" />
-                                </button>
-                            </div>
-                            <div className="overflow-auto px-4 pb-4 flex-1">
-                                <table className="w-full text-left border-separate border-spacing-0 table-cards">
-                                    <thead className="sticky top-0 z-20">
-                                        <tr className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100">Empleado</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-44">Despachador</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 text-right w-24">Monto</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-10"></th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-50">
-                                        {adelantos.length === 0 && (
-                                            <tr>
-                                                <td colSpan={4} className="px-3 py-8 text-center text-xs text-slate-400">
-                                                    No hay adelantos registrados. Agregue un adelanto para comenzar.
-                                                </td>
-                                            </tr>
-                                        )}
-                                        {adelantos.map(a => (
-                                            <tr key={a.id} className="text-[11px] hover:bg-slate-50 transition-colors">
-                                                <td className="px-1.5 py-1" data-label="Empleado">
-                                                    <input
-                                                        type="text"
-                                                        value={a.empleado}
-                                                        onChange={(e) => handleAdelantoChange(a.id, 'empleado', e.target.value)}
-                                                        disabled={estado === 'cerrado'}
-                                                        placeholder="Nombre del empleado"
-                                                        className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
-                                                    />
-                                                </td>
-                                                <td className="px-1.5 py-1" data-label="Despachador">
-                                                    <select
-                                                        value={a.despachador_id || ''}
-                                                        onChange={(e) => handleAdelantoChange(a.id, 'despachador_id', e.target.value)}
-                                                        disabled={estado === 'cerrado'}
-                                                        className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
-                                                    >
-                                                        {despachadoresOptions.length === 0 && <option value="">Sin despachador</option>}
-                                                        {despachadoresOptions.map(disp => (
-                                                            <option key={disp.id} value={disp.id}>{disp.label}</option>
-                                                        ))}
-                                                    </select>
-                                                </td>
-                                                <td className="px-1.5 py-1 text-right" data-label="Monto">
-                                                    <MoneyInput
-                                                        step="0.01"
-                                                        value={a.monto ?? ''}
-                                                        onChange={(e) => handleAdelantoChange(a.id, 'monto', e.target.value)}
-                                                        onFocus={(e) => e.target.select()}
-                                                        disabled={estado === 'cerrado'}
-                                                        placeholder="0.00"
-                                                        className="w-full text-right bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20 font-mono"
-                                                    />
-                                                </td>
-                                                <td className="px-1.5 py-1 text-center" data-label="">
-                                                    {estado !== 'cerrado' && (
-                                                        <button
-                                                            onClick={() => handleRemoveAdelanto(a.id)}
-                                                            className="p-0.5 text-slate-600 hover:text-red-500 transition-colors"
-                                                        >
-                                                            <Trash2 size={14} />
-                                                        </button>
-                                                    )}
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                                {estado !== 'cerrado' && (
-                                    <div className="flex items-center justify-between mt-3">
-                                        <button
-                                            onClick={handleAddAdelantoRow}
-                                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-xl transition-all"
-                                        >
-                                            <Plus size={14} />
-                                            Agregar Adelanto
-                                        </button>
-                                        <div className="flex items-center gap-4">
-                                            <span className="text-xs text-slate-500">
-                                                Total Adelantos: <strong className="text-red-600 font-mono text-sm"><Money value={adelantosTotal} /></strong>
-                                            </span>
-                                            <button
-                                                onClick={() => handleSaveSection('adelantos')}
-                                                disabled={saveAdelantosMutation.isPending}
-                                                className={`flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold rounded-xl transition-all disabled:opacity-50 ${
-                                                    isSectionDirty('adelantos')
-                                                        ? 'text-white bg-amber-600 hover:bg-amber-700 shadow-md shadow-amber-500/20 ring-2 ring-amber-400/50 animate-pulse'
-                                                        : 'text-white bg-indigo-600 hover:bg-indigo-700'
-                                                }`}
-                                            >
-                                                {saveAdelantosMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-                                                {saveAdelantosMutation.isPending ? 'Guardando...' : (isSectionDirty('adelantos') ? 'Guardar Adelantos (Pendiente)' : 'Guardar Adelantos')}
-                                            </button>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-                )}
+                <GasAdelantosModal
+                    isOpen={showAdelantosModal}
+                    onClose={() => handleSafeCloseModal('adelantos')}
+                    isDirty={isSectionDirty('adelantos')}
+                    estado={estado}
+                    adelantos={adelantos}
+                    despachadoresOptions={despachadoresOptions}
+                    handleAdelantoChange={handleAdelantoChange}
+                    handleRemoveAdelanto={handleRemoveAdelanto}
+                    handleAddAdelantoRow={handleAddAdelantoRow}
+                    adelantosTotal={adelantosTotal}
+                    handleSaveSection={handleSaveSection}
+                    isSaving={saveAdelantosMutation.isPending}
+                />
 
                 {showTarjetasModal && (
                     <div className="fixed inset-0 z-50 flex items-start justify-center pt-8 pb-8">
@@ -4043,287 +3322,41 @@ const GasCloseout = () => {
                     </div>
                 )}
 
-                {showLubricantesModal && (
-                    <div className="fixed inset-0 z-50 flex items-start justify-center pt-8 pb-8">
-                        <div className="fixed inset-0 bg-black/40" onClick={() => { setShowLubricantesModal(false); setEditAnterior(false); }} />
-                        <div className="relative bg-white rounded-2xl shadow-2xl w-[95%] max-w-5xl min-h-[50vh] max-h-[90vh] flex flex-col">
-                            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 shrink-0">
-                                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                                    <Droplets size={16} className="text-indigo-600" />
-                                    Lecturas de Lubricantes
-                                    {estado === 'cerrado' && (
-                                        <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">Solo lectura</span>
-                                    )}
-                                    {estado !== 'cerrado' && (
-                                        <button
-                                            type="button"
-                                            onClick={() => setEditAnterior(prev => !prev)}
-                                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full border transition-colors ${
-                                                editAnterior
-                                                ? 'text-amber-700 bg-amber-100 border-amber-300'
-                                                : 'text-slate-500 bg-slate-50 border-slate-200'
-                                            }`}
-                                        >
-                                            <ShieldCheck size={11} className="inline mr-1 -mt-0.5" />
-                                            {editAnterior ? 'Lect. inicial editable' : 'Editar lect. inicial'}
-                                        </button>
-                                    )}
-                                </h3>
-                                <div className="flex items-center gap-1">
-                                    <button
-                                        onClick={handleRecargarLubricantes}
-                                        disabled={lubricantLoading}
-                                        title="Reinicializar desde el último turno"
-                                        className="p-1.5 hover:bg-indigo-50 rounded-lg transition-colors disabled:opacity-50"
-                                    >
-                                        {lubricantLoading ? (
-                                            <Loader2 size={16} className="text-indigo-500 animate-spin" />
-                                        ) : (
-                                            <RefreshCw size={16} className="text-slate-400" />
-                                        )}
-                                    </button>
-                                    <button
-                                        onClick={() => { setShowLubricantesModal(false); setEditAnterior(false); }}
-                                        className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors"
-                                    >
-                                        <X size={16} className="text-slate-400" />
-                                    </button>
-                                </div>
-                            </div>
-                            <div className="overflow-auto px-4 pb-4 flex-1 relative">
-                                <table className="w-full text-left border-separate border-spacing-0 table-cards">
-                                    <thead className="sticky top-0 z-20">
-                                        <tr className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100">Código</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 max-w-[140px]">Descripción</th>
-                                            <th className={`px-1.5 py-1 bg-slate-50 border-b border-slate-100 text-right w-28 ${editAnterior ? 'text-amber-600' : ''}`}>
-                                                Inicial{editAnterior && '*'}
-                                            </th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 text-right w-28">Recarga</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 text-right w-28">Final</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 text-right w-28">Ventas</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 text-right w-24">Precio</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 text-right w-28">Total</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-50">
-                                        {lubricantReadings.length === 0 && (
-                                            <tr>
-                                                <td colSpan={8} className="px-3 py-8 text-center text-xs text-slate-400">
-                                                    No hay productos de lubricantes configurados.
-                                                </td>
-                                            </tr>
-                                        )}
-                                        {lubricantReadings.map((r, idx) => {
-                                            const ventas = parseFloat(r.lectura_inicial || 0) + parseFloat(r.recarga || 0) - parseFloat(r.lectura_final || 0);
-                                            const total = ventas * parseFloat(r.precio || 0);
-                                            return (
-                                                <tr key={r.producto_id} className="hover:bg-slate-50 transition-colors text-[11px]">
-                                                    <td className="px-1.5 py-0.5 font-bold text-slate-900" data-label="Código">{r.producto_codigo}</td>
-                                                    <td className="px-1.5 py-0.5 max-w-[140px] truncate" data-label="Descripción">
-                                                        <span className="font-medium text-slate-800">{r.producto_descripcion}</span>
-                                                    </td>
-                                                    <td className="px-1.5 py-0.5 text-right" data-label="Inicial">
-                                                        {editAnterior ? (
-                                                            <input type="number" step="0.00001"
-                                                                ref={(el) => { lubricantInputRefs.current[`lub-anterior-${r.producto_id}`] = el; }}
-                                                                value={r.lectura_inicial ?? ''}
-                                                                onChange={(e) => {
-                                                                    setLubricantReadings(prev => prev.map(x =>
-                                                                        x.producto_id === r.producto_id
-                                                                            ? { ...x, lectura_inicial: e.target.value }
-                                                                            : x
-                                                                    ));
-                                                                }}
-                                                                onFocus={(e) => e.target.select()}
-                                                                onBlur={handleLubricantBlur}
-                                                                onKeyDown={(e) => handleLubricantKeyDown(e, idx, 'lectura_inicial')}
-                                                                disabled={estado === 'cerrado'}
-                                                                className={`${estado === 'cerrado' ? inputDisabledCls : inputCls} ml-auto`}
-                                                            />
-                                                        ) : (
-                                                            <span className="font-mono text-slate-600 whitespace-nowrap">{parseFloat(r.lectura_inicial || 0).toFixed(5)}</span>
-                                                        )}
-                                                    </td>
-                                                    <td className="px-1.5 py-0.5 text-right" data-label="Recarga">
-                                                        <input type="number" step="0.00001"
-                                                            ref={(el) => { lubricantInputRefs.current[`lub-recarga-${r.producto_id}`] = el; }}
-                                                            value={r.recarga ?? ''}
-                                                            onChange={(e) => {
-                                                                setLubricantReadings(prev => prev.map(x =>
-                                                                    x.producto_id === r.producto_id
-                                                                        ? { ...x, recarga: e.target.value }
-                                                                        : x
-                                                                ));
-                                                            }}
-                                                            onFocus={(e) => e.target.select()}
-                                                            onBlur={handleLubricantBlur}
-                                                            onKeyDown={(e) => handleLubricantKeyDown(e, idx, 'recarga')}
-                                                            disabled={estado === 'cerrado'}
-                                                            className={estado === 'cerrado' ? inputDisabledCls : inputCls}
-                                                        />
-                                                    </td>
-                                                    <td className="px-1.5 py-0.5 text-right" data-label="Final">
-                                                        <input type="number" step="0.00001"
-                                                            ref={(el) => { lubricantInputRefs.current[`lub-final-${r.producto_id}`] = el; }}
-                                                            value={r.lectura_final ?? ''}
-                                                            onChange={(e) => {
-                                                                setLubricantReadings(prev => prev.map(x =>
-                                                                    x.producto_id === r.producto_id
-                                                                        ? { ...x, lectura_final: e.target.value }
-                                                                        : x
-                                                                ));
-                                                            }}
-                                                            onFocus={(e) => e.target.select()}
-                                                            onBlur={handleLubricantBlur}
-                                                            onKeyDown={(e) => handleLubricantKeyDown(e, idx, 'lectura_final')}
-                                                            disabled={estado === 'cerrado'}
-                                                            className={estado === 'cerrado' ? inputDisabledCls : inputCls}
-                                                        />
-                                                    </td>
-                                                    <td className="px-1.5 py-0.5 text-right font-mono font-bold text-slate-800" data-label="Ventas">{ventas.toFixed(5)}</td>
-                                                    <td className="px-1.5 py-0.5 text-right font-mono text-slate-700" data-label="Precio"><Money value={parseFloat(r.precio || 0)} /></td>
-                                                    <td className="px-1.5 py-0.5 text-right font-mono font-bold text-slate-900" data-label="Total">
-                                                        <Money value={total} />
-                                                    </td>
-                                                </tr>
-                                            );
-                                        })}
-                                    </tbody>
-                                    <tfoot className="bg-slate-50 border-t border-slate-100 text-xs font-bold">
-                                        <tr>
-                                            <td colSpan={7} className="px-3 py-1.5 text-right text-slate-600 uppercase tracking-wider">Total Lubricantes</td>
-                                            <td className="px-3 py-1.5 text-right font-mono text-indigo-600">
-                                                <Money value={lubricantTotal} />
-                                            </td>
-                                        </tr>
-                                    </tfoot>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-                )}
+                <GasLubricantesModal
+                    isOpen={showLubricantesModal}
+                    onClose={() => { setShowLubricantesModal(false); setEditAnterior(false); }}
+                    estado={estado}
+                    editAnterior={editAnterior}
+                    setEditAnterior={setEditAnterior}
+                    handleRecargarLubricantes={handleRecargarLubricantes}
+                    lubricantLoading={lubricantLoading}
+                    lubricantReadings={lubricantReadings}
+                    setLubricantReadings={setLubricantReadings}
+                    handleLubricantBlur={handleLubricantBlur}
+                    handleLubricantKeyDown={handleLubricantKeyDown}
+                    lubricantInputRefs={lubricantInputRefs}
+                    lubricantTotal={lubricantTotal}
+                    inputCls={inputCls}
+                    inputDisabledCls={inputDisabledCls}
+                />
 
-                {showTankReadingsModal && (
-                    <div className="fixed inset-0 z-50 flex items-start justify-center pt-8 pb-8">
-                        <div className="fixed inset-0 bg-black/40" onClick={() => { setShowTankReadingsModal(false); setEditAnterior(false); }} />
-                        <div className="relative bg-white rounded-2xl shadow-2xl w-[95%] max-w-4xl min-h-[50vh] max-h-[90vh] flex flex-col">
-                            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 shrink-0">
-                                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2 flex-wrap">
-                                    <FlaskConical size={16} className="text-indigo-600" />
-                                    Lecturas por Tanque
-                                    {estado === 'cerrado' && (
-                                        <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">Solo lectura</span>
-                                    )}
-                                    {estado === 'reabierto' && superAdminTankEdit && (
-                                        <button
-                                            type="button"
-                                            onClick={() => setEditAnterior(prev => !prev)}
-                                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full border transition-colors ${
-                                                editAnterior
-                                                ? 'text-amber-700 bg-amber-100 border-amber-300'
-                                                : 'text-slate-500 bg-slate-50 border-slate-200'
-                                            }`}
-                                        >
-                                            <ShieldCheck size={11} className="inline mr-1 -mt-0.5" />
-                                            {editAnterior ? 'Lect. anterior editable' : 'Editar lect. anterior'}
-                                        </button>
-                                    )}
-                                </h3>
-                                <button onClick={() => { setShowTankReadingsModal(false); setEditAnterior(false); }}
-                                    className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors">
-                                    <X size={16} className="text-slate-400" />
-                                </button>
-                            </div>
-                            <div className="overflow-auto px-4 pb-4 flex-1 relative">
-                                <table className="w-full text-left border-separate border-spacing-0 table-cards">
-                                    <thead className="sticky top-0 z-20">
-                                        <tr className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-14">Tanque</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 min-w-[120px]">Descripción</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 text-right w-20">Capacidad</th>
-                                            <th className={`px-1.5 py-1 bg-slate-50 border-b border-slate-100 text-right w-32 ${editAnterior ? 'text-amber-600' : ''}`}>
-                                                Lect. Ant{editAnterior && '*'}
-                                            </th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 text-right w-28">Recarga</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 text-right w-28">Lect. Actual</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 text-right w-24">Difer</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-50">
-                                        {tankReadings.map((r, idx) => {
-                                            const diferencia = (r.lectura_anterior || 0) + (r.recarga || 0) - (r.lectura_actual || 0);
-                                            const tankLocked = estado === 'cerrado' || (estado === 'reabierto' && !superAdminTankEdit);
-                                            return (
-                                                <tr key={r.tank_id} className="hover:bg-slate-50 transition-colors text-[11px]">
-                                                    <td className="px-1.5 py-0.5 font-bold text-slate-900 whitespace-nowrap" data-label="Tanque">{r.codigo_tanque}</td>
-                                                    <td className="px-1.5 py-0.5 truncate" data-label="Descripción">
-                                                        <span className="font-medium text-slate-800">{r.descripcion_tanque}</span>
-                                                    </td>
-                                                    <td className="px-1.5 py-0.5 text-right font-mono text-slate-700 whitespace-nowrap" data-label="Capacidad">{parseFloat(r.capacidad || 0).toFixed(2)}</td>
-                                                    <td className="px-1.5 py-0.5 text-right" data-label="Lect. Ant.">
-                                                        {editAnterior ? (
-                                                            <input
-                                                                ref={el => { tankInputRefs.current[`anterior-${r.tank_id}`] = el; }}
-                                                                type="number"
-                                                                step="0.00001"
-                                                                value={r.lectura_anterior || ''}
-                                                                onChange={(e) => handleTankReadingChange(r.tank_id, 'lectura_anterior', e.target.value)}
-                                                                onBlur={() => handleTankReadingBlur(r.id, r.tank_id)}
-                                                                onKeyDown={(e) => handleTankKeyDown(e, idx, 'lectura_anterior')}
-                                                                onFocus={(e) => e.target.select()}
-                                                                disabled={tankLocked}
-                                                                className={`${tankLocked ? inputDisabledCls : inputCls} ml-auto`}
-                                                            />
-                                                        ) : (
-                                                            <span className="font-mono text-slate-500 whitespace-nowrap">{(r.lectura_anterior || 0).toFixed(5)}</span>
-                                                        )}
-                                                    </td>
-                                                    <td className="px-1.5 py-0.5 text-right" data-label="Recarga">
-                                                        <input
-                                                            ref={el => { tankInputRefs.current[`recarga-${r.tank_id}`] = el; }}
-                                                            type="number"
-                                                            step="0.00001"
-                                                            value={r.recarga || ''}
-                                                            onChange={(e) => handleTankReadingChange(r.tank_id, 'recarga', e.target.value)}
-                                                            onBlur={() => handleTankReadingBlur(r.id, r.tank_id)}
-                                                            onKeyDown={(e) => handleTankKeyDown(e, idx, 'recarga')}
-                                                            onFocus={(e) => e.target.select()}
-                                                            disabled={tankLocked}
-                                                            className={`${tankLocked ? inputCalibDisabledCls : inputCalibCls} ml-auto`}
-                                                        />
-                                                    </td>
-                                                    <td className="px-1.5 py-0.5 text-right" data-label="Lect. Actual">
-                                                        <input
-                                                            ref={el => { tankInputRefs.current[`lectura_actual-${r.tank_id}`] = el; }}
-                                                            type="number"
-                                                            step="0.00001"
-                                                            value={r.lectura_actual || ''}
-                                                            onChange={(e) => handleTankReadingChange(r.tank_id, 'lectura_actual', e.target.value)}
-                                                            onBlur={() => handleTankReadingBlur(r.id, r.tank_id)}
-                                                            onKeyDown={(e) => handleTankKeyDown(e, idx, 'lectura_actual')}
-                                                            onFocus={(e) => e.target.select()}
-                                                            disabled={tankLocked}
-                                                            className={`${tankLocked ? inputDisabledCls : inputCls} ml-auto`}
-                                                        />
-                                                    </td>
-                                                    <td className="px-1.5 py-0.5 text-right font-mono font-bold text-indigo-600 whitespace-nowrap" data-label="Difer.">{diferencia.toFixed(5)}</td>
-                                                </tr>
-                                            );
-                                        })}
-                                        {tankReadings.length === 0 && (
-                                            <tr>
-                                                <td colSpan={7} className="px-3 py-8 text-center text-xs text-slate-400">
-                                                    No hay tanques registrados.
-                                                </td>
-                                            </tr>
-                                        )}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-                )}
+                <GasTankReadingsModal
+                    isOpen={showTankReadingsModal}
+                    onClose={() => { setShowTankReadingsModal(false); setEditAnterior(false); }}
+                    estado={estado}
+                    superAdminTankEdit={superAdminTankEdit}
+                    editAnterior={editAnterior}
+                    setEditAnterior={setEditAnterior}
+                    tankReadings={tankReadings}
+                    handleTankReadingChange={handleTankReadingChange}
+                    handleTankReadingBlur={handleTankReadingBlur}
+                    handleTankKeyDown={handleTankKeyDown}
+                    tankInputRefs={tankInputRefs}
+                    inputCls={inputCls}
+                    inputDisabledCls={inputDisabledCls}
+                    inputCalibCls={inputCalibCls}
+                    inputCalibDisabledCls={inputCalibDisabledCls}
+                />
 
                 {showCreditosModal && (
                     <div className="fixed inset-0 z-50 flex items-start justify-center pt-8 pb-8">
@@ -5520,7 +4553,20 @@ const GasCloseout = () => {
                         </div>
                     </div>
                 )}
-                {renderNozzleAssignModal()}
+                <GasNozzleAssignModal
+                isOpen={showNozzleAssignModal}
+                onClose={() => setShowNozzleAssignModal(false)}
+                modalSelectedDespachadorId={modalSelectedDespachadorId}
+                setModalSelectedDespachadorId={setModalSelectedDespachadorId}
+                despachadoresOptions={despachadoresOptions}
+                nozzlesData={nozzlesData}
+                modalAssignments={modalAssignments}
+                setModalAssignments={setModalAssignments}
+                closeoutDespachadores={closeoutDespachadores}
+                allDespachadores={allDespachadores}
+                onSave={handleModalSave}
+                closeoutId={closeoutId}
+            />
             </>
         );
     }
@@ -5658,7 +4704,20 @@ const GasCloseout = () => {
                     {initMutation.isPending ? 'Iniciando...' : 'Iniciar Lectura'}
                 </button>
             </form>
-            {renderNozzleAssignModal()}
+            <GasNozzleAssignModal
+                isOpen={showNozzleAssignModal}
+                onClose={() => setShowNozzleAssignModal(false)}
+                modalSelectedDespachadorId={modalSelectedDespachadorId}
+                setModalSelectedDespachadorId={setModalSelectedDespachadorId}
+                despachadoresOptions={despachadoresOptions}
+                nozzlesData={nozzlesData}
+                modalAssignments={modalAssignments}
+                setModalAssignments={setModalAssignments}
+                closeoutDespachadores={closeoutDespachadores}
+                allDespachadores={allDespachadores}
+                onSave={handleModalSave}
+                closeoutId={closeoutId}
+            />
         </div>
     );
 };
