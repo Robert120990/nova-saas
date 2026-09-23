@@ -680,7 +680,7 @@ const sendAdvanceReceiptEmail = async (advanceId, recipientEmail = null) => {
 
                     <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid #f1f5f9; text-align: center;">
                         <p style="font-size: 11px; color: #94a3b8; margin: 0;">
-                            ${companyName} • Sistema de Gestión y Facturación Electrónica Nova SaaS
+                            ${companyName} • Sistema de Gestión y Facturación Electrónica Sipe Web SaaS
                         </p>
                     </div>
                 </div>

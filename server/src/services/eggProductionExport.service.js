@@ -376,7 +376,7 @@ async function generateBatchSummaryExcel(batchId, companyId) {
     const { batch, rawMaterials, pasteurizationLogs, remanentes, packagingRecords, wasteLogs, totals, company } = data;
 
     const workbook = new ExcelJS.Workbook();
-    workbook.creator = 'Nova SaaS - Huevo Industrial';
+    workbook.creator = 'Sipe Web SaaS - Huevo Industrial';
 
     // Hoja 1: Resumen General y Balance
     const wsSummary = workbook.addWorksheet('Resumen de Lote');

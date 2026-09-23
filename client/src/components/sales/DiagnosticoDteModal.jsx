@@ -303,7 +303,7 @@ export default function DiagnosticoDteModal({ isOpen, onClose, sale, onRetransmi
                         <div className="p-4 bg-gradient-to-br from-emerald-50/80 to-teal-50/50 rounded-2xl border border-emerald-200/90 shadow-2xs space-y-2">
                             <div className="flex items-center gap-2 text-emerald-900">
                                 <Wrench size={16} className="text-emerald-600 shrink-0" />
-                                <h4 className="text-xs font-black uppercase tracking-wider">3. Solución Paso a Paso en Nova SaaS</h4>
+                                <h4 className="text-xs font-black uppercase tracking-wider">3. Solución Paso a Paso en Sipe Web SaaS</h4>
                             </div>
                             <div className="pl-6 space-y-1 text-[13px] text-slate-800 font-medium whitespace-pre-line leading-relaxed">
                                 {diagnosis.solucion}

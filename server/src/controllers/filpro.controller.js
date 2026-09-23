@@ -200,7 +200,7 @@ const filproController = {
                 config.filpro_company_id
             );
 
-            // Cross-reference with existing DTEs in Nova SaaS to mark what's already imported
+            // Cross-reference with existing DTEs in Sipe Web SaaS to mark what's already imported
             const uuids = documents.map(d => d.uuid).filter(Boolean);
             const existingMap = new Map();
 
@@ -280,7 +280,7 @@ const filproController = {
                 return res.status(400).json({ message: 'La fecha es obligatoria (formato YYYY-MM-DD).' });
             }
             if (!branchId) {
-                return res.status(400).json({ message: 'Debe especificar la sucursal de destino en Nova SaaS.' });
+                return res.status(400).json({ message: 'Debe especificar la sucursal de destino en Sipe Web SaaS.' });
             }
 
             const [configRows] = await pool.query(
@@ -349,7 +349,7 @@ const filproController = {
                     // Download official JSON from Infile certifier
                     const officialJson = await filproExtractor.downloadOfficialDteJson(doc.uuid);
 
-                    // Ingest into Nova SaaS
+                    // Ingest into Sipe Web SaaS
                     const outcome = await filproIngestion.ingestDte({
                         companyId,
                         branchId,
@@ -446,7 +446,7 @@ const filproController = {
                 return res.end();
             }
             if (!branchId) {
-                sendEvent({ type: 'error', message: 'Debe especificar la sucursal de destino en Nova SaaS.' });
+                sendEvent({ type: 'error', message: 'Debe especificar la sucursal de destino en Sipe Web SaaS.' });
                 return res.end();
             }
 

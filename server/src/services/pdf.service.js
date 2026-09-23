@@ -2128,7 +2128,7 @@ const { generateRTEEModern } = require('./pdf.modern_rtee');
 
 /**
  * Generates a PDF buffer for the DTE Representation (RTEE)
- * Formato oficial estándar definitivo Nova SaaS.
+ * Formato oficial estándar definitivo Sipe Web SaaS.
  */
 const generateRTEE = (data) => {
     return generateRTEEModern(data);
@@ -2836,7 +2836,7 @@ const generateFiniquitoPDF = (data) => {
             doc.text('REPRESENTANTE PATRONAL', p1RightX, SIG_Y + 21, { width: p1SigW, align: 'center' });
 
             doc.fontSize(6.5).font('Helvetica').fillColor('#94a3b8');
-            doc.text('Página 1 de 2 • Finiquito Laboral Privado • Sistema Nova SaaS', M, BOTTOM_FOOTER, { align: 'center', width: W });
+            doc.text('Página 1 de 2 • Finiquito Laboral Privado • Sistema Sipe Web SaaS', M, BOTTOM_FOOTER, { align: 'center', width: W });
 
             // ==========================================
             // === PAGE 2: Acta Notarial de Legalización ===
@@ -2900,7 +2900,7 @@ const generateFiniquitoPDF = (data) => {
             doc.text('NOTARIO AUTORIZADO', p1RightX, SIG_Y + 21, { width: p1SigW, align: 'center' });
 
             doc.fontSize(6.5).font('Helvetica').fillColor('#94a3b8');
-            doc.text('Página 2 de 2 • Acta Notarial de Legalización • Sistema Nova SaaS', M, BOTTOM_FOOTER, { align: 'center', width: W });
+            doc.text('Página 2 de 2 • Acta Notarial de Legalización • Sistema Sipe Web SaaS', M, BOTTOM_FOOTER, { align: 'center', width: W });
 
             doc.end();
         } catch (err) {
@@ -3060,7 +3060,7 @@ const generateAcuerdoPagoPDF = (data) => {
             doc.text('NOTARIO AUTORIZADO', rightSigX, SIG_Y + 21, { width: sigBoxW, align: 'center' });
 
             doc.fontSize(6.5).font('Helvetica').fillColor('#94a3b8');
-            doc.text('Acta Notarial de Acuerdo de Pago • Documento fehaciente emitido por Sistema Nova SaaS', M, BOTTOM_FOOTER, { align: 'center', width: W });
+            doc.text('Acta Notarial de Acuerdo de Pago • Documento fehaciente emitido por Sistema Sipe Web SaaS', M, BOTTOM_FOOTER, { align: 'center', width: W });
 
             doc.end();
         } catch (err) {
@@ -7332,7 +7332,7 @@ const generateAdvanceReceiptPDF = (data) => {
 
             const nowStr = new Date().toLocaleString('es-SV', { timeZone: 'America/El_Salvador' });
             doc.font('Helvetica').fontSize(6.5).fillColor('#94a3b8')
-               .text(`Documento generado el ${nowStr} • Nova SaaS Gasolinera`, startX, footerY + 28, { width: contentWidth, align: 'center' });
+               .text(`Documento generado el ${nowStr} • Sipe Web SaaS Gasolinera`, startX, footerY + 28, { width: contentWidth, align: 'center' });
 
             doc.end();
         } catch (err) {

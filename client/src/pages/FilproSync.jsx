@@ -288,7 +288,7 @@ const FilproSync = () => {
             return;
         }
         if (!selectedBranchId) {
-            toast.error('Seleccione la sucursal de destino en Nova SaaS');
+            toast.error('Seleccione la sucursal de destino en Sipe Web SaaS');
             return;
         }
 
@@ -582,7 +582,7 @@ const FilproSync = () => {
                                 Sincronización con FilPro (Infile)
                             </h1>
                             <p className="text-xs text-slate-500">
-                                Extracción e ingesta de Documentos Tributarios Electrónicos (DTEs) día por día a Nova SaaS
+                                Extracción e ingesta de Documentos Tributarios Electrónicos (DTEs) día por día a Sipe Web SaaS
                             </p>
                         </div>
                     </div>
@@ -679,7 +679,7 @@ const FilproSync = () => {
                             {/* Sucursal Destino */}
                             <div>
                                 <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1.5">
-                                    Sucursal Destino (Nova SaaS)
+                                    Sucursal Destino (Sipe Web SaaS)
                                 </label>
                                 <select
                                     value={selectedBranchId}
@@ -748,7 +748,7 @@ const FilproSync = () => {
                                     <div className="text-2xl font-bold text-emerald-700 mt-1">
                                         {previewData.summary.totalNew}
                                     </div>
-                                    <div className="text-[11px] text-emerald-600 mt-0.5">No existen aún en Nova SaaS</div>
+                                    <div className="text-[11px] text-emerald-600 mt-0.5">No existen aún en Sipe Web SaaS</div>
                                 </div>
 
                                 <div className="bg-blue-50/60 p-4 rounded-xl border border-blue-200 shadow-sm">
@@ -850,7 +850,7 @@ const FilproSync = () => {
                                                 <th className="py-2 px-2 text-[11px] font-bold text-slate-500 uppercase">Receptor</th>
                                                 <th className="py-2 px-2 text-[11px] font-bold text-slate-500 uppercase text-right whitespace-nowrap">Total</th>
                                                 <th className="py-2 px-2 text-[11px] font-bold text-slate-500 uppercase text-center whitespace-nowrap" title="Estado en FilPro">FilPro</th>
-                                                <th className="py-2 px-2 text-[11px] font-bold text-slate-500 uppercase text-center whitespace-nowrap" title="Estado en Nova SaaS">Sistema</th>
+                                                <th className="py-2 px-2 text-[11px] font-bold text-slate-500 uppercase text-center whitespace-nowrap" title="Estado en Sipe Web SaaS">Sistema</th>
                                                 <th className="py-2 px-2 text-[11px] font-bold text-slate-500 uppercase text-center whitespace-nowrap w-16">Acciones</th>
                                             </tr>
                                         </thead>
@@ -948,7 +948,7 @@ const FilproSync = () => {
                                                                             });
                                                                         }}
                                                                         className="p-1 text-slate-600 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-                                                                        title="Revertir y eliminar esta venta de Nova SaaS"
+                                                                        title="Revertir y eliminar esta venta de Sipe Web SaaS"
                                                                     >
                                                                         <RotateCcw className="w-3.5 h-3.5" />
                                                                     </button>
@@ -977,7 +977,7 @@ const FilproSync = () => {
                                 Mapeo de Códigos FilPro a Productos del Sistema
                             </h2>
                             <p className="text-xs text-slate-500 mt-0.5">
-                                Asocie los códigos de ítems emitidos por FilPro (ej: <span className="font-mono font-semibold text-slate-700">071228</span>) con el producto correspondiente en su catálogo de Nova SaaS.
+                                Asocie los códigos de ítems emitidos por FilPro (ej: <span className="font-mono font-semibold text-slate-700">071228</span>) con el producto correspondiente en su catálogo de Sipe Web SaaS.
                             </p>
                         </div>
                         <button
@@ -1015,7 +1015,7 @@ const FilproSync = () => {
                                         <th className="py-2.5 px-4">Código FilPro</th>
                                         <th className="py-2.5 px-4">Descripción en FilPro (Referencial)</th>
                                         <th className="py-2.5 px-4">Código en Sistema</th>
-                                        <th className="py-2.5 px-4">Producto en Nova SaaS</th>
+                                        <th className="py-2.5 px-4">Producto en Sipe Web SaaS</th>
                                         <th className="py-2.5 px-4 text-center">Acciones</th>
                                     </tr>
                                 </thead>
@@ -1114,7 +1114,7 @@ const FilproSync = () => {
                             Configuración de Conexión Multi-Empresa
                         </h2>
                         <p className="text-xs text-slate-500 mt-0.5">
-                            Las credenciales se almacenan encriptadas y vinculadas exclusivamente a su empresa activa en Nova SaaS.
+                            Las credenciales se almacenan encriptadas y vinculadas exclusivamente a su empresa activa en Sipe Web SaaS.
                         </p>
                     </div>
 
@@ -1172,7 +1172,7 @@ const FilproSync = () => {
                         {/* Sucursal por defecto */}
                         <div>
                             <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1.5">
-                                Sucursal por Defecto en Nova SaaS
+                                Sucursal por Defecto en Sipe Web SaaS
                             </label>
                             <select
                                 value={configForm.branch_id}
@@ -1395,7 +1395,7 @@ const FilproSync = () => {
                                 <div className="flex items-start sm:items-center gap-3 p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-xs">
                                     <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5 sm:mt-0" />
                                     <div>
-                                        <span className="font-bold">DOCUMENTO ANULADO EN FILPRO / HACIENDA:</span> Este DTE fue invalidado en los sistemas oficiales de tributación. Por regla de negocio se omite automáticamente y no se ingresará como venta en Nova SaaS.
+                                        <span className="font-bold">DOCUMENTO ANULADO EN FILPRO / HACIENDA:</span> Este DTE fue invalidado en los sistemas oficiales de tributación. Por regla de negocio se omite automáticamente y no se ingresará como venta en Sipe Web SaaS.
                                     </div>
                                 </div>
                             )}
@@ -1405,7 +1405,7 @@ const FilproSync = () => {
                                 <div className="flex items-center gap-3 p-3.5 bg-blue-50 border border-blue-200 rounded-xl text-blue-800 text-xs">
                                     <CheckCircle2 className="w-5 h-5 text-blue-600 shrink-0" />
                                     <div>
-                                        <span className="font-bold">YA IMPORTADO:</span> Este DTE ya se encuentra registrado en Nova SaaS vinculado a la Venta #{detailData.localDte?.venta_id || selectedDocSummary.local_sale_id}.
+                                        <span className="font-bold">YA IMPORTADO:</span> Este DTE ya se encuentra registrado en Sipe Web SaaS vinculado a la Venta #{detailData.localDte?.venta_id || selectedDocSummary.local_sale_id}.
                                     </div>
                                 </div>
                             )}
@@ -1773,7 +1773,7 @@ const FilproSync = () => {
 
                     <div>
                         <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1.5">
-                            Producto en Nova SaaS *
+                            Producto en Sipe Web SaaS *
                         </label>
                         <SearchableSelect
                             value={mappingForm.product_id}
@@ -1845,7 +1845,7 @@ const FilproSync = () => {
                         <div>
                             <span className="font-bold">¿Está seguro de revertir esta venta?</span>
                             <p className="mt-1 text-rose-700">
-                                Se eliminará la Venta {revertDteTarget?.sale_id ? `(#${revertDteTarget.sale_id})` : ''} y su DTE en Nova SaaS. Esto le permitirá volver a sincronizar el documento si lo necesita.
+                                Se eliminará la Venta {revertDteTarget?.sale_id ? `(#${revertDteTarget.sale_id})` : ''} y su DTE en Sipe Web SaaS. Esto le permitirá volver a sincronizar el documento si lo necesita.
                             </p>
                         </div>
                     </div>
@@ -1912,7 +1912,7 @@ const FilproSync = () => {
                         <div>
                             <span className="font-bold">¿Desea revertir las {previewData?.summary?.totalAlreadyImported || 0} ventas importadas?</span>
                             <p className="mt-1 text-rose-700">
-                                Se eliminarán todas las ventas registradas en Nova SaaS que provengan de FilPro para la fecha <span className="font-semibold">{selectedDate}</span>. No afecta inventario. Los documentos quedarán listos para sincronizarse nuevamente.
+                                Se eliminarán todas las ventas registradas en Sipe Web SaaS que provengan de FilPro para la fecha <span className="font-semibold">{selectedDate}</span>. No afecta inventario. Los documentos quedarán listos para sincronizarse nuevamente.
                             </p>
                         </div>
                     </div>

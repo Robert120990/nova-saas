@@ -9,7 +9,7 @@ const ExcelJS = require('exceljs');
  */
 async function createExcelBuffer({ sheets, title } = {}) {
     const workbook = new ExcelJS.Workbook();
-    workbook.creator = 'Nova SaaS';
+    workbook.creator = 'Sipe Web SaaS';
 
     for (const sheetDef of sheets) {
         const ws = workbook.addWorksheet(sheetDef.name || 'Reporte');
