@@ -4,15 +4,15 @@ import axios from 'axios';
 import {
     Calculator, Lock, Unlock, Loader2, User, Calendar, Hash, X,
     Fuel, Receipt, CreditCard, Gift, Percent, Truck, Droplets,
-    FlaskConical, Banknote, ArrowLeft, Plus, Trash2, Save, UserCheck, Printer, BarChart3, FileText, LockOpen, Upload, AlertTriangle, ShieldCheck
+    FlaskConical, Banknote, ArrowLeft, UserCheck, Printer, BarChart3, LockOpen, ShieldCheck
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useConfirm } from '../context/ConfirmContext';
-import SearchableSelect from '../components/ui/SearchableSelect';
+// SearchableSelect moved to modal components
 import { downloadCloseoutPdf } from '../utils/closeoutPdf';
-import Money, { MoneyInput } from '../components/ui/Money';
+import Money from '../components/ui/Money';
 import { useDirtyTracker } from '../hooks/useDirtyTracker';
 import * as XLSX from 'xlsx';
 import { getTodayString } from '../utils/dateUtils';
@@ -23,7 +23,15 @@ import {
     GasLubricantesModal,
     GasTankReadingsModal,
     GasCuponesModal,
-    GasAdelantosModal
+    GasAdelantosModal,
+    GasReadingsModal,
+    GasDescuentosModal,
+    GasTarjetasModal,
+    GasCreditosModal,
+    GasValesModal,
+    GasDiferenciasModal,
+    GasAnticiposModal,
+    GasTrupputModal
 } from '../components/gas';
 
 const parseDecimal = (value) => {
@@ -2633,234 +2641,29 @@ const GasCloseout = () => {
                     </div>
                 </div>
 
-                {showReadingsModal && (
-                    <div className="fixed inset-0 z-50 flex items-start justify-center pt-8 pb-8">
-                        <div className="fixed inset-0 bg-black/40" onClick={() => { setShowReadingsModal(false); setEditAnterior(false); }} />
-                        <div className="relative bg-white rounded-2xl shadow-2xl w-[95%] max-w-5xl max-h-[90vh] flex flex-col">
-                            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 shrink-0">
-                                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                                    <Fuel size={16} className="text-indigo-600" />
-                                    Lecturas por Pistola
-                                    {estado === 'cerrado' && (
-                                        <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">Solo lectura</span>
-                                    )}
-                                    {editAnterior && isSuperAdmin && (
-                                        <span className="text-[10px] font-bold text-amber-700 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-full flex items-center gap-1">
-                                            <ShieldCheck size={11} /> Edición inicial (SuperAdmin)
-                                        </span>
-                                    )}
-                                </h3>
-                                <div className="flex items-center gap-2">
-                                    {estado !== 'cerrado' && (
-                                        <>
-                                            <input
-                                                ref={fileInputRef}
-                                                type="file"
-                                                accept=".xlsx,.xls"
-                                                className="hidden"
-                                                onChange={(e) => {
-                                                    handleImportExcel(e.target.files[0]);
-                                                    e.target.value = '';
-                                                }}
-                                            />
-                                            <button
-                                                onClick={() => fileInputRef.current?.click()}
-                                                disabled={importing}
-                                                className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-xl transition-all disabled:opacity-50"
-                                            >
-                                                {importing ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
-                                                {importing ? 'Importando...' : 'Importar Excel'}
-                                            </button>
-                                        </>
-                                    )}
-                                    <button
-                                        onClick={() => { setShowReadingsModal(false); setEditAnterior(false); }}
-                                        className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors"
-                                    >
-                                        <X size={16} className="text-slate-400" />
-                                    </button>
-                                </div>
-                            </div>
-                            <div className="overflow-auto px-4 pb-4 flex-1 relative">
-                                <table className="w-full text-left border-separate border-spacing-0 table-cards">
-                                    <thead className="sticky top-0 z-20">
-                                        <tr className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">
-                                            <th className="px-1.5 py-1 w-16 bg-slate-50 border-b border-slate-100">Pistola</th>
-                                            <th className="px-1.5 py-1 max-w-[120px] bg-slate-50 border-b border-slate-100">Producto</th>
-                                            <th className="px-1.5 py-1 text-right w-16 bg-slate-50 border-b border-slate-100">Precio</th>
-                                            <th className={`px-1.5 py-1 text-right w-32 bg-slate-50 border-b border-slate-100 ${editAnterior && isSuperAdmin ? 'text-amber-600' : ''}`}>Lect. Ant{editAnterior && isSuperAdmin && '*'}</th>
-                                            <th className="px-1.5 py-1 text-right w-32 bg-slate-50 border-b border-slate-100">Lect. Actual</th>
-                                            <th className="px-1.5 py-1 text-right w-24 bg-slate-50 border-b border-slate-100">Calibr</th>
-                                            <th className="px-1.5 py-1 text-right w-16 bg-slate-50 border-b border-slate-100">Difer</th>
-                                            <th className="px-1.5 py-1 text-right w-20 bg-slate-50 border-b border-slate-100">Monto</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-50">
-                                        {readings.map((r, idx) => {
-                                            const diferencia = r.lectura_actual - r.lectura_anterior - r.calibracion;
-                                            const monto = diferencia * r.precio;
-                                            return (
-                                                <tr key={r.nozzle_id} className={`${idx % 2 === 0 ? 'bg-white' : 'bg-indigo-50'} hover:bg-indigo-100 transition-colors text-[11px]`}>
-                                                    <td className="px-1.5 py-0.5 font-bold text-slate-900 whitespace-nowrap" data-label="Pistola">{r.codigo_pistola}</td>
-                                                    <td className="px-1.5 py-0.5 max-w-[120px] truncate" data-label="Producto">
-                                                        <span className="font-medium text-slate-800">{r.codigo_producto}</span>
-                                                        <span className="text-[10px] text-slate-400 ml-1">— {r.descripcion_producto}</span>
-                                                    </td>
-                                                    <td className="px-1.5 py-0.5 text-right font-mono text-slate-700 whitespace-nowrap" data-label="Precio"><Money value={r.precio} /></td>
-                                                    <td className="px-1.5 py-0.5 text-right" data-label="Lect. Ant.">
-                                                        {editAnterior && isSuperAdmin ? (
-                                                            <input
-                                                                ref={el => { inputRefs.current[`anterior-${r.nozzle_id}`] = el; }}
-                                                                type="number"
-                                                                step="0.00001"
-                                                                value={r.lectura_anterior || ''}
-                                                                onChange={(e) => handleReadingChange(r.nozzle_id, 'lectura_anterior', e.target.value)}
-                                                                onBlur={() => handleReadingBlur(r.id, r.nozzle_id)}
-                                                                onKeyDown={(e) => handleKeyDown(e, idx, 'lectura_anterior')}
-                                                                onFocus={(e) => e.target.select()}
-                                                                disabled={estado === 'cerrado'}
-                                                                className={`${estado === 'cerrado' ? inputDisabledCls : inputCls} ml-auto`}
-                                                            />
-                                                    ) : (
-                                                        <span className="font-mono text-slate-500 whitespace-nowrap">{r.lectura_anterior.toFixed(5)}</span>
-                                                        )}
-                                                    </td>
-                                                    <td className="px-1.5 py-0.5 text-right" data-label="Lect. Actual">
-                                                        <input
-                                                            ref={el => { inputRefs.current[`lectura_actual-${r.nozzle_id}`] = el; }}
-                                                            type="number"
-                                                            step="0.00001"
-                                                            value={r.lectura_actual || ''}
-                                                            onChange={(e) => handleReadingChange(r.nozzle_id, 'lectura_actual', e.target.value)}
-                                                            onBlur={() => handleReadingBlur(r.id, r.nozzle_id)}
-                                                            onKeyDown={(e) => handleKeyDown(e, idx, 'lectura_actual')}
-                                                            onFocus={(e) => e.target.select()}
-                                                            onWheel={(e) => e.target.blur()}
-                                                            disabled={estado === 'cerrado'}
-                                                            className={`${estado === 'cerrado' ? inputDisabledCls : inputCls} ml-auto`}
-                                                        />
-                                                    </td>
-                                                    <td className="px-1.5 py-0.5 text-right" data-label="Calibr.">
-                                                        <input
-                                                            ref={el => { inputRefs.current[`calibracion-${r.nozzle_id}`] = el; }}
-                                                            type="number"
-                                                            step="0.00001"
-                                                            value={r.calibracion || ''}
-                                                            onChange={(e) => handleReadingChange(r.nozzle_id, 'calibracion', e.target.value)}
-                                                            onBlur={() => handleReadingBlur(r.id, r.nozzle_id)}
-                                                            onKeyDown={(e) => handleKeyDown(e, idx, 'calibracion')}
-                                                            onFocus={(e) => e.target.select()}
-                                                            onWheel={(e) => e.target.blur()}
-                                                            disabled={estado === 'cerrado'}
-                                                            className={`${estado === 'cerrado' ? inputCalibDisabledCls : inputCalibCls} ml-auto`}
-                                                        />
-                                                    </td>
-                                                    <td className="px-1.5 py-0.5 text-right font-mono font-bold text-indigo-600 whitespace-nowrap" data-label="Difer.">{diferencia.toFixed(5)}</td>
-                                                    <td className="px-1.5 py-0.5 text-right font-mono font-bold text-slate-900 whitespace-nowrap" data-label="Monto"><Money value={monto} /></td>
-                                                </tr>
-                                            );
-                                        })}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {importResult && (
-                    <div className="fixed inset-0 z-50 flex items-start justify-center pt-8 pb-8">
-                        <div className="fixed inset-0 bg-black/40" onClick={() => { setImportResult(null); setImporting(false); }} />
-                        <div className="relative bg-white rounded-2xl shadow-2xl w-[95%] max-w-lg max-h-[80vh] flex flex-col">
-                            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 shrink-0">
-                                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                                    <Upload size={16} className="text-indigo-600" />
-                                    Importar Lecturas
-                                </h3>
-                                <button onClick={() => { setImportResult(null); setImporting(false); }} className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors">
-                                    <X size={16} className="text-slate-400" />
-                                </button>
-                            </div>
-                            <div className="p-5 overflow-y-auto">
-                                <div className="flex items-center gap-3 mb-4 p-3 rounded-xl bg-slate-50 border border-slate-200">
-                                    <div className="text-center">
-                                        <div className="text-2xl font-black text-emerald-600">{importResult.matched.length}</div>
-                                        <div className="text-[10px] font-bold text-slate-500 uppercase">Coinciden</div>
-                                    </div>
-                                    <div className="w-px h-10 bg-slate-200" />
-                                    <div className="text-center">
-                                        <div className="text-2xl font-black text-slate-400">{importResult.total}</div>
-                                        <div className="text-[10px] font-bold text-slate-500 uppercase">Total filas</div>
-                                    </div>
-                                    {importResult.warnings.length > 0 && (
-                                        <>
-                                            <div className="w-px h-10 bg-slate-200" />
-                                            <div className="text-center">
-                                                <div className="text-2xl font-black text-amber-500">{importResult.warnings.length}</div>
-                                                <div className="text-[10px] font-bold text-slate-500 uppercase">Advertencias</div>
-                                            </div>
-                                        </>
-                                    )}
-                                    {importResult.unmatched.length > 0 && (
-                                        <>
-                                            <div className="w-px h-10 bg-slate-200" />
-                                            <div className="text-center">
-                                                <div className="text-2xl font-black text-rose-500">{importResult.unmatched.length}</div>
-                                                <div className="text-[10px] font-bold text-slate-500 uppercase">Sin match</div>
-                                            </div>
-                                        </>
-                                    )}
-                                </div>
-                                {importResult.warnings.length > 0 && (
-                                    <div className="mb-4">
-                                        <h4 className="text-[11px] font-bold text-amber-600 uppercase mb-2">Advertencias — Volumen inicial no coincide con lectura anterior</h4>
-                                        <div className="space-y-1 max-h-32 overflow-y-auto">
-                                            {importResult.warnings.map((w, i) => (
-                                                <div key={i} className="flex items-center gap-2 px-2 py-1 rounded-lg bg-amber-50 text-[11px]">
-                                                    <span className="font-medium text-slate-700">{w.reading}</span>
-                                                    <span className="text-amber-600 ml-auto">Esperado: {w.expected} | Recibido: {w.actual}</span>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                )}
-                                {importResult.unmatched.length > 0 && (
-                                    <div className="mb-4">
-                                        <h4 className="text-[11px] font-bold text-rose-600 uppercase mb-2">Filas sin coincidencia</h4>
-                                        <div className="space-y-1 max-h-32 overflow-y-auto">
-                                            {importResult.unmatched.map((u, i) => (
-                                                <div key={i} className="flex items-center gap-2 px-2 py-1 rounded-lg bg-rose-50 text-[11px]">
-                                                    <span className="font-medium text-slate-700">{u.row}</span>
-                                                    <span className="text-rose-500 ml-auto">{u.reason}</span>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                            <div className="flex items-center justify-end gap-3 px-5 py-3 border-t border-slate-100 shrink-0">
-                                <button
-                                    onClick={() => { setImportResult(null); setImporting(false); }}
-                                    className="px-4 py-2 text-xs font-bold text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition-colors"
-                                >
-                                    Cancelar
-                                </button>
-                                <button
-                                    onClick={() => {
-                                        batchUpdateMutation.mutate(importResult.matched.map(m => ({
-                                            readingId: m.readingId,
-                                            lectura_actual: m.lectura_actual
-                                        })));
-                                    }}
-                                    disabled={importResult.matched.length === 0 || batchUpdateMutation.isPending}
-                                    className="px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-all disabled:opacity-50 flex items-center gap-1"
-                                >
-                                    {batchUpdateMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
-                                    {batchUpdateMutation.isPending ? 'Guardando...' : `Aplicar ${importResult.matched.length} lectura(s)`}
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                )}
+                <GasReadingsModal
+                    isOpen={showReadingsModal}
+                    onClose={() => { setShowReadingsModal(false); setEditAnterior(false); }}
+                    estado={estado}
+                    isSuperAdmin={isSuperAdmin}
+                    editAnterior={editAnterior}
+                    fileInputRef={fileInputRef}
+                    importing={importing}
+                    handleImportExcel={handleImportExcel}
+                    readings={readings}
+                    inputRefs={inputRefs}
+                    handleReadingChange={handleReadingChange}
+                    handleReadingBlur={handleReadingBlur}
+                    handleKeyDown={handleKeyDown}
+                    inputCls={inputCls}
+                    inputDisabledCls={inputDisabledCls}
+                    inputCalibCls={inputCalibCls}
+                    inputCalibDisabledCls={inputCalibDisabledCls}
+                    importResult={importResult}
+                    setImportResult={setImportResult}
+                    setImporting={setImporting}
+                    batchUpdateMutation={batchUpdateMutation}
+                />
 
                 <GasGastosModal
                     isOpen={showGastosModal}
@@ -2917,186 +2720,22 @@ const GasCloseout = () => {
                     isSaving={saveCuponesMutation.isPending}
                 />
 
-                {showDescuentosModal && (
-                    <div className="fixed inset-0 z-50 flex items-start justify-center pt-8 pb-8">
-                        <div className="fixed inset-0 bg-black/40" onClick={() => handleSafeCloseModal('descuentos')} />
-                        <div className="relative bg-white rounded-2xl shadow-2xl w-[95%] max-w-5xl min-h-[50vh] max-h-[95vh] flex flex-col">
-                            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 shrink-0">
-                                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                                    <Percent size={16} className="text-indigo-600" />
-                                    Descuentos del Turno
-                                    {isSectionDirty('descuentos') && estado !== 'cerrado' && (
-                                        <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-300 px-2 py-0.5 rounded-full flex items-center gap-1 animate-pulse">
-                                            ● Cambios sin guardar
-                                        </span>
-                                    )}
-                                    {estado === 'cerrado' && (
-                                        <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">Solo lectura</span>
-                                    )}
-                                </h3>
-                                <button
-                                    onClick={() => handleSafeCloseModal('descuentos')}
-                                    className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors"
-                                >
-                                    <X size={16} className="text-slate-400" />
-                                </button>
-                            </div>
-                            <div className="overflow-auto px-4 pb-4 flex-1">
-                                <table className="w-full text-left border-separate border-spacing-0 table-cards">
-                                    <thead className="sticky top-0 z-20">
-                                        <tr className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-24">Documento</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-40">Cliente</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-28">Producto</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-44">Despachador</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 text-right w-16">Cantidad</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 text-right w-16">Valor</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 text-right w-20">Total</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-10"></th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-50">
-                                        {descuentos.length === 0 && (
-                                            <tr>
-                                                <td colSpan={8} className="px-3 py-8 text-center text-xs text-slate-400">
-                                                    No hay descuentos registrados. Agregue un descuento para comenzar.
-                                                </td>
-                                            </tr>
-                                        )}
-                                        {descuentos.map(d => (
-                                            <tr key={d.id} className="text-[11px] hover:bg-slate-50 transition-colors">
-                                                <td className="px-1.5 py-1" data-label="Documento">
-                                                    <input
-                                                        type="text"
-                                                        value={d.documento}
-                                                        onChange={(e) => handleDescuentoChange(d.id, 'documento', e.target.value)}
-                                                        disabled={estado === 'cerrado'}
-                                                        placeholder="N° documento"
-                                                        className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
-                                                    />
-                                                </td>
-                                                <td className="px-1.5 py-1" data-label="Cliente">
-                                                    <SearchableSelect
-                                                        loadOptions={loadCustomers()}
-                                                        value={d.cliente_id}
-                                                        onChange={(e, opt) => {
-                                                            handleDescuentoChange(d.id, 'cliente_id', e.target.value);
-                                                            handleDescuentoChange(d.id, 'cliente_nombre', opt ? opt.nombre : '');
-                                                        }}
-                                                        disabled={estado === 'cerrado'}
-                                                        placeholder="Buscar cliente..."
-                                                        valueKey="id"
-                                                        labelKey="nombre"
-                                                        displayKey="nombre"
-                                                        codeKey="nit"
-                                                        codeLabel="NIT/DOC"
-                                                        selectedLabel={d.cliente_nombre}
-                                                        dropdownWidth={420}
-                                                    />
-                                                </td>
-                                                <td className="px-1.5 py-1" data-label="Producto">
-                                                    <select
-                                                        value={d.producto_codigo}
-                                                        onChange={(e) => {
-                                                            const cod = e.target.value;
-                                                            const prod = fuelProducts.find(p => p.codigo === cod);
-                                                            handleDescuentoChange(d.id, 'producto_codigo', cod);
-                                                            handleDescuentoChange(d.id, 'producto_descripcion', prod ? prod.descripcion : '');
-                                                        }}
-                                                        disabled={estado === 'cerrado'}
-                                                        className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
-                                                    >
-                                                        <option value="">Seleccionar...</option>
-                                                        {fuelProducts.map(p => (
-                                                            <option key={p.codigo} value={p.codigo}>{p.codigo} — {p.descripcion}</option>
-                                                        ))}
-                                                    </select>
-                                                </td>
-                                                <td className="px-1.5 py-1" data-label="Despachador">
-                                                    <select
-                                                        value={d.despachador_id || ''}
-                                                        onChange={(e) => handleDescuentoChange(d.id, 'despachador_id', e.target.value)}
-                                                        disabled={estado === 'cerrado'}
-                                                        className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
-                                                    >
-                                                        {despachadoresOptions.length === 0 && <option value="">Sin despachador</option>}
-                                                        {despachadoresOptions.map(disp => (
-                                                            <option key={disp.id} value={disp.id}>{disp.label}</option>
-                                                        ))}
-                                                    </select>
-                                                </td>
-                                                <td className="px-1.5 py-1 text-right" data-label="Cantidad">
-                                                    <input
-                                                        type="number"
-                                                        step="0.01"
-                                                        value={d.cantidad || ''}
-                                                        onChange={(e) => handleDescuentoChange(d.id, 'cantidad', e.target.value)}
-                                                        onFocus={(e) => e.target.select()}
-                                                        disabled={estado === 'cerrado'}
-                                                        placeholder="0"
-                                                        className="w-full text-right bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20 font-mono"
-                                                    />
-                                                </td>
-                                                <td className="px-1.5 py-1 text-right" data-label="Valor">
-                                                    <MoneyInput
-                                                        step="0.01"
-                                                        value={d.valor ?? ''}
-                                                        onChange={(e) => handleDescuentoChange(d.id, 'valor', e.target.value)}
-                                                        onFocus={(e) => e.target.select()}
-                                                        disabled={estado === 'cerrado'}
-                                                        placeholder="0.00"
-                                                        className="w-full text-right bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20 font-mono"
-                                                    />
-                                                </td>
-                                                <td className="px-1.5 py-1 text-right" data-label="Total">
-                                                    <span className="font-mono font-bold text-slate-900"><Money value={(parseFloat(d.cantidad) || 0) * (parseFloat(d.valor) || 0)} /></span>
-                                                </td>
-                                                <td className="px-1.5 py-1 text-center" data-label="">
-                                                    {estado !== 'cerrado' && (
-                                                        <button
-                                                            onClick={() => handleRemoveDescuento(d.id)}
-                                                            className="p-0.5 text-slate-600 hover:text-red-500 transition-colors"
-                                                        >
-                                                            <Trash2 size={14} />
-                                                        </button>
-                                                    )}
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                                {estado !== 'cerrado' && (
-                                    <div className="flex items-center justify-between mt-3">
-                                        <button
-                                            onClick={handleAddDescuentoRow}
-                                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-xl transition-all"
-                                        >
-                                            <Plus size={14} />
-                                            Agregar Descuento
-                                        </button>
-                                        <div className="flex items-center gap-4">
-                                            <span className="text-xs text-slate-500">
-                                                Total Descuentos: <strong className="text-red-600 font-mono text-sm"><Money value={descuentosTotal} /></strong>
-                                            </span>
-                                            <button
-                                                onClick={() => handleSaveSection('descuentos')}
-                                                disabled={saveDescuentosMutation.isPending}
-                                                className={`flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold rounded-xl transition-all disabled:opacity-50 ${
-                                                    isSectionDirty('descuentos')
-                                                        ? 'text-white bg-amber-600 hover:bg-amber-700 shadow-md shadow-amber-500/20 ring-2 ring-amber-400/50 animate-pulse'
-                                                        : 'text-white bg-indigo-600 hover:bg-indigo-700'
-                                                }`}
-                                            >
-                                                {saveDescuentosMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-                                                {saveDescuentosMutation.isPending ? 'Guardando...' : (isSectionDirty('descuentos') ? 'Guardar Descuentos (Pendiente)' : 'Guardar Descuentos')}
-                                            </button>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-                )}
+                <GasDescuentosModal
+                    isOpen={showDescuentosModal}
+                    onClose={() => handleSafeCloseModal('descuentos')}
+                    isDirty={isSectionDirty('descuentos')}
+                    estado={estado}
+                    descuentos={descuentos}
+                    loadCustomers={loadCustomers}
+                    fuelProducts={fuelProducts}
+                    despachadoresOptions={despachadoresOptions}
+                    handleDescuentoChange={handleDescuentoChange}
+                    handleRemoveDescuento={handleRemoveDescuento}
+                    handleAddDescuentoRow={handleAddDescuentoRow}
+                    descuentosTotal={descuentosTotal}
+                    handleSaveSection={handleSaveSection}
+                    isSaving={saveDescuentosMutation.isPending}
+                />
 
                 <GasAdelantosModal
                     isOpen={showAdelantosModal}
@@ -3113,214 +2752,22 @@ const GasCloseout = () => {
                     isSaving={saveAdelantosMutation.isPending}
                 />
 
-                {showTarjetasModal && (
-                    <div className="fixed inset-0 z-50 flex items-start justify-center pt-8 pb-8">
-                        <div className="fixed inset-0 bg-black/40" onClick={() => handleSafeCloseModal('tarjetas')} />
-                        <div className="relative bg-white rounded-2xl shadow-2xl w-[95%] max-w-5xl min-h-[50vh] max-h-[95vh] flex flex-col">
-                            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 shrink-0">
-                                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                                    <CreditCard size={16} className="text-indigo-600" />
-                                    Tarjetas del Turno
-                                    {isSectionDirty('tarjetas') && estado !== 'cerrado' && (
-                                        <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-300 px-2 py-0.5 rounded-full flex items-center gap-1 animate-pulse">
-                                            ● Cambios sin guardar
-                                        </span>
-                                    )}
-                                    {estado === 'cerrado' && (
-                                        <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">Solo lectura</span>
-                                    )}
-                                </h3>
-                                <button
-                                    onClick={() => handleSafeCloseModal('tarjetas')}
-                                    className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors"
-                                >
-                                    <X size={16} className="text-slate-400" />
-                                </button>
-                            </div>
-                            <div className="overflow-auto px-4 pb-4 flex-1">
-                                <table className="w-full text-left border-collapse table-cards">
-                                    <thead>
-                                        <tr className="text-[9px] font-bold text-slate-500 uppercase tracking-wider bg-slate-50 sticky top-0 z-10">
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-28">No. Tarjeta</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-28">No. Autorización</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-32">Tipo POS</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-44">Despachador</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-40">Tipo Operación</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-24 text-right">Monto</th>
-                                            {estado !== 'cerrado' && <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-6"></th>}
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-50 text-[11px]">
-                                        {tarjetas.length === 0 && (
-                                            <tr>
-                                                <td colSpan={estado !== 'cerrado' ? 7 : 6} className="px-2 py-3 text-center text-[10px] text-slate-400">
-                                                    Sin registros de tarjetas
-                                                </td>
-                                            </tr>
-                                        )}
-                                        {tarjetas.map(t => {
-                                            return (
-                                                <tr key={t.id} className="hover:bg-slate-50 transition-colors">
-                                                    <td className="px-1.5 py-1" data-label="No. Tarjeta">
-                                                        <input
-                                                            type="text"
-                                                            value={t.num_tarjeta}
-                                                            placeholder="-0000"
-                                                            onChange={(e) => {
-                                                                const raw = e.target.value.replace(/[^\d]/g, '').slice(0, 4);
-                                                                handleTarjetaChange(t.id, 'num_tarjeta', raw);
-                                                            }}
-                                                            onBlur={(e) => {
-                                                                const raw = e.target.value.replace(/[^\d]/g, '').slice(0, 4);
-                                                                const formatted = raw ? '-' + raw.padStart(4, '0') : '';
-                                                                handleTarjetaChange(t.id, 'num_tarjeta', formatted);
-                                                            }}
-                                                            disabled={estado === 'cerrado'}
-                                                            className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20 font-mono"
-                                                        />
-                                                    </td>
-                                                    <td className="px-1.5 py-1" data-label="No. Autorización">
-                                                        <input
-                                                            type="text"
-                                                            value={t.num_autorizacion}
-                                                            placeholder="Autorización"
-                                                            onChange={(e) => handleTarjetaChange(t.id, 'num_autorizacion', e.target.value)}
-                                                            disabled={estado === 'cerrado'}
-                                                            className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
-                                                        />
-                                                    </td>
-                                                    <td className="px-1.5 py-1" data-label="Tipo POS">
-                                                        <select
-                                                            value={t.pos_type_id || ''}
-                                                            onChange={(e) => handleTarjetaChange(t.id, 'pos_type_id', e.target.value)}
-                                                            disabled={estado === 'cerrado'}
-                                                            className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
-                                                        >
-                                                            <option value="">Seleccionar...</option>
-                                                            {posTypesList.map(p => (
-                                                                <option key={p.id} value={p.id}>{p.nombre}</option>
-                                                            ))}
-                                                        </select>
-                                                    </td>
-                                                    <td className="px-1.5 py-1" data-label="Despachador">
-                                                        <select
-                                                            value={t.despachador_id || ''}
-                                                            onChange={(e) => handleTarjetaChange(t.id, 'despachador_id', e.target.value)}
-                                                            disabled={estado === 'cerrado'}
-                                                            className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
-                                                        >
-                                                            {despachadoresOptions.length === 0 && <option value="">Sin despachador</option>}
-                                                            {despachadoresOptions.map(d => (
-                                                                <option key={d.id} value={d.id}>{d.label}</option>
-                                                            ))}
-                                                        </select>
-                                                    </td>
-                                                    <td className="px-1.5 py-1" data-label="Tipo Operación">
-                                                        <select
-                                                            value={t.tipo_operacion || 'venta_combustible'}
-                                                            onChange={(e) => handleTarjetaChange(t.id, 'tipo_operacion', e.target.value)}
-                                                            disabled={estado === 'cerrado'}
-                                                            className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
-                                                        >
-                                                            <option value="venta_combustible">Venta de Combustible</option>
-                                                            <option value="recuperacion_credito">Recuperación de Crédito</option>
-                                                            <option value="pago_anticipado">Pago Anticipado</option>
-                                                        </select>
-                                                    </td>
-                                                    <td className="px-1.5 py-1" data-label="Monto">
-                                                    <MoneyInput
-                                                        step="0.01"
-                                                        min="0"
-                                                        value={t.monto}
-                                                        onChange={(e) => handleTarjetaChange(t.id, 'monto', parseFloat(e.target.value) || 0)}
-                                                        disabled={estado === 'cerrado'}
-                                                        className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20 text-right font-mono"
-                                                    />
-                                                    </td>
-{estado !== 'cerrado' && (
-                                                        <td className="px-1.5 py-1 text-center" data-label="">
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => handleRemoveTarjeta(t.id)}
-                                                                className="p-0.5 text-slate-600 hover:text-red-500 transition-colors"
-                                                                title="Eliminar"
-                                                            >
-                                                                <Trash2 size={11} />
-                                                            </button>
-                                                        </td>
-                                                    )}
-                                                </tr>
-                                            );
-                                        })}
-                                    </tbody>
-                                    {estado !== 'cerrado' && (
-                                        <tfoot className="bg-slate-50 border-t border-slate-100">
-                                            <tr>
-                                                <td colSpan={7} className="px-2 py-1">
-                                                    <div className="flex items-center justify-between">
-                                                        <button
-                                                            onClick={handleAddTarjetaRow}
-                                                            className="flex items-center gap-1 text-[11px] font-bold text-indigo-600 hover:text-indigo-800 transition-colors"
-                                                        >
-                                                            <Plus size={14} />
-                                                            Agregar Tarjeta
-                                                        </button>
-                                                        <div className="flex items-center gap-4">
-                                                            <span className="text-xs text-slate-500">
-                                                                Total Tarjetas: <strong className="text-red-600 font-mono text-sm"><Money value={tarjetasTotal} /></strong>
-                                                            </span>
-                                                            <button
-                                                                onClick={() => handleSaveSection('tarjetas')}
-                                                                disabled={saveTarjetasMutation.isPending}
-                                                                className={`flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold rounded-xl transition-all disabled:opacity-50 ${
-                                                                    isSectionDirty('tarjetas')
-                                                                        ? 'text-white bg-amber-600 hover:bg-amber-700 shadow-md shadow-amber-500/20 ring-2 ring-amber-400/50 animate-pulse'
-                                                                        : 'text-white bg-indigo-600 hover:bg-indigo-700'
-                                                                }`}
-                                                            >
-                                                                {saveTarjetasMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-                                                                {saveTarjetasMutation.isPending ? 'Guardando...' : (isSectionDirty('tarjetas') ? 'Guardar Tarjetas (Pendiente)' : 'Guardar Tarjetas')}
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        </tfoot>
-                                    )}
-                                </table>
-                                {tarjetasResumenPorTipo.length > 0 && (
-                                    <div className="mt-3 border border-indigo-100 bg-indigo-50/40 rounded-xl overflow-hidden">
-                                        <div className="flex items-center justify-between px-3 py-1.5 bg-indigo-600">
-                                            <span className="text-[9px] font-black uppercase tracking-widest text-white flex items-center gap-1.5">
-                                                <BarChart3 size={12} />
-                                                Resumen por Tipo de POS
-                                            </span>
-                                        </div>
-                                        <div className="divide-y divide-indigo-100/70">
-                                            {tarjetasResumenPorTipo.map(g => (
-                                                <div key={g.key} className="flex items-center justify-between px-3 py-1.5">
-                                                    <div className="flex items-center gap-2 min-w-0">
-                                                        <span className="text-[11px] font-bold text-slate-700 truncate">{g.nombre}</span>
-                                                        <span className="text-[9px] font-bold text-slate-400 whitespace-nowrap">
-                                                            {g.cantidad} {g.cantidad === 1 ? 'tarjeta' : 'tarjetas'}
-                                                        </span>
-                                                    </div>
-                                                    <span className="text-[11px] font-mono font-bold text-red-600 whitespace-nowrap">
-                                                        <Money value={g.total} />
-                                                    </span>
-                                                </div>
-                                            ))}
-                                            <div className="flex items-center justify-between px-3 py-1.5 bg-white/70">
-                                                <span className="text-[11px] font-black text-slate-700">Total General</span>
-                                                <span className="text-xs font-mono font-black text-red-600"><Money value={tarjetasTotal} /></span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-                )}
+                <GasTarjetasModal
+                    isOpen={showTarjetasModal}
+                    onClose={() => handleSafeCloseModal('tarjetas')}
+                    isDirty={isSectionDirty('tarjetas')}
+                    estado={estado}
+                    tarjetas={tarjetas}
+                    posTypesList={posTypesList}
+                    despachadoresOptions={despachadoresOptions}
+                    handleTarjetaChange={handleTarjetaChange}
+                    handleRemoveTarjeta={handleRemoveTarjeta}
+                    handleAddTarjetaRow={handleAddTarjetaRow}
+                    tarjetasTotal={tarjetasTotal}
+                    handleSaveSection={handleSaveSection}
+                    isSaving={saveTarjetasMutation.isPending}
+                    tarjetasResumenPorTipo={tarjetasResumenPorTipo}
+                />
 
                 <GasLubricantesModal
                     isOpen={showLubricantesModal}
@@ -3358,1201 +2805,102 @@ const GasCloseout = () => {
                     inputCalibDisabledCls={inputCalibDisabledCls}
                 />
 
-                {showCreditosModal && (
-                    <div className="fixed inset-0 z-50 flex items-start justify-center pt-8 pb-8">
-                        <div className="fixed inset-0 bg-black/40" onClick={() => handleSafeCloseModal('creditos')} />
-                        <div className="relative bg-white rounded-2xl shadow-2xl w-[95%] max-w-6xl min-h-[50vh] max-h-[95vh] flex flex-col">
-                            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 shrink-0">
-                                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2 flex-wrap">
-                                    <CreditCard size={16} className="text-indigo-600" />
-                                    Créditos del Turno
-                                    {creditosAfectanCxc ? (
-                                        <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-300 px-2 py-0.5 rounded-full flex items-center gap-1">
-                                            ✓ Afecta CxC {creditosDesdeFecha ? `(desde ${toDateStrDDMMYYYY(creditosDesdeFecha)})` : ''}
-                                        </span>
-                                    ) : (
-                                        <span className="text-[10px] font-bold text-slate-500 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-full">
-                                            Solo control de turno (no afecta CxC)
-                                        </span>
-                                    )}
-                                    {isSectionDirty('creditos') && estado !== 'cerrado' && (
-                                        <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-300 px-2 py-0.5 rounded-full flex items-center gap-1 animate-pulse">
-                                            ● Cambios sin guardar
-                                        </span>
-                                    )}
-                                    {estado === 'cerrado' && (
-                                        <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">Solo lectura</span>
-                                    )}
-                                </h3>
-                                <button
-                                    onClick={() => handleSafeCloseModal('creditos')}
-                                    className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors"
-                                >
-                                    <X size={16} className="text-slate-400" />
-                                </button>
-                            </div>
-                            <div className="overflow-auto px-4 pb-4 flex-1">
-                                <table className="w-full text-left border-collapse table-cards">
-                                    <thead>
-                                        <tr className="text-[9px] font-bold text-slate-500 uppercase tracking-wider bg-slate-50 sticky top-0 z-10">
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-24">Documento</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-16">Tipo</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-36">Cliente</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-28">Producto</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-44">Despachador</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-20 text-right">Cantidad</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-20 text-right">Precio</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-20 text-right">Monto</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-20">Placa</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-20">Kilometraje</th>
-                                            {estado !== 'cerrado' && <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-6"></th>}
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-50 text-[11px]">
-                                        {creditos.length === 0 && (
-                                            <tr>
-                                                <td colSpan={estado !== 'cerrado' ? 12 : 11} className="px-2 py-3 text-center text-[10px] text-slate-400">
-                                                    Sin registros de créditos
-                                                </td>
-                                            </tr>
-                                        )}
-                                        {creditos.map(c => {
-                                            return (
-                                                <tr key={c.id} className="hover:bg-slate-50 transition-colors">
-                                                    <td className="px-1.5 py-1" data-label="Documento">
-                                                        <input
-                                                            type="text"
-                                                            value={c.documento}
-                                                            placeholder="Documento"
-                                                            onChange={(e) => handleCreditoChange(c.id, 'documento', e.target.value)}
-                                                            disabled={estado === 'cerrado'}
-                                                            className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
-                                                        />
-                                                    </td>
-                                                    <td className="px-1.5 py-1" data-label="Tipo">
-                                                        <select
-                                                            value={c.tipo_documento || 'FAC'}
-                                                            onChange={(e) => handleCreditoChange(c.id, 'tipo_documento', e.target.value)}
-                                                            disabled={estado === 'cerrado'}
-                                                            className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
-                                                        >
-                                                            <option value="FAC">FAC</option>
-                                                            <option value="CCF">CCF</option>
-                                                        </select>
-                                                    </td>
-                                                    <td className="px-1.5 py-1" data-label="Cliente">
-                                                        <SearchableSelect
-                                                            loadOptions={loadCustomers({ es_credito: 1 })}
-                                                            value={c.cliente_id}
-                                                            onChange={(e, opt) => {
-                                                                handleCreditoChange(c.id, 'cliente_id', e.target.value);
-                                                                handleCreditoChange(c.id, 'cliente_nombre', opt ? opt.nombre : '');
-                                                            }}
-                                                            disabled={estado === 'cerrado'}
-                                                            placeholder="Buscar cliente..."
-                                                            valueKey="id"
-                                                            labelKey="nombre"
-                                                            displayKey="nombre"
-                                                            codeKey="nrc"
-                                                            codeLabel="NRC"
-                                                            selectedLabel={c.cliente_nombre}
-                                                            dropdownWidth={420}
-                                                        />
-                                                    </td>
-                                                    <td className="px-1.5 py-1" data-label="Producto">
-                                                        <select
-                                                            value={c.producto_codigo}
-                                                            onChange={(e) => {
-                                                                const cod = e.target.value;
-                                                                const prod = fuelProducts.find(p => p.codigo === cod);
-                                                                handleCreditoChange(c.id, 'producto_codigo', cod);
-                                                                handleCreditoChange(c.id, 'producto_descripcion', prod ? prod.descripcion : '');
-                                                            }}
-                                                            disabled={estado === 'cerrado'}
-                                                            className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
-                                                        >
-                                                            <option value="">Seleccionar...</option>
-                                                            {fuelProducts.map(p => (
-                                                                <option key={p.codigo} value={p.codigo}>{p.codigo} — {p.descripcion}</option>
-                                                            ))}
-                                                        </select>
-                                                    </td>
-                                                    <td className="px-1.5 py-1" data-label="Despachador">
-                                                        <select
-                                                            value={c.despachador_id || ''}
-                                                            onChange={(e) => handleCreditoChange(c.id, 'despachador_id', e.target.value)}
-                                                            disabled={estado === 'cerrado'}
-                                                            className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
-                                                        >
-                                                            {despachadoresOptions.length === 0 && <option value="">Sin despachador</option>}
-                                                            {despachadoresOptions.map(d => (
-                                                                <option key={d.id} value={d.id}>{d.label}</option>
-                                                            ))}
-                                                        </select>
-                                                    </td>
-                                                    <td className="px-1.5 py-1" data-label="Cantidad">
-                                                        <input
-                                                            type="number"
-                                                            step="0.00001"
-                                                            min="0"
-                                                            value={c.cantidad}
-                                                            onChange={(e) => {
-                                                                const cant = parseFloat(e.target.value) || 0;
-                                                                handleCreditoChange(c.id, 'cantidad', cant);
-                                                                const monto = parseFloat(c.monto) || 0;
-                                                                handleCreditoChange(c.id, 'precio', cant > 0 ? monto / cant : 0);
-                                                            }}
-                                                            disabled={estado === 'cerrado'}
-                                                            className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20 text-right font-mono"
-                                                        />
-                                                    </td>
-                                                    <td className="px-1.5 py-1 text-right font-mono font-bold text-indigo-600" data-label="Precio">
-                                                        {parseFloat(c.cantidad) > 0 ? <Money value={parseFloat(c.monto) / parseFloat(c.cantidad)} /> : <Money value={0} />}
-                                                    </td>
-                                                    <td className="px-1.5 py-1" data-label="Monto">
-                                                    <MoneyInput
-                                                        step="0.01"
-                                                        min="0"
-                                                        value={c.monto}
-                                                        onChange={(e) => {
-                                                            const monto = parseFloat(e.target.value) || 0;
-                                                            handleCreditoChange(c.id, 'monto', monto);
-                                                            const cant = parseFloat(c.cantidad) || 0;
-                                                            handleCreditoChange(c.id, 'precio', cant > 0 ? monto / cant : 0);
-                                                        }}
-                                                        disabled={estado === 'cerrado'}
-                                                        className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20 text-right font-mono"
-                                                    />
-                                                    </td>
-                                                    <td className="px-1.5 py-1" data-label="Placa">
-                                                        <input
-                                                            type="text"
-                                                            value={c.placa}
-                                                            placeholder="Placa"
-                                                            onChange={(e) => handleCreditoChange(c.id, 'placa', e.target.value)}
-                                                            disabled={estado === 'cerrado'}
-                                                            className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
-                                                        />
-                                                    </td>
-                                                    <td className="px-1.5 py-1" data-label="Kilometraje">
-                                                        <input
-                                                            type="text"
-                                                            value={c.kilometraje}
-                                                            placeholder="KM"
-                                                            onChange={(e) => handleCreditoChange(c.id, 'kilometraje', e.target.value)}
-                                                            disabled={estado === 'cerrado'}
-                                                            className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
-                                                        />
-                                                    </td>
-                                                    {estado !== 'cerrado' && (
-                                                        <td className="px-1.5 py-1 text-center" data-label="">
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => handleRemoveCredito(c.id)}
-                                                                className="p-0.5 text-slate-600 hover:text-red-500 transition-colors"
-                                                                title="Eliminar"
-                                                            >
-                                                                <Trash2 size={11} />
-                                                            </button>
-                                                        </td>
-                                                    )}
-                                                </tr>
-                                            );
-                                        })}
-                                    </tbody>
-                                    {estado !== 'cerrado' && (
-                                        <tfoot className="bg-slate-50 border-t border-slate-100">
-                                            <tr>
-                                                <td colSpan={12} className="px-2 py-1">
-                                                    <div className="flex items-center justify-between">
-                                                        <button
-                                                            onClick={handleAddCreditoRow}
-                                                            className="flex items-center gap-1 text-[11px] font-bold text-indigo-600 hover:text-indigo-800 transition-colors"
-                                                        >
-                                                            <Plus size={14} />
-                                                            Agregar Crédito
-                                                        </button>
-                                                        <div className="flex items-center gap-4">
-                                                            <span className="text-xs text-slate-500">
-                                                                Total Créditos: <strong className="text-red-600 font-mono text-sm"><Money value={creditosTotal} /></strong>
-                                                            </span>
-                                                            <button
-                                                                onClick={() => handleSaveSection('creditos')}
-                                                                disabled={saveCreditosMutation.isPending}
-                                                                className={`flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold rounded-xl transition-all disabled:opacity-50 ${
-                                                                    isSectionDirty('creditos')
-                                                                        ? 'text-white bg-amber-600 hover:bg-amber-700 shadow-md shadow-amber-500/20 ring-2 ring-amber-400/50 animate-pulse'
-                                                                        : 'text-white bg-indigo-600 hover:bg-indigo-700'
-                                                                }`}
-                                                            >
-                                                                {saveCreditosMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-                                                                {saveCreditosMutation.isPending ? 'Guardando...' : (isSectionDirty('creditos') ? 'Guardar Créditos (Pendiente)' : 'Guardar Créditos')}
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        </tfoot>
-                                    )}
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-                )}
+                <GasCreditosModal
+                    isOpen={showCreditosModal}
+                    onClose={() => handleSafeCloseModal('creditos')}
+                    isDirty={isSectionDirty('creditos')}
+                    estado={estado}
+                    creditos={creditos}
+                    creditosAfectanCxc={creditosAfectanCxc}
+                    creditosDesdeFecha={creditosDesdeFecha}
+                    toDateStrDDMMYYYY={toDateStrDDMMYYYY}
+                    loadCustomers={loadCustomers}
+                    fuelProducts={fuelProducts}
+                    despachadoresOptions={despachadoresOptions}
+                    handleCreditoChange={handleCreditoChange}
+                    handleRemoveCredito={handleRemoveCredito}
+                    handleAddCreditoRow={handleAddCreditoRow}
+                    creditosTotal={creditosTotal}
+                    handleSaveSection={handleSaveSection}
+                    isSaving={saveCreditosMutation.isPending}
+                />
 
-                {showValesModal && (
-                    <div className="fixed inset-0 z-50 flex items-start justify-center pt-8 pb-8">
-                        <div className="fixed inset-0 bg-black/40" onClick={() => handleSafeCloseModal('vales')} />
-                        <div className="relative bg-white rounded-2xl shadow-2xl w-[95%] max-w-6xl min-h-[50vh] max-h-[95vh] flex flex-col">
-                            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 shrink-0">
-                                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                                    <Gift size={16} className="text-indigo-600" />
-                                    Vales del Turno
-                                    {isSectionDirty('vales') && estado !== 'cerrado' && (
-                                        <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-300 px-2 py-0.5 rounded-full flex items-center gap-1 animate-pulse">
-                                            ● Cambios sin guardar
-                                        </span>
-                                    )}
-                                    {estado === 'cerrado' && (
-                                        <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">Solo lectura</span>
-                                    )}
-                                </h3>
-                                <button
-                                    onClick={() => handleSafeCloseModal('vales')}
-                                    className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors"
-                                >
-                                    <X size={16} className="text-slate-400" />
-                                </button>
-                            </div>
-                            <div className="overflow-auto px-4 pb-4 flex-1">
-                                <table className="w-full text-left border-collapse table-cards">
-                                    <thead>
-                                        <tr className="text-[9px] font-bold text-slate-500 uppercase tracking-wider bg-slate-50 sticky top-0 z-10">
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-24">Documento</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-16">Tipo</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-36">Cliente</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-28">Producto</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-44">Despachador</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-20 text-right">Cantidad</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-20 text-right">Precio</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-20 text-right">Monto</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-20">Placa</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-20">Kilometraje</th>
-                                            {estado !== 'cerrado' && <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-6"></th>}
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-50 text-[11px]">
-                                        {vales.length === 0 && (
-                                            <tr>
-                                                <td colSpan={estado !== 'cerrado' ? 12 : 11} className="px-2 py-3 text-center text-[10px] text-slate-400">
-                                                    Sin registros de vales
-                                                </td>
-                                            </tr>
-                                        )}
-                                        {vales.map(v => {
-                                            return (
-                                                <tr key={v.id} className="hover:bg-slate-50 transition-colors">
-                                                    <td className="px-1.5 py-1" data-label="Documento">
-                                                        <input
-                                                            type="text"
-                                                            value={v.documento}
-                                                            placeholder="Documento"
-                                                            onChange={(e) => handleValeChange(v.id, 'documento', e.target.value)}
-                                                            disabled={estado === 'cerrado'}
-                                                            className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
-                                                        />
-                                                    </td>
-                                                    <td className="px-1.5 py-1" data-label="Tipo">
-                                                        <select
-                                                            value={v.tipo_documento || 'FAC'}
-                                                            onChange={(e) => handleValeChange(v.id, 'tipo_documento', e.target.value)}
-                                                            disabled={estado === 'cerrado'}
-                                                            className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
-                                                        >
-                                                            <option value="FAC">FAC</option>
-                                                            <option value="CCF">CCF</option>
-                                                        </select>
-                                                    </td>
-                                                    <td className="px-1.5 py-1" data-label="Cliente">
-                                                        <SearchableSelect
-                                                            loadOptions={loadCustomers()}
-                                                            value={v.cliente_id}
-                                                            onChange={(e, opt) => {
-                                                                handleValeChange(v.id, 'cliente_id', e.target.value);
-                                                                handleValeChange(v.id, 'cliente_nombre', opt ? opt.nombre : '');
-                                                            }}
-                                                            disabled={estado === 'cerrado'}
-                                                            placeholder="Buscar cliente..."
-                                                            valueKey="id"
-                                                            labelKey="nombre"
-                                                            displayKey="nombre"
-                                                            codeKey="nrc"
-                                                            codeLabel="NRC"
-                                                            selectedLabel={v.cliente_nombre}
-                                                            dropdownWidth={420}
-                                                        />
-                                                    </td>
-                                                    <td className="px-1.5 py-1" data-label="Producto">
-                                                        <select
-                                                            value={v.producto_codigo}
-                                                            onChange={(e) => {
-                                                                const cod = e.target.value;
-                                                                const prod = fuelProducts.find(p => p.codigo === cod);
-                                                                handleValeChange(v.id, 'producto_codigo', cod);
-                                                                handleValeChange(v.id, 'producto_descripcion', prod ? prod.descripcion : '');
-                                                            }}
-                                                            disabled={estado === 'cerrado'}
-                                                            className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
-                                                        >
-                                                            <option value="">Seleccionar...</option>
-                                                            {fuelProducts.map(p => (
-                                                                <option key={p.codigo} value={p.codigo}>{p.codigo} — {p.descripcion}</option>
-                                                            ))}
-                                                        </select>
-                                                    </td>
-                                                    <td className="px-1.5 py-1" data-label="Despachador">
-                                                        <select
-                                                            value={v.despachador_id || ''}
-                                                            onChange={(e) => handleValeChange(v.id, 'despachador_id', e.target.value)}
-                                                            disabled={estado === 'cerrado'}
-                                                            className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
-                                                        >
-                                                            {despachadoresOptions.length === 0 && <option value="">Sin despachador</option>}
-                                                            {despachadoresOptions.map(d => (
-                                                                <option key={d.id} value={d.id}>{d.label}</option>
-                                                            ))}
-                                                        </select>
-                                                    </td>
-                                                    <td className="px-1.5 py-1" data-label="Cantidad">
-                                                        <input
-                                                            type="number"
-                                                            step="0.00001"
-                                                            min="0"
-                                                            value={v.cantidad}
-                                                            onChange={(e) => {
-                                                                const cant = parseFloat(e.target.value) || 0;
-                                                                handleValeChange(v.id, 'cantidad', cant);
-                                                                const monto = parseFloat(v.monto) || 0;
-                                                                handleValeChange(v.id, 'precio', cant > 0 ? monto / cant : 0);
-                                                            }}
-                                                            disabled={estado === 'cerrado'}
-                                                            className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20 text-right font-mono"
-                                                        />
-                                                    </td>
-                                                    <td className="px-1.5 py-1 text-right font-mono font-bold text-indigo-600" data-label="Precio">
-                                                        {parseFloat(v.cantidad) > 0 ? <Money value={parseFloat(v.monto) / parseFloat(v.cantidad)} /> : <Money value={0} />}
-                                                    </td>
-                                                    <td className="px-1.5 py-1" data-label="Monto">
-                                                    <MoneyInput
-                                                        step="0.01"
-                                                        min="0"
-                                                        value={v.monto}
-                                                        onChange={(e) => {
-                                                            const monto = parseFloat(e.target.value) || 0;
-                                                            handleValeChange(v.id, 'monto', monto);
-                                                            const cant = parseFloat(v.cantidad) || 0;
-                                                            handleValeChange(v.id, 'precio', cant > 0 ? monto / cant : 0);
-                                                        }}
-                                                        disabled={estado === 'cerrado'}
-                                                        className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20 text-right font-mono"
-                                                    />
-                                                    </td>
-                                                    <td className="px-1.5 py-1" data-label="Placa">
-                                                        <input
-                                                            type="text"
-                                                            value={v.placa}
-                                                            placeholder="Placa"
-                                                            onChange={(e) => handleValeChange(v.id, 'placa', e.target.value)}
-                                                            disabled={estado === 'cerrado'}
-                                                            className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
-                                                        />
-                                                    </td>
-                                                    <td className="px-1.5 py-1" data-label="Kilometraje">
-                                                        <input
-                                                            type="text"
-                                                            value={v.kilometraje}
-                                                            placeholder="KM"
-                                                            onChange={(e) => handleValeChange(v.id, 'kilometraje', e.target.value)}
-                                                            disabled={estado === 'cerrado'}
-                                                            className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
-                                                        />
-                                                    </td>
-{estado !== 'cerrado' && (
-                                                        <td className="px-1.5 py-1 text-center" data-label="">
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => handleRemoveVale(v.id)}
-                                                                className="p-0.5 text-slate-600 hover:text-red-500 transition-colors"
-                                                                title="Eliminar"
-                                                            >
-                                                                <Trash2 size={11} />
-                                                            </button>
-                                                        </td>
-                                                    )}
-                                                </tr>
-                                            );
-                                        })}
-                                    </tbody>
-                                    {estado !== 'cerrado' && (
-                                        <tfoot className="bg-slate-50 border-t border-slate-100">
-                                            <tr>
-                                                <td colSpan={12} className="px-2 py-1">
-                                                    <div className="flex items-center justify-between">
-                                                        <button
-                                                            onClick={handleAddValeRow}
-                                                            className="flex items-center gap-1 text-[11px] font-bold text-indigo-600 hover:text-indigo-800 transition-colors"
-                                                        >
-                                                            <Plus size={14} />
-                                                            Agregar Vale
-                                                        </button>
-                                                        <div className="flex items-center gap-4">
-                                                            <span className="text-xs text-slate-500">
-                                                                Total Vales: <strong className="text-red-600 font-mono text-sm"><Money value={valesTotal} /></strong>
-                                                            </span>
-                                                            <button
-                                                                onClick={() => handleSaveSection('vales')}
-                                                                disabled={saveValesMutation.isPending}
-                                                                className={`flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold rounded-xl transition-all disabled:opacity-50 ${
-                                                                    isSectionDirty('vales')
-                                                                        ? 'text-white bg-amber-600 hover:bg-amber-700 shadow-md shadow-amber-500/20 ring-2 ring-amber-400/50 animate-pulse'
-                                                                        : 'text-white bg-indigo-600 hover:bg-indigo-700'
-                                                                }`}
-                                                            >
-                                                                {saveValesMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-                                                                {saveValesMutation.isPending ? 'Guardando...' : (isSectionDirty('vales') ? 'Guardar Vales (Pendiente)' : 'Guardar Vales')}
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        </tfoot>
-                                    )}
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-                )}
+                <GasValesModal
+                    isOpen={showValesModal}
+                    onClose={() => handleSafeCloseModal('vales')}
+                    isDirty={isSectionDirty('vales')}
+                    estado={estado}
+                    vales={vales}
+                    loadCustomers={loadCustomers}
+                    fuelProducts={fuelProducts}
+                    despachadoresOptions={despachadoresOptions}
+                    handleValeChange={handleValeChange}
+                    handleRemoveVale={handleRemoveVale}
+                    handleAddValeRow={handleAddValeRow}
+                    valesTotal={valesTotal}
+                    handleSaveSection={handleSaveSection}
+                    isSaving={saveValesMutation.isPending}
+                />
 
-                {showDiferenciasModal && (
-                    <div className="fixed inset-0 z-50 flex items-start justify-center pt-8 pb-8">
-                        <div className="fixed inset-0 bg-black/40" onClick={() => { setShowDiferenciasModal(false); setDiferenciasData(null); }} />
-                        <div className="relative bg-white rounded-2xl shadow-2xl w-[95%] max-w-5xl max-h-[90vh] flex flex-col">
-                            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 shrink-0">
-                                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                                    <BarChart3 size={16} className="text-indigo-600" />
-                                    Lecturas vs Ventas
-                                    <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">
-                                        {toDateStrDDMMYYYY(editData?.fecha_turno || fechaTurno) || '—'} — Turno #{numeroTurno}
-                                    </span>
-                                </h3>
-                                <button
-                                    onClick={() => { setShowDiferenciasModal(false); setDiferenciasData(null); }}
-                                    className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors"
-                                >
-                                    <X size={16} className="text-slate-400" />
-                                </button>
-                            </div>
-                            <div className="overflow-auto px-4 pb-4 flex-1">
-                                <div className="flex flex-wrap items-center gap-3 mt-3 p-3 bg-slate-50 border border-slate-100 rounded-xl">
-                                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Enviar a turno</span>
-                                            {dayShiftsQuery.isLoading ? (
-                                                <span className="flex items-center gap-2 text-[11px] font-medium text-slate-500">
-                                                    <Loader2 size={12} className="animate-spin" /> Cargando turnos...
-                                                </span>
-                                            ) : (dayShiftsQuery.data?.data || []).length === 0 ? (
-                                                <span className="flex items-center gap-2 text-[11px] font-bold text-amber-700">
-                                                    <AlertTriangle size={12} /> No hay turnos para esta fecha en la sucursal
-                                                </span>
-                                            ) : (
-                                                <>
-                                                    <select
-                                                        value={targetShiftId}
-                                                        onChange={e => setTargetShiftId(e.target.value)}
-                                                        className="text-[12px] font-bold text-slate-700 border border-slate-200 rounded-xl px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300"
-                                                    >
-                                                        <option value="">Seleccione un turno</option>
-                                                        {dayShiftsQuery.data.data.map(s => (
-                                                            <option key={s.id} value={s.id}>
-                                                                Turno #{s.shift_number} — {toDateStrDDMMYYYY(s.shift_date)}{formatHora(s.start_time) ? ` ${formatHora(s.start_time)}` : ''} — {s.pos_name}{s.seller_name ? ` — ${s.seller_name}` : ''} — {shiftEstado(s)}
-                                                            </option>
-                                                        ))}
-                                                    </select>
-                                                    {selectedTargetShift && (
-                                                        <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-tight">
-                                                            Las complementarias se asignarán a este turno
-                                                        </span>
-                                                    )}
-                                                </>
-                                            )}
-                                        </div>
-                                        {diferenciasLoading ? (
-                                            <div className="flex items-center justify-center py-16">
-                                                <Loader2 size={24} className="animate-spin text-indigo-600" />
-                                                <span className="ml-3 text-sm font-medium text-slate-500">Cargando datos...</span>
-                                            </div>
-                                        ) : !diferenciasData ? (
-                                            <div className="flex items-center justify-center py-16">
-                                                <BarChart3 size={18} className="text-slate-400" />
-                                                <span className="ml-3 text-sm font-medium text-slate-500">Seleccione un turno para ver las ventas y diferencias</span>
-                                            </div>
-                                        ) : (
-                                            <>
-                                                <table className="w-full text-left border-collapse mt-3 table-cards">
-                                            <thead>
-                                                <tr className="text-[9px] font-bold text-slate-500 uppercase tracking-wider bg-slate-50 sticky top-0 z-10">
-                                                    <th className="px-2 py-1 bg-slate-50 border-b border-slate-100">Código</th>
-                                                    <th className="px-2 py-1 bg-slate-50 border-b border-slate-100">Producto</th>
-                                                    <th className="px-2 py-1 bg-slate-50 border-b border-slate-100 text-right">Precio</th>
-                                                    <th className="px-2 py-1 bg-slate-50 border-b border-slate-100 text-right">Lectura (Gl)</th>
-                                                    <th className="px-2 py-1 bg-slate-50 border-b border-slate-100 text-right">Lectura ($)</th>
-                                                    <th className="px-2 py-1 bg-slate-50 border-b border-slate-100 text-right">Venta (Gl)</th>
-                                                    <th className="px-2 py-1 bg-slate-50 border-b border-slate-100 text-right">Venta ($)</th>
-                                                    <th className="px-2 py-1 bg-slate-50 border-b border-slate-100 text-right">Dif. (Gl)</th>
-                                                    <th className="px-2 py-1 bg-slate-50 border-b border-slate-100 text-right">Dif. ($)</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-slate-50 text-[11px]">
-                                                {diferenciasData.data.map((row, i) => (
-                                                    <tr key={i} className={`hover:bg-slate-50 transition-colors ${parseFloat(row.diferencia_monto) > 0 ? 'bg-amber-50/50' : ''}`}>
-                                                        <td className="px-2 py-1 font-bold text-slate-700" data-label="Código">{row.codigo_producto}</td>
-                                                        <td className="px-2 py-1 text-slate-600" data-label="Producto">{row.descripcion_producto}</td>
-                                                        <td className="px-2 py-1 text-right font-mono text-slate-700" data-label="Precio"><Money value={parseFloat(row.precio)} /></td>
-                                                        <td className="px-2 py-1 text-right font-mono text-slate-700" data-label="Lectura (Gl)">{parseFloat(row.lectura_galones).toFixed(5)}</td>
-                                                        <td className="px-2 py-1 text-right font-mono text-slate-700" data-label="Lectura ($)"><Money value={parseFloat(row.lectura_monto)} /></td>
-                                                        <td className="px-2 py-1 text-right font-mono text-slate-700" data-label="Venta (Gl)">{parseFloat(row.venta_galones).toFixed(5)}</td>
-                                                        <td className="px-2 py-1 text-right font-mono text-slate-700" data-label="Venta ($)"><Money value={parseFloat(row.venta_monto)} /></td>
-                                                        <td className={`px-2 py-1 text-right font-mono font-bold ${parseFloat(row.diferencia_galones) > 0 ? 'text-red-600' : parseFloat(row.diferencia_galones) < 0 ? 'text-emerald-600' : 'text-slate-500'}`} data-label="Dif. (Gl)">
-                                                            {parseFloat(row.diferencia_galones).toFixed(5)}
-                                                        </td>
-                                                        <td className={`px-2 py-1 text-right font-mono font-bold ${parseFloat(row.diferencia_monto) > 0 ? 'text-red-600' : parseFloat(row.diferencia_monto) < 0 ? 'text-emerald-600' : 'text-slate-500'}`} data-label="Dif. ($)">
-                                                            <Money value={parseFloat(row.diferencia_monto)} />
-                                                        </td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                            <tfoot className="bg-slate-50 border-t-2 border-slate-200 text-xs font-bold">
-                                                <tr>
-                                                    <td colSpan={3} className="px-2 py-1.5 text-right text-slate-600 uppercase tracking-wider">Totales</td>
-                                                    <td className="px-2 py-1.5 text-right font-mono text-slate-800">{diferenciasData.totales.lectura_galones.toFixed(5)}</td>
-                                                    <td className="px-2 py-1.5 text-right font-mono text-slate-800"><Money value={diferenciasData.totales.lectura_monto} /></td>
-                                                    <td className="px-2 py-1.5 text-right font-mono text-slate-800">{diferenciasData.totales.venta_galones.toFixed(5)}</td>
-                                                    <td className="px-2 py-1.5 text-right font-mono text-slate-800"><Money value={diferenciasData.totales.venta_monto} /></td>
-                                                    <td className={`px-2 py-1.5 text-right font-mono ${diferenciasData.totales.diferencia_galones > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
-                                                        {diferenciasData.totales.diferencia_galones.toFixed(5)}
-                                                    </td>
-                                                    <td className={`px-2 py-1.5 text-right font-mono ${diferenciasData.totales.diferencia_monto > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
-                                                        <Money value={diferenciasData.totales.diferencia_monto} />
-                                                    </td>
-                                                </tr>
-                                            </tfoot>
-                                        </table>
-                                        <div className="mt-4 flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
-                                            <span className="text-xs text-slate-500">
-                                                Diferencias Positivas: <strong className="text-red-600 font-mono">
-                                                    <Money value={diferenciasData.totales.diferencia_monto > 0 ? diferenciasData.totales.diferencia_monto : 0} />
-                                                </strong>
-                                            </span>
-                                            <button
-                                                onClick={() => setShowConfirmComplementaria(true)}
-                                                disabled={generarComplementariaMutation.isPending || diferenciasData.totales.diferencia_monto <= 0 || !targetShiftId}
-                                                className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-all disabled:opacity-50 shadow-lg"
-                                            >
-                                                {generarComplementariaMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}
-                                                {generarComplementariaMutation.isPending ? 'Generando...' : 'Generar DTE Complementaria'}
-                                            </button>
-                                        </div>
-                                    </>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-                )}
+                <GasDiferenciasModal
+                    isOpen={showDiferenciasModal}
+                    onClose={() => { setShowDiferenciasModal(false); setDiferenciasData(null); }}
+                    editData={editData}
+                    fechaTurno={fechaTurno}
+                    numeroTurno={numeroTurno}
+                    toDateStrDDMMYYYY={toDateStrDDMMYYYY}
+                    dayShiftsQuery={dayShiftsQuery}
+                    targetShiftId={targetShiftId}
+                    setTargetShiftId={setTargetShiftId}
+                    formatHora={formatHora}
+                    shiftEstado={shiftEstado}
+                    selectedTargetShift={selectedTargetShift}
+                    diferenciasLoading={diferenciasLoading}
+                    diferenciasData={diferenciasData}
+                    showConfirmComplementaria={showConfirmComplementaria}
+                    setShowConfirmComplementaria={setShowConfirmComplementaria}
+                    generarComplementariaMutation={generarComplementariaMutation}
+                />
 
-                {showConfirmComplementaria && (
-                    <div className="fixed inset-0 z-50 flex items-start justify-center pt-8 pb-8">
-                        <div className="fixed inset-0 bg-black/40" onClick={() => setShowConfirmComplementaria(false)} />
-                        <div className="relative bg-white rounded-2xl shadow-2xl w-[95%] max-w-2xl max-h-[90vh] flex flex-col">
-                            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 shrink-0">
-                                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                                    <AlertTriangle size={16} className="text-amber-500" />
-                                    Confirmar Generación de Complementarias
-                                </h3>
-                                <button onClick={() => setShowConfirmComplementaria(false)} className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors">
-                                    <X size={16} className="text-slate-400" />
-                                </button>
-                            </div>
-                            <div className="overflow-auto px-4 py-3 flex-1">
-                                {(() => {
-                                    const TASA_FOVIAL = 0.20;
-                                    const TASA_COTRANS = 0.10;
-                                    const productos = (diferenciasData?.data || []).filter(r => parseFloat(r.diferencia_galones) > 0);
-                                    const totalMontoBruto = productos.reduce((s, r) => s + (parseFloat(r.diferencia_galones) * parseFloat(r.precio)), 0);
-                                    const totalFovial = productos.reduce((s, r) => s + (parseFloat(r.diferencia_galones) * TASA_FOVIAL), 0);
-                                    const totalCotran = productos.reduce((s, r) => s + (parseFloat(r.diferencia_galones) * TASA_COTRANS), 0);
-                                    const totalBaseGrav = totalMontoBruto - totalFovial - totalCotran;
-                                    return (
-                                        <>
-                                            <p className="text-xs text-slate-600 mb-3">
-                                                Se generará <strong className="text-slate-800">{productos.length} DTE{productos.length !== 1 ? 's' : ''}</strong> de tipo Factura Consumidor Final (CF), uno por cada producto con diferencia positiva:
-                                            </p>
-                                            {selectedTargetShift && (
-                                                <p className="text-[11px] font-bold text-indigo-600 mb-3 flex items-center gap-2">
-                                                    <Calendar size={12} />
-                                                    Se enviarán al Turno #{selectedTargetShift.shift_number} — {toDateStrDDMMYYYY(selectedTargetShift.shift_date)}{formatHora(selectedTargetShift.start_time) ? ` ${formatHora(selectedTargetShift.start_time)}` : ''} — {selectedTargetShift.pos_name}{selectedTargetShift.seller_name ? ` — ${selectedTargetShift.seller_name}` : ''} — {shiftEstado(selectedTargetShift)}
-                                                </p>
-                                            )}
-                                            <table className="w-full text-left border-collapse text-[11px] table-cards">
-                                                <thead>
-                                                    <tr className="text-[9px] font-bold text-slate-500 uppercase tracking-wider bg-slate-50 border-b border-slate-200">
-                                                        <th className="px-2 py-1">Producto</th>
-                                                        <th className="px-2 py-1 text-right">Dif. (Gl)</th>
-                                                        <th className="px-2 py-1 text-right">Precio/Gal</th>
-                                                        <th className="px-2 py-1 text-right">Monto Bruto</th>
-                                                        <th className="px-2 py-1 text-right">FOVIAL</th>
-                                                        <th className="px-2 py-1 text-right">COTRANS</th>
-                                                        <th className="px-2 py-1 text-right">Base Gravable</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody className="divide-y divide-slate-100">
-                                                    {productos.map((row, i) => {
-                                                        const gl = parseFloat(row.diferencia_galones) || 0;
-                                                        const precio = parseFloat(row.precio) || 0;
-                                                        const montoBruto = gl * precio;
-                                                        const fovial = gl * TASA_FOVIAL;
-                                                        const cotrans = gl * TASA_COTRANS;
-                                                        const baseGrav = montoBruto - fovial - cotrans;
-                                                        return (
-                                                            <tr key={i} className="hover:bg-slate-50">
-                                                                <td className="px-2 py-1.5 font-medium text-slate-700" data-label="Producto">{row.descripcion_producto}</td>
-                                                                <td className="px-2 py-1.5 text-right font-mono text-slate-600" data-label="Dif. (Gl)">{gl.toFixed(5)}</td>
-                                                                <td className="px-2 py-1.5 text-right font-mono text-slate-600" data-label="Precio/Gal"><Money value={precio} /></td>
-                                                                <td className="px-2 py-1.5 text-right font-mono text-slate-600" data-label="Monto Bruto"><Money value={montoBruto} /></td>
-                                                                <td className="px-2 py-1.5 text-right font-mono text-slate-600" data-label="FOVIAL"><Money value={fovial} /></td>
-                                                                <td className="px-2 py-1.5 text-right font-mono text-slate-600" data-label="COTRANS"><Money value={cotrans} /></td>
-                                                                <td className="px-2 py-1.5 text-right font-mono font-bold text-slate-800" data-label="Base Gravable"><Money value={baseGrav} /></td>
-                                                            </tr>
-                                                        );
-                                                    })}
-                                                </tbody>
-                                                <tfoot className="bg-slate-50 border-t-2 border-slate-200 text-xs font-bold">
-                                                    <tr>
-                                                        <td className="px-2 py-1.5 text-slate-600 uppercase tracking-wider">
-                                                            {productos.length} DTE{productos.length !== 1 ? 's' : ''}
-                                                        </td>
-                                                        <td></td>
-                                                        <td></td>
-                                                        <td className="px-2 py-1.5 text-right font-mono text-slate-800"><Money value={totalMontoBruto} /></td>
-                                                        <td className="px-2 py-1.5 text-right font-mono text-slate-800"><Money value={totalFovial} /></td>
-                                                        <td className="px-2 py-1.5 text-right font-mono text-slate-800"><Money value={totalCotran} /></td>
-                                                        <td className="px-2 py-1.5 text-right font-mono text-slate-800"><Money value={totalBaseGrav} /></td>
-                                                    </tr>
-                                                </tfoot>
-                                            </table>
-                                            <div className="mt-4 flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
-                                                <button
-                                                    onClick={() => setShowConfirmComplementaria(false)}
-                                                    className="px-4 py-1.5 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-all"
-                                                >
-                                                    Cancelar
-                                                </button>
-                                                <button
-                                                    onClick={() => generarComplementariaMutation.mutate({ shift_id: targetShiftId })}
-                                                    disabled={generarComplementariaMutation.isPending}
-                                                    className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-all disabled:opacity-50 shadow-lg"
-                                                >
-                                                    {generarComplementariaMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}
-                                                    {generarComplementariaMutation.isPending ? 'Generando...' : 'Confirmar y Generar'}
-                                                </button>
-                                            </div>
-                                        </>
-                                    );
-                                })()}
-                            </div>
-                        </div>
-                    </div>
-                )}
+                <GasAnticiposModal
+                    isOpen={showAnticiposModal}
+                    onClose={() => handleSafeCloseModal('anticipos')}
+                    isDirty={isSectionDirty('anticipos')}
+                    estado={estado}
+                    anticiposDesp={anticiposDesp}
+                    loadCustomers={loadCustomers}
+                    fuelProducts={fuelProducts}
+                    despachadoresOptions={despachadoresOptions}
+                    handleAnticipoChange={handleAnticipoChange}
+                    handleAnticipoClienteChange={handleAnticipoClienteChange}
+                    handleRemoveAnticipo={handleRemoveAnticipo}
+                    handleAddAnticipoRow={handleAddAnticipoRow}
+                    anticiposDespTotal={anticiposDespTotal}
+                    handleSaveSection={handleSaveSection}
+                    isSaving={saveAnticiposDespMutation.isPending}
+                    pendingAnticiposByClient={pendingAnticiposByClient}
+                />
 
-                {showAnticiposModal && (
-                    <div className="fixed inset-0 z-50 flex items-start justify-center pt-8 pb-8">
-                        <div className="fixed inset-0 bg-black/40" onClick={() => handleSafeCloseModal('anticipos')} />
-                        <div className="relative bg-white rounded-2xl shadow-2xl w-[95%] max-w-6xl min-h-[50vh] max-h-[95vh] flex flex-col">
-                            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 shrink-0">
-                                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                                    <Truck size={16} className="text-indigo-600" />
-                                    Anticipos Despachados del Turno
-                                    {isSectionDirty('anticipos') && estado !== 'cerrado' && (
-                                        <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-300 px-2 py-0.5 rounded-full flex items-center gap-1 animate-pulse">
-                                            ● Cambios sin guardar
-                                        </span>
-                                    )}
-                                    {estado === 'cerrado' && (
-                                        <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">Solo lectura</span>
-                                    )}
-                                </h3>
-                                <button
-                                    onClick={() => handleSafeCloseModal('anticipos')}
-                                    className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors"
-                                >
-                                    <X size={16} className="text-slate-400" />
-                                </button>
-                            </div>
-                            <div className="overflow-auto px-4 pb-4 flex-1">
-                                <table className="w-full text-left border-collapse table-cards">
-                                    <thead>
-                                        <tr className="text-[9px] font-bold text-slate-500 uppercase tracking-wider bg-slate-50 sticky top-0 z-10">
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-28">Cliente</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-20">Saldo Disp.</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-24">Documento</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-16">Tipo</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-28">Producto</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-44">Despachador</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-20 text-right">Cantidad</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-20 text-right">Precio</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-20 text-right">Monto</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-20">Placa</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-20">Kilometraje</th>
-                                            {estado !== 'cerrado' && <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-6"></th>}
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-50 text-[11px]">
-                                        {anticiposDesp.length === 0 && (
-                                            <tr>
-                                                <td colSpan={estado !== 'cerrado' ? 13 : 12} className="px-2 py-3 text-center text-[10px] text-slate-400">
-                                                    Sin registros de anticipos despachados
-                                                </td>
-                                            </tr>
-                                        )}
-                                        {anticiposDesp.map(a => {
-                                            const saldoBase = parseFloat(a.saldo_disponible) || 0;
-                                            const pendingSame = a.cliente_id ? (pendingAnticiposByClient[a.cliente_id] || 0) : 0;
-                                            const efectivoDisponible = saldoBase - pendingSame;
-                                            const excedeSaldo = parseFloat(a.monto) > 0 && efectivoDisponible < -0.0001;
-                                            return (
-                                                <tr key={a.id} className={`hover:bg-slate-50 transition-colors ${excedeSaldo ? 'bg-red-50' : ''}`}>
-                                                    <td className="px-1.5 py-1" data-label="Cliente">
-                                                        <SearchableSelect
-                                                            loadOptions={loadCustomers({ es_anticipado: 1 })}
-                                                            value={a.cliente_id}
-                                                            onChange={(e, opt) => {
-                                                                handleAnticipoClienteChange(a.id, e.target.value);
-                                                                if (opt) handleAnticipoChange(a.id, 'cliente_nombre', opt.nombre);
-                                                            }}
-                                                            disabled={estado === 'cerrado'}
-                                                            placeholder="Buscar cliente..."
-                                                            valueKey="id"
-                                                            labelKey="nombre"
-                                                            displayKey="nombre"
-                                                            codeKey="nrc"
-                                                            codeLabel="NRC"
-                                                            selectedLabel={a.cliente_nombre}
-                                                            dropdownWidth={420}
-                                                        />
-                                                    </td>
-                                                    <td className="px-1.5 py-1 text-center font-mono font-bold text-xs" data-label="Saldo Disp.">
-                                                        {a.cliente_id ? (
-                                                            <span className={`${excedeSaldo ? 'text-red-600' : 'text-indigo-600'}`}>
-                                                                <Money value={efectivoDisponible} />
-                                                            </span>
-                                                        ) : (
-                                                            <span className="text-slate-300">---</span>
-                                                        )}
-                                                    </td>
-                                                    <td className="px-1.5 py-1" data-label="Documento">
-                                                        <input
-                                                            type="text"
-                                                            value={a.documento}
-                                                            placeholder="Documento"
-                                                            onChange={(e) => handleAnticipoChange(a.id, 'documento', e.target.value)}
-                                                            disabled={estado === 'cerrado'}
-                                                            className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
-                                                        />
-                                                    </td>
-                                                    <td className="px-1.5 py-1" data-label="Tipo">
-                                                        <select
-                                                            value={a.tipo_documento || 'FAC'}
-                                                            onChange={(e) => handleAnticipoChange(a.id, 'tipo_documento', e.target.value)}
-                                                            disabled={estado === 'cerrado'}
-                                                            className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
-                                                        >
-                                                            <option value="FAC">FAC</option>
-                                                            <option value="CCF">CCF</option>
-                                                        </select>
-                                                    </td>
-                                                    <td className="px-1.5 py-1" data-label="Producto">
-                                                        <select
-                                                            value={a.producto_codigo}
-                                                            onChange={(e) => {
-                                                                const cod = e.target.value;
-                                                                const prod = fuelProducts.find(p => p.codigo === cod);
-                                                                handleAnticipoChange(a.id, 'producto_codigo', cod);
-                                                                handleAnticipoChange(a.id, 'producto_descripcion', prod ? prod.descripcion : '');
-                                                            }}
-                                                            disabled={estado === 'cerrado'}
-                                                            className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
-                                                        >
-                                                            <option value="">Seleccionar...</option>
-                                                            {fuelProducts.map(p => (
-                                                                <option key={p.codigo} value={p.codigo}>{p.codigo} — {p.descripcion}</option>
-                                                            ))}
-                                                        </select>
-                                                    </td>
-                                                    <td className="px-1.5 py-1" data-label="Despachador">
-                                                        <select
-                                                            value={a.despachador_id || ''}
-                                                            onChange={(e) => handleAnticipoChange(a.id, 'despachador_id', e.target.value)}
-                                                            disabled={estado === 'cerrado'}
-                                                            className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
-                                                        >
-                                                            {despachadoresOptions.length === 0 && <option value="">Sin despachador</option>}
-                                                            {despachadoresOptions.map(d => (
-                                                                <option key={d.id} value={d.id}>{d.label}</option>
-                                                            ))}
-                                                        </select>
-                                                    </td>
-                                                    <td className="px-1.5 py-1" data-label="Cantidad">
-                                                        <input
-                                                            type="number"
-                                                            step="0.00001"
-                                                            min="0"
-                                                            value={a.cantidad}
-                                                            onChange={(e) => {
-                                                                const cant = parseFloat(e.target.value) || 0;
-                                                                handleAnticipoChange(a.id, 'cantidad', cant);
-                                                                const monto = parseFloat(a.monto) || 0;
-                                                                handleAnticipoChange(a.id, 'precio', cant > 0 ? monto / cant : 0);
-                                                            }}
-                                                            disabled={estado === 'cerrado'}
-                                                            className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20 text-right font-mono"
-                                                        />
-                                                    </td>
-                                                    <td className="px-1.5 py-1 text-right font-mono font-bold text-indigo-600" data-label="Precio">
-                                                        {parseFloat(a.cantidad) > 0 ? <Money value={parseFloat(a.monto) / parseFloat(a.cantidad)} /> : <Money value={0} />}
-                                                    </td>
-                                                    <td className="px-1.5 py-1" data-label="Monto">
-                                                    <MoneyInput
-                                                        step="0.01"
-                                                        min="0"
-                                                        value={a.monto}
-                                                        onChange={(e) => {
-                                                            const monto = parseFloat(e.target.value) || 0;
-                                                            handleAnticipoChange(a.id, 'monto', monto);
-                                                            const cant = parseFloat(a.cantidad) || 0;
-                                                            handleAnticipoChange(a.id, 'precio', cant > 0 ? monto / cant : 0);
-                                                        }}
-                                                        disabled={estado === 'cerrado'}
-                                                        className={`w-full bg-white border rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20 text-right font-mono ${excedeSaldo ? 'border-red-400 bg-red-50' : 'border-slate-200'}`}
-                                                    />
-                                                    </td>
-                                                    <td className="px-1.5 py-1" data-label="Placa">
-                                                        <input
-                                                            type="text"
-                                                            value={a.placa}
-                                                            placeholder="Placa"
-                                                            onChange={(e) => handleAnticipoChange(a.id, 'placa', e.target.value)}
-                                                            disabled={estado === 'cerrado'}
-                                                            className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
-                                                        />
-                                                    </td>
-                                                    <td className="px-1.5 py-1" data-label="Kilometraje">
-                                                        <input
-                                                            type="text"
-                                                            value={a.kilometraje}
-                                                            placeholder="KM"
-                                                            onChange={(e) => handleAnticipoChange(a.id, 'kilometraje', e.target.value)}
-                                                            disabled={estado === 'cerrado'}
-                                                            className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
-                                                        />
-                                                    </td>
-{estado !== 'cerrado' && (
-                                                        <td className="px-1.5 py-1 text-center" data-label="">
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => handleRemoveAnticipo(a.id)}
-                                                                className="p-0.5 text-slate-600 hover:text-red-500 transition-colors"
-                                                                title="Eliminar"
-                                                            >
-                                                                <Trash2 size={11} />
-                                                            </button>
-                                                        </td>
-                                                    )}
-                                                </tr>
-                                            );
-                                        })}
-                                    </tbody>
-                                    {estado !== 'cerrado' && (
-                                        <tfoot className="bg-slate-50 border-t border-slate-100">
-                                            <tr>
-                                                <td colSpan={13} className="px-2 py-1">
-                                                    <div className="flex items-center justify-between">
-                                                        <button
-                                                            onClick={handleAddAnticipoRow}
-                                                            className="flex items-center gap-1 text-[11px] font-bold text-indigo-600 hover:text-indigo-800 transition-colors"
-                                                        >
-                                                            <Plus size={14} />
-                                                            Agregar Anticipo Despachado
-                                                        </button>
-                                                        <div className="flex items-center gap-4">
-                                                            <span className="text-xs text-slate-500">
-                                                                Total Anticipos: <strong className="text-red-600 font-mono text-sm"><Money value={anticiposDespTotal} /></strong>
-                                                            </span>
-                                                            <button
-                                                                onClick={() => handleSaveSection('anticipos')}
-                                                                disabled={saveAnticiposDespMutation.isPending}
-                                                                className={`flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold rounded-xl transition-all disabled:opacity-50 ${
-                                                                    isSectionDirty('anticipos')
-                                                                        ? 'text-white bg-amber-600 hover:bg-amber-700 shadow-md shadow-amber-500/20 ring-2 ring-amber-400/50 animate-pulse'
-                                                                        : 'text-white bg-indigo-600 hover:bg-indigo-700'
-                                                                }`}
-                                                            >
-                                                                {saveAnticiposDespMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-                                                                {saveAnticiposDespMutation.isPending ? 'Guardando...' : (isSectionDirty('anticipos') ? 'Guardar Anticipos (Pendiente)' : 'Guardar Anticipos')}
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        </tfoot>
-                                    )}
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-                )}
-                {showTrupputModal && (
-                    <div className="fixed inset-0 z-50 flex items-start justify-center pt-8 pb-8">
-                        <div className="fixed inset-0 bg-black/40" onClick={() => handleSafeCloseModal('trupput')} />
-                        <div className="relative bg-white rounded-2xl shadow-2xl w-[95%] max-w-6xl min-h-[50vh] max-h-[95vh] flex flex-col">
-                            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 shrink-0">
-                                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                                    <Fuel size={16} className="text-indigo-600" />
-                                    Despachos Trupput del Turno
-                                    {isSectionDirty('trupput') && estado !== 'cerrado' && (
-                                        <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-300 px-2 py-0.5 rounded-full flex items-center gap-1 animate-pulse">
-                                            ● Cambios sin guardar
-                                        </span>
-                                    )}
-                                    {estado === 'cerrado' && (
-                                        <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">Solo lectura</span>
-                                    )}
-                                </h3>
-                                <button
-                                    onClick={() => handleSafeCloseModal('trupput')}
-                                    className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors"
-                                >
-                                    <X size={16} className="text-slate-400" />
-                                </button>
-                            </div>
-                            <div className="overflow-auto px-4 pb-4 flex-1">
-                                <table className="w-full text-left border-collapse table-cards">
-                                    <thead>
-                                        <tr className="text-[9px] font-bold text-slate-500 uppercase tracking-wider bg-slate-50 sticky top-0 z-10">
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-28">Cliente</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-20">Saldo Gal.</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-24">Documento</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-32">Producto</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-44">Despachador</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-24 text-right">Galones</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-24 text-right">Precio</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-24 text-right">Monto</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-20">Placa</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-20">Kilometraje</th>
-                                            {estado !== 'cerrado' && <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-6"></th>}
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-50 text-[11px]">
-                                        {trupputDesp.length === 0 && (
-                                            <tr>
-                                                <td colSpan={estado !== 'cerrado' ? 12 : 11} className="px-2 py-3 text-center text-[10px] text-slate-400">
-                                                    Sin registros de despachos Trupput
-                                                </td>
-                                            </tr>
-                                        )}
-                                        {trupputDesp.map(t => {
-                                            const saldoBase = parseFloat(t.galones_disponibles) || 0;
-                                            const pendingSame = t.cliente_id ? (pendingTrupputGalonesByClient[t.cliente_id] || 0) : 0;
-                                            const galonesDisponibles = saldoBase - pendingSame;
-                                            const excedeSaldo = parseFloat(t.galones) > 0 && galonesDisponibles < -0.0001;
-                                            return (
-                                                <tr key={t.id} className={`hover:bg-slate-50 transition-colors ${excedeSaldo ? 'bg-red-50' : ''}`}>
-                                                    <td className="px-1.5 py-1" data-label="Cliente">
-                                                        <SearchableSelect
-                                                            loadOptions={loadCustomers({ es_trupput: 1 })}
-                                                            value={t.cliente_id}
-                                                            onChange={(e, opt) => {
-                                                                handleTrupputClienteChange(t.id, e.target.value);
-                                                                if (opt) handleTrupputChange(t.id, 'cliente_nombre', opt.nombre);
-                                                            }}
-                                                            disabled={estado === 'cerrado'}
-                                                            placeholder="Buscar cliente..."
-                                                            valueKey="id"
-                                                            labelKey="nombre"
-                                                            displayKey="nombre"
-                                                            codeKey="nrc"
-                                                            codeLabel="NRC"
-                                                            selectedLabel={t.cliente_nombre}
-                                                            dropdownWidth={420}
-                                                        />
-                                                    </td>
-                                                    <td className="px-1.5 py-1 text-center font-mono font-bold text-xs" data-label="Saldo Gal.">
-                                                        {t.cliente_id ? (
-                                                            <span className={`${excedeSaldo ? 'text-red-600' : 'text-indigo-600'}`}>
-                                                                {galonesDisponibles.toFixed(4)}
-                                                            </span>
-                                                        ) : (
-                                                            <span className="text-slate-300">---</span>
-                                                        )}
-                                                    </td>
-                                                    <td className="px-1.5 py-1" data-label="Documento">
-                                                        <input
-                                                            type="text"
-                                                            value={t.documento}
-                                                            placeholder="Documento"
-                                                            onChange={(e) => handleTrupputChange(t.id, 'documento', e.target.value)}
-                                                            disabled={estado === 'cerrado'}
-                                                            className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
-                                                        />
-                                                    </td>
-                                                    <td className="px-1.5 py-1" data-label="Producto">
-                                                        <select
-                                                            value={t.producto_codigo}
-                                                            onChange={(e) => {
-                                                                const cod = e.target.value;
-                                                                const prod = fuelProducts.find(p => p.codigo === cod);
-                                                                handleTrupputChange(t.id, 'producto_codigo', cod);
-                                                                handleTrupputChange(t.id, 'producto_descripcion', prod ? prod.descripcion : '');
-                                                                const precio = fuelPriceByCode[cod] || 0;
-                                                                handleTrupputChange(t.id, 'precio', precio);
-                                                                handleTrupputChange(t.id, 'monto', (parseFloat(t.galones) || 0) * precio);
-                                                            }}
-                                                            disabled={estado === 'cerrado'}
-                                                            className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
-                                                        >
-                                                            <option value="">Seleccionar...</option>
-                                                            {fuelProducts.map(p => (
-                                                                <option key={p.codigo} value={p.codigo}>{p.codigo} — {p.descripcion}</option>
-                                                            ))}
-                                                        </select>
-                                                    </td>
-                                                    <td className="px-1.5 py-1" data-label="Despachador">
-                                                        <select
-                                                            value={t.despachador_id || ''}
-                                                            onChange={(e) => handleTrupputChange(t.id, 'despachador_id', e.target.value)}
-                                                            disabled={estado === 'cerrado'}
-                                                            className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
-                                                        >
-                                                            {despachadoresOptions.length === 0 && <option value="">Sin despachador</option>}
-                                                            {despachadoresOptions.map(d => (
-                                                                <option key={d.id} value={d.id}>{d.label}</option>
-                                                            ))}
-                                                        </select>
-                                                    </td>
-                                                    <td className="px-1.5 py-1" data-label="Galones">
-                                                        <input
-                                                            type="number"
-                                                            step="0.0001"
-                                                            min="0"
-                                                            value={t.galones}
-                                                            onChange={(e) => {
-                                                                const gal = parseFloat(e.target.value) || 0;
-                                                                handleTrupputChange(t.id, 'galones', gal);
-                                                                handleTrupputChange(t.id, 'monto', gal * (parseFloat(t.precio) || 0));
-                                                            }}
-                                                            disabled={estado === 'cerrado'}
-                                                            className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20 text-right font-mono"
-                                                        />
-                                                    </td>
-                                                    <td className="px-1.5 py-1" data-label="Precio">
-                                                        <MoneyInput
-                                                            step="0.01"
-                                                            min="0"
-                                                            value={t.precio}
-                                                            onChange={(e) => {
-                                                                const precio = parseFloat(e.target.value) || 0;
-                                                                handleTrupputChange(t.id, 'precio', precio);
-                                                                handleTrupputChange(t.id, 'monto', (parseFloat(t.galones) || 0) * precio);
-                                                            }}
-                                                            disabled={estado === 'cerrado'}
-                                                            className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20 text-right font-mono"
-                                                        />
-                                                    </td>
-                                                    <td className="px-1.5 py-1 text-right font-mono font-bold text-emerald-600" data-label="Monto">
-                                                        <Money value={t.monto} />
-                                                    </td>
-                                                    <td className="px-1.5 py-1" data-label="Placa">
-                                                        <input
-                                                            type="text"
-                                                            value={t.placa}
-                                                            placeholder="Placa"
-                                                            onChange={(e) => handleTrupputChange(t.id, 'placa', e.target.value)}
-                                                            disabled={estado === 'cerrado'}
-                                                            className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
-                                                        />
-                                                    </td>
-                                                    <td className="px-1.5 py-1" data-label="Kilometraje">
-                                                        <input
-                                                            type="text"
-                                                            value={t.kilometraje}
-                                                            placeholder="KM"
-                                                            onChange={(e) => handleTrupputChange(t.id, 'kilometraje', e.target.value)}
-                                                            disabled={estado === 'cerrado'}
-                                                            className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
-                                                        />
-                                                    </td>
-                                                    {estado !== 'cerrado' && (
-                                                        <td className="px-1.5 py-1 text-center" data-label="">
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => handleRemoveTrupput(t.id)}
-                                                                className="p-0.5 text-slate-600 hover:text-red-500 transition-colors"
-                                                                title="Eliminar"
-                                                            >
-                                                                <Trash2 size={11} />
-                                                            </button>
-                                                        </td>
-                                                    )}
-                                                </tr>
-                                            );
-                                        })}
-                                    </tbody>
-                                    {estado !== 'cerrado' && (
-                                        <tfoot className="bg-slate-50 border-t border-slate-100">
-                                            <tr>
-                                                <td colSpan={12} className="px-2 py-1">
-                                                    <div className="flex items-center justify-between">
-                                                        <button
-                                                            onClick={handleAddTrupputRow}
-                                                            className="flex items-center gap-1 text-[11px] font-bold text-indigo-600 hover:text-indigo-800 transition-colors"
-                                                        >
-                                                            <Plus size={14} />
-                                                            Agregar Despacho Trupput
-                                                        </button>
-                                                        <div className="flex items-center gap-4">
-                                                            <span className="text-xs text-slate-500">
-                                                                Total Trupput: <strong className="text-emerald-600 font-mono text-sm"><Money value={trupputDespTotal} /></strong>
-                                                            </span>
-                                                            <button
-                                                                onClick={() => handleSaveSection('trupput')}
-                                                                disabled={saveTrupputDespMutation.isPending}
-                                                                className={`flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold rounded-xl transition-all disabled:opacity-50 ${
-                                                                    isSectionDirty('trupput')
-                                                                        ? 'text-white bg-amber-600 hover:bg-amber-700 shadow-md shadow-amber-500/20 ring-2 ring-amber-400/50 animate-pulse'
-                                                                        : 'text-white bg-indigo-600 hover:bg-indigo-700'
-                                                                }`}
-                                                            >
-                                                                {saveTrupputDespMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-                                                                {saveTrupputDespMutation.isPending ? 'Guardando...' : (isSectionDirty('trupput') ? 'Guardar Trupput (Pendiente)' : 'Guardar Trupput')}
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        </tfoot>
-                                    )}
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-                )}
+                <GasTrupputModal
+                    isOpen={showTrupputModal}
+                    onClose={() => handleSafeCloseModal('trupput')}
+                    isDirty={isSectionDirty('trupput')}
+                    estado={estado}
+                    trupputDesp={trupputDesp}
+                    loadCustomers={loadCustomers}
+                    fuelProducts={fuelProducts}
+                    despachadoresOptions={despachadoresOptions}
+                    handleTrupputChange={handleTrupputChange}
+                    handleTrupputClienteChange={handleTrupputClienteChange}
+                    handleRemoveTrupput={handleRemoveTrupput}
+                    handleAddTrupputRow={handleAddTrupputRow}
+                    trupputDespTotal={trupputDespTotal}
+                    handleSaveSection={handleSaveSection}
+                    isSaving={saveTrupputDespMutation.isPending}
+                    fuelPriceByCode={fuelPriceByCode}
+                    pendingTrupputGalonesByClient={pendingTrupputGalonesByClient}
+                />
+
                 <GasNozzleAssignModal
                 isOpen={showNozzleAssignModal}
                 onClose={() => setShowNozzleAssignModal(false)}
