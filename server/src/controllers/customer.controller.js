@@ -1,12 +1,11 @@
 const pool = require('../config/db');
 const { validateDocumentNumber } = require('../utils/svfeValidators');
+const reportPdfHelper = require('../utils/reportPdfHelper');
+const excelService = require('../services/excel.service');
 
 const getCustomers = async (req, res) => {
     try {
-        const { search, nombre, nit, nrc, page = 1, limit = 15, es_credito, es_anticipado, es_trupput, ids_only, skip_count } = req.query;
-        const parsedLimit = Math.max(1, parseInt(limit, 10) || 15);
-        const parsedPage = Math.max(1, parseInt(page, 10) || 1);
-        const offset = (parsedPage - 1) * parsedLimit;
+        const { search, nombre, nit, nrc, page = 1, limit = 15, es_credito, es_anticipado, es_trupput, ids_only, skip_count, all } = req.query;
 
         let whereClause = 'WHERE c.company_id = ?';
         let params = [req.company_id];
@@ -57,6 +56,30 @@ const getCustomers = async (req, res) => {
             );
             return res.json(rows.map(r => r.id));
         }
+
+        if (all === 'true' || limit === 'all') {
+            const [rows] = await pool.query(`
+                SELECT c.*,
+                       d.description AS departamento_nombre,
+                       m.description AS municipio_nombre,
+                       dist.description AS distrito_nombre,
+                       a.description AS actividad_nombre,
+                       tp.description AS tipo_persona_nombre
+                FROM customers c
+                LEFT JOIN cat_012_departamento d ON c.departamento = d.code
+                LEFT JOIN cat_013_municipio m ON c.municipio = m.code AND c.departamento = m.dep_code
+                LEFT JOIN cat_008_distrito dist ON c.distrito = dist.code AND c.departamento = dist.dep_code
+                LEFT JOIN cat_019_actividad_economica a ON c.codigo_actividad = a.code
+                LEFT JOIN cat_029_tipo_persona tp ON c.tipo_persona = tp.code
+                ${whereClause}
+                ORDER BY c.nombre ASC
+            `, params);
+            return res.json({ data: rows, total: rows.length, page: 1, totalPages: 1 });
+        }
+
+        const parsedLimit = Math.max(1, parseInt(limit, 10) || 15);
+        const parsedPage = Math.max(1, parseInt(page, 10) || 1);
+        const offset = (parsedPage - 1) * parsedLimit;
 
         let total = 0;
         const shouldSkipCount = skip_count === '1' || skip_count === 'true';
@@ -349,5 +372,174 @@ const getCustomerById = async (req, res) => {
     }
 };
 
-module.exports = { getCustomers, getCustomerById, createCustomer, updateCustomer, deleteCustomer, deleteBatchCustomers };
+/**
+ * Reporte / Catálogo de Clientes en PDF (Landscape) y Excel
+ */
+const getCustomersReportPDF = async (req, res) => {
+    try {
+        const { search, condicion_fiscal, es_credito } = req.query;
+        const companyId = req.company_id || req.user?.company_id;
+
+        const company = await reportPdfHelper.getCompanyInfo(companyId);
+
+        let whereClause = 'WHERE c.company_id = ?';
+        let params = [companyId];
+
+        const getSearchWords = (term) => {
+            const words = term.trim().split(/\s+/).filter(Boolean);
+            return [...new Set(words)];
+        };
+
+        const searchWords = search ? getSearchWords(search) : [];
+        searchWords.forEach(word => {
+            whereClause += ` AND (c.nombre LIKE ? OR c.nombre_comercial LIKE ? OR c.nit LIKE ? OR c.numero_documento LIKE ? OR c.nrc LIKE ?) `;
+            const searchTerm = `%${word}%`;
+            params.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
+        });
+
+        if (condicion_fiscal) {
+            whereClause += ` AND c.condicion_fiscal = ? `;
+            params.push(condicion_fiscal);
+        }
+
+        if (es_credito === '1') {
+            whereClause += ` AND c.es_credito = 1 `;
+        }
+
+        const [rows] = await pool.query(`
+            SELECT c.*,
+                   d.description AS departamento_nombre,
+                   m.description AS municipio_nombre,
+                   dist.description AS distrito_nombre,
+                   a.description AS actividad_nombre,
+                   tp.description AS tipo_persona_nombre
+            FROM customers c
+            LEFT JOIN cat_012_departamento d ON c.departamento = d.code
+            LEFT JOIN cat_013_municipio m ON c.municipio = m.code AND c.departamento = m.dep_code
+            LEFT JOIN cat_008_distrito dist ON c.distrito = dist.code AND c.departamento = dist.dep_code
+            LEFT JOIN cat_019_actividad_economica a ON c.codigo_actividad = a.code
+            LEFT JOIN cat_029_tipo_persona tp ON c.tipo_persona = tp.code
+            ${whereClause}
+            ORDER BY c.nombre ASC
+        `, params);
+
+        if (req.query.format === 'excel') {
+            const buffer = await excelService.createExcelBuffer({
+                sheets: [{
+                    name: 'Clientes',
+                    columns: [
+                        { header: 'Nombre / Razón Social', key: 'nombre', width: 35 },
+                        { header: 'Nombre Comercial', key: 'comercial', width: 25 },
+                        { header: 'Documento', key: 'documento', width: 18 },
+                        { header: 'NRC', key: 'nrc', width: 14 },
+                        { header: 'Condición Fiscal', key: 'condicion', width: 20 },
+                        { header: 'Departamento', key: 'departamento', width: 18 },
+                        { header: 'Municipio', key: 'municipio', width: 20 },
+                        { header: 'Dirección', key: 'direccion', width: 35 },
+                        { header: 'Teléfono', key: 'telefono', width: 15 },
+                        { header: 'Correo', key: 'correo', width: 25 },
+                        { header: 'Crédito', key: 'credito', width: 16 }
+                    ],
+                    data: rows.map(c => ({
+                        nombre: c.nombre,
+                        comercial: c.nombre_comercial || '---',
+                        documento: c.nit || c.numero_documento || '---',
+                        nrc: c.nrc || '---',
+                        condicion: c.condicion_fiscal || 'Consumidor Final',
+                        departamento: c.departamento_nombre || c.departamento || '---',
+                        municipio: c.municipio_nombre || c.municipio || '---',
+                        direccion: c.direccion || '---',
+                        telefono: c.telefono || '---',
+                        correo: c.correo || '---',
+                        credito: c.es_credito ? `SÍ (${c.dias_credito || 0}d)` : 'NO'
+                    }))
+                }]
+            });
+            return excelService.sendExcelResponse(res, buffer, 'catalogo-clientes.xlsx');
+        }
+
+        const subtitle = `CATÁLOGO GENERAL DE CLIENTES${search ? `   |   BÚSQUEDA: "${search}"` : ''}`;
+        const periodText = `GENERADO: ${reportPdfHelper.formatDate(new Date())}`;
+
+        const { doc, getBuffer } = reportPdfHelper.createPdfDocument('landscape');
+        const startX = 30;
+        const contentWidth = 732; // Letter landscape (792 - 60)
+
+        reportPdfHelper.renderHeader(doc, company, 'Catálogo de Clientes', periodText, 'landscape', subtitle);
+
+        const colW = {
+            nombre: 175,
+            documento: 75,
+            nrc: 50,
+            condicion: 72,
+            ubicacion: 130,
+            contacto: 100,
+            credito: 130
+        };
+
+        const drawTableHeader = (yPos) => {
+            doc.rect(startX, yPos, contentWidth, 13).fill('#f1f5f9');
+            doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#0f172a');
+            let x = startX + 4;
+            doc.text('NOMBRE / RAZÓN SOCIAL', x, yPos + 3); x += colW.nombre;
+            doc.text('DOCUMENTO', x, yPos + 3); x += colW.documento;
+            doc.text('NRC', x, yPos + 3); x += colW.nrc;
+            doc.text('CONDICIÓN', x, yPos + 3); x += colW.condicion;
+            doc.text('UBICACIÓN', x, yPos + 3); x += colW.ubicacion;
+            doc.text('CONTACTO', x, yPos + 3); x += colW.contacto;
+            doc.text('COND. CRÉDITO', x, yPos + 3);
+            return yPos + 16;
+        };
+
+        let currentY = drawTableHeader(doc.y + 4);
+
+        if (rows.length === 0) {
+            doc.fontSize(8.5).font('Helvetica').fillColor('#64748b');
+            doc.text('No se encontraron clientes registrados.', startX, currentY + 10);
+            currentY += 30;
+        } else {
+            rows.forEach((c) => {
+                if (currentY > 510) {
+                    doc.addPage();
+                    currentY = drawTableHeader(35);
+                }
+
+                doc.fontSize(7).font('Helvetica-Bold').fillColor('#0f172a');
+                let x = startX + 4;
+                doc.text(reportPdfHelper.fitText(doc, c.nombre || '---', colW.nombre - 6), x, currentY, { lineBreak: false }); x += colW.nombre;
+                
+                doc.font('Helvetica').fillColor('#334155');
+                doc.text(reportPdfHelper.fitText(doc, c.nit || c.numero_documento || '---', colW.documento - 6), x, currentY, { lineBreak: false }); x += colW.documento;
+                doc.text(reportPdfHelper.fitText(doc, c.nrc || '---', colW.nrc - 6), x, currentY, { lineBreak: false }); x += colW.nrc;
+                doc.text(reportPdfHelper.fitText(doc, c.condicion_fiscal || 'Consumidor Final', colW.condicion - 6), x, currentY, { lineBreak: false }); x += colW.condicion;
+                
+                const ubicacionStr = [c.municipio_nombre || c.municipio, c.departamento_nombre || c.departamento].filter(Boolean).join(', ') || '---';
+                doc.text(reportPdfHelper.fitText(doc, ubicacionStr, colW.ubicacion - 6), x, currentY, { lineBreak: false }); x += colW.ubicacion;
+
+                const contactoStr = [c.telefono, c.correo].filter(Boolean).join(' | ') || '---';
+                doc.text(reportPdfHelper.fitText(doc, contactoStr, colW.contacto - 6), x, currentY, { lineBreak: false }); x += colW.contacto;
+
+                const creditoStr = c.es_credito ? `Crédito (${c.dias_credito || 0}d)` : 'Contado';
+                doc.text(reportPdfHelper.fitText(doc, creditoStr, colW.credito - 6), x, currentY, { lineBreak: false });
+
+                currentY += 12;
+            });
+        }
+
+        reportPdfHelper.renderClosingFooter(doc, startX, currentY + 10, rows.length, 'Clientes');
+        reportPdfHelper.renderPageNumbers(doc);
+
+        doc.end();
+        const pdfBuffer = await getBuffer();
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', 'inline; filename=catalogo-clientes.pdf');
+        res.send(pdfBuffer);
+    } catch (error) {
+        console.error('Error al generar reporte de clientes en PDF:', error);
+        res.status(500).json({ message: 'Error al generar reporte de clientes: ' + error.message });
+    }
+};
+
+module.exports = { getCustomers, getCustomerById, createCustomer, updateCustomer, deleteCustomer, deleteBatchCustomers, getCustomersReportPDF };
+
 

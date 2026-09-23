@@ -1,5 +1,7 @@
 const pool = require('../config/db');
 const { validateDocumentNumber } = require('../utils/svfeValidators');
+const reportPdfHelper = require('../utils/reportPdfHelper');
+const excelService = require('../services/excel.service');
 
 const getProviders = async (req, res) => {
     try {
@@ -221,4 +223,169 @@ const deleteProvider = async (req, res) => {
     }
 };
 
-module.exports = { getProviders, createProvider, updateProvider, deleteProvider };
+/**
+ * Reporte / Catálogo de Proveedores en PDF (Landscape) y Excel
+ */
+const getProvidersReportPDF = async (req, res) => {
+    try {
+        const { search, es_credito } = req.query;
+        const companyId = req.company_id || req.user?.company_id;
+
+        const company = await reportPdfHelper.getCompanyInfo(companyId);
+
+        let query = `
+            SELECT p.*,
+                   d.description AS departamento_nombre,
+                   m.description AS municipio_nombre,
+                   dist.description AS distrito_nombre,
+                   a.description AS actividad_nombre,
+                   tp.description AS tipo_persona_nombre
+            FROM providers p
+            LEFT JOIN cat_012_departamento d ON p.departamento = d.code
+            LEFT JOIN cat_013_municipio m ON p.municipio = m.code AND p.departamento = m.dep_code
+            LEFT JOIN cat_008_distrito dist ON p.distrito = dist.code AND p.departamento = dist.dep_code
+            LEFT JOIN cat_019_actividad_economica a ON p.codigo_actividad = a.code
+            LEFT JOIN cat_029_tipo_persona tp ON p.tipo_persona = tp.code
+            WHERE p.company_id = ?
+        `;
+        let params = [companyId];
+
+        if (es_credito === '1') {
+            query += ' AND p.es_credito = 1';
+        }
+
+        const getSearchWords = (term) => {
+            const words = term.trim().split(/\s+/).filter(Boolean);
+            return [...new Set(words)];
+        };
+
+        const searchWords = search ? getSearchWords(search) : [];
+        searchWords.forEach(word => {
+            query += ` AND (p.nombre LIKE ? OR p.nombre_comercial LIKE ? OR p.nit LIKE ? OR p.nrc LIKE ? OR p.numero_documento LIKE ?) `;
+            const searchTerm = `%${word}%`;
+            params.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
+        });
+
+        query += ` ORDER BY p.nombre ASC`;
+
+        const [rows] = await pool.query(query, params);
+
+        if (req.query.format === 'excel') {
+            const buffer = await excelService.createExcelBuffer({
+                sheets: [{
+                    name: 'Proveedores',
+                    columns: [
+                        { header: 'Proveedor / Razón Social', key: 'nombre', width: 35 },
+                        { header: 'Nombre Comercial', key: 'comercial', width: 25 },
+                        { header: 'Documento', key: 'documento', width: 18 },
+                        { header: 'NRC', key: 'nrc', width: 14 },
+                        { header: 'Condición Fiscal', key: 'condicion', width: 20 },
+                        { header: 'Departamento', key: 'departamento', width: 18 },
+                        { header: 'Municipio', key: 'municipio', width: 20 },
+                        { header: 'Dirección', key: 'direccion', width: 35 },
+                        { header: 'Teléfono', key: 'telefono', width: 15 },
+                        { header: 'Correo', key: 'correo', width: 25 },
+                        { header: 'Crédito', key: 'credito', width: 16 }
+                    ],
+                    data: rows.map(p => ({
+                        nombre: p.nombre,
+                        comercial: p.nombre_comercial || '---',
+                        documento: p.nit || p.numero_documento || '---',
+                        nrc: p.nrc || '---',
+                        condicion: p.condicion_fiscal || 'Contribuyente',
+                        departamento: p.departamento_nombre || p.departamento || '---',
+                        municipio: p.municipio_nombre || p.municipio || '---',
+                        direccion: p.direccion || '---',
+                        telefono: p.telefono || '---',
+                        correo: p.correo || '---',
+                        credito: p.es_credito ? `SÍ (${p.dias_credito || 0}d)` : 'NO'
+                    }))
+                }]
+            });
+            return excelService.sendExcelResponse(res, buffer, 'catalogo-proveedores.xlsx');
+        }
+
+        const subtitle = `CATÁLOGO GENERAL DE PROVEEDORES${search ? `   |   BÚSQUEDA: "${search}"` : ''}`;
+        const periodText = `GENERADO: ${reportPdfHelper.formatDate(new Date())}`;
+
+        const { doc, getBuffer } = reportPdfHelper.createPdfDocument('landscape');
+        const startX = 30;
+        const contentWidth = 732; // Letter landscape (792 - 60)
+
+        reportPdfHelper.renderHeader(doc, company, 'Catálogo de Proveedores', periodText, 'landscape', subtitle);
+
+        const colW = {
+            nombre: 175,
+            documento: 75,
+            nrc: 50,
+            condicion: 72,
+            ubicacion: 130,
+            contacto: 100,
+            credito: 130
+        };
+
+        const drawTableHeader = (yPos) => {
+            doc.rect(startX, yPos, contentWidth, 13).fill('#f1f5f9');
+            doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#0f172a');
+            let x = startX + 4;
+            doc.text('PROVEEDOR / RAZÓN SOCIAL', x, yPos + 3); x += colW.nombre;
+            doc.text('DOCUMENTO', x, yPos + 3); x += colW.documento;
+            doc.text('NRC', x, yPos + 3); x += colW.nrc;
+            doc.text('CONDICIÓN', x, yPos + 3); x += colW.condicion;
+            doc.text('UBICACIÓN', x, yPos + 3); x += colW.ubicacion;
+            doc.text('CONTACTO', x, yPos + 3); x += colW.contacto;
+            doc.text('COND. CRÉDITO', x, yPos + 3);
+            return yPos + 16;
+        };
+
+        let currentY = drawTableHeader(doc.y + 4);
+
+        if (rows.length === 0) {
+            doc.fontSize(8.5).font('Helvetica').fillColor('#64748b');
+            doc.text('No se encontraron proveedores registrados.', startX, currentY + 10);
+            currentY += 30;
+        } else {
+            rows.forEach((p) => {
+                if (currentY > 510) {
+                    doc.addPage();
+                    currentY = drawTableHeader(35);
+                }
+
+                doc.fontSize(7).font('Helvetica-Bold').fillColor('#0f172a');
+                let x = startX + 4;
+                doc.text(reportPdfHelper.fitText(doc, p.nombre || '---', colW.nombre - 6), x, currentY, { lineBreak: false }); x += colW.nombre;
+                
+                doc.font('Helvetica').fillColor('#334155');
+                doc.text(reportPdfHelper.fitText(doc, p.nit || p.numero_documento || '---', colW.documento - 6), x, currentY, { lineBreak: false }); x += colW.documento;
+                doc.text(reportPdfHelper.fitText(doc, p.nrc || '---', colW.nrc - 6), x, currentY, { lineBreak: false }); x += colW.nrc;
+                doc.text(reportPdfHelper.fitText(doc, p.condicion_fiscal || 'Contribuyente', colW.condicion - 6), x, currentY, { lineBreak: false }); x += colW.condicion;
+                
+                const ubicacionStr = [p.municipio_nombre || p.municipio, p.departamento_nombre || p.departamento].filter(Boolean).join(', ') || '---';
+                doc.text(reportPdfHelper.fitText(doc, ubicacionStr, colW.ubicacion - 6), x, currentY, { lineBreak: false }); x += colW.ubicacion;
+
+                const contactoStr = [p.telefono, p.correo].filter(Boolean).join(' | ') || '---';
+                doc.text(reportPdfHelper.fitText(doc, contactoStr, colW.contacto - 6), x, currentY, { lineBreak: false }); x += colW.contacto;
+
+                const creditoStr = p.es_credito ? `Crédito (${p.dias_credito || 0}d)` : 'Contado';
+                doc.text(reportPdfHelper.fitText(doc, creditoStr, colW.credito - 6), x, currentY, { lineBreak: false });
+
+                currentY += 12;
+            });
+        }
+
+        reportPdfHelper.renderClosingFooter(doc, startX, currentY + 10, rows.length, 'Proveedores');
+        reportPdfHelper.renderPageNumbers(doc);
+
+        doc.end();
+        const pdfBuffer = await getBuffer();
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', 'inline; filename=catalogo-proveedores.pdf');
+        res.send(pdfBuffer);
+    } catch (error) {
+        console.error('Error al generar reporte de proveedores en PDF:', error);
+        res.status(500).json({ message: 'Error al generar reporte de proveedores: ' + error.message });
+    }
+};
+
+module.exports = { getProviders, createProvider, updateProvider, deleteProvider, getProvidersReportPDF };
+

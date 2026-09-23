@@ -3,12 +3,14 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import Table from '../components/ui/Table';
 import Modal from '../components/ui/Modal';
-import { Plus, Edit, Trash2, Search, Building2, Info, UserCheck } from 'lucide-react';
+import { Plus, Edit, Trash2, Search, Building2, Info, UserCheck, FileSpreadsheet, FileText as FilePdf, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useConfirm } from '../context/ConfirmContext';
 import { useAuth } from '../context/AuthContext';
 import SearchableSelect from '../components/ui/SearchableSelect';
 import Pagination from '../components/ui/Pagination';
+import PdfViewerModal from '../components/ui/PdfViewerModal';
+import { exportJsonToExcel } from '../utils/excelExport';
 import { validateDocumentNumber } from '../utils/svfeValidators';
 
 const Customers = () => {
@@ -87,6 +89,81 @@ const Customers = () => {
     });
 
     const customers = response.data || [];
+
+    // PDF Report Modal State & Excel Export
+    const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
+    const [pdfUrl, setPdfUrl] = useState(null);
+    const [isLoadingPdf, setIsLoadingPdf] = useState(false);
+    const [pdfError, setPdfError] = useState(null);
+    const [isExportingExcel, setIsExportingExcel] = useState(false);
+
+    useEffect(() => {
+        return () => {
+            if (pdfUrl) URL.revokeObjectURL(pdfUrl);
+        };
+    }, [pdfUrl]);
+
+    const handleExportExcel = async () => {
+        setIsExportingExcel(true);
+        try {
+            const { data } = await axios.get('/api/customers', {
+                params: { search: debouncedSearch || undefined, all: 'true' }
+            });
+            const list = data?.data?.length ? data.data : customers;
+            if (!list || list.length === 0) {
+                return toast.warning('No hay clientes para exportar');
+            }
+            const dataToExport = list.map(c => ({
+                'NOMBRE / RAZÓN SOCIAL': c.nombre || '---',
+                'NOMBRE COMERCIAL': c.nombre_comercial || '---',
+                'TIPO PERSONA': c.tipo_persona_nombre || c.tipo_persona || '---',
+                'DOCUMENTO': c.nit || c.numero_documento || '---',
+                'NRC': c.nrc || '---',
+                'CONDICIÓN FISCAL': c.condicion_fiscal || 'Consumidor Final',
+                'ACTIVIDAD ECONÓMICA': c.actividad_nombre || c.codigo_actividad || '---',
+                'DEPARTAMENTO': c.departamento_nombre || c.departamento || '---',
+                'MUNICIPIO': c.municipio_nombre || c.municipio || '---',
+                'DISTRITO': c.distrito_nombre || c.distrito || '---',
+                'DIRECCIÓN': c.direccion || '---',
+                'TELÉFONO': c.telefono || '---',
+                'CORREO': c.correo || '---',
+                'CRÉDITO': c.es_credito ? `SÍ (${c.dias_credito || 0} DÍAS)` : 'NO',
+                'EXENTO IVA': c.exento_iva ? 'SÍ' : 'NO'
+            }));
+            exportJsonToExcel(dataToExport, `Catalogo_Clientes_${new Date().toISOString().split('T')[0]}`, 'CLIENTES');
+        } catch (err) {
+            console.error('Error al exportar clientes a Excel:', err);
+            toast.error('Error al exportar clientes a Excel');
+        } finally {
+            setIsExportingExcel(false);
+        }
+    };
+
+    const handleOpenPdfModal = async () => {
+        setIsPdfModalOpen(true);
+        setIsLoadingPdf(true);
+        setPdfError(null);
+        try {
+            const res = await axios.get('/api/customers/reports/pdf', {
+                params: { search: debouncedSearch?.trim() ? debouncedSearch.trim() : undefined },
+                responseType: 'blob'
+            });
+            if (res.data.type !== 'application/pdf') {
+                const text = await res.data.text();
+                let errorMsg = 'Error al generar el catálogo en formato PDF';
+                try { errorMsg = JSON.parse(text).message || errorMsg; } catch {}
+                throw new Error(errorMsg);
+            }
+            if (pdfUrl) URL.revokeObjectURL(pdfUrl);
+            const url = URL.createObjectURL(res.data);
+            setPdfUrl(url);
+        } catch (err) {
+            console.error('Error fetching customers PDF:', err);
+            setPdfError(err.message || 'Error al generar el catálogo en PDF');
+        } finally {
+            setIsLoadingPdf(false);
+        }
+    };
 
     const { data: departments = [] } = useQuery({
         queryKey: ['catalogs', 'departments'],
@@ -477,15 +554,36 @@ const Customers = () => {
                 </button>
             </div>
 
-            <div className="relative max-w-sm">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
-                <input 
-                    type="text" 
-                    placeholder="Buscar..." 
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full pl-9 pr-3 py-1.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-400 transition-all text-xs font-medium shadow-sm"
-                />
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="relative flex-1 max-w-sm">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
+                    <input 
+                        type="text" 
+                        placeholder="Buscar por nombre, documento o NRC..." 
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="w-full pl-9 pr-3 py-1.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-400 transition-all text-xs font-medium shadow-sm"
+                    />
+                </div>
+                <div className="flex items-center gap-2">
+                    <button 
+                        type="button"
+                        onClick={handleExportExcel}
+                        disabled={isExportingExcel}
+                        className="h-8 px-3 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-xl text-[9px] font-black uppercase tracking-widest flex items-center gap-1.5 hover:bg-emerald-100 transition-all shadow-sm active:scale-95 disabled:opacity-50"
+                        title="Exportar listado a Excel (.xlsx)"
+                    >
+                        {isExportingExcel ? <Loader2 size={14} className="animate-spin" /> : <FileSpreadsheet size={14} />} EXCEL
+                    </button>
+                    <button 
+                        type="button"
+                        onClick={handleOpenPdfModal}
+                        className="h-8 px-3 bg-rose-50 text-rose-700 border border-rose-100 rounded-xl text-[9px] font-black uppercase tracking-widest flex items-center gap-1.5 hover:bg-rose-100 transition-all shadow-sm active:scale-95"
+                        title="Ver catálogo de clientes en PDF"
+                    >
+                        <FilePdf size={14} /> PDF
+                    </button>
+                </div>
             </div>
 
             {canBatchDelete && selectedIds.size > 0 && (
@@ -570,11 +668,17 @@ const Customers = () => {
                                 }`}>
                                     {c.condicion_fiscal === 'otro' ? 'Consumidor Final' : (c.condicion_fiscal || 'Consumidor Final')}
                                 </span>
-                                {c.actividad_nombre && (
-                                    <div className="text-[9px] text-indigo-600 font-bold max-w-[150px] truncate">
-                                        {c.actividad_nombre}
-                                    </div>
-                                )}
+                                <div className="mt-1">
+                                    {(c.es_credito === 1 || c.es_credito === true || c.es_credito === '1') ? (
+                                        <span className="inline-flex items-center px-1.5 py-0.5 text-[9px] font-bold rounded bg-amber-50 text-amber-700 border border-amber-200/80 uppercase tracking-tight">
+                                            Crédito: {c.dias_credito || 0} {Number(c.dias_credito) === 1 ? 'día' : 'días'}
+                                        </span>
+                                    ) : (
+                                        <span className="inline-flex items-center px-1.5 py-0.5 text-[9px] font-semibold rounded bg-slate-100 text-slate-500 uppercase tracking-tight">
+                                            Contado
+                                        </span>
+                                    )}
+                                </div>
                             </td>
                             <td className="px-3 py-1 flex gap-1">
                                 <button onClick={() => handleEdit(c)} className="p-1 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Edit size={15}/></button>
@@ -590,13 +694,24 @@ const Customers = () => {
                                     <h4 className="text-sm font-bold text-slate-900 truncate">{c.nombre}</h4>
                                     {c.nombre_comercial && <p className="text-xs text-slate-500 truncate">{c.nombre_comercial}</p>}
                                 </div>
-                                <span className={`px-2 py-0.5 text-[10px] font-bold rounded-full uppercase shrink-0 ${
-                                    c.condicion_fiscal === 'gran contribuyente' ? 'bg-amber-100 text-amber-700' :
-                                    c.condicion_fiscal === 'otro' ? 'bg-slate-100 text-slate-500' :
-                                    'bg-indigo-50 text-indigo-700'
-                                }`}>
-                                    {c.condicion_fiscal === 'otro' ? 'Consumidor Final' : (c.condicion_fiscal || 'Consumidor Final')}
-                                </span>
+                                <div className="flex flex-col items-end gap-1 shrink-0">
+                                    <span className={`px-2 py-0.5 text-[10px] font-bold rounded-full uppercase shrink-0 ${
+                                        c.condicion_fiscal === 'gran contribuyente' ? 'bg-amber-100 text-amber-700' :
+                                        c.condicion_fiscal === 'otro' ? 'bg-slate-100 text-slate-500' :
+                                        'bg-indigo-50 text-indigo-700'
+                                    }`}>
+                                        {c.condicion_fiscal === 'otro' ? 'Consumidor Final' : (c.condicion_fiscal || 'Consumidor Final')}
+                                    </span>
+                                    {(c.es_credito === 1 || c.es_credito === true || c.es_credito === '1') ? (
+                                        <span className="px-1.5 py-0.5 text-[9px] font-bold rounded bg-amber-50 text-amber-700 border border-amber-200/80 uppercase">
+                                            Crédito {c.dias_credito || 0}d
+                                        </span>
+                                    ) : (
+                                        <span className="px-1.5 py-0.5 text-[9px] font-semibold rounded bg-slate-100 text-slate-500 uppercase">
+                                            Contado
+                                        </span>
+                                    )}
+                                </div>
                             </div>
 
                             <div className="grid grid-cols-2 gap-2 text-xs pt-1 border-t border-slate-100">
@@ -1106,6 +1221,22 @@ const Customers = () => {
                     </div>
                 </div>
             </Modal>
+
+            {/* Modal de Visualización Interactiva de Catálogo PDF */}
+            <PdfViewerModal
+                isOpen={isPdfModalOpen}
+                onClose={() => setIsPdfModalOpen(false)}
+                title="Catálogo de Clientes"
+                subtitle={debouncedSearch ? `Filtro de búsqueda: "${debouncedSearch}"` : 'Directorio general de clientes'}
+                badge="Formato Oficial"
+                pdfUrl={pdfUrl}
+                isLoading={isLoadingPdf}
+                loadingText="Generando catálogo de clientes en formato oficial..."
+                error={pdfError}
+                onRetry={handleOpenPdfModal}
+                fileName={`Catalogo_Clientes_${new Date().toISOString().split('T')[0]}.pdf`}
+                footerNote="Formato oficial del sistema • Presentación Carta Horizontal"
+            />
         </div>
     );
 };

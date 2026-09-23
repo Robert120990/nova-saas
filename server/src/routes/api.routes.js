@@ -217,6 +217,7 @@ router.delete('/sellers/:id', sellerController.deleteSeller);
 
 // Customers
 router.get('/customers', customerController.getCustomers);
+router.get('/customers/reports/pdf', customerController.getCustomersReportPDF);
 router.get('/customers/:id', customerController.getCustomerById);
 router.post('/customers', customerController.createCustomer);
 router.put('/customers/:id', customerController.updateCustomer);
@@ -231,6 +232,7 @@ router.delete('/customer-branches/:id', customerBranchController.deleteBranch);
 
 // Providers
 router.get('/providers', providerController.getProviders);
+router.get('/providers/reports/pdf', providerController.getProvidersReportPDF);
 router.post('/providers', providerController.createProvider);
 router.put('/providers/:id', providerController.updateProvider);
 router.delete('/providers/:id', providerController.deleteProvider);

@@ -3,11 +3,13 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import Table from '../components/ui/Table';
 import Modal from '../components/ui/Modal';
-import { Plus, Edit, Trash2, Phone, Mail, Search, Building2, Info } from 'lucide-react';
+import { Plus, Edit, Trash2, Search, Building2, Info, FileSpreadsheet, FileText as FilePdf, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useConfirm } from '../context/ConfirmContext';
 import SearchableSelect from '../components/ui/SearchableSelect';
 import Pagination from '../components/ui/Pagination';
+import PdfViewerModal from '../components/ui/PdfViewerModal';
+import { exportJsonToExcel } from '../utils/excelExport';
 import { formatDocumentNumber, validateDocumentNumber, formatNRC } from '../utils/svfeValidators';
 
 const Providers = () => {
@@ -51,6 +53,80 @@ const Providers = () => {
 
     const providers = response.data || [];
 
+    // PDF Report Modal State & Excel Export
+    const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
+    const [pdfUrl, setPdfUrl] = useState(null);
+    const [isLoadingPdf, setIsLoadingPdf] = useState(false);
+    const [pdfError, setPdfError] = useState(null);
+    const [isExportingExcel, setIsExportingExcel] = useState(false);
+
+    useEffect(() => {
+        return () => {
+            if (pdfUrl) URL.revokeObjectURL(pdfUrl);
+        };
+    }, [pdfUrl]);
+
+    const handleExportExcel = async () => {
+        setIsExportingExcel(true);
+        try {
+            const { data } = await axios.get('/api/providers', {
+                params: { search: debouncedSearch || undefined, all: 'true' }
+            });
+            const list = data?.data?.length ? data.data : providers;
+            if (!list || list.length === 0) {
+                return toast.warning('No hay proveedores para exportar');
+            }
+            const dataToExport = list.map(p => ({
+                'PROVEEDOR / RAZÓN SOCIAL': p.nombre || '---',
+                'NOMBRE COMERCIAL': p.nombre_comercial || '---',
+                'TIPO PERSONA': p.tipo_persona_nombre || p.tipo_persona || '---',
+                'DOCUMENTO': p.nit || p.numero_documento || '---',
+                'NRC': p.nrc || '---',
+                'CONDICIÓN FISCAL': p.condicion_fiscal || 'Contribuyente',
+                'ACTIVIDAD ECONÓMICA': p.actividad_nombre || p.codigo_actividad || '---',
+                'DEPARTAMENTO': p.departamento_nombre || p.departamento || '---',
+                'MUNICIPIO': p.municipio_nombre || p.municipio || '---',
+                'DIRECCIÓN': p.direccion || '---',
+                'TELÉFONO': p.telefono || '---',
+                'CORREO': p.correo || '---',
+                'CRÉDITO': p.es_credito ? `SÍ (${p.dias_credito || 0} DÍAS)` : 'NO',
+                'EXENTO IVA': p.exento_iva ? 'SÍ' : 'NO'
+            }));
+            exportJsonToExcel(dataToExport, `Catalogo_Proveedores_${new Date().toISOString().split('T')[0]}`, 'PROVEEDORES');
+        } catch (err) {
+            console.error('Error al exportar proveedores a Excel:', err);
+            toast.error('Error al exportar proveedores a Excel');
+        } finally {
+            setIsExportingExcel(false);
+        }
+    };
+
+    const handleOpenPdfModal = async () => {
+        setIsPdfModalOpen(true);
+        setIsLoadingPdf(true);
+        setPdfError(null);
+        try {
+            const res = await axios.get('/api/providers/reports/pdf', {
+                params: { search: debouncedSearch?.trim() ? debouncedSearch.trim() : undefined },
+                responseType: 'blob'
+            });
+            if (res.data.type !== 'application/pdf') {
+                const text = await res.data.text();
+                let errorMsg = 'Error al generar el catálogo en formato PDF';
+                try { errorMsg = JSON.parse(text).message || errorMsg; } catch {}
+                throw new Error(errorMsg);
+            }
+            if (pdfUrl) URL.revokeObjectURL(pdfUrl);
+            const url = URL.createObjectURL(res.data);
+            setPdfUrl(url);
+        } catch (err) {
+            console.error('Error fetching providers PDF:', err);
+            setPdfError(err.message || 'Error al generar el catálogo en PDF');
+        } finally {
+            setIsLoadingPdf(false);
+        }
+    };
+
     // Catalogs
     const { data: departments = [] } = useQuery({
         queryKey: ['catalogs', 'departments'],
@@ -76,10 +152,14 @@ const Providers = () => {
         enabled: isModalOpen && !!selectedDept
     });
 
+    const { data: personTypes = [] } = useQuery({
+        queryKey: ['catalogs', 'cat_029_tipo_persona'],
+        queryFn: async () => (await axios.get('/api/catalogs/cat_029_tipo_persona')).data
+    });
+
     const { data: countries = [] } = useQuery({
         queryKey: ['catalogs', 'cat_020_pais'],
-        queryFn: async () => (await axios.get('/api/catalogs/cat_020_pais')).data,
-        enabled: isModalOpen
+        queryFn: async () => (await axios.get('/api/catalogs/cat_020_pais')).data
     });
 
     const mutation = useMutation({
@@ -274,186 +354,160 @@ const Providers = () => {
     const labelCls = "block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5";
 
     return (
-        <div className="space-y-4">
-            {/* Cabecera Principal */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm">
+        <div className="space-y-3">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
                 <div>
-                    <h2 className="text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
-                        <Building2 className="text-indigo-600" size={24} />
-                        Proveedores
-                    </h2>
-                    <p className="text-slate-500 text-xs font-medium mt-0.5">
-                        Gestión de compras, abastecimiento comercial y servicios externos
-                    </p>
+                    <h2 className="text-xl font-bold text-slate-900 tracking-tight">Proveedores</h2>
+                    <p className="text-slate-500 text-[11px] font-medium">Base de datos de compras, abastecimiento comercial y servicios externos</p>
                 </div>
                 <button 
-                    onClick={handleOpenNew}
-                    className="flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl font-bold text-xs transition-all shadow-md shadow-indigo-600/20 active:scale-95 shrink-0"
+                    onClick={handleOpenNew} 
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-1.5 rounded-xl flex items-center gap-2 transition-all shadow-lg shadow-indigo-600/20 active:scale-95 font-bold text-sm"
                 >
-                    <Plus size={16} />
+                    <Plus size={20}/>
                     <span>Nuevo Proveedor</span>
                 </button>
             </div>
 
-            {/* Barra de Búsqueda */}
-            <div className="flex items-center gap-3">
-                <div className="relative flex-1 max-w-md">
-                    <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="relative flex-1 max-w-sm">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
                     <input 
                         type="text" 
-                        placeholder="Buscar por nombre, nombre comercial, NIT, NRC o documento..." 
+                        placeholder="Buscar por nombre, documento o NRC..." 
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
-                        className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-xs font-medium text-slate-800 shadow-sm"
+                        className="w-full pl-9 pr-3 py-1.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-400 transition-all text-xs font-medium shadow-sm"
                     />
+                </div>
+                <div className="flex items-center gap-2">
+                    <button 
+                        type="button"
+                        onClick={handleExportExcel}
+                        disabled={isExportingExcel}
+                        className="h-8 px-3 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-xl text-[9px] font-black uppercase tracking-widest flex items-center gap-1.5 hover:bg-emerald-100 transition-all shadow-sm active:scale-95 disabled:opacity-50"
+                        title="Exportar listado a Excel (.xlsx)"
+                    >
+                        {isExportingExcel ? <Loader2 size={14} className="animate-spin" /> : <FileSpreadsheet size={14} />} EXCEL
+                    </button>
+                    <button 
+                        type="button"
+                        onClick={handleOpenPdfModal}
+                        className="h-8 px-3 bg-rose-50 text-rose-700 border border-rose-100 rounded-xl text-[9px] font-black uppercase tracking-widest flex items-center gap-1.5 hover:bg-rose-100 transition-all shadow-sm active:scale-95"
+                        title="Ver catálogo de proveedores en PDF"
+                    >
+                        <FilePdf size={14} /> PDF
+                    </button>
                 </div>
             </div>
 
-            {/* Tabla de Proveedores con renderCard para Móviles */}
-            <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                 <Table 
-                    headers={['Nombre / Razón Social', 'Ubicación', 'Documento', 'NRC / Tipo', 'Contacto', 'Acciones']}
+                    headers={['Nombre / Razón Social', 'Ubicación', 'Tipo Persona / País', 'Documento', 'Condición Fiscal', 'Acciones']}
                     data={providers}
                     isLoading={isLoading}
                     renderRow={(p) => (
-                        <tr key={p.id} className="hover:bg-slate-50/80 transition-colors border-b border-slate-100 last:border-0">
-                            <td className="px-3.5 py-2.5">
-                                <div className="text-xs font-bold text-slate-900 leading-tight">{p.nombre}</div>
-                                {p.nombre_comercial && (
-                                    <div className="text-[10px] text-slate-500 font-medium italic mt-0.5">{p.nombre_comercial}</div>
-                                )}
-                                <div className="flex items-center gap-1.5 mt-1">
-                                    <span className={`px-2 py-0.5 text-[9px] font-bold rounded-full uppercase tracking-tight ${
-                                        p.condicion_fiscal === 'gran contribuyente' ? 'bg-amber-100 text-amber-800' :
-                                        p.condicion_fiscal === 'exento IVA' ? 'bg-emerald-100 text-emerald-800' :
-                                        p.condicion_fiscal === 'extranjero' ? 'bg-purple-100 text-purple-800' :
-                                        p.condicion_fiscal === 'otro' ? 'bg-slate-100 text-slate-600' :
-                                        'bg-indigo-50 text-indigo-700'
-                                    }`}>
-                                        {p.condicion_fiscal === 'otro' ? 'Pequeño / No Contrib.' : (p.condicion_fiscal || 'Contribuyente')}
-                                    </span>
-                                    {p.actividad_nombre && (
-                                        <span className="text-[9px] text-slate-400 font-medium truncate max-w-[140px]" title={p.actividad_nombre}>
-                                            {p.actividad_nombre}
+                        <tr key={p.id} className="hover:bg-slate-50 transition-colors">
+                            <td className="px-3 py-1">
+                                <div className="text-xs font-bold text-slate-900">{p.nombre}</div>
+                                <div className="text-[10px] text-slate-500 font-medium">{p.nombre_comercial}</div>
+                            </td>
+                            <td className="px-3 py-1">
+                                <div className="text-[10px] text-slate-600 font-medium">Dist. {p.distrito_nombre || p.distrito || '01'}, {p.municipio_nombre || p.municipio}, {p.departamento_nombre || p.departamento}</div>
+                                <div className="text-[9px] text-slate-400 truncate max-w-[150px]">{p.direccion}</div>
+                            </td>
+                            <td className="px-3 py-1">
+                                <div className="text-[10px] font-bold text-indigo-600 uppercase">
+                                    {personTypes.find(t => t.code === p.tipo_persona)?.description || (p.tipo_persona === '2' ? 'Jurídica' : 'Natural')}
+                                </div>
+                                <div className="text-[9px] text-slate-500 font-medium">
+                                    {countries.find(t => t.code === p.pais)?.description || 'El Salvador'}
+                                </div>
+                            </td>
+                            <td className="px-3 py-1 min-w-[160px]">
+                                <div className="text-[10px] font-mono text-slate-600 bg-slate-100 px-2 py-0.5 rounded inline-block">{p.nit || p.numero_documento || 'S/N'}</div>
+                                <div className="text-[9px] text-slate-400 uppercase font-bold">{p.tipo_documento || 'NIT'}{p.nrc ? ` • NRC ${p.nrc}` : ''}</div>
+                            </td>
+                            <td className="px-3 py-1">
+                                <span className={`px-1.5 py-0.5 text-[9px] font-bold rounded-full uppercase ${
+                                    p.condicion_fiscal === 'gran contribuyente' ? 'bg-amber-100 text-amber-700' :
+                                    p.condicion_fiscal === 'exento IVA' ? 'bg-emerald-100 text-emerald-800' :
+                                    p.condicion_fiscal === 'extranjero' ? 'bg-purple-100 text-purple-800' :
+                                    p.condicion_fiscal === 'otro' ? 'bg-slate-100 text-slate-500' :
+                                    'bg-indigo-50 text-indigo-700'
+                                }`}>
+                                    {p.condicion_fiscal === 'otro' ? 'Pequeño / No Contrib.' : (p.condicion_fiscal || 'Contribuyente')}
+                                </span>
+                                <div className="mt-1">
+                                    {(p.es_credito === 1 || p.es_credito === true || p.es_credito === '1') ? (
+                                        <span className="inline-flex items-center px-1.5 py-0.5 text-[9px] font-bold rounded bg-amber-50 text-amber-700 border border-amber-200/80 uppercase tracking-tight">
+                                            Crédito: {p.dias_credito || 0} {Number(p.dias_credito) === 1 ? 'día' : 'días'}
+                                        </span>
+                                    ) : (
+                                        <span className="inline-flex items-center px-1.5 py-0.5 text-[9px] font-semibold rounded bg-slate-100 text-slate-500 uppercase tracking-tight">
+                                            Contado
                                         </span>
                                     )}
                                 </div>
                             </td>
-                            <td className="px-3.5 py-2.5">
-                                <div className="text-[11px] text-slate-700 font-semibold">
-                                    {p.municipio_nombre || p.municipio || 'N/A'}, {p.departamento_nombre || p.departamento || ''}
-                                </div>
-                                <div className="text-[10px] text-slate-400 truncate max-w-[180px]" title={p.direccion}>
-                                    {p.direccion || 'Sin dirección registrada'}
-                                </div>
-                            </td>
-                            <td className="px-3.5 py-2.5">
-                                <div className="text-[11px] font-mono text-slate-800 font-semibold">
-                                    {p.nit || p.numero_documento || 'S/N'}
-                                </div>
-                                <div className="text-[9px] text-slate-400 uppercase font-bold tracking-wider mt-0.5">
-                                    {p.tipo_documento || 'NIT'}
-                                </div>
-                            </td>
-                            <td className="px-3.5 py-2.5">
-                                <div className="text-[11px] font-mono text-slate-700 font-medium">
-                                    {p.nrc || 'N/A'}
-                                </div>
-                                <div className="flex flex-wrap gap-1 mt-1">
-                                    {p.exento_iva === 1 && (
-                                        <span className="text-[8px] font-black bg-emerald-100 text-emerald-700 px-1.5 py-0.2 rounded uppercase">
-                                            Exento IVA
-                                        </span>
-                                    )}
-                                    {p.es_credito === 1 && (
-                                        <span className="text-[8px] font-black bg-amber-100 text-amber-700 px-1.5 py-0.2 rounded uppercase">
-                                            Crédito {p.dias_credito}d
-                                        </span>
-                                    )}
-                                </div>
-                            </td>
-                            <td className="px-3.5 py-2.5">
-                                {p.telefono && (
-                                    <div className="text-[10px] text-slate-600 flex items-center gap-1 font-medium">
-                                        <Phone size={10} className="text-slate-400" /> {p.telefono}
-                                    </div>
-                                )}
-                                {p.correo && (
-                                    <div className="text-[10px] text-slate-600 flex items-center gap-1 font-medium mt-0.5 truncate max-w-[150px]" title={p.correo}>
-                                        <Mail size={10} className="text-slate-400 shrink-0" /> {p.correo}
-                                    </div>
-                                )}
-                                {!p.telefono && !p.correo && (
-                                    <span className="text-[10px] text-slate-400 italic">Sin contacto</span>
-                                )}
-                            </td>
-                            <td className="px-3.5 py-2.5">
-                                <div className="flex items-center gap-1">
-                                    <button 
-                                        onClick={() => handleEdit(p)} 
-                                        className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
-                                        title="Editar Proveedor"
-                                    >
-                                        <Edit size={15} />
-                                    </button>
-                                    <button 
-                                        onClick={() => handleDeleteProvider(p.id)} 
-                                        className="p-1.5 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                        title="Eliminar Proveedor"
-                                    >
-                                        <Trash2 size={15} />
-                                    </button>
-                                </div>
+                            <td className="px-3 py-1 flex gap-1">
+                                <button onClick={() => handleEdit(p)} className="p-1 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" title="Editar"><Edit size={15}/></button>
+                                <button onClick={() => handleDeleteProvider(p.id)} className="p-1 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Eliminar"><Trash2 size={15}/></button>
                             </td>
                         </tr>
                     )}
                     renderCard={(p) => (
-                        <div className="space-y-2.5 p-3.5 bg-white rounded-xl border border-slate-200/80 shadow-sm">
+                        <div className="space-y-2">
                             <div className="flex items-start justify-between gap-2">
                                 <div className="min-w-0">
                                     <h4 className="text-sm font-bold text-slate-900 truncate">{p.nombre}</h4>
                                     {p.nombre_comercial && <p className="text-xs text-slate-500 truncate">{p.nombre_comercial}</p>}
                                 </div>
-                                <span className={`px-2 py-0.5 text-[9px] font-bold rounded-full uppercase shrink-0 ${
-                                    p.condicion_fiscal === 'gran contribuyente' ? 'bg-amber-100 text-amber-800' :
-                                    p.condicion_fiscal === 'exento IVA' ? 'bg-emerald-100 text-emerald-800' :
-                                    p.condicion_fiscal === 'extranjero' ? 'bg-purple-100 text-purple-800' :
-                                    p.condicion_fiscal === 'otro' ? 'bg-slate-100 text-slate-600' :
-                                    'bg-indigo-50 text-indigo-700'
-                                }`}>
-                                    {p.condicion_fiscal === 'otro' ? 'Pequeño / No Contrib.' : (p.condicion_fiscal || 'Contribuyente')}
-                                </span>
+                                <div className="flex flex-col items-end gap-1 shrink-0">
+                                    <span className={`px-2 py-0.5 text-[10px] font-bold rounded-full uppercase shrink-0 ${
+                                        p.condicion_fiscal === 'gran contribuyente' ? 'bg-amber-100 text-amber-700' :
+                                        p.condicion_fiscal === 'exento IVA' ? 'bg-emerald-100 text-emerald-800' :
+                                        p.condicion_fiscal === 'extranjero' ? 'bg-purple-100 text-purple-800' :
+                                        p.condicion_fiscal === 'otro' ? 'bg-slate-100 text-slate-500' :
+                                        'bg-indigo-50 text-indigo-700'
+                                    }`}>
+                                        {p.condicion_fiscal === 'otro' ? 'Pequeño / No Contrib.' : (p.condicion_fiscal || 'Contribuyente')}
+                                    </span>
+                                    {(p.es_credito === 1 || p.es_credito === true || p.es_credito === '1') ? (
+                                        <span className="px-1.5 py-0.5 text-[9px] font-bold rounded bg-amber-50 text-amber-700 border border-amber-200/80 uppercase">
+                                            Crédito {p.dias_credito || 0}d
+                                        </span>
+                                    ) : (
+                                        <span className="px-1.5 py-0.5 text-[9px] font-semibold rounded bg-slate-100 text-slate-500 uppercase">
+                                            Contado
+                                        </span>
+                                    )}
+                                </div>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-2 text-xs pt-1.5 border-t border-slate-100">
+                            <div className="grid grid-cols-2 gap-2 text-xs pt-1 border-t border-slate-100">
                                 <div>
                                     <span className="text-[10px] font-bold text-slate-400 uppercase block">Documento</span>
                                     <span className="font-mono text-slate-700 font-semibold">{p.nit || p.numero_documento || 'S/N'}</span>
                                 </div>
                                 <div>
-                                    <span className="text-[10px] font-bold text-slate-400 uppercase block">NRC</span>
-                                    <span className="font-mono text-slate-700 font-semibold">{p.nrc || 'N/A'}</span>
-                                </div>
-                                <div className="col-span-2">
                                     <span className="text-[10px] font-bold text-slate-400 uppercase block">Ubicación</span>
-                                    <span className="text-slate-600 truncate block text-xs">
-                                        {p.municipio_nombre || p.municipio || ''}, {p.departamento_nombre || p.departamento || 'Sin ubicación'}
-                                    </span>
+                                    <span className="text-slate-600 truncate block">{p.municipio_nombre || p.municipio || 'N/A'}</span>
                                 </div>
                             </div>
 
                             <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
                                 <button 
                                     onClick={() => handleEdit(p)} 
-                                    className="px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg text-xs font-bold flex items-center gap-1 hover:bg-indigo-100 transition-colors"
+                                    className="px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg text-xs font-bold flex items-center gap-1 hover:bg-indigo-100"
                                 >
-                                    <Edit size={14} /> Editar
+                                    <Edit size={14}/> Editar
                                 </button>
                                 <button 
                                     onClick={() => handleDeleteProvider(p.id)} 
-                                    className="px-2.5 py-1.5 bg-red-50 text-red-600 rounded-lg text-xs font-bold hover:bg-red-100 transition-colors"
+                                    className="px-2.5 py-1.5 bg-red-50 text-red-600 rounded-lg text-xs font-bold hover:bg-red-100"
                                 >
-                                    <Trash2 size={14} />
+                                    <Trash2 size={14}/>
                                 </button>
                             </div>
                         </div>
@@ -841,6 +895,22 @@ const Providers = () => {
                     </div>
                 </form>
             </Modal>
+
+            {/* Modal de Visualización Interactiva de Catálogo PDF */}
+            <PdfViewerModal
+                isOpen={isPdfModalOpen}
+                onClose={() => setIsPdfModalOpen(false)}
+                title="Catálogo de Proveedores"
+                subtitle={debouncedSearch ? `Filtro de búsqueda: "${debouncedSearch}"` : 'Directorio general de proveedores'}
+                badge="Formato Oficial"
+                pdfUrl={pdfUrl}
+                isLoading={isLoadingPdf}
+                loadingText="Generando catálogo de proveedores en formato oficial..."
+                error={pdfError}
+                onRetry={handleOpenPdfModal}
+                fileName={`Catalogo_Proveedores_${new Date().toISOString().split('T')[0]}.pdf`}
+                footerNote="Formato oficial del sistema • Presentación Carta Horizontal"
+            />
         </div>
     );
 };
