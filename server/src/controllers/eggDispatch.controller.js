@@ -713,6 +713,7 @@ const saveDispatchRoute = async (req, res) => {
 
         let routeId = id;
 
+        let existingStopsMap = {};
         if (id) {
             await connection.query(
                 `UPDATE egg_dispatch_routes SET
@@ -743,15 +744,32 @@ const saveDispatchRoute = async (req, res) => {
                 ]
             );
 
-            // Liberar pedidos anteriores que ya no estén en la ruta
-            await connection.query(
-                `UPDATE egg_customer_orders SET dispatch_route_id = NULL, delivery_status = 'pendiente'
-                 WHERE dispatch_route_id = ? AND company_id = ?`,
-                [id, company_id]
+            // Obtener paradas existentes para preservar datos de facturación (sale_id, dte_codigo_generacion, entrega)
+            const [currentStops] = await connection.query(
+                'SELECT * FROM egg_dispatch_stops WHERE dispatch_route_id = ?',
+                [id]
             );
+            currentStops.forEach(s => {
+                existingStopsMap[s.order_id] = s;
+            });
 
-            // Eliminar paradas previas para reconstruir la secuencia limpia
-            await connection.query('DELETE FROM egg_dispatch_stops WHERE dispatch_route_id = ?', [id]);
+            const newOrderIds = stopList.map(s => safeInt(s.order_id)).filter(Boolean);
+
+            // Identificar paradas removidas que no deben seguir en la ruta
+            const removedStops = currentStops.filter(s => !newOrderIds.includes(s.order_id));
+            for (const rem of removedStops) {
+                // Si la parada NO fue facturada, la liberamos a pendiente
+                if (!rem.sale_id && !rem.dte_codigo_generacion) {
+                    await connection.query(
+                        `UPDATE egg_customer_orders 
+                         SET dispatch_route_id = NULL, delivery_status = 'pendiente', status = 'pendiente'
+                         WHERE id = ? AND company_id = ?`,
+                        [rem.order_id, company_id]
+                    );
+                    await connection.query('DELETE FROM egg_dispatch_stops WHERE id = ?', [rem.id]);
+                }
+                // Si ya fue facturada, la conservamos en la ruta para no perder trazabilidad fiscal
+            }
         } else {
             const [insRes] = await connection.query(
                 `INSERT INTO egg_dispatch_routes (
@@ -782,7 +800,7 @@ const saveDispatchRoute = async (req, res) => {
             routeId = insRes.insertId;
         }
 
-        // 5. Insertar paradas y asociar pedidos con trazabilidad de lotes
+        // 5. Insertar o actualizar paradas y asociar pedidos con trazabilidad de lotes
         for (let idx = 0; idx < stopList.length; idx++) {
             const stop = stopList[idx];
             const ordenVisita = stop.orden_visita !== undefined ? safeInt(stop.orden_visita, idx + 1) : (idx + 1);
@@ -794,31 +812,55 @@ const saveDispatchRoute = async (req, res) => {
             const stopBatchId = safeInt(oData[0]?.batch_id);
             const stopLotCode = oData[0]?.lot_code || null;
 
-            await connection.query(
-                `INSERT INTO egg_dispatch_stops (
-                    dispatch_route_id, order_id, customer_id, customer_branch_id,
-                    orden_visita, prioridad, estado_entrega, batch_id, lot_code
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                [
-                    safeInt(routeId),
-                    safeInt(stop.order_id),
-                    safeInt(stop.customer_id),
-                    safeInt(stop.customer_branch_id),
-                    ordenVisita,
-                    stop.prioridad || 'normal',
-                    'pendiente',
-                    stopBatchId,
-                    stopLotCode
-                ]
-            );
+            const existing = existingStopsMap[stop.order_id];
+
+            if (existing) {
+                // Actualizar parada existente preservando sale_id, dte_codigo_generacion, etc.
+                await connection.query(
+                    `UPDATE egg_dispatch_stops SET
+                        customer_branch_id = ?,
+                        orden_visita = ?,
+                        prioridad = ?,
+                        batch_id = COALESCE(batch_id, ?),
+                        lot_code = COALESCE(lot_code, ?)
+                     WHERE id = ?`,
+                    [
+                        safeInt(stop.customer_branch_id),
+                        ordenVisita,
+                        stop.prioridad || existing.prioridad || 'normal',
+                        stopBatchId,
+                        stopLotCode,
+                        existing.id
+                    ]
+                );
+            } else {
+                // Insertar nueva parada a la ruta existente o nueva
+                await connection.query(
+                    `INSERT INTO egg_dispatch_stops (
+                        dispatch_route_id, order_id, customer_id, customer_branch_id,
+                        orden_visita, prioridad, estado_entrega, batch_id, lot_code
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                    [
+                        safeInt(routeId),
+                        safeInt(stop.order_id),
+                        safeInt(stop.customer_id),
+                        safeInt(stop.customer_branch_id),
+                        ordenVisita,
+                        stop.prioridad || 'normal',
+                        'pendiente',
+                        stopBatchId,
+                        stopLotCode
+                    ]
+                );
+            }
 
             // Actualizar pedido a 'en_ruta' o 'programado'
             await connection.query(
                 `UPDATE egg_customer_orders SET
                     dispatch_route_id = ?,
                     customer_branch_id = COALESCE(?, customer_branch_id),
-                    delivery_status = 'en_ruta',
-                    status = 'en_proceso',
+                    delivery_status = CASE WHEN delivery_status = 'entregado' THEN 'entregado' ELSE 'en_ruta' END,
+                    status = CASE WHEN status = 'entregado' THEN 'entregado' ELSE 'en_proceso' END,
                     priority = ?
                  WHERE id = ? AND company_id = ?`,
                 [safeInt(routeId), safeInt(stop.customer_branch_id), stop.prioridad || 'normal', safeInt(stop.order_id), company_id]
@@ -859,14 +901,41 @@ const deleteDispatchRoute = async (req, res) => {
         const { id } = req.params;
         const company_id = req.company_id || req.user?.company_id;
 
-        // Liberar pedidos
-        await connection.query(
-            `UPDATE egg_customer_orders SET dispatch_route_id = NULL, delivery_status = 'pendiente'
-             WHERE dispatch_route_id = ? AND company_id = ?`,
-            [id, company_id]
+        // 1. Obtener órdenes asociadas a la ruta (directamente o por paradas)
+        const [associatedStops] = await connection.query(
+            `SELECT s.id as stop_id, s.order_id, s.sale_id, s.dte_codigo_generacion,
+                    o.status as order_status, o.delivery_status as order_delivery_status
+             FROM egg_dispatch_stops s
+             LEFT JOIN egg_customer_orders o ON s.order_id = o.id
+             WHERE s.dispatch_route_id = ?`,
+            [id]
         );
 
-        // Liberar camión si estaba en ruta
+        // 2. Liberar pedidos no facturados: volver a estado 'pendiente' y delivery_status 'pendiente'
+        // Esto evita que queden en el limbo con status 'en_proceso'
+        await connection.query(
+            `UPDATE egg_customer_orders 
+             SET dispatch_route_id = NULL, delivery_status = 'pendiente', status = 'pendiente'
+             WHERE (dispatch_route_id = ? OR id IN (SELECT order_id FROM egg_dispatch_stops WHERE dispatch_route_id = ?))
+               AND company_id = ?
+               AND (sale_id IS NULL AND (dte_codigo_generacion IS NULL OR dte_codigo_generacion = ''))`,
+            [id, id, company_id]
+        );
+
+        // 3. Para pedidos que ya estaban facturados en esta ruta: desvincular de la ruta pero preservar venta y estado
+        await connection.query(
+            `UPDATE egg_customer_orders 
+             SET dispatch_route_id = NULL
+             WHERE (dispatch_route_id = ? OR id IN (SELECT order_id FROM egg_dispatch_stops WHERE dispatch_route_id = ?))
+               AND company_id = ?
+               AND (sale_id IS NOT NULL OR (dte_codigo_generacion IS NOT NULL AND dte_codigo_generacion != ''))`,
+            [id, id, company_id]
+        );
+
+        // 4. Eliminar paradas de la ruta explícitamente para evitar bloqueos por Foreign Key
+        await connection.query('DELETE FROM egg_dispatch_stops WHERE dispatch_route_id = ?', [id]);
+
+        // 5. Liberar camión si estaba en ruta
         const [rRows] = await connection.query(
             'SELECT vehicle_id FROM egg_dispatch_routes WHERE id = ? AND company_id = ?',
             [id, company_id]
@@ -878,14 +947,15 @@ const deleteDispatchRoute = async (req, res) => {
             );
         }
 
+        // 6. Eliminar la ruta de despacho
         await connection.query('DELETE FROM egg_dispatch_routes WHERE id = ? AND company_id = ?', [id, company_id]);
 
         await connection.commit();
-        res.json({ message: 'Ruta de despacho eliminada y pedidos liberados.' });
+        res.json({ message: 'Ruta de despacho eliminada y pedidos liberados correctamente.' });
     } catch (error) {
         await connection.rollback();
         console.error('Error al eliminar ruta de despacho:', error);
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ message: error.message || 'Error al eliminar ruta de despacho' });
     } finally {
         connection.release();
     }
@@ -1392,8 +1462,8 @@ const removeStopFromRoute = async (req, res) => {
 
         // 2. Liberar el pedido (vuelve a pendiente sin ruta)
         await connection.query(
-            `UPDATE egg_customer_orders SET dispatch_route_id = NULL, delivery_status = 'pendiente'
-             WHERE id = ? AND company_id = ?`,
+            `UPDATE egg_customer_orders SET dispatch_route_id = NULL, delivery_status = 'pendiente', status = 'pendiente'
+             WHERE id = ? AND company_id = ? AND sale_id IS NULL`,
             [stop.order_id, company_id]
         );
 
@@ -2196,11 +2266,6 @@ const autoInvoiceDispatchRoute = async (req, res) => {
                     units = Number.isInteger(calcUnits) ? calcUnits : Math.round(calcUnits * 100) / 100;
                 }
 
-                // Descripción completa requerida por normativa y solicitud del usuario:
-                // Producto, Presentación, Lote, Cantidad en unidades, Cantidad en libras
-                // (Precio y Total van en sus columnas fiscales respectivas)
-                const itemDesc = `${productType} | Presentación: ${presentation} | Lote: ${lotCode} | Cant: ${units} Uds (${qtyLbs.toFixed(2)} Lbs)`;
-
                 // Resolver equivalencia con producto comercial del catálogo
                 const resolved = await resolveEggCatalogProduct(connection, company_id, productType, presentation);
                 const resolvedProductId = it.product_id || resolved.catalog_product_id || null;
@@ -2208,6 +2273,35 @@ const autoInvoiceDispatchRoute = async (req, res) => {
                 const isReturnable = resolved.is_returnable;
                 const unitOfMeasure = (resolved.unit_of_measure || '').toLowerCase();
                 const stockQty = ['cubeta', 'galon', 'unidad', 'caja', 'carton'].includes(unitOfMeasure) ? units : qtyLbs;
+
+                // Detección de cliente Callejas (exige código de barra antes del nombre)
+                const isCallejas = (customer.nombre || '').toUpperCase().includes('CALLEJA') || customer.id === 11316 || customer.id === 32555;
+                const barcode = (it.barcode || it.product_barcode || resolved.catalog_barcode || '').trim();
+
+                let displayProductName = productType;
+                // Si el cliente es Callejas o si tiene código de barra y el nombre aún no lo incluye, anteponerlo
+                if ((isCallejas || barcode) && barcode && !displayProductName.startsWith(barcode)) {
+                    displayProductName = `${barcode} ${displayProductName}`;
+                }
+
+                // Detección de cliente Comidas Especializadas o modo Kilogramos
+                const isComidasEsp = (customer.nombre || '').toUpperCase().includes('COMIDAS ESPECIALIZADAS') || (customer.nombre || '').toUpperCase().includes('COMIDAS E INDUSTRIAS');
+                const isKgMode = !!it.is_kg_mode || isComidasEsp || it.unit_of_measure === 'kg';
+
+                let displayPresentation = presentation;
+                let weightDesc = `${qtyLbs.toFixed(2)} Lbs`;
+
+                if (isKgMode) {
+                    // Limpiar menciones de "lb" / "LB" de la presentación y del nombre
+                    displayPresentation = displayPresentation.replace(/\b(\d+)?\s*(lbs?|lb)\b/gi, '').replace(/\s+/g, ' ').trim();
+                    displayProductName = displayProductName.replace(/\b(\d+)?\s*(lbs?|lb)\b/gi, '').replace(/\s+/g, ' ').trim();
+                    const qtyKg = safeNum(it.quantity_kg, parseFloat((qtyLbs * 0.45359237).toFixed(2)));
+                    weightDesc = `${qtyKg.toFixed(2)} Kg`;
+                }
+
+                // Si el usuario especificó una descripción manual en el modal, se respeta; sino se genera con la inteligencia aplicada
+                const defaultDesc = `${displayProductName} | Presentación: ${displayPresentation || 'Unidad'} | Lote: ${lotCode} | Cant: ${units} Uds (${weightDesc})`;
+                const itemDesc = (it.custom_description || '').trim() || defaultDesc;
 
                 itemsProcessed.push({
                     product_id: resolvedProductId,

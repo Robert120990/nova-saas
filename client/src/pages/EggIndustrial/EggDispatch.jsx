@@ -504,17 +504,18 @@ export default function EggDispatch() {
     };
 
     const handleDeleteRoute = async (routeId) => {
-        if (!window.confirm('¿Eliminar esta ruta de despacho? Los pedidos volverán a quedar disponibles.')) return;
+        if (!window.confirm('¿Eliminar esta ruta de despacho? Los pedidos no facturados volverán a quedar disponibles en estado pendiente.')) return;
         try {
-            await axios.delete(`/api/egg-industrial/dispatch/routes/${routeId}`);
-            toast.success('Ruta eliminada y pedidos liberados.');
+            const res = await axios.delete(`/api/egg-industrial/dispatch/routes/${routeId}`);
+            toast.success(res.data?.message || 'Ruta eliminada y pedidos liberados.');
             setSelectedRoute(null);
             setRouteDetail(null);
             fetchRoutes();
             fetchOrders();
         } catch (error) {
             console.error('Error al eliminar ruta:', error);
-            toast.error('Error al eliminar ruta.');
+            const msg = error.response?.data?.message || error.message || 'Error al eliminar ruta.';
+            toast.error(msg);
         }
     };
 
@@ -1273,6 +1274,16 @@ export default function EggDispatch() {
                                                         {routeDetail.stops.filter(s => (!s.is_billed && !s.sale_sello_recepcion) || s.is_rejected || s.dte_status === 'REJECTED').length}
                                                     </span>
                                                 )}
+                                            </button>
+
+                                            {/* Botón Agregar Pedidos a la Ruta */}
+                                            <button
+                                                onClick={() => handleEditRoute(selectedRoute || routeDetail, routeDetail)}
+                                                className="flex items-center gap-1 text-xs font-bold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-2.5 py-1.5 rounded-xl border border-indigo-200 shadow-xs transition"
+                                                title="Agregar más pedidos a esta ruta para facturarlos después"
+                                            >
+                                                <Plus className="w-3.5 h-3.5" />
+                                                <span>+ Agregar Pedidos</span>
                                             </button>
 
                                             {/* Botón Editar Ruta */}
@@ -2095,20 +2106,23 @@ export default function EggDispatch() {
                                 </div>
                             ) : (
                                 availableOrdersForRoute.map(ord => {
-                                    const isSelected = routeForm.selectedOrderIds.includes(ord.id);
+                                    const isAlreadyBilledInRoute = !!(routeDetail?.stops?.some(s => s.order_id === ord.id && (s.is_billed || s.sale_id || s.sale_sello_recepcion)));
+                                    const isSelected = isAlreadyBilledInRoute || routeForm.selectedOrderIds.includes(ord.id);
                                     const orderItems = getOrderItems(ord);
                                     return (
                                         <label
                                             key={ord.id}
-                                            className={`flex items-start justify-between p-3 cursor-pointer text-xs transition ${
-                                                isSelected ? 'bg-indigo-50/80' : 'hover:bg-slate-50'
+                                            className={`flex items-start justify-between p-3 text-xs transition ${
+                                                isAlreadyBilledInRoute ? 'bg-emerald-50/50 cursor-default' : isSelected ? 'bg-indigo-50/80 cursor-pointer' : 'hover:bg-slate-50 cursor-pointer'
                                             }`}
                                         >
                                             <div className="flex items-start gap-3">
                                                 <input
                                                     type="checkbox"
                                                     checked={isSelected}
+                                                    disabled={isAlreadyBilledInRoute}
                                                     onChange={(e) => {
+                                                        if (isAlreadyBilledInRoute) return;
                                                         if (e.target.checked) {
                                                             setRouteForm(prev => ({
                                                                 ...prev,
@@ -2121,11 +2135,16 @@ export default function EggDispatch() {
                                                             }));
                                                         }
                                                     }}
-                                                    className="rounded text-indigo-600 focus:ring-indigo-500 h-4 w-4 mt-0.5"
+                                                    className={`rounded text-indigo-600 focus:ring-indigo-500 h-4 w-4 mt-0.5 ${isAlreadyBilledInRoute ? 'cursor-not-allowed opacity-60' : ''}`}
                                                 />
                                                 <div>
                                                     <div className="font-bold text-slate-900 flex items-center gap-2">
                                                         <span>{ord.customer_name}</span>
+                                                        {isAlreadyBilledInRoute && (
+                                                            <span className="text-[9px] font-black bg-emerald-100 text-emerald-800 px-1.5 py-0.2 rounded border border-emerald-200" title="Pedido ya facturado en esta ruta (preservado)">
+                                                                ✓ Facturado
+                                                            </span>
+                                                        )}
                                                         {ord.priority === 'urgente' && (
                                                             <span className="text-[9px] font-black bg-rose-100 text-rose-700 px-1.5 py-0.2 rounded">
                                                                 URGENTE

@@ -17,7 +17,8 @@ import {
     PlusCircle,
     Trash2,
     Copy,
-    Mail
+    Mail,
+    MapPin
 } from 'lucide-react';
 
 const DTE_TYPE_OPTIONS = [
@@ -74,6 +75,9 @@ export default function RouteAutoInvoicingModal({
             const hasNrc = !!(stop.customer_nrc && String(stop.customer_nrc).trim());
             const dteType = isForeign ? '11' : (hasNrc ? '03' : '01');
 
+            const isCustomerComidasEsp = (stop.customer_name || '').toUpperCase().includes('COMIDAS ESPECIALIZADAS') || (stop.customer_name || '').toUpperCase().includes('COMIDAS E INDUSTRIAS');
+            const isCustomerCallejas = (stop.customer_name || '').toUpperCase().includes('CALLEJA') || stop.customer_id === 11316 || stop.customer_id === 32555;
+
             // Desglosar ítems de la parada
             let items = [];
             if (stop.items_json) {
@@ -87,15 +91,34 @@ export default function RouteAutoInvoicingModal({
                             const parsedUnits = (rawUnits !== undefined && rawUnits !== null && rawUnits !== '' && parseFloat(rawUnits) > 0)
                                 ? parseFloat(rawUnits)
                                 : null;
+                            const rawBarcode = (it.barcode || it.product_barcode || it.catalog_barcode || '').trim();
+                            let initProd = it.product_type || 'Huevo Entero Pasteurizado';
+                            let initPres = it.presentation || 'cubeta 30LB';
+                            const isKg = isCustomerComidasEsp || !!it.is_kg_mode || it.unit_of_measure === 'kg';
+
+                            if (isKg) {
+                                initPres = initPres.replace(/\b(\d+)?\s*(lbs?|lb)\b/gi, '').replace(/\s+/g, ' ').trim() || initPres;
+                                initProd = initProd.replace(/\b(\d+)?\s*(lbs?|lb)\b/gi, '').replace(/\s+/g, ' ').trim() || initProd;
+                            }
+
+                            if (isCustomerCallejas && rawBarcode && !initProd.startsWith(rawBarcode)) {
+                                initProd = `${rawBarcode} ${initProd}`.trim();
+                            }
+
                             return {
-                                product_type: it.product_type || 'Huevo Entero Pasteurizado',
-                                presentation: it.presentation || 'cubeta 30LB',
+                                product_type: initProd,
+                                original_product_type: it.product_type || 'Huevo Entero Pasteurizado',
+                                presentation: initPres,
+                                original_presentation: it.presentation || 'cubeta 30LB',
                                 units: parsedUnits,
                                 quantity_units: parsedUnits,
                                 quantity_lbs: parseFloat(it.quantity_lbs || 0),
+                                quantity_kg: it.quantity_kg ? parseFloat(it.quantity_kg) : (parseFloat(it.quantity_lbs || 0) * 0.45359237),
                                 price_per_lb: parseFloat(it.price_per_lb || 0),
                                 batch_id: it.batch_id || stop.batch_id || stop.order_batch_id || null,
-                                lot_code: it.lot_code || stop.lot_code || stop.order_lot_code || stop.linked_batch_code || ''
+                                lot_code: it.lot_code || stop.lot_code || stop.order_lot_code || stop.linked_batch_code || '',
+                                barcode: rawBarcode,
+                                is_kg_mode: isKg
                             };
                         });
                     }
@@ -109,15 +132,34 @@ export default function RouteAutoInvoicingModal({
                 const parsedStopUnits = (rawStopUnits !== undefined && rawStopUnits !== null && rawStopUnits !== '' && parseFloat(rawStopUnits) > 0)
                     ? parseFloat(rawStopUnits)
                     : null;
+                const rawBarcode = (stop.barcode || stop.product_barcode || '').trim();
+                let initProd = stop.product_type || 'Huevo Entero Pasteurizado';
+                let initPres = stop.presentation || 'cubeta 30LB';
+                const isKg = isCustomerComidasEsp || stop.unit_of_measure === 'kg';
+
+                if (isKg) {
+                    initPres = initPres.replace(/\b(\d+)?\s*(lbs?|lb)\b/gi, '').replace(/\s+/g, ' ').trim() || initPres;
+                    initProd = initProd.replace(/\b(\d+)?\s*(lbs?|lb)\b/gi, '').replace(/\s+/g, ' ').trim() || initProd;
+                }
+
+                if (isCustomerCallejas && rawBarcode && !initProd.startsWith(rawBarcode)) {
+                    initProd = `${rawBarcode} ${initProd}`.trim();
+                }
+
                 items = [{
-                    product_type: stop.product_type || 'Huevo Entero Pasteurizado',
-                    presentation: stop.presentation || 'cubeta 30LB',
+                    product_type: initProd,
+                    original_product_type: stop.product_type || 'Huevo Entero Pasteurizado',
+                    presentation: initPres,
+                    original_presentation: stop.presentation || 'cubeta 30LB',
                     units: parsedStopUnits,
                     quantity_units: parsedStopUnits,
                     quantity_lbs: parseFloat(stop.quantity_lbs || 0),
+                    quantity_kg: stop.quantity_kg ? parseFloat(stop.quantity_kg) : (parseFloat(stop.quantity_lbs || 0) * 0.45359237),
                     price_per_lb: parseFloat(stop.price_per_lb || 0),
                     batch_id: stop.batch_id || stop.order_batch_id || null,
-                    lot_code: stop.lot_code || stop.order_lot_code || stop.linked_batch_code || ''
+                    lot_code: stop.lot_code || stop.order_lot_code || stop.linked_batch_code || '',
+                    barcode: rawBarcode,
+                    is_kg_mode: isKg
                 }];
             }
 
@@ -260,14 +302,14 @@ export default function RouteAutoInvoicingModal({
     };
 
     // Funciones para Adicionar, Editar y Eliminar Detalles Libres (sin producto/cantidad/precio obligatorios)
-    const handleAddCustomDetail = (stopId) => {
+    const handleAddCustomDetail = (stopId, defaultText = '') => {
         setStopsConfig(prev => {
             const currentStop = prev[stopId];
             if (!currentStop || currentStop.is_billed) return prev;
             const newItem = {
                 id: 'custom-' + Date.now(),
                 is_custom_detail: true,
-                product_type: '',
+                product_type: defaultText,
                 presentation: 'Detalle',
                 quantity_lbs: '',
                 price_per_lb: '',
@@ -292,6 +334,82 @@ export default function RouteAutoInvoicingModal({
             newItems[itemIndex] = {
                 ...newItems[itemIndex],
                 [field]: value
+            };
+            return {
+                ...prev,
+                [stopId]: {
+                    ...currentStop,
+                    items: newItems
+                }
+            };
+        });
+    };
+
+    const handleUpdateItemField = (stopId, itemIndex, field, value) => {
+        setStopsConfig(prev => {
+            const currentStop = prev[stopId];
+            if (!currentStop || currentStop.is_billed) return prev;
+            const newItems = [...currentStop.items];
+            newItems[itemIndex] = {
+                ...newItems[itemIndex],
+                [field]: value
+            };
+            return {
+                ...prev,
+                [stopId]: {
+                    ...currentStop,
+                    items: newItems
+                }
+            };
+        });
+    };
+
+    const handleToggleKgMode = (stopId, itemIndex) => {
+        setStopsConfig(prev => {
+            const currentStop = prev[stopId];
+            if (!currentStop || currentStop.is_billed) return prev;
+            const newItems = [...currentStop.items];
+            const it = newItems[itemIndex];
+            const nextKgMode = !it.is_kg_mode;
+
+            let newPres = it.presentation || '';
+            let newProdType = it.product_type || '';
+            if (nextKgMode) {
+                newPres = newPres.replace(/\b(\d+)?\s*(lbs?|lb)\b/gi, '').replace(/\s+/g, ' ').trim();
+                newProdType = newProdType.replace(/\b(\d+)?\s*(lbs?|lb)\b/gi, '').replace(/\s+/g, ' ').trim();
+            } else {
+                newPres = it.original_presentation || it.presentation;
+                newProdType = it.original_product_type || it.product_type;
+            }
+
+            newItems[itemIndex] = {
+                ...it,
+                is_kg_mode: nextKgMode,
+                presentation: newPres,
+                product_type: newProdType
+            };
+            return {
+                ...prev,
+                [stopId]: {
+                    ...currentStop,
+                    items: newItems
+                }
+            };
+        });
+    };
+
+    const handlePrependBarcode = (stopId, itemIndex, barcodeToPrepend) => {
+        if (!barcodeToPrepend) return;
+        setStopsConfig(prev => {
+            const currentStop = prev[stopId];
+            if (!currentStop || currentStop.is_billed) return prev;
+            const newItems = [...currentStop.items];
+            const it = newItems[itemIndex];
+            const currentText = (it.product_type || '').trim();
+            const updated = currentText.startsWith(barcodeToPrepend) ? currentText : `${barcodeToPrepend} ${currentText}`;
+            newItems[itemIndex] = {
+                ...it,
+                product_type: updated
             };
             return {
                 ...prev,
@@ -720,13 +838,30 @@ export default function RouteAutoInvoicingModal({
                                                             <span className="text-[10px] uppercase font-black tracking-wide">Nota / Obs:</span>
                                                         </div>
                                                         {!isBilled ? (
-                                                            <input
-                                                                type="text"
-                                                                value={it.product_type || ''}
-                                                                onChange={(e) => handleUpdateCustomDetail(stop.id, itemIdx, 'product_type', e.target.value)}
-                                                                placeholder="Descripción libre (ej: Servicio de flete, observación, empaques...)"
-                                                                className="flex-1 min-w-[200px] text-xs font-semibold bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-slate-800 outline-none focus:border-indigo-500"
-                                                            />
+                                                            <div className="flex-1 flex items-center gap-1.5 w-full">
+                                                                <input
+                                                                    type="text"
+                                                                    value={it.product_type || ''}
+                                                                    onChange={(e) => handleUpdateCustomDetail(stop.id, itemIdx, 'product_type', e.target.value)}
+                                                                    placeholder="Descripción libre (ej: Servicio de flete, observación, empaques...)"
+                                                                    className="flex-1 min-w-[200px] text-xs font-semibold bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-slate-800 outline-none focus:border-indigo-500"
+                                                                />
+                                                                {stop.branch_name && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                            const branchLabel = `Sucursal: ${stop.branch_name}`;
+                                                                            const current = (it.product_type || '').trim();
+                                                                            const updated = current ? (current.includes(stop.branch_name) ? current : `${current} - ${branchLabel}`) : branchLabel;
+                                                                            handleUpdateCustomDetail(stop.id, itemIdx, 'product_type', updated);
+                                                                        }}
+                                                                        title={`Insertar nombre de sucursal: ${stop.branch_name}`}
+                                                                        className="shrink-0 flex items-center gap-1 text-[11px] font-bold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-2 py-1 rounded-lg border border-indigo-200 shadow-xs transition"
+                                                                    >
+                                                                        <span>📍 + Sucursal</span>
+                                                                    </button>
+                                                                )}
+                                                            </div>
                                                         ) : (
                                                             <span className="font-semibold text-slate-800">{it.product_type}</span>
                                                         )}
@@ -819,15 +954,63 @@ export default function RouteAutoInvoicingModal({
                                             >
                                                 <div className="flex-1 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 items-center">
                                                     {/* 1. Producto */}
-                                                    <div className="col-span-2 sm:col-span-1 md:col-span-2">
-                                                        <span className="block text-[9px] font-black uppercase text-slate-400">Producto</span>
-                                                        <span className="font-black text-slate-900 line-clamp-1">{it.product_type}</span>
+                                                    <div className="col-span-2 sm:col-span-1 md:col-span-2 space-y-1">
+                                                        <div className="flex items-center justify-between gap-1">
+                                                            <span className="block text-[9px] font-black uppercase text-slate-400">Producto</span>
+                                                            {!isBilled && (
+                                                                <div className="flex items-center gap-1">
+                                                                    {it.barcode && (
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => handlePrependBarcode(stop.id, itemIdx, it.barcode)}
+                                                                            title={`Anteponer código de barra (${it.barcode}) al nombre`}
+                                                                            className="text-[9px] font-bold text-indigo-700 hover:text-indigo-900 bg-indigo-50 hover:bg-indigo-100 px-1.5 py-0.5 rounded border border-indigo-200 transition"
+                                                                        >
+                                                                            + Barcode
+                                                                        </button>
+                                                                    )}
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => handleToggleKgMode(stop.id, itemIdx)}
+                                                                        title={it.is_kg_mode ? 'Cambiar a Libras (LB)' : 'Facturar en Kilogramos (KG) y limpiar mención de libras'}
+                                                                        className={`text-[9px] font-black px-1.5 py-0.5 rounded border transition ${
+                                                                            it.is_kg_mode
+                                                                                ? 'bg-amber-100 text-amber-800 border-amber-300'
+                                                                                : 'bg-slate-100 text-slate-600 hover:bg-slate-200 border-slate-200'
+                                                                        }`}
+                                                                    >
+                                                                        {it.is_kg_mode ? 'KG Activo' : 'Modo KG'}
+                                                                    </button>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                        {!isBilled ? (
+                                                            <input
+                                                                type="text"
+                                                                value={it.product_type || ''}
+                                                                onChange={(e) => handleUpdateItemField(stop.id, itemIdx, 'product_type', e.target.value)}
+                                                                placeholder="Nombre producto..."
+                                                                className="w-full text-xs font-bold text-slate-800 bg-white border border-slate-200 rounded-md px-2 py-1 focus:ring-1 focus:ring-indigo-500 focus:outline-hidden"
+                                                            />
+                                                        ) : (
+                                                            <span className="font-black text-slate-900 line-clamp-1">{it.product_type}</span>
+                                                        )}
                                                     </div>
 
                                                     {/* 2. Presentación */}
-                                                    <div>
+                                                    <div className="space-y-1">
                                                         <span className="block text-[9px] font-black uppercase text-slate-400">Presentación</span>
-                                                        <span className="font-bold text-slate-700">{it.presentation || 'cubeta 30LB'}</span>
+                                                        {!isBilled ? (
+                                                            <input
+                                                                type="text"
+                                                                value={it.presentation || ''}
+                                                                onChange={(e) => handleUpdateItemField(stop.id, itemIdx, 'presentation', e.target.value)}
+                                                                placeholder="cubeta..."
+                                                                className="w-full text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-md px-2 py-1 focus:ring-1 focus:ring-indigo-500 focus:outline-hidden"
+                                                            />
+                                                        ) : (
+                                                            <span className="font-bold text-slate-700">{it.presentation || 'cubeta 30LB'}</span>
+                                                        )}
                                                     </div>
 
                                                     {/* 3. Cant. Unidades */}
@@ -838,12 +1021,22 @@ export default function RouteAutoInvoicingModal({
                                                         </span>
                                                     </div>
 
-                                                    {/* 4. Cant. Libras */}
+                                                    {/* 4. Cant. Libras / Kilogramos */}
                                                     <div className="text-center sm:text-left">
-                                                        <span className="block text-[9px] font-black uppercase text-slate-400">Libras (Peso)</span>
-                                                        <span className="font-black text-slate-900">
-                                                            {qtyLbs.toLocaleString()} Lbs
+                                                        <span className="block text-[9px] font-black uppercase text-slate-400">
+                                                            {it.is_kg_mode ? 'Kilogramos' : 'Libras (Peso)'}
                                                         </span>
+                                                        <span className="font-black text-slate-900">
+                                                            {it.is_kg_mode
+                                                                ? `${(qtyLbs * 0.45359237).toFixed(2)} Kg`
+                                                                : `${qtyLbs.toLocaleString()} Lbs`
+                                                            }
+                                                        </span>
+                                                        {it.is_kg_mode && (
+                                                            <span className="block text-[10px] text-slate-400 font-medium">
+                                                                ({qtyLbs.toLocaleString()} Lbs)
+                                                            </span>
+                                                        )}
                                                     </div>
 
                                                     {/* 5 & 6. Precio y Total */}
@@ -898,9 +1091,20 @@ export default function RouteAutoInvoicingModal({
                                         );
                                     })}
 
-                                    {/* Botón para Adicionar Detalle Libre */}
+                                    {/* Botón para Adicionar Detalle Libre y Nota de Sucursal */}
                                     {!isBilled && (
-                                        <div className="pt-1.5 flex justify-end">
+                                        <div className="pt-1.5 flex flex-wrap items-center justify-end gap-2">
+                                            {stop.branch_name && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleAddCustomDetail(stop.id, `Sucursal: ${stop.branch_name}`)}
+                                                    className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-700 hover:text-emerald-900 hover:bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-300 bg-emerald-50/50 transition shadow-xs"
+                                                    title={`Adicionar nota libre con el nombre de la sucursal (${stop.branch_name})`}
+                                                >
+                                                    <MapPin className="w-3.5 h-3.5 text-emerald-600" />
+                                                    <span>+ Nota Sucursal ({stop.branch_name})</span>
+                                                </button>
+                                            )}
                                             <button
                                                 type="button"
                                                 onClick={() => handleAddCustomDetail(stop.id)}
