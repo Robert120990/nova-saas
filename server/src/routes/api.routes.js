@@ -31,6 +31,7 @@ const salesController = require('../controllers/sales.controller');
 const salesConfigController = require('../controllers/salesConfig.controller');
 const tiendaVentasController = require('../controllers/tiendaVentas.controller');
 const storeProfitabilityController = require('../controllers/storeProfitability.controller');
+const topProductsReportController = require('../controllers/topProductsReport.controller');
 const periodController = require('../controllers/period.controller');
 const dashboardController = require('../controllers/dashboard.controller');
 const shiftController = require('../controllers/shift.controller');
@@ -65,6 +66,7 @@ const rhPlanillaVacacionesController = require('../controllers/rhPlanillaVacacio
 const rhPlanillaLiquidacionesController = require('../controllers/rhPlanillaLiquidaciones.controller');
 const rhHonorariosController = require('../controllers/rhHonorarios.controller');
 const rhPlanillaAguinaldosController = require('../controllers/rhPlanillaAguinaldos.controller');
+const rhPlanillaQuincena25Controller = require('../controllers/rhPlanillaQuincena25.controller');
 const rhCuentaPlanillaController = require('../controllers/rhCuentaPlanilla.controller');
 const rhPlanillaController = require('../controllers/rhPlanilla.controller');
 const rhReportesController = require('../controllers/rhReportes.controller');
@@ -367,8 +369,12 @@ router.get('/sales/reports/by-customer/pdf', salesController.exportSalesByCustom
 router.get('/sales/reports/pos', salesController.getSalesByPOS);
 router.get('/sales/reports/pos/pdf', salesController.exportSalesByPOSPDF);
 router.get('/sales/reports/detalle/pdf', salesController.exportSalesDetailPDF);
+router.get('/sales/reports/discounts', checkPermission('view_sales_discounts_report'), salesController.getSalesDiscountsData);
+router.get('/sales/reports/discounts/pdf', checkPermission('view_sales_discounts_report'), salesController.exportSalesDiscountsReport);
 router.get('/sales/reports/store-profitability', checkPermission('view_store_profitability_report'), storeProfitabilityController.getStoreProfitabilityData);
 router.get('/sales/reports/store-profitability/pdf', checkPermission('view_store_profitability_report'), storeProfitabilityController.exportStoreProfitabilityPDF);
+router.get('/sales/reports/top-products-by-category', checkPermission('view_sales_top_products_category_report'), topProductsReportController.getTopProductsByCategoryData);
+router.get('/sales/reports/top-products-by-category/pdf', checkPermission('view_sales_top_products_category_report'), topProductsReportController.exportTopProductsByCategory);
 router.post('/sales', salesController.createSale);
 router.get('/sales/rtee/:id', salesController.exportRTEE);
 router.post('/sales/resend-email/:id', salesController.resendDTEEmail);
@@ -1028,6 +1034,19 @@ router.get('/rh/planilla-aguinaldos/recibos', rhPlanillaAguinaldosController.exp
 router.get('/rh/planilla-aguinaldos', rhPlanillaAguinaldosController.getPlanilla);
 router.post('/rh/planilla-aguinaldos', rhPlanillaAguinaldosController.savePlanilla);
 router.delete('/rh/planilla-aguinaldos/periodo', rhPlanillaAguinaldosController.deletePeriodo);
+
+// RRHH - Planilla 25 (Quincena 25)
+router.get('/rh/planilla-quincena25/calcular', rhPlanillaQuincena25Controller.calcular);
+router.get('/rh/planilla-quincena25/resumen', rhPlanillaQuincena25Controller.getResumen);
+router.get('/rh/planilla-quincena25/pdf', rhPlanillaQuincena25Controller.exportPDF);
+router.get('/rh/planilla-quincena25/recibos', rhPlanillaQuincena25Controller.exportRecibos);
+router.get('/rh/planilla-quincena25/export-banco', rhPlanillaQuincena25Controller.exportBanco);
+router.get('/rh/planilla-quincena25/export-hacienda', rhPlanillaQuincena25Controller.exportHaciendaF14);
+router.get('/rh/planilla-quincena25', rhPlanillaQuincena25Controller.getPlanilla);
+router.post('/rh/planilla-quincena25', rhPlanillaQuincena25Controller.savePlanilla);
+router.post('/rh/planilla-quincena25/cerrar-periodo', rhPlanillaQuincena25Controller.cerrarPeriodo);
+router.post('/rh/planilla-quincena25/reabrir-periodo', rhPlanillaQuincena25Controller.reabrirPeriodo);
+router.delete('/rh/planilla-quincena25/periodo', rhPlanillaQuincena25Controller.deletePeriodo);
 
 // RRHH - Planillas Quincenales
 router.get('/rh/planillas/cuentas-activas', rhPlanillaController.getCuentasActivas);

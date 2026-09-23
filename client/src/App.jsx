@@ -92,6 +92,8 @@ import SalesDetailReport from './pages/SalesDetailReport';
 import ArqueosReport from './pages/ArqueosReport';
 import StoreProfitabilityReport from './pages/StoreProfitabilityReport';
 import SalesReport from './pages/SalesReport';
+import SalesDiscountsReport from './pages/SalesDiscountsReport';
+import TopProductsByCategoryReport from './pages/TopProductsByCategoryReport';
 import PendingDocumentsDetailedReport from './pages/PendingDocumentsDetailedReport';
 import ProviderPendingDocumentsDetailedReport from './pages/ProviderPendingDocumentsDetailedReport';
 import Expenses from './pages/Expenses';
@@ -159,6 +161,7 @@ import Honorarios from './pages/rh/Honorarios';
 import Aguinaldos from './pages/rh/Aguinaldos';
 import CuentasPlanillas from './pages/rh/CuentasPlanillas';
 import Planillas from './pages/rh/Planillas';
+import Quincena25 from './pages/rh/Quincena25';
 import ReportesRh from './pages/rh/ReportesRh';
 import AccionesPersonal from './pages/rh/AccionesPersonal';
 
@@ -298,6 +301,8 @@ function App() {
                         <Route path="/ventas/reportes/detalle-facturacion" element={<SalesDetailReport />} />
                         <Route path="/ventas/reportes/arqueos" element={<ArqueosReport />} />
                         <Route path="/ventas/reportes/rentabilidad-tienda" element={<StoreProfitabilityReport />} />
+                        <Route path="/ventas/reportes/descuentos" element={<SalesDiscountsReport />} />
+                        <Route path="/ventas/reportes/top-productos-categoria" element={<TopProductsByCategoryReport />} />
                         <Route path="/ventas/combos" element={<Combos />} />
                         <Route path="/ventas/combustibles" element={<FuelPrices />} />
                         <Route path="/ventas/descuentos" element={<CustomerDiscounts />} />
@@ -382,6 +387,7 @@ function App() {
                         <Route path="/rh/aguinaldos" element={<Aguinaldos />} />
                         <Route path="/rh/cuentas-planillas" element={<CuentasPlanillas />} />
                         <Route path="/rh/planillas" element={<Planillas />} />
+                        <Route path="/rh/quincena25" element={<Quincena25 />} />
                         <Route path="/rh/acciones-personal" element={<AccionesPersonal />} />
                         <Route path="/rh/reportes" element={<Navigate to="/rh/reportes/isss" replace />} />
 <Route path="/rh/reportes/:tipo" element={<ReportesRh />} />
