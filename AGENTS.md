@@ -129,6 +129,13 @@ Queda estrictamente prohibido incrustar la estructura JSX y lógica interna de m
   - `onSave` / `onSubmit` / `onSuccess`: callback de confirmación o guardado.
 - **Barrel Exports**: Si el módulo contiene múltiples componentes o modales, se debe mantener un archivo `index.js` en `client/src/components/<modulo>/` para centralizar y limpiar las importaciones en las páginas.
 
+### Formateo Unificado de Fechas en Frontend (dateUtils) — OBLIGATORIO
+Toda modificación o nueva pantalla, componente o modal en `client/` DEBE utilizar obligatoriamente los formateadores centralizados de `client/src/utils/dateUtils.js`:
+- `formatDate(date, options)`: para fechas convencionales (`DD/MM/YYYY`).
+- `formatDateTime(date)`: para timestamps con fecha y hora (`DD/MM/YYYY HH:mm`).
+- `formatTime(date)`: para horas exclusivas (`HH:mm` o `HH:mm:ss`).
+Queda estrictamente prohibido redefinir funciones locales `const formatDate = ...` o realizar manipulaciones manuales ad-hoc de strings para fechas. Esto garantiza coherencia de zona horaria y localización salvadoreña (`es-SV`) en toda la plataforma.
+
 ### DTE Integration (per .opencode/skills/dte/DTE_API_RULES.md)
 - Main server calls DTE API endpoints with JWT auth and `x-company-id` header
 - DTE API URL: `http://localhost:5000/api`

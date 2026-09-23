@@ -405,6 +405,17 @@ React 18 + Vite. Estado servidor con TanStack Query (`queryKey: ['recurso', sear
 | `EggSaveScenarioModal.jsx` | Egg Save Scenario Modal. |
 | `index.js` | Index. |
 
+**`client/src/components/egg/packaging/`**
+
+| Archivo | Descripción |
+|---|---|
+| `EggCloseBatchModal.jsx` | Egg Close Batch Modal. |
+| `EggEditPackagingModal.jsx` | Egg Edit Packaging Modal. |
+| `EggFreezerModal.jsx` | Egg Freezer Modal. |
+| `EggLabelPreviewModal.jsx` | Egg Label Preview Modal. |
+| `EggNewPackagingModal.jsx` | Egg New Packaging Modal. |
+| `index.js` | Index. |
+
 **`client/src/components/expenses/`**
 
 | Archivo | Descripción |
