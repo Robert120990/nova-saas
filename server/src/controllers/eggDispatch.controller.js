@@ -508,6 +508,10 @@ const getDispatchRouteDetail = async (req, res) => {
         // Obtener paradas con datos de pedido, cliente, sucursal, productos y lotes
         const [stops] = await pool.query(
             `SELECT s.*,
+                    COALESCE(o.customer_id, s.customer_id) AS customer_id,
+                    COALESCE(o.customer_branch_id, s.customer_branch_id) AS customer_branch_id,
+                    COALESCE(o.batch_id, s.batch_id) AS batch_id,
+                    COALESCE(o.lot_code, s.lot_code, b.batch_code_display) AS lot_code,
                     o.order_number,
                     o.product_type,
                     o.presentation,
@@ -519,7 +523,7 @@ const getDispatchRouteDetail = async (req, res) => {
                     o.lot_code AS order_lot_code,
                     o.required_delivery_date,
                     b.batch_code_display AS linked_batch_code,
-                    COALESCE(s.lot_code, o.lot_code, b.batch_code_display) AS lot_code_display,
+                    COALESCE(o.lot_code, s.lot_code, b.batch_code_display) AS lot_code_display,
                     ROUND(o.quantity_lbs / 30.0, 0) AS calculated_buckets,
                     c.nombre AS customer_name,
                     c.nombre_comercial AS customer_commercial_name,
@@ -567,9 +571,9 @@ const getDispatchRouteDetail = async (req, res) => {
                      END) AS is_rejected
              FROM egg_dispatch_stops s
              JOIN egg_customer_orders o ON s.order_id = o.id
-             LEFT JOIN egg_production_batches b ON o.batch_id = b.id
-             LEFT JOIN customers c ON s.customer_id = c.id
-             LEFT JOIN customer_branches cb ON s.customer_branch_id = cb.id
+             LEFT JOIN egg_production_batches b ON COALESCE(o.batch_id, s.batch_id) = b.id
+             LEFT JOIN customers c ON COALESCE(o.customer_id, s.customer_id) = c.id
+             LEFT JOIN customer_branches cb ON COALESCE(o.customer_branch_id, s.customer_branch_id) = cb.id
              LEFT JOIN sales_headers sh ON (s.sale_id = sh.id OR o.sale_id = sh.id OR (s.dte_codigo_generacion IS NOT NULL AND s.dte_codigo_generacion COLLATE utf8mb4_unicode_ci = sh.codigo_generacion COLLATE utf8mb4_unicode_ci))
              LEFT JOIN dtes d ON d.venta_id = sh.id
              WHERE s.dispatch_route_id = ?
@@ -2025,7 +2029,7 @@ const autoInvoiceDispatchRoute = async (req, res) => {
                 `SELECT s.id, s.order_id, s.sale_id, s.dte_codigo_generacion, o.order_number, c.nombre as customer_name
                  FROM egg_dispatch_stops s
                  JOIN egg_customer_orders o ON s.order_id = o.id
-                 JOIN customers c ON s.customer_id = c.id
+                 JOIN customers c ON COALESCE(o.customer_id, s.customer_id) = c.id
                  WHERE s.id IN (?) AND s.dispatch_route_id = ?`,
                 [stopIds, route_id]
             );
@@ -2084,23 +2088,13 @@ const autoInvoiceDispatchRoute = async (req, res) => {
             resolvedPosId = validPos.length > 0 ? validPos[0].id : null;
         }
 
-        // 4. Validar que cada producto a facturar tenga lote asignado (excluyendo detalles libres)
+        // 4. Validar que cada parada seleccionada contenga productos válidos (el lote es opcional según requerimiento operativo)
         for (const stop of stops) {
             if (!stop.items || !Array.isArray(stop.items) || stop.items.length === 0) {
                 await connection.rollback();
                 return res.status(400).json({
                     message: `La parada del cliente ID ${stop.customer_id} no contiene productos.`
                 });
-            }
-            for (const it of stop.items) {
-                if (it.is_custom_detail) continue; // Los detalles libres no requieren lote de inventario
-                const lotCode = (it.lot_code || '').trim();
-                if (!lotCode) {
-                    await connection.rollback();
-                    return res.status(400).json({
-                        message: `El producto "${it.product_type}" en el pedido ${stop.order_number || stop.order_id} no tiene lote asignado. Todos los productos deben contar con lote antes de facturar.`
-                    });
-                }
             }
         }
 
@@ -2604,11 +2598,17 @@ const autoInvoiceDispatchRoute = async (req, res) => {
                 safeInt(company_id)
             ]);
 
-            // 5h. Descontar existencias del lote específico según su tipo de producto (Huevo Entero vs Clara vs Yema)
+            // 5h. Descontar existencias del lote específico según su tipo de producto (respetando lote vinculado aunque se edite el texto para el cliente)
             for (const it of stop.items) {
-                const lotCode = (it.lot_code || '').trim();
                 const qtyLbs = safeNum(it.quantity_lbs ?? it.quantity ?? 0, 0);
-                if (!lotCode || qtyLbs <= 0) continue;
+                if (qtyLbs <= 0) continue;
+
+                const targetPackagingId = safeInt(it.packaging_id, null);
+                const targetLotCode = (it.original_lot_code || it.lot_code || '').trim();
+                const targetBatchId = safeInt(it.batch_id, null);
+
+                // Si no hay lote vinculado ni especificado, se continúa (facturación sin lote permitida)
+                if (!targetPackagingId && !targetLotCode && !targetBatchId) continue;
 
                 let units = safeNum(it.units ?? it.quantity_units ?? 0, 0);
                 const presentation = (it.presentation || 'cubeta 30LB').trim();
@@ -2618,19 +2618,43 @@ const autoInvoiceDispatchRoute = async (req, res) => {
                     units = Number.isInteger(calcUnits) ? calcUnits : Math.round(calcUnits * 100) / 100;
                 }
 
-                // Buscar el empaque específico para este lot_code y su tipo de producto
-                const [pkgRows] = await connection.query(`
-                    SELECT id, product_type, presentation, units_packaged, weight_per_unit_lbs, total_batch_weight_lbs
-                    FROM egg_packaging_records
-                    WHERE company_id = ? AND lot_code = ?
-                    ORDER BY 
-                        CASE 
-                            WHEN LOWER(product_type) = LOWER(?) THEN 1
-                            WHEN LOWER(product_type) LIKE CONCAT('%', LOWER(?), '%') THEN 2
-                            ELSE 3
-                        END ASC, id DESC
-                    LIMIT 1
-                `, [company_id, lotCode, it.product_type, it.product_type]);
+                // Buscar el empaque específico priorizando packaging_id, original_lot_code, batch_id o lot_code
+                let pkgRows = [];
+                if (targetPackagingId) {
+                    [pkgRows] = await connection.query(`
+                        SELECT id, lot_code, product_type, presentation, units_packaged, weight_per_unit_lbs, total_batch_weight_lbs
+                        FROM egg_packaging_records
+                        WHERE id = ? AND company_id = ?
+                    `, [targetPackagingId, company_id]);
+                }
+                if (pkgRows.length === 0 && targetLotCode) {
+                    [pkgRows] = await connection.query(`
+                        SELECT id, lot_code, product_type, presentation, units_packaged, weight_per_unit_lbs, total_batch_weight_lbs
+                        FROM egg_packaging_records
+                        WHERE company_id = ? AND lot_code = ?
+                        ORDER BY 
+                            CASE 
+                                WHEN LOWER(product_type) = LOWER(?) THEN 1
+                                WHEN LOWER(product_type) LIKE CONCAT('%', LOWER(?), '%') THEN 2
+                                ELSE 3
+                            END ASC, id DESC
+                        LIMIT 1
+                    `, [company_id, targetLotCode, it.product_type, it.product_type]);
+                }
+                if (pkgRows.length === 0 && targetBatchId) {
+                    [pkgRows] = await connection.query(`
+                        SELECT id, lot_code, product_type, presentation, units_packaged, weight_per_unit_lbs, total_batch_weight_lbs
+                        FROM egg_packaging_records
+                        WHERE company_id = ? AND batch_id = ?
+                        ORDER BY 
+                            CASE 
+                                WHEN LOWER(product_type) = LOWER(?) THEN 1
+                                WHEN LOWER(product_type) LIKE CONCAT('%', LOWER(?), '%') THEN 2
+                                ELSE 3
+                            END ASC, id DESC
+                        LIMIT 1
+                    `, [company_id, targetBatchId, it.product_type, it.product_type]);
+                }
 
                 if (pkgRows.length > 0) {
                     const pkg = pkgRows[0];
@@ -2641,13 +2665,22 @@ const autoInvoiceDispatchRoute = async (req, res) => {
                         WHERE id = ? AND company_id = ?
                     `, [units, qtyLbs, pkg.id, company_id]);
 
+                    const invoicedLotText = (it.lot_code || pkg.lot_code || 'S/L').trim();
                     await connection.query(`
                         INSERT INTO egg_industrial_events (company_id, event_type, severity, description, payload, operator_name, created_at)
                         VALUES (?, 'DESPACHO_SALIDA_LOTE', 'INFO', ?, ?, ?, NOW())
                     `, [
                         company_id,
-                        `Salida de Lote ${lotCode} (${pkg.product_type || it.product_type}): -${units} uds (${qtyLbs} Lbs) en Facturación Pedido #${stop.order_number || stop.order_id}`,
-                        JSON.stringify({ packaging_id: pkg.id, lot_code: lotCode, product_type: pkg.product_type, units_deducted: units, lbs_deducted: qtyLbs, sale_id: saleId }),
+                        `Salida de Lote ${pkg.lot_code} (facturado como "${invoicedLotText}"): -${units} uds (${qtyLbs} Lbs) en Facturación Pedido #${stop.order_number || stop.order_id}`,
+                        JSON.stringify({ 
+                            packaging_id: pkg.id, 
+                            real_lot_code: pkg.lot_code, 
+                            invoiced_lot_code: invoicedLotText, 
+                            product_type: pkg.product_type, 
+                            units_deducted: units, 
+                            lbs_deducted: qtyLbs, 
+                            sale_id: saleId 
+                        }),
                         req.user?.nombre || 'Sistema Despacho'
                     ]);
                 }

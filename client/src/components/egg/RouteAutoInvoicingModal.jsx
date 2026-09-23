@@ -112,11 +112,13 @@ export default function RouteAutoInvoicingModal({
                                 original_presentation: it.presentation || 'cubeta 30LB',
                                 units: parsedUnits,
                                 quantity_units: parsedUnits,
-                                quantity_lbs: parseFloat(it.quantity_lbs || 0),
-                                quantity_kg: it.quantity_kg ? parseFloat(it.quantity_kg) : (parseFloat(it.quantity_lbs || 0) * 0.45359237),
-                                price_per_lb: parseFloat(it.price_per_lb || 0),
-                                batch_id: it.batch_id || stop.batch_id || stop.order_batch_id || null,
-                                lot_code: it.lot_code || stop.lot_code || stop.order_lot_code || stop.linked_batch_code || '',
+                                quantity_lbs: parseFloat(it.quantity_lbs || stop.quantity_lbs || 0),
+                                quantity_kg: it.quantity_kg ? parseFloat(it.quantity_kg) : (parseFloat(it.quantity_lbs || stop.quantity_lbs || 0) * 0.45359237),
+                                price_per_lb: parseFloat(it.price_per_lb || stop.price_per_lb || 0),
+                                batch_id: it.batch_id || stop.order_batch_id || stop.batch_id || null,
+                                packaging_id: it.packaging_id || null,
+                                original_lot_code: it.original_lot_code || it.lot_code || stop.order_lot_code || stop.lot_code || '',
+                                lot_code: it.lot_code || stop.order_lot_code || stop.lot_code || stop.linked_batch_code || '',
                                 barcode: rawBarcode,
                                 is_kg_mode: isKg
                             };
@@ -156,8 +158,10 @@ export default function RouteAutoInvoicingModal({
                     quantity_lbs: parseFloat(stop.quantity_lbs || 0),
                     quantity_kg: stop.quantity_kg ? parseFloat(stop.quantity_kg) : (parseFloat(stop.quantity_lbs || 0) * 0.45359237),
                     price_per_lb: parseFloat(stop.price_per_lb || 0),
-                    batch_id: stop.batch_id || stop.order_batch_id || null,
-                    lot_code: stop.lot_code || stop.order_lot_code || stop.linked_batch_code || '',
+                    batch_id: stop.order_batch_id || stop.batch_id || null,
+                    packaging_id: null,
+                    original_lot_code: stop.order_lot_code || stop.lot_code || '',
+                    lot_code: stop.order_lot_code || stop.lot_code || stop.linked_batch_code || '',
                     barcode: rawBarcode,
                     is_kg_mode: isKg
                 }];
@@ -239,6 +243,7 @@ export default function RouteAutoInvoicingModal({
             newItems[itemIndex] = {
                 ...newItems[itemIndex],
                 lot_code: lot.lot_code,
+                original_lot_code: lot.lot_code,
                 batch_id: lot.batch_id,
                 packaging_id: lot.packaging_id,
                 low_stock_warning: hasLowStock,
@@ -513,7 +518,7 @@ export default function RouteAutoInvoicingModal({
             return;
         }
 
-        // 2. Validar que los productos de catálogo tengan lote asignado y detalles libres tengan descripción
+        // 2. Validar que los detalles libres tengan descripción si se ingresaron
         for (const stop of selectedStops) {
             const cfg = stopsConfig[stop.id];
             for (let i = 0; i < cfg.items.length; i++) {
@@ -523,15 +528,6 @@ export default function RouteAutoInvoicingModal({
                         toast.warning(`Hay un detalle libre sin descripción en la parada de "${stop.customer_name}". Ingrese un texto o elimínelo.`);
                         return;
                     }
-                    continue; // Exento de lote
-                }
-                if (!it.lot_code || !String(it.lot_code).trim()) {
-                    toast.warning(
-                        `Falta asignar lote para "${it.product_type}" en el pedido de "${stop.customer_name}". Se ha abierto el selector de lotes.`,
-                        { duration: 6000 }
-                    );
-                    handleOpenLotPicker(stop.id, i, it, stop.customer_name);
-                    return;
                 }
             }
         }
@@ -558,7 +554,10 @@ export default function RouteAutoInvoicingModal({
                             ...it,
                             quantity_lbs: Number.isFinite(parseFloat(it.quantity_lbs)) ? parseFloat(it.quantity_lbs) : 0,
                             price_per_lb: Number.isFinite(parseFloat(it.price_per_lb)) ? parseFloat(it.price_per_lb) : 0,
-                            batch_id: it.batch_id ? (parseInt(it.batch_id, 10) || null) : null
+                            batch_id: it.batch_id ? (parseInt(it.batch_id, 10) || null) : null,
+                            packaging_id: it.packaging_id ? (parseInt(it.packaging_id, 10) || null) : null,
+                            original_lot_code: it.original_lot_code || it.lot_code || '',
+                            lot_code: (it.lot_code || '').trim()
                         }))
                     };
                 })
@@ -626,15 +625,15 @@ export default function RouteAutoInvoicingModal({
                 </div>
             </div>
 
-            {/* Alerta de Lotes Faltantes */}
+            {/* Alerta Informativa de Lotes */}
             {stats.missingLotsCount > 0 && (
-                <div className="bg-amber-50 border border-amber-200 p-3.5 rounded-2xl flex items-center justify-between gap-3 text-amber-800 text-xs">
+                <div className="bg-amber-50/90 border border-amber-200 p-3 rounded-2xl flex items-center justify-between gap-3 text-amber-800 text-xs shadow-2xs">
                     <div className="flex items-center gap-2.5">
                         <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0" />
                         <div>
-                            <span className="font-black">Atención: Hay {stats.missingLotsCount} producto(s) sin lote asignado en las paradas seleccionadas.</span>
+                            <span className="font-black">Aviso Informativo: Hay {stats.missingLotsCount} producto(s) sin lote de inventario en las paradas seleccionadas.</span>
                             <p className="text-[11px] text-amber-700 font-medium mt-0.5">
-                                Haz clic en <span className="font-bold underline">"+ Asignar Lote"</span> en cada producto para seleccionarlo desde el inventario antes de facturar.
+                                Puedes facturar directamente (se registrará sin lote como S/L) o hacer clic en <span className="font-bold underline">"+ Asignar Lote"</span> para vincular y descontar del inventario.
                             </p>
                         </div>
                     </div>
@@ -949,7 +948,7 @@ export default function RouteAutoInvoicingModal({
                                                         ? 'bg-white/60 border-emerald-200'
                                                         : hasLot
                                                         ? 'bg-slate-50 border-slate-200 shadow-xs'
-                                                        : 'bg-amber-50/80 border-amber-300 shadow-xs'
+                                                        : 'bg-slate-50/70 border-slate-200/90 shadow-2xs'
                                                 }`}
                                             >
                                                 <div className="flex-1 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 items-center">
@@ -1052,37 +1051,43 @@ export default function RouteAutoInvoicingModal({
 
                                                 {/* 7. Lote & Botón Pop-up Selector */}
                                                 <div className="flex items-center justify-end gap-2 shrink-0 pt-2 md:pt-0 border-t md:border-t-0 border-slate-100">
-                                                    {hasLot ? (
-                                                        <div className="flex items-center gap-1.5">
-                                                            <span className="inline-flex items-center gap-1 text-[11px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200 px-2.5 py-1 rounded-lg">
-                                                                <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                                                                <span>Lote: {it.lot_code}</span>
-                                                            </span>
-                                                            {!isBilled && (
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => handleOpenLotPicker(stop.id, itemIdx, it, stop.customer_name)}
-                                                                    className="text-[10px] font-bold text-slate-500 hover:text-indigo-600 hover:underline px-1 py-0.5"
-                                                                >
-                                                                    Cambiar
-                                                                </button>
-                                                            )}
-                                                        </div>
+                                                    {isBilled ? (
+                                                        <span className="inline-flex items-center gap-1 text-[11px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200 px-2.5 py-1 rounded-lg">
+                                                            <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                                            <span>Lote: {it.lot_code || 'S/L'}</span>
+                                                        </span>
                                                     ) : (
-                                                        <div className="flex items-center gap-1.5">
-                                                            <span className="inline-flex items-center gap-1 text-[11px] font-black bg-amber-200 text-amber-900 border border-amber-300 px-2 py-0.5 rounded-lg animate-pulse">
-                                                                <AlertTriangle className="w-3 h-3 text-amber-700" />
-                                                                <span>Sin Lote</span>
-                                                            </span>
-                                                            {!isBilled && (
+                                                        <div className="flex flex-col items-end gap-1">
+                                                            <div className="flex items-center gap-1.5">
+                                                                <div className={`flex items-center rounded-lg px-2 py-0.5 border ${hasLot ? 'bg-emerald-50 border-emerald-200' : 'bg-slate-100 border-slate-200'}`}>
+                                                                    <span className={`text-[9px] font-black uppercase mr-1 ${hasLot ? 'text-emerald-800' : 'text-slate-500'}`}>Lote:</span>
+                                                                    <input
+                                                                        type="text"
+                                                                        value={it.lot_code || ''}
+                                                                        onChange={(e) => handleUpdateItemField(stop.id, itemIdx, 'lot_code', e.target.value)}
+                                                                        placeholder="Sin Lote (S/L)"
+                                                                        title="Código/texto de lote para la factura/DTE (editable por requerimiento del cliente)"
+                                                                        className={`text-[11px] font-bold bg-transparent border-none p-0 focus:ring-0 focus:outline-hidden w-28 sm:w-32 ${hasLot ? 'text-emerald-950' : 'text-slate-700'}`}
+                                                                    />
+                                                                </div>
                                                                 <button
                                                                     type="button"
                                                                     onClick={() => handleOpenLotPicker(stop.id, itemIdx, it, stop.customer_name)}
-                                                                    className="flex items-center gap-1 text-[11px] font-black bg-amber-600 hover:bg-amber-700 text-white px-2.5 py-1 rounded-lg shadow-xs transition"
+                                                                    className={`flex items-center gap-1 text-[10px] px-2 py-1 rounded-lg border transition ${
+                                                                        hasLot 
+                                                                            ? 'text-slate-600 hover:text-indigo-600 bg-white hover:bg-slate-50 border-slate-200 font-bold' 
+                                                                            : 'text-indigo-700 hover:text-indigo-900 bg-indigo-50 hover:bg-indigo-100 border-indigo-200 font-black'
+                                                                    }`}
+                                                                    title={hasLot ? "Cambiar lote de inventario vinculado" : "Vincular con un lote del inventario para descontar existencias"}
                                                                 >
                                                                     <Package className="w-3 h-3" />
-                                                                    <span>+ Asignar Lote</span>
+                                                                    <span>{hasLot ? 'Cambiar' : '+ Asignar'}</span>
                                                                 </button>
+                                                            </div>
+                                                            {it.original_lot_code && it.lot_code && it.lot_code.trim() !== it.original_lot_code.trim() && (
+                                                                <span className="text-[9px] font-medium text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-100" title={`Se descontará del lote físico #${it.original_lot_code}`}>
+                                                                    Descuenta de #{it.original_lot_code}
+                                                                </span>
                                                             )}
                                                         </div>
                                                     )}

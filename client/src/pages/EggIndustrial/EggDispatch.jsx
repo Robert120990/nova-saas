@@ -386,12 +386,17 @@ export default function EggDispatch() {
         }
     };
 
-    const fetchRouteDetail = async (routeId) => {
+    const fetchRouteDetail = async (routeOrId) => {
+        const routeId = typeof routeOrId === 'object' ? routeOrId?.id : routeOrId;
+        if (!routeId) return null;
         try {
             const res = await axios.get(`/api/egg-industrial/dispatch/routes/${routeId}`);
-            setRouteDetail(res.data || null);
+            const data = res.data || null;
+            setRouteDetail(data);
+            return data;
         } catch (error) {
             console.error('Error al cargar detalle de ruta:', error);
+            return null;
         }
     };
 
@@ -532,6 +537,14 @@ export default function EggDispatch() {
         } finally {
             setOptimizingRoute(false);
         }
+    };
+
+    const handleOpenAutoInvoice = async () => {
+        const activeRouteId = routeDetail?.id || selectedRoute?.id || (typeof selectedRoute === 'number' ? selectedRoute : null);
+        if (activeRouteId) {
+            await fetchRouteDetail(activeRouteId);
+        }
+        setAutoInvoiceModalOpen(true);
     };
 
     const handleMoveStop = async (stopIndex, direction) => {
@@ -1263,7 +1276,7 @@ export default function EggDispatch() {
 
                                             {/* Botón Facturar Ruta Automáticamente */}
                                             <button
-                                                onClick={() => setAutoInvoiceModalOpen(true)}
+                                                onClick={handleOpenAutoInvoice}
                                                 className="flex items-center gap-1.5 text-xs font-black bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-xl shadow-sm transition active:scale-95"
                                                 title="Facturar automáticamente los pedidos de esta ruta con asignación de lotes"
                                             >
@@ -1448,7 +1461,22 @@ export default function EggDispatch() {
                                                         <button
                                                             onClick={() => {
                                                                 const foundOrd = orders.find(o => o.id === stop.order_id);
-                                                                setEditingOrder(foundOrd || stop);
+                                                                const orderData = foundOrd || {
+                                                                    ...stop,
+                                                                    id: stop.order_id,
+                                                                    order_number: stop.order_number,
+                                                                    quantity_lbs: stop.quantity_lbs,
+                                                                    price_per_lb: stop.price_per_lb,
+                                                                    product_type: stop.product_type,
+                                                                    presentation: stop.presentation,
+                                                                    items_json: stop.items_json,
+                                                                    batch_id: stop.batch_id || stop.order_batch_id,
+                                                                    lot_code: stop.lot_code || stop.order_lot_code,
+                                                                    customer_id: stop.customer_id,
+                                                                    customer_branch_id: stop.customer_branch_id,
+                                                                    notes: stop.order_notes || stop.notes
+                                                                };
+                                                                setEditingOrder(orderData);
                                                                 setOrderModalOpen(true);
                                                             }}
                                                             className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 rounded"
@@ -1983,9 +2011,13 @@ export default function EggDispatch() {
                     setEditingOrder(null);
                 }}
                 orderToEdit={editingOrder}
-                onOrderSaved={() => {
-                    fetchOrders();
-                    if (selectedRoute) fetchRouteDetail(selectedRoute);
+                onOrderSaved={async () => {
+                    await fetchOrders();
+                    await fetchRoutes();
+                    const activeRouteId = routeDetail?.id || selectedRoute?.id || (typeof selectedRoute === 'number' ? selectedRoute : null);
+                    if (activeRouteId) {
+                        await fetchRouteDetail(activeRouteId);
+                    }
                 }}
                 defaultDate={selectedDate}
             />

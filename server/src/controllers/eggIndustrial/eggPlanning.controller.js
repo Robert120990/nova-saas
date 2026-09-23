@@ -2014,30 +2014,46 @@ const saveEggCustomerOrder = async (req, res) => {
             );
 
             // Sincronizar parada de despacho y totales de ruta si el pedido ya está en ruta/despacho
-            const activeRouteId = currentOrder[0]?.dispatch_route_id;
-            if (activeRouteId) {
+            const [stopRoutes] = await pool.query(
+                'SELECT DISTINCT dispatch_route_id FROM egg_dispatch_stops WHERE order_id = ?',
+                [id]
+            );
+            const routeIdsToSync = new Set();
+            if (currentOrder[0]?.dispatch_route_id) {
+                routeIdsToSync.add(currentOrder[0].dispatch_route_id);
+            }
+            stopRoutes.forEach(sr => {
+                if (sr.dispatch_route_id) routeIdsToSync.add(sr.dispatch_route_id);
+            });
+
+            if (routeIdsToSync.size > 0) {
                 await pool.query(
                     `UPDATE egg_dispatch_stops 
-                     SET batch_id = COALESCE(?, batch_id), lot_code = COALESCE(?, lot_code)
-                     WHERE order_id = ? AND dispatch_route_id = ?`,
-                    [resolvedBatchId, resolvedLotCode, id, activeRouteId]
+                     SET customer_id = ?, customer_branch_id = ?, batch_id = ?, lot_code = ?
+                     WHERE order_id = ?`,
+                    [resolvedCustomerId, resolvedBranchId, resolvedBatchId, resolvedLotCode, id]
                 );
 
-                const [rOrders] = await pool.query(
-                    'SELECT quantity_lbs FROM egg_customer_orders WHERE dispatch_route_id = ?',
-                    [activeRouteId]
-                );
-                let rLbs = 0;
-                let rCubetas = 0;
-                rOrders.forEach(ro => {
-                    const l = safeNum(ro.quantity_lbs, 0);
-                    rLbs += l;
-                    rCubetas += Math.ceil(l / 30.0);
-                });
-                await pool.query(
-                    'UPDATE egg_dispatch_routes SET total_peso_lbs = ?, total_cubetas = ? WHERE id = ?',
-                    [safeNum(rLbs, 0), safeNum(rCubetas, 0), safeInt(activeRouteId)]
-                );
+                for (const rId of routeIdsToSync) {
+                    const [rOrders] = await pool.query(
+                        `SELECT o.quantity_lbs 
+                         FROM egg_dispatch_stops s
+                         JOIN egg_customer_orders o ON s.order_id = o.id
+                         WHERE s.dispatch_route_id = ?`,
+                        [rId]
+                    );
+                    let rLbs = 0;
+                    let rCubetas = 0;
+                    rOrders.forEach(ro => {
+                        const l = safeNum(ro.quantity_lbs, 0);
+                        rLbs += l;
+                        rCubetas += Math.ceil(l / 30.0);
+                    });
+                    await pool.query(
+                        'UPDATE egg_dispatch_routes SET total_peso_lbs = ?, total_cubetas = ? WHERE id = ?',
+                        [safeNum(rLbs, 0), safeNum(rCubetas, 0), safeInt(rId)]
+                    );
+                }
             }
 
             return res.json({
