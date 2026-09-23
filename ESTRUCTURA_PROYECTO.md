@@ -10,7 +10,7 @@
 
 ## 1. Visión general
 
-Sistema multi-empresa (multi-tenant) SaaS para El Salvador con facturación electrónica DTE.
+Sipe Web SaaS: Sistema multi-empresa (multi-tenant) para El Salvador con facturación electrónica DTE.
 
 | Componente | Carpeta | Stack | Puerto |
 |---|---|---|---|

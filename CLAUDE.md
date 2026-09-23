@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a multi-tenant SaaS system for Salvadoran businesses with DTE (Documentos Tributarios Electrónicos / Electronic Tax Document) integration. It consists of three main components:
+This is Sipe Web SaaS, a multi-tenant SaaS system for Salvadoran businesses with DTE (Documentos Tributarios Electrónicos / Electronic Tax Document) integration. It consists of three main components:
 
 - **Main Server** (`server/`) - Express.js backend on port 4000
 - **Client** (`client/`) - React frontend with Vite on port 3000
@@ -64,6 +64,12 @@ Key directories:
 - `certificados-p12pfx/`, `certificados-crt/` - Digital certificates
 
 Multi-tenancy: Uses `x-company-id` header for tenant isolation via `tenantMiddleware`.
+
+### Multi-tenancy & User Assignment Model — ARQUITECTURA OFICIAL
+- **Usuarios Globales**: Los usuarios (`users`) son identidades globales a nivel de plataforma y NO están subordinados rígidamente a una única empresa.
+- **Asignación Administrativa y Delegación RBAC**: Un `SuperAdmin` o cualquier rol al que se le haya delegado el permiso correspondiente (`manage_users` / `manage_user_access`) es quien asigna y autoriza a qué empresas y sucursales puede acceder cada usuario mediante la tabla puente `usuario_empresa` (`has_access = 1`, `role_id`) y `usuario_sucursal`. No está restringido a nombres de roles fijos.
+- **Visibilidad Global en Gestión de Accesos**: En la pantalla de Asignación de Accesos (`UserAccess.jsx`), los usuarios se consultan y exponen globalmente (`/api/all-users`, `/api/users/access-summary`) sin filtro de empresa previa, ya que esto es indispensable por diseño para que los usuarios con permiso delegado puedan vincular a cualquier usuario con cualquier empresa del sistema.
+- **Aislamiento Operativo**: Una vez autenticado y posicionado dentro del contexto de una empresa (`x-company-id`), `tenantMiddleware` valida el acceso multi-tenant asegurando que los usuarios no-SuperAdmin tengan asignación activa (`has_access = 1`) en `usuario_empresa` para esa empresa específica.
 
 ### Client (`client/`)
 React 18 with Vite, Tailwind CSS, TanStack Query, React Router v7, and Sonner for toasts.
