@@ -101,7 +101,7 @@ const Kardex = () => {
                 const { data } = await axios.get(`/api/products/lookup/${encodeURIComponent(code)}`, { params: { branch_id: branchId } });
                 setProductId(data.id);
                 setSelectedProduct(data);
-                setQuickBarcode('');
+                setQuickBarcode(data.codigo || code);
             } catch {
                 toast.error('Producto no encontrado');
             }
@@ -114,6 +114,7 @@ const Kardex = () => {
             if (!selectedProduct.branches.includes(parseInt(branchId))) {
                 setProductId('');
                 setSelectedProduct(null);
+                setQuickBarcode('');
             }
         }
     }, [branchId, selectedProduct, productId]);
@@ -291,7 +292,7 @@ const Kardex = () => {
                             </label>
                             {selectedProduct && (
                                 <button
-                                    onClick={() => { setProductId(''); setSelectedProduct(null); }}
+                                    onClick={() => { setProductId(''); setSelectedProduct(null); setQuickBarcode(''); }}
                                     className="text-[10px] text-slate-400 hover:text-rose-600 font-bold transition-colors flex items-center gap-1 cursor-pointer"
                                 >
                                     <X size={11} /> Limpiar selección
@@ -306,6 +307,7 @@ const Kardex = () => {
                                     value={quickBarcode}
                                     onChange={(e) => setQuickBarcode(e.target.value.toUpperCase())}
                                     onKeyDown={handleBarcodeSubmit}
+                                    onFocus={(e) => e.target.select()}
                                     placeholder="ESCANEAR..."
                                     className="w-full pl-8 pr-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/15 focus:border-indigo-400 font-mono text-[11px] font-bold transition-all h-[36px]"
                                 />
@@ -340,6 +342,7 @@ const Kardex = () => {
                 onSelectProduct={(p) => {
                     setProductId(p.id);
                     setSelectedProduct(p);
+                    setQuickBarcode(p.codigo || '');
                     setIsProductModalOpen(false);
                 }}
                 branchId={branchId}

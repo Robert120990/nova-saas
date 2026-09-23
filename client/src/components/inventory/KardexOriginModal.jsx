@@ -29,6 +29,12 @@ import { toast } from 'sonner';
 
 
 
+const formatUnit = (unit, unitName) => {
+    if (unitName && isNaN(unitName)) return unitName;
+    if (unit && isNaN(unit) && String(unit).trim().length > 0) return unit;
+    return 'Uds';
+};
+
 const KardexOriginModal = ({ movementId, movement, isOpen, onClose }) => {
     const [copiedUUID, setCopiedUUID] = useState(false);
     const [downloadingPDF, setDownloadingPDF] = useState(false);
@@ -222,7 +228,7 @@ const KardexOriginModal = ({ movementId, movement, isOpen, onClose }) => {
                             <div className="bg-white p-2 sm:p-2.5 rounded-xl border border-slate-200/70">
                                 <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Cantidad Movida</span>
                                 <span className={`font-black text-xs block mt-0.5 ${mov.tipo_movimiento === 'ENTRADA' ? 'text-emerald-700' : 'text-rose-700'}`}>
-                                    {mov.tipo_movimiento === 'ENTRADA' ? '+' : '-'}{parseFloat(mov.cantidad || 0)} {mov.unidad_medida || 'Uds'}
+                                    {mov.tipo_movimiento === 'ENTRADA' ? '+' : '-'}{parseFloat(mov.cantidad || 0)} {formatUnit(mov.unidad_medida, mov.unidad_medida_nombre)}
                                 </span>
                             </div>
                             <div className="bg-white p-2 sm:p-2.5 rounded-xl border border-slate-200/70">
@@ -411,7 +417,7 @@ const KardexOriginModal = ({ movementId, movement, isOpen, onClose }) => {
                                                         </div>
                                                     </td>
                                                     <td className="px-3.5 py-2 text-right font-black text-slate-900 whitespace-nowrap">
-                                                        {cant} {it.unidad_medida || ''}
+                                                        {cant}
                                                     </td>
                                                     <td className="px-3.5 py-2 text-right text-slate-700 whitespace-nowrap">
                                                         <Money value={pUnit} />
@@ -634,7 +640,7 @@ const KardexOriginModal = ({ movementId, movement, isOpen, onClose }) => {
                                                         </div>
                                                     </td>
                                                     <td className="px-3.5 py-2 text-right font-black text-slate-900 whitespace-nowrap">
-                                                        {cant} {it.unidad_medida || ''}
+                                                        {cant}
                                                     </td>
                                                     <td className="px-3.5 py-2 text-right text-slate-700 whitespace-nowrap">
                                                         <Money value={cost} />
