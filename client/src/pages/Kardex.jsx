@@ -12,7 +12,8 @@ import {
     FileText as FilePdf,
     DollarSign,
     Barcode,
-    X
+    X,
+    Eye
 } from 'lucide-react';
 import { toast } from 'sonner';
 import Table from '../components/ui/Table';
@@ -21,6 +22,8 @@ import ProductSearchModal from '../components/products/ProductSearchModal';
 import { useAuth } from '../context/AuthContext';
 import Money from '../components/ui/Money';
 import PdfViewerModal from '../components/ui/PdfViewerModal';
+import KardexOriginModal from '../components/inventory/KardexOriginModal';
+import { exportJsonToExcel } from '../utils/excelExport';
 
 const Kardex = () => {
     const { user } = useAuth();
@@ -59,6 +62,16 @@ const Kardex = () => {
     const [pdfUrl, setPdfUrl] = useState(null);
     const [isLoadingPdf, setIsLoadingPdf] = useState(false);
     const [pdfError, setPdfError] = useState(null);
+
+    // Origin Detail Modal States
+    const [selectedMovement, setSelectedMovement] = useState(null);
+    const [isOriginModalOpen, setIsOriginModalOpen] = useState(false);
+
+    const handleRowDoubleClick = (mov) => {
+        if (!mov?.id) return;
+        setSelectedMovement(mov);
+        setIsOriginModalOpen(true);
+    };
 
     useEffect(() => {
         return () => {
@@ -191,7 +204,13 @@ const Kardex = () => {
     };
 
     const exportToExcel = async () => {
-        if (!productId || !branchId || movements.length === 0) return;
+        if (!productId || !branchId) {
+            return toast.warning('Seleccione un producto y sucursal para consultar el Kárdex');
+        }
+        if (!movements || movements.length === 0) {
+            return toast.warning('No hay movimientos registrados para exportar');
+        }
+
         try {
             const params = {
                 product_id: productId,
@@ -218,8 +237,21 @@ const Kardex = () => {
             URL.revokeObjectURL(url);
             toast.success('Reporte de Kárdex exportado a Excel correctamente');
         } catch (err) {
-            console.error('Error exporting Kardex to Excel:', err);
-            toast.error('Error al exportar a Excel');
+            console.error('Error exporting Kardex to Excel via backend, falling back to local export:', err);
+            try {
+                const rows = movements.map(m => ({
+                    'Fecha y Hora': new Date(m.created_at).toLocaleString(),
+                    'Tipo': m.tipo_movimiento,
+                    'Documento': m.tipo_documento || 'Movimiento',
+                    'No. Doc': m.documento_id || '',
+                    'Cantidad': m.cantidad,
+                    'Precio Venta': m.current_price || 0,
+                    'Saldo': m.saldo_resultante || m.balance || 0
+                }));
+                exportJsonToExcel(rows, `Kardex_${selectedProduct?.codigo || 'Producto'}`);
+            } catch {
+                toast.error('Error al exportar el Kárdex a Excel');
+            }
         }
     };
 
@@ -408,8 +440,13 @@ const Kardex = () => {
                                 className="w-full pl-8 pr-3 py-1 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/15 focus:border-indigo-400 transition-all text-xs font-semibold h-[30px]"
                             />
                         </div>
-                        <div className="text-[11px] font-bold text-slate-400">
-                            {filteredMovements.length} {filteredMovements.length === 1 ? 'movimiento' : 'movimientos'}
+                        <div className="flex items-center gap-2">
+                            <span className="hidden md:inline-flex items-center gap-1 text-[10px] font-bold text-indigo-600 bg-indigo-50/80 border border-indigo-100 px-2 py-0.5 rounded-lg">
+                                💡 Doble clic en una fila para ver su origen
+                            </span>
+                            <div className="text-[11px] font-bold text-slate-400">
+                                {filteredMovements.length} {filteredMovements.length === 1 ? 'movimiento' : 'movimientos'}
+                            </div>
                         </div>
                     </div>
                 )}
@@ -427,7 +464,12 @@ const Kardex = () => {
                             }, 0);
 
                         return (
-                            <tr key={mov.id} className="hover:bg-indigo-50/20 transition-colors border-b border-slate-100 last:border-0 text-xs">
+                            <tr 
+                                key={mov.id} 
+                                onDoubleClick={() => handleRowDoubleClick(mov)}
+                                className="hover:bg-indigo-50/40 cursor-pointer select-none transition-colors border-b border-slate-100 last:border-0 text-xs group"
+                                title="Doble clic para ver el comprobante o detalle de origen"
+                            >
                                 <td className="px-3.5 py-1.5 whitespace-nowrap">
                                     <div className="flex items-center gap-1.5">
                                         <Calendar size={12} className="text-slate-400 shrink-0" />
@@ -448,8 +490,27 @@ const Kardex = () => {
                                     </span>
                                 </td>
                                 <td className="px-3.5 py-1.5 leading-tight">
-                                    <div className="font-bold text-slate-800 text-xs truncate max-w-[200px]">{mov.tipo_documento || 'Movimiento'}</div>
-                                    <div className="text-[10px] text-slate-400 font-mono">Doc #{mov.documento_id}</div>
+                                    <div className="flex items-center justify-between gap-1.5">
+                                        <div className="min-w-0">
+                                            <div className="font-bold text-slate-800 text-xs truncate max-w-[170px] sm:max-w-[200px]">
+                                                {mov.tipo_documento || 'Movimiento'}
+                                            </div>
+                                            <div className="text-[10px] text-slate-400 font-mono">
+                                                Doc #{mov.documento_id || 'S/N'}
+                                            </div>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleRowDoubleClick(mov);
+                                            }}
+                                            className="opacity-0 group-hover:opacity-100 focus:opacity-100 p-1 hover:bg-indigo-100 text-indigo-600 rounded-lg transition-opacity shrink-0 cursor-pointer"
+                                            title="Ver comprobante de origen"
+                                        >
+                                            <Eye size={13} />
+                                        </button>
+                                    </div>
                                 </td>
                                 <td className="px-3.5 py-1.5 text-right font-black text-xs">
                                     <span className={mov.tipo_movimiento === 'ENTRADA' ? 'text-emerald-600' : 'text-rose-600'}>
@@ -514,6 +575,17 @@ const Kardex = () => {
                 onRetry={handleOpenPdfModal}
                 fileName={`Kardex_${selectedProduct?.codigo || selectedProduct?.nombre || 'Producto'}.pdf`}
                 footerNote="Formato contable estándar oficial • Presentación Carta sin firmas"
+            />
+
+            {/* Modal de Detalle de Origen del Registro (Doble Clic) */}
+            <KardexOriginModal
+                movementId={selectedMovement?.id}
+                movement={selectedMovement}
+                isOpen={isOriginModalOpen}
+                onClose={() => {
+                    setIsOriginModalOpen(false);
+                    setSelectedMovement(null);
+                }}
             />
         </div>
     );

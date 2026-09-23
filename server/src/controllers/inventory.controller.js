@@ -1502,10 +1502,311 @@ const getTransfersReportPDF = async (req, res) => {
     }
 };
 
+
+/**
+ * Obtener detalle completo del origen de un registro de Kárdex
+ */
+const getKardexOriginDetail = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        // 1. Obtener movimiento de inventario con metadatos del producto y sucursal
+        const [movRows] = await pool.query(`
+            SELECT m.*, 
+                   p.nombre as producto_nombre, 
+                   p.codigo as producto_codigo, 
+                   p.unidad_medida,
+                   p.costo as producto_costo_actual,
+                   b.nombre as branch_nombre
+            FROM inventory_movements m
+            LEFT JOIN products p ON m.product_id = p.id
+            LEFT JOIN branches b ON m.branch_id = b.id
+            WHERE m.id = ?
+        `, [id]);
+
+        if (movRows.length === 0) {
+            return res.status(404).json({ message: 'Movimiento de inventario no encontrado' });
+        }
+
+        const mov = movRows[0];
+        const docType = (mov.tipo_documento || '').trim();
+        const docTypeUpper = docType.toUpperCase();
+        let docId = mov.documento_id;
+
+        // 2. Determinar categoría y recopilar datos del origen
+
+        // A) Venta / Facturación / Anulación de Venta
+        const isSale = docTypeUpper.startsWith('DTE-') || 
+                       docTypeUpper === 'VENTA' || 
+                       docTypeUpper === 'TICKET' || 
+                       docTypeUpper.startsWith('ANULACIÓN VENTA') || 
+                       docTypeUpper.startsWith('ANULACION VENTA') ||
+                       docTypeUpper.startsWith('VENTA');
+
+        if (isSale) {
+            if (!docId) {
+                const match = docType.match(/\d+/);
+                if (match) docId = parseInt(match[0], 10);
+            }
+
+            if (docId) {
+                const [saleRows] = await pool.query(`
+                    SELECT s.*, 
+                           COALESCE(c.nombre, s.cliente_nombre, 'Consumidor Final') as cliente_nombre,
+                           c.numero_documento as cliente_documento,
+                           c.nrc as cliente_nrc,
+                           c.direccion as cliente_direccion,
+                           c.telefono as cliente_telefono,
+                           b.nombre as branch_nombre,
+                           u.nombre as vendedor_nombre,
+                           cat.description as tipo_documento_nombre
+                    FROM sales_headers s
+                    LEFT JOIN customers c ON s.customer_id = c.id
+                    LEFT JOIN branches b ON s.branch_id = b.id
+                    LEFT JOIN users u ON s.seller_id = u.id
+                    LEFT JOIN cat_002_tipo_dte cat ON s.tipo_documento COLLATE utf8mb4_unicode_ci = cat.code COLLATE utf8mb4_unicode_ci
+                    WHERE s.id = ?
+                `, [docId]);
+
+                if (saleRows.length > 0) {
+                    const sale = saleRows[0];
+
+                    const [items] = await pool.query(`
+                        SELECT si.*, 
+                               p.nombre as producto_nombre, 
+                               p.codigo as producto_codigo,
+                               p.unidad_medida
+                        FROM sales_items si
+                        LEFT JOIN products p ON si.product_id = p.id
+                        WHERE si.sale_id = ?
+                    `, [docId]);
+
+                    const [payments] = await pool.query(`
+                        SELECT sp.*, cat.description as metodo_pago_nombre
+                        FROM sales_payments sp
+                        LEFT JOIN cat_017_forma_pago cat ON sp.metodo_pago COLLATE utf8mb4_unicode_ci = cat.code COLLATE utf8mb4_unicode_ci
+                        WHERE sp.sale_id = ?
+                    `, [docId]);
+
+                    return res.json({
+                        origin_type: 'sale',
+                        movement: mov,
+                        header: sale,
+                        items,
+                        payments
+                    });
+                }
+            }
+        }
+
+        // B) Compra / Edición de Compra
+        const isPurchase = docTypeUpper === 'COMPRA' || 
+                           docTypeUpper === 'EDICION_COMPRA' || 
+                           docTypeUpper.startsWith('COMPRA');
+
+        if (isPurchase && docId) {
+            const [purchaseRows] = await pool.query(`
+                SELECT ph.*, 
+                       p.nombre as provider_nombre, 
+                       p.nrc as provider_nrc,
+                       p.nit as provider_nit,
+                       p.telefono as provider_telefono,
+                       br.nombre as branch_nombre,
+                       cat.description as tipo_documento_nombre,
+                       cat_cond.description as condicion_operacion_nombre
+                FROM purchase_headers ph
+                LEFT JOIN providers p ON ph.provider_id = p.id
+                LEFT JOIN branches br ON ph.branch_id = br.id
+                LEFT JOIN cat_002_tipo_dte cat ON ph.tipo_documento_id COLLATE utf8mb4_unicode_ci = cat.code COLLATE utf8mb4_unicode_ci
+                LEFT JOIN cat_016_condicion_operacion cat_cond ON ph.condicion_operacion_id COLLATE utf8mb4_unicode_ci = cat_cond.code COLLATE utf8mb4_unicode_ci
+                WHERE ph.id = ?
+            `, [docId]);
+
+            if (purchaseRows.length > 0) {
+                const purchase = purchaseRows[0];
+
+                const [items] = await pool.query(`
+                    SELECT pi.*, 
+                           COALESCE(NULLIF(pi.descripcion, ''), p.nombre, 'Sin descripción') as nombre, 
+                           COALESCE(p.codigo, '—') as codigo,
+                           p.unidad_medida
+                    FROM purchase_items pi
+                    LEFT JOIN products p ON pi.product_id = p.id
+                    WHERE pi.purchase_id = ?
+                `, [docId]);
+
+                return res.json({
+                    origin_type: 'purchase',
+                    movement: mov,
+                    header: purchase,
+                    items
+                });
+            }
+        }
+
+        // C) Ajuste de Inventario / Inventario Inicial / Anulación de Ajuste
+        const isAdjustment = docTypeUpper === 'AJUSTE' || 
+                             docTypeUpper === 'INVENTARIO_INICIAL' || 
+                             docTypeUpper === 'ANULACION_AJUSTE' ||
+                             docTypeUpper.includes('AJUSTE');
+
+        if (isAdjustment && docId) {
+            const [adjRows] = await pool.query(`
+                SELECT h.*, 
+                       b.nombre as branch_name, 
+                       m.nombre as motivo_name, 
+                       u.nombre as usuario_nombre
+                FROM inventory_adjustment_headers h
+                JOIN branches b ON h.branch_id = b.id
+                LEFT JOIN inventory_adjustment_motivos m ON h.motivo_id = m.id
+                LEFT JOIN users u ON h.usuario_id = u.id
+                WHERE h.id = ?
+            `, [docId]);
+
+            if (adjRows.length > 0) {
+                const adj = adjRows[0];
+
+                const [items] = await pool.query(`
+                    SELECT i.*, 
+                           p.nombre as producto_nombre, 
+                           p.codigo as producto_codigo,
+                           p.unidad_medida
+                    FROM inventory_adjustment_items i
+                    JOIN products p ON i.product_id = p.id
+                    WHERE i.adjustment_id = ?
+                `, [docId]);
+
+                return res.json({
+                    origin_type: 'adjustment',
+                    movement: mov,
+                    header: adj,
+                    items
+                });
+            }
+        }
+
+        // D) Traslado / Transferencia
+        const isTransfer = docTypeUpper.includes('TRASLADO') || 
+                           docTypeUpper.includes('TRANSFER');
+
+        if (isTransfer && docId) {
+            const [transferRows] = await pool.query(`
+                SELECT t.*, 
+                       b1.nombre as origen_nombre, 
+                       b2.nombre as destino_nombre, 
+                       u.nombre as usuario_nombre
+                FROM inventory_transfers t
+                LEFT JOIN branches b1 ON t.origen_branch_id = b1.id
+                LEFT JOIN branches b2 ON t.destino_branch_id = b2.id
+                LEFT JOIN users u ON t.usuario_id = u.id
+                WHERE t.id = ?
+            `, [docId]);
+
+            if (transferRows.length > 0) {
+                const transfer = transferRows[0];
+
+                const [items] = await pool.query(`
+                    SELECT i.*, 
+                           p.nombre as producto_nombre, 
+                           p.codigo as producto_codigo,
+                           p.unidad_medida
+                    FROM inventory_transfer_items i
+                    JOIN products p ON i.product_id = p.id
+                    WHERE i.transfer_id = ?
+                `, [docId]);
+
+                return res.json({
+                    origin_type: 'transfer',
+                    movement: mov,
+                    header: transfer,
+                    items
+                });
+            }
+        }
+
+        // E) Inventario Físico
+        const isPhysical = docTypeUpper.includes('INVENTARIO_FISICO') || 
+                           docTypeUpper.includes('CONTEO');
+
+        if (isPhysical && docId) {
+            const [physRows] = await pool.query(`
+                SELECT pi.*, b.nombre as branch_nombre
+                FROM physical_inventories pi
+                LEFT JOIN branches b ON pi.branch_id = b.id
+                WHERE pi.id = ?
+            `, [docId]);
+
+            if (physRows.length > 0) {
+                const phys = physRows[0];
+
+                const [items] = await pool.query(`
+                    SELECT pii.*, 
+                           p.nombre as producto_nombre, 
+                           p.codigo as producto_codigo,
+                           p.unidad_medida
+                    FROM physical_inventory_items pii
+                    JOIN products p ON pii.product_id = p.id
+                    WHERE pii.physical_inventory_id = ?
+                `, [docId]);
+
+                return res.json({
+                    origin_type: 'physical_inventory',
+                    movement: mov,
+                    header: phys,
+                    items
+                });
+            }
+        }
+
+        // F) Cierre de Turno Gasolinera (Lubricantes)
+        const isGasCloseout = docTypeUpper === 'CIERRE_TURNO_LUBRICANTE';
+        if (isGasCloseout && docId) {
+            const [closeoutRows] = await pool.query(`
+                SELECT c.*, b.nombre as branch_nombre
+                FROM gas_station_closeouts c
+                LEFT JOIN branches b ON c.branch_id = b.id
+                WHERE c.id = ?
+            `, [docId]);
+
+            if (closeoutRows.length > 0) {
+                const closeout = closeoutRows[0];
+
+                const [readings] = await pool.query(`
+                    SELECT lr.*, p.nombre as producto_nombre, p.codigo as producto_codigo
+                    FROM gas_station_closeout_lubricant_readings lr
+                    LEFT JOIN products p ON lr.producto_id = p.id
+                    WHERE lr.closeout_id = ? AND lr.ventas > 0
+                `, [docId]);
+
+                return res.json({
+                    origin_type: 'gas_closeout',
+                    movement: mov,
+                    header: closeout,
+                    items: readings
+                });
+            }
+        }
+
+        // G) Fallback: Registro directo o sin documento secundario
+        return res.json({
+            origin_type: 'generic',
+            movement: mov,
+            message: docId 
+                ? `El documento de origen [${docType} #${docId}] no fue encontrado en los registros detallados del sistema o fue eliminado.`
+                : `Movimiento directo sin documento secundario asociado.`
+        });
+
+    } catch (error) {
+        console.error('[getKardexOriginDetail] Error:', error);
+        res.status(500).json({ message: 'Error al obtener el detalle de origen del Kárdex: ' + error.message });
+    }
+};
+
 module.exports = { 
     getInventory, 
     getKardex, 
     getKardexReport,
+    getKardexOriginDetail,
     getInventoryValuationReport,
     getInventoryTurnoverReport,
     createTransfer, 
@@ -1522,4 +1823,5 @@ module.exports = {
     getInventoryStockReport,
     getInventoryMovementsReport
 };
+
 
