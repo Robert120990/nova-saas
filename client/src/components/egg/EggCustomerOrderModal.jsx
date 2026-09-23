@@ -905,8 +905,10 @@ export default function EggCustomerOrderModal({
                                         <MoneyInput
                                             value={it.price_per_lb}
                                             onChange={(e) => handleItemChange(it.id, 'price_per_lb', e.target.value)}
-                                            placeholder="0.00"
+                                            placeholder="0.0000"
                                             className="w-full text-xs font-bold border border-slate-200 rounded-lg px-2 py-1.5 text-slate-800 outline-none focus:border-indigo-500"
+                                            step="any"
+                                            min="0"
                                         />
                                         <div className="mt-0.5">
                                             {it.price_source_note ? (
