@@ -166,9 +166,9 @@ router.post('/users/sessions/:id/terminate', checkPermission('manage_connected_u
 // Changelog (global, no tenant scope)
 router.get('/changelog', changelogController.getChangelog);
 
-// System Metrics (Monitor del Servidor - global, no tenant scope)
-router.get('/system/metrics', verifyToken, systemMetricsController.getSystemMetrics);
-router.post('/system/trigger-deploy', verifyToken, systemMetricsController.triggerDeploy);
+// System Metrics (Monitor del Servidor - global, no tenant scope, protegido por permiso manage_server_terminal)
+router.get('/system/metrics', verifyToken, checkPermission('manage_server_terminal'), systemMetricsController.getSystemMetrics);
+router.post('/system/trigger-deploy', verifyToken, checkPermission('manage_server_terminal'), systemMetricsController.triggerDeploy);
 
 // Terminal & SSH (global server maintenance, protected by verifyToken & manage_server_terminal)
 router.use('/terminal', require('./terminal.routes'));
