@@ -6,11 +6,33 @@ const axios = require('axios');
 const qs = require('querystring');
 const { getEndpoint } = require('../config/haciendaConfig');
 
-async function authenticate(apiUser, apiPassword, ambiente) {
+// Caché en memoria de tokens de Hacienda: key = `${apiUser}_${ambiente}` -> { token, expiresAt }
+const tokenCache = new Map();
+
+/**
+ * Autentica contra la API de Hacienda o devuelve el token en caché si sigue vigente.
+ * El token oficial de Hacienda tiene vigencia de 24 horas; se reutiliza durante 23.5 horas.
+ */
+async function authenticate(apiUser, apiPassword, ambiente, forceRefresh = false) {
+    const cacheKey = `${apiUser}_${ambiente}`;
+    const now = Date.now();
+
+    if (!forceRefresh && tokenCache.has(cacheKey)) {
+        const cached = tokenCache.get(cacheKey);
+        // Si el token aún tiene al menos 30 minutos de vida útil, se reutiliza
+        if (cached.expiresAt > now + 30 * 60 * 1000) {
+            return {
+                success: true,
+                token: cached.token,
+                cached: true
+            };
+        }
+    }
+
     const authUrl = getEndpoint('auth', ambiente);
 
     try {
-        console.log(`[HaciendaAuth] Attempting login for user: ${apiUser}`);
+        console.log(`[HaciendaAuth] Solicitando nuevo token a MH para usuario: ${apiUser} (${ambiente})`);
         const response = await axios.post(authUrl, qs.stringify({
             user: apiUser,
             pwd: apiPassword
@@ -22,9 +44,14 @@ async function authenticate(apiUser, apiPassword, ambiente) {
         });
 
         if (response.data && response.data.status === 'OK') {
+            const token = response.data.body.token;
+            // Token válido por 24 horas en MH. Guardar en memoria por 23.5 horas
+            const expiresAt = now + (23.5 * 60 * 60 * 1000);
+            tokenCache.set(cacheKey, { token, expiresAt });
+
             return {
                 success: true,
-                token: response.data.body.token
+                token: token
             };
         } else {
             const msg = response.data?.message || response.data?.body?.mensaje || 'Respuesta de autenticación no reconocida';
@@ -49,6 +76,11 @@ async function authenticate(apiUser, apiPassword, ambiente) {
             message: msg
         };
     }
+}
+
+function invalidateToken(apiUser, ambiente) {
+    const cacheKey = `${apiUser}_${ambiente}`;
+    tokenCache.delete(cacheKey);
 }
 
 async function transmitDTE(token, signedDte, dteInfo) {
@@ -130,4 +162,4 @@ async function consultDTE(token, dteInfo, ambiente) {
     }
 }
 
-module.exports = { authenticate, transmitDTE, consultDTE };
+module.exports = { authenticate, transmitDTE, consultDTE, invalidateToken };
