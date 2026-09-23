@@ -10,7 +10,9 @@ const pool = mysql.createPool({
     waitForConnections: true,
     connectionLimit: process.env.DB_CONNECTION_LIMIT ? Number(process.env.DB_CONNECTION_LIMIT) : 25,
     queueLimit: 0,
-    decimalNumbers: true
+    decimalNumbers: true,
+    enableKeepAlive: true,
+    keepAliveInitialDelay: 30000
 });
 
 module.exports = pool;
