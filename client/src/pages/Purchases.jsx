@@ -60,6 +60,19 @@ const MONTHS = [
 const currentYearVal = new Date().getFullYear();
 const YEARS = Array.from({ length: 9 }, (_, i) => currentYearVal - 4 + i);
 
+const getShortDocType = (name, code) => {
+    if (code === '03' || /cr[eé]dito\s+fiscal/i.test(name)) return 'Crédito Fiscal';
+    if (code === '01' || /^factura/i.test(name)) return 'Factura';
+    if (code === '05' || /nota\s+de\s+cr[eé]dito/i.test(name)) return 'Nota Crédito';
+    if (code === '06' || /nota\s+de\s+d[eé]bito/i.test(name)) return 'Nota Débito';
+    if (code === '14' || /sujeto\s+excluido/i.test(name)) return 'Sujeto Excluido';
+    if (code === '11' || /exportaci[oó]n/i.test(name)) return 'Exportación';
+    if (code === '07' || /retenci[oó]n/i.test(name)) return 'Retención';
+    if (code === '08' || /liquidaci[oó]n/i.test(name)) return 'Liquidación';
+    if (!name) return 'Documento';
+    return name.replace(/\s+electr[oó]nic[oa]/gi, '').replace(/^comprobante\s+de\s+/gi, '').trim();
+};
+
 const Purchases = () => {
     const { user } = useAuth();
     const queryClient = useQueryClient();
@@ -1893,40 +1906,60 @@ const Purchases = () => {
                             compact={true}
                             renderRow={(c) => (
                                 <tr key={c.id} className="hover:bg-slate-50 border-b border-slate-50 last:border-0 grow">
-                                    <td className="px-5 py-1 font-black text-slate-800 text-[10px] uppercase tracking-tighter">
-                                        <div>{c.numero_documento}</div>
-                                        {c.numero_control && (
-                                            <div className="text-[8px] font-mono text-indigo-600 font-bold tracking-tight">CTRL: {c.numero_control}</div>
-                                        )}
-                                        {c.num_quedan && (
-                                            <div className="text-[8px] font-mono text-amber-600 font-bold tracking-tight">QD: {c.num_quedan}</div>
-                                        )}
-                                        {c.sello_recepcion && (
-                                            <div className="text-[7px] font-mono text-slate-400 truncate max-w-[140px]" title={c.sello_recepcion}>
-                                                SELLO: {c.sello_recepcion.substring(0, 16)}...
-                                            </div>
-                                        )}
-                                        {c.documento_afectado && <div className="text-[7px] text-rose-500 flex items-center gap-1 mt-0.5">REF: {c.documento_afectado}</div>}
-                                    </td>
-                                    <td className="px-5 py-1">
-                                        <div className="flex flex-col">
-                                            <span className="text-[8px] font-black text-indigo-500 bg-indigo-50 px-2 py-0.5 rounded uppercase w-fit">
-                                                {c.tipo_documento_nombre}
-                                            </span>
-                                            {c.condicion_operacion_nombre && (
-                                                <span className="text-[7px] font-bold text-slate-400 uppercase mt-0.5">
-                                                    {c.condicion_operacion_nombre}{String(c.condicion_operacion_id) === '2' && c.dias_credito ? ` (${c.dias_credito}d)` : ''}
+                                    <td className="px-5 py-1.5 font-black text-slate-800 text-[10px] uppercase tracking-tighter whitespace-nowrap">
+                                        <div 
+                                            className="whitespace-nowrap font-mono text-[9.5px] leading-tight flex items-center gap-1.5"
+                                            title={[
+                                                `Doc: ${c.numero_documento}`,
+                                                c.numero_control ? `Control: ${c.numero_control}` : null,
+                                                c.sello_recepcion ? `Sello: ${c.sello_recepcion}` : null,
+                                                c.num_quedan ? `Quedan: ${c.num_quedan}` : null
+                                            ].filter(Boolean).join('\n')}
+                                        >
+                                            <span>{c.numero_documento}</span>
+                                            {c.documento_afectado && (
+                                                <span className="text-[7px] font-sans font-bold text-rose-500 bg-rose-50 px-1 py-0.5 rounded" title={`Doc afectado: ${c.documento_afectado}`}>
+                                                    REF: {c.documento_afectado}
                                                 </span>
                                             )}
                                         </div>
+                                        {c.numero_control && (
+                                            <div className="text-[8px] font-mono text-indigo-600 font-bold tracking-tight whitespace-nowrap mt-0.5">
+                                                CTRL: {c.numero_control}
+                                            </div>
+                                        )}
                                     </td>
-                                    <td className="px-5 py-1 text-[9px] font-bold text-slate-400">{formatDate(c.fecha)}</td>
-                                    <td className="px-5 py-1 text-[10px] font-bold text-slate-600 uppercase">{c.provider_nombre}</td>
-                                    <td className="px-5 py-1 font-black text-slate-900 text-[10px]"><Money value={c.monto_total} /></td>
-                                    <td className="px-5 py-1">
-                                        <span className={`px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest ${c.status === 'COMPLETADO' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>{c.status}</span>
+                                    <td className="px-5 py-1.5 whitespace-nowrap">
+                                        <div className="flex flex-col items-start">
+                                            <span 
+                                                className="text-[8px] font-black text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded uppercase whitespace-nowrap"
+                                                title={c.tipo_documento_nombre}
+                                            >
+                                                {getShortDocType(c.tipo_documento_nombre, c.tipo_documento_id)}
+                                            </span>
+                                            <div className="flex items-center gap-1.5 mt-0.5 whitespace-nowrap">
+                                                {c.condicion_operacion_nombre && (
+                                                    <span className="text-[7px] font-bold text-slate-400 uppercase">
+                                                        {c.condicion_operacion_nombre}{String(c.condicion_operacion_id) === '2' && c.dias_credito ? ` (${c.dias_credito}d)` : ''}
+                                                    </span>
+                                                )}
+                                                {c.num_quedan && (
+                                                    <span className="text-[7px] font-bold font-mono text-amber-600 bg-amber-50 px-1 rounded" title={`No. Quedan: ${c.num_quedan}`}>
+                                                        QD: {c.num_quedan}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
                                     </td>
-                                    <td className="px-5 py-1 text-right">
+                                    <td className="px-5 py-1.5 text-[9px] font-bold text-slate-400 whitespace-nowrap">{formatDate(c.fecha)}</td>
+                                    <td className="px-5 py-1.5 text-[10px] font-bold text-slate-700 uppercase whitespace-nowrap" title={c.provider_nombre}>
+                                        {c.provider_nombre}
+                                    </td>
+                                    <td className="px-5 py-1.5 font-black text-slate-900 text-[10px] whitespace-nowrap"><Money value={c.monto_total} /></td>
+                                    <td className="px-5 py-1.5 whitespace-nowrap">
+                                        <span className={`px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest whitespace-nowrap ${c.status === 'COMPLETADO' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>{c.status}</span>
+                                    </td>
+                                    <td className="px-5 py-1.5 text-right whitespace-nowrap">
                                         <div className="flex justify-end gap-1">
                                             <button 
                                                 onClick={() => setViewingPurchase(c)} 
