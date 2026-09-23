@@ -140,9 +140,10 @@ async function processContingencyQueue() {
                 );
             }
         }
-    } catch (err) {
-        console.error('[ContingencyWorker] Error general en cola de contingencia:', err.message);
     }
+} catch (err) {
+    console.error('[ContingencyWorker] Error general en cola de contingencia:', err.message);
+}
 }
 
 let contingencyWorker = null;
