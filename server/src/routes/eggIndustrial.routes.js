@@ -237,7 +237,19 @@ router.delete('/code-mappings/:id', eggController.deleteCodeMapping);
 
 // 25. Inventario Traducido de Huevo Industrial
 router.get('/inventory-translated', eggController.getTranslatedInventory);
-router.get('/inventory-translated/export', eggController.exportTranslatedInventory);
+// 26. Metas, Comisiones y Simulador con Tope ($1,000) e Integración a Planilla
+const eggCommissionsController = require('../controllers/eggCommissions.controller');
+router.get('/commissions/simulate', eggCommissionsController.simulateCommission);
+router.post('/commissions/simulate', eggCommissionsController.simulateCommission);
+router.get('/commissions/sellers-employees', eggCommissionsController.getSellersAndEmployees);
+router.post('/commissions/link-seller-employee', eggCommissionsController.linkSellerToEmployee);
+router.get('/commissions/goals', eggCommissionsController.getSellerGoals);
+router.post('/commissions/goals', eggCommissionsController.saveSellerGoal);
+router.post('/commissions/calculate', eggCommissionsController.calculatePeriodCommissions);
+router.post('/commissions/create-seller', eggCommissionsController.createEggSeller);
+router.post('/commissions/remove-seller', eggCommissionsController.removeEggSeller);
+router.post('/commissions/transfer-to-payroll', eggCommissionsController.transferCommissionToPayroll);
+router.get('/commissions/summary', eggCommissionsController.getCommissionsSummary);
 
 module.exports = router;
 

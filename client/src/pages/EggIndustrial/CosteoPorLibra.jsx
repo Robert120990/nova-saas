@@ -32,14 +32,19 @@ import {
     CheckCircle2,
     FileText,
     ChevronDown,
-    ChevronUp
+    ChevronUp,
+    Award,
+    Target
 } from 'lucide-react';
 import Money from '../../components/ui/Money';
+import EggCommissionsSimulator from '../../components/egg/EggCommissionsSimulator';
+import EggSellerGoalsManager from '../../components/egg/EggSellerGoalsManager';
 
 export default function EggCosteoPorLibra() {
     const navigate = useNavigate();
     // Tab actual
-    const [activeTab, setActiveTab] = useState('calculator'); // 'calculator', 'simulator', 'clients', 'catalog', 'history'
+    const [activeTab, setActiveTab] = useState('calculator'); // 'calculator', 'simulator', 'commissions', 'clients', 'catalog', 'history'
+    const [commissionsSubTab, setCommissionsSubTab] = useState('manager'); // 'manager' | 'simulator'
 
     // Rango de fechas global para monitoreo operacional y acuerdos
     const [dateRange, setDateRange] = useState(() => {
@@ -881,6 +886,7 @@ export default function EggCosteoPorLibra() {
                 {[
                     { id: 'calculator', label: 'Calculadora de Costeo', icon: Calculator },
                     { id: 'simulator', label: 'Simulador de Margen Libre', icon: TrendingUp },
+                    { id: 'commissions', label: 'Metas & Comisiones ($1K)', icon: Award },
                     { id: 'clients', label: 'Acuerdos con Clientes', icon: Users, badge: agreements.length },
                     { id: 'catalog', label: 'Insumos, Empaques y CIP', icon: Settings2 },
                     { id: 'history', label: 'Escenarios Guardados', icon: History, badge: scenarios.length }
@@ -2892,6 +2898,62 @@ export default function EggCosteoPorLibra() {
                                 </div>
                             )}
                         </div>
+                    )}
+                </div>
+            )}
+
+            {/* TAB: METAS, COMISIONES Y SIMULADOR ($1,000 CAP) */}
+            {activeTab === 'commissions' && (
+                <div className="space-y-6">
+                    {/* Sub-navegación interna */}
+                    <div className="bg-white p-3 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div className="flex items-center gap-2.5">
+                            <div className="p-2 bg-indigo-50 text-indigo-700 rounded-xl border border-indigo-100">
+                                <Award className="w-5 h-5" />
+                            </div>
+                            <div>
+                                <h3 className="text-sm font-bold text-slate-900">
+                                    Metas Comerciales, Comisiones y Planilla
+                                </h3>
+                                <p className="text-xs text-slate-500">
+                                    Control de vendedores por empleado, metas de volumen y tope reglamentario de $1,000
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200">
+                            <button
+                                type="button"
+                                onClick={() => setCommissionsSubTab('manager')}
+                                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all ${
+                                    commissionsSubTab === 'manager'
+                                        ? 'bg-white text-indigo-700 shadow-sm border border-slate-200'
+                                        : 'text-slate-600 hover:text-slate-900'
+                                }`}
+                            >
+                                <Target className="w-3.5 h-3.5" />
+                                <span>Gestión & Planilla</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setCommissionsSubTab('simulator')}
+                                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all ${
+                                    commissionsSubTab === 'simulator'
+                                        ? 'bg-white text-indigo-700 shadow-sm border border-slate-200'
+                                        : 'text-slate-600 hover:text-slate-900'
+                                }`}
+                            >
+                                <TrendingUp className="w-3.5 h-3.5" />
+                                <span>Simulador & Sensibilidad ($1K)</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Sub-vista activa */}
+                    {commissionsSubTab === 'manager' ? (
+                        <EggSellerGoalsManager />
+                    ) : (
+                        <EggCommissionsSimulator />
                     )}
                 </div>
             )}

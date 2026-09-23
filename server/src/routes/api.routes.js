@@ -1055,6 +1055,7 @@ router.get('/rh/planillas/abiertas', rhPlanillaController.getPlanillasAbiertas);
 router.post('/rh/planillas/calcular', rhPlanillaController.calcular);
 router.post('/rh/planillas/generar', rhPlanillaController.generarPlanilla);
 router.post('/rh/planillas/sincronizar', rhPlanillaController.sincronizarPlanilla);
+router.post('/rh/planillas/sincronizar-comisiones-huevo', rhPlanillaController.syncIndustrialCommissions);
 router.get('/rh/planillas/grupos', rhPlanillaController.getGruposPlanilla);
 router.get('/rh/planillas/recibos-masivos', rhPlanillaController.exportRecibosMasivos);
 router.post('/rh/planillas/cerrar-periodo', rhPlanillaController.cerrarPeriodo);
