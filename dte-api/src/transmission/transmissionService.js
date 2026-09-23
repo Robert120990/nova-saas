@@ -79,8 +79,14 @@ async function authenticate(apiUser, apiPassword, ambiente, forceRefresh = false
 }
 
 function invalidateToken(apiUser, ambiente) {
+    if (!apiUser) {
+        tokenCache.clear();
+        console.log('[HaciendaAuth] Caché de tokens de Hacienda limpiada globalmente.');
+        return;
+    }
     const cacheKey = `${apiUser}_${ambiente}`;
     tokenCache.delete(cacheKey);
+    console.log(`[HaciendaAuth] Token en caché invalidado para ${cacheKey}`);
 }
 
 async function transmitDTE(token, signedDte, dteInfo) {
@@ -114,9 +120,19 @@ async function transmitDTE(token, signedDte, dteInfo) {
             data: response.data
         };
     } catch (error) {
+        const statusCode = error.response ? error.response.status : null;
+        const isAuthError = statusCode === 401;
         console.error('MH Transmission Error:', error.response ? error.response.data : error.message);
+        
+        if (isAuthError && dteInfo.apiUser) {
+            console.warn(`[MH-Transmission] Token rechazado con 401 por MH. Purgando caché para ${dteInfo.apiUser}...`);
+            invalidateToken(dteInfo.apiUser, dteInfo.ambiente);
+        }
+
         return {
             success: false,
+            statusCode,
+            isAuthError,
             error: error.response ? error.response.data : error.message
         };
     }
@@ -153,10 +169,20 @@ async function consultDTE(token, dteInfo, ambiente) {
             data: response.data
         };
     } catch (error) {
+        const statusCode = error.response ? error.response.status : null;
+        const isAuthError = statusCode === 401;
         console.warn(`[MH-Consult] Consulta de DTE ${dteInfo.codigoGeneracion} no exitosa:`, error.response ? error.response.data : error.message);
+
+        if (isAuthError && dteInfo.apiUser) {
+            console.warn(`[MH-Consult] Token rechazado con 401 por MH en consulta. Purgando caché para ${dteInfo.apiUser}...`);
+            invalidateToken(dteInfo.apiUser, ambiente);
+        }
+
         return {
             success: false,
             processed: false,
+            statusCode,
+            isAuthError,
             error: error.response ? error.response.data : error.message
         };
     }

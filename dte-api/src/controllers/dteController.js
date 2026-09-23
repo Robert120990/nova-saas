@@ -165,7 +165,8 @@ async function emit(req, res) {
                 const consultResult = await transmissionService.consultDTE(auth.token, {
                     nitEmisor: company[0].nit,
                     tipoDte: tipoDte,
-                    codigoGeneracion: codigoGeneracion
+                    codigoGeneracion: codigoGeneracion,
+                    apiUser: company[0].api_user
                 }, ambiente);
 
                 if (consultResult.success && consultResult.processed) {
@@ -182,8 +183,19 @@ async function emit(req, res) {
                 ambiente: getMHAmbiente(ambiente),
                 tipoDte: tipoDte,
                 codigoGeneracion: codigoGeneracion,
-                version: getSchemaVersion(tipoDte)
+                version: getSchemaVersion(tipoDte),
+                apiUser: company[0].api_user
             });
+
+            // Si el token falló con 401 (expirado o revocado en MH), forzar renovación inmediata
+            if (txResult.isAuthError) {
+                console.warn(`[Transmission] Intento ${attempt}: Falla 401 de autenticación en MH. Forzando nuevo token...`);
+                auth = null;
+                if (attempt < MAX_ATTEMPTS) {
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    continue;
+                }
+            }
 
             // Si la transmisión fue aceptada o rechazada por validación tributaria (no por fallo de red)
             if (txResult.success || !isNetworkError(txResult.error)) {

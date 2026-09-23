@@ -45,7 +45,8 @@ async function processQueue() {
                 ambiente: task.ambiente,
                 tipoDte: task.tipo_dte,
                 codigoGeneracion: task.codigo_generacion,
-                version: version
+                version: version,
+                apiUser: task.api_user
             });
 
             if (result.success && result.status === 'PROCESADO') {

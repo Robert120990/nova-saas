@@ -47,7 +47,8 @@ async function processContingencyQueue() {
                 ambiente: ambiente,
                 tipoDte: task.tipo_documento,
                 codigoGeneracion: task.codigo_generacion,
-                version: version
+                version: version,
+                apiUser: task.api_user
             });
 
             if (result.success && result.status === 'PROCESADO') {
