@@ -852,7 +852,12 @@ exports.getCloseoutDetailPDF = async (req, res) => {
             case 'lubricantes': {
                 sql = `
                     SELECT g.fecha_turno, g.numero_turno, l.producto_descripcion as producto,
-                           l.ventas as cantidad, l.precio, l.total
+                           COALESCE(l.lectura_inicial, 0) as stock_inicial,
+                           COALESCE(l.recarga, 0) as recarga,
+                           COALESCE(l.lectura_final, 0) as stock_final,
+                           COALESCE(l.ventas, 0) as cantidad,
+                           COALESCE(l.precio, 0) as precio,
+                           COALESCE(l.total, 0) as total
                     FROM gas_station_closeout_lubricant_readings l
                     JOIN gas_station_closeouts g ON l.closeout_id = g.id
                     WHERE g.company_id = ? AND g.fecha_turno BETWEEN ? AND ? ${branchFilter}
@@ -860,12 +865,15 @@ exports.getCloseoutDetailPDF = async (req, res) => {
                 `;
                 params = [companyId, start_date, end_date, ...branchParams];
                 columns = [
-                    { label: 'Turno', w: 50, accessor: 'numero_turno', align: 'center' },
-                    { label: 'Fecha', w: 80, accessor: 'fecha_turno', format: 'date', align: 'center' },
-                    { label: 'Producto', w: 260, accessor: 'producto' },
-                    { label: 'Cantidad', w: 90, accessor: 'cantidad', format: 'qty', align: 'right' },
-                    { label: 'Precio', w: 90, accessor: 'precio', format: 'money', noTotal: true, align: 'right' },
-                    { label: 'Total', w: 90, accessor: 'total', format: 'money', align: 'right' }
+                    { label: 'Turno', w: 45, accessor: 'numero_turno', align: 'center' },
+                    { label: 'Fecha', w: 70, accessor: 'fecha_turno', format: 'date', align: 'center' },
+                    { label: 'Producto', w: 200, accessor: 'producto' },
+                    { label: 'Stock Inicial', w: 65, accessor: 'stock_inicial', format: 'qty', noTotal: true, align: 'right' },
+                    { label: 'Recarga', w: 55, accessor: 'recarga', format: 'qty', noTotal: true, align: 'right' },
+                    { label: 'Stock Final', w: 65, accessor: 'stock_final', format: 'qty', noTotal: true, align: 'right' },
+                    { label: 'Cantidad', w: 60, accessor: 'cantidad', format: 'qty', align: 'right' },
+                    { label: 'Precio', w: 60, accessor: 'precio', format: 'money', noTotal: true, align: 'right' },
+                    { label: 'Total', w: 70, accessor: 'total', format: 'money', align: 'right' }
                 ];
                 break;
             }
