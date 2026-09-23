@@ -101,6 +101,18 @@ MySQL migrations versioned as `migration_vN_<description>.{sql|js}` with one `ru
 - Frontend: Use `<Table />` with loading state, `<Pagination />`, search with 500ms debounce
 - TanStack Query: `queryKey: ['resource', search, page]`
 
+### Manejo Defensivo de Catálogos y Listas en Frontend — OBLIGATORIO
+Para evitar errores de tiempo de ejecución como `X.map is not a function`:
+- Las respuestas del backend pueden venir como arreglos directos `[...]` o envueltas en `{ data: [...], pagination: {...} }`.
+- Al consultar cualquier lista o catálogo en `client/`, se DEBE usar obligatoriamente el helper `unwrapList` de `utils/apiUtils.js`:
+  ```javascript
+  import { unwrapList } from '../utils/apiUtils';
+  // En useQuery:
+  queryFn: async () => unwrapList(await axios.get('/api/endpoint'))
+  ```
+- En el renderizado JSX, blindar siempre defensivamente cualquier iteración:
+  `{(Array.isArray(items) ? items : []).map(...)}`
+
 ### DTE Integration (per .opencode/skills/dte/DTE_API_RULES.md)
 - Main server calls DTE API endpoints with JWT auth and `x-company-id` header
 - DTE API URL: `http://localhost:5000/api`

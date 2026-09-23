@@ -1,19 +1,19 @@
 # PROMPT DE INTEGRACIÓN DTE-API PARA INTELIGENCIA ARTIFICIAL (LLMs)
 
 > **INSTRUCCIONES PARA LA INTELIGENCIA ARTIFICIAL (ChatGPT, Claude, Cursor, Copilot, DeepSeek, etc.):**
-> Actúa como un Arquitecto de Software y Desarrollador Senior. Utiliza las especificaciones, reglas de arquitectura, contratos de datos y ejemplos de este documento para implementar el módulo cliente, biblioteca o servicio de integración que conecte el sistema del usuario (ERP, CRM, POS, Ecommerce o App) con el microservicio **`dte-api`** (Facturación Electrónica de El Salvador — Normativa SVFE v2.0).
+> Actúa como un Arquitecto de Software y Desarrollador Senior. Utiliza las especificaciones, reglas de arquitectura, contratos de datos, modelo de descuentos y ejemplos de este documento para implementar el módulo cliente, biblioteca o servicio de integración que conecte el sistema del usuario (ERP, CRM, POS, Ecommerce o App) con el microservicio **`dte-api`** (Facturación Electrónica de El Salvador — Normativa SVFE v2.0 del Ministerio de Hacienda).
 
 ---
 
 ## 1. RESUMEN DEL SISTEMA Y ARQUITECTURA
 
 El microservicio `dte-api` es una pasarela fiscal autónoma desarrollada en Node.js/Express. Gestiona todo el ciclo de vida tributario:
-1. Estructura el JSON oficial según la normativa SVFE v2.0 del Ministerio de Hacienda (MH).
-2. Asigna correlativos oficiales (`numeroControl`) y genera el identificador único (`codigoGeneracion` UUID v4).
-3. **Firma Digital Externa (.CRT):** El microservicio opera con `SIGNATURE_MODE=external` comunicándose localmente con el contenedor oficial Docker `svfe-api-firmador`. El certificado digital X.509 (`.crt` público y clave privada) y la contraseña (`passwordPri`) están configurados en el servidor. **Tu sistema externo NO manipula llaves criptográficas ni certificados**.
+1. **Estructuración Normativa:** Construye el JSON oficial según la normativa SVFE v2.0 del Ministerio de Hacienda (MH), validando tipos de datos, longitudes y reglas de negocio.
+2. **Control de Correlativos:** Asigna correlativos oficiales (`numeroControl`) y genera el identificador único universal (`codigoGeneracion` UUID v4).
+3. **Firma Digital Externa (.CRT):** Opera con `SIGNATURE_MODE=external` comunicándose localmente con el contenedor oficial Docker `svfe-api-firmador`. El certificado digital X.509 (`.crt` público y clave privada) y la contraseña (`passwordPri`) están configurados en el servidor. **Tu sistema externo NO manipula llaves criptográficas ni certificados**.
 4. **Transmisión a Hacienda:** Envía el JWS firmado a los servidores de Hacienda y obtiene el **Sello de Recepción** oficial de 40 caracteres.
-5. **Modo Contingencia Automático:** Si Hacienda está caído o en mantenimiento, `dte-api` conmuta automáticamente a transmisión diferida (`tipoOperacion: 2`), refirma el documento y lo almacena para retransmisión posterior, permitiendo que la venta continúe.
-6. **Representación Gráfica:** Genera el PDF oficial reglamentario con sello y código QR.
+5. **Modo Contingencia Automático:** Si Hacienda está caído o en mantenimiento, `dte-api` conmuta automáticamente a transmisión diferida (`tipoOperacion: 2`), refirma el documento y lo almacena para retransmisión posterior, permitiendo que la venta física continúe sin interrupciones.
+6. **Representación Gráfica:** Genera el PDF oficial reglamentario con sello y código QR verificable ante el portal de Hacienda.
 
 ---
 
@@ -42,59 +42,112 @@ El token JWT se genera con algoritmo **HS256** utilizando la clave secreta compa
 
 ---
 
-## 3. CATÁLOGOS OFICIALES DE HACIENDA (REFERENCIA OBLIGATORIA)
+## 3. CATÁLOGO COMPLETO DE TIPOS DE DOCUMENTO ADMITIDOS
 
-Al generar los datos de la solicitud, utiliza los códigos normativos:
+### 3.1 Tipos de Documentos Tributarios Electrónicos (CAT-002)
+El microservicio `dte-api` tiene implementada la compatibilidad con todos los tipos de documentos tributarios de la normativa SVFE de El Salvador:
 
-* **CAT-002: Tipo de Documento Tributario (`tipoDte`)**
-  * `"01"`: Factura de Consumidor Final (clientes particulares).
-  * `"03"`: Comprobante de Crédito Fiscal (clientes con registro NRC).
-  * `"05"`: Nota de Crédito.
-  * `"06"`: Nota de Débito.
-  * `"11"`: Factura de Exportación.
-  * `"14"`: Factura de Sujeto Excluido.
+| Código | Nombre Oficial DTE | Versión Schema | Descripción y Casos de Uso | Requisitos Clave del Receptor / Emisión |
+| :---: | :--- | :---: | :--- | :--- |
+| **`01`** | **Factura** (Consumidor Final) | `v2` | Ventas al detalle a personas naturales o consumidores finales sin registro de IVA. Precios incluyen IVA. | Si el monto total es $\ge \$200.00$, es obligatorio documento de identidad (DUI/NIT/Pasaporte) y nombre completo. |
+| **`03`** | **Comprobante de Crédito Fiscal** (CCF) | `v4` | Operaciones entre contribuyentes de IVA (B2B). Permite al receptor deducir crédito fiscal. | Requiere `nrc`, `codActividad` económica (CAT-019), `nombre` y documento fiscal (`nit`/`numDocumento`). Precios netos sin IVA. |
+| **`04`** | **Nota de Remisión** | `v4` | Ampara el traslado físico y legal de mercaderías dentro del territorio nacional. | Requiere datos de transporte, conductor, placas y documento de recepción asociado. |
+| **`05`** | **Nota de Crédito** | `v4` | Correcciones, devoluciones de mercaderías, descuentos posteriores o anulación parcial de Facturas o CCF previos. | Requiere bloque `documentoRelacionado` con el `codigoGeneracion` o número del documento original afectado. |
+| **`06`** | **Nota de Débito** | `v4` | Cobro de intereses moratorios, ajustes de precio al alza o gastos no facturados previamente. | Requiere bloque `documentoRelacionado` indicando el documento base. |
+| **`07`** | **Comprobante de Retención** | `v2` | Emisión obligatoria cuando un agente de retención retiene el 1% de IVA a proveedores en compras $\ge \$100.00$. | Receptor es el proveedor sujeto a retención. Detalla los documentos de compra sujetos a retención. |
+| **`08`** | **Comprobante de Liquidación** | `v2` | Liquidación de operaciones por cuenta de terceros (consignaciones, intermediaciones o remates). | Detalla las ventas o liquidaciones realizadas a nombre de un tercero mandante. |
+| **`09`** | **Documento Contable de Liquidación (DCLE)** | `v2` | Liquidaciones de cobros o pagos específicos regulados por el Código Tributario. | Liquidación de comisiones, servicios fiduciarios o intermediaciones financieras. |
+| **`11`** | **Factura de Exportación (FEX)** | `v3` | Exportación definitiva de bienes y servicios hacia el exterior (tasa 0% IVA). | Receptor extranjero (`tipoDocumento: "37"` o `"03"`). Requiere `recintoFiscal`, `regimenExportacion`, país destino (`CAT-020`). |
+| **`14`** | **Factura de Sujeto Excluido (FSE)** | `v2` | Compras de bienes o servicios a personas naturales domiciliadas en SV que no son contribuyentes de IVA. | Emisor liquida la compra al proveedor informal. Aplica retención del 10% de ISR sobre el valor contratado. |
+| **`15`** | **Comprobante de Donación** | `v2` | Ampara donaciones recibidas por entidades sin fines de lucro autorizadas por el Ministerio de Hacienda. | Receptor donante calificado. Justifica la deducibilidad del gasto en Renta. |
 
-* **CAT-022: Tipo de Documento de Identidad del Receptor (`tipoDocumento`)**
-  * `"13"`: DUI (Formato: `00000000-0`).
-  * `"36"`: NIT (Formato: `0000-000000-000-0` o 9 dígitos).
-  * `"02"`: Carnet de Residente.
-  * `"03"`: Pasaporte (Extranjeros).
-  * `"37"`: Otro.
-
-* **CAT-008: Departamentos Principales (`departamento`)**
-  * `"06"`: San Salvador | `"05"`: La Libertad | `"02"`: Santa Ana | `"12"`: San Miguel.
-
-* **CAT-017: Forma de Pago (`pagos[].codigo`)**
-  * `"01"`: Billetes y monedas (Efectivo).
-  * `"02"`: Tarjeta de Débito.
-  * `"03"`: Tarjeta de Crédito.
-  * `"04"`: Cheque.
-  * `"05"`: Transferencia / Depósito bancario.
-
-* **CAT-024: Motivos de Invalidación (`motivo`)**
-  * `"1"`: Rescisión de la operación.
-  * `"2"`: Error en los datos del documento.
-  * `"3"`: Otro motivo reglamentario.
+#### Eventos Tributarios Especiales Soportados:
+- **`16` — Evento de Invalidación (Anulación Fiscal):** `POST /api/invalidation/invalidate` (Schema `v3`). Anula legalmente un DTE sellado previamente en Hacienda.
+- **`17` — Evento de Contingencia / Operaciones Especiales (EOP):** Schema `v1`. Agrupa y transmite los DTEs emitidos bajo contingencia.
+- **`18` — Evento de Retorno de Exportación (ERET):** Schema `v1`. Registro de retorno de mercadería exportada.
 
 ---
 
-## 4. ESPECIFICACIÓN DE ENDPOINTS Y CONTRATOS DE DATOS
+### 3.2 Tipos de Documento de Identidad del Receptor (CAT-022)
+`dte-api` acepta tanto los códigos numéricos oficiales del CAT-022 como los alias comunes:
 
-### 4.1 Emisión Unificada de DTE
-* **Método:** `POST`
-* **Ruta:** `/api/dte/emit`
-* **Descripción:** Realiza el ciclo completo sincrónico: asigna correlativo, firma con el `.crt` en el firmador Docker, valida esquemas y transmite a Hacienda.
+| Código CAT-022 | Alias Aceptado | Tipo de Documento | Formato / Validación Oficial |
+| :---: | :---: | :--- | :--- |
+| **`13`** | `"DUI"` | Documento Único de Identidad | 8 dígitos + guión + 1 dígito de control (`00000000-0`). |
+| **`36`** | `"NIT"` | Número de Identificación Tributaria | Formato tradicional (`0000-000000-000-0`) o DUI homologado (9 dígitos sin guiones). |
+| **`02`** | `"CARNET RESIDENTE"` | Carnet de Residente | Extranjeros residentes legales en El Salvador. |
+| **`03`** | `"PASAPORTE"` | Pasaporte | Clientes extranjeros no residentes. |
+| **`37`** | `"OTRO"` | Otro documento de identificación | Obligatorio en Facturas de Exportación (FEX 11) para receptores foráneos. |
 
-#### Cuerpo de la Solicitud (`POST /api/dte/emit`):
+---
+
+## 4. MODELO Y REGLAS DE DESCUENTOS EN DTE-API
+
+`dte-api` soporta de forma nativa e integrada los dos esquemas de descuentos normativos permitidos por el Ministerio de Hacienda:
+
+```
+                                  ┌─────────────────────────────────────────────────────────────┐
+                                  │                     MODELO DE DESCUENTOS                    │
+                                  └──────────────────────────────┬──────────────────────────────┘
+                                                                 │
+                                ┌────────────────────────────────┴────────────────────────────────┐
+                                ▼                                                                 ▼
+                ┌───────────────────────────────┐                                 ┌───────────────────────────────┐
+                │   1. DESCUENTO POR ÍTEM       │                                 │   2. DESCUENTO GLOBAL / GRAL  │
+                │      (items[].montoDescu)     │                                 │       (descuento_general)     │
+                ├───────────────────────────────┤                                 ├───────────────────────────────┤
+                │ - Descuento en la línea.      │                                 │ - Descuento al pie total.     │
+                │ - Reduce la base gravada del  │                                 │ - Aplica a la venta gravada   │
+                │   ítem directamente.          │                                 │   remanente.                  │
+                │ - Fórmula:                    │                                 │ - Se traslada al bloque       │
+                │   (precioUni * cant) - descu  │                                 │   resumen.descuGravada.       │
+                └───────────────────────────────┘                                 └───────────────────────────────┘
+```
+
+### 4.1 Descuento por Ítem (`items[].montoDescu`)
+- **Campo:** `items[i].montoDescu` (Numérico $\ge 0.00$).
+- **Ubicación:** Dentro de cada objeto del arreglo `items`.
+- **Comportamiento Fiscal:**
+  - **Factura (01):** El `precioUnitario` viene con IVA incluido. El descuento `montoDescu` se resta directamente del subtotal con IVA:
+    $$\text{ventaGravada} = (\text{precioUnitario} \times \text{cantidad}) - \text{montoDescu}$$
+  - **Crédito Fiscal (03):** Si el sistema emisor envía precios inclusive, `dte-api` divide tanto el precio como el `montoDescu` entre $1.13$ para que la regla estricta de Hacienda cuadre al centavo:
+    $$\text{precioUnitarioNeto} = \frac{\text{precioUnitario}}{1.13}, \quad \text{montoDescuNeto} = \frac{\text{montoDescu}}{1.13}$$
+    $$\text{ventaGravada} = (\text{precioUnitarioNeto} \times \text{cantidad}) - \text{montoDescuNeto}$$
+
+---
+
+### 4.2 Descuento General / Global (`descuento_general` o `descuentoGeneral`)
+- **Campo en Payload:** `descuento_general` o `descuentoGeneral` (también aceptado dentro de `header.descuento_general`).
+- **Porcentaje:** `porcentajeDescuento` o `porcentaje_descuento` (opcional). Si no se envía porcentaje pero hay `descuento_general > 0`, `dte-api` calcula automáticamente el porcentaje relativo:
+  $$\text{porcentajeDescuento} = \text{round}\left(\frac{\text{descuentoGravada}}{\text{totalGravada}} \times 100\right)$$
+- **Comportamiento Fiscal en el Bloque `resumen` Oficial:**
+  - `totalDescu`: Sumatoria exacta de todos los descuentos de ítems + el descuento general:
+    $$\text{totalDescu} = \sum \text{items.montoDescu} + \text{descuGravada} + \text{descuExenta} + \text{descuNoSuj}$$
+  - `descuGravada`: Monto del descuento general aplicado a la porción gravada (en CCF 03 se netea entre $1.13$, en Factura 01 es inclusive).
+  - `porcentajeDescuento`: Se traslada al campo oficial del resumen exigido por el schema JSON de Hacienda.
+  - `subTotal`: Base imponible tras descontar el descuento general:
+    $$\text{subTotal} = \text{subTotalVentas} - \text{descuGravada} - \text{descuExenta} - \text{descuNoSuj}$$
+  - `totalPagar`: Monto final a pagar por el cliente considerando descuentos globales e IVA remanente.
+
+---
+
+## 5. ESPECIFICACIÓN DE ENDPOINTS Y CONTRATOS DE DATOS
+
+### 5.1 Emisión Unificada de DTE (`POST /api/dte/emit`)
+Realiza el ciclo completo: resuelve correlativos, valida esquemas, firma con el `.crt` en el firmador Docker y transmite a Hacienda.
+
+#### A) Ejemplo Factura de Consumidor Final (`01`) con Descuento por Ítem y Descuento Global:
 ```json
 {
   "tipoDte": "01",
+  "descuento_general": 5.00,
+  "porcentajeDescuento": 5.0,
   "receptor": {
     "nombre": "Carlos Alberto Gómez",
     "tipoDocumento": "13",
     "numDocumento": "05123456-7",
     "telefono": "78901234",
-    "correo": "cliente@correo.com",
+    "correo": "carlos.gomez@gmail.com",
     "departamento": "06",
     "municipio": "14",
     "direccion": "Colonia Escalón, Calle El Mirador #123"
@@ -103,23 +156,80 @@ Al generar los datos de la solicitud, utiliza los códigos normativos:
     {
       "tipoItem": 1,
       "cantidad": 2,
-      "codigo": "SERV-001",
-      "descripcion": "Mantenimiento Preventivo de Servidor",
-      "precioUni": 50.00,
+      "codigo": "PROD-001",
+      "descripcion": "Aceite Sintético para Motor 5W30",
+      "precioUni": 25.00,
+      "montoDescu": 5.00,
+      "ventaGravada": 45.00,
+      "tributos": null
+    },
+    {
+      "tipoItem": 1,
+      "cantidad": 1,
+      "codigo": "SERV-002",
+      "descripcion": "Servicio de Cambio de Aceite y Filtro",
+      "precioUni": 15.00,
       "montoDescu": 0.00,
-      "ventaGravada": 100.00,
+      "ventaGravada": 15.00,
       "tributos": null
     }
   ],
   "pagos": [
     {
       "codigo": "01",
-      "montoPago": 113.00
+      "montoPago": 55.00
     }
   ]
 }
 ```
-*(Para Crédito Fiscal `tipoDte: "03"`, el receptor requiere además `"nrc": "123456-7"` y `"codActividad": "62010"` según CAT-019).*
+*En este ejemplo: Subtotal ítems = $45 + 15 = $60. Descuento general = $5.00. Total a pagar = $55.00.*
+
+---
+
+#### B) Ejemplo Crédito Fiscal (`03`) con Descuento General y Retención de IVA:
+```json
+{
+  "tipoDte": "03",
+  "descuento_general": 10.00,
+  "condicionOperacion": 1,
+  "receptor": {
+    "nombre": "DISTRIBUIDORA COMERCIAL S.A. DE C.V.",
+    "tipoDocumento": "36",
+    "numDocumento": "0614-120990-101-2",
+    "nrc": "123456-7",
+    "codActividad": "46900",
+    "descActividad": "Venta al por mayor no especializada",
+    "telefono": "22558899",
+    "correo": "contabilidad@distribuidora.com",
+    "departamento": "06",
+    "municipio": "14",
+    "direccion": {
+      "departamento": "06",
+      "municipio": "14",
+      "complemento": "Boulevard Los Próceres #456"
+    }
+  },
+  "items": [
+    {
+      "tipoItem": 1,
+      "cantidad": 10,
+      "codigo": "LUB-010",
+      "descripcion": "Caja de Lubricante Industrial 15W40",
+      "precioUni": 30.00,
+      "montoDescu": 2.00,
+      "tributos": ["20"]
+    }
+  ],
+  "pagos": [
+    {
+      "codigo": "05",
+      "montoPago": 314.14
+    }
+  ]
+}
+```
+
+---
 
 #### Posibles Respuestas de `/api/dte/emit`:
 
@@ -154,7 +264,7 @@ Al generar los datos de la solicitud, utiliza los códigos normativos:
     "codigoMsg": "103",
     "descripcionMsg": "El valor del campo tributos no coincide con la sumatoria gravada",
     "observaciones": [
-      "Total IVA calculado difiere por más de $0.01 respecto al 13%"
+      "Total IVA calculado difiere por más de $0.01 respecto a la base imponible neta"
     ]
   }
 }
@@ -167,7 +277,7 @@ Al generar los datos de la solicitud, utiliza los códigos normativos:
   "codigoGeneracion": "E2B1C3D4-5F6A-7B8C-9D0E-1A2B3C4D5E6F",
   "numeroControl": "DTE-01-M001P001-000000000000251",
   "contingency": true,
-  "message": "DTE firmado en contingencia (Hacienda fuera de línea). Encolado para envío.",
+  "message": "DTE firmado en contingencia (Hacienda fuera de línea). Encolado para envío posterior.",
   "data": {
     "estado": "CONTINGENCIA",
     "tipoContingencia": 1,
@@ -176,37 +286,24 @@ Al generar los datos de la solicitud, utiliza los códigos normativos:
 }
 ```
 
-**D) Error de Validación de Estructura / Faltan Campos (HTTP 400 Bad Request):**
-```json
-{
-  "success": false,
-  "message": "Error de validación del esquema DTE",
-  "errors": [
-    "items.0.precioUni must be a number",
-    "receptor.departamento must be 2 characters"
-  ]
-}
-```
-
 ---
 
-### 4.2 Descarga de Representación Gráfica (PDF Oficial)
+### 5.2 Descarga de Representación Gráfica (PDF Oficial)
 * **Método:** `GET`
 * **Ruta:** `/api/dte/pdf/:codigoGeneracion`
 * **Cabeceras:** `Authorization: Bearer <TOKEN_JWT>`
 * **Respuesta Exitosa (HTTP 200):**
   * `Content-Type: application/pdf`
   * `Content-Disposition: inline; filename="DTE-01-M001P001-000000000000250.pdf"`
-  * Cuerpo: Flujo binario del documento PDF listo para imprimir o enviar por correo.
+  * Retorna el flujo binario del documento con sello de recepción y código QR reglamentario.
 
 ---
 
-### 4.3 Invalidación / Anulación Fiscal de DTE
+### 5.3 Invalidación / Anulación Fiscal de DTE
 * **Método:** `POST`
 * **Ruta:** `/api/invalidation/invalidate`
-* **Descripción:** Emite el Evento de Invalidación oficial, lo firma con el certificado `.crt` y lo transmite a Hacienda para anular el documento.
+* **Descripción:** Emite el Evento de Invalidación oficial (CAT-002: `16`), lo firma con el certificado `.crt` y lo transmite a Hacienda para anular el documento fiscal.
 
-#### Cuerpo de la Solicitud (`POST /api/invalidation/invalidate`):
 ```json
 {
   "codigoGeneracion": "F8D3B7A1-4E5C-6D7E-8F9A-0B1C2D3E4F5A",
@@ -225,24 +322,9 @@ Al generar los datos de la solicitud, utiliza los códigos normativos:
 }
 ```
 
-#### Respuesta Exitosa (HTTP 200):
-```json
-{
-  "success": true,
-  "codigoGeneracion": "F8D3B7A1-4E5C-6D7E-8F9A-0B1C2D3E4F5A",
-  "codigoGeneracionEvento": "A1B2C3D4-E5F6-7890-ABCD-EF1234567890",
-  "data": {
-    "estado": "PROCESADO",
-    "selloRecibido": "20268F7E6D5C4B3A2109876543210ABCDEF12345",
-    "fhProcesamiento": "21/09/2026 11:45:00",
-    "descripcionMsg": "RECIBIDO CON EXITO"
-  }
-}
-```
-
 ---
 
-### 4.4 Consulta de Estado en Hacienda
+### 5.4 Consulta de Estado en Hacienda
 * **Método:** `GET`
 * **Ruta:** `/api/dte/status/:codigoGeneracion`
 * **Respuesta Exitosa (HTTP 200):**
@@ -258,43 +340,38 @@ Al generar los datos de la solicitud, utiliza los códigos normativos:
 
 ---
 
-### 4.5 Healthcheck del Microservicio
+### 5.5 Healthcheck del Microservicio
 * **Método:** `GET`
 * **Ruta:** `/api/health` (No requiere token)
 * **Respuesta Exitosa (HTTP 200):**
 ```json
 {
   "status": "UP",
-  "timestamp": "2026-09-21T17:30:00.000Z"
+  "timestamp": "2026-09-22T17:00:00.000Z"
 }
 ```
 
 ---
 
-## 5. GUÍA DE IMPLEMENTACIÓN PARA LA IA (PASO A PASO)
+## 6. GUÍA DE IMPLEMENTACIÓN PARA LA IA (PASO A PASO)
 
 Cuando el usuario te pida escribir el código de integración en cualquier lenguaje (TypeScript, Python, PHP, C#, Go, Java, etc.):
 
 1. **Crea un SDK o Clase Cliente (`DteApiClient`):**
-   * Configurable con: `baseUrl`, `jwtSecret`, `companyId`, `branchId`, `username`.
-   * Un método privado `generateToken()` que genere el JWT automáticamente asegurando expiración de 15 minutos.
-   * Gestión automática del encabezado `Authorization: Bearer <token>`.
-
-2. **Implementa los métodos clave del cliente:**
-   * `emitDte(dteData)` -> ejecuta `POST /api/dte/emit`.
-   * `downloadPdf(codigoGeneracion)` -> ejecuta `GET /api/dte/pdf/:codigoGeneracion` devolviendo buffer/stream binario.
-   * `invalidateDte(invalidationData)` -> ejecuta `POST /api/invalidation/invalidate`.
-   * `checkStatus(codigoGeneracion)` -> ejecuta `GET /api/dte/status/:codigoGeneracion`.
-   * `checkHealth()` -> ejecuta `GET /api/health`.
-
+   - Configurable con: `baseUrl`, `jwtSecret`, `companyId`, `branchId`, `username`.
+   - Método privado `generateToken()` que genere el JWT automáticamente con expiración de 15 minutos.
+   - Gestión automática del encabezado `Authorization: Bearer <token>`.
+2. **Soporta Descuentos Transparentemente:**
+   - Permite agregar `montoDescu` por línea de ítem.
+   - Permite configurar `descuento_general` y `porcentajeDescuento` al nivel superior del payload.
 3. **Manejo de Errores Defensivo:**
-   * Distingue entre fallas de red (timeout), rechazo de validación HTTP 400, y rechazo tributario oficial de Hacienda (`HTTP 200` con `success: false`).
-   * Guarda el `codigoGeneracion` y `numeroControl` devueltos en la base de datos de la aplicación local para vincular la venta con el DTE.
-   * Si `response.contingency === true`, marca la venta como "En contingencia" y notifica al usuario que se retransmitirá automáticamente.
+   - Guarda el `codigoGeneracion` y `numeroControl` devueltos para vincular la venta con el DTE.
+   - Si `response.contingency === true`, marca el documento como "En contingencia" para retransmisión automática.
+   - Si `response.success === false`, expone las `observaciones` y `descripcionMsg` devueltas por Hacienda.
 
 ---
 
-## 6. EJEMPLO DE CLIENTE LISTO PARA USAR EN TYPESCRIPT / NODE.JS
+## 7. EJEMPLO DE CLIENTE LISTO PARA USAR EN TYPESCRIPT / NODE.JS
 
 ```typescript
 import axios, { AxiosInstance } from 'axios';
@@ -371,7 +448,7 @@ export class DteApiClient {
 
 ---
 
-## 7. EJEMPLO DE CLIENTE LISTO PARA USAR EN PYTHON
+## 8. EJEMPLO DE CLIENTE LISTO PARA USAR EN PYTHON
 
 ```python
 import jwt
