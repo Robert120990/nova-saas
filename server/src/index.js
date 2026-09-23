@@ -61,7 +61,8 @@ app.use('/api/auth', authRoutes);
 // Restart DTE API (reinicia proceso dte-api en puerto 5000)
 app.post('/api/restart', express.json(), async (req, res) => {
     const key = req.body?.restart_key || req.headers['x-restart-key'];
-    if (!key || key !== 'novarestart2026') {
+    const expectedKey = process.env.RESTART_KEY || 'novarestart2026';
+    if (!key || key !== expectedKey) {
         return res.status(401).json({ message: 'restart_key inválida' });
     }
     try {

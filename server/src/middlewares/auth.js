@@ -62,11 +62,14 @@ const checkPermission = (permission) => {
                     permissions = [];
                 }
             }
-            if (permissions.includes(permission)) {
+            const required = Array.isArray(permission) ? permission : [permission];
+            const hasPermission = required.some(p => permissions.includes(p));
+
+            if (hasPermission) {
                 return next();
             }
 
-            return res.status(403).json({ message: `Forbidden: Missing permission [${permission}]` });
+            return res.status(403).json({ message: `Forbidden: Missing permission [${required.join(' OR ')}]` });
         } catch (error) {
             console.error('Permission check error:', error);
             res.status(500).json({ message: 'Error al verificar permisos' });

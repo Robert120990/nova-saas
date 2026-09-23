@@ -54,15 +54,19 @@ const getDistritos = async (req, res) => {
 
 const getGenericCatalog = async (req, res) => {
     const { table } = req.params;
-    // Allow any table starting with cat_ to avoid maintaining a whitelist for 30+ tables
-    if (!table.startsWith('cat_')) {
-        return res.status(400).json({ message: 'Cat\u00E1logo no permitido' });
+    
+    // Validar estrictamente que solo contenga cat_ seguido de caracteres alfanuméricos y guiones bajos (máximo 64 chars)
+    const validTablePattern = /^cat_[a-zA-Z0-9_]{1,60}$/;
+    if (!validTablePattern.test(table)) {
+        return res.status(400).json({ message: 'Catálogo no permitido o formato inválido' });
     }
+
     try {
-        const [rows] = await pool.query(`SELECT * FROM ${table} ORDER BY code`);
+        const [rows] = await pool.query(`SELECT * FROM \`${table}\` ORDER BY code`);
         res.json(rows);
     } catch (error) {
-        res.status(500).json({ message: 'Error al obtener cat\u00E1logo ' + table });
+        console.error(`Error al consultar catálogo ${table}:`, error.message);
+        res.status(500).json({ message: 'Error al obtener catálogo solicitado' });
     }
 };
 

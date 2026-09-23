@@ -137,31 +137,31 @@ router.get('/catalogs/districts', catalogController.getDistritos);
 router.get('/catalogs/:table', catalogController.getGenericCatalog);
 
 // New Global User Access Routes (After verifyToken but before tenantMiddleware)
-router.get('/all-users', userController.getAllUsers);
-router.get('/users/access-summary', userController.getAccessSummary);
-router.post('/users/assign-access', userController.assignCompanyAccess);
-router.delete('/users/access/:userId/:companyId', userController.deleteCompanyAccess);
-router.get('/users/companies-branches-tree', userController.getCompaniesWithBranchesTree);
-router.post('/users/assign-access-bulk', userController.assignBulkAccess);
-router.post('/users/clone-access', userController.cloneUserAccess);
-router.post('/users/bulk-update-role', userController.bulkUpdateRole);
-router.post('/users/bulk-delete-access', userController.bulkDeleteAccess);
-router.get('/companies/modules-matrix', companyController.getCompanyModulesMatrix);
-router.put('/companies/:id/modules', companyController.updateCompanyModules);
-router.get('/companies', companyController.getCompanies);
-router.post('/companies', upload.fields([{ name: 'logo', maxCount: 1 }, { name: 'certificate', maxCount: 1 }, { name: 'certificate_crt', maxCount: 1 }]), companyController.createCompany);
-router.put('/companies/:id', upload.fields([{ name: 'logo', maxCount: 1 }, { name: 'certificate', maxCount: 1 }, { name: 'certificate_crt', maxCount: 1 }]), companyController.updateCompany);
-router.delete('/companies/:id', companyController.deleteCompany);
+router.get('/all-users', checkPermission('manage_user_access'), userController.getAllUsers);
+router.get('/users/access-summary', checkPermission('manage_user_access'), userController.getAccessSummary);
+router.post('/users/assign-access', checkPermission('manage_user_access'), userController.assignCompanyAccess);
+router.delete('/users/access/:userId/:companyId', checkPermission('manage_user_access'), userController.deleteCompanyAccess);
+router.get('/users/companies-branches-tree', checkPermission('manage_user_access'), userController.getCompaniesWithBranchesTree);
+router.post('/users/assign-access-bulk', checkPermission('manage_user_access'), userController.assignBulkAccess);
+router.post('/users/clone-access', checkPermission('manage_user_access'), userController.cloneUserAccess);
+router.post('/users/bulk-update-role', checkPermission('manage_user_access'), userController.bulkUpdateRole);
+router.post('/users/bulk-delete-access', checkPermission('manage_user_access'), userController.bulkDeleteAccess);
+router.get('/companies/modules-matrix', checkPermission('manage_companies'), companyController.getCompanyModulesMatrix);
+router.put('/companies/:id/modules', checkPermission('manage_companies'), companyController.updateCompanyModules);
+router.get('/companies', checkPermission(['manage_companies', 'manage_user_access']), companyController.getCompanies);
+router.post('/companies', checkPermission('manage_companies'), upload.fields([{ name: 'logo', maxCount: 1 }, { name: 'certificate', maxCount: 1 }, { name: 'certificate_crt', maxCount: 1 }]), companyController.createCompany);
+router.put('/companies/:id', checkPermission('manage_companies'), upload.fields([{ name: 'logo', maxCount: 1 }, { name: 'certificate', maxCount: 1 }, { name: 'certificate_crt', maxCount: 1 }]), companyController.updateCompany);
+router.delete('/companies/:id', checkPermission('manage_companies'), companyController.deleteCompany);
 
-router.get('/users', userController.getUsers);
-router.post('/users', userController.createUser);
+router.get('/users', checkPermission('manage_users'), userController.getUsers);
+router.post('/users', checkPermission('manage_users'), userController.createUser);
 router.put('/users/me', userController.updateProfile);
-router.put('/users/:id', userController.updateUser);
-router.delete('/users/:id', userController.deleteUser);
+router.put('/users/:id', checkPermission('manage_users'), userController.updateUser);
+router.delete('/users/:id', checkPermission('manage_users'), userController.deleteUser);
 
 // Connected users (before tenant for cross-branch visibility)
-router.get('/users/connected', userController.getConnectedSessions);
-router.post('/users/sessions/:id/terminate', userController.terminateSession);
+router.get('/users/connected', checkPermission('manage_connected_users'), userController.getConnectedSessions);
+router.post('/users/sessions/:id/terminate', checkPermission('manage_connected_users'), userController.terminateSession);
 
 // Changelog (global, no tenant scope)
 router.get('/changelog', changelogController.getChangelog);
@@ -285,6 +285,7 @@ router.get('/inventory/stock-report', inventoryController.getInventoryStockRepor
 router.get('/inventory/movements-report', inventoryController.getInventoryMovementsReport);
 router.get('/inventory/kardex', inventoryController.getKardex);
 router.get('/inventory/kardex-report', inventoryController.getKardexReport);
+router.get('/inventory/kardex/origin/:id', inventoryController.getKardexOriginDetail);
 router.get('/inventory/valuation-report', inventoryController.getInventoryValuationReport);
 router.get('/inventory/turnover-report', inventoryController.getInventoryTurnoverReport);
 router.get('/inventory/transfers', inventoryController.getTransfers);
