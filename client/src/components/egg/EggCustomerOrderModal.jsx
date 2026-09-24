@@ -1,8 +1,9 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import axios from 'axios';
 import { toast } from 'sonner';
 import { 
-    X, Plus, Trash2, Search, Check, Building2, RefreshCw, Package, CheckCircle2, Barcode
+    X, Plus, Trash2, Search, Check, Building2, RefreshCw, Package, CheckCircle2, Barcode,
+    MapPin, ChevronDown
 } from 'lucide-react';
 import Modal from '../ui/Modal';
 import Money, { MoneyInput } from '../ui/Money';
@@ -189,6 +190,9 @@ export default function EggCustomerOrderModal({
     const [loadingCustomers, setLoadingCustomers] = useState(false);
     const [selectedCustomer, setSelectedCustomer] = useState(null);
     const [customerBranches, setCustomerBranches] = useState([]);
+    const [branchSearchInput, setBranchSearchInput] = useState('');
+    const [showBranchDropdown, setShowBranchDropdown] = useState(false);
+    const branchDropdownRef = useRef(null);
 
     const [orderForm, setOrderForm] = useState({
         customer_id: '',
@@ -260,6 +264,17 @@ export default function EggCustomerOrderModal({
         fetchBatchesAndMappings();
     }, [isOpen]);
 
+    // Cerrar dropdown de sucursales al hacer clic fuera
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (branchDropdownRef.current && !branchDropdownRef.current.contains(event.target)) {
+                setShowBranchDropdown(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
     // ---------------------------------------------------------
     // 3. Inicializar formulario al abrir o cambiar orderToEdit
     // ---------------------------------------------------------
@@ -295,6 +310,7 @@ export default function EggCustomerOrderModal({
                 setCustomerMode('manual');
                 setSelectedCustomer(null);
                 setCustomerSearchInput(orderToEdit.customer_name || '');
+                setBranchSearchInput(orderToEdit.branch_name || orderToEdit.manual_branch_name || '');
             }
 
             // Desglosar items si existen en items_json
@@ -374,6 +390,8 @@ export default function EggCustomerOrderModal({
         setCustomerSearchInput('');
         setCustomerSearchResults([]);
         setCustomerBranches([]);
+        setBranchSearchInput('');
+        setShowBranchDropdown(false);
         setOrderForm({
             customer_id: '',
             customer_name: '',
@@ -403,6 +421,27 @@ export default function EggCustomerOrderModal({
             }
         ]);
     };
+
+    // Lista de sucursales filtradas en tiempo real por nombre, dirección o municipio
+    const filteredBranches = useMemo(() => {
+        if (!customerBranches || customerBranches.length === 0) return [];
+        if (!branchSearchInput || !branchSearchInput.trim()) return customerBranches;
+        const q = branchSearchInput.toLowerCase().trim();
+        return customerBranches.filter(b => {
+            const nameMatch = b.nombre && b.nombre.toLowerCase().includes(q);
+            const dirMatch = b.direccion && b.direccion.toLowerCase().includes(q);
+            const munMatch = b.municipio && b.municipio.toLowerCase().includes(q);
+            const depMatch = b.departamento && b.departamento.toLowerCase().includes(q);
+            const contactMatch = b.contacto_nombre && b.contacto_nombre.toLowerCase().includes(q);
+            return nameMatch || dirMatch || munMatch || depMatch || contactMatch;
+        });
+    }, [customerBranches, branchSearchInput]);
+
+    // Sucursal actualmente seleccionada
+    const selectedBranch = useMemo(() => {
+        if (!orderForm.customer_branch_id || !customerBranches) return null;
+        return customerBranches.find(b => String(b.id) === String(orderForm.customer_branch_id)) || null;
+    }, [customerBranches, orderForm.customer_branch_id]);
 
     // Lista de productos disponibles combinando la Matriz y perfiles estándar
     const availableProducts = useMemo(() => {
@@ -524,8 +563,18 @@ export default function EggCustomerOrderModal({
             });
             const branches = res.data || [];
             setCustomerBranches(branches);
-            if (branches.length > 0 && !defaultBranchId) {
-                setOrderForm(prev => ({ ...prev, customer_branch_id: branches[0].id }));
+            if (branches.length > 0) {
+                const targetId = defaultBranchId || branches[0].id;
+                const found = branches.find(b => String(b.id) === String(targetId)) || branches[0];
+                setOrderForm(prev => ({
+                    ...prev,
+                    customer_branch_id: found.id,
+                    manual_branch_name: found.nombre
+                }));
+                setBranchSearchInput(found.nombre);
+            } else {
+                setOrderForm(prev => ({ ...prev, customer_branch_id: '' }));
+                setBranchSearchInput(orderForm.manual_branch_name || '');
             }
         } catch (error) {
             console.error('Error cargando sucursales de cliente:', error);
@@ -591,12 +640,15 @@ export default function EggCustomerOrderModal({
         setCustomerMode('manual');
         setShowCustomerDropdown(false);
         setCustomerBranches([]);
+        setBranchSearchInput('');
+        setShowBranchDropdown(false);
         const cleanName = name.trim();
         setOrderForm(prev => ({
             ...prev,
             customer_id: null,
             customer_name: cleanName,
-            customer_branch_id: null
+            customer_branch_id: null,
+            manual_branch_name: ''
         }));
         autoFillPricingForItems(null, cleanName);
     };
@@ -1172,32 +1224,224 @@ export default function EggCustomerOrderModal({
                                 )}
                             </div>
 
-                            {/* Sucursal o Destino de Entrega */}
-                            <div>
-                                <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
-                                    Sucursal de Entrega (Dirección / Destino)
+                            {/* Sucursal o Destino de Entrega con Búsqueda Escribible */}
+                            <div className="relative" ref={branchDropdownRef}>
+                                <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1 flex items-center justify-between">
+                                    <span>Sucursal de Entrega (Dirección / Destino)</span>
+                                    {customerBranches.length > 0 && (
+                                        <span className="text-[10px] text-indigo-600 font-bold lowercase bg-indigo-50 px-1.5 py-0.5 rounded">
+                                            {customerBranches.length} {customerBranches.length === 1 ? 'sucursal' : 'sucursales'}
+                                        </span>
+                                    )}
                                 </label>
+
                                 {customerBranches.length > 0 ? (
-                                    <select
-                                        value={orderForm.customer_branch_id || ''}
-                                        onChange={(e) => setOrderForm(prev => ({ ...prev, customer_branch_id: e.target.value }))}
-                                        className="w-full text-xs font-medium border border-slate-300 rounded-xl px-3 py-2 text-slate-800 outline-none focus:border-indigo-500 bg-white"
-                                    >
-                                        <option value="">-- Sucursal Principal / Sin especificar --</option>
-                                        {customerBranches.map(b => (
-                                            <option key={b.id} value={b.id}>
-                                                {b.nombre} {b.direccion ? `- ${b.direccion}` : ''}
-                                            </option>
-                                        ))}
-                                    </select>
+                                    <>
+                                        <div className="relative">
+                                            <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                                                <MapPin className="w-3.5 h-3.5" />
+                                            </div>
+
+                                            <input
+                                                type="text"
+                                                value={branchSearchInput}
+                                                onChange={(e) => {
+                                                    const val = e.target.value;
+                                                    setBranchSearchInput(val);
+                                                    setShowBranchDropdown(true);
+                                                    if (!val.trim()) {
+                                                        setOrderForm(prev => ({
+                                                            ...prev,
+                                                            customer_branch_id: '',
+                                                            manual_branch_name: ''
+                                                        }));
+                                                    } else {
+                                                        setOrderForm(prev => ({
+                                                            ...prev,
+                                                            manual_branch_name: val
+                                                        }));
+                                                    }
+                                                }}
+                                                onFocus={() => setShowBranchDropdown(true)}
+                                                placeholder="Escriba para buscar sucursal o dirección..."
+                                                className={`w-full text-xs font-semibold pl-8 pr-16 py-2 border rounded-xl outline-none transition-all ${
+                                                    showBranchDropdown
+                                                        ? 'border-indigo-500 ring-2 ring-indigo-500/20 bg-white'
+                                                        : orderForm.customer_branch_id
+                                                        ? 'border-indigo-300 bg-indigo-50/20 text-indigo-950 font-bold'
+                                                        : 'border-slate-300 text-slate-800 bg-white'
+                                                }`}
+                                            />
+
+                                            <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                                                {(orderForm.customer_branch_id || orderForm.manual_branch_name || branchSearchInput) && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setOrderForm(prev => ({ ...prev, customer_branch_id: '', manual_branch_name: '' }));
+                                                            setBranchSearchInput('');
+                                                            setShowBranchDropdown(false);
+                                                        }}
+                                                        className="text-slate-400 hover:text-rose-500 p-1 rounded-lg transition"
+                                                        title="Limpiar sucursal seleccionada"
+                                                    >
+                                                        <X className="w-3.5 h-3.5" />
+                                                    </button>
+                                                )}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setShowBranchDropdown(!showBranchDropdown)}
+                                                    className="text-slate-400 hover:text-slate-600 p-1 rounded-lg transition"
+                                                    title="Mostrar listado de sucursales"
+                                                >
+                                                    <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${showBranchDropdown ? 'rotate-180 text-indigo-600' : ''}`} />
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {/* Detalle visual de la sucursal seleccionada */}
+                                        {selectedBranch && (
+                                            <div className="mt-1 px-2.5 py-1 bg-slate-50 border border-slate-200/80 rounded-lg text-[11px] text-slate-600 flex items-start gap-1.5 animate-in fade-in duration-150">
+                                                <span className="text-indigo-600 font-bold text-[10px] shrink-0 uppercase mt-0.5">Destino:</span>
+                                                <span className="line-clamp-2 leading-relaxed">
+                                                    {selectedBranch.direccion || selectedBranch.nombre}
+                                                </span>
+                                            </div>
+                                        )}
+
+                                        {/* Dropdown flotante con filtro en tiempo real */}
+                                        {showBranchDropdown && (
+                                            <div className="absolute left-0 right-0 top-full mt-1.5 bg-white border border-slate-200 rounded-2xl shadow-2xl max-h-72 overflow-y-auto divide-y divide-slate-100 z-50 animate-in fade-in zoom-in-95 duration-150">
+                                                {/* Opción 1: Sin sucursal específica / Principal */}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setOrderForm(prev => ({
+                                                            ...prev,
+                                                            customer_branch_id: '',
+                                                            manual_branch_name: ''
+                                                        }));
+                                                        setBranchSearchInput('');
+                                                        setShowBranchDropdown(false);
+                                                    }}
+                                                    className={`w-full text-left p-2.5 text-xs flex items-center justify-between transition ${
+                                                        !orderForm.customer_branch_id && !orderForm.manual_branch_name
+                                                            ? 'bg-indigo-50/70 font-bold text-indigo-900'
+                                                            : 'hover:bg-slate-50 text-slate-600'
+                                                    }`}
+                                                >
+                                                    <span className="italic">-- Sucursal Principal / Sin especificar --</span>
+                                                    {!orderForm.customer_branch_id && !orderForm.manual_branch_name && (
+                                                        <Check className="w-3.5 h-3.5 text-indigo-600" />
+                                                    )}
+                                                </button>
+
+                                                {/* Opción rápida: Usar como texto manual si el usuario escribió algo */}
+                                                {branchSearchInput.trim().length > 0 && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            const val = branchSearchInput.trim();
+                                                            setOrderForm(prev => ({
+                                                                ...prev,
+                                                                customer_branch_id: '',
+                                                                manual_branch_name: val
+                                                            }));
+                                                            setBranchSearchInput(val);
+                                                            setShowBranchDropdown(false);
+                                                        }}
+                                                        className="w-full text-left p-2.5 bg-amber-50/80 hover:bg-amber-100 text-amber-900 text-xs font-bold flex items-center justify-between transition"
+                                                    >
+                                                        <div className="flex items-center gap-1.5">
+                                                            <span>✍️</span>
+                                                            <span>Usar dirección manual: &quot;{branchSearchInput}&quot;</span>
+                                                        </div>
+                                                        <span className="text-[10px] bg-amber-200/80 text-amber-800 px-2 py-0.5 rounded font-semibold shrink-0">
+                                                            Personalizada
+                                                        </span>
+                                                    </button>
+                                                )}
+
+                                                {/* Listado de sucursales filtradas */}
+                                                {filteredBranches.map(b => {
+                                                    const isSelected = String(orderForm.customer_branch_id) === String(b.id);
+                                                    return (
+                                                        <button
+                                                            key={b.id}
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setOrderForm(prev => ({
+                                                                    ...prev,
+                                                                    customer_branch_id: b.id,
+                                                                    manual_branch_name: b.nombre
+                                                                }));
+                                                                setBranchSearchInput(b.nombre);
+                                                                setShowBranchDropdown(false);
+                                                            }}
+                                                            className={`w-full text-left p-3 text-xs transition flex items-start justify-between gap-2.5 ${
+                                                                isSelected
+                                                                    ? 'bg-indigo-50/80 text-indigo-950 font-bold border-l-4 border-indigo-600'
+                                                                    : 'hover:bg-indigo-50/40 text-slate-800'
+                                                            }`}
+                                                        >
+                                                            <div className="space-y-0.5 flex-1 min-w-0">
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className="font-bold text-slate-900 text-[12px] leading-snug">
+                                                                        {b.nombre}
+                                                                    </span>
+                                                                    {b.id && (
+                                                                        <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-1.5 py-0.2 rounded shrink-0">
+                                                                            ID #{b.id}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                                {b.direccion ? (
+                                                                    <p className="text-[11px] text-slate-500 font-normal leading-relaxed break-words">
+                                                                        📍 {b.direccion}
+                                                                    </p>
+                                                                ) : (
+                                                                    <span className="text-[10px] text-slate-400 italic">Sin dirección registrada</span>
+                                                                )}
+                                                            </div>
+                                                            {isSelected && (
+                                                                <div className="shrink-0 w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center mt-0.5">
+                                                                    <Check className="w-3 h-3 stroke-[3]" />
+                                                                </div>
+                                                            )}
+                                                        </button>
+                                                    );
+                                                })}
+
+                                                {filteredBranches.length === 0 && (
+                                                    <div className="p-4 text-center space-y-1">
+                                                        <p className="text-xs text-slate-500 font-medium">
+                                                            No se encontraron sucursales registradas con &quot;{branchSearchInput}&quot;
+                                                        </p>
+                                                        <p className="text-[11px] text-indigo-600">
+                                                            Puede hacer clic en la opción de arriba para usarla como dirección manual.
+                                                        </p>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </>
                                 ) : (
-                                    <input
-                                        type="text"
-                                        placeholder="Ej: Planta Principal, Sucursal Lourdes, Dirección de entrega..."
-                                        value={orderForm.manual_branch_name}
-                                        onChange={(e) => setOrderForm(prev => ({ ...prev, manual_branch_name: e.target.value }))}
-                                        className="w-full text-xs font-medium border border-slate-300 rounded-xl px-3 py-2 text-slate-800 outline-none focus:border-indigo-500 bg-white"
-                                    />
+                                    <div className="relative">
+                                        <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                                            <MapPin className="w-3.5 h-3.5" />
+                                        </div>
+                                        <input
+                                            type="text"
+                                            placeholder="Ej: Planta Principal, Sucursal Lourdes, Dirección de entrega..."
+                                            value={orderForm.manual_branch_name}
+                                            onChange={(e) => {
+                                                const val = e.target.value;
+                                                setOrderForm(prev => ({ ...prev, manual_branch_name: val }));
+                                                setBranchSearchInput(val);
+                                            }}
+                                            className="w-full text-xs font-medium pl-8 pr-3 py-2 border border-slate-300 rounded-xl text-slate-800 outline-none focus:border-indigo-500 bg-white"
+                                        />
+                                    </div>
                                 )}
                             </div>
                         </div>
