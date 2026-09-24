@@ -124,9 +124,9 @@ const retransmitSaleDTE = async (req, res) => {
                 [result.data.sello_recepcion, result.data.fh_procesamiento, sale.codigo_generacion]
             );
 
-            // 4. Enviar correo de notificación (Asíncrono)
-            mailerService.sendDTEEmail(id, req.company_id).catch(err => 
-                console.error(`[RetransmitSaleDTE] Error enviando correo para venta ${id}:`, err)
+            // 4. Enviar correo de notificación (Asíncrono en background vía cola BullMQ)
+            mailerService.queueDTEEmail(id, req.company_id).catch(err => 
+                console.error(`[RetransmitSaleDTE] Error encolando correo para venta ${id}:`, err.message)
             );
 
             return res.json({
@@ -541,9 +541,9 @@ const regenerateDTE = async (req, res) => {
             connection.release();
             connection = null;
 
-            // Envío asíncrono de correo si el cliente tiene email
-            mailerService.sendDTEEmail(newSaleId, req.company_id).catch(err => {
-                console.error('[RegenerateDTE - Nueva Venta] Error enviando correo:', err.message);
+            // Envío asíncrono de correo en background vía cola BullMQ si el cliente tiene email
+            mailerService.queueDTEEmail(newSaleId, req.company_id).catch(err => {
+                console.error('[RegenerateDTE - Nueva Venta] Error encolando correo:', err.message);
             });
 
             return res.json({
@@ -889,9 +889,9 @@ const editDTEItems = async (req, res) => {
             await connection.commit();
             connection.release();
 
-            // Send email asynchronously
-            mailerService.sendDTEEmail(id, req.company_id).catch(err => {
-                console.error('[editDTEItems] Error sending email:', err);
+            // Send email asynchronously via background queue
+            mailerService.queueDTEEmail(id, req.company_id).catch(err => {
+                console.error('[editDTEItems] Error enqueuing email:', err.message);
             });
 
             res.json({ success: true, message: 'Items actualizados correctamente' });
@@ -1039,8 +1039,8 @@ const notifyDTEAccepted = async (req, res) => {
     const { codigoGeneracion, ventaId, companyId } = req.body;
     try {
         if (ventaId) {
-            console.log(`[NotifyDTEAccepted] Disparando envío automático de correo para venta ${ventaId} (DTE: ${codigoGeneracion})...`);
-            await mailerService.sendDTEEmail(ventaId, companyId);
+            console.log(`[NotifyDTEAccepted] Encolando envío automático de correo para venta ${ventaId} (DTE: ${codigoGeneracion})...`);
+            await mailerService.queueDTEEmail(ventaId, companyId);
         }
         res.json({ success: true, message: 'Correo enviado automáticamente tras aprobación de Hacienda' });
     } catch (err) {

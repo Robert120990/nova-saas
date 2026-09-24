@@ -90,13 +90,13 @@ async function processJob(job) {
 
             if (rule.channel_email && recipient.email) {
                 const branchName = context.sucursal || 'Sucursal';
-                mailerService.sendMail({
+                mailerService.queueMail({
                     branchId: job.branch_id,
                     to: recipient.email,
                     subject: title,
                     text: message,
                     html: buildEmailHtml(title, message, link)
-                }).catch(err => console.error(`[NotificationWorker] Error email a ${recipient.email}:`, err.message));
+                }).catch(err => console.error(`[NotificationWorker] Error encolando email a ${recipient.email}:`, err.message));
             }
 
             if (rule.channel_whatsapp && recipient.telefono) {

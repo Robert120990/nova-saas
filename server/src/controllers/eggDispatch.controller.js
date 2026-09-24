@@ -2830,23 +2830,13 @@ const autoInvoiceDispatchRoute = async (req, res) => {
 
         await connection.commit();
 
-        // 6. Enviar correo formal con DTE a los clientes tras emisión exitosa (proceso formal idéntico al Punto de Venta)
+        // 6. Enviar correo formal con DTE a los clientes tras emisión exitosa vía cola BullMQ
         if (successfulSalesForEmail.length > 0) {
-            (async () => {
-                for (const item of successfulSalesForEmail) {
-                    try {
-                        console.log(`[AutoInvoice] Enviando correo formal con DTE a cliente "${item.customerName}" para Venta #${item.saleId}...`);
-                        const mailResult = await mailerService.sendDTEEmail(item.saleId, company_id);
-                        if (mailResult?.success) {
-                            console.log(`[AutoInvoice] ✓ Correo DTE enviado exitosamente a "${item.customerName}" (${mailResult.email || item.customerEmail}) para Venta #${item.saleId}`);
-                        } else if (mailResult?.skip) {
-                            console.log(`[AutoInvoice] ℹ Cliente "${item.customerName}" sin correo registrado. Envío omitido para Venta #${item.saleId}`);
-                        }
-                    } catch (mailErr) {
-                        console.error(`[AutoInvoice] Error enviando correo DTE para Venta #${item.saleId}:`, mailErr.message);
-                    }
-                }
-            })();
+            for (const item of successfulSalesForEmail) {
+                mailerService.queueDTEEmail(item.saleId, company_id).catch(mailErr => {
+                    console.error(`[AutoInvoice] Error encolando correo DTE para Venta #${item.saleId}:`, mailErr.message);
+                });
+            }
         }
 
         res.json({
