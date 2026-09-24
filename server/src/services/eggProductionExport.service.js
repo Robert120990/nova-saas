@@ -89,6 +89,29 @@ async function getBatchExportData(batchId, companyId) {
     const wasteLogsWeight = wasteLogs.reduce((sum, w) => sum + parseFloat(w.quantity_lbs || 0), 0);
     const remanenteWeight = remanentes.reduce((sum, r) => sum + parseFloat(r.quantity_lbs || 0), 0);
 
+    // Calcular cajas de huevo procesadas
+    let totalBoxes = 0;
+    for (const rm of rawMaterials) {
+        let bxs = parseInt(rm.boxes_count || 0, 10);
+        if (!bxs && rm.tarimas) {
+            bxs = (rm.tarimas || []).reduce((s, t) => s + (parseInt(t.boxes_count || 0, 10)), 0);
+        }
+        totalBoxes += bxs;
+    }
+    if (totalBoxes === 0 && batch.ingredients_json) {
+        try {
+            const ing = typeof batch.ingredients_json === 'string' ? JSON.parse(batch.ingredients_json) : batch.ingredients_json;
+            totalBoxes = parseInt(ing.boxes_count || ing.raw_egg_boxes || 0, 10);
+        } catch (e) { }
+    }
+    if (totalBoxes === 0 && totalInputWeight > 0) {
+        totalBoxes = Math.round(totalInputWeight / 30);
+    }
+
+    const yieldPerBoxLbs = totalBoxes > 0 ? Math.round((liquidYield / totalBoxes) * 100) / 100 : 0;
+    const liquidPlusPackagedLbs = Math.round((liquidYield + packagedWeight) * 100) / 100;
+    const liquidPlusPackagedYieldPct = totalInputWeight > 0 ? ((liquidPlusPackagedLbs / totalInputWeight) * 100).toFixed(2) : '0.00';
+
     const yieldPct = totalInputWeight > 0 ? ((liquidYield / totalInputWeight) * 100).toFixed(2) : '0.00';
     const packagingEfficiencyPct = liquidYield > 0 ? ((packagedWeight / liquidYield) * 100).toFixed(2) : '0.00';
 
@@ -103,10 +126,14 @@ async function getBatchExportData(batchId, companyId) {
         wasteLogs,
         totals: {
             totalInputWeight,
+            totalBoxes,
+            yieldPerBoxLbs,
             liquidYield,
             shellWaste,
             processLoss,
             packagedWeight,
+            liquidPlusPackagedLbs,
+            liquidPlusPackagedYieldPct,
             wasteLogsWeight,
             remanenteWeight,
             yieldPct,
@@ -315,7 +342,7 @@ async function generateBatchSummaryPdf(batchId, companyId) {
     }
 
     // Salto de página defensivo si falta espacio para el Balance Final
-    if (currentY > 600) {
+    if (currentY > 580) {
         doc.addPage();
         currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'portrait', subtitle);
     }
@@ -325,36 +352,53 @@ async function generateBatchSummaryPdf(batchId, companyId) {
     doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(8.5).text('BALANCE FINAL DE MASAS Y EFICIENCIA DE PLANTA', 42, currentY + 4);
     currentY += 20;
 
-    doc.rect(36, currentY, 540, 68).fill('#ecfdf5').stroke('#a7f3d0');
+    doc.rect(36, currentY, 540, 84).fill('#ecfdf5').stroke('#a7f3d0');
     doc.fillColor('#065f46').font('Helvetica-Bold').fontSize(7.5);
 
+    // Fila 1
     doc.text('Peso Total de Entrada (Materia Prima):', 45, currentY + 8);
-    doc.font('Helvetica').text(`${totals.totalInputWeight.toLocaleString()} Lbs (100.00%)`, 220, currentY + 8);
+    doc.font('Helvetica').text(`${totals.totalInputWeight.toLocaleString()} Lbs (100.00%)`, 210, currentY + 8);
 
+    doc.font('Helvetica-Bold').text('Cajas de Huevo Procesadas:', 330, currentY + 8);
+    doc.font('Helvetica').text(`${totals.totalBoxes.toLocaleString()} Cjas`, 470, currentY + 8);
+
+    // Fila 2
     doc.font('Helvetica-Bold').text('Rendimiento Líquido Obtenido:', 45, currentY + 22);
-    doc.font('Helvetica').text(`${totals.liquidYield.toLocaleString()} Lbs (${totals.yieldPct}%)`, 220, currentY + 22);
+    doc.font('Helvetica').text(`${totals.liquidYield.toLocaleString()} Lbs (${totals.yieldPct}%)`, 210, currentY + 22);
 
-    doc.font('Helvetica-Bold').text('Merma de Cáscara Quebrada:', 45, currentY + 36);
-    doc.font('Helvetica').text(`${totals.shellWaste.toLocaleString()} Lbs`, 220, currentY + 36);
+    doc.font('Helvetica-Bold').text('Rendimiento por Caja:', 330, currentY + 22);
+    doc.font('Helvetica').text(`${totals.yieldPerBoxLbs} Lbs / Caja`, 470, currentY + 22);
 
-    doc.font('Helvetica-Bold').text('Merma Operativa de Envasado / Tuberías:', 45, currentY + 50);
+    // Fila 3
+    doc.font('Helvetica-Bold').text('Total Envasado Comercial:', 45, currentY + 36);
+    doc.font('Helvetica').text(`${totals.packagedWeight.toLocaleString()} Lbs`, 210, currentY + 36);
+
+    doc.font('Helvetica-Bold').text('Eficiencia de Envasado:', 330, currentY + 36);
+    doc.font('Helvetica').text(`${totals.packagingEfficiencyPct}%`, 470, currentY + 36);
+
+    // Fila 4: Líquido + Envasado y % Rendimiento Total
+    doc.font('Helvetica-Bold').text('Líquido + Envasado (Total):', 45, currentY + 50);
+    doc.font('Helvetica').text(`${totals.liquidPlusPackagedLbs.toLocaleString()} Lbs`, 210, currentY + 50);
+
+    doc.font('Helvetica-Bold').text('% Rendimiento (Líq. + Env.):', 330, currentY + 50);
+    doc.font('Helvetica').text(`${totals.liquidPlusPackagedYieldPct}%`, 470, currentY + 50);
+
+    // Fila 5: Mermas
+    doc.font('Helvetica-Bold').text('Merma de Cáscara Quebrada:', 45, currentY + 64);
+    doc.font('Helvetica').text(`${totals.shellWaste.toLocaleString()} Lbs`, 210, currentY + 64);
+
+    doc.font('Helvetica-Bold').text('Merma Tuberías / Envasado:', 330, currentY + 64);
     const packagingLoss = parseFloat(batch.packaging_loss_lbs || 0);
-    doc.font('Helvetica').text(`${packagingLoss.toLocaleString()} Lbs`, 220, currentY + 50);
+    doc.font('Helvetica').text(`${packagingLoss.toLocaleString()} Lbs`, 470, currentY + 64);
 
-    // Columna derecha
-    doc.font('Helvetica-Bold').text('Total Envasado Comercial:', 330, currentY + 8);
-    doc.font('Helvetica').text(`${totals.packagedWeight.toLocaleString()} Lbs`, 470, currentY + 8);
+    // Fila 6: Remanentes y Estatus
+    doc.font('Helvetica-Bold').text('Remanente para Reproceso:', 45, currentY + 76);
+    doc.font('Helvetica').text(`${totals.remanenteWeight.toLocaleString()} Lbs`, 210, currentY + 76);
 
-    doc.font('Helvetica-Bold').text('Eficiencia de Envasado:', 330, currentY + 22);
-    doc.font('Helvetica').text(`${totals.packagingEfficiencyPct}%`, 470, currentY + 22);
+    doc.font('Helvetica-Bold').text('Estatus Oficial de Lote:', 330, currentY + 76);
+    doc.font('Helvetica').text((batch.status || '').toUpperCase(), 470, currentY + 76);
 
-    doc.font('Helvetica-Bold').text('Remanente para Reproceso:', 330, currentY + 36);
-    doc.font('Helvetica').text(`${totals.remanenteWeight.toLocaleString()} Lbs`, 470, currentY + 36);
-
-    doc.font('Helvetica-Bold').text('Estatus de Lote:', 330, currentY + 50);
-    doc.font('Helvetica').text((batch.status || '').toUpperCase(), 470, currentY + 50);
-
-    currentY += 78;
+    currentY += 94;
 
     reportPdfHelper.renderClosingFooter(doc, 36, currentY, 1, 'Lote de Producción');
     reportPdfHelper.renderPageNumbers(doc);
@@ -406,14 +450,16 @@ async function generateBatchSummaryExcel(batchId, companyId) {
     balTitle.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF047857' } };
     balTitle.alignment = { horizontal: 'center' };
 
-    wsSummary.addRow(['CONCEPTO', 'CANTIDAD (LBS)', '% SOBRE ENTRADA', 'ESTATUS']);
+    wsSummary.addRow(['CONCEPTO', 'CANTIDAD (LBS)', '% SOBRE ENTRADA', 'DETALLE / OBSERVACIÓN']);
     const rH = wsSummary.getRow(8);
     rH.font = { bold: true };
 
-    wsSummary.addRow(['Peso Entrada (Materia Prima)', totals.totalInputWeight, '100.00%', 'Procesado']);
-    wsSummary.addRow(['Rendimiento Líquido Obtenido', totals.liquidYield, `${totals.yieldPct}%`, 'Aprobado']);
+    wsSummary.addRow(['Peso Entrada (Materia Prima)', totals.totalInputWeight, '100.00%', `${totals.totalBoxes} Cajas procesadas`]);
+    wsSummary.addRow(['Rendimiento Líquido Obtenido', totals.liquidYield, `${totals.yieldPct}%`, 'Aprobado en pasteurización']);
+    wsSummary.addRow(['Rendimiento por Caja (Lbs/Cja)', totals.yieldPerBoxLbs, '-', `${totals.yieldPerBoxLbs} Lbs por caja`]);
+    wsSummary.addRow(['Total Envasado Comercial', totals.packagedWeight, `${totals.liquidYield > 0 ? ((totals.packagedWeight / totals.liquidYield) * 100).toFixed(2) : 0}%`, 'Terminado comercial']);
+    wsSummary.addRow(['Líquido + Envasado Comercial', totals.liquidPlusPackagedLbs, `${totals.liquidPlusPackagedYieldPct}%`, 'Líquido más envasado total']);
     wsSummary.addRow(['Merma de Cáscara', totals.shellWaste, `${totals.totalInputWeight > 0 ? ((totals.shellWaste / totals.totalInputWeight) * 100).toFixed(2) : 0}%`, 'Desecho']);
-    wsSummary.addRow(['Total Envasado Comercial', totals.packagedWeight, `${totals.liquidYield > 0 ? ((totals.packagedWeight / totals.liquidYield) * 100).toFixed(2) : 0}%`, 'Terminado']);
     wsSummary.addRow(['Merma en Tuberías / Envasado', parseFloat(batch.packaging_loss_lbs || 0), '-', 'Merma']);
     wsSummary.addRow(['Remanente / Reproceso', totals.remanenteWeight, '-', 'Almacenado']);
 
@@ -654,20 +700,44 @@ async function generateBatchSummaryWord(batchId, companyId) {
                         }),
                         new TableRow({
                             children: [
+                                new TableCell({ borders: thinBorder, children: [new Paragraph({ children: [new TextRun({ text: 'Cajas de Huevo (MP):', bold: true })] })] }),
+                                new TableCell({ borders: thinBorder, children: [new Paragraph(`${totals.totalBoxes.toLocaleString()} Cjas`)] })
+                            ]
+                        }),
+                        new TableRow({
+                            children: [
                                 new TableCell({ borders: thinBorder, children: [new Paragraph({ children: [new TextRun({ text: 'Rendimiento Líquido Pasteurizado:', bold: true })] })] }),
                                 new TableCell({ borders: thinBorder, children: [new Paragraph(`${totals.liquidYield.toLocaleString()} Lbs (${totals.yieldPct}%)`)] })
                             ]
                         }),
                         new TableRow({
                             children: [
-                                new TableCell({ borders: thinBorder, children: [new Paragraph({ children: [new TextRun({ text: 'Merma Cáscara:', bold: true })] })] }),
-                                new TableCell({ borders: thinBorder, children: [new Paragraph(`${totals.shellWaste.toLocaleString()} Lbs`)] })
+                                new TableCell({ borders: thinBorder, children: [new Paragraph({ children: [new TextRun({ text: 'Rendimiento por Caja:', bold: true })] })] }),
+                                new TableCell({ borders: thinBorder, children: [new Paragraph(`${totals.yieldPerBoxLbs} Lbs / Caja`)] })
                             ]
                         }),
                         new TableRow({
                             children: [
                                 new TableCell({ borders: thinBorder, children: [new Paragraph({ children: [new TextRun({ text: 'Envasado Real:', bold: true })] })] }),
                                 new TableCell({ borders: thinBorder, children: [new Paragraph(`${totals.packagedWeight.toLocaleString()} Lbs`)] })
+                            ]
+                        }),
+                        new TableRow({
+                            children: [
+                                new TableCell({ borders: thinBorder, children: [new Paragraph({ children: [new TextRun({ text: 'Líquido + Envasado (Total):', bold: true })] })] }),
+                                new TableCell({ borders: thinBorder, children: [new Paragraph(`${totals.liquidPlusPackagedLbs.toLocaleString()} Lbs`)] })
+                            ]
+                        }),
+                        new TableRow({
+                            children: [
+                                new TableCell({ borders: thinBorder, children: [new Paragraph({ children: [new TextRun({ text: '% Rendimiento (Líq. + Env.):', bold: true })] })] }),
+                                new TableCell({ borders: thinBorder, children: [new Paragraph(`${totals.liquidPlusPackagedYieldPct}%`)] })
+                            ]
+                        }),
+                        new TableRow({
+                            children: [
+                                new TableCell({ borders: thinBorder, children: [new Paragraph({ children: [new TextRun({ text: 'Merma Cáscara:', bold: true })] })] }),
+                                new TableCell({ borders: thinBorder, children: [new Paragraph(`${totals.shellWaste.toLocaleString()} Lbs`)] })
                             ]
                         }),
                         new TableRow({

@@ -3060,6 +3060,37 @@ const EggProduction = () => {
                                 </div>
                             </div>
 
+                            {/* Métricas en tiempo real de Balance: Rendimiento por caja y Líquido + Envasado */}
+                            {(() => {
+                                const inpLbs = parseFloat(selectedBatchForComplete?.input_weight_lbs || 0);
+                                const bxs = selectedBatchForComplete?.total_boxes || Math.round(inpLbs / 30) || 1;
+                                const curLiquid = parseFloat(completeForm.yield_liquid_lbs || 0);
+                                const curPkg = parseFloat(selectedBatchForComplete?.packaged_weight_lbs || 0);
+                                const yieldPerBox = bxs > 0 ? (curLiquid / bxs).toFixed(1) : '0.0';
+                                const liquidPlusPackaged = curLiquid + curPkg;
+                                const totalYieldPct = inpLbs > 0 ? ((liquidPlusPackaged / inpLbs) * 100).toFixed(1) : '0.0';
+
+                                return (
+                                    <div className="grid grid-cols-3 gap-2 bg-blue-50/60 p-3 rounded-xl border border-blue-200">
+                                        <div className="text-center">
+                                            <span className="text-[10px] font-bold text-blue-700 block uppercase">Rend. / Caja</span>
+                                            <span className="text-xs font-black text-blue-900">{yieldPerBox} Lbs/Cja</span>
+                                            <span className="text-[9px] text-blue-500 block">({bxs} cajas)</span>
+                                        </div>
+                                        <div className="text-center">
+                                            <span className="text-[10px] font-bold text-blue-700 block uppercase">Líq. + Envasado</span>
+                                            <span className="text-xs font-black text-blue-900">{liquidPlusPackaged.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} Lbs</span>
+                                            <span className="text-[9px] text-blue-500 block">{curPkg > 0 ? `(${curPkg.toLocaleString()} env.)` : 'sin envasar'}</span>
+                                        </div>
+                                        <div className="text-center">
+                                            <span className="text-[10px] font-bold text-blue-700 block uppercase">% Rend. Total</span>
+                                            <span className="text-xs font-black text-blue-900">{totalYieldPct}%</span>
+                                            <span className="text-[9px] text-blue-500 block">sobre entrada</span>
+                                        </div>
+                                    </div>
+                                );
+                            })()}
+
                             <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
                                 <button
                                     type="button"

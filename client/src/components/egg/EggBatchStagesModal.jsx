@@ -112,6 +112,7 @@ const EggBatchStagesModal = ({
                                             {parseFloat(stagesModal.data?.batch?.yield_liquid_lbs || 0) > 0 && (
                                                 <div className="text-teal-700 font-bold text-[11px]">
                                                     Líquido: {parseFloat(stagesModal.data.batch.yield_liquid_lbs).toLocaleString()} Lbs
+                                                    {stagesModal.data?.totals?.yieldPerBoxLbs > 0 && ` (${stagesModal.data.totals.yieldPerBoxLbs} Lbs/Cja)`}
                                                 </div>
                                             )}
                                         </div>
@@ -183,6 +184,12 @@ const EggBatchStagesModal = ({
                                         <div className="mt-2 space-y-1 text-xs text-slate-600">
                                             <div>Rendimiento: <b>{parseFloat(stagesModal.data?.batch?.yield_liquid_lbs || 0).toLocaleString()} Lbs</b></div>
                                             <div>Envasado: <b className="text-purple-700">{parseFloat(stagesModal.data?.batch?.packaged_weight_lbs || 0).toLocaleString()} Lbs</b></div>
+                                            <div>Líq. + Envasado: <b className="text-blue-700">{(parseFloat(stagesModal.data?.batch?.yield_liquid_lbs || 0) + parseFloat(stagesModal.data?.batch?.packaged_weight_lbs || 0)).toLocaleString()} Lbs</b></div>
+                                            {parseFloat(stagesModal.data?.batch?.input_weight_lbs || 0) > 0 && (
+                                                <div className="text-[11px] font-bold text-blue-700">
+                                                    % Rend. Total: {(((parseFloat(stagesModal.data?.batch?.yield_liquid_lbs || 0) + parseFloat(stagesModal.data?.batch?.packaged_weight_lbs || 0)) / parseFloat(stagesModal.data?.batch?.input_weight_lbs)) * 100).toFixed(1)}%
+                                                </div>
+                                            )}
                                             {stagesModal.data?.batch?.packaging_efficiency_pct && (
                                                 <div className="text-[11px] font-bold text-emerald-700">
                                                     Eficiencia: {stagesModal.data.batch.packaging_efficiency_pct}%
