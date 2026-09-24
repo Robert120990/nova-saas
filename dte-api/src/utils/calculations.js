@@ -55,12 +55,15 @@ function calculateItem(item, tipoDte = '01', ivaRate = 13) {
         // MODO CRÉDITO FISCAL: Quitar impuestos específicos de combustible primero,
         // luego extraer el precio neto unitario ANTES del descuento para que cuadre:
         // (precioUni * cantidad) - montoDescu = ventaGravada (Requisito MH)
+        const lineInclusive = Math.max(0, (priceInput * quantity) - discountInput);
+        const baseConIVA = Math.max(0, lineInclusive - fovial - cotrans);
         const baseSinFuel = Math.max(0, priceInput - unitFuelTax);
         netPrice = round6(baseSinFuel / divisor);
         netDiscount = round6(discountInput / divisor);
         ventaGravada = round(Math.max(0, (netPrice * quantity) - netDiscount));
         const isGravado = !item.exento && item.tipoItem !== 2 && item.tipoItem !== 3;
-        iva = isGravado ? round(ventaGravada * rate) : 0;
+        // Calcular IVA complementario sobre la base con IVA para garantizar cuadre exacto al centavo
+        iva = isGravado ? round(baseConIVA - ventaGravada) : 0;
     }
 
     return {
@@ -82,6 +85,7 @@ function calculateTotals(items, taxes = [], tipoDte = '01', generalDiscount = 0,
     let totalGravada = 0;
     let totalIva = 0;
     let totalDescuItems = 0;
+    let totalExpectedInclusive = 0;
 
     items.forEach(item => {
         totalNoSuj += item.ventaNoSuj || 0;
@@ -89,6 +93,7 @@ function calculateTotals(items, taxes = [], tipoDte = '01', generalDiscount = 0,
         totalGravada += item.ventaGravada || 0;
         totalIva += item.ivaItem || 0;
         totalDescuItems += item.montoDescu || 0;
+        totalExpectedInclusive += item.totalItemInclusive || 0;
     });
 
     const rate = ivaRate / 100;
@@ -98,7 +103,7 @@ function calculateTotals(items, taxes = [], tipoDte = '01', generalDiscount = 0,
     const rawGenDiscount = Math.max(0, parseFloat(generalDiscount) || 0);
     let descuGravada = 0;
 
-    if (tipoDte === '03') {
+    if (tipoDte === '03' || tipoDte === '05' || tipoDte === '06') {
         // En CCF, si el descuento general viene del POS en valor inclusive, se convierte a neto:
         descuGravada = round(rawGenDiscount / divisor);
     } else {
@@ -142,8 +147,24 @@ function calculateTotals(items, taxes = [], tipoDte = '01', generalDiscount = 0,
         totalPagar = round(subTotal + rOtrosImp);
         finalIva = round(((totalGravada - descuGravada) * ivaRate) / (100 + ivaRate));
     } else {
-        // En CCF 03, el IVA se liquida sobre la base gravada neta remanente
-        finalIva = round(Math.max(0, totalGravada - descuGravada) * rate);
+        // En CCF 03 y afines (05, 06):
+        if (descuGravada > 0) {
+            const descuIva = round(descuGravada * rate);
+            finalIva = Math.max(0, round(totalIva - descuIva));
+        } else {
+            finalIva = round(totalIva);
+        }
+
+        // Blindaje contra descuadre de 1 centavo:
+        // El total general inclusive esperado de la transacción es la suma de los valores inclusive de los ítems menos el descuento general:
+        const expectedTotal = round(totalExpectedInclusive - rawGenDiscount);
+        const currentSum = round(subTotal + finalIva + rOtrosImp);
+        const diff = round(expectedTotal - currentSum);
+
+        if (Math.abs(diff) === 0.01 && (finalIva + diff) >= 0) {
+            finalIva = round(finalIva + diff);
+        }
+
         totalPagar = round(subTotal + finalIva + rOtrosImp);
     }
 

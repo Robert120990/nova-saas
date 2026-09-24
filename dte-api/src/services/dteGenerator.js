@@ -536,7 +536,7 @@ async function generateDTE(payload) {
 
     // 5. Resumen
     if (tipoDte !== '07') {
-    const calculatedItems = items.map(item => calculateItem(item, tipoDte));
+    const calculatedItems = items.map(item => calculateItem(item, tipoDte, ivaRate));
     
     // Para Crédito Fiscal (03) y Nota de Crédito (05) con combustible, FOVIAL (D1) y COTRANS (C8)
     // se reportan como tributos del resumen. Ya se quitaron del precio en calculateItem (base + IVA
