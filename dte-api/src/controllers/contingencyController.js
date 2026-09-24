@@ -35,9 +35,11 @@ async function stop(req, res) {
             result.reportError = err.message;
         }
 
-        // Iniciar de inmediato la retransmisión de documentos acumulados
-        const { processContingencyQueue } = require('../jobs/resendContingencyDTE');
-        processContingencyQueue().catch(err => console.error('[ContingencyController] Error disparando retransmisión:', err.message));
+        // Iniciar de inmediato la retransmisión de documentos acumulados vía BullMQ
+        const { contingencyQueue } = require('../queue');
+        contingencyQueue.enqueueContingencyDocuments(req.company_id).catch(err => {
+            console.error('[ContingencyController] Error encolando documentos en BullMQ:', err.message);
+        });
 
         res.status(200).json(result);
     } catch (error) {

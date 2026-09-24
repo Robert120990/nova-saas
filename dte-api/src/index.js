@@ -12,10 +12,10 @@ const { initSentry, setupSentryErrorHandler } = require('./config/sentry');
 const { logger, httpLogger } = require('./utils/logger');
 const { authMiddleware, tenantMiddleware } = require('./middlewares/auth');
 const dteController = require('./controllers/dteController');
-const { startQueueWorker } = require('./queue/transmissionQueue');
 const { startContingencyWorker } = require('./jobs/resendContingencyDTE');
 const { startAutoCloseWorker } = require('./jobs/autoCloseContingency');
 const { initValidators } = require('./validators/schemaValidator');
+const { contingencyQueue } = require('./queue');
 
 const app = express();
 const PORT = process.env.PORT || 4005;
@@ -42,8 +42,8 @@ app.use(express.json());
 
 // Initialization
 initValidators();
-startQueueWorker(60000); // Process queue every 60s
-startContingencyWorker(300000); // Process contingency every 5m
+// Reconciliación pasiva de contingencia cada 30m (el reenvío principal es reactivo inmediato vía BullMQ)
+startContingencyWorker(1800000);
 startAutoCloseWorker(300000); // Check auto-recovery every 5m
 
 // Routes
@@ -93,6 +93,19 @@ app.use((err, req, res, next) => {
     logger.error({ err, path: req.path, method: req.method }, `[DTE-API ERROR] ${err.message}`);
     res.status(500).json({ success: false, message: 'Error interno del servidor' });
 });
+
+const gracefulShutdown = async () => {
+    logger.info('[DTE-API] Iniciando cierre ordenado...');
+    try {
+        await contingencyQueue.close();
+    } catch (e) {
+        logger.error({ err: e.message }, '[DTE-API] Error cerrando contingencyQueue');
+    }
+    process.exit(0);
+};
+
+process.on('SIGTERM', gracefulShutdown);
+process.on('SIGINT', gracefulShutdown);
 
 app.listen(PORT, () => {
     logger.info(`DTE API corriendo en puerto ${PORT}`);
