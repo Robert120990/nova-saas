@@ -9,7 +9,7 @@ import Modal from '../components/ui/Modal';
 import { 
     Search, FileText, Eye, Printer, Trash2,
     Mail, Terminal, Code, CheckCircle2, XCircle, AlertCircle, Info, Clock, Send, Ban, RefreshCcw,
-    ChevronDown, BarChart3, Filter, RotateCcw, X, Sparkles, User
+    BarChart3, Filter, RotateCcw, X, Sparkles, User, MoreVertical
 } from 'lucide-react';
 import Money from '../components/ui/Money';
 import SaleDetailModal from '../components/sales/SaleDetailModal';
@@ -49,6 +49,22 @@ const formatDUI = (value) => {
     if (v.length <= 8) return v;
     return `${v.slice(0, 8)}-${v.slice(8)}`;
 };
+
+const PdfFileIcon = ({ size = 14, className = "text-rose-600" }) => (
+    <svg 
+        width={size} 
+        height={size} 
+        viewBox="0 0 24 24" 
+        fill="none" 
+        xmlns="http://www.w3.org/2000/svg" 
+        className={`shrink-0 ${className}`}
+    >
+        <path d="M14 2H6C4.89543 2 4 2.89543 4 4V20C4 21.1046 4.89543 22 6 22H18C19.1046 22 20 21.1046 20 20V8L14 2Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M14 2V8H20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        <rect x="5" y="11.5" width="14" height="7" rx="1.5" fill="currentColor" />
+        <text x="12" y="16.8" fill="white" fontSize="5.2" fontWeight="900" textAnchor="middle" fontFamily="system-ui, -apple-system, sans-serif">PDF</text>
+    </svg>
+);
 
 const SalesHistory = () => {
     const { user } = useAuth();
@@ -1010,90 +1026,168 @@ const SalesHistory = () => {
                             <td className="px-4 py-1 font-black text-slate-900 text-[12.5px]">
                                 <Money value={sale.total_pagar} />
                             </td>
-                            <td className="px-6 py-1 text-right">
-                                <div className="flex justify-end">
+                            <td className="px-3 py-1 text-right">
+                                <div className="flex items-center justify-end gap-1">
+                                    {/* Acceso Rápido 1: Ver Detalle */}
+                                    <button
+                                        onClick={() => handleViewSale(sale.id)}
+                                        title="Ver Detalle de Venta"
+                                        className="p-1.5 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 hover:text-indigo-700 transition-all active:scale-95 border border-indigo-100/60"
+                                    >
+                                        <Eye size={13} />
+                                    </button>
+
+                                    {/* Acceso Rápido 2: Representación Gráfica (PDF) */}
+                                    <button
+                                        onClick={() => handleViewRTEE(sale.id)}
+                                        title="Ver Representación Gráfica (PDF)"
+                                        className="p-1.5 rounded-lg bg-rose-50 text-rose-600 hover:bg-rose-100 hover:text-rose-700 transition-all active:scale-95 border border-rose-200/70 flex items-center justify-center"
+                                    >
+                                        <PdfFileIcon size={14} className="text-rose-600" />
+                                    </button>
+
+                                    {/* Botón de Menú Desplegable (Más Acciones) */}
                                     <button
                                         onClick={(e) => {
                                             if (menuState?.id === sale.id) {
                                                 setMenuState(null);
                                             } else {
                                                 const rect = e.currentTarget.getBoundingClientRect();
-                                                const menuH = 296;
                                                 const spaceBelow = window.innerHeight - rect.bottom;
-                                                const dir = spaceBelow < menuH && rect.top > menuH ? 'up' : 'down';
-                                                let top = dir === 'up' ? rect.top - 8 - menuH : rect.bottom + 8;
-                                                top = Math.max(8, Math.min(top, window.innerHeight - menuH - 8));
-                                                setMenuState({ id: sale.id, top, right: document.documentElement.clientWidth - rect.right, dir });
+                                                const spaceAbove = rect.top;
+                                                // El menú compacto mide ~220px
+                                                const dir = spaceBelow < 230 && spaceAbove > spaceBelow ? 'up' : 'down';
+                                                let top, bottom, maxHeight;
+                                                if (dir === 'up') {
+                                                    bottom = window.innerHeight - rect.top + 6;
+                                                    maxHeight = Math.max(140, rect.top - 16);
+                                                } else {
+                                                    top = rect.bottom + 6;
+                                                    maxHeight = Math.max(140, window.innerHeight - rect.bottom - 16);
+                                                }
+                                                const right = Math.max(8, document.documentElement.clientWidth - rect.right);
+                                                setMenuState({ id: sale.id, top, bottom, right, maxHeight, dir });
                                             }
                                         }}
-                                        className={`p-2 rounded-xl transition-all flex items-center gap-1 border ${
-                                            menuState?.id === sale.id ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg' : 'bg-white text-slate-400 hover:text-slate-600 border-slate-100'
+                                        title="Más opciones de venta y DTE"
+                                        className={`p-1.5 rounded-lg transition-all border flex items-center justify-center active:scale-95 ${
+                                            menuState?.id === sale.id 
+                                                ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' 
+                                                : 'bg-white text-slate-400 hover:text-slate-600 hover:bg-slate-50 border-slate-200'
                                         }`}
                                     >
-                                        <span className="text-[10px] font-black uppercase tracking-widest pl-1">Acciones</span>
-                                        <ChevronDown size={14} className={`transition-transform duration-200 ${menuState?.id === sale.id ? 'rotate-180' : ''}`} />
+                                        <MoreVertical size={13} />
                                     </button>
 
-                                    {menuState?.id === sale.id && <div className="fixed inset-0 z-[100]" onClick={() => setMenuState(null)} />}
                                     {menuState?.id === sale.id && (
-                                        <div className="fixed z-[101]" style={{ top: menuState.top, right: menuState.right }}>
-                                                <div className={`bg-white rounded-2xl shadow-2xl border border-slate-100 max-h-[calc(100dvh-2rem)] overflow-y-auto animate-in fade-in duration-200 ${menuState.dir === 'up' ? 'slide-in-from-bottom-2' : 'slide-in-from-top-2'}`}>
-                                                <div className="p-1.5 grid grid-cols-1 gap-0.5 w-52">
-                                                    <button onClick={() => { handleViewSale(sale.id); setMenuState(null); }} className="flex items-center gap-2 w-full p-1.5 text-left hover:bg-slate-50 rounded-xl transition-all group">
-                                                        <div className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg group-hover:scale-110 transition-transform"><Eye size={14} /></div>
-                                                        <span className="text-xs font-bold text-slate-600">Ver Detalle</span>
-                                                    </button>
-                                                    
-                                                    <button onClick={() => { handleViewRTEE(sale.id); setMenuState(null); }} className="flex items-center gap-2 w-full p-1.5 text-left hover:bg-slate-50 rounded-xl transition-all group">
-                                                        <div className="p-1.5 bg-emerald-50 text-emerald-600 rounded-lg group-hover:scale-110 transition-transform"><FileText size={14} /></div>
-                                                        <span className="text-xs font-bold text-slate-600">Representación (PDF)</span>
+                                        <div className="fixed inset-0 z-[100]" onClick={() => setMenuState(null)} />
+                                    )}
+
+                                    {menuState?.id === sale.id && (
+                                        <div 
+                                            className="fixed z-[101]" 
+                                            style={{ 
+                                                ...(menuState.dir === 'up' ? { bottom: menuState.bottom } : { top: menuState.top }), 
+                                                right: menuState.right 
+                                            }}
+                                        >
+                                            <div 
+                                                className={`bg-white rounded-xl shadow-xl border border-slate-200/80 overflow-y-auto animate-in fade-in duration-150 ${
+                                                    menuState.dir === 'up' ? 'slide-in-from-bottom-2' : 'slide-in-from-top-2'
+                                                }`}
+                                                style={{ maxHeight: menuState.maxHeight }}
+                                            >
+                                                <div className="p-1 grid grid-cols-1 gap-0.5 w-48 text-left">
+                                                    <button 
+                                                        onClick={() => { handleViewJSON(sale.id); setMenuState(null); }} 
+                                                        className="flex items-center gap-2 w-full px-2 py-1 text-left hover:bg-slate-50 rounded-lg transition-all text-slate-600 hover:text-slate-900 group"
+                                                    >
+                                                        <div className="p-1 bg-slate-100 text-slate-600 rounded-md group-hover:scale-105 transition-transform shrink-0">
+                                                            <Code size={12} />
+                                                        </div>
+                                                        <span className="text-[11.5px] font-semibold">Ver JSON DTE</span>
                                                     </button>
 
-                                                    <button onClick={() => { handleViewJSON(sale.id); setMenuState(null); }} className="flex items-center gap-2 w-full p-1.5 text-left hover:bg-slate-50 rounded-xl transition-all group">
-                                                        <div className="p-1.5 bg-slate-100 text-slate-600 rounded-lg group-hover:scale-110 transition-transform"><Code size={14} /></div>
-                                                        <span className="text-xs font-bold text-slate-600">Ver JSON DTE</span>
-                                                    </button>
-
-                                                    <button onClick={() => { handleViewResponse(sale.id); setMenuState(null); }} className="flex items-center gap-2 w-full p-1.5 text-left hover:bg-slate-50 rounded-xl transition-all group">
-                                                        <div className="p-1.5 bg-amber-50 text-amber-600 rounded-lg group-hover:scale-110 transition-transform"><Terminal size={14} /></div>
-                                                        <span className="text-xs font-bold text-slate-600">Respuesta MH</span>
+                                                    <button 
+                                                        onClick={() => { handleViewResponse(sale.id); setMenuState(null); }} 
+                                                        className="flex items-center gap-2 w-full px-2 py-1 text-left hover:bg-slate-50 rounded-lg transition-all text-slate-600 hover:text-slate-900 group"
+                                                    >
+                                                        <div className="p-1 bg-amber-50 text-amber-600 rounded-md group-hover:scale-105 transition-transform shrink-0">
+                                                            <Terminal size={12} />
+                                                        </div>
+                                                        <span className="text-[11.5px] font-semibold">Respuesta MH</span>
                                                     </button>
 
                                                     {sale.dte_status === 'ACCEPTED' && (
-                                                        <button onClick={() => { handleResendEmail(sale); setMenuState(null); }} className="flex items-center gap-2 w-full p-1.5 text-left hover:bg-slate-50 rounded-xl transition-all group">
-                                                            <div className="p-1.5 bg-blue-50 text-blue-600 rounded-lg group-hover:scale-110 transition-transform"><Send size={14} /></div>
-                                                            <span className="text-xs font-bold text-slate-600">Reenviar Correo</span>
+                                                        <button 
+                                                            onClick={() => { handleResendEmail(sale); setMenuState(null); }} 
+                                                            className="flex items-center gap-2 w-full px-2 py-1 text-left hover:bg-slate-50 rounded-lg transition-all text-slate-600 hover:text-slate-900 group"
+                                                        >
+                                                            <div className="p-1 bg-blue-50 text-blue-600 rounded-md group-hover:scale-105 transition-transform shrink-0">
+                                                                <Send size={12} />
+                                                            </div>
+                                                            <span className="text-[11.5px] font-semibold">Reenviar Correo</span>
                                                         </button>
                                                     )}
 
                                                     {sale.dte_status === 'ACCEPTED' && (
-                                                        <button onClick={() => { handleEditDTEItems(sale); setMenuState(null); }} className="flex items-center gap-2 w-full p-1.5 text-left hover:bg-slate-50 rounded-xl transition-all group">
-                                                            <div className="p-1.5 bg-sky-50 text-sky-600 rounded-lg group-hover:scale-110 transition-transform"><FileText size={14} /></div>
-                                                            <span className="text-xs font-bold text-slate-600">Editar Items</span>
+                                                        <button 
+                                                            onClick={() => { handleEditDTEItems(sale); setMenuState(null); }} 
+                                                            className="flex items-center gap-2 w-full px-2 py-1 text-left hover:bg-slate-50 rounded-lg transition-all text-slate-600 hover:text-slate-900 group"
+                                                        >
+                                                            <div className="p-1 bg-sky-50 text-sky-600 rounded-md group-hover:scale-105 transition-transform shrink-0">
+                                                                <FileText size={12} />
+                                                            </div>
+                                                            <span className="text-[11.5px] font-semibold">Editar Items</span>
                                                         </button>
                                                     )}
 
                                                     {(sale.dte_status === 'REJECTED' || sale.dte_status === 'RECHAZADO') && (
                                                         <>
-                                                            <button onClick={() => { handleOpenRetransmitModal(sale); setMenuState(null); }} className="flex items-center gap-2 w-full p-1.5 text-left hover:bg-slate-50 rounded-xl transition-all group">
-                                                                <div className="p-1.5 bg-rose-50 text-rose-600 rounded-lg group-hover:scale-110 transition-transform"><RefreshCcw size={14} /></div>
-                                                                <span className="text-xs font-bold text-slate-600">Reintentar Envío</span>
+                                                            <button 
+                                                                onClick={() => { handleOpenRetransmitModal(sale); setMenuState(null); }} 
+                                                                className="flex items-center gap-2 w-full px-2 py-1 text-left hover:bg-slate-50 rounded-lg transition-all text-rose-600 group"
+                                                            >
+                                                                <div className="p-1 bg-rose-50 text-rose-600 rounded-md group-hover:scale-105 transition-transform shrink-0">
+                                                                    <RefreshCcw size={12} />
+                                                                </div>
+                                                                <span className="text-[11.5px] font-semibold">Reintentar Envío</span>
                                                             </button>
-                                                            <button onClick={() => { setSelectedSaleForCustomerEdit(sale); setIsEditCustomerModalOpen(true); setMenuState(null); }} className="flex items-center gap-2 w-full p-1.5 text-left hover:bg-slate-50 rounded-xl transition-all group">
-                                                                <div className="p-1.5 bg-blue-50 text-blue-600 rounded-lg group-hover:scale-110 transition-transform"><User size={14} /></div>
-                                                                <span className="text-xs font-bold text-slate-600">Corregir Cliente</span>
+                                                            <button 
+                                                                onClick={() => { setSelectedSaleForCustomerEdit(sale); setIsEditCustomerModalOpen(true); setMenuState(null); }} 
+                                                                className="flex items-center gap-2 w-full px-2 py-1 text-left hover:bg-slate-50 rounded-lg transition-all text-blue-600 group"
+                                                            >
+                                                                <div className="p-1 bg-blue-50 text-blue-600 rounded-md group-hover:scale-105 transition-transform shrink-0">
+                                                                    <User size={12} />
+                                                                </div>
+                                                                <span className="text-[11.5px] font-semibold">Corregir Cliente</span>
                                                             </button>
                                                         </>
                                                     )}
 
                                                     {sale.codigo_generacion && canRegenerateDTE && (
-                                                        <button onClick={() => { handleRegenerateDTE(sale); setMenuState(null); }} className="flex items-center gap-2 w-full p-1.5 text-left hover:bg-slate-50 rounded-xl transition-all group">
-                                                            <div className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg group-hover:scale-110 transition-transform"><RefreshCcw size={14} /></div>
-                                                            <span className="text-xs font-bold text-slate-600">Regenerar DTE</span>
+                                                        <button 
+                                                            onClick={() => { handleRegenerateDTE(sale); setMenuState(null); }} 
+                                                            className="flex items-center gap-2 w-full px-2 py-1 text-left hover:bg-slate-50 rounded-lg transition-all text-indigo-600 group"
+                                                        >
+                                                            <div className="p-1 bg-indigo-50 text-indigo-600 rounded-md group-hover:scale-105 transition-transform shrink-0">
+                                                                <RefreshCcw size={12} />
+                                                            </div>
+                                                            <span className="text-[11.5px] font-semibold">Regenerar DTE</span>
                                                         </button>
                                                     )}
 
-                                                    <div className="h-px bg-slate-100 my-0.5 mx-1" />
+                                                    <button 
+                                                        onClick={() => { handlePrintTicket(sale); setMenuState(null); }} 
+                                                        className="flex items-center gap-2 w-full px-2 py-1 text-left hover:bg-slate-50 rounded-lg transition-all text-slate-600 hover:text-slate-900 group"
+                                                    >
+                                                        <div className="p-1 bg-slate-100 text-slate-600 rounded-md group-hover:scale-105 transition-transform shrink-0">
+                                                            <Printer size={12} />
+                                                        </div>
+                                                        <span className="text-[11.5px] font-semibold">Reimprimir Ticket</span>
+                                                    </button>
+
+                                                    <div className="h-px bg-slate-100 my-0.5" />
 
                                                     {(() => {
                                                         const isAlreadyVoided = sale.estado === 'anulado' || sale.estado === 'invalidado' || sale.dte_status === 'INVALIDADO';
@@ -1108,22 +1202,19 @@ const SalesHistory = () => {
                                                                             ? 'Plazo legal de anulación/invalidación vencido según normativa MH' 
                                                                             : 'Anular esta operación y generar evento de invalidación DTE'
                                                                 }
-                                                                className={`flex items-center gap-2 w-full p-1.5 text-left rounded-xl transition-all group ${
+                                                                className={`flex items-center gap-2 w-full px-2 py-1 text-left rounded-lg transition-all group ${
                                                                     isAlreadyVoided || !isVoidableDTE(sale) ? 'opacity-30 cursor-not-allowed' : 'hover:bg-rose-50 text-rose-600'
                                                                 }`}
                                                             >
-                                                                <div className={`p-1.5 rounded-lg group-hover:scale-110 transition-transform ${
+                                                                <div className={`p-1 rounded-md group-hover:scale-105 transition-transform shrink-0 ${
                                                                     isAlreadyVoided || !isVoidableDTE(sale) ? 'bg-slate-100 text-slate-400' : 'bg-rose-100 text-rose-600'
-                                                                }`}><Ban size={14} /></div>
-                                                                <span className="text-xs font-bold">Anular Operación</span>
+                                                                }`}>
+                                                                    <Ban size={12} />
+                                                                </div>
+                                                                <span className="text-[11.5px] font-bold">Anular Operación</span>
                                                             </button>
                                                         );
                                                     })()}
-
-                                                    <button onClick={() => { handlePrintTicket(sale); setMenuState(null); }} className="flex items-center gap-2 w-full p-1.5 text-left hover:bg-slate-50 rounded-xl transition-all group">
-                                                        <div className="p-1.5 bg-slate-100 text-slate-600 rounded-lg group-hover:scale-110 transition-transform"><Printer size={14} /></div>
-                                                        <span className="text-xs font-bold text-slate-600">Reimprimir Ticket</span>
-                                                    </button>
                                                 </div>
                                             </div>
                                         </div>
