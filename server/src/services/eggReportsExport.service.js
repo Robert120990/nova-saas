@@ -158,7 +158,9 @@ async function generateRawMaterialsReportPdf(companyId, filters = {}) {
  * Resumen de producciones: lb totales producidas, huevo quebrado, rango de fechas, por día, por producto.
  */
 async function getProductionReportData(companyId, filters = {}) {
-    const { startDate, endDate, productType, status } = filters;
+    const { startDate, endDate, productType, status, from, to } = filters;
+    const startFilter = startDate || from;
+    const endFilter = endDate || to;
     let query = `
         SELECT b.*
         FROM egg_production_batches b
@@ -166,13 +168,13 @@ async function getProductionReportData(companyId, filters = {}) {
     `;
     const params = [companyId];
 
-    if (startDate) {
+    if (startFilter) {
         query += ' AND DATE(b.started_at) >= ?';
-        params.push(startDate);
+        params.push(startFilter);
     }
-    if (endDate) {
+    if (endFilter) {
         query += ' AND DATE(b.started_at) <= ?';
-        params.push(endDate);
+        params.push(endFilter);
     }
     if (productType) {
         query += ' AND b.product_type = ?';
@@ -187,20 +189,89 @@ async function getProductionReportData(companyId, filters = {}) {
 
     const [rows] = await pool.query(query, params);
 
-    // Sumar empaquetado real
+    // Sumar empaquetado real, materias primas (cajas e insumos adicionales)
     for (const b of rows) {
         const [pkgSum] = await pool.query(
             'SELECT COALESCE(SUM(total_batch_weight_lbs), 0) as packaged_weight FROM egg_packaging_records WHERE batch_id = ? AND company_id = ?',
             [b.id, companyId]
         );
         b.packaged_weight_lbs = parseFloat(pkgSum[0]?.packaged_weight || 0);
+
+        // Materias primas y tarimas de este lote
+        const [rmRows] = await pool.query(
+            'SELECT quantity_lbs, boxes_count, tarimas_json FROM batch_raw_materials WHERE batch_id = ?',
+            [b.id]
+        );
+
+        let totalBoxes = 0;
+        let rawEggInputLbs = 0;
+        for (const rm of rmRows) {
+            rawEggInputLbs += parseFloat(rm.quantity_lbs || 0);
+            let boxes = parseInt(rm.boxes_count || 0, 10);
+            if (!boxes && rm.tarimas_json) {
+                try {
+                    const tars = typeof rm.tarimas_json === 'string' ? JSON.parse(rm.tarimas_json) : rm.tarimas_json;
+                    boxes = (tars || []).reduce((s, t) => s + (parseInt(t.boxes_count || 0, 10)), 0);
+                } catch (e) { }
+            }
+            totalBoxes += boxes;
+        }
+
+        let ing = {};
+        try {
+            ing = typeof b.ingredients_json === 'string' ? JSON.parse(b.ingredients_json) : (b.ingredients_json || {});
+        } catch (e) { ing = {}; }
+
+        if (totalBoxes === 0) {
+            totalBoxes = parseInt(ing.boxes_count || ing.raw_egg_boxes || 0, 10);
+        }
+        if (rawEggInputLbs === 0) {
+            rawEggInputLbs = parseFloat(b.input_weight_lbs || 0);
+        }
+
+        // Insumos adicionales (azúcar, sal, ácido cítrico, leche en polvo, agua, ppg, etc.)
+        const sugarLbs = parseFloat(ing.sugar_lbs || 0);
+        const saltLbs = parseFloat(ing.salt_lbs || 0);
+        const citricAcidLbs = parseFloat(ing.citric_acid_lbs || 0);
+        const milkPowderLbs = parseFloat(ing.milk_powder_lbs || 0);
+        const waterLbs = parseFloat(ing.water_lbs || ing.water_h2o_lbs || 0) + (parseFloat(ing.water_bottles || 0) * 41.8);
+        const ppgLbs = parseFloat(ing.ppg_lbs || 0) + (parseFloat(ing.ppg_g || 0) / 453.592);
+        const otherLbs = parseFloat(ing.other_ingredients_lbs || ing.other_lbs || 0);
+
+        const additionalIngredientsLbs = Math.round((sugarLbs + saltLbs + citricAcidLbs + milkPowderLbs + waterLbs + ppgLbs + otherLbs) * 100) / 100;
+        const totalYieldLbs = parseFloat(b.yield_liquid_lbs || 0);
+
+        // Rendimiento neto de huevo puro descontando aditivos
+        const netEggYieldLbs = Math.max(0, Math.round((totalYieldLbs - additionalIngredientsLbs) * 100) / 100);
+
+        // Rendimiento en Libras por Caja de Huevo (eficacia por caja)
+        const yieldPerBoxLbs = totalBoxes > 0 ? Math.round((netEggYieldLbs / totalBoxes) * 100) / 100 : 0;
+
+        // Eficacia / Rendimiento de Huevo Puro % (net_egg_yield_lbs / raw_egg_input_lbs)
+        const pureEggYieldPct = rawEggInputLbs > 0 ? Math.round(((netEggYieldLbs / rawEggInputLbs) * 100) * 10) / 10 : 0;
+
+        // Propiedades asignadas para Frontend, PDF y Excel
+        b.total_boxes = totalBoxes;
+        b.raw_egg_input_lbs = rawEggInputLbs;
+        b.egg_broken_lbs = rawEggInputLbs;
+        b.actual_output_lbs = totalYieldLbs;
+        b.additional_ingredients_lbs = additionalIngredientsLbs;
+        b.net_egg_yield_lbs = netEggYieldLbs;
+        b.yield_per_box_lbs = yieldPerBoxLbs;
+        b.pure_egg_yield_pct = pureEggYieldPct;
+        b.yield_pct = rawEggInputLbs > 0 ? Math.round(((totalYieldLbs / rawEggInputLbs) * 100) * 10) / 10 : 0;
     }
 
     const totalInputLbs = rows.reduce((s, r) => s + parseFloat(r.input_weight_lbs || 0), 0);
     const totalLiquidLbs = rows.reduce((s, r) => s + parseFloat(r.yield_liquid_lbs || 0), 0);
     const totalShellLbs = rows.reduce((s, r) => s + parseFloat(r.waste_shell_lbs || 0), 0);
     const totalPackagedLbs = rows.reduce((s, r) => s + parseFloat(r.packaged_weight_lbs || 0), 0);
+    const totalBoxesSum = rows.reduce((s, r) => s + (r.total_boxes || 0), 0);
+    const totalAdditionalIngLbs = rows.reduce((s, r) => s + (r.additional_ingredients_lbs || 0), 0);
+    const totalNetEggLiquidLbs = rows.reduce((s, r) => s + (r.net_egg_yield_lbs || 0), 0);
+    const avgYieldPerBox = totalBoxesSum > 0 ? Math.round((totalNetEggLiquidLbs / totalBoxesSum) * 100) / 100 : 0;
     const globalYieldPct = totalInputLbs > 0 ? ((totalLiquidLbs / totalInputLbs) * 100).toFixed(2) : '0.00';
+    const globalPureEggYieldPct = totalInputLbs > 0 ? ((totalNetEggLiquidLbs / totalInputLbs) * 100).toFixed(2) : '0.00';
 
     return {
         rows,
@@ -210,7 +281,12 @@ async function getProductionReportData(companyId, filters = {}) {
             totalLiquidLbs,
             totalShellLbs,
             totalPackagedLbs,
-            globalYieldPct
+            totalBoxes: totalBoxesSum,
+            totalAdditionalIngredientsLbs: totalAdditionalIngLbs,
+            totalNetEggLiquidLbs: totalNetEggLiquidLbs,
+            avgYieldPerBoxLbs: avgYieldPerBox,
+            globalYieldPct,
+            globalPureEggYieldPct
         }
     };
 }
@@ -228,67 +304,95 @@ async function generateProductionReportPdf(companyId, filters = {}) {
     const buffers = [];
     doc.on('data', buffers.push.bind(buffers));
 
-    const periodText = filters.startDate && filters.endDate 
-        ? `Período: ${filters.startDate} al ${filters.endDate}` 
+    const periodText = (filters.startDate || filters.from) && (filters.endDate || filters.to)
+        ? `Período: ${filters.startDate || filters.from} al ${filters.endDate || filters.to}` 
         : `Historial Consolidado de Producciones Industriales`;
 
     let currentY = reportPdfHelper.renderHeader(
-        doc, company, 'REPORTE CONSOLIDADO DE PRODUCCIÓN Y RENDIMIENTO', 
-        periodText, 'landscape', 'Control de Quebraje, Pasteurización, Rendimiento y Balance'
+        doc, company, 'REPORTE CONSOLIDADO DE PRODUCCIÓN, RENDIMIENTO Y EFICACIA POR CAJA', 
+        periodText, 'landscape', 'Rendimiento Neto de Huevo por Caja (Descontando Insumos Adicionales) y Balance de Masas'
     );
 
-    const colX = { lote: 30, prod: 130, pres: 230, fecha: 310, input: 390, yield: 470, pkg: 550, yieldPct: 625, estatus: 685 };
-    const colW = { lote: 95, prod: 95, pres: 75, fecha: 75, input: 75, yield: 75, pkg: 70, yieldPct: 55, estatus: 75 };
+    const colX = { 
+        lote: 30, 
+        prod: 115, 
+        fecha: 200, 
+        input: 260, 
+        cajas: 330, 
+        insumos: 380, 
+        neto: 445, 
+        yieldBox: 510, 
+        eficPura: 575, 
+        pkg: 635, 
+        estatus: 690 
+    };
+    const colW = { 
+        lote: 82, 
+        prod: 82, 
+        fecha: 58, 
+        input: 68, 
+        cajas: 48, 
+        insumos: 63, 
+        neto: 63, 
+        yieldBox: 63, 
+        eficPura: 58, 
+        pkg: 53, 
+        estatus: 45 
+    };
 
     doc.rect(30, currentY, 732, 14).fill('#f1f5f9');
-    doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(6.5);
+    doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(6);
     doc.text('LOTE JULIANO', colX.lote, currentY + 3.5);
     doc.text('PRODUCTO', colX.prod, currentY + 3.5);
-    doc.text('PRESENTACIÓN', colX.pres, currentY + 3.5);
     doc.text('INICIO', colX.fecha, currentY + 3.5);
     doc.text('QUEBRAJE (LBS)', colX.input, currentY + 3.5, { align: 'right' });
-    doc.text('LÍQUIDO (LBS)', colX.yield, currentY + 3.5, { align: 'right' });
-    doc.text('ENVASADO (LBS)', colX.pkg, currentY + 3.5, { align: 'right' });
-    doc.text('% REND.', colX.yieldPct, currentY + 3.5, { align: 'right' });
+    doc.text('CAJAS', colX.cajas, currentY + 3.5, { align: 'right' });
+    doc.text('INSUMOS (LBS)', colX.insumos, currentY + 3.5, { align: 'right' });
+    doc.text('LÍQ. NETO (LBS)', colX.neto, currentY + 3.5, { align: 'right' });
+    doc.text('LBS/CAJA', colX.yieldBox, currentY + 3.5, { align: 'right' });
+    doc.text('% EFIC.', colX.eficPura, currentY + 3.5, { align: 'right' });
+    doc.text('ENVASADO', colX.pkg, currentY + 3.5, { align: 'right' });
     doc.text('ESTATUS', colX.estatus, currentY + 3.5);
     currentY += 16;
 
-    doc.font('Helvetica').fontSize(6.5).fillColor('#1e293b');
+    doc.font('Helvetica').fontSize(6).fillColor('#1e293b');
 
     for (const r of data.rows) {
         if (currentY > 520) {
             doc.addPage();
             currentY = reportPdfHelper.renderHeader(
-                doc, company, 'REPORTE CONSOLIDADO DE PRODUCCIÓN Y RENDIMIENTO', 
-                periodText, 'landscape', 'Control de Quebraje, Pasteurización, Rendimiento y Balance'
+                doc, company, 'REPORTE CONSOLIDADO DE PRODUCCIÓN, RENDIMIENTO Y EFICACIA POR CAJA', 
+                periodText, 'landscape', 'Rendimiento Neto de Huevo por Caja (Descontando Insumos Adicionales) y Balance de Masas'
             );
             doc.rect(30, currentY, 732, 14).fill('#f1f5f9');
-            doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(6.5);
+            doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(6);
             doc.text('LOTE JULIANO', colX.lote, currentY + 3.5);
             doc.text('PRODUCTO', colX.prod, currentY + 3.5);
-            doc.text('PRESENTACIÓN', colX.pres, currentY + 3.5);
             doc.text('INICIO', colX.fecha, currentY + 3.5);
             doc.text('QUEBRAJE (LBS)', colX.input, currentY + 3.5, { align: 'right' });
-            doc.text('LÍQUIDO (LBS)', colX.yield, currentY + 3.5, { align: 'right' });
-            doc.text('ENVASADO (LBS)', colX.pkg, currentY + 3.5, { align: 'right' });
-            doc.text('% REND.', colX.yieldPct, currentY + 3.5, { align: 'right' });
+            doc.text('CAJAS', colX.cajas, currentY + 3.5, { align: 'right' });
+            doc.text('INSUMOS (LBS)', colX.insumos, currentY + 3.5, { align: 'right' });
+            doc.text('LÍQ. NETO (LBS)', colX.neto, currentY + 3.5, { align: 'right' });
+            doc.text('LBS/CAJA', colX.yieldBox, currentY + 3.5, { align: 'right' });
+            doc.text('% EFIC.', colX.eficPura, currentY + 3.5, { align: 'right' });
+            doc.text('ENVASADO', colX.pkg, currentY + 3.5, { align: 'right' });
             doc.text('ESTATUS', colX.estatus, currentY + 3.5);
             currentY += 16;
-            doc.font('Helvetica').fontSize(6.5).fillColor('#1e293b');
+            doc.font('Helvetica').fontSize(6).fillColor('#1e293b');
         }
 
         const inputLbs = parseFloat(r.input_weight_lbs || 0);
-        const liquidLbs = parseFloat(r.yield_liquid_lbs || 0);
-        const yPct = inputLbs > 0 ? ((liquidLbs / inputLbs) * 100).toFixed(1) : '0.0';
 
         doc.text(r.batch_code_display || r.batch_uuid, colX.lote, currentY, { width: colW.lote });
         doc.text(r.product_type, colX.prod, currentY, { width: colW.prod });
-        doc.text(r.presentation || 'N/A', colX.pres, currentY, { width: colW.pres });
         doc.text(new Date(r.started_at).toLocaleDateString(), colX.fecha, currentY, { width: colW.fecha });
         doc.text(inputLbs.toLocaleString(), colX.input, currentY, { width: colW.input, align: 'right' });
-        doc.text(liquidLbs.toLocaleString(), colX.yield, currentY, { width: colW.yield, align: 'right' });
+        doc.text(String(r.total_boxes || 0), colX.cajas, currentY, { width: colW.cajas, align: 'right' });
+        doc.text(parseFloat(r.additional_ingredients_lbs || 0).toLocaleString(), colX.insumos, currentY, { width: colW.insumos, align: 'right' });
+        doc.text(parseFloat(r.net_egg_yield_lbs || 0).toLocaleString(), colX.neto, currentY, { width: colW.neto, align: 'right' });
+        doc.text(`${parseFloat(r.yield_per_box_lbs || 0).toFixed(1)} Lbs`, colX.yieldBox, currentY, { width: colW.yieldBox, align: 'right' });
+        doc.text(`${parseFloat(r.pure_egg_yield_pct || 0).toFixed(1)}%`, colX.eficPura, currentY, { width: colW.eficPura, align: 'right' });
         doc.text(r.packaged_weight_lbs.toLocaleString(), colX.pkg, currentY, { width: colW.pkg, align: 'right' });
-        doc.text(`${yPct}%`, colX.yieldPct, currentY, { width: colW.yieldPct, align: 'right' });
         doc.text((r.status || '').toUpperCase(), colX.estatus, currentY, { width: colW.estatus });
 
         currentY += 11;
@@ -297,12 +401,15 @@ async function generateProductionReportPdf(companyId, filters = {}) {
     doc.rect(30, currentY, 732, 1).fill('#cbd5e1');
     currentY += 3;
 
-    doc.font('Helvetica-Bold').fontSize(7).fillColor('#0f172a');
+    doc.font('Helvetica-Bold').fontSize(6.5).fillColor('#0f172a');
     doc.text('TOTALES:', colX.fecha, currentY, { width: colW.fecha, align: 'right' });
     doc.text(`${data.summary.totalInputLbs.toLocaleString()} Lbs`, colX.input, currentY, { width: colW.input, align: 'right' });
-    doc.text(`${data.summary.totalLiquidLbs.toLocaleString()} Lbs`, colX.yield, currentY, { width: colW.yield, align: 'right' });
+    doc.text(`${data.summary.totalBoxes.toLocaleString()} Cjs`, colX.cajas, currentY, { width: colW.cajas, align: 'right' });
+    doc.text(`${data.summary.totalAdditionalIngredientsLbs.toLocaleString()} Lbs`, colX.insumos, currentY, { width: colW.insumos, align: 'right' });
+    doc.text(`${data.summary.totalNetEggLiquidLbs.toLocaleString()} Lbs`, colX.neto, currentY, { width: colW.neto, align: 'right' });
+    doc.text(`Prom: ${data.summary.avgYieldPerBoxLbs} Lbs/Cja`, colX.yieldBox, currentY, { width: colW.yieldBox, align: 'right' });
+    doc.text(`${data.summary.globalPureEggYieldPct}%`, colX.eficPura, currentY, { width: colW.eficPura, align: 'right' });
     doc.text(`${data.summary.totalPackagedLbs.toLocaleString()} Lbs`, colX.pkg, currentY, { width: colW.pkg, align: 'right' });
-    doc.text(`${data.summary.globalYieldPct}%`, colX.yieldPct, currentY, { width: colW.yieldPct, align: 'right' });
     currentY += 16;
 
     reportPdfHelper.renderClosingFooter(doc, 30, currentY, data.rows.length, 'Lotes de Producción');
@@ -766,11 +873,16 @@ async function generateProductionReportExcel(companyId, filters = {}) {
         { header: 'Presentación', key: 'presentacion', width: 18 },
         { header: 'Inicio', key: 'inicio', width: 16 },
         { header: 'Fin', key: 'fin', width: 16 },
-        { header: 'Quebraje (Lbs)', key: 'quebraje', width: 16 },
-        { header: 'Líquido Pasteurizado (Lbs)', key: 'rendimiento', width: 24 },
-        { header: 'Merma Cáscara (Lbs)', key: 'cascara', width: 20 },
-        { header: 'Envasado Real (Lbs)', key: 'envasado', width: 20 },
-        { header: '% Rendimiento', key: 'rendimiento_pct', width: 16 },
+        { header: 'Quebraje MP (Lbs)', key: 'quebraje', width: 18 },
+        { header: 'Cajas de Huevo (MP)', key: 'cajas', width: 18 },
+        { header: 'Insumos Adicionales (Lbs)', key: 'insumos', width: 22 },
+        { header: 'Líquido Pasteurizado Total (Lbs)', key: 'rendimiento_total', width: 24 },
+        { header: 'Huevo Líquido Neto (Lbs)', key: 'huevo_neto', width: 22 },
+        { header: 'Rendimiento por Caja (Lbs/Cja)', key: 'rend_caja', width: 24 },
+        { header: '% Eficacia Huevo Puro', key: 'eficacia_pura', width: 20 },
+        { header: 'Merma Cáscara (Lbs)', key: 'cascara', width: 18 },
+        { header: 'Envasado Real (Lbs)', key: 'envasado', width: 18 },
+        { header: '% Rendimiento Total', key: 'rendimiento_pct', width: 18 },
         { header: 'Estado', key: 'estado', width: 16 }
     ];
     const rows = data.rows.map(r => {
@@ -783,7 +895,12 @@ async function generateProductionReportExcel(companyId, filters = {}) {
             inicio: new Date(r.started_at).toLocaleDateString(),
             fin: r.completed_at ? new Date(r.completed_at).toLocaleDateString() : 'En proceso',
             quebraje: inp,
-            rendimiento: yld,
+            cajas: r.total_boxes || 0,
+            insumos: r.additional_ingredients_lbs || 0,
+            rendimiento_total: yld,
+            huevo_neto: r.net_egg_yield_lbs || 0,
+            rend_caja: r.yield_per_box_lbs || 0,
+            eficacia_pura: `${(r.pure_egg_yield_pct || 0).toFixed(1)}%`,
             cascara: parseFloat(r.waste_shell_lbs || 0),
             envasado: r.packaged_weight_lbs,
             rendimiento_pct: inp > 0 ? `${((yld / inp) * 100).toFixed(1)}%` : '0%',
@@ -791,7 +908,7 @@ async function generateProductionReportExcel(companyId, filters = {}) {
         };
     });
     return await excelService.createExcelBuffer({
-        title: 'REPORTE DE PRODUCCIÓN Y RENDIMIENTO',
+        title: 'REPORTE DE PRODUCCIÓN, RENDIMIENTO Y EFICACIA POR CAJA',
         sheets: [{ name: 'Producción', columns, data: rows }]
     });
 }

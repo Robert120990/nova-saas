@@ -62,7 +62,7 @@ const getProductionReport = async (req, res) => {
         }
 
         const data = await eggReportsExportService.getProductionReportData(req.company_id, filters);
-        res.json(data);
+        res.json({ success: true, data: data.rows, rows: data.rows, summary: data.summary });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
