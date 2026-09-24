@@ -6,7 +6,16 @@ const initCloseoutSchema = z.object({
     seller_name: z.string().optional().nullable(),
     fecha_turno: z.string({ message: 'La fecha del turno es requerida' }).min(1, { message: 'La fecha del turno es requerida' }),
     numero_turno: z.coerce.number().int().positive({ message: 'El número de turno es requerido' }),
-    despachadores: z.array(z.coerce.number().int().positive()).optional().default([]),
+    despachadores: z.array(
+        z.union([
+            z.object({
+                despachador_id: z.coerce.number().int().positive().optional(),
+                id: z.coerce.number().int().positive().optional(),
+                nombre: z.string().optional().nullable()
+            }).passthrough(),
+            z.coerce.number().int().positive()
+        ])
+    ).optional().default([]),
     nozzle_assignments: z.array(z.any()).optional().default([])
 }).passthrough();
 

@@ -141,6 +141,35 @@ describe('Gas Station Module Validation', () => {
             };
             assert.equal(initCloseoutSchema.safeParse(validInit).success, true);
             assert.equal(initCloseoutSchema.safeParse({ seller_id: 1 }).success, false);
+
+            // Validar despachadores como arreglo de objetos (formato enviado por GasCloseout frontend)
+            const initWithObjects = {
+                seller_id: 17,
+                seller_name: 'Alonso Rivera',
+                fecha_turno: '2026-09-24',
+                numero_turno: 1,
+                despachadores: [
+                    { despachador_id: 1, nombre: 'C01' },
+                    { despachador_id: 2, nombre: 'C02' }
+                ],
+                nozzle_assignments: [
+                    { despachador_id: 1, nozzle_ids: [1, 2] }
+                ]
+            };
+            const parsedObjects = initCloseoutSchema.safeParse(initWithObjects);
+            assert.equal(parsedObjects.success, true);
+            assert.equal(parsedObjects.data.despachadores.length, 2);
+
+            // Validar despachadores como arreglo de IDs numéricos
+            const initWithNumbers = {
+                seller_id: 17,
+                fecha_turno: '2026-09-24',
+                numero_turno: 1,
+                despachadores: [1, 2, 3]
+            };
+            const parsedNumbers = initCloseoutSchema.safeParse(initWithNumbers);
+            assert.equal(parsedNumbers.success, true);
+            assert.deepEqual(parsedNumbers.data.despachadores, [1, 2, 3]);
         });
 
         test('should validate batch readings and single reading update', () => {

@@ -59,16 +59,21 @@ exports.updateCloseoutDespachadores = async (req, res) => {
         const savedDespachadores = [];
         if (Array.isArray(despachadores) && despachadores.length > 0) {
             for (const d of despachadores) {
+                const despId = typeof d === 'object' && d !== null ? (d.despachador_id || d.id) : d;
+                if (!despId) continue;
                 const [[existing]] = await pool.query(
-                    `SELECT id FROM gas_station_despachadores WHERE id = ? AND company_id = ?`,
-                    [d.despachador_id, req.company_id]
+                    `SELECT id, codigo, descripcion FROM gas_station_despachadores WHERE id = ? AND company_id = ?`,
+                    [despId, req.company_id]
                 );
                 if (existing) {
+                    const despNombre = (typeof d === 'object' && d !== null && d.nombre)
+                        ? d.nombre
+                        : (existing.descripcion || existing.codigo || '');
                     await pool.query(
                         `INSERT INTO gas_station_closeout_despachadores (closeout_id, despachador_id, nombre) VALUES (?, ?, ?)`,
-                        [id, d.despachador_id, d.nombre || '']
+                        [id, existing.id, despNombre]
                     );
-                    savedDespachadores.push({ despachador_id: d.despachador_id, nombre: d.nombre || '' });
+                    savedDespachadores.push({ despachador_id: existing.id, nombre: despNombre });
                 }
             }
         }

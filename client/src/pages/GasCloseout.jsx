@@ -1841,10 +1841,10 @@ const GasCloseout = () => {
         }
 
         initMutation.mutate({
-            seller_id: parseInt(sellerId),
+            seller_id: parseInt(sellerId, 10),
             seller_name: name,
             fecha_turno: fechaTurno,
-            numero_turno: numeroTurno,
+            numero_turno: parseInt(numeroTurno, 10),
             branch_id: user?.branch_id,
             despachadores: targetDespachadores,
             nozzle_assignments: targetDespachadores.map(d => ({
