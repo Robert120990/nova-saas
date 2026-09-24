@@ -774,7 +774,9 @@ const getSaleById = async (req, res) => {
             COALESCE(NULLIF(TRIM(cb.municipio), ''), c.municipio) as customer_municipio,
             COALESCE(NULLIF(TRIM(cb.distrito), ''), c.distrito) as customer_distrito,
             c.nit as customer_nit, c.nrc as customer_nrc, c.numero_documento as customer_dui,
-            comp.nit as company_nit,
+            comp.razon_social as company_razon_social, comp.nombre_comercial as company_nombre_comercial,
+            comp.nit as company_nit, comp.nrc as company_nrc,
+            b.direccion as branch_address,
             COALESCE(d_c.status, d_v.status) as dte_status, COALESCE(d_c.respuesta_hacienda, d_v.respuesta_hacienda) as respuesta_hacienda, COALESCE(d_c.respuesta_hacienda, d_v.respuesta_hacienda) as dte_error, COALESCE(d_c.json_original, d_v.json_original) as json_original, COALESCE(d_c.sello_recepcion, d_v.sello_recepcion) as sello_recepcion, COALESCE(d_c.fh_procesamiento, d_v.fh_procesamiento) as fh_procesamiento
             FROM sales_headers h
             LEFT JOIN customers c ON h.customer_id = c.id

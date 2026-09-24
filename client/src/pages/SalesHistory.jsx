@@ -543,12 +543,13 @@ const SalesHistory = () => {
                     = $${(cantidad * precio - descuento).toFixed(2)}
                 </div>` : ''}
             `}).join('');
-            const { data: companies } = await axios.get('/api/companies');
-            const company = Array.isArray(companies) ? companies.find(c => c.id == detail.company_id) : null;
+            const companyName = detail.company_razon_social || user?.company_name || detail.branch_name || 'EMPRESA';
+            const companyNit = detail.company_nit || '';
+            const companyNrc = detail.company_nrc || '';
             const fechaStr = detail.fecha_emision ? new Date(detail.fecha_emision).toLocaleDateString('es-SV') : '';
             const horaStr = detail.hora_emision || '';
-            let branchAddr = '';
-            if (detail.branch_id) {
+            let branchAddr = detail.branch_address || '';
+            if (!branchAddr && detail.branch_id) {
                 try {
                     const { data: branchesData } = await axios.get('/api/branches');
                     const branch = Array.isArray(branchesData) ? branchesData.find(b => b.id == detail.branch_id) : null;
@@ -575,10 +576,10 @@ const SalesHistory = () => {
                         </style>
                     </head>
                     <body>
-                        <div class="center bold" style="font-size: 14px;">${company?.razon_social || detail.branch_name || 'EMPRESA'}</div>
+                        <div class="center bold" style="font-size: 14px;">${companyName}</div>
                         ${detail.branch_name ? `<div class="center" style="font-size: 10px;">${detail.branch_name}</div>` : ''}
                         ${branchAddr ? `<div class="center" style="font-size: 8px;">${branchAddr}</div>` : ''}
-                        <div class="center" style="font-size: 9px;">NIT: ${company?.nit || ''} | NRC: ${company?.nrc || ''}</div>
+                        <div class="center" style="font-size: 9px;">${companyNit ? `NIT: ${companyNit}` : ''} ${companyNrc ? `| NRC: ${companyNrc}` : ''}</div>
                         <div class="dashed"></div>
                         <div class="flex-between"><span>TIPO DTE:</span><span>${detail.tipo_documento_name || 'FACTURA'}</span></div>
                         <div class="flex-between"><span>N° CONTROL:</span><span style="font-size: 9px;">${detail.numero_control || '---'}</span></div>
