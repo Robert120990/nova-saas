@@ -6,6 +6,11 @@ import { registerSW } from 'virtual:pwa-register'
 import axios from 'axios'
 import { toast } from 'sonner'
 import { isAnyDirty } from './store/dirtyState'
+import { initSentry } from './config/sentry'
+import ErrorBoundary from './components/ui/ErrorBoundary'
+
+// Initialize Sentry error tracking
+initSentry();
 
 const isDev = import.meta.env.DEV;
 
@@ -243,6 +248,8 @@ if (!isDev) {
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <App />
+    <ErrorBoundary showDetails={isDev}>
+      <App />
+    </ErrorBoundary>
   </React.StrictMode>,
 )

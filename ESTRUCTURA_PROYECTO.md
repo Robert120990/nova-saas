@@ -115,6 +115,7 @@ Express.js, patrón controller → service → model (los modelos son SQL direct
 | `db.js` | Pool MySQL principal (db_sistema_saas) usado por todos los servicios. |
 | `db.schema.js` | Constantes DB_SCHEMA y AI_QUERY_MAX_ROWS: esquema de tablas expuesto al asistente IA. |
 | `rrsDb.js` | Pool MySQL hacia la base externa RRS (sistema de la gasolinera). |
+| `sentry.js` | Sentry. |
 | `upload.js` | Configuración Multer para subida de archivos (uploads/). |
 
 #### `server/src/middlewares/`
@@ -183,6 +184,7 @@ Express.js, patrón controller → service → model (los modelos son SQL direct
 | `crypto.js` | Cifrado/descifrado simétrico de credenciales almacenadas (SMTP, certificados). |
 | `eggProductResolver.js` | Egg Product Resolver. |
 | `inventoryUtils.js` | Helpers de kardex: inserción de movimientos y actualización de existencias. |
+| `logger.js` | Logger. |
 | `numberToWords.js` | Conversión de montos numéricos a letras (requerido en documentos legales). |
 | `reportPdfHelper.js` | Report Pdf Helper. |
 | `svfeValidators.js` | Svfe Validators. |
@@ -324,6 +326,7 @@ React 18 + Vite. Estado servidor con TanStack Query (`queryKey: ['recurso', sear
 | Archivo | Descripción |
 |---|---|
 | `iconMap.js` | Mapa nombre→icono lucide-react usado por el menú dinámico. |
+| `sentry.js` | Sentry. |
 
 #### `client/src/utils/`
 | Archivo | Descripción |
@@ -787,6 +790,7 @@ oficiales viven en `cumplientoDTE/svfe-json-schemas/` y la firma en `services/si
 |---|---|
 | `db.js` | Pool MySQL compartido (db_sistema_saas) para documentos DTE. |
 | `haciendaConfig.js` | Endpoints y credenciales de Hacienda según HACIENDA_ENV (test|production). |
+| `sentry.js` | Sentry. |
 
 #### `dte-api/src/middlewares/`
 | Archivo | Descripción |
@@ -847,6 +851,7 @@ oficiales viven en `cumplientoDTE/svfe-json-schemas/` y la firma en `services/si
 | Archivo | Descripción |
 |---|---|
 | `calculations.js` | Cálculos fiscales: IVA, percepción, totales y redondeos oficiales. |
+| `logger.js` | Logger. |
 | `text.js` | Normalización de texto para XML/JSON de Hacienda. |
 | `versionMap.js` | Versión de JSON schema aplicable por tipo de documento. |
 

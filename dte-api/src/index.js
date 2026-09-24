@@ -4,11 +4,12 @@
 
 const express = require('express');
 const cors = require('cors');
-const morgan = require('morgan');
 const path = require('path');
 const fs = require('fs');
 require('dotenv').config();
 
+const { initSentry, setupSentryErrorHandler } = require('./config/sentry');
+const { logger, httpLogger } = require('./utils/logger');
 const { authMiddleware, tenantMiddleware } = require('./middlewares/auth');
 const dteController = require('./controllers/dteController');
 const { startQueueWorker } = require('./queue/transmissionQueue');
@@ -19,13 +20,13 @@ const { initValidators } = require('./validators/schemaValidator');
 const app = express();
 const PORT = process.env.PORT || 4005;
 
-// File logger setup
+// Initialize Sentry error tracking
+initSentry(app);
+
+// File logger fallback setup
 const logsDir = path.join(__dirname, '..', 'logs');
 if (!fs.existsSync(logsDir)) fs.mkdirSync(logsDir, { recursive: true });
 const logFile = fs.createWriteStream(path.join(logsDir, 'dte-api.log'), { flags: 'a' });
-morgan.token('safe-url', (req) => (req.originalUrl || req.url).replace(/([?&])token=[^&]+/g, '$1token=***'));
-
-app.use(morgan(':method :safe-url :status :response-time ms - :res[content-length]', { stream: { write: (msg) => logFile.write(msg) } }));
 
 const _log = console.log;
 const _error = console.error;
@@ -35,9 +36,9 @@ console.error = (...args) => { logFile.write(`[${new Date().toISOString()}] [ERR
 console.warn = (...args) => { logFile.write(`[${new Date().toISOString()}] [WARN] ${args.join(' ')}\n`); _warn.apply(console, args); };
 
 // Middleware
+app.use(httpLogger);
 app.use(cors());
 app.use(express.json());
-app.use(morgan(':method :safe-url :status :response-time ms - :res[content-length]'));
 
 // Initialization
 initValidators();
@@ -83,12 +84,16 @@ router.use('/retorno', require('./routes/retorno.routes'));
 
 app.use('/api', router);
 
+// Sentry express error handler
+setupSentryErrorHandler(app);
+
 // Error handling
+// eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
-    console.error(err.stack);
+    logger.error({ err, path: req.path, method: req.method }, `[DTE-API ERROR] ${err.message}`);
     res.status(500).json({ success: false, message: 'Error interno del servidor' });
 });
 
 app.listen(PORT, () => {
-    console.log(`DTE API is running on port ${PORT}`);
+    logger.info(`DTE API corriendo en puerto ${PORT}`);
 });
