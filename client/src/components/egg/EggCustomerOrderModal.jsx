@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
 import { toast } from 'sonner';
 import { 
-    X, Plus, Trash2, Search, Check, Building2, RefreshCw, Package, CheckCircle2
+    X, Plus, Trash2, Search, Check, Building2, RefreshCw, Package, CheckCircle2, Barcode
 } from 'lucide-react';
 import Modal from '../ui/Modal';
 import Money, { MoneyInput } from '../ui/Money';
@@ -48,6 +48,129 @@ const getPresentationFactors = (pres) => {
     return PRESENTATION_CONFIG['cubeta 30 lb'];
 };
 
+const normalizeText = (txt) => {
+    return String(txt || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .trim();
+};
+
+const getPresWeight = (pres) => {
+    const m = String(pres || '').match(/(\d+(?:\.\d+)?)\s*(?:lb|lbs|libras)?/i);
+    return m ? parseFloat(m[1]) : null;
+};
+
+const parseMappingItems = (m) => {
+    if (m?.code_weights_json) {
+        try {
+            const parsed = typeof m.code_weights_json === 'string' ? JSON.parse(m.code_weights_json) : m.code_weights_json;
+            if (Array.isArray(parsed) && parsed.length > 0) {
+                return parsed.map((item) => {
+                    const lbs = Number(item.weight_lbs || m.unit_weight_lbs || m.weight_lbs || 1);
+                    const kg = Number(item.weight_kg || (lbs * 0.45359237));
+                    return {
+                        code: String(item.code || '').trim(),
+                        weight_lbs: lbs > 0 ? lbs : 1,
+                        weight_kg: kg > 0 ? kg : 0.45,
+                        product_id: item.product_id || null,
+                        product_name: item.product_name || ''
+                    };
+                }).filter((it) => it.code);
+            }
+        } catch (e) {
+            console.error('Error parsing code_weights_json in parseMappingItems:', e);
+        }
+    }
+    const rawCodes = String(m?.codes || m?.catalog_codes || '')
+        .split(',')
+        .map(c => c.trim())
+        .filter(Boolean);
+    const defaultLbs = Number(m?.unit_weight_lbs ?? m?.weight_lbs ?? 1);
+    const defaultKg = Number(m?.unit_weight_kg ?? m?.weight_kg ?? (defaultLbs * 0.45359237));
+    return rawCodes.map(code => ({
+        code,
+        weight_lbs: defaultLbs > 0 ? defaultLbs : 1,
+        weight_kg: defaultKg > 0 ? defaultKg : 0.45,
+        product_id: m?.product_id || m?.catalog_product_id || null,
+        product_name: m?.product_name || m?.catalog_product_name || ''
+    }));
+};
+
+const findBestMatrixMatch = (prodType, pres, mappings) => {
+    if (!mappings || mappings.length === 0) return null;
+    const cType = normalizeText(prodType);
+    const cPres = normalizeText(pres);
+    const targetWeight = getPresWeight(pres);
+
+    // 1. Coincidencia exacta de nombre de producto o tipo
+    let bestMapping = mappings.find(m => normalizeText(m.catalog_product_name) === cType);
+    if (!bestMapping) {
+        bestMapping = mappings.find(m => normalizeText(m.recipe_name) === cType);
+    }
+    if (!bestMapping) {
+        bestMapping = mappings.find(m => normalizeText(m.industrial_product_type) === cType);
+    }
+    if (!bestMapping) {
+        bestMapping = mappings.find(m => {
+            const t1 = normalizeText(m.catalog_product_name);
+            const t2 = normalizeText(m.recipe_name);
+            const t3 = normalizeText(m.industrial_product_type);
+            const t4 = normalizeText(m.product_name);
+            return t1.includes(cType) || cType.includes(t1) ||
+                   t2.includes(cType) || cType.includes(t2) ||
+                   t3.includes(cType) || cType.includes(t3) ||
+                   t4.includes(cType) || cType.includes(t4);
+        });
+    }
+
+    if (!bestMapping) return null;
+
+    const items = parseMappingItems(bestMapping);
+    if (items.length === 0) return null;
+
+    // Prioridad por peso exacto
+    if (targetWeight !== null) {
+        const exact = items.find(it => Math.abs(parseFloat(it.weight_lbs) - targetWeight) < 0.1);
+        if (exact) {
+            return {
+                code: exact.code,
+                product_name: exact.product_name || bestMapping.catalog_product_name || bestMapping.product_name,
+                product_type: bestMapping.catalog_product_name || bestMapping.recipe_name || bestMapping.product_name,
+                presentation: bestMapping.presentation || `${exact.weight_lbs} lb`,
+                weight_lbs: parseFloat(exact.weight_lbs) || targetWeight,
+                product_id: exact.product_id || bestMapping.catalog_product_id
+            };
+        }
+    }
+
+    // Coincidencia por texto de presentación o código
+    for (const it of items) {
+        const cCode = normalizeText(it.code);
+        const cProdName = normalizeText(it.product_name);
+        if (cProdName.includes(cPres) || cPres.includes(cCode)) {
+            return {
+                code: it.code,
+                product_name: it.product_name || bestMapping.catalog_product_name || bestMapping.product_name,
+                product_type: bestMapping.catalog_product_name || bestMapping.recipe_name || bestMapping.product_name,
+                presentation: bestMapping.presentation || `${it.weight_lbs} lb`,
+                weight_lbs: parseFloat(it.weight_lbs) || 1,
+                product_id: it.product_id || bestMapping.catalog_product_id
+            };
+        }
+    }
+
+    const first = items[0];
+    return {
+        code: first.code,
+        product_name: first.product_name || bestMapping.catalog_product_name || bestMapping.product_name,
+        product_type: bestMapping.catalog_product_name || bestMapping.recipe_name || bestMapping.product_name,
+        presentation: bestMapping.presentation || `${first.weight_lbs} lb`,
+        weight_lbs: parseFloat(first.weight_lbs) || 1,
+        product_id: first.product_id || bestMapping.catalog_product_id
+    };
+};
+
 export default function EggCustomerOrderModal({
     isOpen,
     onClose,
@@ -77,12 +200,20 @@ export default function EggCustomerOrderModal({
         notes: ''
     });
 
+    // Matriz de Códigos y Presentaciones Industriales
+    const [codeMappings, setCodeMappings] = useState([]);
+    const [_loadingMappings, setLoadingMappings] = useState(false);
+
     // Múltiples productos / presentaciones
     const [items, setItems] = useState([
         {
             id: 'item-1',
             product_type: 'Huevo Entero Pasteurizado',
             presentation: 'cubeta 30 lb',
+            catalog_code: null,
+            catalog_product_id: null,
+            catalog_product_name: null,
+            unit_weight_lbs: 30,
             quantity_units: '',
             quantity_lbs: '',
             quantity_kg: '',
@@ -103,25 +234,30 @@ export default function EggCustomerOrderModal({
     const [lastSavedSummary, setLastSavedSummary] = useState(null);
 
     // ---------------------------------------------------------
-    // 2. Cargar lotes de producción disponibles para vincular
+    // 2. Cargar lotes de producción y matriz de códigos
     // ---------------------------------------------------------
     useEffect(() => {
         if (!isOpen) return;
-        const fetchBatches = async () => {
+        const fetchBatchesAndMappings = async () => {
             try {
                 setLoadingBatches(true);
-                const res = await axios.get('/api/egg-industrial/batches', {
-                    params: { limit: 60 }
-                });
-                const batchList = res.data?.batches || res.data || [];
+                setLoadingMappings(true);
+                const [batchRes, mapRes] = await Promise.all([
+                    axios.get('/api/egg-industrial/batches', { params: { limit: 60 } }),
+                    axios.get('/api/egg-industrial/code-mappings')
+                ]);
+                const batchList = batchRes.data?.batches || batchRes.data || [];
                 setAvailableBatches(batchList);
+                const mapList = Array.isArray(mapRes.data) ? mapRes.data : (mapRes.data?.data || []);
+                setCodeMappings(mapList);
             } catch (err) {
-                console.error('Error cargando lotes de producción:', err);
+                console.error('Error cargando datos de lotes y códigos:', err);
             } finally {
                 setLoadingBatches(false);
+                setLoadingMappings(false);
             }
         };
-        fetchBatches();
+        fetchBatchesAndMappings();
     }, [isOpen]);
 
     // ---------------------------------------------------------
@@ -176,14 +312,19 @@ export default function EggCustomerOrderModal({
             if (Array.isArray(parsedItems) && parsedItems.length > 0) {
                 setItems(parsedItems.map((it, idx) => {
                     const factor = getPresentationFactors(it.presentation);
+                    const weightLbs = parseFloat(it.unit_weight_lbs) || factor.lbs;
                     const units = it.quantity_units 
-                        || (it.quantity_lbs ? Math.max(1, Math.round(parseFloat(it.quantity_lbs) / factor.lbs)) : '');
-                    const lbs = parseFloat(it.quantity_lbs) || (units ? (parseFloat(units) * factor.lbs) : '');
+                        || (it.quantity_lbs ? Math.max(1, Math.round(parseFloat(it.quantity_lbs) / weightLbs)) : '');
+                    const lbs = parseFloat(it.quantity_lbs) || (units ? (parseFloat(units) * weightLbs) : '');
                     const kg = lbs ? (parseFloat(lbs) * 0.453592) : '';
                     return {
                         id: `edit-${idx}-${Date.now()}`,
                         product_type: it.product_type || 'Huevo Entero Pasteurizado',
                         presentation: it.presentation || 'cubeta 30 lb',
+                        catalog_code: it.catalog_code || null,
+                        catalog_product_id: it.catalog_product_id || null,
+                        catalog_product_name: it.catalog_product_name || null,
+                        unit_weight_lbs: weightLbs,
                         quantity_units: units,
                         quantity_lbs: lbs,
                         quantity_kg: kg,
@@ -196,15 +337,20 @@ export default function EggCustomerOrderModal({
                 }));
             } else {
                 const factor = getPresentationFactors(orderToEdit.presentation);
+                const weightLbs = parseFloat(orderToEdit.unit_weight_lbs) || factor.lbs;
                 const units = orderToEdit.quantity_units 
-                    || (orderToEdit.quantity_lbs ? Math.max(1, Math.round(parseFloat(orderToEdit.quantity_lbs) / factor.lbs)) : '');
-                const lbs = parseFloat(orderToEdit.quantity_lbs) || (units ? (parseFloat(units) * factor.lbs) : '');
+                    || (orderToEdit.quantity_lbs ? Math.max(1, Math.round(parseFloat(orderToEdit.quantity_lbs) / weightLbs)) : '');
+                const lbs = parseFloat(orderToEdit.quantity_lbs) || (units ? (parseFloat(units) * weightLbs) : '');
                 const kg = lbs ? (parseFloat(lbs) * 0.453592) : '';
                 setItems([
                     {
                         id: `single-${Date.now()}`,
                         product_type: orderToEdit.product_type || 'Huevo Entero Pasteurizado',
                         presentation: orderToEdit.presentation || 'cubeta 30 lb',
+                        catalog_code: orderToEdit.catalog_code || null,
+                        catalog_product_id: orderToEdit.catalog_product_id || null,
+                        catalog_product_name: orderToEdit.catalog_product_name || null,
+                        unit_weight_lbs: weightLbs,
                         quantity_units: units,
                         quantity_lbs: lbs,
                         quantity_kg: kg,
@@ -242,6 +388,10 @@ export default function EggCustomerOrderModal({
                 id: `item-${Date.now()}`,
                 product_type: 'Huevo Entero Pasteurizado',
                 presentation: 'cubeta 30 lb',
+                catalog_code: null,
+                catalog_product_id: null,
+                catalog_product_name: null,
+                unit_weight_lbs: 30,
                 quantity_units: '',
                 quantity_lbs: '',
                 quantity_kg: '',
@@ -253,6 +403,101 @@ export default function EggCustomerOrderModal({
             }
         ]);
     };
+
+    // Lista de productos disponibles combinando la Matriz y perfiles estándar
+    const availableProducts = useMemo(() => {
+        const set = new Set();
+        (codeMappings || []).forEach(m => {
+            const name = m.catalog_product_name || m.recipe_name || m.product_name;
+            if (name && name.trim()) set.add(name.trim());
+        });
+        PRODUCT_PROFILES.forEach(p => set.add(p));
+        return Array.from(set);
+    }, [codeMappings]);
+
+    // Lista plana de todos los códigos directos de la Matriz (SKUs)
+    const allMatrixCodes = useMemo(() => {
+        const list = [];
+        (codeMappings || []).forEach(m => {
+            const prodType = m.catalog_product_name || m.recipe_name || m.product_name || m.industrial_product_type;
+            const items = parseMappingItems(m);
+            items.forEach(it => {
+                list.push({
+                    code: it.code,
+                    product_name: it.product_name || prodType,
+                    product_type: prodType,
+                    presentation: m.presentation || (it.weight_lbs ? `cubeta ${it.weight_lbs} lb` : 'cubeta 30 lb'),
+                    weight_lbs: parseFloat(it.weight_lbs) || 1,
+                    weight_kg: parseFloat(it.weight_kg) || 0.45,
+                    product_id: it.product_id || m.catalog_product_id || null,
+                    mapping_id: m.id
+                });
+            });
+        });
+        return list;
+    }, [codeMappings]);
+
+    // Obtener presentaciones mapeadas para un tipo de producto específico
+    const getPresentationsForProduct = (prodType) => {
+        if (!prodType || !codeMappings || codeMappings.length === 0) return [];
+        const cType = normalizeText(prodType);
+
+        const matches = codeMappings.filter(m => {
+            const t1 = normalizeText(m.catalog_product_name);
+            const t2 = normalizeText(m.recipe_name);
+            const t3 = normalizeText(m.industrial_product_type);
+            const t4 = normalizeText(m.product_name);
+            return t1 === cType || t2 === cType || t3 === cType || t4 === cType ||
+                   t1.includes(cType) || cType.includes(t1) ||
+                   t2.includes(cType) || cType.includes(t2) ||
+                   t3.includes(cType) || cType.includes(t3);
+        });
+
+        const result = [];
+        const seenCodes = new Set();
+        matches.forEach(m => {
+            const items = parseMappingItems(m);
+            items.forEach(it => {
+                if (!seenCodes.has(it.code)) {
+                    seenCodes.add(it.code);
+                    result.push({
+                        presentation: m.presentation || `${it.weight_lbs} lb`,
+                        code: it.code,
+                        product_name: it.product_name || m.catalog_product_name || m.product_name,
+                        weight_lbs: parseFloat(it.weight_lbs) || 1,
+                        weight_kg: parseFloat(it.weight_kg) || 0.45,
+                        product_id: it.product_id || m.catalog_product_id
+                    });
+                }
+            });
+        });
+        return result;
+    };
+
+    // Auto-vincular códigos de la Matriz cuando se cargan los mappings si no están asignados
+    useEffect(() => {
+        if (codeMappings.length === 0) return;
+        setItems(prev => prev.map(it => {
+            if (it.catalog_code) return it;
+            const matched = findBestMatrixMatch(it.product_type, it.presentation, codeMappings);
+            if (matched) {
+                const factorLbs = matched.weight_lbs || it.unit_weight_lbs || getPresentationFactors(it.presentation).lbs;
+                const units = parseFloat(it.quantity_units) || 0;
+                const lbs = units > 0 ? Math.round(units * factorLbs * 100) / 100 : it.quantity_lbs;
+                const kg = lbs ? Math.round(lbs * 0.45359237 * 100) / 100 : it.quantity_kg;
+                return {
+                    ...it,
+                    catalog_code: matched.code,
+                    catalog_product_id: matched.product_id,
+                    catalog_product_name: matched.product_name,
+                    unit_weight_lbs: factorLbs,
+                    quantity_lbs: lbs,
+                    quantity_kg: kg
+                };
+            }
+            return it;
+        }));
+    }, [codeMappings]);
 
     // ---------------------------------------------------------
     // 4. Búsqueda y selección de clientes en CRM
@@ -361,14 +606,33 @@ export default function EggCustomerOrderModal({
     // ---------------------------------------------------------
     const handleAddItem = () => {
         const newItemId = `item-${Date.now()}-${Math.random()}`;
-        const defaultProd = 'Huevo Entero Pasteurizado';
-        const defaultPres = 'cubeta 30 lb';
+        let defaultProd = 'Huevo Entero Pasteurizado';
+        let defaultPres = 'cubeta 30 lb';
+        let defaultCode = null;
+        let defaultProdId = null;
+        let defaultProdName = null;
+        let defaultWeightLbs = 30;
+
+        if (allMatrixCodes.length > 0) {
+            const first = allMatrixCodes[0];
+            defaultProd = first.product_type;
+            defaultPres = first.presentation;
+            defaultCode = first.code;
+            defaultProdId = first.product_id;
+            defaultProdName = first.product_name;
+            defaultWeightLbs = first.weight_lbs;
+        }
+
         setItems(prev => [
             ...prev,
             {
                 id: newItemId,
                 product_type: defaultProd,
                 presentation: defaultPres,
+                catalog_code: defaultCode,
+                catalog_product_id: defaultProdId,
+                catalog_product_name: defaultProdName,
+                unit_weight_lbs: defaultWeightLbs,
                 quantity_units: '',
                 quantity_lbs: '',
                 quantity_kg: '',
@@ -403,6 +667,200 @@ export default function EggCustomerOrderModal({
         setItems(prev => prev.filter(it => it.id !== id));
     };
 
+    const handleProductSelectChange = (id, rawValue) => {
+        if (rawValue.startsWith('code:')) {
+            const selectedCode = rawValue.replace('code:', '').trim();
+            const codeItem = allMatrixCodes.find(c => c.code.toLowerCase() === selectedCode.toLowerCase());
+            if (codeItem) {
+                setItems(prev => prev.map(it => {
+                    if (it.id !== id) return it;
+                    const weightLbs = codeItem.weight_lbs;
+                    const units = parseFloat(it.quantity_units) || 0;
+                    const lbs = units > 0 ? Math.round(units * weightLbs * 100) / 100 : '';
+                    const kg = lbs ? Math.round(lbs * 0.45359237 * 100) / 100 : '';
+
+                    const updated = {
+                        ...it,
+                        product_type: codeItem.product_type,
+                        presentation: codeItem.presentation,
+                        catalog_code: codeItem.code,
+                        catalog_product_id: codeItem.product_id,
+                        catalog_product_name: codeItem.product_name,
+                        unit_weight_lbs: weightLbs,
+                        quantity_lbs: lbs,
+                        quantity_kg: kg
+                    };
+
+                    if (updated.batch_id) {
+                        const currentBatch = availableBatches.find(b => String(b.id) === String(updated.batch_id));
+                        if (currentBatch && !isBatchCompatibleWithProduct(currentBatch.product_type, updated.product_type)) {
+                            updated.batch_id = '';
+                            updated.lot_code = '';
+                        }
+                    }
+
+                    const custId = orderForm.customer_id;
+                    const custName = orderForm.customer_name || customerSearchInput;
+                    if (custId || custName) {
+                        fetchCustomerPrice(custId, custName, updated.product_type, updated.presentation).then(p => {
+                            if (p && p.price_per_lb > 0) {
+                                setItems(curr => curr.map(item => item.id === id ? {
+                                    ...item,
+                                    price_per_lb: p.price_per_lb,
+                                    price_source_note: p.description
+                                } : item));
+                            }
+                        });
+                    }
+                    return updated;
+                }));
+                return;
+            }
+        }
+
+        // Tipo de producto industrial seleccionado
+        setItems(prev => prev.map(it => {
+            if (it.id !== id) return it;
+
+            const mappedPres = getPresentationsForProduct(rawValue);
+            let nextPres = it.presentation;
+            let nextCode = null;
+            let nextProdId = null;
+            let nextProdName = null;
+            let nextWeightLbs = getPresentationFactors(it.presentation).lbs;
+
+            if (mappedPres.length > 0) {
+                const matchPres = mappedPres.find(p => normalizeText(p.presentation) === normalizeText(it.presentation));
+                const chosen = matchPres || mappedPres[0];
+                nextPres = chosen.presentation;
+                nextCode = chosen.code;
+                nextProdId = chosen.product_id;
+                nextProdName = chosen.product_name;
+                nextWeightLbs = chosen.weight_lbs;
+            }
+
+            const units = parseFloat(it.quantity_units) || 0;
+            const lbs = units > 0 ? Math.round(units * nextWeightLbs * 100) / 100 : '';
+            const kg = lbs ? Math.round(lbs * 0.45359237 * 100) / 100 : '';
+
+            const updated = {
+                ...it,
+                product_type: rawValue,
+                presentation: nextPres,
+                catalog_code: nextCode,
+                catalog_product_id: nextProdId,
+                catalog_product_name: nextProdName,
+                unit_weight_lbs: nextWeightLbs,
+                quantity_lbs: lbs,
+                quantity_kg: kg
+            };
+
+            if (updated.batch_id) {
+                const currentBatch = availableBatches.find(b => String(b.id) === String(updated.batch_id));
+                if (currentBatch && !isBatchCompatibleWithProduct(currentBatch.product_type, rawValue)) {
+                    updated.batch_id = '';
+                    updated.lot_code = '';
+                }
+            }
+
+            const custId = orderForm.customer_id;
+            const custName = orderForm.customer_name || customerSearchInput;
+            if (custId || custName) {
+                fetchCustomerPrice(custId, custName, rawValue, nextPres).then(p => {
+                    if (p && p.price_per_lb > 0) {
+                        setItems(curr => curr.map(item => item.id === id ? {
+                            ...item,
+                            price_per_lb: p.price_per_lb,
+                            price_source_note: p.description
+                        } : item));
+                    }
+                });
+            }
+            return updated;
+        }));
+    };
+
+    const handlePresentationSelectChange = (id, rawValue) => {
+        if (rawValue.startsWith('code:')) {
+            const selectedCode = rawValue.replace('code:', '').trim();
+            const codeItem = allMatrixCodes.find(c => c.code.toLowerCase() === selectedCode.toLowerCase());
+            if (codeItem) {
+                setItems(prev => prev.map(it => {
+                    if (it.id !== id) return it;
+                    const weightLbs = codeItem.weight_lbs;
+                    const units = parseFloat(it.quantity_units) || 0;
+                    const lbs = units > 0 ? Math.round(units * weightLbs * 100) / 100 : '';
+                    const kg = lbs ? Math.round(lbs * 0.45359237 * 100) / 100 : '';
+
+                    const updated = {
+                        ...it,
+                        presentation: codeItem.presentation,
+                        catalog_code: codeItem.code,
+                        catalog_product_id: codeItem.product_id,
+                        catalog_product_name: codeItem.product_name,
+                        unit_weight_lbs: weightLbs,
+                        quantity_lbs: lbs,
+                        quantity_kg: kg
+                    };
+
+                    const custId = orderForm.customer_id;
+                    const custName = orderForm.customer_name || customerSearchInput;
+                    if (custId || custName) {
+                        fetchCustomerPrice(custId, custName, updated.product_type, updated.presentation).then(p => {
+                            if (p && p.price_per_lb > 0) {
+                                setItems(curr => curr.map(item => item.id === id ? {
+                                    ...item,
+                                    price_per_lb: p.price_per_lb,
+                                    price_source_note: p.description
+                                } : item));
+                            }
+                        });
+                    }
+                    return updated;
+                }));
+                return;
+            }
+        }
+
+        // Presentación seleccionada por nombre
+        setItems(prev => prev.map(it => {
+            if (it.id !== id) return it;
+            const mappedPres = getPresentationsForProduct(it.product_type);
+            const match = mappedPres.find(p => normalizeText(p.presentation) === normalizeText(rawValue));
+
+            const weightLbs = match ? match.weight_lbs : getPresentationFactors(rawValue).lbs;
+            const units = parseFloat(it.quantity_units) || 0;
+            const lbs = units > 0 ? Math.round(units * weightLbs * 100) / 100 : '';
+            const kg = lbs ? Math.round(lbs * 0.45359237 * 100) / 100 : '';
+
+            const updated = {
+                ...it,
+                presentation: rawValue,
+                catalog_code: match ? match.code : null,
+                catalog_product_id: match ? match.product_id : null,
+                catalog_product_name: match ? match.product_name : null,
+                unit_weight_lbs: weightLbs,
+                quantity_lbs: lbs,
+                quantity_kg: kg
+            };
+
+            const custId = orderForm.customer_id;
+            const custName = orderForm.customer_name || customerSearchInput;
+            if (custId || custName) {
+                fetchCustomerPrice(custId, custName, updated.product_type, rawValue).then(p => {
+                    if (p && p.price_per_lb > 0) {
+                        setItems(curr => curr.map(item => item.id === id ? {
+                            ...item,
+                            price_per_lb: p.price_per_lb,
+                            price_source_note: p.description
+                        } : item));
+                    }
+                });
+            }
+            return updated;
+        }));
+    };
+
     const handleItemChange = (id, field, value) => {
         setItems(prev => prev.map(it => {
             if (it.id !== id) return it;
@@ -410,9 +868,9 @@ export default function EggCustomerOrderModal({
             
             // Si cambia la cantidad en unidades, recalcular lbs y kg
             if (field === 'quantity_units') {
-                const factor = getPresentationFactors(updated.presentation);
+                const factorLbs = parseFloat(updated.unit_weight_lbs) || getPresentationFactors(updated.presentation).lbs;
                 const units = parseFloat(value) || 0;
-                const lbs = units > 0 ? Math.round(units * factor.lbs * 100) / 100 : '';
+                const lbs = units > 0 ? Math.round(units * factorLbs * 100) / 100 : '';
                 const kg = lbs ? Math.round(lbs * 0.45359237 * 100) / 100 : '';
                 updated.quantity_lbs = lbs;
                 updated.quantity_kg = kg;
@@ -420,60 +878,12 @@ export default function EggCustomerOrderModal({
 
             // Si cambia la cantidad en libras, recalcular unidades y kg
             if (field === 'quantity_lbs') {
-                const factor = getPresentationFactors(updated.presentation);
+                const factorLbs = parseFloat(updated.unit_weight_lbs) || getPresentationFactors(updated.presentation).lbs;
                 const lbs = parseFloat(value) || 0;
-                const units = (lbs > 0 && factor.lbs > 0) ? Math.round((lbs / factor.lbs) * 100) / 100 : '';
+                const units = (lbs > 0 && factorLbs > 0) ? Math.round((lbs / factorLbs) * 100) / 100 : '';
                 const kg = lbs ? Math.round(lbs * 0.45359237 * 100) / 100 : '';
                 updated.quantity_units = units;
                 updated.quantity_kg = kg;
-            }
-
-            // Si cambia la presentación, recalcular peso y sugerir precio
-            if (field === 'presentation') {
-                const factor = getPresentationFactors(value);
-                const units = parseFloat(updated.quantity_units) || 0;
-                const lbs = units > 0 ? Math.round(units * factor.lbs * 100) / 100 : '';
-                const kg = lbs ? Math.round(lbs * 0.45359237 * 100) / 100 : '';
-                updated.quantity_lbs = lbs;
-                updated.quantity_kg = kg;
-
-                const custId = orderForm.customer_id;
-                const custName = orderForm.customer_name || customerSearchInput;
-                if (custId || custName) {
-                    fetchCustomerPrice(custId, custName, updated.product_type, value).then(p => {
-                        if (p && p.price_per_lb > 0) {
-                            setItems(curr => curr.map(item => item.id === id ? {
-                                ...item,
-                                price_per_lb: p.price_per_lb,
-                                price_source_note: p.description
-                            } : item));
-                        }
-                    });
-                }
-            }
-
-            // Si cambia el tipo de producto, consultar precio sugerido y desvincular lote incompatible
-            if (field === 'product_type') {
-                if (updated.batch_id) {
-                    const currentBatch = availableBatches.find(b => String(b.id) === String(updated.batch_id));
-                    if (currentBatch && !isBatchCompatibleWithProduct(currentBatch.product_type, value)) {
-                        updated.batch_id = '';
-                        updated.lot_code = '';
-                    }
-                }
-                const custId = orderForm.customer_id;
-                const custName = orderForm.customer_name || customerSearchInput;
-                if (custId || custName) {
-                    fetchCustomerPrice(custId, custName, value, updated.presentation).then(p => {
-                        if (p && p.price_per_lb > 0) {
-                            setItems(curr => curr.map(item => item.id === id ? {
-                                ...item,
-                                price_per_lb: p.price_per_lb,
-                                price_source_note: p.description
-                            } : item));
-                        }
-                    });
-                }
             }
 
             // Si cambia el batch_id, auto-completar lot_code y sugerir tipo si coincide
@@ -558,6 +968,8 @@ export default function EggCustomerOrderModal({
                 notes: orderForm.notes,
                 product_type: items[0].product_type,
                 presentation: items[0].presentation,
+                catalog_code: items[0].catalog_code || null,
+                catalog_product_id: items[0].catalog_product_id ? parseInt(items[0].catalog_product_id, 10) : null,
                 quantity_units: Number.isFinite(totals.totalUnits) ? totals.totalUnits : 0,
                 quantity_lbs: Number.isFinite(totals.totalLbs) ? totals.totalLbs : 0,
                 quantity_kg: Number.isFinite(totals.totalKg) ? totals.totalKg : 0,
@@ -567,6 +979,10 @@ export default function EggCustomerOrderModal({
                 items: items.map(it => ({
                     product_type: it.product_type,
                     presentation: it.presentation,
+                    catalog_code: it.catalog_code || null,
+                    catalog_product_id: it.catalog_product_id ? parseInt(it.catalog_product_id, 10) : null,
+                    catalog_product_name: it.catalog_product_name || null,
+                    unit_weight_lbs: it.unit_weight_lbs ? parseFloat(it.unit_weight_lbs) : null,
                     quantity_units: Number.isFinite(parseFloat(it.quantity_units)) ? parseFloat(it.quantity_units) : 0,
                     units: Number.isFinite(parseFloat(it.quantity_units)) ? parseFloat(it.quantity_units) : 0,
                     quantity_lbs: Number.isFinite(parseFloat(it.quantity_lbs)) ? parseFloat(it.quantity_lbs) : 0,
@@ -861,14 +1277,42 @@ export default function EggCustomerOrderModal({
                                             #{idx + 1} Tipo de Producto *
                                         </label>
                                         <select
-                                            value={it.product_type}
-                                            onChange={(e) => handleItemChange(it.id, 'product_type', e.target.value)}
+                                            value={it.catalog_code ? `code:${it.catalog_code}` : it.product_type}
+                                            onChange={(e) => handleProductSelectChange(it.id, e.target.value)}
                                             className="w-full text-xs font-bold border border-slate-200 rounded-lg px-2 py-1.5 text-slate-800 outline-none focus:border-indigo-500"
                                         >
-                                            {PRODUCT_PROFILES.map(p => (
-                                                <option key={p} value={p}>{p}</option>
-                                            ))}
+                                            <optgroup label="📋 Productos de la Matriz Industrial">
+                                                {availableProducts.map(p => (
+                                                    <option key={`p-${p}`} value={p}>{p}</option>
+                                                ))}
+                                            </optgroup>
+                                            {allMatrixCodes.length > 0 && (
+                                                <optgroup label="🏷️ Códigos Directos de Catálogo (SKU / Matriz)">
+                                                    {allMatrixCodes.map((c, cIdx) => (
+                                                        <option key={`c-${c.code}-${cIdx}`} value={`code:${c.code}`}>
+                                                            [{c.code}] {c.product_name} ({c.weight_lbs} lb)
+                                                        </option>
+                                                    ))}
+                                                </optgroup>
+                                            )}
                                         </select>
+                                        <div className="mt-1">
+                                            {it.catalog_code ? (
+                                                <div className="flex items-center gap-1 text-[10px] font-semibold text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 truncate" title={`Código SKU: ${it.catalog_code}${it.catalog_product_name ? ` - ${it.catalog_product_name}` : ''}`}>
+                                                    <Barcode className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                                    <span className="font-mono font-bold">{it.catalog_code}</span>
+                                                    {it.catalog_product_name && (
+                                                        <span className="truncate text-slate-600 font-normal">
+                                                            • {it.catalog_product_name}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            ) : (
+                                                <span className="text-[10px] text-slate-400 italic block pl-0.5">
+                                                    Estándar general
+                                                </span>
+                                            )}
+                                        </div>
                                     </div>
 
                                     {/* Presentación (2 cols) */}
@@ -877,14 +1321,30 @@ export default function EggCustomerOrderModal({
                                             Presentación
                                         </label>
                                         <select
-                                            value={it.presentation}
-                                            onChange={(e) => handleItemChange(it.id, 'presentation', e.target.value)}
+                                            value={it.catalog_code ? `code:${it.catalog_code}` : it.presentation}
+                                            onChange={(e) => handlePresentationSelectChange(it.id, e.target.value)}
                                             className="w-full text-xs font-medium border border-slate-200 rounded-lg px-2 py-1.5 text-slate-800 outline-none focus:border-indigo-500"
                                         >
-                                            {PRESENTATIONS.map(p => (
-                                                <option key={p} value={p}>{p}</option>
-                                            ))}
+                                            {getPresentationsForProduct(it.product_type).length > 0 && (
+                                                <optgroup label="✨ Presentaciones Mapeadas (Matriz)">
+                                                    {getPresentationsForProduct(it.product_type).map((pm, pmIdx) => (
+                                                        <option key={`pm-${pmIdx}`} value={`code:${pm.code}`}>
+                                                            {pm.presentation} [{pm.code}] ({pm.weight_lbs} lb)
+                                                        </option>
+                                                    ))}
+                                                </optgroup>
+                                            )}
+                                            <optgroup label="📦 Otras Presentaciones">
+                                                {PRESENTATIONS.map(p => (
+                                                    <option key={`gen-${p}`} value={p}>{p}</option>
+                                                ))}
+                                            </optgroup>
                                         </select>
+                                        <div className="mt-1">
+                                            <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100 block truncate">
+                                                Factor: {it.unit_weight_lbs || getPresentationFactors(it.presentation).lbs} lb/ud
+                                            </span>
+                                        </div>
                                     </div>
 
                                     {/* Cantidad en Unidades (2 cols) */}
@@ -972,6 +1432,17 @@ export default function EggCustomerOrderModal({
                                                     </option>
                                                 ))}
                                         </select>
+                                        <div className="mt-1">
+                                            {it.batch_id ? (
+                                                <span className="text-[10px] font-semibold text-emerald-700 block truncate">
+                                                    ✓ Lote asignado
+                                                </span>
+                                            ) : (
+                                                <span className="text-[10px] text-slate-400 italic block">
+                                                    Sin lote
+                                                </span>
+                                            )}
+                                        </div>
                                     </div>
 
                                     {/* Eliminar fila (1 col) */}

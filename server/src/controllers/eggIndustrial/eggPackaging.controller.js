@@ -231,7 +231,16 @@ const createPackagingRecord = async (req, res) => {
 const updatePackagingRecord = async (req, res) => {
     try {
         const { id } = req.params;
-        const { units_packaged, weight_per_unit_lbs, operator_name } = req.body;
+        const {
+            units_packaged,
+            weight_per_unit_lbs,
+            operator_name,
+            lot_code,
+            product_type,
+            presentation,
+            batch_id,
+            reopen_packaging
+        } = req.body;
         const company_id = req.company_id;
 
         const [existing] = await pool.query(
@@ -241,21 +250,109 @@ const updatePackagingRecord = async (req, res) => {
         if (existing.length === 0) {
             return res.status(404).json({ message: 'Registro de empaque no encontrado.' });
         }
+        const currentRecord = existing[0];
 
-        const total_batch_weight_lbs = parseFloat(units_packaged) * parseFloat(weight_per_unit_lbs);
+        const userPerms = Array.isArray(req.user?.permissions)
+            ? req.user.permissions
+            : (typeof req.user?.permissions === 'string' ? JSON.parse(req.user?.permissions || '[]') : []);
+        const canEditLots = req.user?.role === 'SuperAdmin' || req.user?.role === 'Admin' || req.user?.role_id <= 2 || userPerms.includes('manage_egg_production_lots') || userPerms.includes('manage_egg_packaging_close');
+
+        const finalUnits = parseInt(units_packaged !== undefined ? units_packaged : currentRecord.units_packaged, 10);
+        const finalWeight = parseFloat(weight_per_unit_lbs !== undefined ? weight_per_unit_lbs : currentRecord.weight_per_unit_lbs);
+        const total_batch_weight_lbs = finalUnits * finalWeight;
+
+        // Si tiene permiso especial, puede cambiar lote de empaque, lote de producción, producto y presentación
+        const finalLotCode = (canEditLots && lot_code && lot_code.trim()) ? lot_code.trim() : currentRecord.lot_code;
+        const finalProductType = (canEditLots && product_type && product_type.trim()) ? product_type.trim() : currentRecord.product_type;
+        const finalPresentation = (canEditLots && presentation && presentation.trim()) ? presentation.trim() : currentRecord.presentation;
+        const finalBatchId = (canEditLots && batch_id) ? parseInt(batch_id, 10) : currentRecord.batch_id;
+
+        // Actualizar qr_code_payload si cambió algo clave
+        let updatedQrPayload = currentRecord.qr_code_payload;
+        try {
+            const parsed = JSON.parse(currentRecord.qr_code_payload || '{}');
+            parsed.lot_code = finalLotCode;
+            parsed.product = finalProductType;
+            parsed.presentation = finalPresentation;
+            parsed.units = finalUnits;
+            parsed.weight_lbs = total_batch_weight_lbs;
+            updatedQrPayload = JSON.stringify(parsed);
+        } catch {
+            updatedQrPayload = JSON.stringify({
+                lot_code: finalLotCode,
+                product: finalProductType,
+                presentation: finalPresentation,
+                units: finalUnits,
+                weight_lbs: total_batch_weight_lbs
+            });
+        }
 
         await pool.query(
-            `UPDATE egg_packaging_records SET units_packaged = ?, weight_per_unit_lbs = ?, total_batch_weight_lbs = ?, operator_name = ? WHERE id = ? AND company_id = ?`,
-            [parseInt(units_packaged), parseFloat(weight_per_unit_lbs), total_batch_weight_lbs, operator_name, id, company_id]
+            `UPDATE egg_packaging_records 
+             SET units_packaged = ?, 
+                 weight_per_unit_lbs = ?, 
+                 total_batch_weight_lbs = ?, 
+                 lot_code = ?,
+                 product_type = ?,
+                 presentation = ?,
+                 batch_id = ?,
+                 qr_code_payload = ?,
+                 operator_name = ? 
+             WHERE id = ? AND company_id = ?`,
+            [
+                finalUnits,
+                finalWeight,
+                total_batch_weight_lbs,
+                finalLotCode,
+                finalProductType,
+                finalPresentation,
+                finalBatchId,
+                updatedQrPayload,
+                operator_name || currentRecord.operator_name,
+                id,
+                company_id
+            ]
         );
+
+        // Si se solicitó reabrir el envasado del lote asociado
+        if (canEditLots && reopen_packaging) {
+            await pool.query(
+                `UPDATE egg_production_batches 
+                 SET packaging_status = 'abierto',
+                     status = CASE WHEN status = 'empaquetado' THEN 'pasteurizado' ELSE status END,
+                     packaging_loss_lbs = 0,
+                     packaging_efficiency_pct = 0
+                 WHERE id = ? AND company_id = ?`,
+                [finalBatchId, company_id]
+            );
+            await pool.query(
+                `DELETE FROM egg_batch_waste_logs 
+                 WHERE batch_id = ? AND company_id = ? AND stage = 'envasado' AND waste_type = 'merma_tuberias_envasado'`,
+                [finalBatchId, company_id]
+            );
+        }
 
         await pool.query(
             `INSERT INTO egg_industrial_events (company_id, event_type, severity, description, payload, operator_name)
              VALUES (?, 'packaging.updated', 'info', ?, ?, ?)`,
-            [company_id, `Empaque #${id} actualizado: ${units_packaged} unidades, ${total_batch_weight_lbs} Lbs.`, JSON.stringify({ packaging_id: parseInt(id) }), operator_name]
+            [
+                company_id,
+                `Empaque #${id} (${finalLotCode}) actualizado: ${finalUnits} unidades, ${total_batch_weight_lbs} Lbs, producto: ${finalProductType}.`,
+                JSON.stringify({ packaging_id: parseInt(id), lot_code: finalLotCode, product_type: finalProductType, presentation: finalPresentation }),
+                operator_name || req.user?.nombre || 'Operador'
+            ]
         );
 
-        res.json({ id, units_packaged, weight_per_unit_lbs, total_batch_weight_lbs });
+        res.json({
+            id,
+            units_packaged: finalUnits,
+            weight_per_unit_lbs: finalWeight,
+            total_batch_weight_lbs,
+            lot_code: finalLotCode,
+            product_type: finalProductType,
+            presentation: finalPresentation,
+            batch_id: finalBatchId
+        });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -421,6 +518,63 @@ const closeBatchPackaging = async (req, res) => {
     } catch (error) {
         await connection.rollback();
         console.error('Error in closeBatchPackaging:', error);
+        res.status(500).json({ message: error.message });
+    } finally {
+        connection.release();
+    }
+};
+
+const reopenBatchPackaging = async (req, res) => {
+    const connection = await pool.getConnection();
+    try {
+        await connection.beginTransaction();
+        const { id } = req.params;
+        const company_id = req.company_id;
+
+        const [batches] = await connection.query(
+            'SELECT * FROM egg_production_batches WHERE id = ? AND company_id = ? FOR UPDATE',
+            [id, company_id]
+        );
+        if (batches.length === 0) {
+            await connection.rollback();
+            return res.status(404).json({ message: 'Lote no encontrado.' });
+        }
+        const batch = batches[0];
+
+        // Revertir merma automática de faltante de envasado si existía
+        await connection.query(
+            `DELETE FROM egg_batch_waste_logs 
+             WHERE batch_id = ? AND company_id = ? AND stage = 'envasado' AND waste_type = 'merma_tuberias_envasado'`,
+            [id, company_id]
+        );
+
+        // Reabrir lote en envasado
+        await connection.query(
+            `UPDATE egg_production_batches 
+             SET packaging_status = 'abierto',
+                 status = CASE WHEN status = 'empaquetado' THEN 'pasteurizado' ELSE status END,
+                 packaging_loss_lbs = 0,
+                 packaging_efficiency_pct = 0
+             WHERE id = ? AND company_id = ?`,
+            [id, company_id]
+        );
+
+        await connection.query(
+            `INSERT INTO egg_industrial_events (company_id, event_type, severity, description, payload, operator_name)
+             VALUES (?, 'packaging.reopened', 'warning', ?, ?, ?)`,
+            [
+                company_id,
+                `Envasado del lote #${id} (${batch.batch_code_display || batch.batch_uuid}) reabierto para nuevos registros.`,
+                JSON.stringify({ batch_id: parseInt(id) }),
+                req.user?.nombre || 'Operador'
+            ]
+        );
+
+        await connection.commit();
+        res.json({ success: true, message: 'Envasado reabierto exitosamente. Ahora puede agregar más empaques o modificar registros.', packaging_status: 'abierto' });
+    } catch (error) {
+        await connection.rollback();
+        console.error('Error in reopenBatchPackaging:', error);
         res.status(500).json({ message: error.message });
     } finally {
         connection.release();
@@ -1143,6 +1297,7 @@ module.exports = {
     updatePackagingRecord,
     deletePackagingRecord,
     closeBatchPackaging,
+    reopenBatchPackaging,
     getBlastFreezerLogs,
     createBlastFreezerLog,
     deleteBlastFreezerLog,

@@ -42,6 +42,8 @@ import {
 } from '../../utils/julianDate';
 import RawMaterialPlannerModal from '../../components/egg/RawMaterialPlannerModal';
 import EggCustomerOrderModal from '../../components/egg/EggCustomerOrderModal';
+import EggCalendarPreviewPopover, { isProductionFinished } from '../../components/egg/EggCalendarPreviewPopover';
+import EggSuggestionsRangeBar from '../../components/egg/EggSuggestionsRangeBar';
 
 const PRODUCT_PROFILES = [
     { id: 'Huevo Entero Pasteurizado', name: 'Huevo Entero Pasteurizado', defaultSolids: 23.5, color: 'indigo', desc: '83% rendimiento estándar' },
@@ -181,6 +183,21 @@ const ProductionCalendar = () => {
     const [selectedPlanRuns, setSelectedPlanRuns] = useState([]);
     const [julianFormat, setJulianFormat] = useState('standard'); // 'standard' (LOTE-YYJJJ-NN) | 'andelsa' (NN - JJJ - YY)
 
+    // Estado de Hover Preview para producciones y pedidos
+    const [hoverPreview, setHoverPreview] = useState(null);
+
+    // Estado de Rango de Fechas para Sugerencias IA (evita fechas pasadas retroactivas)
+    const [suggestionStartDate, setSuggestionStartDate] = useState(() => {
+        const d = new Date();
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    });
+    const [suggestionEndDate, setSuggestionEndDate] = useState(() => {
+        const d = new Date();
+        const endOfMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+        return `${endOfMonth.getFullYear()}-${String(endOfMonth.getMonth() + 1).padStart(2, '0')}-${String(endOfMonth.getDate()).padStart(2, '0')}`;
+    });
+    const [preventPastSuggestions, setPreventPastSuggestions] = useState(true);
+
     // Drag and Drop state
     const [draggedItem, setDraggedItem] = useState(null);
     const [dragOverDate, setDragOverDate] = useState(null);
@@ -247,10 +264,12 @@ const ProductionCalendar = () => {
         }
     };
 
-    const fetchSuggestions = async () => {
+    const fetchSuggestions = async (sDate = suggestionStartDate, eDate = suggestionEndDate) => {
         setLoadingSuggestions(true);
         try {
-            const res = await axios.get('/api/egg-industrial/calendar/suggestions');
+            const res = await axios.get('/api/egg-industrial/calendar/suggestions', {
+                params: { start_date: sDate, end_date: eDate }
+            });
             setSuggestionsData(res.data || null);
         } catch (error) {
             console.error('Error cargando sugerencias inteligentes:', error);
@@ -268,13 +287,24 @@ const ProductionCalendar = () => {
         }
     };
 
-    const fetchMonthlyPlan = async (targetD = currentDate) => {
+    const fetchMonthlyPlan = async (
+        targetD = currentDate,
+        sDate = suggestionStartDate,
+        eDate = suggestionEndDate,
+        prevPast = preventPastSuggestions
+    ) => {
         setLoadingMonthlyPlan(true);
         try {
             const targetYear = targetD.getFullYear();
             const targetMonth = targetD.getMonth() + 1;
             const res = await axios.get('/api/egg-industrial/calendar/monthly-suggestions', {
-                params: { year: targetYear, month: targetMonth }
+                params: {
+                    year: targetYear,
+                    month: targetMonth,
+                    start_date: sDate,
+                    end_date: eDate,
+                    prevent_past: prevPast
+                }
             });
             setMonthlyPlanData(res.data || null);
             // Pre-seleccionar todos los que no estén ya programados
@@ -322,11 +352,24 @@ const ProductionCalendar = () => {
     };
 
     useEffect(() => {
+        const y = currentDate.getFullYear();
+        const m = currentDate.getMonth();
+        const firstDay = new Date(y, m, 1);
+        const lastDay = new Date(y, m + 1, 0);
+        const today = new Date();
+        const isCurrentMonth = today.getFullYear() === y && today.getMonth() === m;
+        const sD = (preventPastSuggestions && isCurrentMonth) ? today : firstDay;
+        const fmt = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        const newStart = fmt(sD);
+        const newEnd = fmt(lastDay);
+        setSuggestionStartDate(newStart);
+        setSuggestionEndDate(newEnd);
+
         fetchProductions();
         fetchFactoryUsers();
-        fetchSuggestions();
+        fetchSuggestions(newStart, newEnd);
         fetchOrders();
-        fetchMonthlyPlan(currentDate);
+        fetchMonthlyPlan(currentDate, newStart, newEnd, preventPastSuggestions);
     }, [companyId, currentDate.getMonth(), currentDate.getFullYear()]);
 
     // Recalculate BOM mix formula based on product profile and target lbs
@@ -1191,6 +1234,7 @@ const ProductionCalendar = () => {
                                             const badgeStyle = getProfileBadgeStyle(prod.product_profile);
                                             const tasksDone = (prod.tasks || []).filter(t => t.checklist_status === 'completado').length;
                                             const tasksTotal = (prod.tasks || []).length;
+                                            const isFinished = isProductionFinished(prod);
 
                                             return (
                                                 <div
@@ -1198,8 +1242,15 @@ const ProductionCalendar = () => {
                                                     draggable={true}
                                                     onDragStart={(e) => handleDragStart(e, prod)}
                                                     onClick={() => handleOpenEditModal(prod)}
-                                                    className={`p-1.5 rounded-lg border text-left cursor-grab active:cursor-grabbing transition-all hover:shadow-md ${badgeStyle.card} ${draggedItem?.id === prod.id ? 'opacity-40' : ''
-                                                        }`}
+                                                    onMouseEnter={(e) => {
+                                                        const rect = e.currentTarget.getBoundingClientRect();
+                                                        setHoverPreview({ type: 'production', data: prod, rect });
+                                                    }}
+                                                    onMouseLeave={() => setHoverPreview(null)}
+                                                    className={`p-1.5 rounded-lg border text-left cursor-grab active:cursor-grabbing transition-all hover:shadow-md ${isFinished
+                                                            ? 'border-l-4 border-l-emerald-600 bg-emerald-50/95 text-emerald-950 border-emerald-300 hover:bg-emerald-100/90 ring-1 ring-emerald-200'
+                                                            : badgeStyle.card
+                                                        } ${draggedItem?.id === prod.id ? 'opacity-40' : ''}`}
                                                 >
                                                     <div className="flex items-center justify-between gap-1">
                                                         <div className="flex items-center gap-1 min-w-0">
@@ -1212,6 +1263,11 @@ const ProductionCalendar = () => {
                                                             >
                                                                 J-{getJulianDayInfo(prod.production_date).dayOfYearStr}
                                                             </span>
+                                                            {isFinished && (
+                                                                <span className="px-1.5 py-0.2 rounded text-[8px] font-black bg-emerald-600 text-white uppercase tracking-wider flex items-center gap-0.5 shadow-2xs shrink-0">
+                                                                    <CheckCircle2 className="w-2.5 h-2.5" /> FINALIZADO
+                                                                </span>
+                                                            )}
                                                         </div>
                                                         <div className="flex items-center gap-1 shrink-0">
                                                             {/* Botón Alterar fecha de producción */}
@@ -1299,6 +1355,11 @@ const ProductionCalendar = () => {
                                                     setSelectedOrderToEdit(ord);
                                                     setIsCustomerOrderModalOpen(true);
                                                 }}
+                                                onMouseEnter={(e) => {
+                                                    const rect = e.currentTarget.getBoundingClientRect();
+                                                    setHoverPreview({ type: 'order', data: ord, rect });
+                                                }}
+                                                onMouseLeave={() => setHoverPreview(null)}
                                                 className="p-1 sm:p-1.5 rounded-lg border border-amber-200/90 bg-amber-50/70 hover:bg-amber-100/80 text-left cursor-pointer transition-all hover:shadow-xs group/ord"
                                                 title="Clic para ver o editar pedido completo"
                                             >
@@ -1371,9 +1432,21 @@ const ProductionCalendar = () => {
                                         const tasksDone = (prod.tasks || []).filter(t => t.checklist_status === 'completado').length;
                                         const tasksTotal = (prod.tasks || []).length;
                                         const _isBatchRunning = prod.status === 'en_proceso';
+                                        const isFinished = isProductionFinished(prod);
 
                                         return (
-                                            <tr key={prod.id} className="hover:bg-slate-50/70 transition-colors">
+                                            <tr
+                                                key={prod.id}
+                                                onMouseEnter={(e) => {
+                                                    const rect = e.currentTarget.getBoundingClientRect();
+                                                    setHoverPreview({ type: 'production', data: prod, rect });
+                                                }}
+                                                onMouseLeave={() => setHoverPreview(null)}
+                                                className={`transition-colors ${isFinished
+                                                        ? 'bg-emerald-50/40 hover:bg-emerald-50/70 border-l-4 border-l-emerald-600'
+                                                        : 'hover:bg-slate-50/70'
+                                                    }`}
+                                            >
                                                 <td className="px-4 py-3">
                                                     <div className="font-bold text-slate-900">
                                                         {prod.production_date ? new Date(prod.production_date).toLocaleDateString('es-SV', { timeZone: 'UTC', day: '2-digit', month: '2-digit', year: 'numeric' }) : 'N/A'}
@@ -1388,11 +1461,16 @@ const ProductionCalendar = () => {
                                                     <div className="flex items-center gap-1.5 flex-wrap">
                                                         <span className="font-bold text-slate-900">{prod.lot_code}</span>
                                                         <span
-                                                            className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200/60"
+                                                            className="text-[9px] font-extrabold px-1 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200/60"
                                                             title={`Día Juliano: ${getJulianDayInfo(prod.production_date).dayOfYearStr}`}
                                                         >
                                                             J-{getJulianDayInfo(prod.production_date).dayOfYearStr}
                                                         </span>
+                                                        {isFinished && (
+                                                            <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-emerald-600 text-white uppercase tracking-wider flex items-center gap-0.5 shadow-2xs">
+                                                                <CheckCircle2 className="w-2.5 h-2.5" /> Finalizado
+                                                            </span>
+                                                        )}
                                                         {!isJulianLotCode(prod.lot_code) && (
                                                             <button
                                                                 type="button"
@@ -1440,18 +1518,24 @@ const ProductionCalendar = () => {
                                                 </td>
 
                                                 <td className="px-4 py-3">
-                                                    <span
-                                                        className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${prod.status === 'completado'
-                                                                ? 'bg-emerald-100 text-emerald-700'
-                                                                : prod.status === 'en_proceso'
-                                                                    ? 'bg-blue-100 text-blue-700 animate-pulse'
-                                                                    : prod.status === 'cancelado'
-                                                                        ? 'bg-slate-200 text-slate-600'
-                                                                        : 'bg-amber-100 text-amber-700'
-                                                            }`}
-                                                    >
-                                                        {prod.status}
-                                                    </span>
+                                                    {isFinished ? (
+                                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-emerald-100 text-emerald-800 border border-emerald-300 shadow-2xs">
+                                                            <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Finalizado
+                                                        </span>
+                                                    ) : (
+                                                        <span
+                                                            className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${prod.status === 'completado'
+                                                                    ? 'bg-emerald-100 text-emerald-700'
+                                                                    : prod.status === 'en_proceso'
+                                                                        ? 'bg-blue-100 text-blue-700 animate-pulse'
+                                                                        : prod.status === 'cancelado'
+                                                                            ? 'bg-slate-200 text-slate-600'
+                                                                            : 'bg-amber-100 text-amber-700'
+                                                                }`}
+                                                        >
+                                                            {prod.status}
+                                                        </span>
+                                                    )}
                                                 </td>
 
                                                 <td className="px-4 py-3 text-center">
@@ -1549,13 +1633,13 @@ const ProductionCalendar = () => {
                                             setJulianFormat(nextFmt);
                                             const updatedLot = generateJulianLotCode(formData.production_date, 1, nextFmt);
                                             setFormData({ ...formData, lot_code: updatedLot });
-                                            toast.info(`Formato cambiado a: ${nextFmt === 'standard' ? 'Estándar (LOTE-YYJJJ-NN)' : 'ANDELSA (NN - JJJ - YY)'}`);
+                                            toast.info(`Formato cambiado a: ${nextFmt === 'standard' ? 'Oficial (LOTE 01-265-26)' : 'Sin LOTE (01-265-26)'}`);
                                         }}
                                         className="text-[10px] text-slate-500 hover:text-indigo-600 flex items-center gap-1 font-semibold px-1 py-0.5 rounded hover:bg-slate-100 transition-colors"
-                                        title="Alternar formato: Estándar vs ANDELSA"
+                                        title="Alternar prefijo LOTE"
                                     >
                                         <ArrowRightLeft className="w-2.5 h-2.5" />
-                                        <span>{julianFormat === 'standard' ? 'Std' : 'Andelsa'}</span>
+                                        <span>{julianFormat === 'standard' ? 'Con LOTE' : 'Sin LOTE'}</span>
                                     </button>
                                     <span
                                         className="text-[10px] font-black px-1.5 py-0.2 rounded bg-indigo-50 text-indigo-700 border border-indigo-200"
@@ -1571,7 +1655,7 @@ const ProductionCalendar = () => {
                                     required
                                     value={formData.lot_code}
                                     onChange={(e) => setFormData({ ...formData, lot_code: e.target.value })}
-                                    placeholder="ej. LOTE-26252-01"
+                                    placeholder="ej. LOTE 01-265-26"
                                     className="w-full bg-white border border-slate-300 rounded-xl pl-3 pr-8 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
                                 />
                                 <button
@@ -1994,6 +2078,21 @@ const ProductionCalendar = () => {
                 maxWidth="max-w-5xl"
             >
                 <div className="space-y-4">
+                    {/* Barra de Selección de Rango de Fechas (Evita Generación Retroactiva) */}
+                    <EggSuggestionsRangeBar
+                        startDate={suggestionStartDate}
+                        setStartDate={setSuggestionStartDate}
+                        endDate={suggestionEndDate}
+                        setEndDate={setSuggestionEndDate}
+                        preventPast={preventPastSuggestions}
+                        setPreventPast={setPreventPastSuggestions}
+                        onCalculate={() => {
+                            fetchMonthlyPlan(currentDate, suggestionStartDate, suggestionEndDate, preventPastSuggestions);
+                            fetchSuggestions(suggestionStartDate, suggestionEndDate);
+                        }}
+                        loading={loadingMonthlyPlan || loadingSuggestions}
+                    />
+
                     {/* Header Tabs */}
                     <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 border-b border-slate-200 pb-3">
                         <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl">
@@ -2031,10 +2130,10 @@ const ProductionCalendar = () => {
                             <div className="flex items-center gap-2">
                                 <button
                                     type="button"
-                                    onClick={() => fetchMonthlyPlan(currentDate)}
+                                    onClick={() => fetchMonthlyPlan(currentDate, suggestionStartDate, suggestionEndDate, preventPastSuggestions)}
                                     disabled={loadingMonthlyPlan}
                                     className="px-2.5 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-600 text-xs font-medium flex items-center gap-1.5 transition-colors"
-                                    title="Recalcular sugerencias del mes"
+                                    title="Recalcular sugerencias del rango"
                                 >
                                     <RefreshCw className={`w-3.5 h-3.5 ${loadingMonthlyPlan ? 'animate-spin text-indigo-600' : ''}`} />
                                     <span>Recalcular</span>
@@ -2380,7 +2479,15 @@ const ProductionCalendar = () => {
                                     </tr>
                                 ) : (
                                     customerOrders.map(order => (
-                                        <tr key={order.id} className="hover:bg-slate-50 transition-colors">
+                                        <tr
+                                            key={order.id}
+                                            onMouseEnter={(e) => {
+                                                const rect = e.currentTarget.getBoundingClientRect();
+                                                setHoverPreview({ type: 'order', data: order, rect });
+                                            }}
+                                            onMouseLeave={() => setHoverPreview(null)}
+                                            className="hover:bg-slate-50 transition-colors"
+                                        >
                                             <td className="px-3 py-2.5">
                                                 <div className="font-bold text-slate-900">{order.customer_name}</div>
                                                 {order.customer_id && (
@@ -2537,6 +2644,11 @@ const ProductionCalendar = () => {
                 onClose={() => setIsPlannerModalOpen(false)}
                 initialDate={currentDate}
             />
+
+            {/* ========================================================================= */}
+            {/* POPOVER FLOTANTE INTELIGENTE: PREVIEW DE PEDIDOS Y PRODUCCIONES AL HOVER */}
+            {/* ========================================================================= */}
+            <EggCalendarPreviewPopover hoverPreview={hoverPreview} />
         </div>
     );
 };

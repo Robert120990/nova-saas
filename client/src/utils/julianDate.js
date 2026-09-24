@@ -1,7 +1,6 @@
 /**
  * Utilidades para cálculo de Calendario Juliano en Planta Industrial ANDELSA
- * Formato estándar industrial: LOTE-[Año 2 dígitos][Día Juliano 3 dígitos]-[Corrida 2 dígitos] (ej: LOTE-26252-01)
- * Formato oficial ANDELSA Planta: [Corrida 2 dígitos] - [Día Juliano 3 dígitos] - [Año 2 dígitos] (ej: 01 - 252 - 26)
+ * Formato oficial ANDELSA Planta: LOTE [Corrida 2 dígitos]-[Día Juliano 3 dígitos]-[Año 2 dígitos] (ej: LOTE 01-265-26)
  */
 
 /**
@@ -51,51 +50,60 @@ export const getJulianDayInfo = (dateInput) => {
 };
 
 /**
- * Genera el código de lote en formato juliano
+ * Genera el código de lote en formato juliano oficial
  * @param {string|Date} dateInput - Fecha de producción
  * @param {number|string} runNumber - Número de corrida o batch en el día (ej: 1, 2)
- * @param {'standard'|'andelsa'} format - 'standard' para LOTE-YYJJJ-NN o 'andelsa' para NN - JJJ - YY
- * @returns {string} Código de lote formateado
+ * @param {'standard'|'andelsa'|'raw'} format - 'standard' para LOTE XX-JJJ-YY o 'andelsa'/'raw' para XX-JJJ-YY
+ * @returns {string} Código de lote formateado (ej. LOTE 01-265-26)
  */
 export const generateJulianLotCode = (dateInput, runNumber = 1, format = 'standard') => {
     const info = getJulianDayInfo(dateInput);
     const runStr = String(runNumber || 1).padStart(2, '0');
 
-    if (format === 'andelsa') {
-        return `${runStr} - ${info.dayOfYearStr} - ${info.year2Digit}`;
+    if (format === 'andelsa' || format === 'raw') {
+        return `${runStr}-${info.dayOfYearStr}-${info.year2Digit}`;
     }
 
-    // Estándar industrial LOTE-YYJJJ-NN (ej. LOTE-26252-01)
-    return `LOTE-${info.year2Digit}${info.dayOfYearStr}-${runStr}`;
+    // Formato oficial ANDELSA Planta: LOTE 01-265-26
+    return `LOTE ${runStr}-${info.dayOfYearStr}-${info.year2Digit}`;
 };
 
 /**
  * Detecta si un código de lote usa formato gregoriano (ej. LOTE-20260909-01 o LOTE-260909-01)
- * y lo convierte a su equivalente en numeración juliana
+ * o formatos previos y lo convierte a su equivalente en numeración juliana oficial (ej. LOTE 01-265-26)
  * @param {string} lotCode - Código de lote existente
  * @param {string|Date} fallbackDate - Fecha de producción asociada como respaldo
- * @returns {string} Código de lote convertido a juliano
+ * @returns {string} Código de lote convertido a juliano oficial
  */
 export const convertGregorianLotToJulian = (lotCode, fallbackDate) => {
     if (!lotCode) return generateJulianLotCode(fallbackDate);
 
     const clean = lotCode.trim();
 
-    // Caso 1: Ya es formato ANDELSA (ej. 01 - 252 - 26)
-    if (/^\d{2}\s*-\s*\d{3}\s*-\s*\d{2}$/.test(clean)) {
-        return clean;
+    // Caso 1: Ya es formato oficial LOTE XX-JJJ-YY (ej. LOTE 01-265-26)
+    const officialMatch = clean.match(/^LOTE\s*(\d{2})\s*-\s*(\d{3})\s*-\s*(\d{2})$/i);
+    if (officialMatch) {
+        return `LOTE ${officialMatch[1]}-${officialMatch[2]}-${officialMatch[3]}`;
     }
 
-    // Caso 2: Ya es formato LOTE-YYJJJ-NN (ej. LOTE-26252-01 donde JJJ <= 366)
-    const julianMatch = clean.match(/^LOTE-(\d{2})(\d{3})-(\w+)$/i);
-    if (julianMatch) {
-        const jDay = parseInt(julianMatch[2], 10);
+    // Caso 2: Formato XX-JJJ-YY sin prefijo LOTE (ej. 01 - 252 - 26 o 01-265-26)
+    const rawMatch = clean.match(/^(\d{2})\s*-\s*(\d{3})\s*-\s*(\d{2})$/);
+    if (rawMatch) {
+        return `LOTE ${rawMatch[1]}-${rawMatch[2]}-${rawMatch[3]}`;
+    }
+
+    // Caso 3: Formato heredado LOTE-YYJJJ-NN (ej. LOTE-26252-01 donde JJJ <= 366)
+    const legacyJulianMatch = clean.match(/^LOTE-(\d{2})(\d{3})-(\w+)$/i);
+    if (legacyJulianMatch) {
+        const jYear = legacyJulianMatch[1];
+        const jDay = parseInt(legacyJulianMatch[2], 10);
+        const jRun = legacyJulianMatch[3];
         if (jDay >= 1 && jDay <= 366) {
-            return clean.toUpperCase();
+            return `LOTE ${String(jRun).padStart(2, '0')}-${String(jDay).padStart(3, '0')}-${jYear}`;
         }
     }
 
-    // Caso 3: Es formato LOTE-YYYYMMDD-NN (ej. LOTE-20260909-01)
+    // Caso 4: Formato LOTE-YYYYMMDD-NN (ej. LOTE-20260909-01)
     const ymdMatch = clean.match(/^LOTE-(\d{4})(\d{2})(\d{2})-(\w+)$/i);
     if (ymdMatch) {
         const year = parseInt(ymdMatch[1], 10);
@@ -104,10 +112,10 @@ export const convertGregorianLotToJulian = (lotCode, fallbackDate) => {
         const run = ymdMatch[4];
         const date = new Date(year, month, day);
         const info = getJulianDayInfo(date);
-        return `LOTE-${info.year2Digit}${info.dayOfYearStr}-${run}`;
+        return `LOTE ${String(run).padStart(2, '0')}-${info.dayOfYearStr}-${info.year2Digit}`;
     }
 
-    // Caso 4: Usar fallbackDate
+    // Caso 5: Usar fallbackDate
     if (fallbackDate) {
         return generateJulianLotCode(fallbackDate);
     }
@@ -123,6 +131,7 @@ export const convertGregorianLotToJulian = (lotCode, fallbackDate) => {
 export const isJulianLotCode = (lotCode) => {
     if (!lotCode) return false;
     const clean = lotCode.trim();
+    if (/^LOTE\s*\d{2}\s*-\s*\d{3}\s*-\s*\d{2}$/i.test(clean)) return true;
     if (/^\d{2}\s*-\s*\d{3}\s*-\s*\d{2}$/.test(clean)) return true;
     const match = clean.match(/^LOTE-(\d{2})(\d{3})-(\w+)$/i);
     if (match) {

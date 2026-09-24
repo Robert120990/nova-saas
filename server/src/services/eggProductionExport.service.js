@@ -36,6 +36,25 @@ async function getBatchExportData(batchId, companyId) {
         }
     }
 
+    const tarimasUsed = [];
+    for (const rm of rawMaterials) {
+        if (Array.isArray(rm.tarimas) && rm.tarimas.length > 0) {
+            for (const t of rm.tarimas) {
+                tarimasUsed.push({
+                    tarima_number: t.tarima_number || t.tarima_no || '1',
+                    barcode: t.barcode || 'N/A',
+                    provider_lot: rm.provider_lot || 'N/A',
+                    provider_name: rm.provider_name || 'Proveedor General',
+                    egg_type: rm.egg_type || 'Cáscara',
+                    boxes_count: parseInt(t.boxes_count || 0, 10),
+                    quantity_lbs: parseFloat(t.quantity_lbs || t.weight_lbs || 0),
+                    storage_location: t.storage_location || 'Cámara Fría',
+                    is_partial: Boolean(t.is_partial)
+                });
+            }
+        }
+    }
+
     // 2. Registros de pasteurización
     const [pasteurizationLogs] = await pool.query(
         `SELECT * FROM egg_pasteurization_logs 
@@ -44,7 +63,7 @@ async function getBatchExportData(batchId, companyId) {
         [batchId, companyId]
     );
 
-    // 3. Remanentes y reprocesos
+    // 3. Remanentes generados en este lote
     let remanentes = [];
     try {
         const [remRows] = await pool.query(
@@ -57,6 +76,26 @@ async function getBatchExportData(batchId, companyId) {
     } catch (e) {
         remanentes = [];
     }
+
+    // 3.1 Remanentes de OTRAS producciones utilizados en este lote
+    let remanentesUsed = [];
+    try {
+        const [usedRemRows] = await pool.query(
+            `SELECT r.*, 
+                    b.batch_code_display as source_batch_code, 
+                    b.batch_uuid as source_batch_uuid, 
+                    b.started_at as source_batch_date
+             FROM egg_batch_remanentes r
+             LEFT JOIN egg_production_batches b ON r.batch_id = b.id
+             WHERE r.target_batch_id = ? AND r.company_id = ?
+             ORDER BY r.created_at ASC`,
+            [batchId, companyId]
+        );
+        remanentesUsed = usedRemRows;
+    } catch (e) {
+        remanentesUsed = [];
+    }
+    const remanenteUsedWeight = remanentesUsed.reduce((sum, r) => sum + parseFloat(r.quantity_lbs || 0), 0);
 
     // 4. Registros de envasado
     const [packagingRecords] = await pool.query(
@@ -117,13 +156,34 @@ async function getBatchExportData(batchId, companyId) {
 
     const company = await reportPdfHelper.getCompanyInfo(companyId);
 
+    // 6. Sanitizaciones CIP (vinculadas al lote o realizadas en la fecha de producción)
+    let cipLogs = [];
+    try {
+        const batchDate = batch.started_at ? new Date(batch.started_at).toISOString().split('T')[0] : null;
+        const [cipRows] = await pool.query(
+            `SELECT c.*, b.batch_code_display as batch_code, b.batch_uuid
+             FROM egg_cip_logs c
+             LEFT JOIN egg_production_batches b ON c.batch_id = b.id
+             WHERE c.company_id = ? 
+               AND (c.batch_id = ? OR (c.batch_id IS NULL AND DATE(c.created_at) = ?))
+             ORDER BY c.created_at ASC`,
+            [companyId, batchId, batchDate]
+        );
+        cipLogs = cipRows;
+    } catch (e) {
+        cipLogs = [];
+    }
+
     return {
         batch,
         rawMaterials,
+        tarimasUsed,
         pasteurizationLogs,
         remanentes,
+        remanentesUsed,
         packagingRecords,
         wasteLogs,
+        cipLogs,
         totals: {
             totalInputWeight,
             totalBoxes,
@@ -136,6 +196,7 @@ async function getBatchExportData(batchId, companyId) {
             liquidPlusPackagedYieldPct,
             wasteLogsWeight,
             remanenteWeight,
+            remanenteUsedWeight,
             yieldPct,
             packagingEfficiencyPct
         },
@@ -150,7 +211,19 @@ async function generateBatchSummaryPdf(batchId, companyId) {
     const data = await getBatchExportData(batchId, companyId);
     if (!data) throw new Error('Lote de producción no encontrado');
 
-    const { batch, rawMaterials, pasteurizationLogs, remanentes, packagingRecords, wasteLogs, totals, company } = data;
+    const { 
+        batch, 
+        rawMaterials, 
+        tarimasUsed, 
+        pasteurizationLogs, 
+        remanentes, 
+        remanentesUsed, 
+        packagingRecords, 
+        wasteLogs, 
+        cipLogs, 
+        totals, 
+        company 
+    } = data;
 
     const doc = new PDFDocument({
         size: 'LETTER',
@@ -162,7 +235,8 @@ async function generateBatchSummaryPdf(batchId, companyId) {
     const buffers = [];
     doc.on('data', buffers.push.bind(buffers));
 
-    const title = `RESUMEN DE PRODUCCIÓN Y BALANCE DE MASAS - LOTE ${batch.batch_code_display || batch.batch_uuid}`;
+    const lotLabel = (batch.batch_code_display || batch.batch_uuid || '');
+    const title = `RESUMEN DE PRODUCCIÓN Y BALANCE DE MASAS - ${lotLabel.toUpperCase().startsWith('LOTE') ? lotLabel : `LOTE ${lotLabel}`}`;
     const subtitle = `PLANTA INDUSTRIAL DE PROCESAMIENTO Y PASTEURIZACIÓN DE OVOPRODUCTOS`;
     const periodText = `Fecha de Procesamiento: ${new Date(batch.started_at).toLocaleDateString()} | Estado: ${(batch.status || '').toUpperCase()}`;
 
@@ -173,7 +247,7 @@ async function generateBatchSummaryPdf(batchId, companyId) {
     doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(8.5).text('1. INFORMACIÓN GENERAL Y PARÁMETROS DEL LOTE', 42, currentY + 4);
     currentY += 22;
 
-    doc.rect(36, currentY, 540, 48).fill('#f8fafc').stroke('#e2e8f0');
+    doc.rect(36, currentY, 540, 62).fill('#f8fafc').stroke('#e2e8f0');
     doc.fillColor('#334155').font('Helvetica-Bold').fontSize(7.5);
 
     doc.text('Lote Oficial:', 42, currentY + 6);
@@ -194,16 +268,65 @@ async function generateBatchSummaryPdf(batchId, companyId) {
     doc.font('Helvetica-Bold').text('Fin:', 410, currentY + 20);
     doc.font('Helvetica').text(batch.completed_at ? new Date(batch.completed_at).toLocaleString() : 'En proceso', 430, currentY + 20);
 
-    doc.font('Helvetica-Bold').text('Brix Esperado:', 42, currentY + 34);
-    doc.font('Helvetica').text(batch.target_brix ? `${batch.target_brix}°Bx` : 'N/A', 105, currentY + 34);
+    doc.font('Helvetica-Bold').text('Lote Pasteurización:', 42, currentY + 34);
+    doc.font('Helvetica').text(batch.pasteurization_lot || 'N/A', 135, currentY + 34);
 
-    doc.font('Helvetica-Bold').text('Sólidos Totales:', 240, currentY + 34);
-    doc.font('Helvetica').text(batch.target_solids_pct ? `${batch.target_solids_pct}%` : 'N/A', 305, currentY + 34);
+    doc.font('Helvetica-Bold').text('Estado Past.:', 240, currentY + 34);
+    doc.font('Helvetica').text((batch.pasteurization_status || 'pendiente').toUpperCase(), 305, currentY + 34);
 
-    doc.font('Helvetica-Bold').text('Estado:', 410, currentY + 34);
-    doc.font('Helvetica').text((batch.status || '').toUpperCase(), 445, currentY + 34);
+    doc.font('Helvetica-Bold').text('Estado Lote:', 410, currentY + 34);
+    doc.font('Helvetica').text((batch.status || '').toUpperCase(), 465, currentY + 34);
 
-    currentY += 56;
+    doc.font('Helvetica-Bold').text('Brix Esperado:', 42, currentY + 48);
+    doc.font('Helvetica').text(batch.target_brix ? `${batch.target_brix}°Bx` : 'N/A', 105, currentY + 48);
+
+    doc.font('Helvetica-Bold').text('Sólidos Totales:', 240, currentY + 48);
+    doc.font('Helvetica').text(batch.target_solids_pct ? `${batch.target_solids_pct}%` : 'N/A', 305, currentY + 48);
+
+    currentY += 70;
+
+    // 1.1 SANITIZACIÓN PRE-OPERACIONAL CIP (AUTORIZACIÓN HIGIÉNICA)
+    if (currentY > 640) {
+        doc.addPage();
+        currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'portrait', subtitle);
+    }
+    doc.rect(36, currentY, 540, 15).fill('#f1f5f9');
+    doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(7.5).text('1.1 CONTROL HIGIÉNICO Y SANITIZACIÓN PRE-OPERACIONAL (CIP)', 42, currentY + 4);
+    currentY += 18;
+
+    if (cipLogs && cipLogs.length > 0) {
+        doc.rect(36, currentY, 540, 14).fill('#e2e8f0');
+        doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(6.5);
+        doc.text('EQUIPO SANITIZADO', 40, currentY + 3.5, { width: 105 });
+        doc.text('AGENTE QUÍMICO', 150, currentY + 3.5, { width: 135 });
+        doc.text('TEMP °C', 290, currentY + 3.5, { width: 45, align: 'right' });
+        doc.text('TIEMPO', 340, currentY + 3.5, { width: 40, align: 'right' });
+        doc.text('ESTADO', 385, currentY + 3.5, { width: 55, align: 'center' });
+        doc.text('FECHA/HORA', 445, currentY + 3.5, { width: 75 });
+        doc.text('OPERADOR', 525, currentY + 3.5, { width: 50, align: 'right' });
+        currentY += 15;
+
+        doc.font('Helvetica').fontSize(6.5).fillColor('#1e293b');
+        for (const cl of cipLogs) {
+            if (currentY > 700) {
+                doc.addPage();
+                currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'portrait', subtitle);
+            }
+            doc.text((cl.equipment_name || 'Pasteurizador').toUpperCase(), 40, currentY, { width: 105, ellipsis: true });
+            doc.text(cl.chemical_used || 'Sanitizante', 150, currentY, { width: 135, ellipsis: true });
+            doc.text(`${parseFloat(cl.temperature_c || 0).toFixed(1)} °C`, 290, currentY, { width: 45, align: 'right' });
+            doc.text(`${cl.duration_minutes || 0}m`, 340, currentY, { width: 40, align: 'right' });
+            doc.text((cl.validation_status || 'OK').toUpperCase(), 385, currentY, { width: 55, align: 'center' });
+            doc.text(new Date(cl.created_at).toLocaleString(), 445, currentY, { width: 75 });
+            doc.text(cl.operator_name || 'Operador', 525, currentY, { width: 50, align: 'right', ellipsis: true });
+            currentY += 12;
+        }
+        doc.rect(36, currentY, 540, 1).fill('#cbd5e1');
+        currentY += 6;
+    } else {
+        doc.font('Helvetica-Oblique').fontSize(7).fillColor('#64748b').text('Sin registros de sanitización CIP vinculados a este lote o fecha.', 42, currentY);
+        currentY += 14;
+    }
 
     // 2. MATERIAS PRIMAS Y QUEBRAJE
     doc.rect(36, currentY, 540, 15).fill('#f1f5f9');
@@ -240,7 +363,46 @@ async function generateBatchSummaryPdf(batchId, companyId) {
     doc.text(`${totals.totalInputWeight.toLocaleString()} Lbs`, 460, currentY, { width: 110, align: 'right' });
     currentY += 16;
 
+    // 2.1 DETALLE DE TARIMAS UTILIZADAS EN ESTA PRODUCCIÓN
+    if (tarimasUsed && tarimasUsed.length > 0) {
+        doc.font('Helvetica-Bold').fontSize(7).fillColor('#1e293b').text('2.1 DETALLE DE TARIMAS UTILIZADAS EN ESTA PRODUCCIÓN', 42, currentY);
+        currentY += 12;
+
+        doc.rect(36, currentY, 540, 13).fill('#e2e8f0');
+        doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(6.5);
+        doc.text('TARIMA #', 40, currentY + 3, { width: 55 });
+        doc.text('LOTE PROV.', 100, currentY + 3, { width: 85 });
+        doc.text('PROVEEDOR', 190, currentY + 3, { width: 110 });
+        doc.text('TIPO HUEVO', 305, currentY + 3, { width: 75 });
+        doc.text('CAJAS', 385, currentY + 3, { width: 45, align: 'right' });
+        doc.text('PESO LBS', 435, currentY + 3, { width: 55, align: 'right' });
+        doc.text('UBICACIÓN', 495, currentY + 3, { width: 75 });
+        currentY += 14;
+
+        doc.font('Helvetica').fontSize(6.5).fillColor('#1e293b');
+        for (const t of tarimasUsed) {
+            if (currentY > 700) {
+                doc.addPage();
+                currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'portrait', subtitle);
+            }
+            doc.text(`#${t.tarima_number}`, 40, currentY, { width: 55 });
+            doc.text(t.provider_lot || 'N/A', 100, currentY, { width: 85 });
+            doc.text(t.provider_name || 'General', 190, currentY, { width: 110, ellipsis: true });
+            doc.text(t.egg_type || 'Cáscara', 305, currentY, { width: 75 });
+            doc.text(String(t.boxes_count || 0), 385, currentY, { width: 45, align: 'right' });
+            doc.text(`${parseFloat(t.quantity_lbs || 0).toLocaleString()} Lbs`, 435, currentY, { width: 55, align: 'right' });
+            doc.text(t.storage_location || 'Cámara', 495, currentY, { width: 75 });
+            currentY += 11;
+        }
+        doc.rect(36, currentY, 540, 1).fill('#cbd5e1');
+        currentY += 6;
+    }
+
     // 3. PASTEURIZACIÓN
+    if (currentY > 640) {
+        doc.addPage();
+        currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'portrait', subtitle);
+    }
     doc.rect(36, currentY, 540, 15).fill('#f1f5f9');
     doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(7.5).text('3. PARÁMETROS CRÍTICOS DE CONTROL HACCP (PASTEURIZACIÓN)', 42, currentY + 4);
     currentY += 18;
@@ -258,6 +420,10 @@ async function generateBatchSummaryPdf(batchId, companyId) {
 
         doc.font('Helvetica').fontSize(6.5).fillColor('#1e293b');
         for (const pl of pasteurizationLogs) {
+            if (currentY > 700) {
+                doc.addPage();
+                currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'portrait', subtitle);
+            }
             doc.text(new Date(pl.created_at).toLocaleString(), 40, currentY, { width: 100 });
             doc.text(`${parseFloat(pl.temperature_c).toFixed(1)} °C`, 145, currentY, { width: 85, align: 'right' });
             doc.text(`${pl.holding_time_seconds} s`, 235, currentY, { width: 85, align: 'right' });
@@ -273,6 +439,10 @@ async function generateBatchSummaryPdf(batchId, companyId) {
     currentY += 6;
 
     // 4. ENVASADO Y PRODUCTO TERMINADO
+    if (currentY > 640) {
+        doc.addPage();
+        currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'portrait', subtitle);
+    }
     doc.rect(36, currentY, 540, 15).fill('#f1f5f9');
     doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(7.5).text('4. ENVASADO COMERCIAL Y PRODUCTO TERMINADO', 42, currentY + 4);
     currentY += 18;
@@ -291,6 +461,10 @@ async function generateBatchSummaryPdf(batchId, companyId) {
 
         doc.font('Helvetica').fontSize(6.5).fillColor('#1e293b');
         for (const pk of packagingRecords) {
+            if (currentY > 700) {
+                doc.addPage();
+                currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'portrait', subtitle);
+            }
             doc.text(pk.lot_code || 'N/A', 40, currentY, { width: 100 });
             doc.text(pk.presentation || 'cubeta 30LB', 145, currentY, { width: 110 });
             doc.text(String(pk.units_packaged || 0), 260, currentY, { width: 55, align: 'right' });
@@ -312,33 +486,127 @@ async function generateBatchSummaryPdf(batchId, companyId) {
         currentY += 16;
     }
 
-    // 5. REMANENTES Y REPROCESOS (si existen)
-    if (remanentes.length > 0) {
+    // 5. REMANENTES Y REPROCESOS
+    if ((remanentesUsed && remanentesUsed.length > 0) || (remanentes && remanentes.length > 0)) {
+        if (currentY > 620) {
+            doc.addPage();
+            currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'portrait', subtitle);
+        }
         doc.rect(36, currentY, 540, 15).fill('#f1f5f9');
-        doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(7.5).text('5. REMANENTES, REPROCESOS Y REUTILIZABLES', 42, currentY + 4);
+        doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(7.5).text('5. REMANENTES DE PRODUCCIÓN Y REPROCESOS', 42, currentY + 4);
+        currentY += 18;
+
+        if (remanentesUsed && remanentesUsed.length > 0) {
+            doc.font('Helvetica-Bold').fontSize(7).fillColor('#047857').text('5.1 REMANENTES DE OTRAS PRODUCCIONES UTILIZADOS EN ESTE LOTE', 42, currentY);
+            currentY += 12;
+
+            doc.rect(36, currentY, 540, 13).fill('#e2e8f0');
+            doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(6.5);
+            doc.text('LOTE ORIGEN', 40, currentY + 3, { width: 95 });
+            doc.text('FECHA ORIGEN', 140, currentY + 3, { width: 85 });
+            doc.text('PRODUCTO', 230, currentY + 3, { width: 95 });
+            doc.text('TIPO', 330, currentY + 3, { width: 75 });
+            doc.text('CANTIDAD LBS', 410, currentY + 3, { width: 65, align: 'right' });
+            doc.text('UBICACIÓN / NOTAS', 485, currentY + 3, { width: 85 });
+            currentY += 14;
+
+            doc.font('Helvetica').fontSize(6.5).fillColor('#1e293b');
+            for (const ru of remanentesUsed) {
+                if (currentY > 700) {
+                    doc.addPage();
+                    currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'portrait', subtitle);
+                }
+                doc.text(ru.source_batch_code || `Lote #${ru.batch_id}`, 40, currentY, { width: 95 });
+                doc.text(ru.source_batch_date ? new Date(ru.source_batch_date).toLocaleDateString() : (ru.created_at ? new Date(ru.created_at).toLocaleDateString() : '-'), 140, currentY, { width: 85 });
+                doc.text((ru.product_type || 'Huevo').toUpperCase(), 230, currentY, { width: 95 });
+                doc.text(ru.remanente_type || 'pasteurizado', 330, currentY, { width: 75 });
+                doc.text(`${parseFloat(ru.quantity_lbs || 0).toLocaleString()} Lbs`, 410, currentY, { width: 65, align: 'right' });
+                doc.text(ru.notes || ru.storage_location || '-', 485, currentY, { width: 85, ellipsis: true });
+                currentY += 11;
+            }
+            doc.rect(36, currentY, 540, 1).fill('#cbd5e1');
+            currentY += 3;
+            doc.font('Helvetica-Bold').fontSize(7).fillColor('#047857');
+            doc.text('TOTAL REMANENTES UTILIZADOS:', 230, currentY, { width: 175, align: 'right' });
+            doc.text(`${(totals.remanenteUsedWeight || 0).toLocaleString()} Lbs`, 410, currentY, { width: 65, align: 'right' });
+            currentY += 14;
+        }
+
+        if (remanentes && remanentes.length > 0) {
+            doc.font('Helvetica-Bold').fontSize(7).fillColor('#0f172a').text('5.2 REMANENTES GENERADOS EN ESTA PRODUCCIÓN (HACIA CÁMARA / TANQUE)', 42, currentY);
+            currentY += 12;
+
+            doc.rect(36, currentY, 540, 13).fill('#e2e8f0');
+            doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(6.5);
+            doc.text('CÓDIGO', 40, currentY + 3, { width: 80 });
+            doc.text('PRODUCTO', 125, currentY + 3, { width: 105 });
+            doc.text('TIPO REMANENTE', 235, currentY + 3, { width: 85 });
+            doc.text('LBS', 325, currentY + 3, { width: 50, align: 'right' });
+            doc.text('UBICACIÓN', 380, currentY + 3, { width: 85 });
+            doc.text('ESTADO', 470, currentY + 3, { width: 50 });
+            doc.text('NOTAS', 525, currentY + 3, { width: 50 });
+            currentY += 14;
+
+            doc.font('Helvetica').fontSize(6.5).fillColor('#1e293b');
+            for (const rem of remanentes) {
+                if (currentY > 700) {
+                    doc.addPage();
+                    currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'portrait', subtitle);
+                }
+                doc.text(rem.remanente_code || `REM-${rem.id}`, 40, currentY, { width: 80 });
+                doc.text(rem.product_type, 125, currentY, { width: 105 });
+                doc.text(rem.remanente_type, 235, currentY, { width: 85 });
+                doc.text(`${parseFloat(rem.quantity_lbs || 0).toLocaleString()} Lbs`, 325, currentY, { width: 50, align: 'right' });
+                doc.text(rem.storage_location || 'Tanque', 380, currentY, { width: 85 });
+                doc.text(rem.status || 'disponible', 470, currentY, { width: 50 });
+                doc.text(rem.notes || '-', 525, currentY, { width: 50 });
+                currentY += 11;
+            }
+            doc.rect(36, currentY, 540, 1).fill('#cbd5e1');
+            currentY += 6;
+        }
+    }
+
+    // 6. HISTORIAL DE MERMAS DE PRODUCCIÓN
+    if (wasteLogs && wasteLogs.length > 0) {
+        if (currentY > 640) {
+            doc.addPage();
+            currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'portrait', subtitle);
+        }
+        doc.rect(36, currentY, 540, 15).fill('#f1f5f9');
+        doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(7.5).text('6. HISTORIAL DE MERMAS Y DESPERDICIOS REGISTRADOS', 42, currentY + 4);
         currentY += 18;
 
         doc.rect(36, currentY, 540, 14).fill('#e2e8f0');
         doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(6.5);
-        doc.text('PRODUCTO', 40, currentY + 3.5, { width: 120 });
-        doc.text('TIPO REMANENTE', 165, currentY + 3.5, { width: 100 });
-        doc.text('LBS', 270, currentY + 3.5, { width: 50, align: 'right' });
-        doc.text('UBICACIÓN', 325, currentY + 3.5, { width: 100 });
-        doc.text('ESTADO', 430, currentY + 3.5, { width: 60 });
-        doc.text('NOTAS', 495, currentY + 3.5, { width: 75 });
+        doc.text('FECHA/HORA', 40, currentY + 3.5, { width: 95 });
+        doc.text('ETAPA', 140, currentY + 3.5, { width: 85 });
+        doc.text('TIPO MERMA', 230, currentY + 3.5, { width: 95 });
+        doc.text('LIBRAS', 330, currentY + 3.5, { width: 55, align: 'right' });
+        doc.text('MOTIVO / CAUSA', 395, currentY + 3.5, { width: 110 });
+        doc.text('OPERADOR', 510, currentY + 3.5, { width: 65, align: 'right' });
         currentY += 15;
 
         doc.font('Helvetica').fontSize(6.5).fillColor('#1e293b');
-        for (const rem of remanentes) {
-            doc.text(rem.product_type, 40, currentY, { width: 120 });
-            doc.text(rem.remanente_type, 165, currentY, { width: 100 });
-            doc.text(`${parseFloat(rem.quantity_lbs || 0).toLocaleString()} Lbs`, 270, currentY, { width: 50, align: 'right' });
-            doc.text(rem.storage_location || 'Tanque', 325, currentY, { width: 100 });
-            doc.text(rem.status || 'disponible', 430, currentY, { width: 60 });
-            doc.text(rem.notes || '-', 495, currentY, { width: 75 });
+        for (const w of wasteLogs) {
+            if (currentY > 700) {
+                doc.addPage();
+                currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'portrait', subtitle);
+            }
+            doc.text(new Date(w.created_at).toLocaleString(), 40, currentY, { width: 95 });
+            doc.text(w.stage || 'Producción', 140, currentY, { width: 85, ellipsis: true });
+            doc.text(w.waste_type || 'Merma', 230, currentY, { width: 95, ellipsis: true });
+            doc.text(`${parseFloat(w.quantity_lbs || 0).toLocaleString()} Lbs`, 330, currentY, { width: 55, align: 'right' });
+            doc.text(w.reason || '-', 395, currentY, { width: 110, ellipsis: true });
+            doc.text(w.operator_name || 'N/A', 510, currentY, { width: 65, align: 'right', ellipsis: true });
             currentY += 12;
         }
-        currentY += 6;
+        doc.rect(36, currentY, 540, 1).fill('#cbd5e1');
+        currentY += 3;
+        doc.font('Helvetica-Bold').fontSize(7).fillColor('#e11d48');
+        doc.text('TOTAL MERMAS REGISTRADAS:', 140, currentY, { width: 185, align: 'right' });
+        doc.text(`${totals.wasteLogsWeight.toLocaleString()} Lbs`, 330, currentY, { width: 55, align: 'right' });
+        currentY += 14;
     }
 
     // Salto de página defensivo si falta espacio para el Balance Final
@@ -347,7 +615,7 @@ async function generateBatchSummaryPdf(batchId, companyId) {
         currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'portrait', subtitle);
     }
 
-    // 6. BALANCE GENERAL DE MASAS Y EFICIENCIA OPERATIVA
+    // 7. BALANCE GENERAL DE MASAS Y EFICIENCIA OPERATIVA
     doc.rect(36, currentY, 540, 16).fill('#047857');
     doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(8.5).text('BALANCE FINAL DE MASAS Y EFICIENCIA DE PLANTA', 42, currentY + 4);
     currentY += 20;
@@ -417,7 +685,19 @@ async function generateBatchSummaryExcel(batchId, companyId) {
     const data = await getBatchExportData(batchId, companyId);
     if (!data) throw new Error('Lote de producción no encontrado');
 
-    const { batch, rawMaterials, pasteurizationLogs, remanentes, packagingRecords, wasteLogs, totals, company } = data;
+    const { 
+        batch, 
+        rawMaterials, 
+        tarimasUsed, 
+        pasteurizationLogs, 
+        remanentes, 
+        remanentesUsed, 
+        packagingRecords, 
+        wasteLogs, 
+        cipLogs, 
+        totals, 
+        company 
+    } = data;
 
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'Sipe Web SaaS - Huevo Industrial';
@@ -425,7 +705,7 @@ async function generateBatchSummaryExcel(batchId, companyId) {
     // Hoja 1: Resumen General y Balance
     const wsSummary = workbook.addWorksheet('Resumen de Lote');
     wsSummary.columns = [
-        { width: 28 }, { width: 35 }, { width: 22 }, { width: 22 }
+        { width: 32 }, { width: 35 }, { width: 22 }, { width: 25 }
     ];
 
     wsSummary.mergeCells('A1:D1');
@@ -439,19 +719,21 @@ async function generateBatchSummaryExcel(batchId, companyId) {
     wsSummary.addRow(['LOTE OFICIAL:', batch.batch_code_display || batch.batch_uuid, 'ESTADO:', (batch.status || '').toUpperCase()]);
     wsSummary.addRow(['PRODUCTO:', (batch.product_type || '').toUpperCase(), 'PRESENTACIÓN:', batch.presentation || 'N/A']);
     wsSummary.addRow(['OPERADOR LÍDER:', batch.operator_name || 'N/A', 'FECHA INICIO:', new Date(batch.started_at).toLocaleString()]);
+    wsSummary.addRow(['LOTE PASTEURIZACIÓN:', batch.pasteurization_lot || 'N/A', 'ESTADO PAST.:', (batch.pasteurization_status || 'pendiente').toUpperCase()]);
     wsSummary.addRow(['BRIX OBJETIVO:', batch.target_brix ? `${batch.target_brix}°Bx` : 'N/A', 'FECHA FIN:', batch.completed_at ? new Date(batch.completed_at).toLocaleString() : 'En proceso']);
+    wsSummary.addRow(['SÓLIDOS TOTALES:', batch.target_solids_pct ? `${batch.target_solids_pct}%` : 'N/A', 'REGISTROS CIP:', cipLogs?.length || 0]);
     wsSummary.addRow([]);
 
     // Balance
-    wsSummary.mergeCells('A7:D7');
-    const balTitle = wsSummary.getCell('A7');
+    wsSummary.mergeCells('A9:D9');
+    const balTitle = wsSummary.getCell('A9');
     balTitle.value = 'BALANCE GENERAL DE MASAS Y RENDIMIENTO';
     balTitle.font = { bold: true, size: 11, color: { argb: 'FFFFFFFF' } };
     balTitle.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF047857' } };
     balTitle.alignment = { horizontal: 'center' };
 
     wsSummary.addRow(['CONCEPTO', 'CANTIDAD (LBS)', '% SOBRE ENTRADA', 'DETALLE / OBSERVACIÓN']);
-    const rH = wsSummary.getRow(8);
+    const rH = wsSummary.getRow(10);
     rH.font = { bold: true };
 
     wsSummary.addRow(['Peso Entrada (Materia Prima)', totals.totalInputWeight, '100.00%', `${totals.totalBoxes} Cajas procesadas`]);
@@ -461,9 +743,40 @@ async function generateBatchSummaryExcel(batchId, companyId) {
     wsSummary.addRow(['Líquido + Envasado Comercial', totals.liquidPlusPackagedLbs, `${totals.liquidPlusPackagedYieldPct}%`, 'Líquido más envasado total']);
     wsSummary.addRow(['Merma de Cáscara', totals.shellWaste, `${totals.totalInputWeight > 0 ? ((totals.shellWaste / totals.totalInputWeight) * 100).toFixed(2) : 0}%`, 'Desecho']);
     wsSummary.addRow(['Merma en Tuberías / Envasado', parseFloat(batch.packaging_loss_lbs || 0), '-', 'Merma']);
-    wsSummary.addRow(['Remanente / Reproceso', totals.remanenteWeight, '-', 'Almacenado']);
+    wsSummary.addRow(['Remanente de Otras Prod. Utilizado', totals.remanenteUsedWeight || 0, '-', 'Remanentes recibidos de producciones previas']);
+    wsSummary.addRow(['Remanente Generado en Lote', totals.remanenteWeight, '-', 'Almacenado para reproceso']);
 
-    // Hoja 2: Materias Primas Quebradas
+    // Hoja 2: Sanitización CIP
+    const wsCip = workbook.addWorksheet('Sanitización CIP');
+    wsCip.columns = [
+        { header: 'Fecha/Hora', key: 'date', width: 22 },
+        { header: 'Lote Vinculado', key: 'batch', width: 20 },
+        { header: 'Equipo Sanitizado', key: 'equipment', width: 24 },
+        { header: 'Agente Químico', key: 'chemical', width: 28 },
+        { header: 'Temperatura °C', key: 'temp', width: 16 },
+        { header: 'Duración (min)', key: 'duration', width: 16 },
+        { header: 'Estado Validación', key: 'status', width: 20 },
+        { header: 'Operador Responsable', key: 'operator', width: 22 },
+        { header: 'Notas / Observaciones', key: 'notes', width: 35 }
+    ];
+    const cipHeader = wsCip.getRow(1);
+    cipHeader.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    cipHeader.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0D9488' } };
+    for (const cl of (cipLogs || [])) {
+        wsCip.addRow({
+            date: new Date(cl.created_at).toLocaleString(),
+            batch: cl.batch_code || cl.batch_uuid || (cl.batch_id ? `#${cl.batch_id}` : 'General / Pre-operacional'),
+            equipment: (cl.equipment_name || 'Pasteurizador').toUpperCase(),
+            chemical: cl.chemical_used,
+            temp: parseFloat(cl.temperature_c || 0),
+            duration: parseInt(cl.duration_minutes || 0, 10),
+            status: (cl.validation_status || 'OK').toUpperCase(),
+            operator: cl.operator_name || '',
+            notes: cl.notes || ''
+        });
+    }
+
+    // Hoja 3: Materias Primas Quebradas
     const wsMp = workbook.addWorksheet('Materia Prima Quebrada');
     wsMp.columns = [
         { header: 'Lote Proveedor', key: 'provider_lot', width: 22 },
@@ -488,7 +801,60 @@ async function generateBatchSummaryExcel(batchId, companyId) {
         });
     }
 
-    // Hoja 3: Envasado y Empaque
+    // Hoja 4: Detalle de Tarimas Utilizadas
+    const wsTarimas = workbook.addWorksheet('Tarimas Utilizadas');
+    wsTarimas.columns = [
+        { header: 'Tarima #', key: 'tarima_number', width: 14 },
+        { header: 'Lote Proveedor', key: 'provider_lot', width: 22 },
+        { header: 'Proveedor', key: 'provider_name', width: 28 },
+        { header: 'Tipo Huevo', key: 'egg_type', width: 16 },
+        { header: 'Cajas Quebradas', key: 'boxes_count', width: 16 },
+        { header: 'Libras', key: 'quantity_lbs', width: 16 },
+        { header: 'Ubicación', key: 'storage_location', width: 18 }
+    ];
+    const tHeader = wsTarimas.getRow(1);
+    tHeader.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    tHeader.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4338CA' } };
+
+    for (const t of (tarimasUsed || [])) {
+        wsTarimas.addRow({
+            tarima_number: `#${t.tarima_number}`,
+            provider_lot: t.provider_lot,
+            provider_name: t.provider_name || 'General',
+            egg_type: t.egg_type,
+            boxes_count: t.boxes_count || 0,
+            quantity_lbs: parseFloat(t.quantity_lbs || 0),
+            storage_location: t.storage_location || 'Cámara Fría'
+        });
+    }
+
+    // Hoja 5: Pasteurización HACCP
+    const wsPast = workbook.addWorksheet('Pasteurización HACCP');
+    wsPast.columns = [
+        { header: 'Fecha/Hora', key: 'date', width: 22 },
+        { header: 'Temp °C (PCC)', key: 'temp', width: 16 },
+        { header: 'Retención (seg)', key: 'holding', width: 16 },
+        { header: 'Presión (PSI)', key: 'pressure', width: 16 },
+        { header: 'Caudal (GPM)', key: 'flow', width: 16 },
+        { header: 'Operador Responsable', key: 'operator', width: 22 },
+        { header: 'Notas / Observaciones', key: 'notes', width: 30 }
+    ];
+    const pastHeader = wsPast.getRow(1);
+    pastHeader.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    pastHeader.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD97706' } };
+    for (const pl of (pasteurizationLogs || [])) {
+        wsPast.addRow({
+            date: new Date(pl.created_at).toLocaleString(),
+            temp: parseFloat(pl.temperature_c || 0),
+            holding: pl.holding_time_seconds,
+            pressure: parseFloat(pl.pressure_psi || 0),
+            flow: parseFloat(pl.flow_rate_gpm || 0),
+            operator: pl.operator_name || '',
+            notes: pl.notes || ''
+        });
+    }
+
+    // Hoja 6: Envasado y Empaque
     const wsPkg = workbook.addWorksheet('Envasado Comercial');
     wsPkg.columns = [
         { header: 'Lote Comercial', key: 'lot_code', width: 24 },
@@ -515,7 +881,65 @@ async function generateBatchSummaryExcel(batchId, companyId) {
         });
     }
 
-    // Hoja 4: Mermas Registradas
+    // Hoja 7: Remanentes de Otras Producciones Utilizados
+    if (remanentesUsed && remanentesUsed.length > 0) {
+        const wsRemUsed = workbook.addWorksheet('Remanentes de Otras Prod');
+        wsRemUsed.columns = [
+            { header: 'Lote Origen', key: 'source_batch', width: 22 },
+            { header: 'Fecha Origen', key: 'source_date', width: 18 },
+            { header: 'Producto', key: 'product_type', width: 24 },
+            { header: 'Tipo Remanente', key: 'remanente_type', width: 18 },
+            { header: 'Libras Utilizadas', key: 'quantity_lbs', width: 18 },
+            { header: 'Ubicación / Notas', key: 'notes', width: 30 }
+        ];
+        const ruHeader = wsRemUsed.getRow(1);
+        ruHeader.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+        ruHeader.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF059669' } };
+
+        for (const ru of remanentesUsed) {
+            wsRemUsed.addRow({
+                source_batch: ru.source_batch_code || `Lote #${ru.batch_id}`,
+                source_date: ru.source_batch_date ? new Date(ru.source_batch_date).toLocaleDateString() : (ru.created_at ? new Date(ru.created_at).toLocaleDateString() : '-'),
+                product_type: (ru.product_type || 'Huevo').toUpperCase(),
+                remanente_type: ru.remanente_type || 'pasteurizado',
+                quantity_lbs: parseFloat(ru.quantity_lbs || 0),
+                notes: ru.notes || ru.storage_location || '-'
+            });
+        }
+    }
+
+    // Hoja 8: Remanentes Generados
+    if (remanentes && remanentes.length > 0) {
+        const wsRemGen = workbook.addWorksheet('Remanentes Generados');
+        wsRemGen.columns = [
+            { header: 'Código', key: 'code', width: 18 },
+            { header: 'Producto', key: 'product', width: 22 },
+            { header: 'Tipo Remanente', key: 'type', width: 18 },
+            { header: 'Libras', key: 'quantity_lbs', width: 16 },
+            { header: 'Ubicación / Tanque', key: 'location', width: 22 },
+            { header: 'Estado', key: 'status', width: 16 },
+            { header: 'Fecha Generación', key: 'date', width: 20 },
+            { header: 'Notas', key: 'notes', width: 35 }
+        ];
+        const remGenHeader = wsRemGen.getRow(1);
+        remGenHeader.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+        remGenHeader.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF047857' } };
+
+        for (const rem of remanentes) {
+            wsRemGen.addRow({
+                code: rem.remanente_code || `REM-${rem.id}`,
+                product: rem.product_type,
+                type: rem.remanente_type,
+                quantity_lbs: parseFloat(rem.quantity_lbs || 0),
+                location: rem.storage_location || 'Tanque',
+                status: rem.status || 'disponible',
+                date: new Date(rem.created_at).toLocaleString(),
+                notes: rem.notes || ''
+            });
+        }
+    }
+
+    // Hoja 9: Mermas Registradas
     const wsWaste = workbook.addWorksheet('Historial de Mermas');
     wsWaste.columns = [
         { header: 'Fecha', key: 'date', width: 20 },
@@ -529,7 +953,7 @@ async function generateBatchSummaryExcel(batchId, companyId) {
     wHeader.font = { bold: true, color: { argb: 'FFFFFFFF' } };
     wHeader.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE11D48' } };
 
-    for (const w of wasteLogs) {
+    for (const w of (wasteLogs || [])) {
         wsWaste.addRow({
             date: new Date(w.created_at).toLocaleString(),
             stage: w.stage,
@@ -551,210 +975,530 @@ async function generateBatchSummaryWord(batchId, companyId) {
     const data = await getBatchExportData(batchId, companyId);
     if (!data) throw new Error('Lote de producción no encontrado');
 
-    const { batch, rawMaterials, pasteurizationLogs, remanentes, packagingRecords, wasteLogs, totals, company } = data;
+    const { 
+        batch, 
+        rawMaterials, 
+        tarimasUsed, 
+        pasteurizationLogs, 
+        remanentes, 
+        remanentesUsed, 
+        packagingRecords, 
+        wasteLogs, 
+        cipLogs, 
+        totals, 
+        company 
+    } = data;
 
-    const { Document, Paragraph, TextRun, Table, TableRow, TableCell, AlignmentType, WidthType, BorderStyle, HeadingLevel } = docx;
+    const { Document, Paragraph, TextRun, Table, TableRow, TableCell, AlignmentType, WidthType, BorderStyle, HeadingLevel, ShadingType } = docx;
 
     const thinBorder = {
-        top: { style: BorderStyle.SINGLE, size: 1, color: 'CCCCCC' },
-        bottom: { style: BorderStyle.SINGLE, size: 1, color: 'CCCCCC' },
-        left: { style: BorderStyle.SINGLE, size: 1, color: 'CCCCCC' },
-        right: { style: BorderStyle.SINGLE, size: 1, color: 'CCCCCC' }
+        top: { style: BorderStyle.SINGLE, size: 1, color: 'CBD5E1' },
+        bottom: { style: BorderStyle.SINGLE, size: 1, color: 'CBD5E1' },
+        left: { style: BorderStyle.SINGLE, size: 1, color: 'CBD5E1' },
+        right: { style: BorderStyle.SINGLE, size: 1, color: 'CBD5E1' }
     };
 
-    const doc = new Document({
-        sections: [{
-            properties: {},
-            children: [
-                new Paragraph({
-                    text: company.razon_social || 'PLANTA INDUSTRIAL DE PROCESAMIENTO',
-                    heading: HeadingLevel.HEADING_1,
-                    alignment: AlignmentType.CENTER
-                }),
-                new Paragraph({
-                    text: `RESUMEN OFICIAL DE PRODUCCIÓN Y BALANCE DE MASAS`,
-                    heading: HeadingLevel.HEADING_2,
-                    alignment: AlignmentType.CENTER
-                }),
-                new Paragraph({
-                    text: `LOTE: ${batch.batch_code_display || batch.batch_uuid} | Fecha: ${new Date(batch.started_at).toLocaleDateString()}`,
-                    alignment: AlignmentType.CENTER
-                }),
-                new Paragraph({ text: '' }),
+    const makeHeaderCell = (text, widthPct = null) => new TableCell({
+        borders: thinBorder,
+        shading: { type: ShadingType.CLEAR, fill: '1E293B' },
+        width: widthPct ? { size: widthPct, type: WidthType.PERCENTAGE } : undefined,
+        children: [new Paragraph({ children: [new TextRun({ text, bold: true, color: 'FFFFFF' })] })]
+    });
 
-                // Sección 1: Ficha del Lote
-                new Paragraph({
-                    text: '1. FICHA TÉCNICA DEL LOTE DE PRODUCCIÓN',
-                    heading: HeadingLevel.HEADING_3
-                }),
-                new Table({
-                    width: { size: 100, type: WidthType.PERCENTAGE },
-                    rows: [
-                        new TableRow({
-                            children: [
-                                new TableCell({ borders: thinBorder, children: [new Paragraph({ children: [new TextRun({ text: 'Lote Oficial:', bold: true }), new TextRun(` ${batch.batch_code_display || batch.batch_uuid}`)] })] }),
-                                new TableCell({ borders: thinBorder, children: [new Paragraph({ children: [new TextRun({ text: 'Producto:', bold: true }), new TextRun(` ${(batch.product_type || '').toUpperCase()}`)] })] })
-                            ]
-                        }),
-                        new TableRow({
-                            children: [
-                                new TableCell({ borders: thinBorder, children: [new Paragraph({ children: [new TextRun({ text: 'Presentación:', bold: true }), new TextRun(` ${batch.presentation || 'N/A'}`)] })] }),
-                                new TableCell({ borders: thinBorder, children: [new Paragraph({ children: [new TextRun({ text: 'Operador Responsable:', bold: true }), new TextRun(` ${batch.operator_name || 'N/A'}`)] })] })
-                            ]
-                        }),
-                        new TableRow({
-                            children: [
-                                new TableCell({ borders: thinBorder, children: [new Paragraph({ children: [new TextRun({ text: 'Inicio:', bold: true }), new TextRun(` ${new Date(batch.started_at).toLocaleString()}`)] })] }),
-                                new TableCell({ borders: thinBorder, children: [new Paragraph({ children: [new TextRun({ text: 'Finalización:', bold: true }), new TextRun(` ${batch.completed_at ? new Date(batch.completed_at).toLocaleString() : 'En proceso'}`)] })] })
-                            ]
-                        })
+    const makeDataCell = (text, isBold = false, widthPct = null) => new TableCell({
+        borders: thinBorder,
+        width: widthPct ? { size: widthPct, type: WidthType.PERCENTAGE } : undefined,
+        children: [new Paragraph({ children: [new TextRun({ text: String(text ?? ''), bold: isBold })] })]
+    });
+
+    const docChildren = [
+        new Paragraph({
+            text: company.razon_social || 'PLANTA INDUSTRIAL DE PROCESAMIENTO',
+            heading: HeadingLevel.HEADING_1,
+            alignment: AlignmentType.CENTER
+        }),
+        new Paragraph({
+            text: `RESUMEN OFICIAL DE PRODUCCIÓN Y BALANCE DE MASAS`,
+            heading: HeadingLevel.HEADING_2,
+            alignment: AlignmentType.CENTER
+        }),
+        new Paragraph({
+            text: `${(batch.batch_code_display || batch.batch_uuid || '').toUpperCase().startsWith('LOTE') ? '' : 'LOTE: '}${batch.batch_code_display || batch.batch_uuid} | Fecha: ${new Date(batch.started_at).toLocaleDateString()}`,
+            alignment: AlignmentType.CENTER
+        }),
+        new Paragraph({ text: '' }),
+
+        // Sección 1: Ficha del Lote
+        new Paragraph({
+            text: '1. FICHA TÉCNICA DEL LOTE DE PRODUCCIÓN',
+            heading: HeadingLevel.HEADING_3
+        }),
+        new Table({
+            width: { size: 100, type: WidthType.PERCENTAGE },
+            rows: [
+                new TableRow({
+                    children: [
+                        makeDataCell('Lote Oficial:', true, 25),
+                        makeDataCell(batch.batch_code_display || batch.batch_uuid, false, 25),
+                        makeDataCell('Producto:', true, 25),
+                        makeDataCell((batch.product_type || '').toUpperCase(), false, 25)
                     ]
                 }),
-                new Paragraph({ text: '' }),
-
-                // Sección 2: Materia Prima
-                new Paragraph({
-                    text: '2. MATERIA PRIMA UTILIZADA EN EL QUEBRAJE',
-                    heading: HeadingLevel.HEADING_3
-                }),
-                new Table({
-                    width: { size: 100, type: WidthType.PERCENTAGE },
-                    rows: [
-                        new TableRow({
-                            children: [
-                                new TableCell({ borders: thinBorder, children: [new Paragraph({ children: [new TextRun({ text: 'Lote MP', bold: true })] })] }),
-                                new TableCell({ borders: thinBorder, children: [new Paragraph({ children: [new TextRun({ text: 'Proveedor', bold: true })] })] }),
-                                new TableCell({ borders: thinBorder, children: [new Paragraph({ children: [new TextRun({ text: 'Tipo', bold: true })] })] }),
-                                new TableCell({ borders: thinBorder, children: [new Paragraph({ children: [new TextRun({ text: 'Cajas', bold: true })] })] }),
-                                new TableCell({ borders: thinBorder, children: [new Paragraph({ children: [new TextRun({ text: 'Libras', bold: true })] })] })
-                            ]
-                        }),
-                        ...rawMaterials.map(rm => new TableRow({
-                            children: [
-                                new TableCell({ borders: thinBorder, children: [new Paragraph(rm.provider_lot || '')] }),
-                                new TableCell({ borders: thinBorder, children: [new Paragraph(rm.provider_name || 'General')] }),
-                                new TableCell({ borders: thinBorder, children: [new Paragraph(rm.egg_type || '')] }),
-                                new TableCell({ borders: thinBorder, children: [new Paragraph(String(rm.boxes_count || 0))] }),
-                                new TableCell({ borders: thinBorder, children: [new Paragraph(`${parseFloat(rm.quantity_lbs || 0).toLocaleString()} Lbs`)] })
-                            ]
-                        })),
-                        new TableRow({
-                            children: [
-                                new TableCell({ borders: thinBorder, columnSpan: 4, children: [new Paragraph({ children: [new TextRun({ text: 'TOTAL PESO ENTRADA:', bold: true })] })] }),
-                                new TableCell({ borders: thinBorder, children: [new Paragraph({ children: [new TextRun({ text: `${totals.totalInputWeight.toLocaleString()} Lbs`, bold: true })] })] })
-                            ]
-                        })
+                new TableRow({
+                    children: [
+                        makeDataCell('Presentación:', true, 25),
+                        makeDataCell(batch.presentation || 'N/A', false, 25),
+                        makeDataCell('Operador Responsable:', true, 25),
+                        makeDataCell(batch.operator_name || 'N/A', false, 25)
                     ]
                 }),
-                new Paragraph({ text: '' }),
-
-                // Sección 3: Envasado y Empaque
-                new Paragraph({
-                    text: '3. ENVASADO Y PRODUCTO TERMINADO',
-                    heading: HeadingLevel.HEADING_3
-                }),
-                new Table({
-                    width: { size: 100, type: WidthType.PERCENTAGE },
-                    rows: [
-                        new TableRow({
-                            children: [
-                                new TableCell({ borders: thinBorder, children: [new Paragraph({ children: [new TextRun({ text: 'Lote Comercial', bold: true })] })] }),
-                                new TableCell({ borders: thinBorder, children: [new Paragraph({ children: [new TextRun({ text: 'Presentación', bold: true })] })] }),
-                                new TableCell({ borders: thinBorder, children: [new Paragraph({ children: [new TextRun({ text: 'Unidades', bold: true })] })] }),
-                                new TableCell({ borders: thinBorder, children: [new Paragraph({ children: [new TextRun({ text: 'Total Lbs', bold: true })] })] }),
-                                new TableCell({ borders: thinBorder, children: [new Paragraph({ children: [new TextRun({ text: 'Zona Frío', bold: true })] })] })
-                            ]
-                        }),
-                        ...packagingRecords.map(pk => new TableRow({
-                            children: [
-                                new TableCell({ borders: thinBorder, children: [new Paragraph(pk.lot_code || '')] }),
-                                new TableCell({ borders: thinBorder, children: [new Paragraph(pk.presentation || '')] }),
-                                new TableCell({ borders: thinBorder, children: [new Paragraph(String(pk.units_packaged || 0))] }),
-                                new TableCell({ borders: thinBorder, children: [new Paragraph(`${parseFloat(pk.total_batch_weight_lbs || 0).toLocaleString()} Lbs`)] }),
-                                new TableCell({ borders: thinBorder, children: [new Paragraph(pk.warehouse_zone || 'COOLER')] })
-                            ]
-                        })),
-                        new TableRow({
-                            children: [
-                                new TableCell({ borders: thinBorder, columnSpan: 3, children: [new Paragraph({ children: [new TextRun({ text: 'TOTAL ENVASADO REAL:', bold: true })] })] }),
-                                new TableCell({ borders: thinBorder, columnSpan: 2, children: [new Paragraph({ children: [new TextRun({ text: `${totals.packagedWeight.toLocaleString()} Lbs`, bold: true })] })] })
-                            ]
-                        })
+                new TableRow({
+                    children: [
+                        makeDataCell('Inicio:', true, 25),
+                        makeDataCell(new Date(batch.started_at).toLocaleString(), false, 25),
+                        makeDataCell('Finalización:', true, 25),
+                        makeDataCell(batch.completed_at ? new Date(batch.completed_at).toLocaleString() : 'En proceso', false, 25)
                     ]
                 }),
-                new Paragraph({ text: '' }),
-
-                // Sección 4: Balance de Masas
-                new Paragraph({
-                    text: '4. BALANCE GENERAL DE MASAS Y EFICIENCIA OPERATIVA',
-                    heading: HeadingLevel.HEADING_3
+                new TableRow({
+                    children: [
+                        makeDataCell('Lote Pasteurización:', true, 25),
+                        makeDataCell(batch.pasteurization_lot || 'N/A', false, 25),
+                        makeDataCell('Estado Past.:', true, 25),
+                        makeDataCell((batch.pasteurization_status || 'pendiente').toUpperCase(), false, 25)
+                    ]
                 }),
-                new Table({
-                    width: { size: 100, type: WidthType.PERCENTAGE },
-                    rows: [
-                        new TableRow({
-                            children: [
-                                new TableCell({ borders: thinBorder, children: [new Paragraph({ children: [new TextRun({ text: 'Peso Total Entrada:', bold: true })] })] }),
-                                new TableCell({ borders: thinBorder, children: [new Paragraph(`${totals.totalInputWeight.toLocaleString()} Lbs (100%)`)] })
-                            ]
+                new TableRow({
+                    children: [
+                        makeDataCell('Brix Objetivo:', true, 25),
+                        makeDataCell(batch.target_brix ? `${batch.target_brix}°Bx` : 'N/A', false, 25),
+                        makeDataCell('Sólidos Totales:', true, 25),
+                        makeDataCell(batch.target_solids_pct ? `${batch.target_solids_pct}%` : 'N/A', false, 25)
+                    ]
+                })
+            ]
+        }),
+        new Paragraph({ text: '' }),
+
+        // Sección 2: Sanitización CIP
+        new Paragraph({
+            text: '2. CONTROL HIGIÉNICO Y SANITIZACIÓN PRE-OPERACIONAL (CIP)',
+            heading: HeadingLevel.HEADING_3
+        })
+    ];
+
+    if (cipLogs && cipLogs.length > 0) {
+        docChildren.push(
+            new Table({
+                width: { size: 100, type: WidthType.PERCENTAGE },
+                rows: [
+                    new TableRow({
+                        children: [
+                            makeHeaderCell('Fecha/Hora', 22),
+                            makeHeaderCell('Equipo', 18),
+                            makeHeaderCell('Químico', 22),
+                            makeHeaderCell('Temp °C', 10),
+                            makeHeaderCell('Tiempo', 10),
+                            makeHeaderCell('Estado', 18)
+                        ]
+                    }),
+                    ...cipLogs.map(cl => new TableRow({
+                        children: [
+                            makeDataCell(new Date(cl.created_at).toLocaleString()),
+                            makeDataCell((cl.equipment_name || '').toUpperCase()),
+                            makeDataCell(cl.chemical_used),
+                            makeDataCell(`${parseFloat(cl.temperature_c || 0).toFixed(1)} °C`),
+                            makeDataCell(`${cl.duration_minutes || 0}m`),
+                            makeDataCell((cl.validation_status || 'OK').toUpperCase())
+                        ]
+                    }))
+                ]
+            })
+        );
+    } else {
+        docChildren.push(new Paragraph({ text: 'Sin registros específicos de sanitización CIP vinculados.', italics: true }));
+    }
+    docChildren.push(new Paragraph({ text: '' }));
+
+    // Sección 3: Materia Prima Quebrada
+    docChildren.push(
+        new Paragraph({
+            text: '3. MATERIA PRIMA UTILIZADA EN EL QUEBRAJE',
+            heading: HeadingLevel.HEADING_3
+        }),
+        new Table({
+            width: { size: 100, type: WidthType.PERCENTAGE },
+            rows: [
+                new TableRow({
+                    children: [
+                        makeHeaderCell('Lote MP', 20),
+                        makeHeaderCell('Proveedor', 30),
+                        makeHeaderCell('Tipo Huevo', 18),
+                        makeHeaderCell('Cajas', 14),
+                        makeHeaderCell('Libras', 18)
+                    ]
+                }),
+                ...rawMaterials.map(rm => new TableRow({
+                    children: [
+                        makeDataCell(rm.provider_lot || 'N/A'),
+                        makeDataCell(rm.provider_name || 'General'),
+                        makeDataCell(rm.egg_type || 'Cáscara'),
+                        makeDataCell(String(rm.boxes_count || 0)),
+                        makeDataCell(`${parseFloat(rm.quantity_lbs || 0).toLocaleString()} Lbs`)
+                    ]
+                })),
+                new TableRow({
+                    children: [
+                        new TableCell({
+                            borders: thinBorder,
+                            columnSpan: 4,
+                            children: [new Paragraph({ children: [new TextRun({ text: 'TOTAL PESO ENTRADA:', bold: true })] })]
                         }),
-                        new TableRow({
-                            children: [
-                                new TableCell({ borders: thinBorder, children: [new Paragraph({ children: [new TextRun({ text: 'Cajas de Huevo (MP):', bold: true })] })] }),
-                                new TableCell({ borders: thinBorder, children: [new Paragraph(`${totals.totalBoxes.toLocaleString()} Cjas`)] })
-                            ]
+                        makeDataCell(`${totals.totalInputWeight.toLocaleString()} Lbs`, true)
+                    ]
+                })
+            ]
+        }),
+        new Paragraph({ text: '' })
+    );
+
+    // Sección 4: Detalle de Tarimas Utilizadas
+    if (tarimasUsed && tarimasUsed.length > 0) {
+        docChildren.push(
+            new Paragraph({
+                text: '4. DETALLE DE TARIMAS UTILIZADAS EN ESTA PRODUCCIÓN',
+                heading: HeadingLevel.HEADING_3
+            }),
+            new Table({
+                width: { size: 100, type: WidthType.PERCENTAGE },
+                rows: [
+                    new TableRow({
+                        children: [
+                            makeHeaderCell('Tarima #', 12),
+                            makeHeaderCell('Lote Proveedor', 22),
+                            makeHeaderCell('Proveedor', 26),
+                            makeHeaderCell('Tipo', 14),
+                            makeHeaderCell('Cajas', 12),
+                            makeHeaderCell('Libras', 14)
+                        ]
+                    }),
+                    ...tarimasUsed.map(t => new TableRow({
+                        children: [
+                            makeDataCell(`#${t.tarima_number}`),
+                            makeDataCell(t.provider_lot || 'N/A'),
+                            makeDataCell(t.provider_name || 'General'),
+                            makeDataCell(t.egg_type || 'Cáscara'),
+                            makeDataCell(String(t.boxes_count || 0)),
+                            makeDataCell(`${parseFloat(t.quantity_lbs || 0).toLocaleString()} Lbs`)
+                        ]
+                    }))
+                ]
+            }),
+            new Paragraph({ text: '' })
+        );
+    }
+
+    // Sección 5: Pasteurización HACCP
+    docChildren.push(
+        new Paragraph({
+            text: '5. PARÁMETROS CRÍTICOS DE CONTROL HACCP (PASTEURIZACIÓN TÉRMICA)',
+            heading: HeadingLevel.HEADING_3
+        })
+    );
+    if (pasteurizationLogs && pasteurizationLogs.length > 0) {
+        docChildren.push(
+            new Table({
+                width: { size: 100, type: WidthType.PERCENTAGE },
+                rows: [
+                    new TableRow({
+                        children: [
+                            makeHeaderCell('Fecha/Hora', 24),
+                            makeHeaderCell('Temp °C (Crítico)', 16),
+                            makeHeaderCell('Retención (seg)', 16),
+                            makeHeaderCell('Presión PSI', 14),
+                            makeHeaderCell('Caudal GPM', 14),
+                            makeHeaderCell('Operador', 16)
+                        ]
+                    }),
+                    ...pasteurizationLogs.map(pl => new TableRow({
+                        children: [
+                            makeDataCell(new Date(pl.created_at).toLocaleString()),
+                            makeDataCell(`${parseFloat(pl.temperature_c).toFixed(1)} °C`),
+                            makeDataCell(`${pl.holding_time_seconds} s`),
+                            makeDataCell(`${parseFloat(pl.pressure_psi).toFixed(1)} PSI`),
+                            makeDataCell(`${parseFloat(pl.flow_rate_gpm).toFixed(1)} GPM`),
+                            makeDataCell(pl.operator_name || 'N/A')
+                        ]
+                    }))
+                ]
+            })
+        );
+    } else {
+        docChildren.push(new Paragraph({ text: 'Sin registros de corrida térmica registrados aún.', italics: true }));
+    }
+    docChildren.push(new Paragraph({ text: '' }));
+
+    // Sección 6: Envasado y Empaque
+    docChildren.push(
+        new Paragraph({
+            text: '6. ENVASADO COMERCIAL Y PRODUCTO TERMINADO',
+            heading: HeadingLevel.HEADING_3
+        }),
+        new Table({
+            width: { size: 100, type: WidthType.PERCENTAGE },
+            rows: [
+                new TableRow({
+                    children: [
+                        makeHeaderCell('Lote Comercial', 24),
+                        makeHeaderCell('Presentación', 20),
+                        makeHeaderCell('Unidades', 14),
+                        makeHeaderCell('Peso Unit', 14),
+                        makeHeaderCell('Total Lbs', 14),
+                        makeHeaderCell('Zona Frío', 14)
+                    ]
+                }),
+                ...packagingRecords.map(pk => new TableRow({
+                    children: [
+                        makeDataCell(pk.lot_code || 'N/A'),
+                        makeDataCell(pk.presentation || 'cubeta 30LB'),
+                        makeDataCell(String(pk.units_packaged || 0)),
+                        makeDataCell(`${parseFloat(pk.weight_per_unit_lbs || 0).toFixed(2)} Lbs`),
+                        makeDataCell(`${parseFloat(pk.total_batch_weight_lbs || 0).toLocaleString()} Lbs`),
+                        makeDataCell(pk.warehouse_zone || 'COOLER')
+                    ]
+                })),
+                new TableRow({
+                    children: [
+                        new TableCell({
+                            borders: thinBorder,
+                            columnSpan: 4,
+                            children: [new Paragraph({ children: [new TextRun({ text: 'TOTAL ENVASADO REAL:', bold: true })] })]
                         }),
-                        new TableRow({
-                            children: [
-                                new TableCell({ borders: thinBorder, children: [new Paragraph({ children: [new TextRun({ text: 'Rendimiento Líquido Pasteurizado:', bold: true })] })] }),
-                                new TableCell({ borders: thinBorder, children: [new Paragraph(`${totals.liquidYield.toLocaleString()} Lbs (${totals.yieldPct}%)`)] })
-                            ]
-                        }),
-                        new TableRow({
-                            children: [
-                                new TableCell({ borders: thinBorder, children: [new Paragraph({ children: [new TextRun({ text: 'Rendimiento por Caja:', bold: true })] })] }),
-                                new TableCell({ borders: thinBorder, children: [new Paragraph(`${totals.yieldPerBoxLbs} Lbs / Caja`)] })
-                            ]
-                        }),
-                        new TableRow({
-                            children: [
-                                new TableCell({ borders: thinBorder, children: [new Paragraph({ children: [new TextRun({ text: 'Envasado Real:', bold: true })] })] }),
-                                new TableCell({ borders: thinBorder, children: [new Paragraph(`${totals.packagedWeight.toLocaleString()} Lbs`)] })
-                            ]
-                        }),
-                        new TableRow({
-                            children: [
-                                new TableCell({ borders: thinBorder, children: [new Paragraph({ children: [new TextRun({ text: 'Líquido + Envasado (Total):', bold: true })] })] }),
-                                new TableCell({ borders: thinBorder, children: [new Paragraph(`${totals.liquidPlusPackagedLbs.toLocaleString()} Lbs`)] })
-                            ]
-                        }),
-                        new TableRow({
-                            children: [
-                                new TableCell({ borders: thinBorder, children: [new Paragraph({ children: [new TextRun({ text: '% Rendimiento (Líq. + Env.):', bold: true })] })] }),
-                                new TableCell({ borders: thinBorder, children: [new Paragraph(`${totals.liquidPlusPackagedYieldPct}%`)] })
-                            ]
-                        }),
-                        new TableRow({
-                            children: [
-                                new TableCell({ borders: thinBorder, children: [new Paragraph({ children: [new TextRun({ text: 'Merma Cáscara:', bold: true })] })] }),
-                                new TableCell({ borders: thinBorder, children: [new Paragraph(`${totals.shellWaste.toLocaleString()} Lbs`)] })
-                            ]
-                        }),
-                        new TableRow({
-                            children: [
-                                new TableCell({ borders: thinBorder, children: [new Paragraph({ children: [new TextRun({ text: 'Merma en Tuberías / Envasado:', bold: true })] })] }),
-                                new TableCell({ borders: thinBorder, children: [new Paragraph(`${parseFloat(batch.packaging_loss_lbs || 0).toLocaleString()} Lbs`)] })
-                            ]
-                        }),
-                        new TableRow({
-                            children: [
-                                new TableCell({ borders: thinBorder, children: [new Paragraph({ children: [new TextRun({ text: 'Eficiencia de Envasado:', bold: true })] })] }),
-                                new TableCell({ borders: thinBorder, children: [new Paragraph(`${totals.packagingEfficiencyPct}%`)] })
-                            ]
+                        new TableCell({
+                            borders: thinBorder,
+                            columnSpan: 2,
+                            children: [new Paragraph({ children: [new TextRun({ text: `${totals.packagedWeight.toLocaleString()} Lbs`, bold: true })] })]
                         })
                     ]
                 })
             ]
+        }),
+        new Paragraph({ text: '' })
+    );
+
+    // Sección 7: Remanentes de Otras Producciones Utilizados
+    if (remanentesUsed && remanentesUsed.length > 0) {
+        docChildren.push(
+            new Paragraph({
+                text: '7. REMANENTES DE OTRAS PRODUCCIONES UTILIZADOS EN ESTE LOTE',
+                heading: HeadingLevel.HEADING_3
+            }),
+            new Table({
+                width: { size: 100, type: WidthType.PERCENTAGE },
+                rows: [
+                    new TableRow({
+                        children: [
+                            makeHeaderCell('Lote Origen', 22),
+                            makeHeaderCell('Fecha Origen', 18),
+                            makeHeaderCell('Producto', 20),
+                            makeHeaderCell('Tipo', 16),
+                            makeHeaderCell('Libras', 14),
+                            makeHeaderCell('Notas', 20)
+                        ]
+                    }),
+                    ...remanentesUsed.map(ru => new TableRow({
+                        children: [
+                            makeDataCell(ru.source_batch_code || `Lote #${ru.batch_id}`),
+                            makeDataCell(ru.source_batch_date ? new Date(ru.source_batch_date).toLocaleDateString() : '-'),
+                            makeDataCell((ru.product_type || 'Huevo').toUpperCase()),
+                            makeDataCell(ru.remanente_type || 'pasteurizado'),
+                            makeDataCell(`${parseFloat(ru.quantity_lbs || 0).toLocaleString()} Lbs`),
+                            makeDataCell(ru.notes || '-')
+                        ]
+                    }))
+                ]
+            }),
+            new Paragraph({ text: '' })
+        );
+    }
+
+    // Sección 8: Remanentes Generados
+    if (remanentes && remanentes.length > 0) {
+        docChildren.push(
+            new Paragraph({
+                text: '8. REMANENTES GENERADOS EN ESTA PRODUCCIÓN',
+                heading: HeadingLevel.HEADING_3
+            }),
+            new Table({
+                width: { size: 100, type: WidthType.PERCENTAGE },
+                rows: [
+                    new TableRow({
+                        children: [
+                            makeHeaderCell('Código', 20),
+                            makeHeaderCell('Producto', 24),
+                            makeHeaderCell('Tipo', 18),
+                            makeHeaderCell('Libras', 14),
+                            makeHeaderCell('Ubicación', 24)
+                        ]
+                    }),
+                    ...remanentes.map(rem => new TableRow({
+                        children: [
+                            makeDataCell(rem.remanente_code || `REM-${rem.id}`),
+                            makeDataCell(rem.product_type),
+                            makeDataCell(rem.remanente_type),
+                            makeDataCell(`${parseFloat(rem.quantity_lbs || 0).toLocaleString()} Lbs`),
+                            makeDataCell(rem.storage_location || 'Tanque')
+                        ]
+                    }))
+                ]
+            }),
+            new Paragraph({ text: '' })
+        );
+    }
+
+    // Sección 9: Mermas de Producción
+    if (wasteLogs && wasteLogs.length > 0) {
+        docChildren.push(
+            new Paragraph({
+                text: '9. HISTORIAL DE MERMAS DE PRODUCCIÓN REGISTRADAS',
+                heading: HeadingLevel.HEADING_3
+            }),
+            new Table({
+                width: { size: 100, type: WidthType.PERCENTAGE },
+                rows: [
+                    new TableRow({
+                        children: [
+                            makeHeaderCell('Fecha/Hora', 22),
+                            makeHeaderCell('Etapa', 18),
+                            makeHeaderCell('Tipo Merma', 20),
+                            makeHeaderCell('Libras', 14),
+                            makeHeaderCell('Motivo / Causa', 26)
+                        ]
+                    }),
+                    ...wasteLogs.map(w => new TableRow({
+                        children: [
+                            makeDataCell(new Date(w.created_at).toLocaleString()),
+                            makeDataCell(w.stage || 'Producción'),
+                            makeDataCell(w.waste_type || 'Merma'),
+                            makeDataCell(`${parseFloat(w.quantity_lbs || 0).toLocaleString()} Lbs`),
+                            makeDataCell(w.reason || '-')
+                        ]
+                    })),
+                    new TableRow({
+                        children: [
+                            new TableCell({
+                                borders: thinBorder,
+                                columnSpan: 3,
+                                children: [new Paragraph({ children: [new TextRun({ text: 'TOTAL MERMAS REGISTRADAS:', bold: true })] })]
+                            }),
+                            new TableCell({
+                                borders: thinBorder,
+                                columnSpan: 2,
+                                children: [new Paragraph({ children: [new TextRun({ text: `${totals.wasteLogsWeight.toLocaleString()} Lbs`, bold: true })] })]
+                            })
+                        ]
+                    })
+                ]
+            }),
+            new Paragraph({ text: '' })
+        );
+    }
+
+    // Sección 10: Balance General de Masas
+    docChildren.push(
+        new Paragraph({
+            text: '10. BALANCE GENERAL DE MASAS Y EFICIENCIA OPERATIVA',
+            heading: HeadingLevel.HEADING_3
+        }),
+        new Table({
+            width: { size: 100, type: WidthType.PERCENTAGE },
+            rows: [
+                new TableRow({
+                    children: [
+                        makeDataCell('Peso Total Entrada (Materia Prima):', true, 50),
+                        makeDataCell(`${totals.totalInputWeight.toLocaleString()} Lbs (100.00%)`, false, 50)
+                    ]
+                }),
+                new TableRow({
+                    children: [
+                        makeDataCell('Cajas de Huevo Procesadas:', true, 50),
+                        makeDataCell(`${totals.totalBoxes.toLocaleString()} Cajas`, false, 50)
+                    ]
+                }),
+                new TableRow({
+                    children: [
+                        makeDataCell('Rendimiento Líquido Pasteurizado:', true, 50),
+                        makeDataCell(`${totals.liquidYield.toLocaleString()} Lbs (${totals.yieldPct}%)`, false, 50)
+                    ]
+                }),
+                new TableRow({
+                    children: [
+                        makeDataCell('Rendimiento por Caja:', true, 50),
+                        makeDataCell(`${totals.yieldPerBoxLbs} Lbs / Caja`, false, 50)
+                    ]
+                }),
+                new TableRow({
+                    children: [
+                        makeDataCell('Total Envasado Comercial:', true, 50),
+                        makeDataCell(`${totals.packagedWeight.toLocaleString()} Lbs`, false, 50)
+                    ]
+                }),
+                new TableRow({
+                    children: [
+                        makeDataCell('Eficiencia de Envasado:', true, 50),
+                        makeDataCell(`${totals.packagingEfficiencyPct}%`, false, 50)
+                    ]
+                }),
+                new TableRow({
+                    children: [
+                        makeDataCell('Líquido + Envasado (Total):', true, 50),
+                        makeDataCell(`${totals.liquidPlusPackagedLbs.toLocaleString()} Lbs`, false, 50)
+                    ]
+                }),
+                new TableRow({
+                    children: [
+                        makeDataCell('% Rendimiento (Líq. + Env.):', true, 50),
+                        makeDataCell(`${totals.liquidPlusPackagedYieldPct}%`, false, 50)
+                    ]
+                }),
+                new TableRow({
+                    children: [
+                        makeDataCell('Merma de Cáscara:', true, 50),
+                        makeDataCell(`${totals.shellWaste.toLocaleString()} Lbs`, false, 50)
+                    ]
+                }),
+                new TableRow({
+                    children: [
+                        makeDataCell('Merma en Tuberías / Envasado:', true, 50),
+                        makeDataCell(`${parseFloat(batch.packaging_loss_lbs || 0).toLocaleString()} Lbs`, false, 50)
+                    ]
+                }),
+                new TableRow({
+                    children: [
+                        makeDataCell('Remanente para Reproceso:', true, 50),
+                        makeDataCell(`${totals.remanenteWeight.toLocaleString()} Lbs`, false, 50)
+                    ]
+                }),
+                new TableRow({
+                    children: [
+                        makeDataCell('Remanentes de Otras Prod. Utilizados:', true, 50),
+                        makeDataCell(`${(totals.remanenteUsedWeight || 0).toLocaleString()} Lbs`, false, 50)
+                    ]
+                }),
+                new TableRow({
+                    children: [
+                        makeDataCell('Estatus Oficial de Lote:', true, 50),
+                        makeDataCell((batch.status || '').toUpperCase(), true, 50)
+                    ]
+                })
+            ]
+        })
+    );
+
+    const doc = new Document({
+        sections: [{
+            properties: {},
+            children: docChildren
         }]
     });
 

@@ -1072,6 +1072,11 @@ export default function EggDispatch() {
                                                         <div key={itemIdx} className="mb-1.5 last:mb-0">
                                                             <div className="font-semibold text-slate-800 flex items-center gap-1.5 flex-wrap">
                                                                 <span>{item.product_type}</span>
+                                                                {(item.catalog_code || ord.catalog_code) && (
+                                                                    <span className="text-[10px] font-mono font-bold text-amber-800 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200" title={`Código SKU Catálogo: ${item.catalog_code || ord.catalog_code}`}>
+                                                                        {item.catalog_code || ord.catalog_code}
+                                                                    </span>
+                                                                )}
                                                                 {getOrderItems(ord).length > 1 && (
                                                                     <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.2 rounded">
                                                                         {parseFloat(item.quantity_lbs || 0).toLocaleString()} Lbs
@@ -1437,6 +1442,11 @@ export default function EggDispatch() {
                                                                      <div key={itemIdx} className="bg-slate-50 border border-slate-100 rounded-lg p-2 flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-xs">
                                                                          <div className="flex items-center gap-1.5 flex-wrap">
                                                                              <span className="font-bold text-slate-800">• {item.product_type}</span>
+                                                                             {(item.catalog_code || stop.catalog_code) && (
+                                                                                 <span className="text-[9px] font-mono font-bold text-amber-800 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200" title={`Código SKU: ${item.catalog_code || stop.catalog_code}`}>
+                                                                                     {item.catalog_code || stop.catalog_code}
+                                                                                 </span>
+                                                                             )}
                                                                              <span className="text-slate-500 text-[10px]">({item.presentation || 'cubeta 30LB'})</span>
                                                                              {(item.lot_code || stop.lot_code || stop.order_lot_code || stop.linked_batch_code) && (
                                                                                  <span className="bg-emerald-50 text-emerald-800 border border-emerald-200 font-bold text-[10px] px-1.5 py-0.2 rounded">

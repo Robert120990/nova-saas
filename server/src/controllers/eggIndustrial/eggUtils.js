@@ -24,7 +24,7 @@ const safeInt = (val, fallback = null) => {
     return Number.isFinite(n) ? n : fallback;
 };
 
-// Helper oficial para cálculo de código de lote en Calendario Juliano: LOTE-[Año 2d][Día Juliano 3d]-[Corrida 2d] (ej. LOTE-26252-01)
+// Helper oficial para cálculo de código de lote en Calendario Juliano: LOTE [Corrida 2d]-[Día Juliano 3d]-[Año 2d] (ej. LOTE 01-265-26)
 const computeJulianLotCode = (productionDate, runNumber = 1) => {
     let d;
     if (!productionDate) {
@@ -48,7 +48,7 @@ const computeJulianLotCode = (productionDate, runNumber = 1) => {
     const dayOfYear = Math.floor(diffMs / (1000 * 60 * 60 * 24)) + 1;
     const dayOfYearStr = String(dayOfYear).padStart(3, '0');
     const runStr = String(runNumber || 1).padStart(2, '0');
-    return `LOTE-${year2Digit}${dayOfYearStr}-${runStr}`;
+    return `LOTE ${runStr}-${dayOfYearStr}-${year2Digit}`;
 };
 
 
@@ -102,6 +102,38 @@ const ensureEggSchema = async () => {
         if (schedCols.length === 0) {
             await pool.query("ALTER TABLE egg_production_batches ADD COLUMN scheduled_production_id INT NULL AFTER batch_code_display");
             console.log("[EggIndustrial] Auto-migrated scheduled_production_id in egg_production_batches.");
+        }
+
+        const [pastLotCols] = await pool.query(
+            "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'egg_production_batches' AND COLUMN_NAME = 'pasteurization_lot'"
+        );
+        if (pastLotCols.length === 0) {
+            await pool.query("ALTER TABLE egg_production_batches ADD COLUMN pasteurization_lot VARCHAR(100) NULL AFTER batch_code_display");
+            console.log("[EggIndustrial] Auto-migrated pasteurization_lot in egg_production_batches.");
+        }
+
+        const [pastStatusCols] = await pool.query(
+            "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'egg_production_batches' AND COLUMN_NAME = 'pasteurization_status'"
+        );
+        if (pastStatusCols.length === 0) {
+            await pool.query("ALTER TABLE egg_production_batches ADD COLUMN pasteurization_status ENUM('pendiente', 'en_proceso', 'pasteurizado', 'cerrado') NOT NULL DEFAULT 'pendiente' AFTER status");
+            console.log("[EggIndustrial] Auto-migrated pasteurization_status in egg_production_batches.");
+        }
+
+        const [pastClosedCols] = await pool.query(
+            "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'egg_production_batches' AND COLUMN_NAME = 'pasteurization_closed_at'"
+        );
+        if (pastClosedCols.length === 0) {
+            await pool.query("ALTER TABLE egg_production_batches ADD COLUMN pasteurization_closed_at DATETIME NULL AFTER completed_at, ADD COLUMN pasteurization_closed_by VARCHAR(150) NULL AFTER pasteurization_closed_at");
+            console.log("[EggIndustrial] Auto-migrated pasteurization_closed_at in egg_production_batches.");
+        }
+
+        const [logPastLotCols] = await pool.query(
+            "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'egg_pasteurization_logs' AND COLUMN_NAME = 'pasteurization_lot'"
+        );
+        if (logPastLotCols.length === 0) {
+            await pool.query("ALTER TABLE egg_pasteurization_logs ADD COLUMN pasteurization_lot VARCHAR(100) NULL AFTER batch_id");
+            console.log("[EggIndustrial] Auto-migrated pasteurization_lot in egg_pasteurization_logs.");
         }
 
         // Columnas en batch_raw_materials

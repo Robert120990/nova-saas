@@ -22,7 +22,14 @@ const {
 const getCipLogs = async (req, res) => {
     try {
         const [rows] = await pool.query(
-            `SELECT * FROM egg_cip_logs WHERE company_id = ? ORDER BY created_at DESC`,
+            `SELECT c.*, 
+                    b.batch_code_display, 
+                    b.batch_uuid, 
+                    b.product_type as batch_product 
+             FROM egg_cip_logs c 
+             LEFT JOIN egg_production_batches b ON c.batch_id = b.id 
+             WHERE c.company_id = ? 
+             ORDER BY c.created_at DESC`,
             [req.company_id]
         );
         res.json(rows);
@@ -33,21 +40,95 @@ const getCipLogs = async (req, res) => {
 
 const createCipLog = async (req, res) => {
     try {
-        const { equipment_name, chemical_used, temperature_c, duration_minutes, operator_name, validation_status, notes } = req.body;
+        const { 
+            equipment_name, 
+            chemical_used, 
+            temperature_c, 
+            duration_minutes, 
+            operator_name, 
+            validation_status, 
+            notes,
+            cleaned_at,
+            created_at,
+            batch_id 
+        } = req.body;
+
+        const customDate = cleaned_at || created_at || null;
+        const targetBatchId = batch_id ? parseInt(batch_id, 10) : null;
+
         const [result] = await pool.query(
-            `INSERT INTO egg_cip_logs (company_id, equipment_name, chemical_used, temperature_c, duration_minutes, operator_name, validation_status, notes) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-            [req.company_id, equipment_name, chemical_used, temperature_c, duration_minutes, operator_name, validation_status, notes]
+            `INSERT INTO egg_cip_logs (
+                company_id, 
+                equipment_name, 
+                chemical_used, 
+                temperature_c, 
+                duration_minutes, 
+                operator_name, 
+                batch_id,
+                validation_status, 
+                notes,
+                created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, NOW()))`,
+            [
+                req.company_id, 
+                equipment_name, 
+                chemical_used, 
+                temperature_c, 
+                duration_minutes, 
+                operator_name || req.user?.nombre || 'Operador', 
+                targetBatchId,
+                validation_status || 'completado', 
+                notes,
+                customDate
+            ]
         );
 
         // Crear evento
         await pool.query(
             `INSERT INTO egg_industrial_events (company_id, event_type, severity, description, payload, operator_name)
              VALUES (?, 'cip.completed', ?, ?, ?, ?)`,
-            [req.company_id, validation_status === 'completado' ? 'info' : 'warning', `Sanitización CIP en equipo ${equipment_name} registrada con estado: ${validation_status}.`, JSON.stringify({ cip_id: result.insertId, equipment_name }), operator_name]
+            [
+                req.company_id, 
+                validation_status === 'completado' ? 'info' : 'warning', 
+                `Sanitización CIP en equipo ${equipment_name} registrada con estado: ${validation_status || 'completado'}${targetBatchId ? ` (Vinculado a lote #${targetBatchId})` : ''}.`, 
+                JSON.stringify({ cip_id: result.insertId, equipment_name, batch_id: targetBatchId }), 
+                operator_name || req.user?.nombre || 'Operador'
+            ]
         );
 
-        res.status(201).json({ id: result.insertId, ...req.body });
+        res.status(201).json({ id: result.insertId, ...req.body, created_at: customDate || new Date().toISOString() });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+const deleteCipLog = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const company_id = req.company_id;
+
+        const [existing] = await pool.query(
+            'SELECT * FROM egg_cip_logs WHERE id = ? AND company_id = ?',
+            [id, company_id]
+        );
+        if (existing.length === 0) {
+            return res.status(404).json({ message: 'Registro de sanitización CIP no encontrado.' });
+        }
+
+        await pool.query('DELETE FROM egg_cip_logs WHERE id = ? AND company_id = ?', [id, company_id]);
+
+        await pool.query(
+            `INSERT INTO egg_industrial_events (company_id, event_type, severity, description, payload, operator_name)
+             VALUES (?, 'cip.deleted', 'warning', ?, ?, ?)`,
+            [
+                company_id, 
+                `Registro de sanitización CIP #${id} (${existing[0].equipment_name}) eliminado por ${req.user?.nombre || 'Operador'}.`, 
+                JSON.stringify({ cip_id: parseInt(id), equipment_name: existing[0].equipment_name }), 
+                req.user?.nombre || 'Operador'
+            ]
+        );
+
+        res.json({ success: true, message: 'Registro de sanitización CIP eliminado con éxito.' });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -229,14 +310,15 @@ const createProductionBatch = async (req, res) => {
 
         const batch_uuid = require('crypto').randomUUID();
 
-        // Generar Nomenclatura Oficial ANDELSA: [Corrida] - [Día Juliano] - [Año 2 dígitos] (ej. 01 - 245 - 26)
+        // Generar Nomenclatura Oficial ANDELSA: LOTE [Corrida 2d]-[Día Juliano 3d]-[Año 2d] (ej. LOTE 01-265-26)
         const now = new Date();
-        const startOfYear = new Date(now.getFullYear(), 0, 0);
-        const diff = now - startOfYear;
+        const yearFull = now.getFullYear();
+        const year2Digit = String(yearFull).slice(-2);
+        const startOfYear = new Date(yearFull, 0, 1);
+        const diffMs = now.getTime() - startOfYear.getTime();
         const oneDay = 1000 * 60 * 60 * 24;
-        const dayOfYear = Math.floor(diff / oneDay);
+        const dayOfYear = Math.floor(diffMs / oneDay) + 1;
         const dayOfYearStr = String(dayOfYear).padStart(3, '0');
-        const year2Digit = String(now.getFullYear()).slice(-2);
 
         // Consultar corridas registradas para este día juliano/año para autoincrementar correlativo de forma única
         const [existingRuns] = await connection.query(
@@ -244,15 +326,16 @@ const createProductionBatch = async (req, res) => {
              WHERE company_id = ? AND (
                 DATE(started_at) = CURDATE() OR 
                 batch_code_display LIKE ? OR
+                batch_code_display LIKE ? OR
                 batch_code_display LIKE ?
              )`,
-            [company_id, `%-${dayOfYearStr}-${year2Digit}`, `% - ${dayOfYearStr} - ${year2Digit}`]
+            [company_id, `%-${dayOfYearStr}-${year2Digit}`, `% - ${dayOfYearStr} - ${year2Digit}`, `%LOTE%${dayOfYearStr}-${year2Digit}%`]
         );
 
         let maxRun = 0;
         for (const b of existingRuns) {
             if (b.batch_code_display) {
-                const cleaned = b.batch_code_display.replace(/\s+/g, '');
+                const cleaned = b.batch_code_display.toUpperCase().replace(/^LOTE\s*/i, '').replace(/\s+/g, '');
                 const parts = cleaned.split('-');
                 if (parts.length === 3) {
                     const num = parseInt(parts[0], 10);
@@ -264,15 +347,28 @@ const createProductionBatch = async (req, res) => {
         let chosenRun = maxRun + 1;
         if (req.body.run_number) {
             const userRun = parseInt(req.body.run_number, 10);
-            const userCode = `${String(userRun).padStart(2, '0')}-${dayOfYearStr}-${year2Digit}`;
-            const collision = existingRuns.some(b => (b.batch_code_display || '').replace(/\s+/g, '') === userCode);
+            const userTargetCode = `${String(userRun).padStart(2, '0')}-${dayOfYearStr}-${year2Digit}`;
+            const collision = existingRuns.some(b => {
+                const cleaned = (b.batch_code_display || '').toUpperCase().replace(/^LOTE\s*/i, '').replace(/\s+/g, '');
+                return cleaned === userTargetCode;
+            });
             if (!isNaN(userRun) && userRun > 0 && !collision) {
                 chosenRun = userRun;
             }
         }
 
         const runNumber = String(chosenRun).padStart(2, '0');
-        const batch_code_display = `${runNumber}-${dayOfYearStr}-${year2Digit}`;
+        let batch_code_display;
+        if (req.body.batch_code_display && req.body.batch_code_display.trim() !== '') {
+            const raw = req.body.batch_code_display.trim();
+            if (/^LOTE\b/i.test(raw)) {
+                batch_code_display = raw.replace(/^LOTE\s*/i, 'LOTE ');
+            } else {
+                batch_code_display = `LOTE ${raw}`;
+            }
+        } else {
+            batch_code_display = `LOTE ${runNumber}-${dayOfYearStr}-${year2Digit}`;
+        }
 
         const resolvedProductType = Array.isArray(product_type)
             ? product_type.join(', ')
@@ -493,13 +589,22 @@ const completeProductionBatch = async (req, res) => {
 // 4. PASTEURIZACIÓN (CRÍTICO HACCP)
 const createPasteurizationLog = async (req, res) => {
     try {
-        const { batch_id, temperature_c, holding_time_seconds, pressure_psi, flow_rate_gpm, operator_name } = req.body;
+        const { batch_id, temperature_c, holding_time_seconds, pressure_psi, flow_rate_gpm, operator_name, pasteurization_lot } = req.body;
         const company_id = req.company_id;
 
         // Obtener el lote para saber el tipo de producto
         const [batches] = await pool.query('SELECT * FROM egg_production_batches WHERE id = ? AND company_id = ?', [batch_id, company_id]);
         if (batches.length === 0) return res.status(404).json({ message: 'Lote no encontrado' });
         const batch = batches[0];
+
+        // Si la pasteurización ya estaba cerrada, evitar modificaciones e incongruencias
+        if (batch.pasteurization_status === 'cerrado') {
+            const userPerms = Array.isArray(req.user?.permissions) ? req.user.permissions : (typeof req.user?.permissions === 'string' ? JSON.parse(req.user?.permissions || '[]') : []);
+            const canManage = req.user?.role === 'SuperAdmin' || req.user?.role === 'Admin' || req.user?.role_id <= 2 || userPerms.includes('manage_egg_production_lots');
+            if (!canManage) {
+                return res.status(400).json({ message: 'La pasteurización de este lote ya fue CERRADA. Reabra la pasteurización o cuente con permiso especial para registrar nuevos parámetros.' });
+            }
+        }
 
         // --- VALIDACIÓN DE PARÁMETROS CRÍTICOS HACCP (PCC) ---
         let haccp_compliant = true;
@@ -526,18 +631,22 @@ const createPasteurizationLog = async (req, res) => {
             deviation_description = (deviation_description ? deviation_description + ' ' : '') + `Tiempo de retención insuficiente (${holding_time_seconds}s de mínimo 200s).`;
         }
 
-        // Insertar log
+        const resolvedPastLot = (pasteurization_lot && pasteurization_lot.trim())
+            ? pasteurization_lot.trim()
+            : (batch.pasteurization_lot || (batch.batch_code_display ? `PAST-${batch.batch_code_display.replace(/\s+/g, '')}` : `PAST-${batch_id}`));
+
+        // Insertar log con lote de pasteurización
         const [result] = await pool.query(
-            `INSERT INTO egg_pasteurization_logs (company_id, batch_id, temperature_c, holding_time_seconds, pressure_psi, flow_rate_gpm, haccp_compliant, deviation_description, operator_name) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [company_id, batch_id, temperature_c, holding_time_seconds, pressure_psi, flow_rate_gpm, haccp_compliant, deviation_description, operator_name]
+            `INSERT INTO egg_pasteurization_logs (company_id, batch_id, pasteurization_lot, temperature_c, holding_time_seconds, pressure_psi, flow_rate_gpm, haccp_compliant, deviation_description, operator_name) 
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [company_id, batch_id, resolvedPastLot, temperature_c, holding_time_seconds, pressure_psi, flow_rate_gpm, haccp_compliant, deviation_description, operator_name]
         );
 
         if (!haccp_compliant) {
             // --- BLOQUEO AUTOMÁTICO DE LOTE ---
             await pool.query(
-                `UPDATE egg_production_batches SET status = 'bloqueado_haccp' WHERE id = ? AND company_id = ?`,
-                [batch_id, company_id]
+                `UPDATE egg_production_batches SET status = 'bloqueado_haccp', pasteurization_lot = COALESCE(pasteurization_lot, ?) WHERE id = ? AND company_id = ?`,
+                [resolvedPastLot, batch_id, company_id]
             );
 
             // Crear evento crítico
@@ -555,17 +664,202 @@ const createPasteurizationLog = async (req, res) => {
             });
         } else {
             // Actualizar lote si todo va bien y estaba en proceso
-            if (batch.status === 'en_proceso') {
-                await pool.query(
-                    `UPDATE egg_production_batches SET status = 'pasteurizado' WHERE id = ? AND company_id = ?`,
-                    [batch_id, company_id]
-                );
-            }
+            await pool.query(
+                `UPDATE egg_production_batches 
+                 SET status = CASE WHEN status = 'en_proceso' THEN 'pasteurizado' ELSE status END,
+                     pasteurization_status = CASE WHEN pasteurization_status = 'cerrado' THEN 'cerrado' ELSE 'pasteurizado' END,
+                     pasteurization_lot = COALESCE(pasteurization_lot, ?) 
+                 WHERE id = ? AND company_id = ?`,
+                [resolvedPastLot, batch_id, company_id]
+            );
         }
 
-        res.status(201).json({ id: result.insertId, haccp_compliant, deviation_description, batchStatus: haccp_compliant ? 'pasteurizado' : 'bloqueado_haccp' });
+        res.status(201).json({ id: result.insertId, haccp_compliant, deviation_description, batchStatus: haccp_compliant ? 'pasteurizado' : 'bloqueado_haccp', pasteurization_lot: resolvedPastLot });
     } catch (error) {
         res.status(500).json({ message: error.message });
+    }
+};
+
+const closePasteurization = async (req, res) => {
+    const connection = await pool.getConnection();
+    try {
+        await connection.beginTransaction();
+        const { id } = req.params;
+        const company_id = req.company_id;
+        const { pasteurization_lot, notes } = req.body;
+        const operator_name = req.body.operator_name || req.user?.nombre || 'Operador Pasteurización';
+
+        const [batches] = await connection.query(
+            'SELECT * FROM egg_production_batches WHERE id = ? AND company_id = ? FOR UPDATE',
+            [id, company_id]
+        );
+        if (batches.length === 0) {
+            await connection.rollback();
+            return res.status(404).json({ message: 'Lote no encontrado.' });
+        }
+        const batch = batches[0];
+
+        if (batch.status === 'bloqueado_haccp') {
+            await connection.rollback();
+            return res.status(400).json({ message: 'No se puede cerrar pasteurización de un lote bloqueado por HACCP.' });
+        }
+
+        const resolvedPastLot = (pasteurization_lot && pasteurization_lot.trim())
+            ? pasteurization_lot.trim()
+            : (batch.pasteurization_lot || (batch.batch_code_display ? `PAST-${batch.batch_code_display.replace(/\s+/g, '')}` : `PAST-${batch.id}`));
+
+        await connection.query(
+            `UPDATE egg_production_batches 
+             SET pasteurization_status = 'cerrado',
+                 pasteurization_lot = ?,
+                 status = CASE WHEN status = 'en_proceso' THEN 'pasteurizado' ELSE status END,
+                 pasteurization_closed_at = NOW(),
+                 pasteurization_closed_by = ?
+             WHERE id = ? AND company_id = ?`,
+            [resolvedPastLot, operator_name, id, company_id]
+        );
+
+        await connection.query(
+            `UPDATE egg_pasteurization_logs 
+             SET pasteurization_lot = ? 
+             WHERE batch_id = ? AND company_id = ? AND (pasteurization_lot IS NULL OR pasteurization_lot = '')`,
+            [resolvedPastLot, id, company_id]
+        );
+
+        await connection.query(
+            `INSERT INTO egg_industrial_events (company_id, event_type, severity, description, payload, operator_name)
+             VALUES (?, 'pasteurization.closed', 'info', ?, ?, ?)`,
+            [
+                company_id,
+                `Pasteurización del lote #${id} (${batch.batch_code_display || batch.batch_uuid}) cerrada con lote pasteurizado: ${resolvedPastLot}.`,
+                JSON.stringify({ batch_id: parseInt(id), pasteurization_lot: resolvedPastLot, notes }),
+                operator_name
+            ]
+        );
+
+        await connection.commit();
+        res.json({
+            success: true,
+            message: `Pasteurización cerrada exitosamente con lote: ${resolvedPastLot}.`,
+            pasteurization_lot: resolvedPastLot,
+            pasteurization_status: 'cerrado'
+        });
+    } catch (error) {
+        await connection.rollback();
+        console.error('Error in closePasteurization:', error);
+        res.status(500).json({ message: error.message });
+    } finally {
+        connection.release();
+    }
+};
+
+const reopenPasteurization = async (req, res) => {
+    const connection = await pool.getConnection();
+    try {
+        await connection.beginTransaction();
+        const { id } = req.params;
+        const company_id = req.company_id;
+        const userPerms = Array.isArray(req.user?.permissions) ? req.user.permissions : (typeof req.user?.permissions === 'string' ? JSON.parse(req.user?.permissions || '[]') : []);
+        const canManage = req.user?.role === 'SuperAdmin' || req.user?.role === 'Admin' || req.user?.role_id <= 2 || userPerms.includes('manage_egg_production_lots');
+        if (!canManage) {
+            await connection.rollback();
+            return res.status(403).json({ message: 'No tiene el permiso especial requerido para reabrir la pasteurización de este lote.' });
+        }
+
+        const [batches] = await connection.query(
+            'SELECT * FROM egg_production_batches WHERE id = ? AND company_id = ? FOR UPDATE',
+            [id, company_id]
+        );
+        if (batches.length === 0) {
+            await connection.rollback();
+            return res.status(404).json({ message: 'Lote no encontrado.' });
+        }
+
+        await connection.query(
+            `UPDATE egg_production_batches 
+             SET pasteurization_status = 'en_proceso',
+                 pasteurization_closed_at = NULL,
+                 pasteurization_closed_by = NULL
+             WHERE id = ? AND company_id = ?`,
+            [id, company_id]
+        );
+
+        await connection.query(
+            `INSERT INTO egg_industrial_events (company_id, event_type, severity, description, payload, operator_name)
+             VALUES (?, 'pasteurization.reopened', 'warning', ?, ?, ?)`,
+            [
+                company_id,
+                `Pasteurización del lote #${id} (${batches[0].batch_code_display || batches[0].batch_uuid}) reabierta para ajustes por ${req.user?.nombre || 'Administrador'}.`,
+                JSON.stringify({ batch_id: parseInt(id) }),
+                req.user?.nombre || 'Operador'
+            ]
+        );
+
+        await connection.commit();
+        res.json({ success: true, message: 'Pasteurización reabierta exitosamente.', pasteurization_status: 'en_proceso' });
+    } catch (error) {
+        await connection.rollback();
+        console.error('Error in reopenPasteurization:', error);
+        res.status(500).json({ message: error.message });
+    } finally {
+        connection.release();
+    }
+};
+
+const reopenBatchPackaging = async (req, res) => {
+    const connection = await pool.getConnection();
+    try {
+        await connection.beginTransaction();
+        const { id } = req.params;
+        const company_id = req.company_id;
+
+        const [batches] = await connection.query(
+            'SELECT * FROM egg_production_batches WHERE id = ? AND company_id = ? FOR UPDATE',
+            [id, company_id]
+        );
+        if (batches.length === 0) {
+            await connection.rollback();
+            return res.status(404).json({ message: 'Lote no encontrado.' });
+        }
+        const batch = batches[0];
+
+        // Revertir merma automática de faltante de envasado si existía
+        await connection.query(
+            `DELETE FROM egg_batch_waste_logs 
+             WHERE batch_id = ? AND company_id = ? AND stage = 'envasado' AND waste_type = 'merma_tuberias_envasado'`,
+            [id, company_id]
+        );
+
+        // Reabrir lote en envasado
+        await connection.query(
+            `UPDATE egg_production_batches 
+             SET packaging_status = 'abierto',
+                 status = CASE WHEN status = 'empaquetado' THEN 'pasteurizado' ELSE status END,
+                 packaging_loss_lbs = 0,
+                 packaging_efficiency_pct = 0
+             WHERE id = ? AND company_id = ?`,
+            [id, company_id]
+        );
+
+        await connection.query(
+            `INSERT INTO egg_industrial_events (company_id, event_type, severity, description, payload, operator_name)
+             VALUES (?, 'packaging.reopened', 'warning', ?, ?, ?)`,
+            [
+                company_id,
+                `Envasado del lote #${id} (${batch.batch_code_display || batch.batch_uuid}) reabierto para nuevos registros.`,
+                JSON.stringify({ batch_id: parseInt(id) }),
+                req.user?.nombre || 'Operador'
+            ]
+        );
+
+        await connection.commit();
+        res.json({ success: true, message: 'Envasado reabierto exitosamente. Ahora puede agregar más empaques o modificar registros.', packaging_status: 'abierto' });
+    } catch (error) {
+        await connection.rollback();
+        console.error('Error in reopenBatchPackaging:', error);
+        res.status(500).json({ message: error.message });
+    } finally {
+        connection.release();
     }
 };
 
@@ -652,8 +946,56 @@ const updateProductionBatch = async (req, res) => {
             notes,
             ingredients,
             ingredients_json,
-            raw_materials
+            raw_materials,
+            batch_code_display,
+            pasteurization_lot
         } = req.body;
+
+        const userPerms = Array.isArray(req.user?.permissions) ? req.user.permissions : (typeof req.user?.permissions === 'string' ? JSON.parse(req.user?.permissions || '[]') : []);
+        const canManageLots = req.user?.role === 'SuperAdmin' || req.user?.role === 'Admin' || req.user?.role_id <= 2 || userPerms.includes('manage_egg_production_lots');
+
+        let normalizedBatchCode = undefined;
+        if (batch_code_display !== undefined) {
+            if (batch_code_display && batch_code_display.trim() !== '') {
+                const raw = batch_code_display.trim();
+                normalizedBatchCode = /^LOTE\b/i.test(raw) ? raw.replace(/^LOTE\s*/i, 'LOTE ') : `LOTE ${raw}`;
+            } else {
+                normalizedBatchCode = null;
+            }
+        }
+
+        // Validar permisos especiales para modificar identificadores de lotes
+        if (normalizedBatchCode !== undefined && normalizedBatchCode !== existing[0].batch_code_display) {
+            if (!canManageLots) {
+                await connection.rollback();
+                return res.status(403).json({ message: 'No tiene el permiso especial requerido para modificar el código del lote de producción (manage_egg_production_lots).' });
+            }
+            if (normalizedBatchCode) {
+                const [dup] = await connection.query(
+                    'SELECT id FROM egg_production_batches WHERE batch_code_display = ? AND company_id = ? AND id != ?',
+                    [normalizedBatchCode, company_id, id]
+                );
+                if (dup.length > 0) {
+                    await connection.rollback();
+                    return res.status(400).json({ message: `El código de lote "${normalizedBatchCode}" ya está asignado a otra producción.` });
+                }
+            }
+        }
+
+        if (pasteurization_lot !== undefined && pasteurization_lot !== existing[0].pasteurization_lot) {
+            if (!canManageLots) {
+                await connection.rollback();
+                return res.status(403).json({ message: 'No tiene el permiso especial requerido para modificar el lote de pasteurización (manage_egg_production_lots).' });
+            }
+        }
+
+        // Si la pasteurización está cerrada y no tiene permiso especial, bloquear cambios en materias primas
+        if (existing[0].pasteurization_status === 'cerrado' && !canManageLots) {
+            if (Array.isArray(raw_materials) && raw_materials.length > 0) {
+                await connection.rollback();
+                return res.status(403).json({ message: 'La etapa de pasteurización de este lote está CERRADA. Solo un usuario con el permiso especial de gestión de lotes puede modificar materias primas o debe reabrir la pasteurización.' });
+            }
+        }
 
         let inputWeightLbs = existing[0].input_weight_lbs;
         if (Array.isArray(raw_materials) && raw_materials.length > 0) {
@@ -722,6 +1064,14 @@ const updateProductionBatch = async (req, res) => {
                 ? (typeof ingredients_json === 'string' ? ingredients_json : JSON.stringify(ingredients_json))
                 : existing[0].ingredients_json);
 
+        const resolvedBatchCode = (canManageLots && normalizedBatchCode !== undefined)
+            ? normalizedBatchCode
+            : existing[0].batch_code_display;
+
+        const resolvedPastLot = (canManageLots && pasteurization_lot !== undefined)
+            ? (pasteurization_lot ? pasteurization_lot.trim() : null)
+            : existing[0].pasteurization_lot;
+
         await connection.query(
             `UPDATE egg_production_batches 
              SET product_type = COALESCE(?, product_type),
@@ -731,14 +1081,26 @@ const updateProductionBatch = async (req, res) => {
                  target_solids_pct = ?,
                  notes = COALESCE(?, notes),
                  ingredients_json = ?,
-                 input_weight_lbs = ?
+                 input_weight_lbs = ?,
+                 batch_code_display = ?,
+                 pasteurization_lot = ?
              WHERE id = ? AND company_id = ?`,
             [
                 resolvedProductType, resolvedPresentation, operator_name,
                 target_brix || null, target_solids_pct || null,
-                notes, resolvedIngredients, inputWeightLbs, id, company_id
+                notes, resolvedIngredients, inputWeightLbs,
+                resolvedBatchCode, resolvedPastLot, id, company_id
             ]
         );
+
+        if (canManageLots && resolvedPastLot) {
+            await connection.query(
+                `UPDATE egg_pasteurization_logs 
+                 SET pasteurization_lot = ? 
+                 WHERE batch_id = ? AND company_id = ? AND (pasteurization_lot IS NULL OR pasteurization_lot = '')`,
+                [resolvedPastLot, id, company_id]
+            );
+        }
 
         // Sincronizar remanentes vinculados a este lote
         if (req.body.remanente_ids !== undefined) {
@@ -902,6 +1264,16 @@ const addTarimasToBatch = async (req, res) => {
             return res.status(404).json({ message: 'Lote de producción no encontrado.' });
         }
         const batch = batches[0];
+
+        // Validar si la pasteurización ya está cerrada
+        if (batch.pasteurization_status === 'cerrado') {
+            const userPerms = Array.isArray(req.user?.permissions) ? req.user.permissions : (typeof req.user?.permissions === 'string' ? JSON.parse(req.user?.permissions || '[]') : []);
+            const canManage = req.user?.role === 'SuperAdmin' || req.user?.role === 'Admin' || req.user?.role_id <= 2 || userPerms.includes('manage_egg_production_lots');
+            if (!canManage) {
+                await connection.rollback();
+                return res.status(403).json({ message: 'La etapa de pasteurización de este lote está CERRADA. No se pueden agregar más tarimas para evitar incongruencias de balance.' });
+            }
+        }
 
         // Construir lista de items de materia prima a procesar
         let listToAdd = [];
@@ -1148,7 +1520,8 @@ const getBatchStages = async (req, res) => {
             totals,
             stages,
             raw_materials: rawMaterials,
-            tarimas: rawMaterials.flatMap(r => r.tarimas || []),
+            tarimas: data.tarimasUsed || rawMaterials.flatMap(r => (r.tarimas || []).map(t => ({ ...t, provider_lot: r.provider_lot, egg_type: r.egg_type }))),
+            remanentes_used: data.remanentesUsed || [],
             pasteurize_log: pasteurizationLogs[pasteurizationLogs.length - 1] || null,
             pasteurization_logs: pasteurizationLogs,
             remanentes: mappedRemanentes,
@@ -1527,6 +1900,7 @@ const exportBatchSummary = async (req, res) => {
 module.exports = {
     getCipLogs,
     createCipLog,
+    deleteCipLog,
     quickSanitizeCip,
     getProductionBatches,
     createProductionBatch,
@@ -1534,6 +1908,9 @@ module.exports = {
     deleteProductionBatch,
     completeProductionBatch,
     createPasteurizationLog,
+    closePasteurization,
+    reopenPasteurization,
+    reopenBatchPackaging,
     getHoldingTemperatures,
     createHoldingTemperature,
     addTarimasToBatch,

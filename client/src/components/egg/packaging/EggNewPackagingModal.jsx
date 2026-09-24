@@ -9,6 +9,7 @@ const EggNewPackagingModal = ({
     isSubmitting,
     onSubmit,
     onOpenCloseBatch,
+    onReopenPackaging,
     canClosePackaging
 }) => {
     if (!isOpen) return null;
@@ -69,17 +70,17 @@ const EggNewPackagingModal = ({
                             <option value="">Seleccione Lote Disponible...</option>
                             {batches.filter(b => {
                                 const allowed = ['pasteurizado', 'aprobado_calidad', 'empaquetado', 'bloqueado_haccp'];
-                                if (!allowed.includes(b.status)) return false;
-                                if (b.packaging_status === 'cerrado' && b.id !== parseInt(packagingForm.batch_id)) return false;
-                                const disp = parseFloat(b.yield_liquid_lbs || 0) - parseFloat(b.packaged_weight_lbs || 0);
-                                return disp > 0 || b.id === parseInt(packagingForm.batch_id);
+                                return allowed.includes(b.status);
                             }).map(b => {
                                 const packaged = parseFloat(b.packaged_weight_lbs || 0);
                                 const disp = Math.max(0, parseFloat(b.yield_liquid_lbs || 0) - packaged);
+                                const isClosed = b.packaging_status === 'cerrado';
                                 const isPartial = packaged > 0 && disp > 0;
-                                const labelPrefix = isPartial
-                                    ? `⚠️ [PARCIAL: Faltan ${disp.toFixed(0)} Lbs]`
-                                    : `🟢 [NUEVO: Disp ${disp.toFixed(0)} Lbs]`;
+                                const labelPrefix = isClosed
+                                    ? `🔒 [CERRADO: Efic ${b.packaging_efficiency_pct || 0}%]`
+                                    : isPartial
+                                        ? `⚠️ [PARCIAL: Faltan ${disp.toFixed(0)} Lbs]`
+                                        : `🟢 [NUEVO: Disp ${disp.toFixed(0)} Lbs]`;
                                 return (
                                     <option key={b.id} value={b.id} disabled={b.status === 'bloqueado_haccp'}>
                                          {labelPrefix} [{b.batch_code_display || b.batch_uuid}] {b.product_type} ({b.presentation}) - Env: {packaged.toFixed(0)} Lbs / Disp: {disp.toFixed(0)} Lbs{b.status === 'bloqueado_haccp' ? ' [BLOQUEADO HACCP]' : ''}
@@ -125,13 +126,24 @@ const EggNewPackagingModal = ({
                                         </div>
                                     </div>
 
-                                    {/* Banner y Botón de Cierre Técnico de Lote */}
+                                    {/* Banner y Botón de Cierre / Reapertura de Lote */}
                                     {b.packaging_status === 'cerrado' ? (
-                                        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-xs text-emerald-800 flex items-center justify-between">
+                                        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-xs text-emerald-800 flex flex-col sm:flex-row items-center justify-between gap-3">
                                             <span className="font-bold flex items-center gap-1.5">
                                                 <CheckCircle2 size={16} className="text-emerald-600" />
                                                 Lote Cerrado Técnicamente (Eficiencia: {b.packaging_efficiency_pct}%, Merma: {b.packaging_loss_lbs} Lbs)
                                             </span>
+                                            {onReopenPackaging && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => onReopenPackaging(b)}
+                                                    className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1 shrink-0"
+                                                    title="Volver a abrir el empaque para corregir o agregar nuevas unidades"
+                                                >
+                                                    <Lock size={13} />
+                                                    Reabrir Envasado
+                                                </button>
+                                            )}
                                         </div>
                                     ) : (
                                         <div className="bg-amber-50/70 border border-amber-200 rounded-xl p-3 text-xs text-amber-900 flex flex-col sm:flex-row items-center justify-between gap-3">
@@ -376,7 +388,10 @@ const EggNewPackagingModal = ({
                         </button>
                         <button
                             type="submit"
-                            disabled={isSubmitting || (packagingForm.batch_id && batches.find(b => b.id === parseInt(packagingForm.batch_id))?.status === 'bloqueado_haccp')}
+                            disabled={isSubmitting || (packagingForm.batch_id && (
+                                batches.find(b => b.id === parseInt(packagingForm.batch_id))?.status === 'bloqueado_haccp' ||
+                                batches.find(b => b.id === parseInt(packagingForm.batch_id))?.packaging_status === 'cerrado'
+                            ))}
                             className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm disabled:opacity-40"
                         >
                             {isSubmitting ? 'Guardando...' : 'Confirmar & Generar Lote'}

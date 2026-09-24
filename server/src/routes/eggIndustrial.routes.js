@@ -19,6 +19,7 @@ router.delete('/raw-materials/:id', eggController.deleteRawMaterial);
 router.get('/cip', eggController.getCipLogs);
 router.post('/cip', eggController.createCipLog);
 router.post('/cip/quick-sanitize', eggController.quickSanitizeCip);
+router.delete('/cip/:id', eggController.deleteCipLog);
 
 // 3. Lotes de Producción
 router.get('/batches', eggController.getProductionBatches);
@@ -30,6 +31,9 @@ router.get('/batches/:id/stages', eggController.getBatchStages);
 router.post('/batches/:id/tarimas', eggController.addTarimasToBatch);
 router.post('/batches/:id/add-tarimas', eggController.addTarimasToBatch);
 router.post('/batches/:id/close-packaging', eggController.closeBatchPackaging);
+router.post('/batches/:id/reopen-packaging', eggController.reopenBatchPackaging);
+router.post('/batches/:id/close-pasteurization', eggController.closePasteurization);
+router.post('/batches/:id/reopen-pasteurization', eggController.reopenPasteurization);
 router.get('/batches/:id/export-summary', eggController.exportBatchSummary);
 
 // 3.1 Mermas de Producción (Soporte dual /mermas y /wastes)

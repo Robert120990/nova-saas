@@ -670,6 +670,12 @@ const startBatchFromSchedule = async (req, res) => {
 
         const batch_uuid = require('crypto').randomUUID();
 
+        let batchCodeDisplay = sched.lot_code;
+        if (batchCodeDisplay && batchCodeDisplay.trim() !== '') {
+            const raw = batchCodeDisplay.trim();
+            batchCodeDisplay = /^LOTE\b/i.test(raw) ? raw.replace(/^LOTE\s*/i, 'LOTE ') : `LOTE ${raw}`;
+        }
+
         // Insertar en egg_production_batches
         const [batchResult] = await connection.query(
             `INSERT INTO egg_production_batches (
@@ -681,7 +687,7 @@ const startBatchFromSchedule = async (req, res) => {
                 company_id,
                 sched.branch_id || 1,
                 batch_uuid,
-                sched.lot_code,
+                batchCodeDisplay || sched.lot_code,
                 mappedType,
                 sched.presentation || 'cubeta 30LB',
                 sched.mix_formula_json ? JSON.stringify(sched.mix_formula_json) : JSON.stringify({}),
@@ -865,8 +871,9 @@ const getProductionSuggestions = async (req, res) => {
                 const boxesSaved = Math.round(formulatedYieldLbs / 36.1); // ~36.1 lbs líquido útil por caja
                 const moneySaved = boxesSaved * 38.00; // Ahorro neto en cajas de materia prima
 
-                // Fecha sugerida: próximo martes o jueves a las 06:00
-                const nextDate = new Date();
+                // Fecha sugerida: próximo martes o jueves a las 06:00 (nunca en el pasado)
+                const baseDate = req.query.start_date ? new Date(req.query.start_date + 'T00:00:00') : new Date();
+                const nextDate = new Date(baseDate);
                 nextDate.setDate(nextDate.getDate() + ((2 + 7 - nextDate.getDay()) % 7 || 7));
                 const recDateStr = nextDate.toISOString().split('T')[0];
 
@@ -924,7 +931,8 @@ const getProductionSuggestions = async (req, res) => {
         // -------------------------------------------------------------------------------------
         // SUGERENCIA 2: OPTIMIZACIÓN DE SECUENCIA DE LAVADOS CIP EN PLANTA
         // -------------------------------------------------------------------------------------
-        const nextWed = new Date();
+        const baseDateWed = req.query.start_date ? new Date(req.query.start_date + 'T00:00:00') : new Date();
+        const nextWed = new Date(baseDateWed);
         nextWed.setDate(nextWed.getDate() + ((3 + 7 - nextWed.getDay()) % 7 || 7));
         const wedStr = nextWed.toISOString().split('T')[0];
 
@@ -975,7 +983,11 @@ const getProductionSuggestions = async (req, res) => {
         const pendingCriticalOrders = orders.filter(o => o.status === 'pendiente');
         if (pendingCriticalOrders.length > 0) {
             const firstOrder = pendingCriticalOrders[0];
-            const orderDateStr = firstOrder.required_delivery_date ? new Date(firstOrder.required_delivery_date).toISOString().split('T')[0] : wedStr;
+            const todayStr = new Date().toISOString().split('T')[0];
+            let orderDateStr = firstOrder.required_delivery_date ? new Date(firstOrder.required_delivery_date).toISOString().split('T')[0] : wedStr;
+            if (orderDateStr < todayStr) {
+                orderDateStr = todayStr;
+            }
             const targetLbs = Math.max(3000, Math.ceil(parseFloat(firstOrder.quantity_lbs || 0)));
 
             suggestions.push({
@@ -1040,16 +1052,37 @@ const getMonthlyProductionSuggestions = async (req, res) => {
     try {
         const company_id = req.company_id || req.user?.company_id;
         const now = new Date();
+        const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
         const targetYear = parseInt(req.query.year) || now.getFullYear();
         const targetMonth = parseInt(req.query.month) || (now.getMonth() + 1); // 1-12
+        const daysInMonth = new Date(targetYear, targetMonth, 0).getDate();
 
-        // 1. Obtener pedidos de clientes
+        // Determinar rango de fechas exacto (evitando retroactivos pasados por defecto)
+        let startDateStr = req.query.start_date;
+        let endDateStr = req.query.end_date;
+
+        if (!startDateStr || !endDateStr) {
+            const isCurrentMonthAndYear = (targetYear === now.getFullYear() && targetMonth === (now.getMonth() + 1));
+            const startDay = isCurrentMonthAndYear ? now.getDate() : 1;
+            startDateStr = `${targetYear}-${String(targetMonth).padStart(2, '0')}-${String(startDay).padStart(2, '0')}`;
+            endDateStr = `${targetYear}-${String(targetMonth).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
+        }
+
+        const preventPast = req.query.prevent_past !== 'false';
+        if (preventPast && startDateStr < todayStr) {
+            startDateStr = todayStr;
+            if (endDateStr < startDateStr) {
+                endDateStr = startDateStr;
+            }
+        }
+
+        // 1. Obtener pedidos de clientes en el rango o pendientes
         const [orders] = await pool.query(
             `SELECT * FROM egg_customer_orders
              WHERE company_id = ? 
-               AND ((MONTH(required_delivery_date) = ? AND YEAR(required_delivery_date) = ?) OR status = 'pendiente')
+               AND ((required_delivery_date >= ? AND required_delivery_date <= ?) OR status = 'pendiente')
              ORDER BY required_delivery_date ASC`,
-            [company_id, targetMonth, targetYear]
+            [company_id, startDateStr, endDateStr]
         );
 
         // 2. Acuerdos comerciales mensuales
@@ -1083,13 +1116,13 @@ const getMonthlyProductionSuggestions = async (req, res) => {
         const availableStockLbs = parseFloat(rmRows[0]?.total_stock_lbs || 0);
         const availableStockBoxes = parseInt(rmRows[0]?.total_boxes || 0);
 
-        // 5. Producciones ya programadas en el mes
+        // 5. Producciones ya programadas en el rango
         const [existingSchedule] = await pool.query(
             `SELECT id, production_date, lot_code, product_profile, target_quantity_lbs, status
              FROM egg_scheduled_productions
-             WHERE company_id = ? AND MONTH(production_date) = ? AND YEAR(production_date) = ?
+             WHERE company_id = ? AND production_date >= ? AND production_date <= ?
                AND status != 'cancelado'`,
-            [company_id, targetMonth, targetYear]
+            [company_id, startDateStr, endDateStr]
         );
         const scheduledDatesSet = new Set(
             existingSchedule.map(p => new Date(p.production_date).toISOString().split('T')[0])
@@ -1140,21 +1173,34 @@ const getMonthlyProductionSuggestions = async (req, res) => {
             demandFormulado = targetMonthlyVolumeLbs * 0.15;
         }
 
-        // Calcular días del mes y generar corridas distribuidas (Lunes, Miércoles, Viernes)
-        const daysInMonth = new Date(targetYear, targetMonth, 0).getDate();
         const monthlyRuns = [];
         let totalProjectedLbs = 0;
         let totalBoxesNeeded = 0;
         let totalCoproductSavingsUsd = 0;
 
-        // Distribución inteligente por semanas
-        for (let day = 1; day <= daysInMonth; day++) {
-            const dateObj = new Date(targetYear, targetMonth - 1, day);
-            const dayOfWeek = dateObj.getDay(); // 0: Dom, 1: Lun, 2: Mar, 3: Mié, 4: Jue, 5: Vie, 6: Sáb
-            const dateStr = `${targetYear}-${String(targetMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        // Iterar dentro del rango seleccionado [startDateStr, endDateStr]
+        const [sYear, sMonth, sDay] = startDateStr.split('-').map(Number);
+        const [eYear, eMonth, eDay] = endDateStr.split('-').map(Number);
+        const startD = new Date(sYear, sMonth - 1, sDay);
+        const endD = new Date(eYear, eMonth - 1, eDay);
 
-            // Programar corridas operativas en Lunes (1), Miércoles (3) y Viernes (5)
-            if (dayOfWeek === 1 || dayOfWeek === 3 || dayOfWeek === 5) {
+        const totalDaysDiff = Math.round((endD.getTime() - startD.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+        const allowAllWeekdays = totalDaysDiff <= 5;
+
+        const currDate = new Date(startD);
+        while (currDate <= endD) {
+            const dayOfWeek = currDate.getDay(); // 0: Dom, 1: Lun, 2: Mar, 3: Mié, 4: Jue, 5: Vie, 6: Sáb
+            const yStr = currDate.getFullYear();
+            const mStr = String(currDate.getMonth() + 1).padStart(2, '0');
+            const dStr = String(currDate.getDate()).padStart(2, '0');
+            const dateStr = `${yStr}-${mStr}-${dStr}`;
+
+            // Programar corridas operativas en Lunes (1), Miércoles (3) y Viernes (5), o en cualquier día hábil si el rango es corto
+            const shouldSchedule = allowAllWeekdays
+                ? (dayOfWeek >= 1 && dayOfWeek <= 5)
+                : (dayOfWeek === 1 || dayOfWeek === 3 || dayOfWeek === 5);
+
+            if (shouldSchedule) {
                 let profile = 'Huevo Entero Pasteurizado';
                 let targetLbs = 12000;
                 let targetSolids = 23.5;
@@ -1248,11 +1294,29 @@ const getMonthlyProductionSuggestions = async (req, res) => {
                     ]
                 });
             }
+
+            currDate.setDate(currDate.getDate() + 1);
         }
 
         res.json({
             month: targetMonth,
             year: targetYear,
+            date_range: {
+                start_date: startDateStr,
+                end_date: endDateStr,
+                prevent_past: preventPast
+            },
+            summary: {
+                target_month: targetMonth,
+                target_year: targetYear,
+                total_runs_suggested: monthlyRuns.length,
+                total_projected_lbs: Math.round(totalProjectedLbs),
+                total_egg_boxes_needed: totalBoxesNeeded,
+                coproduct_savings_usd: Math.round(totalCoproductSavingsUsd),
+                available_stock_boxes: availableStockBoxes,
+                available_stock_lbs: Math.round(availableStockLbs),
+                coverage_status: availableStockBoxes >= totalBoxesNeeded ? 'Stock Suficiente' : 'Requiere Compra de MP'
+            },
             kpis: {
                 total_projected_lbs: totalProjectedLbs,
                 total_boxes_needed: totalBoxesNeeded,

@@ -425,6 +425,7 @@ export const SPECIAL_PERM_KEYS = new Set([
     'ai_assistant_access',
     'apply_item_discount',
     'apply_general_discount',
+    'manage_egg_production_lots',
 ]);
 
 export const SPECIAL_PERM_LABELS = {
@@ -438,6 +439,7 @@ export const SPECIAL_PERM_LABELS = {
     ai_assistant_access: 'Acceso a Asistente Novas AI',
     apply_item_discount: 'Aplicar Descuentos por Ítem en POS',
     apply_general_discount: 'Aplicar Descuento General en POS',
+    manage_egg_production_lots: 'Editar Lotes y Cierre Pasteurización',
 };
 
 export function isSpecialItem(item, key) {
@@ -609,7 +611,8 @@ export function useMenuPermissions() {
                 { id: 'delete_egg_reception', label: 'Eliminar Recepción de Materia Prima', isReport: false, isSpecial: true, sort_order: 102 },
                 { id: 'edit_egg_production', label: 'Editar Lote de Producción', isReport: false, isSpecial: true, sort_order: 103 },
                 { id: 'delete_egg_production', label: 'Eliminar Lote de Producción', isReport: false, isSpecial: true, sort_order: 104 },
-                { id: 'manage_egg_packaging_close', label: 'Cierre Técnico de Envasado', isReport: false, isSpecial: true, sort_order: 105 }
+                { id: 'manage_egg_packaging_close', label: 'Cierre Técnico de Envasado', isReport: false, isSpecial: true, sort_order: 105 },
+                { id: 'manage_egg_production_lots', label: 'Editar Lotes y Cierre Pasteurización', isReport: false, isSpecial: true, sort_order: 106 }
             ];
 
             extraIndustrialPerms.forEach(item => {

@@ -35,6 +35,15 @@ import EggAddTarimasModal from '../../components/egg/EggAddTarimasModal';
 import EggTarimaSearchModal from '../../components/egg/EggTarimaSearchModal';
 import EggRemanenteModal from '../../components/egg/EggRemanenteModal';
 import EggBatchWastesModal from '../../components/egg/EggBatchWastesModal';
+import EggClosePasteurizationModal from '../../components/egg/EggClosePasteurizationModal';
+import { formatDate, formatDateTime } from '../../utils/dateUtils';
+import { getJulianDayInfo } from '../../utils/julianDate';
+
+const getNowDateTimeLocal = () => {
+    const now = new Date();
+    now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+    return now.toISOString().slice(0, 16);
+};
 
 const EggProduction = () => {
     const { user } = useAuth();
@@ -93,6 +102,8 @@ const EggProduction = () => {
         duration_minutes: '45',
         operator_name: user?.nombre || '',
         validation_status: 'completado',
+        created_at: getNowDateTimeLocal(),
+        batch_id: '',
         notes: ''
     });
 
@@ -126,9 +137,17 @@ const EggProduction = () => {
     const isAdmin = user?.role === 'SuperAdmin' || user?.role === 'Admin' || user?.role_id <= 2;
     const canEditProduction = isAdmin || userPermissions.includes('edit_egg_production');
     const canDeleteProduction = isAdmin || userPermissions.includes('delete_egg_production');
+    const canManageLots = isAdmin || userPermissions.includes('manage_egg_production_lots');
 
     // Modals for Stages, Wastes, Remanentes, Edit & Delete
     const [stagesModal, setStagesModal] = useState({ isOpen: false, batch: null, data: null, loading: false });
+    const [closePasteurizationModal, setClosePasteurizationModal] = useState({
+        isOpen: false,
+        batch: null,
+        pasteurization_lot: '',
+        notes: '',
+        isSubmitting: false
+    });
     const [scannerContext, setScannerContext] = useState('new_batch'); // 'new_batch' | 'add_tarimas'
     const [editingBatch, setEditingBatch] = useState(null);
     const [addTarimasModal, setAddTarimasModal] = useState({
@@ -183,6 +202,81 @@ const EggProduction = () => {
             console.error('Error fetching stages:', err);
             toast.error('No se pudieron cargar las etapas del lote.');
             setStagesModal(prev => ({ ...prev, loading: false }));
+        }
+    };
+
+    const handleOpenClosePasteurization = (batch) => {
+        if (!batch) return;
+        setClosePasteurizationModal({
+            isOpen: true,
+            batch,
+            pasteurization_lot: batch.pasteurization_lot || (batch.batch_code_display ? `PAST-${batch.batch_code_display}` : `PAST-${batch.id}`),
+            notes: '',
+            isSubmitting: false
+        });
+    };
+
+    const handleConfirmClosePasteurization = async (e) => {
+        if (e && e.preventDefault) e.preventDefault();
+        const { batch, pasteurization_lot, notes } = closePasteurizationModal;
+        if (!batch) return;
+        if (!pasteurization_lot?.trim()) {
+            return toast.error('Debe ingresar un identificador o lote de pasteurización.');
+        }
+
+        setClosePasteurizationModal(prev => ({ ...prev, isSubmitting: true }));
+        try {
+            const res = await axios.post(`/api/egg-industrial/batches/${batch.id}/close-pasteurization`, {
+                pasteurization_lot: pasteurization_lot.trim(),
+                notes: notes?.trim() || null
+            });
+            toast.success(res.data?.message || 'Pasteurización cerrada exitosamente.');
+            setClosePasteurizationModal(prev => ({ ...prev, isOpen: false, isSubmitting: false, batch: null }));
+            fetchData();
+            if (stagesModal.isOpen && stagesModal.batch?.id === batch.id) {
+                handleOpenStagesModal(batch);
+            }
+        } catch (err) {
+            console.error('Error cerrando pasteurización:', err);
+            toast.error(err.response?.data?.message || 'Error al cerrar pasteurización.');
+            setClosePasteurizationModal(prev => ({ ...prev, isSubmitting: false }));
+        }
+    };
+
+    const handleReopenPasteurization = async (batch) => {
+        if (!batch) return;
+        if (!window.confirm(`¿Confirmas que deseas reabrir la pasteurización del lote ${batch.batch_code_display || batch.id}? Esto permitirá volver a modificar parámetros térmicos y agregar tarimas.`)) {
+            return;
+        }
+
+        try {
+            const res = await axios.post(`/api/egg-industrial/batches/${batch.id}/reopen-pasteurization`);
+            toast.success(res.data?.message || 'Pasteurización reabierta con éxito.');
+            fetchData();
+            if (stagesModal.isOpen && stagesModal.batch?.id === batch.id) {
+                handleOpenStagesModal(batch);
+            }
+        } catch (err) {
+            console.error('Error reabriendo pasteurización:', err);
+            toast.error(err.response?.data?.message || 'Error al reabrir pasteurización.');
+        }
+    };
+
+    const handleReopenBatchPackaging = async (batchId) => {
+        if (!window.confirm('¿Confirmas que deseas volver a abrir el empaque para este lote? Se revertirá el cierre técnico y se habilitará nuevamente el envasado.')) {
+            return;
+        }
+
+        try {
+            const res = await axios.post(`/api/egg-industrial/batches/${batchId}/reopen-packaging`);
+            toast.success(res.data?.message || 'Empaque reabierto con éxito.');
+            fetchData();
+            if (stagesModal.isOpen && stagesModal.batch?.id === batchId) {
+                handleOpenStagesModal({ id: batchId });
+            }
+        } catch (err) {
+            console.error('Error al reabrir empaque:', err);
+            toast.error(err.response?.data?.message || 'Error al reabrir empaque.');
         }
     };
 
@@ -377,7 +471,8 @@ const EggProduction = () => {
 
         let runNum = batch.run_number || 1;
         if (batch.batch_code_display) {
-            const match = batch.batch_code_display.match(/^(\d+)/);
+            const cleanCode = batch.batch_code_display.toUpperCase().replace(/^LOTE\s*/i, '').trim();
+            const match = cleanCode.match(/^(\d+)/);
             if (match) runNum = parseInt(match[1], 10);
         }
 
@@ -391,6 +486,8 @@ const EggProduction = () => {
             presentation: presStr,
             presentations: presList.length > 0 ? presList : ['cubeta 30LB'],
             run_number: runNum,
+            batch_code_display: batch.batch_code_display || '',
+            pasteurization_lot: batch.pasteurization_lot || '',
             scheduled_production_id: batch.scheduled_production_id || null,
             raw_materials: mappedRms.length > 0 ? mappedRms : [{ raw_material_id: '', quantity_lbs: '', boxes_count: '', tarimas: [] }],
             remanente_ids: assignedRemIds,
@@ -1319,7 +1416,9 @@ const EggProduction = () => {
                     notes: batchForm.notes,
                     raw_materials: batchForm.raw_materials,
                     remanente_ids: batchForm.remanente_ids || [],
-                    ingredients: batchForm.ingredients
+                    ingredients: batchForm.ingredients,
+                    batch_code_display: canManageLots ? batchForm.batch_code_display : undefined,
+                    pasteurization_lot: canManageLots ? batchForm.pasteurization_lot : undefined
                 });
                 toast.success(res.data?.message || 'Lote de producción actualizado exitosamente.');
                 setEditingBatch(null);
@@ -1406,7 +1505,9 @@ const EggProduction = () => {
             await axios.post('/api/egg-industrial/cip', {
                 ...cipForm,
                 temperature_c: parseFloat(cipForm.temperature_c),
-                duration_minutes: parseInt(cipForm.duration_minutes)
+                duration_minutes: parseInt(cipForm.duration_minutes),
+                batch_id: cipForm.batch_id ? parseInt(cipForm.batch_id, 10) : null,
+                created_at: cipForm.created_at || null
             });
             toast.success('Registro de sanitización CIP guardado.');
             setCipForm({
@@ -1416,6 +1517,8 @@ const EggProduction = () => {
                 duration_minutes: '45',
                 operator_name: user?.nombre || '',
                 validation_status: 'completado',
+                created_at: getNowDateTimeLocal(),
+                batch_id: '',
                 notes: ''
             });
             fetchData();
@@ -1425,6 +1528,22 @@ const EggProduction = () => {
             toast.error('Error al guardar registro CIP.');
         } finally {
             setIsSubmitting(false);
+        }
+    };
+
+    // Handle CIP log deletion
+    const handleDeleteCip = async (id) => {
+        if (!window.confirm('¿Está seguro de eliminar este registro de sanitización CIP?')) {
+            return;
+        }
+
+        try {
+            await axios.delete(`/api/egg-industrial/cip/${id}`);
+            toast.success('Registro de sanitización CIP eliminado.');
+            fetchData();
+        } catch (error) {
+            console.error('Error deleting CIP log:', error);
+            toast.error(error.response?.data?.message || 'Error al eliminar el registro CIP.');
         }
     };
 
@@ -1568,22 +1687,25 @@ const EggProduction = () => {
                     <button
                         onClick={() => {
                             setEditingBatch(null);
-                            const today = new Date();
-                            const startOfYear = new Date(today.getFullYear(), 0, 0);
-                            const diff = today - startOfYear;
-                            const dayOfYear = Math.floor(diff / (1000 * 60 * 60 * 24));
+                            const dayInfo = getJulianDayInfo();
                             const todayBatches = (Array.isArray(batches) ? batches : []).filter(b => {
                                 if (!b.batch_code_display) return false;
-                                const parts = b.batch_code_display.split('-').map(s => s.trim());
-                                return parts.length === 3 && parseInt(parts[1], 10) === dayOfYear;
+                                const parts = b.batch_code_display.toUpperCase().replace(/^LOTE\s*/i, '').split('-').map(s => s.trim());
+                                return parts.length === 3 && parseInt(parts[1], 10) === dayInfo.dayOfYear;
                             });
-                            const nextRun = todayBatches.length > 0 ? Math.max(...todayBatches.map(b => parseInt(b.run_number, 10) || 1)) + 1 : 1;
+                            const nextRun = todayBatches.length > 0
+                                ? Math.max(...todayBatches.map(b => {
+                                    const parts = (b.batch_code_display || '').toUpperCase().replace(/^LOTE\s*/i, '').split('-').map(s => s.trim());
+                                    return parseInt(b.run_number, 10) || parseInt(parts[0], 10) || 1;
+                                })) + 1
+                                : 1;
 
                             setBatchForm({
                                 product_type: 'huevo entero',
                                 presentation: 'cubeta 30LB',
                                 presentations: ['cubeta 30LB'],
                                 run_number: nextRun,
+                                batch_code_display: `LOTE ${String(nextRun).padStart(2, '0')}-${dayInfo.dayOfYearStr}-${dayInfo.year2Digit}`,
                                 scheduled_production_id: null,
                                 raw_materials: [],
                                 remanente_ids: [],
@@ -1670,6 +1792,16 @@ const EggProduction = () => {
                                                     {b.batch_code_display ? (
                                                         <span className="bg-indigo-50 border border-indigo-200 text-indigo-700 font-mono text-[11px] font-bold px-2 py-0.5 rounded-lg w-fit">
                                                             {b.batch_code_display}
+                                                        </span>
+                                                    ) : null}
+                                                    {b.pasteurization_status === 'cerrado' ? (
+                                                        <span className="bg-emerald-50 border border-emerald-200 text-emerald-700 font-mono text-[9px] font-bold px-1.5 py-0.5 rounded-md w-fit flex items-center gap-1" title={`Pasteurización Cerrada: ${b.pasteurization_lot || ''}`}>
+                                                            <Lock size={10} />
+                                                            Past: {b.pasteurization_lot || 'Cerrado'}
+                                                        </span>
+                                                    ) : b.pasteurization_lot ? (
+                                                        <span className="bg-amber-50 border border-amber-200 text-amber-700 font-mono text-[9px] font-bold px-1.5 py-0.5 rounded-md w-fit flex items-center gap-1">
+                                                            Past: {b.pasteurization_lot}
                                                         </span>
                                                     ) : null}
                                                     <div className="flex items-center gap-1">
@@ -1841,6 +1973,31 @@ const EggProduction = () => {
                                                         </button>
                                                     )}
 
+                                                    {/* Cerrar / Reabrir Pasteurización */}
+                                                    {b.pasteurization_status === 'cerrado' ? (
+                                                        canManageLots && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleReopenPasteurization(b)}
+                                                                className="px-2 py-1 bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-800 rounded-lg text-[10px] font-bold transition-all shadow-xs flex items-center gap-1"
+                                                                title="Reabrir Pasteurización (Permite volver a agregar tarimas o ajustar registros)"
+                                                            >
+                                                                <Lock size={11} className="text-amber-600" />
+                                                                Reabrir Past.
+                                                            </button>
+                                                        )
+                                                    ) : (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleOpenClosePasteurization(b)}
+                                                            className="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-800 rounded-lg text-[10px] font-bold transition-all shadow-xs flex items-center gap-1"
+                                                            title="Cerrar Pasteurización y Fijar Lote Térmico Oficial"
+                                                        >
+                                                            <Lock size={11} className="text-emerald-600" />
+                                                            Cerrar Past.
+                                                        </button>
+                                                    )}
+
                                                     {/* Editar Lote (Abre la pantalla completa de producción) */}
                                                     {canEditProduction && (
                                                         <button
@@ -1896,6 +2053,39 @@ const EggProduction = () => {
                         </div>
 
                         <form onSubmit={handleCreateCip} className="space-y-4">
+                            <div>
+                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5 flex items-center gap-1.5">
+                                    <Calendar className="h-3.5 w-3.5 text-indigo-500" />
+                                    Fecha y Hora de Sanitización
+                                </label>
+                                <input
+                                    type="datetime-local"
+                                    value={cipForm.created_at}
+                                    onChange={(e) => setCipForm({ ...cipForm, created_at: e.target.value })}
+                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                                    required
+                                />
+                            </div>
+
+                            <div>
+                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5 flex items-center gap-1.5">
+                                    <Layers className="h-3.5 w-3.5 text-indigo-500" />
+                                    Vincular a Lote de Producción (Opcional)
+                                </label>
+                                <select
+                                    value={cipForm.batch_id}
+                                    onChange={(e) => setCipForm({ ...cipForm, batch_id: e.target.value })}
+                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                                >
+                                    <option value="">General / Pre-operacional (Sin lote vinculado)</option>
+                                    {(Array.isArray(batches) ? batches : []).map(b => (
+                                        <option key={b.id} value={b.id}>
+                                            {b.batch_code_display || b.batch_uuid} - {b.product_type} ({formatDate(b.started_at)})
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+
                             <div>
                                 <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">Equipo Sanitizado</label>
                                 <select
@@ -1994,14 +2184,19 @@ const EggProduction = () => {
                             {(Array.isArray(cipLogs) ? cipLogs : []).length === 0 ? (
                                 <p className="text-xs text-slate-500 text-center py-6">No hay registros de limpieza disponibles.</p>
                             ) : (Array.isArray(cipLogs) ? cipLogs : []).map(log => (
-                                <div key={log.id} className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col md:flex-row justify-between gap-4">
+                                <div key={log.id} className="bg-slate-50 hover:bg-slate-100/70 transition-colors border border-slate-200 rounded-xl p-4 flex flex-col md:flex-row justify-between gap-4">
                                     <div className="space-y-1.5">
-                                        <div className="flex items-center gap-2">
+                                        <div className="flex flex-wrap items-center gap-2">
                                             <span className="text-xs font-bold text-slate-900 capitalize">{log.equipment_name}</span>
                                             <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${log.validation_status === 'completado' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'
                                                 }`}>
                                                 {log.validation_status}
                                             </span>
+                                            {log.batch_id && (
+                                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                                    Lote: {log.batch_code_display || log.batch_uuid || `#${log.batch_id}`}
+                                                </span>
+                                            )}
                                         </div>
                                         <p className="text-xs text-slate-600 font-medium">{log.notes || 'Sin anotaciones adicionales.'}</p>
                                         <div className="flex flex-wrap gap-4 text-[11px] text-slate-500">
@@ -2010,9 +2205,19 @@ const EggProduction = () => {
                                         </div>
                                     </div>
 
-                                    <div className="flex md:flex-col justify-between items-end text-right">
-                                        <span className="text-[11px] text-slate-500 font-medium">{new Date(log.created_at).toLocaleString()}</span>
-                                        <div className="flex gap-2 text-xs mt-2">
+                                    <div className="flex md:flex-col justify-between items-end text-right gap-2">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-[11px] text-slate-500 font-medium">{formatDateTime(log.created_at)}</span>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleDeleteCip(log.id)}
+                                                className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors border border-transparent hover:border-rose-100"
+                                                title="Eliminar este registro de sanitización CIP"
+                                            >
+                                                <Trash2 className="h-4 w-4" />
+                                            </button>
+                                        </div>
+                                        <div className="flex gap-2 text-xs mt-1">
                                             <div className="text-center bg-white border border-slate-200 px-2.5 py-1 rounded-lg">
                                                 <span className="text-[8px] font-bold block text-slate-400 uppercase">Temp</span>
                                                 <span className="text-xs font-bold text-slate-800">{log.temperature_c}°C</span>
@@ -2153,6 +2358,59 @@ const EggProduction = () => {
                                 )}
                             </div>
 
+                            {/* Identificadores de Lote (Solo edición con permiso especial) */}
+                            {editingBatch && (
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-indigo-50/60 border border-indigo-200 rounded-2xl p-4">
+                                    <div>
+                                        <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wide flex items-center justify-between mb-1.5">
+                                            <span>Código de Lote de Producción</span>
+                                            {canManageLots ? (
+                                                <span className="text-[10px] text-indigo-700 font-bold bg-indigo-100 px-2 py-0.5 rounded-md">Edición Habilitada</span>
+                                            ) : (
+                                                <span className="text-[10px] text-slate-500 font-medium flex items-center gap-1"><Lock size={10} /> Solo Lectura</span>
+                                            )}
+                                        </label>
+                                        <input
+                                            type="text"
+                                            disabled={!canManageLots}
+                                            value={batchForm.batch_code_display || ''}
+                                            onChange={(e) => setBatchForm({ ...batchForm, batch_code_display: e.target.value })}
+                                            className={`w-full px-3 py-2 border rounded-xl text-xs font-mono font-bold focus:outline-none ${
+                                                canManageLots
+                                                    ? 'bg-white border-indigo-300 text-slate-900 focus:ring-2 focus:ring-indigo-500/20'
+                                                    : 'bg-slate-100 border-slate-200 text-slate-500 cursor-not-allowed'
+                                            }`}
+                                            placeholder="Ej: LOTE 01-265-26"
+                                        />
+                                        <span className="text-[10px] text-slate-500 block mt-1">Identificador visible de la orden de producción.</span>
+                                    </div>
+
+                                    <div>
+                                        <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wide flex items-center justify-between mb-1.5">
+                                            <span>Lote de Pasteurización</span>
+                                            {canManageLots ? (
+                                                <span className="text-[10px] text-amber-700 font-bold bg-amber-100 px-2 py-0.5 rounded-md">Edición Habilitada</span>
+                                            ) : (
+                                                <span className="text-[10px] text-slate-500 font-medium flex items-center gap-1"><Lock size={10} /> Solo Lectura</span>
+                                            )}
+                                        </label>
+                                        <input
+                                            type="text"
+                                            disabled={!canManageLots}
+                                            value={batchForm.pasteurization_lot || ''}
+                                            onChange={(e) => setBatchForm({ ...batchForm, pasteurization_lot: e.target.value })}
+                                            className={`w-full px-3 py-2 border rounded-xl text-xs font-mono font-bold focus:outline-none ${
+                                                canManageLots
+                                                    ? 'bg-white border-amber-300 text-slate-900 focus:ring-2 focus:ring-amber-500/20'
+                                                    : 'bg-slate-100 border-slate-200 text-slate-500 cursor-not-allowed'
+                                            }`}
+                                            placeholder="Ej: PAST-084-01"
+                                        />
+                                        <span className="text-[10px] text-slate-500 block mt-1">Identificador térmico registrado en el pasteurizador.</span>
+                                    </div>
+                                </div>
+                            )}
+
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                 <div>
                                     <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">Corrida del Día</label>
@@ -2161,11 +2419,25 @@ const EggProduction = () => {
                                         min="1"
                                         max="99"
                                         value={batchForm.run_number}
-                                        onChange={(e) => setBatchForm({ ...batchForm, run_number: e.target.value })}
+                                        onChange={(e) => {
+                                            const newRun = e.target.value;
+                                            const dayInfo = getJulianDayInfo();
+                                            const runStr = String(newRun || 1).padStart(2, '0');
+                                            const autoCode = `LOTE ${runStr}-${dayInfo.dayOfYearStr}-${dayInfo.year2Digit}`;
+                                            setBatchForm(prev => ({
+                                                ...prev,
+                                                run_number: newRun,
+                                                batch_code_display: (!prev.batch_code_display || prev.batch_code_display.startsWith('LOTE'))
+                                                    ? autoCode
+                                                    : prev.batch_code_display
+                                            }));
+                                        }}
                                         className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                                         placeholder="Ej: 1"
                                     />
-                                    <span className="text-[10px] text-indigo-600 font-medium block mt-1">Lote juliano: {String(batchForm.run_number || 1).padStart(2, '0')} - [Día] - 26</span>
+                                    <span className="text-[10px] text-indigo-600 font-medium block mt-1">
+                                        Formato oficial: LOTE {String(batchForm.run_number || 1).padStart(2, '0')}-{getJulianDayInfo().dayOfYearStr}-{getJulianDayInfo().year2Digit}
+                                    </span>
                                 </div>
 
                                 <div>
@@ -3227,6 +3499,10 @@ const EggProduction = () => {
                 isOpen={stagesModal.isOpen}
                 onClose={() => setStagesModal({ isOpen: false, batch: null, data: null, loading: false })}
                 stagesModal={stagesModal}
+                canManageLots={canManageLots}
+                onClosePasteurization={(batch) => handleOpenClosePasteurization(batch)}
+                onReopenPasteurization={(batch) => handleReopenPasteurization(batch)}
+                onReopenPackaging={(batch) => handleReopenBatchPackaging(batch?.id || batch)}
                 onOpenAddTarimas={(batch) => setAddTarimasModal({
                     isOpen: true,
                     batch: batch,
@@ -3263,6 +3539,19 @@ const EggProduction = () => {
                 handleDeleteWaste={(wasteId) => handleDeleteWaste(wasteId)}
                 onDeleteWaste={(wasteId) => handleDeleteWaste(wasteId)}
                 onExportSummary={(batchId, format) => handleExportSummary(batchId, format)}
+            />
+
+            {/* MODAL CERRAR PASTEURIZACIÓN */}
+            <EggClosePasteurizationModal
+                isOpen={closePasteurizationModal.isOpen}
+                onClose={() => setClosePasteurizationModal(prev => ({ ...prev, isOpen: false, batch: null }))}
+                batch={closePasteurizationModal.batch}
+                pasteurizationLot={closePasteurizationModal.pasteurization_lot}
+                onPasteurizationLotChange={(val) => setClosePasteurizationModal(prev => ({ ...prev, pasteurization_lot: val }))}
+                notes={closePasteurizationModal.notes}
+                onNotesChange={(val) => setClosePasteurizationModal(prev => ({ ...prev, notes: val }))}
+                onSubmit={handleConfirmClosePasteurization}
+                isSubmitting={closePasteurizationModal.isSubmitting}
             />
 
             {/* MODAL AGREGAR MÁS TARIMAS AL QUEBRAJE */}
