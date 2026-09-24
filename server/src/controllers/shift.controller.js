@@ -141,10 +141,11 @@ const openShift = async (req, res) => {
         }
 
         // Insertar responsable + vendedores adicionales en pos_shift_sellers
-        const sellerIds = [seller_id];
+        const sellerIds = [Number(seller_id)];
         if (assigned_sellers && Array.isArray(assigned_sellers)) {
             for (const sid of assigned_sellers) {
-                const id = Number(sid);
+                const rawId = typeof sid === 'object' && sid !== null ? (sid.seller_id || sid.id) : sid;
+                const id = Number(rawId);
                 if (id && !sellerIds.includes(id)) {
                     sellerIds.push(id);
                 }
@@ -1027,7 +1028,8 @@ const updateShiftSellers = async (req, res) => {
         const allIds = [shift[0].seller_id];
         if (seller_ids && Array.isArray(seller_ids)) {
             for (const sid of seller_ids) {
-                const num = Number(sid);
+                const rawId = typeof sid === 'object' && sid !== null ? (sid.seller_id || sid.id) : sid;
+                const num = Number(rawId);
                 if (num && !allIds.includes(num)) {
                     allIds.push(num);
                 }

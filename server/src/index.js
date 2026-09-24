@@ -125,6 +125,8 @@ const { startWorker } = require('./services/notificationWorker');
 const { startBot: startTelegramBot } = require('./services/telegram.service');
 const { startSuspiciousSalesDetector } = require('./services/suspiciousSalesDetector');
 const { startRrsAutoSyncCron } = require('./services/rrsVentasTiendaAutoSync.service');
+const { preloadHaciendaCatalogs } = require('./services/catalogCache.service');
+const { mailQueue } = require('./queue');
 
 // Evitar que un error no capturado (unhandledRejection) tumbe el servidor
 // a mitad de una respuesta: se registra la causa y el proceso sigue vivo.
@@ -134,6 +136,19 @@ process.on('unhandledRejection', (reason) => {
 process.on('uncaughtException', (err) => {
     logger.error({ err }, 'Uncaught Exception (no tumba el server)');
 });
+
+const gracefulShutdown = async () => {
+    logger.info('Iniciando cierre ordenado del servidor...');
+    try {
+        await mailQueue.close();
+    } catch (e) {
+        logger.error({ err: e.message }, 'Error cerrando mailQueue');
+    }
+    process.exit(0);
+};
+
+process.on('SIGTERM', gracefulShutdown);
+process.on('SIGINT', gracefulShutdown);
 
 const PORT = process.env.PORT || 4000;
 const server = http.createServer(app);
@@ -149,4 +164,5 @@ server.listen(PORT, () => {
     startTelegramBot();
     startSuspiciousSalesDetector();
     startRrsAutoSyncCron();
+    preloadHaciendaCatalogs();
 });

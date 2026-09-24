@@ -551,15 +551,11 @@ const createSale = async (req, res) => {
 
         await connection.commit();
 
-        // 7. Enviar correo de notificación (async, después del commit)
+        // 7. Enviar correo de notificación en background vía cola BullMQ (después del commit)
         if (dteInfo.codigo_generacion && dteResult && dteResult.success) {
-            (async () => {
-                try {
-                    await mailerService.sendDTEEmail(saleId, req.company_id);
-                } catch (err) {
-                    console.error(`[PostSaleProcess] Error al enviar correo para venta ${saleId}:`, err.message);
-                }
-            })();
+            mailerService.queueDTEEmail(saleId, req.company_id).catch(err => {
+                console.error(`[PostSaleProcess] Error encolando correo para venta ${saleId}:`, err.message);
+            });
         }
 
         notificationService.notify('sale_created', req.company_id, req.user.branch_id, {
@@ -1027,8 +1023,8 @@ const voidSale = async (req, res) => {
 
         // 6. Notificación por Correo (Asíncrona, no bloquea la respuesta)
         if (sale.dte_active && sale.codigo_generacion) {
-            mailerService.sendInvalidatedDTEEmail(id, req.company_id).catch(err => {
-                console.error('[VoidSale] Error al enviar correo de invalidación:', err);
+            mailerService.queueInvalidatedDTEEmail(id, req.company_id).catch(err => {
+                console.error('[VoidSale] Error al encolar correo de invalidación:', err.message);
             });
         }
 
@@ -1221,7 +1217,7 @@ const updateSaleCustomer = async (req, res) => {
                         'UPDATE dtes SET status = "ACCEPTED", respuesta_hacienda = NULL, sello_recepcion = ?, fh_procesamiento = ? WHERE codigo_generacion = ?',
                         [retransmitResult.data.sello_recepcion, retransmitResult.data.fh_procesamiento, uSale.codigo_generacion]
                     );
-                    mailerService.sendDTEEmail(id, req.company_id).catch(() => {});
+                    mailerService.queueDTEEmail(id, req.company_id).catch(() => {});
                 }
             }
         }

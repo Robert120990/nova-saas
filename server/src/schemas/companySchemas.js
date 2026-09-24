@@ -4,8 +4,7 @@
  */
 const { z } = require('zod');
 
-// Helper to sanitize/trim strings or convert empty string to null
-const emptyToNull = z.string().trim().transform(val => (val === '' ? null : val));
+const { emptyToNull, requiredString } = require('./schemaHelpers');
 
 // Email regex pattern
 const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
@@ -66,10 +65,12 @@ const companyUpdateSchema = z.object(companyBaseShape).partial().passthrough().s
 // 2. SUCURSALES / ESTABLECIMIENTOS (Branches)
 // ==========================================
 const branchCreateSchema = z.object({
-    codigo: z.string({ error: 'El código de la sucursal es obligatorio' })
-        .trim()
-        .min(1, 'El código de la sucursal no puede estar vacío')
-        .max(20, 'El código no puede exceder 20 caracteres'),
+    codigo: z.preprocess(
+        val => (val === undefined || val === null ? '' : String(val).trim()),
+        z.string({ error: 'El código de la sucursal es obligatorio' })
+            .min(1, 'El código de la sucursal no puede estar vacío')
+            .max(20, 'El código no puede exceder 20 caracteres')
+    ),
     nombre: z.string({ error: 'El nombre de la sucursal es obligatorio' })
         .trim()
         .min(1, 'El nombre de la sucursal no puede estar vacío')
@@ -93,7 +94,10 @@ const branchCreateSchema = z.object({
 }).passthrough();
 
 const branchUpdateSchema = z.object({
-    codigo: z.string().trim().min(1, 'El código no puede estar vacío').max(20).optional(),
+    codigo: z.preprocess(
+        val => (val === undefined || val === null ? undefined : String(val).trim()),
+        z.string().min(1, 'El código no puede estar vacío').max(20).optional()
+    ),
     nombre: z.string().trim().min(1, 'El nombre no puede estar vacío').max(150).optional(),
     tipo_establecimiento: emptyToNull.nullable().optional(),
     direccion: emptyToNull.nullable().optional(),

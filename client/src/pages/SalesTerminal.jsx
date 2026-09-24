@@ -1038,6 +1038,10 @@ const SalesTerminal = () => {
                 e.preventDefault();
                 setIsProductModalOpen(false);
             }
+            if (e.key === 'Escape' && isFuelModalOpen) {
+                e.preventDefault();
+                setIsFuelModalOpen(false);
+            }
             if (e.key === 'Escape' && isAuthModalOpen) {
                 navigate('/dashboard');
             }
@@ -1067,18 +1071,35 @@ const SalesTerminal = () => {
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [cart.length, isAuthModalOpen, isSuccessModalOpen, tipoDte, navigate, activeView, saleResult, linkedDocs.length, posAllowsDiscounts, canApplyGeneralDiscount, hasItemDiscounts]);
+    }, [cart.length, isAuthModalOpen, isSuccessModalOpen, isFuelModalOpen, tipoDte, navigate, activeView, saleResult, linkedDocs.length, posAllowsDiscounts, canApplyGeneralDiscount, hasItemDiscounts]);
 
-    // Auto-focus barcode input when starting POS
+    // Detect if any modal or overlay dialog is active to prevent stealing focus
+    const isAnyModalOpen = Boolean(
+        isAuthModalOpen || 
+        isProductModalOpen || 
+        isLinkedDocModalOpen || 
+        isFuelModalOpen || 
+        isCustomerModalOpen || 
+        isCustomerSearchOpen || 
+        isLotModalOpen || 
+        isSuccessModalOpen || 
+        isGeneralDiscountModalOpen || 
+        selectedDiscountItem
+    );
+
+    // Auto-focus barcode input when starting POS or returning to POS without modals open
     useEffect(() => {
-        if (activeView === 'pos' && !isAuthModalOpen && !isProductModalOpen && !isLinkedDocModalOpen) {
+        if (activeView === 'pos' && !isAnyModalOpen) {
             if (quickAddFocusRef.current) {
                 quickAddFocusRef.current = false;
                 return;
             }
-            setTimeout(() => barcodeInputRef.current?.focus(), 300);
+            const timer = setTimeout(() => {
+                barcodeInputRef.current?.focus();
+            }, 300);
+            return () => clearTimeout(timer);
         }
-    }, [activeView, isAuthModalOpen, isProductModalOpen, isLinkedDocModalOpen]);
+    }, [activeView, isAnyModalOpen]);
 
     // Check shift status on mount or when seller session changes
     useEffect(() => {
@@ -3511,7 +3532,10 @@ const SalesTerminal = () => {
             {/* Modal de Ingreso de Combustible */}
             <PosFuelEntryModal
                 isOpen={isFuelModalOpen}
-                onClose={() => setIsFuelModalOpen(false)}
+                onClose={() => {
+                    setIsFuelModalOpen(false);
+                    setTimeout(() => barcodeInputRef.current?.focus(), 100);
+                }}
                 fuelProd={fuelProd}
                 getCustomerDiscount={getCustomerDiscount}
                 calculateDiscountedPrice={calculateDiscountedPrice}

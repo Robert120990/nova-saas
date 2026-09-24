@@ -1,4 +1,5 @@
 const { z } = require('zod');
+const { optionalString } = require('./schemaHelpers');
 
 /**
  * Validation schemas for POS Points of Sale & Cash Shifts (Turnos de Caja / Arqueos)
@@ -10,13 +11,23 @@ const posShape = {
     branch_id: z.coerce.number({ required_error: 'La sucursal es requerida' })
         .int('El ID de sucursal debe ser un número entero')
         .positive('Debe indicar una sucursal válida'),
-    codigo: z.string().trim().nullable().optional(),
+    codigo: optionalString,
     allow_discounts: z.union([z.boolean(), z.number(), z.string()]).optional(),
     status: z.enum(['activo', 'inactivo']).default('activo').optional()
 };
 
 const posSchema = z.object(posShape);
 const posUpdateSchema = z.object(posShape).partial();
+
+const sellerItemSchema = z.union([
+    z.object({
+        seller_id: z.coerce.number().int().positive().optional(),
+        id: z.coerce.number().int().positive().optional(),
+        nombre: optionalString,
+        seller_name: optionalString
+    }).passthrough(),
+    z.coerce.number().int().positive()
+]);
 
 const shiftOpenSchema = z.object({
     pos_id: z.coerce.number({ required_error: 'El punto de venta es requerido' })
@@ -29,27 +40,27 @@ const shiftOpenSchema = z.object({
         .int('El ID de vendedor debe ser un número entero')
         .positive('Debe indicar un vendedor válido'),
     opening_balance: z.coerce.number().min(0, 'El fondo de apertura no puede ser negativo').default(0).optional(),
-    assigned_sellers: z.array(z.coerce.number().int().positive()).optional()
+    assigned_sellers: z.array(sellerItemSchema).optional()
 });
 
 const shiftArqueoExpenseSchema = z.object({
-    description: z.string().trim().nullable().optional(),
+    description: optionalString,
     amount: z.coerce.number().min(0, 'El monto no puede ser negativo')
 });
 
 const shiftArqueoIncomeSchema = z.object({
-    description: z.string().trim().nullable().optional(),
+    description: optionalString,
     amount: z.coerce.number().min(0, 'El monto no puede ser negativo'),
-    payment_method: z.string().trim().optional()
+    payment_method: optionalString
 });
 
 const shiftArqueoRemesaSchema = z.object({
-    description: z.string().trim().nullable().optional(),
+    description: optionalString,
     amount: z.coerce.number().min(0, 'El monto no puede ser negativo')
 });
 
 const shiftArqueoPuntoSchema = z.object({
-    description: z.string().trim().nullable().optional(),
+    description: optionalString,
     amount: z.coerce.number().min(0, 'El monto no puede ser negativo')
 });
 
@@ -62,7 +73,7 @@ const shiftArqueoSchema = z.object({
 });
 
 const shiftSellersUpdateSchema = z.object({
-    seller_ids: z.array(z.coerce.number().int().positive()).optional().default([])
+    seller_ids: z.array(sellerItemSchema).optional().default([])
 });
 
 const shiftUpdateSchema = z.object({

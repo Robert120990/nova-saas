@@ -3,9 +3,7 @@
  * Agreements, CRM Settings, Quotations, Status, Signatures, Emails.
  */
 const { z } = require('zod');
-
-// Helper to sanitize/trim strings or convert empty string to null
-const emptyToNull = z.string().trim().transform(val => (val === '' ? null : val));
+const { emptyToNull } = require('./schemaHelpers');
 
 // ==========================================
 // 1. ACUERDOS COMERCIALES (Agreements)

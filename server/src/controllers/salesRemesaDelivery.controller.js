@@ -133,7 +133,12 @@ exports.createDelivery = async (req, res) => {
             return res.status(400).json({ message: 'El número de referencia es requerido' });
         }
 
-        const remesaIds = Array.isArray(remesa_ids) ? remesa_ids : [];
+        const remesaIds = Array.isArray(remesa_ids)
+            ? remesa_ids
+                .map(r => typeof r === 'object' && r !== null ? (r.id || r.remesa_id) : r)
+                .map(Number)
+                .filter(id => id && !isNaN(id))
+            : [];
         const montoRaw = parseMonto(monto_entregado);
         if (remesaIds.length === 0 && montoRaw === null) {
             return res.status(400).json({ message: 'Debe seleccionar al menos una remesa o ingresar un monto de entrega' });
@@ -204,7 +209,12 @@ exports.updateDelivery = async (req, res) => {
             return res.status(400).json({ message: 'El número de referencia es requerido' });
         }
 
-        const remesaIds = Array.isArray(remesa_ids) ? remesa_ids : [];
+        const remesaIds = Array.isArray(remesa_ids)
+            ? remesa_ids
+                .map(r => typeof r === 'object' && r !== null ? (r.id || r.remesa_id) : r)
+                .map(Number)
+                .filter(id => id && !isNaN(id))
+            : [];
         const montoRaw = parseMonto(monto_entregado);
         if (remesaIds.length === 0 && montoRaw === null) {
             return res.status(400).json({ message: 'Debe seleccionar al menos una remesa o ingresar un monto de entrega' });

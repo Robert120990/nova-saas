@@ -3,25 +3,28 @@
  * Servicios, Despachos, Cortes, Entregas de Efectivo.
  */
 const { z } = require('zod');
-
-// Helper to sanitize/trim strings or convert empty string to null
-const emptyToNull = z.string().trim().transform(val => (val === '' ? null : val));
+const { emptyToNull, requiredString } = require('./schemaHelpers');
 
 // ==========================================
 // 1. SERVICIOS DE POZO
 // ==========================================
 const pozoServicioSchema = z.object({
-    codigo: z.string({ error: 'El código del servicio es obligatorio' })
-        .trim()
-        .min(1, 'El código del servicio no puede estar vacío')
-        .max(50, 'El código no puede exceder 50 caracteres'),
+    codigo: z.preprocess(
+        val => (val === undefined || val === null ? '' : String(val).trim()),
+        z.string({ error: 'El código del servicio es obligatorio' })
+            .min(1, 'El código del servicio no puede estar vacío')
+            .max(50, 'El código no puede exceder 50 caracteres')
+    ),
     descripcion: emptyToNull.nullable().optional(),
     monto: z.coerce.number({ error: 'El monto debe ser numérico' })
         .gt(0, 'El monto debe ser mayor a cero')
 }).passthrough();
 
 const pozoServicioUpdateSchema = z.object({
-    codigo: z.string().trim().min(1, 'El código no puede estar vacío').max(50).optional(),
+    codigo: z.preprocess(
+        val => (val === undefined || val === null ? undefined : String(val).trim()),
+        z.string().min(1, 'El código no puede estar vacío').max(50).optional()
+    ),
     descripcion: emptyToNull.nullable().optional(),
     monto: z.coerce.number().gt(0, 'El monto debe ser mayor a cero').optional()
 }).passthrough();

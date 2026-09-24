@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { Zap } from 'lucide-react';
 
 /**
@@ -17,6 +18,21 @@ const PosFuelEntryModal = ({
     setFuelQty,
     handleAddFuelToCart
 }) => {
+    const amountInputRef = useRef(null);
+
+    useEffect(() => {
+        if (isOpen) {
+            // Retardo defensivo para asegurar que el modal esté montado y retener el foco firmemente
+            const timer = setTimeout(() => {
+                if (amountInputRef.current) {
+                    amountInputRef.current.focus();
+                    amountInputRef.current.select();
+                }
+            }, 100);
+            return () => clearTimeout(timer);
+        }
+    }, [isOpen, fuelProd]);
+
     if (!isOpen) return null;
 
     const discountRule = getCustomerDiscount ? getCustomerDiscount(fuelProd?.id) : null;
@@ -51,12 +67,14 @@ const PosFuelEntryModal = ({
                             <div className="relative">
                                 <span className="absolute left-4 top-1/2 -translate-y-1/2 text-2xl font-black text-slate-300">$</span>
                                 <input 
-                                    autoFocus
+                                    ref={amountInputRef}
                                     type="number"
+                                    step="any"
                                     value={fuelAmount}
                                     onFocus={(e) => e.target.select()}
                                     onKeyDown={(e) => {
                                         if (e.key === 'Enter') handleAddFuelToCart();
+                                        if (e.key === 'Escape') onClose();
                                     }}
                                     onChange={(e) => {
                                         const val = e.target.value;
@@ -85,6 +103,7 @@ const PosFuelEntryModal = ({
                                 onFocus={(e) => e.target.select()}
                                 onKeyDown={(e) => {
                                     if (e.key === 'Enter') handleAddFuelToCart();
+                                    if (e.key === 'Escape') onClose();
                                 }}
                                 onChange={(e) => {
                                     const val = e.target.value;
@@ -117,6 +136,10 @@ const PosFuelEntryModal = ({
                                         ? calculateDiscountedPrice(parseFloat(fuelProd?.precio_unitario || 0), rule) 
                                         : parseFloat(fuelProd?.precio_unitario || 0);
                                     setFuelQty((val / price).toFixed(4));
+                                    setTimeout(() => {
+                                        amountInputRef.current?.focus();
+                                        amountInputRef.current?.select();
+                                    }, 10);
                                 }}
                                 className="py-3 bg-slate-50 hover:bg-indigo-50 hover:text-indigo-600 rounded-xl font-black text-xs transition-all border border-slate-100 hover:border-indigo-200"
                             >

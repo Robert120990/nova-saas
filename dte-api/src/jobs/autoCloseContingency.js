@@ -8,7 +8,7 @@
 const pool = require('../config/db');
 const { authenticate } = require('../transmission/transmissionService');
 const { stopContingency, sendContingencyReport } = require('../contingency/contingencyService');
-const { processContingencyQueue } = require('./resendContingencyDTE');
+const { contingencyQueue } = require('../queue');
 
 const MIN_OPEN_MINUTES = parseInt(process.env.CONTINGENCY_AUTO_CLOSE_MIN_MINUTES, 10) || 5;
 
@@ -52,9 +52,9 @@ async function checkAndAutoCloseContingencies() {
                         console.warn(`[AutoContingencyCloser] ⚠️ Reporte de contingencia ${task.id} finalizado con nota:`, reportResult.message);
                     }
 
-                    // 5. Disparar worker de retransmisión inmediatamente para procesar la cola
-                    processContingencyQueue().catch(err => {
-                        console.error('[AutoContingencyCloser] Error activando retransmisión:', err.message);
+                    // 5. Disparar cola BullMQ de retransmisión inmediatamente para procesar documentos acumulados
+                    contingencyQueue.enqueueContingencyDocuments(task.company_id).catch(err => {
+                        console.error('[AutoContingencyCloser] Error encolando documentos en BullMQ:', err.message);
                     });
                 } else {
                     console.log(`[AutoContingencyCloser] ⏳ Hacienda continúa no disponible para empresa ${task.company_id}: ${auth.message}`);

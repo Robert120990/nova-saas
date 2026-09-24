@@ -61,7 +61,13 @@ exports.createDelivery = async (req, res) => {
             return res.status(400).json({ message: 'El número de referencia es requerido' });
         }
 
-        const hasRemesas = remesa_ids && Array.isArray(remesa_ids) && remesa_ids.length > 0;
+        const cleanRemesaIds = Array.isArray(remesa_ids)
+            ? remesa_ids
+                .map(r => typeof r === 'object' && r !== null ? (r.id || r.remesa_id) : r)
+                .map(Number)
+                .filter(id => id && !isNaN(id))
+            : [];
+        const hasRemesas = cleanRemesaIds.length > 0;
         const extras = (remesas_extra || []).filter(x => parseFloat(x.monto) > 0);
 
         if (!hasRemesas && extras.length === 0) {
@@ -72,7 +78,7 @@ exports.createDelivery = async (req, res) => {
             let remesaQuery = `SELECT r.id FROM gas_station_closeout_remesas r
                  JOIN gas_station_closeouts c ON r.closeout_id = c.id
                  WHERE r.id IN (?) AND c.company_id = ? AND r.entregada = 0`;
-            const remesaParams = [remesa_ids, req.company_id];
+            const remesaParams = [cleanRemesaIds, req.company_id];
 
             if (req.user.branch_id) {
                 remesaQuery += ` AND c.branch_id = ?`;
@@ -81,9 +87,9 @@ exports.createDelivery = async (req, res) => {
 
             const [remesas] = await pool.query(remesaQuery, remesaParams);
 
-            if (remesas.length !== remesa_ids.length) {
+            if (remesas.length !== cleanRemesaIds.length) {
                 const foundIds = remesas.map(r => r.id);
-                const missing = remesa_ids.filter(id => !foundIds.includes(id));
+                const missing = cleanRemesaIds.filter(id => !foundIds.includes(id));
                 const [alreadyDelivered] = await pool.query(
                     `SELECT id FROM gas_station_closeout_remesas WHERE id IN (?) AND entregada = 1`,
                     [missing]
@@ -111,7 +117,7 @@ exports.createDelivery = async (req, res) => {
         if (hasRemesas) {
             await pool.query(
                 `UPDATE gas_station_closeout_remesas SET entregada = 1, entrega_id = ? WHERE id IN (?)`,
-                [deliveryId, remesa_ids]
+                [deliveryId, cleanRemesaIds]
             );
         }
 

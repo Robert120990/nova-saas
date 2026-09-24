@@ -162,7 +162,7 @@ const EggReports = () => {
         ? (totalNetEggLbs / totalProdBoxes).toFixed(1)
         : '0.0';
 
-    const totalProdPackagedLbs = activeTab === 'production'
+    const _totalProdPackagedLbs = activeTab === 'production'
         ? reportData.reduce((acc, row) => acc + (parseFloat(row.packaged_weight_lbs || 0)), 0)
         : 0;
     const totalProdLiquidPlusPackaged = activeTab === 'production'

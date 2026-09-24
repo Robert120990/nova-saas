@@ -1,4 +1,5 @@
 const { z } = require('zod');
+const { optionalString } = require('./schemaHelpers');
 
 // CXP Payment Document Item
 const cxpPaymentDocumentSchema = z.object({
@@ -13,8 +14,8 @@ const cxpPaymentShape = {
     branch_id: z.coerce.number().int().positive({ message: 'La sucursal es requerida' }),
     fecha_pago: z.string({ message: 'La fecha de pago es requerida' }).min(1, { message: 'La fecha de pago es requerida' }),
     metodo_pago: z.string({ message: 'El método de pago es requerido' }).trim().min(1, { message: 'El método de pago es requerido' }),
-    referencia: z.string().optional().nullable(),
-    notas: z.string().optional().nullable(),
+    referencia: optionalString,
+    notas: optionalString,
     documentos: z.array(cxpPaymentDocumentSchema).min(1, { message: 'Debe incluir al menos un documento a pagar' })
 };
 
@@ -34,8 +35,8 @@ const cxpPaymentUpdateShape = {
     monto: z.coerce.number().positive({ message: 'El monto debe ser mayor a 0' }),
     fecha_pago: z.string({ message: 'La fecha de pago es requerida' }).min(1, { message: 'La fecha de pago es requerida' }),
     metodo_pago: z.string({ message: 'El método de pago es requerido' }).trim().min(1, { message: 'El método de pago es requerido' }),
-    referencia: z.string().optional().nullable(),
-    notas: z.string().optional().nullable()
+    referencia: optionalString,
+    notas: optionalString
 };
 
 const cxpPaymentUpdateSchema = z.object(cxpPaymentUpdateShape).partial();

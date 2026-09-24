@@ -1147,5 +1147,13 @@ module.exports = {
         } catch (error) {
             console.error(`[Mailer] Error enviando notificación de invalidación ID ${saleId}:`, error.message);
         }
-    }
+    },
+
+    // Background queue helpers (delegates to BullMQ mailQueue with fallback)
+    queueDTEEmail: (saleId, companyId = null) => require('../queue').mailQueue.enqueueDTEEmail(saleId, companyId),
+    queueInvalidatedDTEEmail: (saleId, companyId = null) => require('../queue').mailQueue.enqueueInvalidatedDTEEmail(saleId, companyId),
+    queuePaymentReceipt: (paymentId) => require('../queue').mailQueue.enqueuePaymentReceipt(paymentId),
+    queueAdvanceReceipt: (advanceId, recipientEmail = null) => require('../queue').mailQueue.enqueueAdvanceReceipt(advanceId, recipientEmail),
+    queueMail: (options) => require('../queue').mailQueue.enqueueMail(options)
 };
+
