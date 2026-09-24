@@ -587,6 +587,81 @@ async function logDeleteRow(req, closeoutId, section, row) {
     });
 }
 
+async function ensureCloseoutCompleteness(closeoutId, companyId, branchId) {
+    if (!closeoutId) return;
+    try {
+        // 1. Ensure all nozzles for the branch are present
+        const [existingReadings] = await pool.query(
+            'SELECT nozzle_id FROM gas_station_closeout_readings WHERE closeout_id = ?',
+            [closeoutId]
+        );
+        const existingNozzleIds = new Set(existingReadings.map(r => r.nozzle_id));
+
+        const [nozzles] = await pool.query(`
+            SELECT n.id as nozzle_id, n.codigo as codigo_pistola,
+                   p.id as product_id, p.codigo as codigo_producto, p.nombre as descripcion_producto,
+                   COALESCE(pbp.precio_unitario, 0) as precio_unitario, p.tipo_combustible
+            FROM gas_station_nozzles n
+            JOIN products p ON n.product_id = p.id
+            LEFT JOIN product_branch_prices pbp ON p.id = pbp.product_id AND pbp.branch_id = ?
+            WHERE n.company_id = ? AND (n.branch_id = ? OR (? IS NULL AND n.branch_id IS NULL))
+            ORDER BY CAST(n.codigo AS UNSIGNED), n.codigo
+        `, [branchId, companyId, branchId, branchId]);
+
+        for (const n of nozzles) {
+            if (!existingNozzleIds.has(n.nozzle_id)) {
+                const [lastReading] = await pool.query(`
+                    SELECT r.lectura_actual
+                    FROM gas_station_closeout_readings r
+                    JOIN gas_station_closeouts c ON r.closeout_id = c.id
+                    WHERE r.nozzle_id = ? AND c.company_id = ? AND c.estado = 'cerrado'
+                    ORDER BY c.created_at DESC
+                    LIMIT 1
+                `, [n.nozzle_id, companyId]);
+
+                const lectura_anterior = lastReading.length > 0 ? parseFloat(lastReading[0].lectura_actual) : 0;
+                await pool.query(`
+                    INSERT INTO gas_station_closeout_readings
+                    (closeout_id, nozzle_id, product_id, codigo_pistola, codigo_producto, descripcion_producto, precio, lectura_anterior, lectura_actual, calibracion, diferencia, monto)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0)
+                `, [closeoutId, n.nozzle_id, n.product_id, n.codigo_pistola, n.codigo_producto, n.descripcion_producto, n.precio_unitario, lectura_anterior, lectura_anterior]);
+            }
+        }
+
+        // 2. Ensure all tanks for the branch are present
+        const [existingTanks] = await pool.query(
+            'SELECT tank_id FROM gas_station_closeout_tank_readings WHERE closeout_id = ?',
+            [closeoutId]
+        );
+        const existingTankIds = new Set(existingTanks.map(t => t.tank_id));
+
+        const [tanks] = await pool.query(
+            'SELECT id as tank_id, codigo, descripcion, capacidad, tipo_combustible FROM gas_station_tanks WHERE company_id = ? AND (branch_id = ? OR (? IS NULL AND branch_id IS NULL))',
+            [companyId, branchId, branchId]
+        );
+        for (const t of tanks) {
+            if (!existingTankIds.has(t.tank_id)) {
+                const [lastTankReading] = await pool.query(`
+                    SELECT r.lectura_actual
+                    FROM gas_station_closeout_tank_readings r
+                    JOIN gas_station_closeouts c ON r.closeout_id = c.id
+                    WHERE r.tank_id = ? AND c.company_id = ? AND c.estado = 'cerrado'
+                    ORDER BY c.created_at DESC
+                    LIMIT 1
+                `, [t.tank_id, companyId]);
+
+                const lectura_anterior = lastTankReading.length > 0 ? parseFloat(lastTankReading[0].lectura_actual) : 0;
+                await pool.query(`
+                    INSERT INTO gas_station_closeout_tank_readings
+                    (closeout_id, tank_id, codigo_tanque, descripcion_tanque, lectura_anterior, recarga, lectura_actual, diferencia)
+                    VALUES (?, ?, ?, ?, ?, 0, ?, 0)
+                `, [closeoutId, t.tank_id, t.codigo, t.descripcion, lectura_anterior, lectura_anterior]);
+            }
+        }
+    } catch (err) {
+        console.error('Error in ensureCloseoutCompleteness:', err);
+    }
+}
 
 module.exports = {
     pool,
@@ -611,5 +686,7 @@ module.exports = {
     toDateStr,
     recalcularTanquesPosteriores,
     recalcularLubricantesPosteriores,
-    logDeleteRow
+    logDeleteRow,
+    ensureCloseoutCompleteness,
+    ...require('./gasFifoUtils')
 };

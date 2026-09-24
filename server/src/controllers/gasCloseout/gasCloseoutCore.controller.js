@@ -21,7 +21,8 @@ const {
     toDateStr,
     recalcularTanquesPosteriores,
     recalcularLubricantesPosteriores,
-    logDeleteRow
+    logDeleteRow,
+    ensureCloseoutCompleteness
 } = require('./gasCloseoutUtils');
 
 
@@ -146,6 +147,7 @@ exports.initCloseout = async (req, res) => {
             JOIN products p ON n.product_id = p.id
             LEFT JOIN product_branch_prices pbp ON p.id = pbp.product_id AND pbp.branch_id = ?
             WHERE n.company_id = ? AND (n.branch_id = ? OR (? IS NULL AND n.branch_id IS NULL))
+            ORDER BY CAST(n.codigo AS UNSIGNED), n.codigo ASC
         `, [branchId, req.company_id, branchId, branchId]);
 
         const readings = [];
@@ -452,12 +454,16 @@ exports.getCloseout = async (req, res) => {
             return res.status(404).json({ message: 'Cierre no encontrado' });
         }
 
+        if (closeouts[0].estado === 'abierto') {
+            await ensureCloseoutCompleteness(id, req.company_id, closeouts[0].branch_id);
+        }
+
         const [readings] = await pool.query(`
             SELECT r.*, p.tipo_combustible
             FROM gas_station_closeout_readings r
             JOIN products p ON r.product_id = p.id
             WHERE r.closeout_id = ?
-            ORDER BY r.codigo_pistola ASC
+            ORDER BY CAST(r.codigo_pistola AS UNSIGNED), r.codigo_pistola ASC
         `, [id]);
 
         let tankReadings = [];

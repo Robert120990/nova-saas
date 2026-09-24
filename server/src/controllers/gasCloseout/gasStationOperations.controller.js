@@ -21,7 +21,11 @@ const {
     toDateStr,
     recalcularTanquesPosteriores,
     recalcularLubricantesPosteriores,
-    logDeleteRow
+    logDeleteRow,
+    deductAdvanceByFIFO,
+    restoreAdvanceByFIFO,
+    deductTrupputByFIFO,
+    restoreTrupputByFIFO
 } = require('./gasCloseoutUtils');
 
 
