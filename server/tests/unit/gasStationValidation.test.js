@@ -161,19 +161,35 @@ describe('Gas Station Module Validation', () => {
 
         test('should validate closeout collections (expenses, tarjetas, creditos)', () => {
             const exp = {
-                expenses: [{ despachador_id: 1, rubro: 'Limpieza', monto: 15.00 }]
+                expenses: [{ id: 1, despachador_id: 1, rubro: 'Limpieza', monto: 15.00, valor: 15.00, proveedor: 'Prov S.A.' }]
             };
-            assert.equal(closeoutExpensesSchema.safeParse(exp).success, true);
+            const parsedExp = closeoutExpensesSchema.safeParse(exp);
+            assert.equal(parsedExp.success, true);
+            assert.equal(parsedExp.data.expenses[0].proveedor, 'Prov S.A.');
 
             const tarj = {
-                tarjetas: [{ despachador_id: 1, pos_type_id: 2, monto: 45.00 }]
+                tarjetas: [{
+                    id: 99,
+                    num_tarjeta: '-4321',
+                    num_autorizacion: 'AUTH-123456',
+                    pos_type_id: 2,
+                    despachador_id: 1,
+                    tipo_operacion: 'venta_combustible',
+                    monto: 45.00
+                }]
             };
-            assert.equal(closeoutTarjetasSchema.safeParse(tarj).success, true);
+            const parsedTarj = closeoutTarjetasSchema.safeParse(tarj);
+            assert.equal(parsedTarj.success, true);
+            assert.equal(parsedTarj.data.tarjetas[0].num_autorizacion, 'AUTH-123456');
+            assert.equal(parsedTarj.data.tarjetas[0].num_tarjeta, '-4321');
+            assert.equal(parsedTarj.data.tarjetas[0].tipo_operacion, 'venta_combustible');
 
             const cred = {
-                creditos: [{ despachador_id: 1, cliente_id: 4, monto: 80.00 }]
+                creditos: [{ id: 5, despachador_id: 1, cliente_id: 4, monto: 80.00, placa: 'P123-456' }]
             };
-            assert.equal(closeoutCreditosSchema.safeParse(cred).success, true);
+            const parsedCred = closeoutCreditosSchema.safeParse(cred);
+            assert.equal(parsedCred.success, true);
+            assert.equal(parsedCred.data.creditos[0].placa, 'P123-456');
         });
     });
 });
