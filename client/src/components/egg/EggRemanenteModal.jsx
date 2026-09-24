@@ -15,7 +15,7 @@ const EggRemanenteModal = ({
                 <div className="flex items-center justify-between border-b border-slate-200 pb-3">
                     <h3 className="text-sm font-bold uppercase tracking-wider text-slate-900 flex items-center gap-2">
                         <Sparkles className="text-teal-600" size={16} />
-                        Registrar Remanente / Sobrante
+                        {remanenteModal.id ? 'Editar Remanente / Sobrante' : 'Registrar Remanente / Sobrante'}
                     </h3>
                     <button
                         type="button"
@@ -121,7 +121,7 @@ const EggRemanenteModal = ({
                             disabled={remanenteModal.isSubmitting}
                             className="px-5 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold transition-colors shadow-xs"
                         >
-                            {remanenteModal.isSubmitting ? 'Guardando...' : 'Guardar Remanente'}
+                            {remanenteModal.isSubmitting ? 'Guardando...' : (remanenteModal.id ? 'Actualizar Remanente' : 'Guardar Remanente')}
                         </button>
                     </div>
                 </form>

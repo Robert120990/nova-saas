@@ -1,4 +1,4 @@
-import { AlertOctagon, XCircle, Trash2 } from 'lucide-react';
+import { AlertOctagon, XCircle, Trash2, Pencil } from 'lucide-react';
 
 const EggBatchWastesModal = ({
     isOpen,
@@ -37,11 +37,29 @@ const EggBatchWastesModal = ({
                 </div>
 
                 <div className="p-6 overflow-y-auto space-y-6 flex-1">
-                    {/* Formulario de Nueva Merma */}
+                    {/* Formulario de Nueva / Edición de Merma */}
                     <form onSubmit={handleCreateWaste} className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
-                        <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800">
-                            Registrar Nueva Merma
-                        </h4>
+                        <div className="flex items-center justify-between">
+                            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800">
+                                {wastesModal.editingWasteId ? 'Editar Registro de Merma' : 'Registrar Nueva Merma'}
+                            </h4>
+                            {wastesModal.editingWasteId && (
+                                <button
+                                    type="button"
+                                    onClick={() => setWastesModal(prev => ({
+                                        ...prev,
+                                        editingWasteId: null,
+                                        stage: 'quebraje',
+                                        waste_type: 'cascaron',
+                                        weight_lbs: '',
+                                        notes: ''
+                                    }))}
+                                    className="text-[11px] font-bold text-slate-500 hover:text-slate-800 underline cursor-pointer"
+                                >
+                                    Cancelar Edición
+                                </button>
+                            )}
+                        </div>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                             <div>
                                 <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Etapa *</label>
@@ -98,13 +116,29 @@ const EggBatchWastesModal = ({
                             />
                         </div>
 
-                        <div className="flex justify-end">
+                        <div className="flex justify-end gap-2">
+                            {wastesModal.editingWasteId && (
+                                <button
+                                    type="button"
+                                    onClick={() => setWastesModal(prev => ({
+                                        ...prev,
+                                        editingWasteId: null,
+                                        stage: 'quebraje',
+                                        waste_type: 'cascaron',
+                                        weight_lbs: '',
+                                        notes: ''
+                                    }))}
+                                    className="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-xs font-bold transition-colors"
+                                >
+                                    Cancelar
+                                </button>
+                            )}
                             <button
                                 type="submit"
                                 disabled={wastesModal.isSubmitting}
                                 className="px-4 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold transition-colors shadow-xs"
                             >
-                                {wastesModal.isSubmitting ? 'Guardando...' : '+ Guardar Merma'}
+                                {wastesModal.isSubmitting ? 'Guardando...' : (wastesModal.editingWasteId ? 'Actualizar Merma' : '+ Guardar Merma')}
                             </button>
                         </div>
                     </form>
@@ -138,14 +172,31 @@ const EggBatchWastesModal = ({
                                                 <td className="p-2.5 text-slate-600">{w.operator_name || '-'}</td>
                                                 <td className="p-2.5 text-slate-500 italic text-[11px]">{w.notes || '-'}</td>
                                                 <td className="p-2.5 text-center">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => handleDeleteWaste(w.id)}
-                                                        className="p-1 hover:bg-rose-100 text-rose-600 rounded transition-colors"
-                                                        title="Eliminar registro de merma"
-                                                    >
-                                                        <Trash2 size={13} />
-                                                    </button>
+                                                    <div className="flex items-center justify-center gap-1">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setWastesModal(prev => ({
+                                                                ...prev,
+                                                                editingWasteId: w.id,
+                                                                stage: w.stage || 'quebraje',
+                                                                waste_type: w.waste_type || 'cascaron',
+                                                                weight_lbs: String(w.weight_lbs || w.quantity_lbs || ''),
+                                                                notes: w.notes || w.reason || ''
+                                                            }))}
+                                                            className="p-1 hover:bg-rose-100 text-rose-600 rounded transition-colors"
+                                                            title="Editar registro de merma"
+                                                        >
+                                                            <Pencil size={13} />
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleDeleteWaste(w.id)}
+                                                            className="p-1 hover:bg-rose-100 text-rose-600 rounded transition-colors"
+                                                            title="Eliminar registro de merma"
+                                                        >
+                                                            <Trash2 size={13} />
+                                                        </button>
+                                                    </div>
                                                 </td>
                                             </tr>
                                         ))}

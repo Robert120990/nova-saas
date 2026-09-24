@@ -1,6 +1,6 @@
 import {
     Layers, XCircle, FileText, FileSpreadsheet, FileCheck,
-    Plus, AlertOctagon, CheckCircle2, ChevronRight
+    Plus, AlertOctagon, CheckCircle2, ChevronRight, Pencil, Trash2, Scale
 } from 'lucide-react';
 
 const EggBatchStagesModal = ({
@@ -9,9 +9,15 @@ const EggBatchStagesModal = ({
     stagesModal,
     onOpenAddTarimas,
     onOpenPasteurize,
+    onOpenBalance,
     onOpenRemanente,
+    onOpenEditRemanente,
+    onDeleteRemanente,
     onNavigateEmpaque,
     onOpenWastes,
+    onOpenEditWaste,
+    handleDeleteWaste,
+    onDeleteWaste,
     onExportSummary
 }) => {
     if (!isOpen || !stagesModal) return null;
@@ -83,14 +89,14 @@ const EggBatchStagesModal = ({
                                     </button>
                                 </div>
 
-                                {/* ETAPA 2: PASTEURIZADO */}
+                                {/* ETAPA 2: PASTEURIZADO & BALANCE */}
                                 <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/60 relative flex flex-col justify-between">
                                     <div>
                                         <div className="flex items-center justify-between mb-2">
                                             <span className="px-2 py-0.5 bg-amber-100 text-amber-800 rounded-md text-[10px] font-bold uppercase">
                                                 Etapa 2: Pasteurización
                                             </span>
-                                            <span className={`w-2.5 h-2.5 rounded-full ${stagesModal.data?.batch?.status === 'pasteurizado' || stagesModal.data?.batch?.status === 'empaquetado' ? 'bg-emerald-500' : 'bg-amber-400 animate-pulse'}`} />
+                                            <span className={`w-2.5 h-2.5 rounded-full ${stagesModal.data?.batch?.status === 'pasteurizado' || stagesModal.data?.batch?.status === 'empaquetado' || stagesModal.data?.batch?.status === 'aprobado_calidad' ? 'bg-emerald-500' : 'bg-amber-400 animate-pulse'}`} />
                                         </div>
                                         <h4 className="font-bold text-xs text-slate-800">Tratamiento Térmico</h4>
                                         <div className="mt-2 space-y-1 text-xs text-slate-600">
@@ -101,24 +107,42 @@ const EggBatchStagesModal = ({
                                                     <div>Tiempo: <b>{stagesModal.data.pasteurize_log.holding_time_seconds}s</b></div>
                                                 </>
                                             ) : (
-                                                <div className="text-amber-700 text-[11px] font-medium italic">Pendiente de pasteurizar</div>
+                                                <div className="text-amber-700 text-[11px] font-medium italic">Sin registro de pasteurizado</div>
+                                            )}
+                                            {parseFloat(stagesModal.data?.batch?.yield_liquid_lbs || 0) > 0 && (
+                                                <div className="text-teal-700 font-bold text-[11px]">
+                                                    Líquido: {parseFloat(stagesModal.data.batch.yield_liquid_lbs).toLocaleString()} Lbs
+                                                </div>
                                             )}
                                         </div>
                                     </div>
-                                    {stagesModal.data?.batch?.status === 'en_proceso' || stagesModal.data?.batch?.status === 'creado' ? (
-                                        <button
-                                            type="button"
-                                            onClick={() => onOpenPasteurize && onOpenPasteurize(stagesModal.batch)}
-                                            className="mt-4 w-full py-1.5 px-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1 shadow-xs"
-                                        >
-                                            <CheckCircle2 size={13} />
-                                            Pasteurizar Lote
-                                        </button>
-                                    ) : (
-                                        <div className="mt-4 py-1 text-center text-[11px] text-emerald-700 font-bold bg-emerald-50 rounded-lg">
-                                            ✓ Pasteurizado
-                                        </div>
-                                    )}
+                                    <div className="mt-4 flex gap-1.5">
+                                        {(stagesModal.data?.batch?.status === 'en_proceso' || stagesModal.data?.batch?.status === 'creado') ? (
+                                            <button
+                                                type="button"
+                                                onClick={() => onOpenPasteurize && onOpenPasteurize(stagesModal.batch)}
+                                                className="flex-1 py-1.5 px-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1 shadow-xs"
+                                            >
+                                                <CheckCircle2 size={13} />
+                                                Pasteurizar
+                                            </button>
+                                        ) : (
+                                            <div className="flex-1 py-1 text-center text-[11px] text-emerald-700 font-bold bg-emerald-50 border border-emerald-200 rounded-lg flex items-center justify-center">
+                                                ✓ Pasteurizado
+                                            </div>
+                                        )}
+                                        {onOpenBalance && (
+                                            <button
+                                                type="button"
+                                                onClick={() => onOpenBalance(stagesModal.batch || stagesModal.data?.batch)}
+                                                className="py-1.5 px-2.5 bg-teal-50 hover:bg-teal-100 border border-teal-200 text-teal-700 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 shadow-2xs"
+                                                title="Editar Balance de Masas (Rendimiento Líquido, Cáscara, Merma)"
+                                            >
+                                                <Scale size={12} />
+                                                Balance
+                                            </button>
+                                        )}
+                                    </div>
                                 </div>
 
                                 {/* ETAPA 3: REMANENTES & SOBRANTES */}
@@ -133,7 +157,7 @@ const EggBatchStagesModal = ({
                                         <h4 className="font-bold text-xs text-slate-800">Sobrantes / Tanque</h4>
                                         <div className="mt-2 space-y-1 text-xs text-slate-600">
                                             <div>Remanentes: <b className="text-teal-700">{stagesModal.data?.remanentes?.length || 0} registrados</b></div>
-                                            <div>Total Sobrante: <b>{stagesModal.data?.remanentes?.reduce((acc, r) => acc + parseFloat(r.weight_lbs || 0), 0).toFixed(1)} Lbs</b></div>
+                                            <div>Total Sobrante: <b>{(stagesModal.data?.remanentes || []).reduce((acc, r) => acc + (parseFloat(r.weight_lbs || r.quantity_lbs || 0)), 0).toFixed(1)} Lbs</b></div>
                                         </div>
                                     </div>
                                     <button
@@ -142,11 +166,11 @@ const EggBatchStagesModal = ({
                                         className="mt-4 w-full py-1.5 px-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1 shadow-xs"
                                     >
                                         <Plus size={13} />
-                                        Registrar Remanente
+                                        + Registrar Remanente
                                     </button>
                                 </div>
 
-                                {/* ETAPA 4: EMPAQUE FINAL */}
+                                {/* ETAPA 4: EMPAQUE FINAL & BALANCE */}
                                 <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/60 relative flex flex-col justify-between">
                                     <div>
                                         <div className="flex items-center justify-between mb-2">
@@ -166,24 +190,47 @@ const EggBatchStagesModal = ({
                                             )}
                                         </div>
                                     </div>
-                                    <button
-                                        type="button"
-                                        onClick={onNavigateEmpaque}
-                                        className="mt-4 w-full py-1.5 px-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1 shadow-xs"
-                                    >
-                                        Ir a Empaque
-                                        <ChevronRight size={13} />
-                                    </button>
+                                    <div className="mt-4 flex gap-1.5">
+                                        <button
+                                            type="button"
+                                            onClick={onNavigateEmpaque}
+                                            className="flex-1 py-1.5 px-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1 shadow-xs"
+                                        >
+                                            Ir a Empaque
+                                            <ChevronRight size={13} />
+                                        </button>
+                                        {onOpenBalance && (
+                                            <button
+                                                type="button"
+                                                onClick={() => onOpenBalance(stagesModal.batch || stagesModal.data?.batch)}
+                                                className="py-1.5 px-2.5 bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-700 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 shadow-2xs"
+                                                title="Editar Balance de Masas"
+                                            >
+                                                <Scale size={12} />
+                                                Balance
+                                            </button>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
 
                             {/* Detalle de Remanentes Registrados */}
-                            {stagesModal.data?.remanentes?.length > 0 && (
-                                <div className="border border-slate-200 rounded-xl p-4 bg-white space-y-2">
+                            <div className="border border-slate-200 rounded-xl p-4 bg-white space-y-2">
+                                <div className="flex items-center justify-between">
                                     <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
                                         <span className="w-2 h-2 rounded-full bg-teal-500" />
-                                        Remanentes de Producto Registrados en este Lote
+                                        Materia Prima Remanente / Sobrantes Registrados ({stagesModal.data?.remanentes?.length || 0})
                                     </h4>
+                                    <button
+                                        type="button"
+                                        onClick={() => onOpenRemanente && onOpenRemanente(stagesModal.batch)}
+                                        className="px-2 py-1 bg-teal-50 hover:bg-teal-100 text-teal-700 rounded-lg text-xs font-bold transition-colors flex items-center gap-1"
+                                    >
+                                        <Plus size={12} />
+                                        + Registrar Remanente
+                                    </button>
+                                </div>
+                                {stagesModal.data?.remanentes?.length > 0 ? (
                                     <div className="overflow-x-auto">
                                         <table className="w-full text-left text-xs">
                                             <thead>
@@ -194,41 +241,69 @@ const EggBatchStagesModal = ({
                                                     <th className="py-1.5 text-center">Térmico</th>
                                                     <th className="py-1.5">Destino</th>
                                                     <th className="py-1.5">Notas</th>
+                                                    <th className="py-1.5 text-center">Acciones</th>
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-slate-100">
                                                 {stagesModal.data.remanentes.map(r => (
-                                                    <tr key={r.id}>
-                                                        <td className="py-2 font-mono font-bold text-teal-800">{r.remanente_code}</td>
+                                                    <tr key={r.id} className="hover:bg-slate-50">
+                                                        <td className="py-2 font-mono font-bold text-teal-800">{r.remanente_code || `REM-${r.id}`}</td>
                                                         <td className="py-2 capitalize font-medium">{r.product_type}</td>
-                                                        <td className="py-2 text-right font-bold text-teal-700">{parseFloat(r.weight_lbs).toFixed(1)} Lbs</td>
+                                                        <td className="py-2 text-right font-bold text-teal-700">{parseFloat(r.weight_lbs || r.quantity_lbs || 0).toFixed(1)} Lbs</td>
                                                         <td className="py-2 text-center">
                                                             <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${r.is_pasteurized ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
                                                                 {r.is_pasteurized ? 'Pasteurizado' : 'Sin Pasteurizar'}
                                                             </span>
                                                         </td>
-                                                        <td className="py-2 capitalize text-slate-700">{r.destination?.replace('_', ' ')}</td>
+                                                        <td className="py-2 capitalize text-slate-700">{(r.destination || r.storage_location || '-').replace('_', ' ')}</td>
                                                         <td className="py-2 text-slate-500 italic text-[11px]">{r.notes || '-'}</td>
+                                                        <td className="py-2 text-center">
+                                                            <div className="flex items-center justify-center gap-1">
+                                                                {onOpenEditRemanente && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => onOpenEditRemanente(r)}
+                                                                        className="p-1 hover:bg-teal-100 text-teal-700 rounded transition-colors"
+                                                                        title="Editar remanente"
+                                                                    >
+                                                                        <Pencil size={13} />
+                                                                    </button>
+                                                                )}
+                                                                {onDeleteRemanente && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => onDeleteRemanente(r.id)}
+                                                                        className="p-1 hover:bg-rose-100 text-rose-600 rounded transition-colors"
+                                                                        title="Eliminar remanente"
+                                                                    >
+                                                                        <Trash2 size={13} />
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                        </td>
                                                     </tr>
                                                 ))}
                                             </tbody>
                                         </table>
                                     </div>
-                                </div>
-                            )}
+                                ) : (
+                                    <p className="text-xs text-slate-400 italic">No se han registrado remanentes ni sobrantes para este lote.</p>
+                                )}
+                            </div>
 
                             {/* Resumen de Mermas de Producción */}
                             <div className="border border-slate-200 rounded-xl p-4 bg-white space-y-2">
                                 <div className="flex items-center justify-between">
                                     <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
                                         <AlertOctagon size={14} className="text-rose-600" />
-                                        Mermas y Pérdidas del Lote
+                                        Mermas y Pérdidas del Lote ({stagesModal.data?.wastes?.length || 0})
                                     </h4>
                                     <button
                                         type="button"
                                         onClick={() => onOpenWastes && onOpenWastes(stagesModal.batch)}
-                                        className="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg text-xs font-bold transition-colors"
+                                        className="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg text-xs font-bold transition-colors flex items-center gap-1"
                                     >
+                                        <Plus size={12} />
                                         + Registrar Merma
                                     </button>
                                 </div>
@@ -242,16 +317,41 @@ const EggBatchStagesModal = ({
                                                     <th className="py-1.5 text-right">Peso (Lbs)</th>
                                                     <th className="py-1.5">Registrado Por</th>
                                                     <th className="py-1.5">Notas</th>
+                                                    <th className="py-1.5 text-center">Acciones</th>
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-slate-100">
                                                 {stagesModal.data.wastes.map(w => (
-                                                    <tr key={w.id}>
+                                                    <tr key={w.id} className="hover:bg-slate-50">
                                                         <td className="py-2 capitalize font-semibold text-slate-800">{w.stage}</td>
                                                         <td className="py-2 capitalize text-rose-700 font-bold">{w.waste_type?.replace('_', ' ')}</td>
-                                                        <td className="py-2 text-right font-black text-slate-900">{parseFloat(w.weight_lbs).toFixed(1)} Lbs</td>
+                                                        <td className="py-2 text-right font-black text-slate-900">{parseFloat(w.weight_lbs || w.quantity_lbs || 0).toFixed(1)} Lbs</td>
                                                         <td className="py-2 text-slate-600">{w.operator_name || '-'}</td>
-                                                        <td className="py-2 text-slate-500 italic text-[11px]">{w.notes || '-'}</td>
+                                                        <td className="py-2 text-slate-500 italic text-[11px]">{w.notes || w.reason || '-'}</td>
+                                                        <td className="py-2 text-center">
+                                                            <div className="flex items-center justify-center gap-1">
+                                                                {onOpenEditWaste && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => onOpenEditWaste(w)}
+                                                                        className="p-1 hover:bg-rose-100 text-rose-700 rounded transition-colors"
+                                                                        title="Editar merma"
+                                                                    >
+                                                                        <Pencil size={13} />
+                                                                    </button>
+                                                                )}
+                                                                {(handleDeleteWaste || onDeleteWaste) && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => (handleDeleteWaste || onDeleteWaste)(w.id)}
+                                                                        className="p-1 hover:bg-rose-100 text-rose-600 rounded transition-colors"
+                                                                        title="Eliminar registro de merma"
+                                                                    >
+                                                                        <Trash2 size={13} />
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                        </td>
                                                     </tr>
                                                 ))}
                                             </tbody>

@@ -243,15 +243,17 @@ const createProductionBatch = async (req, res) => {
             `SELECT batch_code_display FROM egg_production_batches 
              WHERE company_id = ? AND (
                 DATE(started_at) = CURDATE() OR 
+                batch_code_display LIKE ? OR
                 batch_code_display LIKE ?
              )`,
-            [company_id, `% - ${dayOfYearStr} - ${year2Digit}`]
+            [company_id, `%-${dayOfYearStr}-${year2Digit}`, `% - ${dayOfYearStr} - ${year2Digit}`]
         );
 
         let maxRun = 0;
         for (const b of existingRuns) {
             if (b.batch_code_display) {
-                const parts = b.batch_code_display.split(' - ');
+                const cleaned = b.batch_code_display.replace(/\s+/g, '');
+                const parts = cleaned.split('-');
                 if (parts.length === 3) {
                     const num = parseInt(parts[0], 10);
                     if (!isNaN(num) && num > maxRun) maxRun = num;
@@ -262,15 +264,15 @@ const createProductionBatch = async (req, res) => {
         let chosenRun = maxRun + 1;
         if (req.body.run_number) {
             const userRun = parseInt(req.body.run_number, 10);
-            const userCode = `${String(userRun).padStart(2, '0')} - ${dayOfYearStr} - ${year2Digit}`;
-            const collision = existingRuns.some(b => b.batch_code_display === userCode);
+            const userCode = `${String(userRun).padStart(2, '0')}-${dayOfYearStr}-${year2Digit}`;
+            const collision = existingRuns.some(b => (b.batch_code_display || '').replace(/\s+/g, '') === userCode);
             if (!isNaN(userRun) && userRun > 0 && !collision) {
                 chosenRun = userRun;
             }
         }
 
         const runNumber = String(chosenRun).padStart(2, '0');
-        const batch_code_display = `${runNumber} - ${dayOfYearStr} - ${year2Digit}`;
+        const batch_code_display = `${runNumber}-${dayOfYearStr}-${year2Digit}`;
 
         const resolvedProductType = Array.isArray(product_type)
             ? product_type.join(', ')
@@ -452,12 +454,15 @@ const completeProductionBatch = async (req, res) => {
         if (batches.length === 0) return res.status(404).json({ message: 'Lote no encontrado' });
         const batch = batches[0];
 
-        // Cambiar estado a aprobado_calidad o mantener bloqueado_haccp
-        const nextStatus = batch.status === 'bloqueado_haccp' ? 'bloqueado_haccp' : 'aprobado_calidad';
+        // Cambiar estado a aprobado_calidad o mantener bloqueado_haccp, empaquetado o congelado
+        let nextStatus = batch.status;
+        if (batch.status === 'en_proceso' || batch.status === 'pasteurizado') {
+            nextStatus = 'aprobado_calidad';
+        }
 
         await pool.query(
             `UPDATE egg_production_batches 
-             SET yield_liquid_lbs = ?, waste_shell_lbs = ?, waste_loss_lbs = ?, status = ?, completed_at = NOW()
+             SET yield_liquid_lbs = ?, waste_shell_lbs = ?, waste_loss_lbs = ?, status = ?, completed_at = COALESCE(completed_at, NOW())
              WHERE id = ? AND company_id = ?`,
             [yield_liquid_lbs, waste_shell_lbs, waste_loss_lbs, nextStatus, id, req.company_id]
         );
@@ -1108,10 +1113,48 @@ const getBatchStages = async (req, res) => {
             }
         ];
 
+        // Mapeo defensivo de remanentes para visualización y edición
+        const mappedRemanentes = (remanentes || []).map(r => ({
+            id: r.id,
+            batch_id: r.batch_id,
+            remanente_code: `REM-${r.id}`,
+            product_type: r.product_type,
+            weight_lbs: parseFloat(r.quantity_lbs || r.weight_lbs || 0),
+            quantity_lbs: parseFloat(r.quantity_lbs || r.weight_lbs || 0),
+            remanente_type: r.remanente_type,
+            is_pasteurized: r.remanente_type === 'pasteurizado' || r.is_pasteurized === 1 || r.is_pasteurized === true,
+            storage_location: r.storage_location,
+            destination: r.storage_location || 'proximo_empaque',
+            status: r.status,
+            notes: r.notes || '',
+            operator_name: r.operator_name || ''
+        }));
+
+        // Mapeo defensivo de mermas para visualización y edición
+        const mappedWastes = (wasteLogs || []).map(w => ({
+            id: w.id,
+            batch_id: w.batch_id,
+            stage: w.stage,
+            waste_type: w.waste_type,
+            weight_lbs: parseFloat(w.quantity_lbs || w.weight_lbs || 0),
+            quantity_lbs: parseFloat(w.quantity_lbs || w.weight_lbs || 0),
+            reason: w.reason || w.notes || '',
+            notes: w.reason || w.notes || '',
+            operator_name: w.operator_name || ''
+        }));
+
         res.json({
             batch,
             totals,
-            stages
+            stages,
+            raw_materials: rawMaterials,
+            tarimas: rawMaterials.flatMap(r => r.tarimas || []),
+            pasteurize_log: pasteurizationLogs[pasteurizationLogs.length - 1] || null,
+            pasteurization_logs: pasteurizationLogs,
+            remanentes: mappedRemanentes,
+            wastes: mappedWastes,
+            waste_logs: mappedWastes,
+            packaging_records: packagingRecords
         });
     } catch (error) {
         console.error('Error in getBatchStages:', error);
@@ -1127,7 +1170,12 @@ const getBatchWastes = async (req, res) => {
             'SELECT * FROM egg_batch_waste_logs WHERE batch_id = ? AND company_id = ? ORDER BY created_at DESC',
             [id, req.company_id]
         );
-        res.json(rows);
+        const mapped = rows.map(w => ({
+            ...w,
+            weight_lbs: parseFloat(w.quantity_lbs || 0),
+            notes: w.reason || ''
+        }));
+        res.json(mapped);
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -1166,6 +1214,29 @@ const createBatchWaste = async (req, res) => {
     }
 };
 
+const updateBatchWaste = async (req, res) => {
+    try {
+        const targetId = req.params.wasteId || req.params.id;
+        const { stage, waste_type, quantity_lbs, weight_lbs, reason, notes, operator_name } = req.body;
+        const qty = parseFloat(quantity_lbs ?? weight_lbs ?? 0);
+        const wasteReason = reason ?? notes ?? null;
+
+        await pool.query(
+            `UPDATE egg_batch_waste_logs 
+             SET stage = COALESCE(?, stage),
+                 waste_type = COALESCE(?, waste_type),
+                 quantity_lbs = CASE WHEN ? > 0 THEN ? ELSE quantity_lbs END,
+                 reason = COALESCE(?, reason),
+                 operator_name = COALESCE(?, operator_name)
+             WHERE id = ? AND company_id = ?`,
+            [stage || null, waste_type || null, qty, qty, wasteReason, operator_name || null, targetId, req.company_id]
+        );
+        res.json({ success: true, message: 'Merma actualizada exitosamente.' });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
 const deleteBatchWaste = async (req, res) => {
     try {
         const targetId = req.params.wasteId || req.params.id;
@@ -1184,7 +1255,14 @@ const getBatchRemanentes = async (req, res) => {
             'SELECT * FROM egg_batch_remanentes WHERE batch_id = ? AND company_id = ? ORDER BY created_at DESC',
             [id, req.company_id]
         );
-        res.json(rows);
+        const mapped = rows.map(r => ({
+            ...r,
+            remanente_code: `REM-${r.id}`,
+            weight_lbs: parseFloat(r.quantity_lbs || 0),
+            is_pasteurized: r.remanente_type === 'pasteurizado',
+            destination: r.storage_location || 'proximo_empaque'
+        }));
+        res.json(mapped);
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -1211,7 +1289,14 @@ const getAvailableRemanentes = async (req, res) => {
         query += ` ORDER BY r.created_at DESC LIMIT 100`;
 
         const [rows] = await pool.query(query, params);
-        res.json(rows);
+        const mapped = rows.map(r => ({
+            ...r,
+            remanente_code: `REM-${r.id}`,
+            weight_lbs: parseFloat(r.quantity_lbs || 0),
+            is_pasteurized: r.remanente_type === 'pasteurizado',
+            destination: r.storage_location || 'proximo_empaque'
+        }));
+        res.json(mapped);
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -1248,9 +1333,28 @@ const createBatchRemanente = async (req, res) => {
 
 const updateBatchRemanente = async (req, res) => {
     try {
-        const { id } = req.params;
-        const { status, target_batch_id, notes } = req.body;
+        const targetId = req.params.remanenteId || req.params.id;
+        const {
+            product_type,
+            quantity_lbs,
+            weight_lbs,
+            is_pasteurized,
+            remanente_type,
+            storage_location,
+            destination,
+            status,
+            target_batch_id,
+            notes,
+            operator_name
+        } = req.body;
         const company_id = req.company_id || req.user?.company_id;
+
+        const qty = parseFloat(quantity_lbs ?? weight_lbs ?? 0);
+        let remType = remanente_type;
+        if (!remType && is_pasteurized !== undefined) {
+            remType = is_pasteurized ? 'pasteurizado' : 'no_pasteurizado';
+        }
+        const loc = storage_location || destination;
 
         let targetBatch = target_batch_id !== undefined ? target_batch_id : null;
         if (status === 'disponible') {
@@ -1259,26 +1363,46 @@ const updateBatchRemanente = async (req, res) => {
 
         await pool.query(
             `UPDATE egg_batch_remanentes 
-             SET status = COALESCE(?, status),
+             SET product_type = COALESCE(?, product_type),
+                 quantity_lbs = CASE WHEN ? > 0 THEN ? ELSE quantity_lbs END,
+                 remanente_type = COALESCE(?, remanente_type),
+                 storage_location = COALESCE(?, storage_location),
+                 status = COALESCE(?, status),
                  target_batch_id = CASE 
                      WHEN ? = 'disponible' THEN NULL 
                      WHEN ? IS NOT NULL THEN ? 
                      ELSE target_batch_id 
                  END,
                  notes = COALESCE(?, notes),
+                 operator_name = COALESCE(?, operator_name),
                  updated_at = NOW()
              WHERE id = ? AND company_id = ?`,
             [
-                status || null, 
-                status || null, 
-                targetBatch, 
-                targetBatch, 
-                notes !== undefined ? notes : null, 
-                id, 
+                product_type || null,
+                qty, qty,
+                remType || null,
+                loc || null,
+                status || null,
+                status || null,
+                targetBatch,
+                targetBatch,
+                notes !== undefined ? notes : null,
+                operator_name || null,
+                targetId,
                 company_id
             ]
         );
         res.json({ success: true, message: 'Remanente actualizado con éxito.' });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+const deleteBatchRemanente = async (req, res) => {
+    try {
+        const targetId = req.params.remanenteId || req.params.id;
+        await pool.query('DELETE FROM egg_batch_remanentes WHERE id = ? AND company_id = ?', [targetId, req.company_id]);
+        res.json({ success: true, message: 'Remanente eliminado exitosamente.' });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -1417,9 +1541,12 @@ module.exports = {
     exportBatchSummary,
     getBatchWastes,
     createBatchWaste,
+    updateBatchWaste,
     deleteBatchWaste,
     getBatchRemanentes,
     getAvailableRemanentes,
     createBatchRemanente,
-    updateBatchRemanente
+    updateBatchRemanente,
+    deleteBatchRemanente,
+    closeBatchPackaging
 };

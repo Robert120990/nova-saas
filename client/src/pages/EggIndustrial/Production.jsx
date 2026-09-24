@@ -26,7 +26,8 @@ import {
     FileSpreadsheet,
     FileText,
     AlertTriangle,
-    FileCheck
+    FileCheck,
+    Scale
 } from 'lucide-react';
 import ProductionTarimaScannerModal from '../../components/egg/ProductionTarimaScannerModal';
 import EggBatchStagesModal from '../../components/egg/EggBatchStagesModal';
@@ -185,11 +186,36 @@ const EggProduction = () => {
         }
     };
 
+    const handleOpenBalanceModal = (batch) => {
+        if (!batch) return;
+        setSelectedBatchForComplete(batch);
+        const hasExistingBalance = parseFloat(batch.yield_liquid_lbs || 0) > 0;
+        if (hasExistingBalance) {
+            setCompleteForm({
+                yield_liquid_lbs: String(batch.yield_liquid_lbs || ''),
+                waste_shell_lbs: String(batch.waste_shell_lbs || '0'),
+                waste_loss_lbs: String(batch.waste_loss_lbs || '0')
+            });
+        } else {
+            const cfg = productConfig.find(c => c.product_type === batch.product_type) || {};
+            const yieldPct = parseFloat(cfg.yield_pct || 85) / 100;
+            const shellPct = parseFloat(cfg.waste_shell_pct || 12) / 100;
+            const lossPct = parseFloat(cfg.waste_loss_pct || 3) / 100;
+            const inputLbs = parseFloat(batch.input_weight_lbs || 0);
+            setCompleteForm({
+                yield_liquid_lbs: inputLbs > 0 ? (inputLbs * yieldPct).toFixed(2) : '',
+                waste_shell_lbs: inputLbs > 0 ? (inputLbs * shellPct).toFixed(2) : '0',
+                waste_loss_lbs: inputLbs > 0 ? (inputLbs * lossPct).toFixed(2) : '0'
+            });
+        }
+    };
+
     const handleOpenWastesModal = async (batch) => {
         setWastesModal({
             isOpen: true,
             batch,
             wastes: [],
+            editingWasteId: null,
             stage: 'quebraje',
             waste_type: 'cascaron',
             weight_lbs: '',
@@ -206,6 +232,29 @@ const EggProduction = () => {
         }
     };
 
+    const handleOpenEditWaste = (waste, batch) => {
+        const targetBatch = batch || stagesModal.batch || wastesModal.batch;
+        setWastesModal({
+            isOpen: true,
+            batch: targetBatch,
+            wastes: wastesModal.batch?.id === targetBatch?.id ? wastesModal.wastes : [],
+            editingWasteId: waste.id,
+            stage: waste.stage || 'quebraje',
+            waste_type: waste.waste_type || 'cascaron',
+            weight_lbs: String(waste.weight_lbs || waste.quantity_lbs || ''),
+            notes: waste.notes || waste.reason || '',
+            loading: false,
+            isSubmitting: false
+        });
+        if (targetBatch?.id) {
+            axios.get(`/api/egg-industrial/batches/${targetBatch.id}/wastes`)
+                .then(res => {
+                    setWastesModal(prev => ({ ...prev, wastes: res.data || [] }));
+                })
+                .catch(() => {});
+        }
+    };
+
     const handleCreateWaste = async (e) => {
         e.preventDefault();
         if (!wastesModal.weight_lbs || parseFloat(wastesModal.weight_lbs) <= 0) {
@@ -213,41 +262,99 @@ const EggProduction = () => {
         }
         setWastesModal(prev => ({ ...prev, isSubmitting: true }));
         try {
-            await axios.post(`/api/egg-industrial/batches/${wastesModal.batch.id}/wastes`, {
-                stage: wastesModal.stage,
-                waste_type: wastesModal.waste_type,
-                weight_lbs: parseFloat(wastesModal.weight_lbs),
-                quantity_lbs: parseFloat(wastesModal.weight_lbs),
-                notes: wastesModal.notes,
-                reason: wastesModal.notes,
-                operator_name: user?.nombre || ''
-            });
-            toast.success('Merma registrada con éxito.');
+            if (wastesModal.editingWasteId) {
+                await axios.put(`/api/egg-industrial/batches/${wastesModal.batch.id}/wastes/${wastesModal.editingWasteId}`, {
+                    stage: wastesModal.stage,
+                    waste_type: wastesModal.waste_type,
+                    weight_lbs: parseFloat(wastesModal.weight_lbs),
+                    quantity_lbs: parseFloat(wastesModal.weight_lbs),
+                    notes: wastesModal.notes,
+                    reason: wastesModal.notes
+                });
+                toast.success('Merma actualizada con éxito.');
+            } else {
+                await axios.post(`/api/egg-industrial/batches/${wastesModal.batch.id}/wastes`, {
+                    stage: wastesModal.stage,
+                    waste_type: wastesModal.waste_type,
+                    weight_lbs: parseFloat(wastesModal.weight_lbs),
+                    quantity_lbs: parseFloat(wastesModal.weight_lbs),
+                    notes: wastesModal.notes,
+                    reason: wastesModal.notes,
+                    operator_name: user?.nombre || ''
+                });
+                toast.success('Merma registrada con éxito.');
+            }
             const res = await axios.get(`/api/egg-industrial/batches/${wastesModal.batch.id}/wastes`);
             setWastesModal(prev => ({
                 ...prev,
+                editingWasteId: null,
                 wastes: res.data || [],
                 weight_lbs: '',
                 notes: '',
                 isSubmitting: false
             }));
             fetchData();
+            if (stagesModal.isOpen && stagesModal.batch?.id === wastesModal.batch?.id) {
+                handleOpenStagesModal(wastesModal.batch);
+            }
         } catch (err) {
-            console.error('Error al registrar merma:', err);
-            toast.error(err.response?.data?.message || 'Error al registrar merma.');
+            console.error('Error al guardar merma:', err);
+            toast.error(err.response?.data?.message || 'Error al guardar merma.');
             setWastesModal(prev => ({ ...prev, isSubmitting: false }));
         }
     };
 
-    const handleDeleteWaste = async (wasteId) => {
+    const handleDeleteWaste = async (wasteId, batchIdOverride) => {
+        const targetBatchId = batchIdOverride || wastesModal.batch?.id || stagesModal.batch?.id;
+        if (!targetBatchId) return;
+        if (!window.confirm('¿Confirmas que deseas eliminar este registro de merma?')) return;
         try {
-            await axios.delete(`/api/egg-industrial/batches/${wastesModal.batch.id}/wastes/${wasteId}`);
+            await axios.delete(`/api/egg-industrial/batches/${targetBatchId}/wastes/${wasteId}`);
             toast.success('Merma eliminada.');
-            const res = await axios.get(`/api/egg-industrial/batches/${wastesModal.batch.id}/wastes`);
-            setWastesModal(prev => ({ ...prev, wastes: res.data || [] }));
+            if (wastesModal.isOpen && wastesModal.batch?.id) {
+                const res = await axios.get(`/api/egg-industrial/batches/${wastesModal.batch.id}/wastes`);
+                setWastesModal(prev => ({ ...prev, wastes: res.data || [] }));
+            }
             fetchData();
+            if (stagesModal.isOpen && stagesModal.batch?.id === targetBatchId) {
+                handleOpenStagesModal(stagesModal.batch);
+            }
         } catch (err) {
+            console.error('Error al eliminar merma:', err);
             toast.error('Error al eliminar merma.');
+        }
+    };
+
+    const handleOpenEditRemanente = (rem, batch) => {
+        const targetBatch = batch || stagesModal.batch;
+        setRemanenteModal({
+            isOpen: true,
+            id: rem.id,
+            batch: targetBatch,
+            product_type: rem.product_type || targetBatch?.product_type || 'huevo entero',
+            presentation: rem.presentation || targetBatch?.presentation || 'cubeta 30LB',
+            weight_lbs: String(rem.quantity_lbs || rem.weight_lbs || ''),
+            is_pasteurized: rem.is_pasteurized !== undefined ? !!rem.is_pasteurized : (targetBatch?.status === 'pasteurizado'),
+            destination: rem.destination || rem.storage_location || 'proximo_empaque',
+            notes: rem.notes || '',
+            isSubmitting: false
+        });
+    };
+
+    const handleDeleteRemanente = async (remId, batchIdOverride) => {
+        const batchId = batchIdOverride || stagesModal.batch?.id;
+        if (!batchId) return;
+        if (!window.confirm('¿Confirmas que deseas eliminar este registro de remanente?')) return;
+        try {
+            await axios.delete(`/api/egg-industrial/batches/${batchId}/remanentes/${remId}`);
+            toast.success('Remanente eliminado exitosamente.');
+            fetchData();
+            if (stagesModal.isOpen && stagesModal.batch?.id === batchId) {
+                handleOpenStagesModal(stagesModal.batch);
+            }
+        } catch (err) {
+            console.error('Error eliminando remanente:', err);
+            toast.error(err.response?.data?.message || 'Error al eliminar remanente.');
         }
     };
 
@@ -617,25 +724,38 @@ const EggProduction = () => {
         }
         setRemanenteModal(prev => ({ ...prev, isSubmitting: true }));
         try {
-            const res = await axios.post(`/api/egg-industrial/batches/${remanenteModal.batch.id}/remanentes`, {
-                product_type: remanenteModal.product_type,
-                presentation: remanenteModal.presentation,
-                weight_lbs: parseFloat(remanenteModal.weight_lbs),
-                quantity_lbs: parseFloat(remanenteModal.weight_lbs),
-                is_pasteurized: remanenteModal.is_pasteurized,
-                destination: remanenteModal.destination,
-                notes: remanenteModal.notes,
-                created_by: user?.nombre || ''
-            });
-            toast.success(res.data?.message || 'Remanente / sobrante registrado exitosamente.');
-            setRemanenteModal(prev => ({ ...prev, isOpen: false, isSubmitting: false }));
+            if (remanenteModal.id) {
+                const res = await axios.put(`/api/egg-industrial/batches/${remanenteModal.batch.id}/remanentes/${remanenteModal.id}`, {
+                    product_type: remanenteModal.product_type,
+                    presentation: remanenteModal.presentation,
+                    weight_lbs: parseFloat(remanenteModal.weight_lbs),
+                    quantity_lbs: parseFloat(remanenteModal.weight_lbs),
+                    is_pasteurized: remanenteModal.is_pasteurized,
+                    destination: remanenteModal.destination,
+                    notes: remanenteModal.notes
+                });
+                toast.success(res.data?.message || 'Remanente actualizado exitosamente.');
+            } else {
+                const res = await axios.post(`/api/egg-industrial/batches/${remanenteModal.batch.id}/remanentes`, {
+                    product_type: remanenteModal.product_type,
+                    presentation: remanenteModal.presentation,
+                    weight_lbs: parseFloat(remanenteModal.weight_lbs),
+                    quantity_lbs: parseFloat(remanenteModal.weight_lbs),
+                    is_pasteurized: remanenteModal.is_pasteurized,
+                    destination: remanenteModal.destination,
+                    notes: remanenteModal.notes,
+                    created_by: user?.nombre || ''
+                });
+                toast.success(res.data?.message || 'Remanente / sobrante registrado exitosamente.');
+            }
+            setRemanenteModal(prev => ({ ...prev, isOpen: false, isSubmitting: false, id: null }));
             fetchData();
-            if (stagesModal.isOpen && stagesModal.batch?.id === remanenteModal.batch.id) {
+            if (stagesModal.isOpen && stagesModal.batch?.id === remanenteModal.batch?.id) {
                 handleOpenStagesModal(remanenteModal.batch);
             }
         } catch (err) {
             console.error('Error guardando remanente:', err);
-            toast.error(err.response?.data?.message || 'Error al registrar remanente.');
+            toast.error(err.response?.data?.message || 'Error al guardar remanente.');
             setRemanenteModal(prev => ({ ...prev, isSubmitting: false }));
         }
     };
@@ -1347,7 +1467,7 @@ const EggProduction = () => {
         }
     };
 
-    // Handle complete batch
+    // Handle complete / balance batch
     const handleCompleteBatch = async (e) => {
         e.preventDefault();
         if (!completeForm.yield_liquid_lbs || parseFloat(completeForm.yield_liquid_lbs) <= 0) {
@@ -1355,19 +1475,23 @@ const EggProduction = () => {
         }
 
         setIsSubmitting(true);
+        const batchToUpdate = selectedBatchForComplete;
         try {
-            await axios.put(`/api/egg-industrial/batches/${selectedBatchForComplete.id}/complete`, {
+            await axios.put(`/api/egg-industrial/batches/${batchToUpdate.id}/complete`, {
                 yield_liquid_lbs: parseFloat(completeForm.yield_liquid_lbs),
                 waste_shell_lbs: parseFloat(completeForm.waste_shell_lbs || 0),
                 waste_loss_lbs: parseFloat(completeForm.waste_loss_lbs || 0)
             });
-            toast.success('Lote finalizado correctamente.');
+            toast.success('Balance de masas registrado y actualizado correctamente.');
             setSelectedBatchForComplete(null);
             setCompleteForm({ yield_liquid_lbs: '', waste_shell_lbs: '', waste_loss_lbs: '' });
             fetchData();
+            if (stagesModal.isOpen && stagesModal.batch?.id === batchToUpdate.id) {
+                handleOpenStagesModal(batchToUpdate);
+            }
         } catch (error) {
             console.error('Error completing batch:', error);
-            toast.error('Error al finalizar el lote.');
+            toast.error(error.response?.data?.message || 'Error al guardar balance de masas.');
         } finally {
             setIsSubmitting(false);
         }
@@ -1690,24 +1814,14 @@ const EggProduction = () => {
                                                         )}
                                                     </div>
 
-                                                    {/* Balance si pasteurizado */}
-                                                    {b.status === 'pasteurizado' && (
+                                                    {/* Balance de Masas */}
+                                                    {b.status !== 'creado' && b.status !== 'bloqueado_haccp' && (
                                                         <button
-                                                            onClick={() => {
-                                                                setSelectedBatchForComplete(b);
-                                                                const cfg = productConfig.find(c => c.product_type === b.product_type) || {};
-                                                                const yieldPct = parseFloat(cfg.yield_pct || 85) / 100;
-                                                                const shellPct = parseFloat(cfg.waste_shell_pct || 12) / 100;
-                                                                const lossPct = parseFloat(cfg.waste_loss_pct || 3) / 100;
-                                                                setCompleteForm({
-                                                                    yield_liquid_lbs: (parseFloat(b.input_weight_lbs) * yieldPct).toFixed(2),
-                                                                    waste_shell_lbs: (parseFloat(b.input_weight_lbs) * shellPct).toFixed(2),
-                                                                    waste_loss_lbs: (parseFloat(b.input_weight_lbs) * lossPct).toFixed(2)
-                                                                });
-                                                            }}
-                                                            className="px-2 py-1 bg-teal-50 hover:bg-teal-100 border border-teal-200 text-teal-700 rounded-lg text-[11px] font-bold transition-all shadow-xs"
-                                                            title="Balance de Masas"
+                                                            onClick={() => handleOpenBalanceModal(b)}
+                                                            className="px-2 py-1 bg-teal-50 hover:bg-teal-100 border border-teal-200 text-teal-700 rounded-lg text-[11px] font-bold transition-all shadow-xs flex items-center gap-1"
+                                                            title="Editar Balance de Masas"
                                                         >
+                                                            <Scale size={12} />
                                                             Balance
                                                         </button>
                                                     )}
@@ -3097,18 +3211,26 @@ const EggProduction = () => {
                     setIsPasteurizeModalOpen(true);
                     setStagesModal({ isOpen: false, batch: null, data: null, loading: false });
                 }}
+                onOpenBalance={(batch) => handleOpenBalanceModal(batch)}
                 onOpenRemanente={(batch) => setRemanenteModal({
                     isOpen: true,
+                    id: null,
                     batch: batch,
                     product_type: batch?.product_type || 'huevo entero',
+                    presentation: 'cubeta 30LB',
                     weight_lbs: '',
                     is_pasteurized: batch?.status === 'pasteurizado',
                     destination: 'proximo_empaque',
                     notes: '',
                     isSubmitting: false
                 })}
+                onOpenEditRemanente={(rem) => handleOpenEditRemanente(rem)}
+                onDeleteRemanente={(remId) => handleDeleteRemanente(remId)}
                 onNavigateEmpaque={() => navigate('/industrial/empaque')}
                 onOpenWastes={(batch) => handleOpenWastesModal(batch)}
+                onOpenEditWaste={(waste) => handleOpenEditWaste(waste)}
+                handleDeleteWaste={(wasteId) => handleDeleteWaste(wasteId)}
+                onDeleteWaste={(wasteId) => handleDeleteWaste(wasteId)}
                 onExportSummary={(batchId, format) => handleExportSummary(batchId, format)}
             />
 
@@ -3146,7 +3268,7 @@ const EggProduction = () => {
             {/* MODAL REGISTRAR REMANENTE / SOBRANTE */}
             <EggRemanenteModal
                 isOpen={remanenteModal.isOpen}
-                onClose={() => setRemanenteModal(prev => ({ ...prev, isOpen: false }))}
+                onClose={() => setRemanenteModal(prev => ({ ...prev, isOpen: false, id: null }))}
                 remanenteModal={remanenteModal}
                 setRemanenteModal={setRemanenteModal}
                 onSubmit={handleRemanenteSubmit}
@@ -3155,7 +3277,7 @@ const EggProduction = () => {
             {/* MODAL REGISTRO Y GESTIÓN DE MERMAS POR LOTE */}
             <EggBatchWastesModal
                 isOpen={wastesModal.isOpen}
-                onClose={() => setWastesModal(prev => ({ ...prev, isOpen: false }))}
+                onClose={() => setWastesModal(prev => ({ ...prev, isOpen: false, editingWasteId: null }))}
                 wastesModal={wastesModal}
                 setWastesModal={setWastesModal}
                 handleCreateWaste={handleCreateWaste}

@@ -35,9 +35,12 @@ router.get('/batches/:id/export-summary', eggController.exportBatchSummary);
 // 3.1 Mermas de Producción (Soporte dual /mermas y /wastes)
 router.get('/batches/:id/mermas', eggController.getBatchWastes);
 router.post('/batches/:id/mermas', eggController.createBatchWaste);
+router.put('/batches/:id/mermas/:wasteId', eggController.updateBatchWaste);
 router.delete('/mermas/:id', eggController.deleteBatchWaste);
 router.get('/batches/:id/wastes', eggController.getBatchWastes);
 router.post('/batches/:id/wastes', eggController.createBatchWaste);
+router.put('/batches/:id/wastes/:wasteId', eggController.updateBatchWaste);
+router.put('/wastes/:id', eggController.updateBatchWaste);
 router.delete('/batches/:id/wastes/:wasteId', eggController.deleteBatchWaste);
 router.delete('/wastes/:id', eggController.deleteBatchWaste);
 
@@ -46,6 +49,9 @@ router.get('/batches/:id/remanentes', eggController.getBatchRemanentes);
 router.get('/remanentes/available', eggController.getAvailableRemanentes);
 router.post('/batches/:id/remanentes', eggController.createBatchRemanente);
 router.put('/remanentes/:id', eggController.updateBatchRemanente);
+router.put('/batches/:id/remanentes/:remanenteId', eggController.updateBatchRemanente);
+router.delete('/remanentes/:id', eggController.deleteBatchRemanente);
+router.delete('/batches/:id/remanentes/:remanenteId', eggController.deleteBatchRemanente);
 
 // 4. Pasteurización
 router.post('/pasteurize', eggController.createPasteurizationLog);
