@@ -162,6 +162,7 @@ router.put('/quality-parameters/:id', eggController.saveQualityParameter);
 router.delete('/quality-parameters/:id', eggController.deleteQualityParameter);
 router.get('/lab/logs', eggController.getLabLogs);
 router.get('/lab/quality-letter/:batchId/export', eggController.exportQualityLetter);
+router.get('/lab/export-mario', eggController.exportMarioQualityExcel);
 router.post('/lab/logs', eggController.createLabLog);
 router.put('/lab/logs/:id', eggController.updateLabLog);
 router.post('/lab/send-unified-email', eggController.sendUnifiedCoaEmail);

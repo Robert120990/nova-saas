@@ -164,16 +164,19 @@ const createPackagingRecord = async (req, res) => {
                 operator: operator_name || req.user?.nombre || ''
             });
 
+            // Determinar estado de calidad inicial según el estatus del lote
+            const initialQualityStatus = batch.status === 'aprobado_calidad' ? 'liberado' : (batch.status === 'bloqueado_haccp' ? 'bloqueado_haccp' : 'cuarentena');
+
             // Insertar registro con product_type y presentation independientes
             const [result] = await pool.query(
                 `INSERT INTO egg_packaging_records (
-                    company_id, batch_id, product_type, presentation, units_packaged, warehouse_zone, product_state, 
+                    company_id, batch_id, product_type, presentation, units_packaged, warehouse_zone, product_state, quality_status,
                     weight_per_unit_lbs, total_batch_weight_lbs, lot_code, barcode, label_type, 
                     customer_destination, qr_code_payload, expiry_date, operator_name
                 ) 
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, DATE_ADD(CURDATE(), INTERVAL ? DAY), ?)`,
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, DATE_ADD(CURDATE(), INTERVAL ? DAY), ?)`,
                 [
-                    company_id, batch_id, resolvedProduct, resolvedPresentation, units_packaged, itemWarehouseZone, itemProductState,
+                    company_id, batch_id, resolvedProduct, resolvedPresentation, units_packaged, itemWarehouseZone, itemProductState, initialQualityStatus,
                     weight_per_unit_lbs, total_batch_weight_lbs, lot_code, barcode, label_type,
                     customer_destination, qr_code_payload, shelfLifeDays, operator_name || req.user?.nombre || ''
                 ]
@@ -187,6 +190,7 @@ const createPackagingRecord = async (req, res) => {
                 barcode,
                 warehouse_zone: itemWarehouseZone,
                 product_state: itemProductState,
+                quality_status: initialQualityStatus,
                 units_packaged,
                 weight_per_unit_lbs,
                 total_batch_weight_lbs,
@@ -199,12 +203,14 @@ const createPackagingRecord = async (req, res) => {
             return res.status(400).json({ message: 'Debe ingresar al menos una presentación con unidades válidas.' });
         }
 
-        // Actualizar estado de lote
-        const newBatchStatus = latestWarehouseZone === 'BLAST' || latestProductState === 'congelado' ? 'congelado' : 'empaquetado';
-        await pool.query(
-            `UPDATE egg_production_batches SET status = ? WHERE id = ? AND company_id = ?`,
-            [newBatchStatus, batch_id, company_id]
-        );
+        // Actualizar estado de lote preservando dictamen previo de calidad si existiera
+        if (batch.status !== 'aprobado_calidad' && batch.status !== 'bloqueado_haccp') {
+            const newBatchStatus = latestWarehouseZone === 'BLAST' || latestProductState === 'congelado' ? 'congelado' : 'empaquetado';
+            await pool.query(
+                `UPDATE egg_production_batches SET status = ? WHERE id = ? AND company_id = ?`,
+                [newBatchStatus, batch_id, company_id]
+            );
+        }
 
         // Crear evento
         await pool.query(

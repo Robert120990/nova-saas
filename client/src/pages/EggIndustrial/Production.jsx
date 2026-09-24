@@ -27,7 +27,8 @@ import {
     FileText,
     AlertTriangle,
     FileCheck,
-    Scale
+    Scale,
+    FlaskConical
 } from 'lucide-react';
 import ProductionTarimaScannerModal from '../../components/egg/ProductionTarimaScannerModal';
 import EggBatchStagesModal from '../../components/egg/EggBatchStagesModal';
@@ -36,6 +37,7 @@ import EggTarimaSearchModal from '../../components/egg/EggTarimaSearchModal';
 import EggRemanenteModal from '../../components/egg/EggRemanenteModal';
 import EggBatchWastesModal from '../../components/egg/EggBatchWastesModal';
 import EggClosePasteurizationModal from '../../components/egg/EggClosePasteurizationModal';
+import { EggQualityFinishedProductModal } from '../../components/egg/quality';
 import { formatDate, formatDateTime } from '../../utils/dateUtils';
 import { getJulianDayInfo } from '../../utils/julianDate';
 
@@ -59,6 +61,7 @@ const EggProduction = () => {
     const [scannerModalOpen, setScannerModalOpen] = useState(false);
     const [tarimaPickerModal, setTarimaPickerModal] = useState({ isOpen: false, lot: null, availableTarimas: [] });
     const [tarimaSearchPickerOpen, setTarimaSearchPickerOpen] = useState(false);
+    const [qualityModal, setQualityModal] = useState({ isOpen: false, batch: null });
 
     // Lists
     const [batches, setBatches] = useState([]);
@@ -1853,9 +1856,14 @@ const EggProduction = () => {
                                                 ) : '-'}
                                             </td>
                                             <td className="px-3 py-2.5 text-center">
-                                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${getBatchStatusBadge(b.status)}`}>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setQualityModal({ isOpen: true, batch: b })}
+                                                    className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase transition-all hover:scale-105 ${getBatchStatusBadge(b.status)}`}
+                                                    title="Haga clic para ver o evaluar dictamen de calidad FQ & MB"
+                                                >
                                                     {b.status}
-                                                </span>
+                                                </button>
                                             </td>
                                             <td className="px-3 py-2.5 text-[10px] text-slate-600 space-y-0.5 min-w-[180px]">
                                                 <div>
@@ -1871,12 +1879,28 @@ const EggProduction = () => {
                                             </td>
                                             <td className="px-3 py-2.5 text-center">
                                                 <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                                                    {/* Control de Calidad FQ / MB */}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setQualityModal({ isOpen: true, batch: b })}
+                                                        className={`p-1.5 rounded-lg border transition-colors shadow-xs ${
+                                                            b.status === 'aprobado_calidad'
+                                                                ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200'
+                                                                : b.status === 'bloqueado_haccp'
+                                                                ? 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200'
+                                                                : 'bg-teal-50 hover:bg-teal-100 text-teal-700 border-teal-200'
+                                                        }`}
+                                                        title="Control de Calidad LAB-004 (FQ & MB) y Liberación"
+                                                    >
+                                                        <FlaskConical size={13} />
+                                                    </button>
+
                                                     {/* Visualizador de Etapas */}
                                                     <button
                                                         type="button"
                                                         onClick={() => handleOpenStagesModal(b)}
                                                         className="p-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg border border-indigo-200 transition-colors shadow-xs"
-                                                        title="Visualizador de Etapas Cumplidas del Proceso (Quebraje, Pasteurización, Remanentes, Envasado)"
+                                                        title="Visualizador de Etapas Cumplidas del Proceso (Quebraje, Pasteurización, Remanentes, Envasado, Calidad)"
                                                     >
                                                         <Layers size={13} />
                                                     </button>
@@ -3539,6 +3563,20 @@ const EggProduction = () => {
                 handleDeleteWaste={(wasteId) => handleDeleteWaste(wasteId)}
                 onDeleteWaste={(wasteId) => handleDeleteWaste(wasteId)}
                 onExportSummary={(batchId, format) => handleExportSummary(batchId, format)}
+                onOpenQualityEvaluation={(b) => setQualityModal({ isOpen: true, batch: b })}
+            />
+
+            {/* MODAL CONTROL DE CALIDAD FQ & MB (MARIO / LAB-004) */}
+            <EggQualityFinishedProductModal
+                open={qualityModal.isOpen}
+                onClose={() => setQualityModal({ isOpen: false, batch: null })}
+                batch={qualityModal.batch}
+                onSuccess={() => {
+                    fetchBatches();
+                    if (stagesModal.isOpen && stagesModal.batch) {
+                        handleOpenStagesModal(stagesModal.batch);
+                    }
+                }}
             />
 
             {/* MODAL CERRAR PASTEURIZACIÓN */}

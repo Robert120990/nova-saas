@@ -37,6 +37,7 @@ import {
     Loader2,
     Calendar
 } from 'lucide-react';
+import { EggQualityFinishedProductModal } from '../../components/egg/quality';
 
 const EggTraceability = () => {
     const [activeTab, setActiveTab] = useState('trace'); // 'trace', 'lab', 'solids', 'params'
@@ -66,6 +67,7 @@ const EggTraceability = () => {
     const [qualityLetterBatch, setQualityLetterBatch] = useState(null);
     const [letterCustomerName, setLetterCustomerName] = useState('A QUIEN CORRESPONDA');
     const [letterCustomerContact, setLetterCustomerContact] = useState('');
+    const [letterScope, setLetterScope] = useState('all'); // 'all', 'fq', 'mb'
     const [exportingFormat, setExportingFormat] = useState(null);
 
     // Company & Catalogs States
@@ -78,6 +80,8 @@ const EggTraceability = () => {
     const [labLogs, setLabLogs] = useState([]);
     const [loadingLab, setLoadingLab] = useState(false);
     const [batches, setBatches] = useState([]);
+    const [qualityModal, setQualityModal] = useState({ isOpen: false, batch: null, logId: null });
+    const [labReleaseFilter, setLabReleaseFilter] = useState('todos'); // 'todos', 'cuarentena', 'liberado', 'bloqueado_haccp'
     const [isLabModalOpen, setIsLabModalOpen] = useState(false);
     const [editingLogId, setEditingLogId] = useState(null);
 
@@ -325,6 +329,7 @@ const EggTraceability = () => {
             const res = await axios.get(`/api/egg-industrial/lab/quality-letter/${qualityLetterBatch.batch_id}/export`, {
                 params: {
                     format,
+                    scope: letterScope,
                     customer_name: letterCustomerName.trim() || undefined,
                     customer_contact: letterCustomerContact.trim() || undefined
                 },
@@ -332,6 +337,7 @@ const EggTraceability = () => {
             });
 
             const safeCode = (qualityLetterBatch.lot_code || `LOTE-${qualityLetterBatch.batch_id}`).replace(/[^a-zA-Z0-9_-]/g, '_');
+            const prefix = letterScope === 'fq' ? 'Analisis_FQ' : letterScope === 'mb' ? 'Analisis_MB' : 'Carta_Calidad';
             const ext = format === 'word' ? 'docx' : format === 'excel' ? 'xlsx' : 'pdf';
             const mime = format === 'word'
                 ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
@@ -343,7 +349,7 @@ const EggTraceability = () => {
             const url = window.URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = url;
-            link.setAttribute('download', `Carta_Calidad_${safeCode}.${ext}`);
+            link.setAttribute('download', `${prefix}_${safeCode}.${ext}`);
             document.body.appendChild(link);
             link.click();
             link.remove();
@@ -418,47 +424,46 @@ const EggTraceability = () => {
         });
     }, [qualityParameters, selectedBatch]);
 
-    // Abrir modal para crear nuevo análisis
+    // Abrir modal para crear nuevo análisis de calidad FQ/MB
     const handleOpenCreateLab = () => {
-        setEditingLogId(null);
-        setLabForm({
-            ...initialLabForm,
-            sample_date: new Date().toISOString().split('T')[0]
-        });
-        setIsLabModalOpen(true);
+        setQualityModal({ isOpen: true, batch: null, logId: null });
     };
 
     // Abrir modal para editar análisis existente
     const handleOpenEditLab = (log) => {
-        setEditingLogId(log.id);
-
-        // Reconstruir lecturas dinámicas desde log.custom_parameters si existen
-        const dynamicReadings = {};
-        const dynamicCriteria = {};
-
-        if (Array.isArray(log.custom_parameters)) {
-            log.custom_parameters.forEach(p => {
-                if (p.parameter_id) {
-                    dynamicReadings[p.parameter_id] = p.value;
-                    dynamicCriteria[p.parameter_id] = p.criterion;
-                }
-            });
-        }
-
-        setLabForm({
-            batch_id: String(log.batch_id),
-            customer_id: log.customer_id ? String(log.customer_id) : '',
-            customer_name: log.customer_name || log.customer_nombre_db || '',
-            presentation: log.presentation || 'Cubeta 30 Lb',
-            sample_date: log.sample_date ? new Date(log.sample_date).toISOString().split('T')[0] : (log.analysis_date ? new Date(log.analysis_date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]),
-            status: log.status || log.result_status || 'aprobado',
-            analyst_name: log.analyst_name || 'Mario (Control de Calidad)',
-            observations: log.observations || log.notes || '',
-            dynamicReadings,
-            dynamicCriteria
+        const relatedBatch = batches.find(b => b.id === log.batch_id);
+        setQualityModal({
+            isOpen: true,
+            batch: relatedBatch || {
+                id: log.batch_id,
+                batch_uuid: log.batch_uuid || log.commercial_lot_code,
+                batch_code_display: log.batch_code_display || log.commercial_lot_code,
+                product_type: log.product_type,
+                presentation: log.presentation
+            },
+            logId: log.id
         });
+    };
 
-        setIsLabModalOpen(true);
+    // Exportar Libro Excel Oficial Mario 2025 (FQ + MB)
+    const handleExportMarioExcel = async () => {
+        try {
+            toast.info('Generando Excel oficial Mario 2025 (Hojas FQ y MB)...');
+            const res = await axios.get('/api/egg-industrial/lab/export-mario', {
+                responseType: 'blob'
+            });
+            const url = window.URL.createObjectURL(new Blob([res.data]));
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', `Control_Calidad_Mario_${new Date().getFullYear()}.xlsx`);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            toast.success('Excel oficial descargado con éxito.');
+        } catch (error) {
+            console.error('Error exportando Excel de Mario:', error);
+            toast.error('Error al descargar el Excel de calidad.');
+        }
     };
 
     // Guardar / Actualizar Registro LAB-004
@@ -1235,10 +1240,37 @@ const EggTraceability = () => {
                                                     {/* 4. Calidad & Alertas */}
                                                     <td className="p-3.5">
                                                         <div className="space-y-1.5">
-                                                            <div className="flex items-center gap-1.5">
-                                                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${item.lab_status === 'aprobado' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : item.lab_status === 'rechazado' ? 'bg-rose-50 text-rose-700 border border-rose-200' : 'bg-amber-50 text-amber-700 border border-amber-200'}`}>
-                                                                    {item.lab_status}
-                                                                </span>
+                                                            <div className="flex flex-wrap items-center gap-1.5">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setQualityModal({
+                                                                        isOpen: true,
+                                                                        batch: {
+                                                                            id: item.batch_id,
+                                                                            batch_uuid: item.batch_uuid,
+                                                                            batch_code_display: item.batch_code_display || item.commercial_lot_code,
+                                                                            product_type: item.product_name || item.batch_product_type,
+                                                                            presentation: item.presentation,
+                                                                            status: item.batch_status
+                                                                        },
+                                                                        logId: item.lab_log_id
+                                                                    })}
+                                                                    className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase transition-all hover:scale-105 ${
+                                                                        item.release_status === 'liberado' || item.lab_status === 'aprobado'
+                                                                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                                                            : item.release_status === 'bloqueado_haccp' || item.lab_status === 'rechazado'
+                                                                                ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                                                                                : 'bg-amber-50 text-amber-700 border border-amber-200'
+                                                                    }`}
+                                                                    title="Ver / Evaluar Calidad Oficial Mario (FQ / MB)"
+                                                                >
+                                                                    {item.release_status === 'liberado' || item.lab_status === 'aprobado' ? 'Liberado' : item.release_status === 'bloqueado_haccp' || item.lab_status === 'rechazado' ? 'Bloqueado' : 'Cuarentena'}
+                                                                </button>
+                                                                {item.mb_status === 'en_incubacion' && (
+                                                                    <span className="px-1.5 py-0.2 rounded text-[9px] font-semibold bg-amber-50 text-amber-700 border border-amber-200 flex items-center gap-0.5" title="Incubación microbiológica en curso (48h)">
+                                                                        <Clock size={9} /> MB 48h
+                                                                    </span>
+                                                                )}
                                                                 {hasAlert && (
                                                                     <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-rose-600 text-white flex items-center gap-1 animate-pulse">
                                                                         <AlertTriangle size={10} /> Alerta
@@ -1253,6 +1285,9 @@ const EggTraceability = () => {
                                                             <div className="text-[10px] text-slate-600 flex flex-wrap items-center gap-1.5 font-mono">
                                                                 <span className="bg-slate-100 px-1.5 py-0.5 rounded">Sól: {item.solids_percentage ? `${item.solids_percentage}%` : '24.2%'}</span>
                                                                 <span className="bg-slate-100 px-1.5 py-0.5 rounded">pH: {item.ph || '7.4'}</span>
+                                                                {item.temperature_c !== null && item.temperature_c !== undefined && (
+                                                                    <span className="bg-slate-100 px-1.5 py-0.5 rounded">T: {item.temperature_c}°C</span>
+                                                                )}
                                                                 <span className={`px-1.5 py-0.5 rounded ${String(item.salmonella_25g || '').toLowerCase().includes('presencia') ? 'bg-rose-100 text-rose-700 font-bold' : 'bg-teal-50 text-teal-700'}`}>
                                                                     Salm: {item.salmonella_25g || 'Ausente'}
                                                                 </span>
@@ -1334,6 +1369,14 @@ const EggTraceability = () => {
                                 </button>
                             )}
                             <button
+                                onClick={handleExportMarioExcel}
+                                className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm"
+                                title="Descargar libro Excel con Hojas FQ y MB según formato oficial de Mario"
+                            >
+                                <FileSpreadsheet size={14} />
+                                Excel Mario 2025
+                            </button>
+                            <button
                                 onClick={handleOpenCreateLab}
                                 className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm"
                             >
@@ -1371,7 +1414,39 @@ const EggTraceability = () => {
                     )}
 
                     {/* Table of Lab Logs */}
-                    <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+                    <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
+                        {/* Filtros de Dictamen y Liberación */}
+                        <div className="flex flex-wrap items-center justify-between gap-3 pb-2 border-b border-slate-100">
+                            <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl">
+                                {[
+                                    { id: 'todos', label: 'Todos los Ensayos' },
+                                    { id: 'cuarentena', label: 'Cuarentena (Incubación)' },
+                                    { id: 'liberado', label: 'Liberados Aprobados' },
+                                    { id: 'bloqueado_haccp', label: 'Bloqueados HACCP' }
+                                ].map(f => (
+                                    <button
+                                        key={f.id}
+                                        type="button"
+                                        onClick={() => setLabReleaseFilter(f.id)}
+                                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                                            labReleaseFilter === f.id
+                                                ? 'bg-white text-indigo-700 shadow-xs'
+                                                : 'text-slate-600 hover:text-slate-900'
+                                        }`}
+                                    >
+                                        {f.label}
+                                    </button>
+                                ))}
+                            </div>
+                            <span className="text-xs text-slate-500 font-medium">
+                                Mostrando {labLogs.filter(log => {
+                                    if (labReleaseFilter === 'todos') return true;
+                                    const rel = log.release_status || (log.status === 'aprobado' ? 'liberado' : log.status === 'rechazado' ? 'bloqueado_haccp' : 'cuarentena');
+                                    return rel === labReleaseFilter;
+                                }).length} de {labLogs.length} registros
+                            </span>
+                        </div>
+
                         <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
                             {loadingLab ? (
                                 <div className="p-8 text-center text-slate-500 text-xs font-medium animate-pulse">Cargando bitácora de calidad...</div>
@@ -1402,7 +1477,11 @@ const EggTraceability = () => {
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100 text-slate-700 font-medium">
-                                        {labLogs.map(log => {
+                                        {labLogs.filter(log => {
+                                            if (labReleaseFilter === 'todos') return true;
+                                            const rel = log.release_status || (log.status === 'aprobado' ? 'liberado' : log.status === 'rechazado' ? 'bloqueado_haccp' : 'cuarentena');
+                                            return rel === labReleaseFilter;
+                                        }).map(log => {
                                             const isSelected = selectedLogIds.includes(log.id);
                                             const lotCode = log.batch_code_display || log.batch_uuid || `LOTE-${log.id}`;
                                             const customerDisplay = log.customer_name || log.customer_nombre_db || 'Venta General';
@@ -1747,210 +1826,18 @@ const EggTraceability = () => {
                 </div>
             )}
 
-            {/* MODAL REGISTRAR / EDITAR LAB-004 */}
-            {isLabModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
-                    <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto space-y-5 text-slate-900">
-                        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                            <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
-                                <FlaskConical size={16} className="text-teal-600" />
-                                {editingLogId ? 'Editar Análisis de Calidad LAB-004 & Parámetros' : 'Registrar Ensayo Microbiológico LAB-004'}
-                            </h3>
-                            <button onClick={() => setIsLabModalOpen(false)} className="text-slate-400 hover:text-slate-600">
-                                <XCircle size={18} />
-                            </button>
-                        </div>
-
-                        <form onSubmit={handleSaveLabLog} className="space-y-4">
-                            {/* Metadata del Lote y Cliente */}
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-50 p-3.5 rounded-xl border border-slate-200">
-                                <div>
-                                    <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1">Lote de Producción *</label>
-                                    <select
-                                        value={labForm.batch_id}
-                                        onChange={(e) => setLabForm({ ...labForm, batch_id: e.target.value })}
-                                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                                        required
-                                    >
-                                        <option value="">Seleccione Lote...</option>
-                                        {batches.map(b => (
-                                            <option key={b.id} value={b.id}>
-                                                [{b.batch_code_display || b.batch_uuid}] {b.product_type} ({b.presentation || 'Cubeta 30 Lb'})
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1">Fecha de Análisis</label>
-                                    <input
-                                        type="date"
-                                        value={labForm.sample_date}
-                                        onChange={(e) => setLabForm({ ...labForm, sample_date: e.target.value })}
-                                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1">Cliente Destino / Receptor</label>
-                                    <div className="flex gap-1.5">
-                                        <select
-                                            value={labForm.customer_id}
-                                            onChange={(e) => {
-                                                const cid = e.target.value;
-                                                const cObj = customers.find(c => String(c.id) === String(cid));
-                                                setLabForm({
-                                                    ...labForm,
-                                                    customer_id: cid,
-                                                    customer_name: cObj ? (cObj.nombre_comercial || cObj.nombre) : labForm.customer_name
-                                                });
-                                            }}
-                                            className="w-1/2 px-2.5 py-1.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium"
-                                        >
-                                            <option value="">(Seleccionar cliente del catálogo...)</option>
-                                            {customers.map(c => (
-                                                <option key={c.id} value={c.id}>
-                                                    {c.nombre_comercial || c.nombre}
-                                                </option>
-                                            ))}
-                                        </select>
-                                        <input
-                                            type="text"
-                                            value={labForm.customer_name}
-                                            onChange={(e) => setLabForm({ ...labForm, customer_name: e.target.value })}
-                                            placeholder="Nombre cliente / Stock"
-                                            className="w-1/2 px-2.5 py-1.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium"
-                                        />
-                                    </div>
-                                </div>
-                                <div>
-                                    <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1">Presentación Comercial</label>
-                                    <input
-                                        type="text"
-                                        value={labForm.presentation}
-                                        onChange={(e) => setLabForm({ ...labForm, presentation: e.target.value })}
-                                        placeholder="Ej: Cubeta 30 Lb, Garrafa 40 Lb, A granel"
-                                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                                    />
-                                </div>
-                            </div>
-
-                            {/* Ensayos y Parámetros Dinámicos según la Forma del Producto */}
-                            <div className="space-y-3">
-                                <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
-                                    <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
-                                        Ensayos & Parámetros de Calidad Aplicables ({activeProductParams.length} parámetros configurados)
-                                    </span>
-                                    <span className="text-[10px] text-indigo-600 font-medium">Valores sugeridos según norma oficial</span>
-                                </div>
-
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[36vh] overflow-y-auto pr-1">
-                                    {activeProductParams.map(param => {
-                                        const currentVal = labForm.dynamicReadings[param.id] !== undefined ? labForm.dynamicReadings[param.id] : (param.default_value || '');
-                                        const currentCrit = labForm.dynamicCriteria[param.id] !== undefined ? labForm.dynamicCriteria[param.id] : (param.expected_criterion || 'CONFORME');
-
-                                        return (
-                                            <div key={param.id} className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5">
-                                                <div className="flex justify-between items-start gap-1">
-                                                    <span className="text-xs font-bold text-slate-900 block leading-tight">{param.parameter_name}</span>
-                                                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-white border border-slate-200 text-slate-600 shrink-0">
-                                                        {param.specification}
-                                                    </span>
-                                                </div>
-                                                <div className="flex gap-2 items-center">
-                                                    <input
-                                                        type="text"
-                                                        value={currentVal}
-                                                        onChange={(e) => {
-                                                            setLabForm({
-                                                                ...labForm,
-                                                                dynamicReadings: {
-                                                                    ...labForm.dynamicReadings,
-                                                                    [param.id]: e.target.value
-                                                                }
-                                                            });
-                                                        }}
-                                                        placeholder={`Ej: ${param.default_value || 'Conforme'}`}
-                                                        className="w-2/3 px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                                                    />
-                                                    <select
-                                                        value={currentCrit}
-                                                        onChange={(e) => {
-                                                            setLabForm({
-                                                                ...labForm,
-                                                                dynamicCriteria: {
-                                                                    ...labForm.dynamicCriteria,
-                                                                    [param.id]: e.target.value
-                                                                }
-                                                            });
-                                                        }}
-                                                        className="w-1/3 px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-[11px] font-semibold text-slate-700"
-                                                    >
-                                                        <option value="CONFORME">CONFORME</option>
-                                                        <option value="DENTRO DE NORMA">EN NORMA</option>
-                                                        <option value="NO CONFORME">NO CONFORME</option>
-                                                        <option value="FUERA DE NORMA">FUERA NORMA</option>
-                                                    </select>
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-
-                            {/* Dictamen y Responsables */}
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
-                                <div>
-                                    <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1">Dictamen de Calidad</label>
-                                    <select
-                                        value={labForm.status}
-                                        onChange={(e) => setLabForm({ ...labForm, status: e.target.value })}
-                                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                                    >
-                                        <option value="aprobado">Aprobado / Apto para Liberación</option>
-                                        <option value="cuarentena">Retenido / Cuarentena Re-ensayo</option>
-                                        <option value="rechazado">Rechazado (Bloqueo HACCP)</option>
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1">Analista Responsable</label>
-                                    <input
-                                        type="text"
-                                        value={labForm.analyst_name}
-                                        onChange={(e) => setLabForm({ ...labForm, analyst_name: e.target.value })}
-                                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                                    />
-                                </div>
-                            </div>
-
-                            <div>
-                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1">Observaciones / Notas de Liberación</label>
-                                <textarea
-                                    value={labForm.observations}
-                                    onChange={(e) => setLabForm({ ...labForm, observations: e.target.value })}
-                                    rows={2}
-                                    placeholder="Observaciones analíticas o de despacho..."
-                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                                />
-                            </div>
-
-                            <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
-                                <button
-                                    type="button"
-                                    onClick={() => setIsLabModalOpen(false)}
-                                    className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all border border-slate-200"
-                                >
-                                    Cancelar
-                                </button>
-                                <button
-                                    type="submit"
-                                    className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm"
-                                >
-                                    {editingLogId ? 'Actualizar Registro LAB-004' : 'Guardar Registro LAB-004'}
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            )}
+            {/* MODAL CONTROL DE CALIDAD OFICIAL MARIO 2025 (FQ / MB / LIBERACIÓN) */}
+            <EggQualityFinishedProductModal
+                open={qualityModal.isOpen}
+                onClose={() => setQualityModal({ isOpen: false, batch: null, logId: null })}
+                batch={qualityModal.batch}
+                logId={qualityModal.logId}
+                onSuccess={() => {
+                    fetchBatchesAndLab();
+                    fetchTrace360List();
+                    fetchTrace360Stats();
+                }}
+            />
 
             {/* MODAL ENVIAR CORREO UNIFICADO AL CLIENTE (MULTI-LOTE) */}
             {isEmailModalOpen && (
@@ -2495,28 +2382,93 @@ const EggTraceability = () => {
                                             </div>
                                         </div>
 
-                                        {/* 6. Control de Calidad LAB-004 */}
+                                        {/* 6. Control de Calidad Oficial (FQ & MB - Mario 2025) */}
                                         <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs space-y-3">
-                                            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                                            <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-100">
                                                 <div className="flex items-center gap-2">
                                                     <span className="p-1 bg-teal-50 text-teal-600 rounded-lg"><FlaskConical size={16} /></span>
-                                                    <h4 className="text-xs font-bold text-slate-900 uppercase">6. Control de Calidad LAB-004</h4>
+                                                    <div>
+                                                        <h4 className="text-xs font-bold text-slate-900 uppercase">6. Control de Calidad Oficial (FQ & MB)</h4>
+                                                        <span className="text-[10px] text-slate-400 font-medium">Especificación estándar ANDELSA / Mario 2025</span>
+                                                    </div>
                                                 </div>
-                                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
-                                                    (detailData.qualityLab?.status || 'aprobado') === 'aprobado'
-                                                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                                        : 'bg-amber-50 text-amber-700 border border-amber-200'
-                                                }`}>
-                                                    {detailData.qualityLab?.status || 'Aprobado'}
-                                                </span>
+                                                <div className="flex items-center gap-2">
+                                                    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                                                        (detailData.qualityLab?.release_status === 'liberado' || detailData.qualityLab?.status === 'aprobado')
+                                                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                                            : (detailData.qualityLab?.release_status === 'bloqueado_haccp' || detailData.qualityLab?.status === 'rechazado')
+                                                                ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                                                                : 'bg-amber-50 text-amber-700 border border-amber-200'
+                                                    }`}>
+                                                        {detailData.qualityLab?.release_status === 'liberado' || detailData.qualityLab?.status === 'aprobado' ? 'Liberado' : detailData.qualityLab?.release_status === 'bloqueado_haccp' || detailData.qualityLab?.status === 'rechazado' ? 'Bloqueado HACCP' : 'Cuarentena'}
+                                                    </span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setQualityModal({
+                                                            isOpen: true,
+                                                            batch: detailData.batch || {
+                                                                id: detailData.qualityLab?.batch_id || detailTarget?.batch_id,
+                                                                batch_uuid: detailData.batch?.batch_uuid || detailTarget?.batch_uuid,
+                                                                batch_code_display: detailData.batch?.batch_code_display || detailTarget?.batch_code_display,
+                                                                product_type: detailData.batch?.product_type || detailTarget?.product_name,
+                                                                presentation: detailData.packaging?.presentation || detailTarget?.presentation
+                                                            },
+                                                            logId: detailData.qualityLab?.id
+                                                        })}
+                                                        className="px-2 py-1 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 rounded-lg text-[10px] font-bold transition-all flex items-center gap-1 shadow-2xs"
+                                                    >
+                                                        <Edit size={11} />
+                                                        Evaluar Calidad
+                                                    </button>
+                                                </div>
                                             </div>
-                                            <div className="grid grid-cols-2 gap-2 text-xs">
-                                                <div><span className="text-slate-400 text-[10px] uppercase block">Sólidos Totales:</span><span className="font-bold text-slate-800">{detailData.qualityLab?.solids_percentage || detailData.qualityLab?.solidos_totales_pct || '24.2'}%</span></div>
-                                                <div><span className="text-slate-400 text-[10px] uppercase block">pH:</span><span className="font-bold text-slate-800">{detailData.qualityLab?.ph || '7.4'}</span></div>
-                                                <div><span className="text-slate-400 text-[10px] uppercase block">Salmonella spp:</span><span className="font-bold text-teal-700">{detailData.qualityLab?.salmonella_25g || detailData.qualityLab?.salmonella_spp || 'Ausencia en 25g'}</span></div>
-                                                <div><span className="text-slate-400 text-[10px] uppercase block">Aerobios Mesófilos:</span><span className="font-medium text-slate-700">{detailData.qualityLab?.aerobios_mesofilos_ufc || '< 10,000 UFC/g'}</span></div>
-                                                <div><span className="text-slate-400 text-[10px] uppercase block">Coliformes Totales:</span><span className="font-medium text-slate-700">{detailData.qualityLab?.coliformes_totales_ufc || '< 10 UFC/g'}</span></div>
-                                                <div><span className="text-slate-400 text-[10px] uppercase block">Analista:</span><span className="font-medium text-slate-700">{detailData.qualityLab?.analyst_name || 'Mario (Control Calidad)'}</span></div>
+
+                                            {/* Parámetros FQ y MB */}
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs pt-1">
+                                                {/* Columna FQ */}
+                                                <div className="bg-slate-50/70 p-2.5 rounded-xl border border-slate-200/80 space-y-1.5">
+                                                    <span className="text-[10px] font-bold text-indigo-700 uppercase tracking-wide block">Físico-Químico (En Línea):</span>
+                                                    <div className="grid grid-cols-2 gap-1.5 text-[11px]">
+                                                        <div><span className="text-slate-400 text-[10px] block">pH:</span><span className="font-bold text-slate-800">{detailData.qualityLab?.ph || '7.45'}</span></div>
+                                                        <div><span className="text-slate-400 text-[10px] block">Sólidos %:</span><span className="font-bold text-teal-700">{detailData.qualityLab?.solids_percentage || '24.2'}%</span></div>
+                                                        <div><span className="text-slate-400 text-[10px] block">Temperatura:</span><span className="font-bold text-slate-800">{detailData.qualityLab?.temperature_c !== null && detailData.qualityLab?.temperature_c !== undefined ? `${detailData.qualityLab.temperature_c} °C` : '3.5 °C'}</span></div>
+                                                        <div><span className="text-slate-400 text-[10px] block">Salinidad %:</span><span className="font-medium text-slate-700">{detailData.qualityLab?.salinity_pct ? `${detailData.qualityLab.salinity_pct}%` : 'N/A'}</span></div>
+                                                        <div><span className="text-slate-400 text-[10px] block">Densidad:</span><span className="font-medium text-slate-700">{detailData.qualityLab?.density || '0.130'}</span></div>
+                                                        <div><span className="text-slate-400 text-[10px] block">Brix:</span><span className="font-medium text-slate-700">{detailData.qualityLab?.brix ? `${detailData.qualityLab.brix}°Bx` : '23.8°Bx'}</span></div>
+                                                    </div>
+                                                </div>
+
+                                                {/* Columna MB */}
+                                                <div className="bg-slate-50/70 p-2.5 rounded-xl border border-slate-200/80 space-y-1.5">
+                                                    <div className="flex items-center justify-between">
+                                                        <span className="text-[10px] font-bold text-teal-700 uppercase tracking-wide">Microbiológico (48h):</span>
+                                                        {detailData.qualityLab?.mb_status === 'en_incubacion' && (
+                                                            <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-amber-100 text-amber-800 flex items-center gap-0.5">
+                                                                <Clock size={9} /> Incubando
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <div className="grid grid-cols-2 gap-1.5 text-[11px]">
+                                                        <div><span className="text-slate-400 text-[10px] block">Recuento Total:</span><span className="font-bold text-teal-800">{detailData.qualityLab?.mesophilic_aerobic_cfu !== null && detailData.qualityLab?.mesophilic_aerobic_cfu !== undefined ? `< ${detailData.qualityLab.mesophilic_aerobic_cfu} UFC/g` : '< 1,000 UFC/g'}</span></div>
+                                                        <div><span className="text-slate-400 text-[10px] block">Coliformes:</span><span className="font-bold text-teal-800">{detailData.qualityLab?.total_coliforms_mpn !== null && detailData.qualityLab?.total_coliforms_mpn !== undefined ? `< ${detailData.qualityLab.total_coliforms_mpn} UFC/g` : '< 10 UFC/g'}</span></div>
+                                                        <div><span className="text-slate-400 text-[10px] block">Salmonella 25g:</span><span className={`font-bold ${String(detailData.qualityLab?.salmonella_25g || '').toLowerCase().includes('presencia') ? 'text-rose-700' : 'text-teal-700'}`}>{detailData.qualityLab?.salmonella_25g || 'Ausencia'}</span></div>
+                                                        <div><span className="text-slate-400 text-[10px] block">E. Coli:</span><span className="font-medium text-slate-700">{detailData.qualityLab?.e_coli_mpn ? 'Positivo' : 'Ausencia'}</span></div>
+                                                        <div><span className="text-slate-400 text-[10px] block">Hongos / Lev:</span><span className="font-medium text-slate-700">{detailData.qualityLab?.fungi_yeasts_cfu !== null && detailData.qualityLab?.fungi_yeasts_cfu !== undefined ? `< ${detailData.qualityLab.fungi_yeasts_cfu} UFC/g` : '< 10 UFC/g'}</span></div>
+                                                        <div><span className="text-slate-400 text-[10px] block">Staph. Aureus:</span><span className="font-medium text-slate-700">{detailData.qualityLab?.staph_aureus || 'Negativo'}</span></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between text-slate-500 text-[11px]">
+                                                <span>Analista: <strong className="text-slate-700">{detailData.qualityLab?.analyst_name || 'Mario (Control de Calidad)'}</strong></span>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleOpenQualityLetterModal(detailData.batch || detailTarget)}
+                                                    className="px-2 py-0.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-lg font-bold flex items-center gap-1 text-[10px] transition-all"
+                                                >
+                                                    <FileText size={11} className="text-amber-600" />
+                                                    Carta de Calidad (COA)
+                                                </button>
                                             </div>
                                         </div>
                                     </div>
@@ -2663,6 +2615,36 @@ const EggTraceability = () => {
                                         placeholder="Ej: Dpto. de Control de Calidad / Compras"
                                         className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
                                     />
+                                </div>
+                            </div>
+
+                            {/* Scope Selector (Completo, FQ, MB) */}
+                            <div className="space-y-1.5 pt-1">
+                                <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wide block">
+                                    Contenido / Ámbito del Análisis
+                                </label>
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setLetterScope('all')}
+                                        className={`py-2 px-2.5 rounded-xl text-xs font-bold border transition-all text-center ${letterScope === 'all' ? 'bg-amber-500 text-white border-amber-600 shadow-xs' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'}`}
+                                    >
+                                        Completo (FQ + MB)
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setLetterScope('fq')}
+                                        className={`py-2 px-2.5 rounded-xl text-xs font-bold border transition-all text-center ${letterScope === 'fq' ? 'bg-slate-800 text-white border-slate-900 shadow-xs' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'}`}
+                                    >
+                                        Solo Físico-Químico (FQ)
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setLetterScope('mb')}
+                                        className={`py-2 px-2.5 rounded-xl text-xs font-bold border transition-all text-center ${letterScope === 'mb' ? 'bg-teal-700 text-white border-teal-800 shadow-xs' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'}`}
+                                    >
+                                        Solo Microbiológico (MB)
+                                    </button>
                                 </div>
                             </div>
 

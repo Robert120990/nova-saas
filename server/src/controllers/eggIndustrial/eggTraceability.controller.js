@@ -170,8 +170,20 @@ const getTraceability360List = async (req, res) => {
                 lab.total_coliforms_mpn,
                 lab.e_coli_mpn,
                 lab.salmonella_25g,
+                lab.fungi_yeasts_cfu,
+                lab.staph_aureus,
                 lab.solids_percentage,
                 lab.ph,
+                lab.temperature_c as lab_temperature_c,
+                lab.salinity_pct as lab_salinity_pct,
+                lab.density as lab_density,
+                lab.fq_status as lab_fq_status,
+                lab.mb_status as lab_mb_status,
+                lab.release_status as lab_release_status,
+                lab.incubation_started_at as lab_incubation_started_at,
+                lab.incubation_hours as lab_incubation_hours,
+                lab.released_at as lab_released_at,
+                lab.released_by as lab_released_by,
                 lab.observations as lab_observations,
                 past.id as past_id,
                 past.temperature_c as past_temp_c,
@@ -250,8 +262,20 @@ const getTraceability360List = async (req, res) => {
                 lab.total_coliforms_mpn,
                 lab.e_coli_mpn,
                 lab.salmonella_25g,
+                lab.fungi_yeasts_cfu,
+                lab.staph_aureus,
                 lab.solids_percentage,
                 lab.ph,
+                lab.temperature_c as lab_temperature_c,
+                lab.salinity_pct as lab_salinity_pct,
+                lab.density as lab_density,
+                lab.fq_status as lab_fq_status,
+                lab.mb_status as lab_mb_status,
+                lab.release_status as lab_release_status,
+                lab.incubation_started_at as lab_incubation_started_at,
+                lab.incubation_hours as lab_incubation_hours,
+                lab.released_at as lab_released_at,
+                lab.released_by as lab_released_by,
                 lab.observations as lab_observations,
                 past.id as past_id,
                 past.temperature_c as past_temp_c,
@@ -344,10 +368,22 @@ const getTraceability360List = async (req, res) => {
                 expiry_date: r.expiry_date,
                 commercial_barcode: r.commercial_barcode,
 
-                // Calidad & Alertas
+                // Calidad & Alertas Oficiales (Mario / LAB-004)
                 lab_log_id: r.lab_log_id,
                 lab_sample_date: r.lab_sample_date,
-                lab_status: r.lab_status || (r.batch_status === 'aprobado_calidad' ? 'aprobado' : (isTransformed ? 'pendiente' : 'en_espera')),
+                lab_status: r.lab_status || (r.batch_status === 'aprobado_calidad' ? 'aprobado' : (isTransformed ? 'cuarentena' : 'en_espera')),
+                lab_release_status: r.lab_release_status || (r.lab_status === 'aprobado' || r.batch_status === 'aprobado_calidad' ? 'liberado' : 'cuarentena'),
+                lab_mb_status: r.lab_mb_status || (r.lab_status === 'aprobado' ? 'aprobado' : 'en_incubacion'),
+                lab_fq_status: r.lab_fq_status || 'aprobado',
+                lab_temperature_c: r.lab_temperature_c !== null ? parseFloat(r.lab_temperature_c) : null,
+                lab_salinity_pct: r.lab_salinity_pct !== null ? parseFloat(r.lab_salinity_pct) : null,
+                lab_density: r.lab_density !== null ? parseFloat(r.lab_density) : null,
+                lab_staph_aureus: r.lab_staph_aureus || 'negativo',
+                fungi_yeasts_cfu: r.fungi_yeasts_cfu,
+                lab_incubation_started_at: r.lab_incubation_started_at,
+                lab_incubation_hours: r.lab_incubation_hours,
+                lab_released_at: r.lab_released_at,
+                lab_released_by: r.lab_released_by,
                 has_haccp_alert: hasHaccpAlert,
                 has_quality_alert: hasQualityAlert,
                 has_alerts: hasAlerts,
@@ -749,6 +785,7 @@ const getAvailableSalesLots = async (req, res) => {
                 pk.total_batch_weight_lbs,
                 pk.warehouse_zone,
                 pk.product_state,
+                pk.quality_status as pkg_quality_status,
                 pk.expiry_date,
                 pk.customer_destination,
                 b.id as batch_id,
@@ -756,6 +793,7 @@ const getAvailableSalesLots = async (req, res) => {
                 b.batch_code_display,
                 b.status as batch_status,
                 lab.status as quality_status,
+                lab.release_status as lab_release_status,
                 lab.sample_date as quality_date,
                 lab.mesophilic_aerobic_cfu,
                 lab.salmonella_25g
@@ -769,7 +807,8 @@ const getAvailableSalesLots = async (req, res) => {
         const lots = rows.map(r => {
             const hasStock = (parseInt(r.units_packaged, 10) || 0) > 0;
             const isExpired = r.expiry_date ? new Date(r.expiry_date) < new Date() : false;
-            const isQualityApproved = r.quality_status === 'aprobado' || r.batch_status === 'aprobado_calidad' || !r.quality_status;
+            const releaseStatus = r.pkg_quality_status || r.lab_release_status || (r.batch_status === 'aprobado_calidad' ? 'liberado' : (r.batch_status === 'bloqueado_haccp' ? 'bloqueado_haccp' : 'cuarentena'));
+            const isQualityApproved = releaseStatus === 'liberado' || r.batch_status === 'aprobado_calidad';
 
             return {
                 packaging_id: r.packaging_id,
@@ -786,7 +825,9 @@ const getAvailableSalesLots = async (req, res) => {
                 expiry_date: r.expiry_date,
                 has_stock: hasStock,
                 is_expired: isExpired,
-                quality_status: isQualityApproved ? 'aprobado' : (r.quality_status || 'observado'),
+                quality_status: isQualityApproved ? 'aprobado' : (releaseStatus === 'bloqueado_haccp' ? 'bloqueado_haccp' : 'cuarentena'),
+                release_status: releaseStatus,
+                is_quality_approved: isQualityApproved,
                 customer_destination: r.customer_destination
             };
         });
@@ -818,7 +859,7 @@ const exportQualityLetter = async (req, res) => {
     try {
         const { batchId } = req.params;
         const company_id = req.company_id || req.user?.company_id;
-        const { format = 'pdf', customer_name, customer_contact, use_existing_customer } = req.query;
+        const { format = 'pdf', customer_name, customer_contact, use_existing_customer, scope = 'all' } = req.query;
 
         const letterData = await eggQualityLetterExport.getQualityLetterData(batchId, company_id, {
             customer_name,
@@ -831,25 +872,26 @@ const exportQualityLetter = async (req, res) => {
         }
 
         const safeCode = (letterData.lotCode || `LOTE-${batchId}`).replace(/[^a-zA-Z0-9_-]/g, '_');
+        const prefix = scope === 'fq' ? 'Analisis_FQ' : scope === 'mb' ? 'Analisis_MB' : 'Carta_Calidad';
 
         if (format === 'word') {
-            const buffer = await eggQualityLetterExport.generateQualityLetterWord(letterData);
+            const buffer = await eggQualityLetterExport.generateQualityLetterWord(letterData, scope);
             res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
-            res.setHeader('Content-Disposition', `attachment; filename="Carta_Calidad_${safeCode}.docx"`);
+            res.setHeader('Content-Disposition', `attachment; filename="${prefix}_${safeCode}.docx"`);
             return res.send(buffer);
         }
 
         if (format === 'excel') {
-            const buffer = await eggQualityLetterExport.generateQualityLetterExcel(letterData);
+            const buffer = await eggQualityLetterExport.generateQualityLetterExcel(letterData, scope);
             res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-            res.setHeader('Content-Disposition', `attachment; filename="Carta_Calidad_${safeCode}.xlsx"`);
+            res.setHeader('Content-Disposition', `attachment; filename="${prefix}_${safeCode}.xlsx"`);
             return res.send(buffer);
         }
 
         // Por defecto PDF estilo cotización con membrete Eggcelent/ANDELSA
-        const pdfBuffer = await eggQualityLetterExport.generateQualityLetterPdf(letterData);
+        const pdfBuffer = await eggQualityLetterExport.generateQualityLetterPdf(letterData, scope);
         res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', `inline; filename="Carta_Calidad_${safeCode}.pdf"`);
+        res.setHeader('Content-Disposition', `inline; filename="${prefix}_${safeCode}.pdf"`);
         return res.send(pdfBuffer);
     } catch (error) {
         console.error('Error in exportQualityLetter:', error);

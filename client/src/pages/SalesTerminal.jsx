@@ -1961,6 +1961,12 @@ const SalesTerminal = () => {
     };
 
     const handleSelectLot = (lot) => {
+        if (lot.release_status === 'bloqueado_haccp' || lot.quality_status === 'bloqueado_haccp' || lot.status === 'bloqueado_haccp') {
+            return toast.error(`BLOQUEO HACCP: El lote ${lot.lot_code} está bloqueado por calidad y no puede ser facturado.`);
+        }
+        if (lot.release_status === 'cuarentena' || lot.quality_status === 'cuarentena') {
+            toast.warning(`Lote ${lot.lot_code} en CUARENTENA: Pendiente de aprobación microbiológica oficial.`);
+        }
         if (!lot.has_stock || lot.units_in_stock <= 0) {
             setLotWarningTarget(lot);
             return;

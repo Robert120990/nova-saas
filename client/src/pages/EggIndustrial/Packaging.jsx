@@ -18,7 +18,8 @@ import {
     Trash2,
     Lock,
     Scale,
-    CheckCircle2
+    CheckCircle2,
+    FlaskConical
 } from 'lucide-react';
 import { formatDate } from '../../utils/dateUtils';
 import {
@@ -28,6 +29,7 @@ import {
     EggEditPackagingModal,
     EggCloseBatchModal
 } from '../../components/egg/packaging';
+import { EggQualityFinishedProductModal } from '../../components/egg/quality';
 
 const EggPackaging = () => {
     const { user } = useAuth();
@@ -70,6 +72,7 @@ const EggPackaging = () => {
 
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [selectedLabel, setSelectedLabel] = useState(null); // Label modal state
+    const [qualityModal, setQualityModal] = useState({ isOpen: false, batch: null });
 
     // Role & Permisos (Página 4 del documento)
     const userPermissions = Array.isArray(user?.permissions)
@@ -547,6 +550,7 @@ const EggPackaging = () => {
                                         <th className="px-3 py-2 text-right">Envasado</th>
                                         <th className="px-3 py-2 text-right">Saldo Disp.</th>
                                         <th className="px-3 py-2 text-center">Estado Empaque</th>
+                                        <th className="px-3 py-2 text-center">Calidad FQ/MB</th>
                                         <th className="px-3 py-2 text-center">Eficiencia</th>
                                         <th className="px-3 py-2 text-center">Acciones</th>
                                     </tr>
@@ -585,6 +589,22 @@ const EggPackaging = () => {
                                                     }`}>
                                                         {isClosed ? 'Cerrado' : 'Abierto'}
                                                     </span>
+                                                </td>
+                                                <td className="px-3 py-2 text-center">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setQualityModal({ isOpen: true, batch: b })}
+                                                        className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase transition-all hover:scale-105 ${
+                                                            b.status === 'aprobado_calidad'
+                                                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                                                : b.status === 'bloqueado_haccp'
+                                                                ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                                                                : 'bg-amber-50 text-amber-700 border border-amber-200'
+                                                        }`}
+                                                        title="Ver o evaluar control de calidad FQ / MB"
+                                                    >
+                                                        {b.status === 'aprobado_calidad' ? 'Liberado' : b.status === 'bloqueado_haccp' ? 'Bloqueado' : 'Cuarentena'}
+                                                    </button>
                                                 </td>
                                                 <td className="px-3 py-2 text-center font-bold text-slate-700">
                                                     {b.packaging_efficiency_pct ? `${b.packaging_efficiency_pct}%` : '-'}
@@ -663,13 +683,17 @@ const EggPackaging = () => {
                                     <th className="p-3">Estado / Zona</th>
                                     <th className="p-3 text-right">Cant. Envasada</th>
                                     <th className="p-3 text-right">Peso Total</th>
+                                    <th className="p-3 text-center">Calidad FQ/MB</th>
                                     <th className="p-3">Vencimiento</th>
                                     <th className="p-3">Operador</th>
                                     <th className="p-3 text-center">Acciones</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
-                                {filteredPackaging.map(p => (
+                                {filteredPackaging.map(p => {
+                                    const relatedBatch = batches.find(b => b.id === p.batch_id);
+                                    const qStatus = p.quality_status || (relatedBatch?.status === 'aprobado_calidad' ? 'liberado' : relatedBatch?.status === 'bloqueado_haccp' ? 'bloqueado_haccp' : 'cuarentena');
+                                    return (
                                     <tr key={p.id} className="hover:bg-slate-50/80 transition-colors">
                                         <td className="p-3">
                                             <div className="flex flex-col gap-0.5">
@@ -701,6 +725,31 @@ const EggPackaging = () => {
                                         <td className="p-3 text-right text-teal-700 font-bold text-xs">
                                             {parseFloat(p.total_batch_weight_lbs).toLocaleString()} Lbs
                                         </td>
+                                        <td className="p-3 text-center">
+                                            <button
+                                                type="button"
+                                                onClick={() => setQualityModal({
+                                                    isOpen: true,
+                                                    batch: relatedBatch || {
+                                                        id: p.batch_id,
+                                                        batch_uuid: p.lot_code,
+                                                        batch_code_display: p.lot_code,
+                                                        product_type: p.product_type,
+                                                        status: qStatus === 'liberado' ? 'aprobado_calidad' : qStatus === 'bloqueado_haccp' ? 'bloqueado_haccp' : 'empaquetado'
+                                                    }
+                                                })}
+                                                className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase transition-all hover:scale-105 ${
+                                                    qStatus === 'liberado'
+                                                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                                        : qStatus === 'bloqueado_haccp'
+                                                            ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                                                            : 'bg-amber-50 text-amber-700 border border-amber-200'
+                                                }`}
+                                                title="Ver o evaluar control de calidad FQ / MB"
+                                            >
+                                                {qStatus === 'liberado' ? 'Liberado' : qStatus === 'bloqueado_haccp' ? 'Bloqueado' : 'Cuarentena'}
+                                            </button>
+                                        </td>
                                         <td className="p-3">
                                             <span className="text-slate-600 flex items-center gap-1 text-xs font-medium">
                                                 <Calendar size={12} className="text-slate-400" />
@@ -715,6 +764,22 @@ const EggPackaging = () => {
                                         </td>
                                         <td className="p-3 text-center">
                                             <div className="flex items-center justify-center gap-1">
+                                                <button
+                                                    onClick={() => setQualityModal({
+                                                        isOpen: true,
+                                                        batch: relatedBatch || {
+                                                            id: p.batch_id,
+                                                            batch_uuid: p.lot_code,
+                                                            batch_code_display: p.lot_code,
+                                                            product_type: p.product_type,
+                                                            status: qStatus === 'liberado' ? 'aprobado_calidad' : qStatus === 'bloqueado_haccp' ? 'bloqueado_haccp' : 'empaquetado'
+                                                        }
+                                                    })}
+                                                    className="p-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg border border-emerald-200 transition-colors"
+                                                    title="Calidad FQ / MB (LAB-004)"
+                                                >
+                                                    <FlaskConical size={12} />
+                                                </button>
                                                 <button
                                                     onClick={() => setSelectedLabel(p)}
                                                     className="px-2 py-1 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 rounded-lg text-xs font-bold transition-all flex items-center gap-1"
@@ -756,7 +821,8 @@ const EggPackaging = () => {
                                             </div>
                                         </td>
                                     </tr>
-                                ))}
+                                );
+                            })}
                             </tbody>
                         </table>
                     )}
@@ -820,6 +886,13 @@ const EggPackaging = () => {
                 onNotesChange={(val) => setCloseBatchModal(prev => ({ ...prev, notes: val }))}
                 onSubmit={handleCloseBatchPackaging}
                 isSubmitting={closeBatchModal.isSubmitting}
+            />
+
+            <EggQualityFinishedProductModal
+                open={qualityModal.isOpen}
+                onClose={() => setQualityModal({ isOpen: false, batch: null })}
+                batch={qualityModal.batch}
+                onSuccess={fetchData}
             />
         </div>
     );

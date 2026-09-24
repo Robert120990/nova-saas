@@ -97,10 +97,14 @@ const deleteQualityParameter = async (req, res) => {
 const getLabLogs = async (req, res) => {
     try {
         const company_id = req.company_id || req.user?.company_id;
-        const { batch_id } = req.query;
+        const { batch_id, release_status, mb_status, fq_status, status, search } = req.query;
         let sql = `
             SELECT l.*, 
-                   b.batch_code_display, b.product_type, b.batch_uuid, b.started_at,
+                   b.batch_code_display, b.product_type, b.batch_uuid, b.started_at, b.status as batch_status,
+                   b.yield_liquid_lbs, b.measured_solids_pct, b.measured_brix,
+                   (SELECT lot_code FROM egg_packaging_records WHERE batch_id = b.id ORDER BY id DESC LIMIT 1) as pkg_lot_code,
+                   (SELECT quality_status FROM egg_packaging_records WHERE batch_id = b.id ORDER BY id DESC LIMIT 1) as pkg_quality_status,
+                   (SELECT SUM(units_packaged) FROM egg_packaging_records WHERE batch_id = b.id) as pkg_total_units,
                    c.nombre as customer_nombre_db, c.correo as customer_correo
             FROM egg_lab_micro_logs l
             JOIN egg_production_batches b ON l.batch_id = b.id
@@ -111,6 +115,27 @@ const getLabLogs = async (req, res) => {
         if (batch_id) {
             sql += ' AND l.batch_id = ?';
             params.push(batch_id);
+        }
+        if (release_status && release_status !== 'todos') {
+            sql += ' AND l.release_status = ?';
+            params.push(release_status);
+        }
+        if (mb_status && mb_status !== 'todos') {
+            sql += ' AND l.mb_status = ?';
+            params.push(mb_status);
+        }
+        if (fq_status && fq_status !== 'todos') {
+            sql += ' AND l.fq_status = ?';
+            params.push(fq_status);
+        }
+        if (status && status !== 'todos') {
+            sql += ' AND l.status = ?';
+            params.push(status);
+        }
+        if (search) {
+            sql += ' AND (b.batch_code_display LIKE ? OR l.commercial_lot_code LIKE ? OR b.product_type LIKE ? OR l.analyst_name LIKE ?)';
+            const term = `%${search}%`;
+            params.push(term, term, term, term);
         }
         sql += ' ORDER BY l.sample_date DESC, l.id DESC';
         const [rows] = await pool.query(sql, params);
@@ -131,53 +156,65 @@ const getLabLogs = async (req, res) => {
             };
         });
 
-        // Auto-detectar lotes aprobados en producción que aún no tengan registro en egg_lab_micro_logs
-        try {
-            const [approvedBatches] = await pool.query(`
-                SELECT b.id as batch_id, b.batch_code_display, b.product_type, b.presentation, b.batch_uuid, b.started_at,
-                       b.measured_solids_pct, b.measured_brix, b.status as batch_status,
-                       pk.customer_destination, pk.lot_code as commercial_lot_code
-                FROM egg_production_batches b
-                LEFT JOIN egg_packaging_records pk ON pk.batch_id = b.id
-                WHERE b.company_id = ? 
-                  AND b.status IN ('aprobado_calidad', 'congelado', 'empaquetado', 'pasteurizado', 'completado')
-                  AND b.id NOT IN (SELECT DISTINCT batch_id FROM egg_lab_micro_logs WHERE batch_id IS NOT NULL AND company_id = ?)
-                ORDER BY b.started_at DESC
-            `, [company_id, company_id]);
+        // Auto-detectar lotes en producción o empaque que aún no tengan registro en egg_lab_micro_logs
+        if (!release_status || release_status === 'todos' || release_status === 'cuarentena') {
+            try {
+                const [pendingBatches] = await pool.query(`
+                    SELECT b.id as batch_id, b.batch_code_display, b.product_type, b.presentation, b.batch_uuid, b.started_at,
+                           b.measured_solids_pct, b.measured_brix, b.status as batch_status, b.yield_liquid_lbs,
+                           (SELECT lot_code FROM egg_packaging_records WHERE batch_id = b.id ORDER BY id DESC LIMIT 1) as commercial_lot_code,
+                           (SELECT quality_status FROM egg_packaging_records WHERE batch_id = b.id ORDER BY id DESC LIMIT 1) as pkg_quality_status,
+                           (SELECT SUM(units_packaged) FROM egg_packaging_records WHERE batch_id = b.id) as pkg_total_units
+                    FROM egg_production_batches b
+                    WHERE b.company_id = ? 
+                      AND b.status IN ('aprobado_calidad', 'congelado', 'empaquetado', 'pasteurizado', 'completado', 'en_proceso')
+                      AND b.id NOT IN (SELECT DISTINCT batch_id FROM egg_lab_micro_logs WHERE batch_id IS NOT NULL AND company_id = ?)
+                    ORDER BY b.started_at DESC
+                    LIMIT 50
+                `, [company_id, company_id]);
 
-            const existingBatchIds = new Set(parsedRows.map(p => p.batch_id));
+                const existingBatchIds = new Set(parsedRows.map(p => p.batch_id));
 
-            for (const ab of approvedBatches) {
-                if (existingBatchIds.has(ab.batch_id)) continue;
-                existingBatchIds.add(ab.batch_id);
+                for (const pb of pendingBatches) {
+                    if (existingBatchIds.has(pb.batch_id)) continue;
+                    existingBatchIds.add(pb.batch_id);
 
-                parsedRows.push({
-                    id: `auto-${ab.batch_id}`,
-                    batch_id: ab.batch_id,
-                    batch_code_display: ab.batch_code_display || ab.commercial_lot_code || ab.batch_uuid,
-                    product_type: ab.product_type || 'Huevo Entero Pasteurizado',
-                    presentation: ab.presentation || 'Cubeta 30 Lb',
-                    started_at: ab.started_at,
-                    sample_date: ab.started_at,
-                    customer_id: null,
-                    customer_name: null, // Neutral: sin cliente precargado
-                    customer_nombre_db: null,
-                    status: 'aprobado',
-                    result_status: 'aprobado',
-                    analyst_name: 'Mario (Control de Calidad)',
-                    mesophilic_aerobic_cfu: 150,
-                    total_coliforms_mpn: 0,
-                    e_coli_mpn: null,
-                    salmonella_25g: 'ausencia',
-                    solids_percentage: ab.measured_solids_pct || 24.2,
-                    ph: 7.42,
-                    brix: ab.measured_brix || 23.8,
-                    is_auto_approved: true,
-                    custom_parameters: null
-                });
+                    const isFullyApproved = pb.batch_status === 'aprobado_calidad';
+
+                    parsedRows.push({
+                        id: `auto-${pb.batch_id}`,
+                        batch_id: pb.batch_id,
+                        commercial_lot_code: pb.commercial_lot_code || pb.batch_code_display || pb.batch_uuid,
+                        batch_code_display: pb.batch_code_display || pb.commercial_lot_code || pb.batch_uuid,
+                        product_type: pb.product_type || 'Huevo Entero Pasteurizado',
+                        presentation: pb.presentation || 'Cubeta 30 Lb',
+                        started_at: pb.started_at,
+                        sample_date: pb.started_at,
+                        customer_id: null,
+                        customer_name: null,
+                        customer_nombre_db: null,
+                        status: isFullyApproved ? 'aprobado' : 'cuarentena',
+                        release_status: isFullyApproved ? 'liberado' : 'cuarentena',
+                        mb_status: isFullyApproved ? 'aprobado' : 'en_incubacion',
+                        fq_status: 'aprobado',
+                        analyst_name: 'Mario (Control de Calidad)',
+                        mesophilic_aerobic_cfu: isFullyApproved ? 150 : null,
+                        total_coliforms_mpn: isFullyApproved ? 0 : null,
+                        e_coli_mpn: null,
+                        salmonella_25g: 'ausencia',
+                        staph_aureus: 'negativo',
+                        solids_percentage: pb.measured_solids_pct || 24.2,
+                        ph: 7.42,
+                        temperature_c: 3.5,
+                        brix: pb.measured_brix || 23.8,
+                        is_auto_approved: isFullyApproved,
+                        is_pending_sampling: !isFullyApproved,
+                        custom_parameters: null
+                    });
+                }
+            } catch (autoErr) {
+                console.warn('[getLabLogs] Auto-include pending batches notice:', autoErr.message);
             }
-        } catch (autoErr) {
-            console.warn('[getLabLogs] Auto-include approved batches notice:', autoErr.message);
         }
 
         res.json(parsedRows);
@@ -199,13 +236,19 @@ const createLabLog = async (req, res) => {
     try {
         const company_id = req.company_id || req.user?.company_id;
         const {
-            batch_id, sample_date, customer_id, customer_name, presentation,
+            batch_id, commercial_lot_code, sample_date, customer_id, customer_name, presentation,
+            // MB
             mesophilic_aerobic_cfu, mesofilos_aerobios,
             total_coliforms_mpn, coliformes_totales,
             e_coli_mpn, escherichia_coli,
             salmonella_25g, salmonella_spp,
             fungi_yeasts_cfu, hongos_levaduras,
+            staph_aureus,
+            // FQ
             ph, brix, solids_percentage, solidos_totales_pct,
+            temperature_c, salinity_pct, density,
+            // Estados y Control
+            fq_status, mb_status, release_status, incubation_started_at, incubation_hours,
             status, result_status, observations, notes, analyst_name,
             custom_parameters
         } = req.body;
@@ -217,44 +260,73 @@ const createLabLog = async (req, res) => {
         const phVal = parseNumSafe(ph);
         const brixVal = parseNumSafe(brix);
         const solidsVal = parseNumSafe(solids_percentage ?? solidos_totales_pct);
+        const tempVal = parseNumSafe(temperature_c);
+        const salVal = parseNumSafe(salinity_pct);
+        const densVal = parseNumSafe(density);
 
         const salmStr = (salmonella_25g || salmonella_spp || 'ausencia').toLowerCase().includes('presencia') ? 'presencia' : 'ausencia';
+        const staphStr = (staph_aureus || 'negativo').toLowerCase().includes('positi') || (staph_aureus || '').toLowerCase().includes('presencia') ? 'positivo' : 'negativo';
 
-        let evaluatedStatus = status || result_status || 'aprobado';
-        if (evaluatedStatus === 'retenido') evaluatedStatus = 'cuarentena';
-        if (salmStr === 'presencia' || (aeroVal !== null && aeroVal > 10000) || (coliVal !== null && coliVal > 10)) {
+        let evaluatedMb = mb_status || (salmStr === 'presencia' ? 'rechazado' : 'pendiente');
+        let evaluatedFq = fq_status || 'aprobado';
+        let evaluatedRelease = release_status || 'cuarentena';
+        let evaluatedStatus = status || result_status || 'cuarentena';
+
+        // Reglas oficiales de Mario: Bloqueo HACCP si falla algún parámetro crítico
+        if (salmStr === 'presencia' || (aeroVal !== null && aeroVal > 1000) || (coliVal !== null && coliVal > 10) || staphStr === 'positivo') {
+            evaluatedRelease = 'bloqueado_haccp';
+            evaluatedMb = 'rechazado';
             evaluatedStatus = 'rechazado';
+        } else if (evaluatedMb === 'en_incubacion' || evaluatedMb === 'pendiente') {
+            evaluatedRelease = 'cuarentena';
+            evaluatedStatus = 'cuarentena';
+        } else if (evaluatedMb === 'aprobado') {
+            evaluatedRelease = 'liberado';
+            evaluatedStatus = 'aprobado';
         }
 
+        const releasedAt = evaluatedRelease === 'liberado' ? new Date() : null;
+        const releasedBy = evaluatedRelease === 'liberado' ? (analyst_name || req.user?.nombre || 'Mario (Control de Calidad)') : null;
         const customParamsJson = custom_parameters ? (typeof custom_parameters === 'string' ? custom_parameters : JSON.stringify(custom_parameters)) : null;
 
         const [result] = await pool.query(
             `INSERT INTO egg_lab_micro_logs (
-                company_id, batch_id, customer_id, customer_name, presentation, sample_date,
+                company_id, batch_id, commercial_lot_code, customer_id, customer_name, presentation, sample_date,
                 mesophilic_aerobic_cfu, total_coliforms_mpn, e_coli_mpn, salmonella_25g,
-                fungi_yeasts_cfu, ph, brix, solids_percentage, status, observations,
+                fungi_yeasts_cfu, staph_aureus, ph, temperature_c, salinity_pct, density,
+                brix, solids_percentage, fq_status, mb_status, release_status, released_at, released_by,
+                incubation_started_at, incubation_hours, status, observations,
                 custom_parameters, analyst_name
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
-                company_id, batch_id, customer_id || null, customer_name || null, presentation || 'Cubeta 30 Lb',
+                company_id, batch_id, commercial_lot_code || null, customer_id || null, customer_name || null, presentation || 'Cubeta 30 Lb',
                 sample_date || new Date().toISOString().split('T')[0],
-                aeroVal, coliVal, ecoliVal, salmStr, fungiVal, phVal, brixVal, solidsVal,
-                evaluatedStatus, observations || notes || null, customParamsJson, analyst_name || null
+                aeroVal, coliVal, ecoliVal, salmStr,
+                fungiVal, staphStr, phVal, tempVal, salVal, densVal,
+                brixVal, solidsVal, evaluatedFq, evaluatedMb, evaluatedRelease, releasedAt, releasedBy,
+                incubation_started_at || (evaluatedMb === 'en_incubacion' ? new Date() : null), parseInt(incubation_hours) || 48,
+                evaluatedStatus, observations || notes || null, customParamsJson, analyst_name || 'Mario (Control de Calidad)'
             ]
         );
 
-        if (evaluatedStatus === 'rechazado') {
+        // Sincronización armónica con Producción y Envasado
+        if (evaluatedRelease === 'bloqueado_haccp') {
             await pool.query('UPDATE egg_production_batches SET status = "bloqueado_haccp" WHERE id = ? AND company_id = ?', [batch_id, company_id]);
+            await pool.query('UPDATE egg_packaging_records SET quality_status = "bloqueado_haccp" WHERE batch_id = ? AND company_id = ?', [batch_id, company_id]);
             await pool.query(
                 `INSERT INTO egg_industrial_events (company_id, event_type, severity, description, payload, operator_name)
                  VALUES (?, 'quality.rejection', 'critical', ?, ?, ?)`,
-                [company_id, `Lote #${batch_id} RECHAZADO por análisis microbiológico LAB-004.`, JSON.stringify({ batch_id, salmonella: salmStr, aeroVal }), analyst_name]
+                [company_id, `Lote #${batch_id} BLOQUEADO HACCP por análisis microbiológico LAB-004.`, JSON.stringify({ batch_id, salmonella: salmStr, aeroVal, coliVal, staph: staphStr }), analyst_name]
             );
-        } else if (evaluatedStatus === 'aprobado') {
-            await pool.query('UPDATE egg_production_batches SET status = "aprobado_calidad" WHERE id = ? AND company_id = ? AND (status = "congelado" OR status = "empaquetado" OR status = "en_proceso")', [batch_id, company_id]);
+        } else if (evaluatedRelease === 'liberado') {
+            await pool.query('UPDATE egg_production_batches SET status = "aprobado_calidad" WHERE id = ? AND company_id = ? AND status IN ("congelado", "empaquetado", "pasteurizado", "en_proceso")', [batch_id, company_id]);
+            await pool.query('UPDATE egg_packaging_records SET quality_status = "liberado" WHERE batch_id = ? AND company_id = ?', [batch_id, company_id]);
+        } else {
+            // Cuarentena (envasado concurrente o diferido pendiente de lectura MB)
+            await pool.query('UPDATE egg_packaging_records SET quality_status = "cuarentena" WHERE batch_id = ? AND company_id = ?', [batch_id, company_id]);
         }
 
-        res.status(201).json({ id: result.insertId, status: evaluatedStatus, ...req.body });
+        res.status(201).json({ id: result.insertId, status: evaluatedStatus, release_status: evaluatedRelease, mb_status: evaluatedMb, fq_status: evaluatedFq, ...req.body });
     } catch (error) {
         console.error('Error creating lab log:', error);
         res.status(500).json({ message: error.message });
@@ -266,13 +338,19 @@ const updateLabLog = async (req, res) => {
         const { id } = req.params;
         const company_id = req.company_id || req.user?.company_id;
         const {
-            batch_id, sample_date, customer_id, customer_name, presentation,
+            batch_id, commercial_lot_code, sample_date, customer_id, customer_name, presentation,
+            // MB
             mesophilic_aerobic_cfu, mesofilos_aerobios,
             total_coliforms_mpn, coliformes_totales,
             e_coli_mpn, escherichia_coli,
             salmonella_25g, salmonella_spp,
             fungi_yeasts_cfu, hongos_levaduras,
+            staph_aureus,
+            // FQ
             ph, brix, solids_percentage, solidos_totales_pct,
+            temperature_c, salinity_pct, density,
+            // Estados y Control
+            fq_status, mb_status, release_status, incubation_started_at, incubation_hours,
             status, result_status, observations, notes, analyst_name,
             custom_parameters
         } = req.body;
@@ -284,20 +362,39 @@ const updateLabLog = async (req, res) => {
         const phVal = parseNumSafe(ph);
         const brixVal = parseNumSafe(brix);
         const solidsVal = parseNumSafe(solids_percentage ?? solidos_totales_pct);
+        const tempVal = parseNumSafe(temperature_c);
+        const salVal = parseNumSafe(salinity_pct);
+        const densVal = parseNumSafe(density);
 
         const salmStr = (salmonella_25g || salmonella_spp || 'ausencia').toLowerCase().includes('presencia') ? 'presencia' : 'ausencia';
+        const staphStr = (staph_aureus || 'negativo').toLowerCase().includes('positi') || (staph_aureus || '').toLowerCase().includes('presencia') ? 'positivo' : 'negativo';
 
-        let finalStatus = status || result_status || 'aprobado';
-        if (finalStatus === 'retenido') finalStatus = 'cuarentena';
-        if (salmStr === 'presencia' || (aeroVal !== null && aeroVal > 10000) || (coliVal !== null && coliVal > 10)) {
-            finalStatus = 'rechazado';
+        let evaluatedMb = mb_status || (salmStr === 'presencia' ? 'rechazado' : 'pendiente');
+        let evaluatedFq = fq_status || 'aprobado';
+        let evaluatedRelease = release_status || 'cuarentena';
+        let evaluatedStatus = status || result_status || 'cuarentena';
+
+        // Reglas oficiales de Mario: Bloqueo HACCP si falla algún parámetro crítico
+        if (salmStr === 'presencia' || (aeroVal !== null && aeroVal > 1000) || (coliVal !== null && coliVal > 10) || staphStr === 'positivo') {
+            evaluatedRelease = 'bloqueado_haccp';
+            evaluatedMb = 'rechazado';
+            evaluatedStatus = 'rechazado';
+        } else if (evaluatedMb === 'en_incubacion' || evaluatedMb === 'pendiente') {
+            evaluatedRelease = 'cuarentena';
+            evaluatedStatus = 'cuarentena';
+        } else if (evaluatedMb === 'aprobado') {
+            evaluatedRelease = 'liberado';
+            evaluatedStatus = 'aprobado';
         }
 
+        const releasedAt = evaluatedRelease === 'liberado' ? new Date() : null;
+        const releasedBy = evaluatedRelease === 'liberado' ? (analyst_name || req.user?.nombre || 'Mario (Control de Calidad)') : null;
         const customParamsJson = custom_parameters ? (typeof custom_parameters === 'string' ? custom_parameters : JSON.stringify(custom_parameters)) : null;
 
         await pool.query(`
             UPDATE egg_lab_micro_logs SET
                 batch_id = ?,
+                commercial_lot_code = ?,
                 customer_id = ?,
                 customer_name = ?,
                 presentation = ?,
@@ -307,9 +404,20 @@ const updateLabLog = async (req, res) => {
                 e_coli_mpn = ?,
                 salmonella_25g = ?,
                 fungi_yeasts_cfu = ?,
+                staph_aureus = ?,
                 ph = ?,
+                temperature_c = ?,
+                salinity_pct = ?,
+                density = ?,
                 brix = ?,
                 solids_percentage = ?,
+                fq_status = ?,
+                mb_status = ?,
+                release_status = ?,
+                released_at = COALESCE(?, released_at),
+                released_by = COALESCE(?, released_by),
+                incubation_started_at = COALESCE(?, incubation_started_at),
+                incubation_hours = ?,
                 status = ?,
                 observations = ?,
                 custom_parameters = ?,
@@ -317,6 +425,7 @@ const updateLabLog = async (req, res) => {
             WHERE id = ? AND company_id = ?
         `, [
             batch_id,
+            commercial_lot_code || null,
             customer_id || null,
             customer_name || null,
             presentation || 'Cubeta 30 Lb',
@@ -326,24 +435,40 @@ const updateLabLog = async (req, res) => {
             ecoliVal,
             salmStr,
             fungiVal,
+            staphStr,
             phVal,
+            tempVal,
+            salVal,
+            densVal,
             brixVal,
             solidsVal,
-            finalStatus,
+            evaluatedFq,
+            evaluatedMb,
+            evaluatedRelease,
+            releasedAt,
+            releasedBy,
+            incubation_started_at || (evaluatedMb === 'en_incubacion' ? new Date() : null),
+            parseInt(incubation_hours) || 48,
+            evaluatedStatus,
             observations || notes || null,
             customParamsJson,
-            analyst_name || null,
+            analyst_name || 'Mario (Control de Calidad)',
             id,
             company_id
         ]);
 
-        if (finalStatus === 'rechazado') {
+        // Sincronización armónica con Producción y Envasado
+        if (evaluatedRelease === 'bloqueado_haccp') {
             await pool.query('UPDATE egg_production_batches SET status = "bloqueado_haccp" WHERE id = ? AND company_id = ?', [batch_id, company_id]);
-        } else if (finalStatus === 'aprobado') {
-            await pool.query('UPDATE egg_production_batches SET status = "aprobado_calidad" WHERE id = ? AND company_id = ? AND (status = "congelado" OR status = "empaquetado" OR status = "en_proceso")', [batch_id, company_id]);
+            await pool.query('UPDATE egg_packaging_records SET quality_status = "bloqueado_haccp" WHERE batch_id = ? AND company_id = ?', [batch_id, company_id]);
+        } else if (evaluatedRelease === 'liberado') {
+            await pool.query('UPDATE egg_production_batches SET status = "aprobado_calidad" WHERE id = ? AND company_id = ? AND status IN ("congelado", "empaquetado", "pasteurizado", "en_proceso")', [batch_id, company_id]);
+            await pool.query('UPDATE egg_packaging_records SET quality_status = "liberado" WHERE batch_id = ? AND company_id = ?', [batch_id, company_id]);
+        } else {
+            await pool.query('UPDATE egg_packaging_records SET quality_status = "cuarentena" WHERE batch_id = ? AND company_id = ?', [batch_id, company_id]);
         }
 
-        res.json({ message: 'Análisis LAB-004 actualizado exitosamente', id, status: finalStatus });
+        res.json({ message: 'Análisis LAB-004 actualizado exitosamente', id, status: evaluatedStatus, release_status: evaluatedRelease, mb_status: evaluatedMb, fq_status: evaluatedFq });
     } catch (error) {
         console.error('Error updating lab log:', error);
         res.status(500).json({ message: error.message });
@@ -640,11 +765,93 @@ const registerReturnableMovement = async (req, res) => {
     }
 };
 
-// =========================================================================
-// 19. CALENDARIO DE PRODUCCIÓN INTELIGENTE, ROLES DE PLANTA Y SUGERENCIAS
-// =========================================================================
+const exportMarioQualityExcel = async (req, res) => {
+    try {
+        const company_id = req.company_id || req.user?.company_id;
+        const { year = new Date().getFullYear() } = req.query;
 
-// 19.1 Listar producciones programadas
+        // Consultar todos los registros de calidad del año
+        const [rows] = await pool.query(`
+            SELECT l.*, b.batch_code_display, b.product_type, b.started_at,
+                   (SELECT lot_code FROM egg_packaging_records WHERE batch_id = b.id ORDER BY id DESC LIMIT 1) as pkg_lot_code
+            FROM egg_lab_micro_logs l
+            JOIN egg_production_batches b ON l.batch_id = b.id
+            WHERE l.company_id = ? AND YEAR(l.sample_date) = ?
+            ORDER BY l.sample_date ASC, l.id ASC
+        `, [company_id, year]);
+
+        // Hoja 1: ANALISIS FQ
+        const fqData = rows.map((r, idx) => ({
+            num: idx + 1,
+            fecha: r.sample_date ? new Date(r.sample_date).toLocaleDateString('es-SV') : '',
+            producto: r.product_type || 'Huevo Entero',
+            lote: r.commercial_lot_code || r.pkg_lot_code || r.batch_code_display || `LOTE-${r.batch_id}`,
+            ph: r.ph !== null ? Number(r.ph).toFixed(2) : '',
+            sol: r.solids_percentage !== null ? Number(r.solids_percentage).toFixed(1) : '',
+            temp: r.temperature_c !== null ? Number(r.temperature_c).toFixed(1) : '',
+            sal: r.salinity_pct !== null ? Number(r.salinity_pct).toFixed(2) : '',
+            densidad: r.density !== null ? Number(r.density).toFixed(3) : '',
+            observaciones: r.observations || ''
+        }));
+
+        // Hoja 2: ANALISIS MB
+        const mbData = rows.map(r => ({
+            fecha: r.sample_date ? new Date(r.sample_date).toLocaleDateString('es-SV') : '',
+            producto: r.product_type || 'Huevo Entero',
+            lote: r.commercial_lot_code || r.pkg_lot_code || r.batch_code_display || `LOTE-${r.batch_id}`,
+            recuento_total: r.mesophilic_aerobic_cfu !== null ? r.mesophilic_aerobic_cfu : '< 10',
+            coliformes_totales: r.total_coliforms_mpn !== null ? r.total_coliforms_mpn : '< 10',
+            e_coli: r.e_coli_mpn ? 'Positivo' : 'Negativo',
+            salmonella: (r.salmonella_25g || 'ausencia').toLowerCase().includes('presencia') ? 'Presencia' : 'Negativo',
+            hongos_levaduras: r.fungi_yeasts_cfu !== null ? r.fungi_yeasts_cfu : '< 10',
+            staph_aureus: (r.staph_aureus || 'negativo').toLowerCase().includes('positi') ? 'Positivo' : 'Negativo',
+            dictamen: r.release_status === 'liberado' ? 'LIBERADO' : r.release_status === 'bloqueado_haccp' ? 'RECHAZADO HACCP' : 'CUARENTENA'
+        }));
+
+        const buffer = await excelService.createExcelBuffer({
+            title: `Control_Calidad_Mario_${year}`,
+            sheets: [
+                {
+                    name: 'ANALISIS FQ',
+                    columns: [
+                        { header: '#', key: 'num', width: 6 },
+                        { header: 'FECHA', key: 'fecha', width: 14 },
+                        { header: 'PRODUCTO', key: 'producto', width: 28 },
+                        { header: 'LOTE', key: 'lote', width: 20 },
+                        { header: 'PH', key: 'ph', width: 10 },
+                        { header: 'SOL (%)', key: 'sol', width: 12 },
+                        { header: 'TEMP. (°C)', key: 'temp', width: 12 },
+                        { header: 'SAL %', key: 'sal', width: 10 },
+                        { header: 'DENSIDAD', key: 'densidad', width: 12 },
+                        { header: 'OBSERVACIONES', key: 'observaciones', width: 35 }
+                    ],
+                    data: fqData
+                },
+                {
+                    name: 'ANALISIS MB',
+                    columns: [
+                        { header: 'FECHA', key: 'fecha', width: 14 },
+                        { header: 'PRODUCTO', key: 'producto', width: 28 },
+                        { header: 'LOTE', key: 'lote', width: 20 },
+                        { header: 'RECUENTO TOTAL (UFC/g)', key: 'recuento_total', width: 24 },
+                        { header: 'COLIFORMES TOTALES', key: 'coliformes_totales', width: 22 },
+                        { header: 'E. COLI', key: 'e_coli', width: 14 },
+                        { header: 'SALMONELLA SP. 25g', key: 'salmonella', width: 22 },
+                        { header: 'HONGOS Y LEVADURAS', key: 'hongos_levaduras', width: 22 },
+                        { header: 'ST. AUREUS', key: 'staph_aureus', width: 16 },
+                        { header: 'DICTAMEN', key: 'dictamen', width: 18 }
+                    ],
+                    data: mbData
+                }
+            ]
+        });
+
+        return excelService.sendExcelResponse(res, buffer, `Control_Calidad_Mario_${year}.xlsx`);
+    } catch (error) {
+        console.error('Error exportando Excel de calidad Mario:', error);
+        res.status(500).json({ message: error.message });
+    }
+};
 
 module.exports = {
     getQualityParameters,
@@ -657,5 +864,6 @@ module.exports = {
     getSolidsCalculation,
     getReturnableBalances,
     saveReturnableCustomer,
-    registerReturnableMovement
+    registerReturnableMovement,
+    exportMarioQualityExcel
 };

@@ -1,7 +1,7 @@
 import {
     Layers, XCircle, FileText, FileSpreadsheet, FileCheck,
     Plus, AlertOctagon, CheckCircle2, ChevronRight, Pencil, Trash2, Scale,
-    Lock, Flame, Boxes
+    Lock, Flame, Boxes, FlaskConical
 } from 'lucide-react';
 import { formatDate } from '../../utils/dateUtils';
 
@@ -24,7 +24,8 @@ const EggBatchStagesModal = ({
     onOpenEditWaste,
     handleDeleteWaste,
     onDeleteWaste,
-    onExportSummary
+    onExportSummary,
+    onOpenQualityEvaluation
 }) => {
     if (!isOpen || !stagesModal) return null;
 
@@ -37,7 +38,7 @@ const EggBatchStagesModal = ({
 
     return (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
-            <div className="bg-white border border-slate-200 rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] flex flex-col text-slate-900 overflow-hidden">
+            <div className="bg-white border border-slate-200 rounded-2xl shadow-2xl max-w-6xl w-full max-h-[90vh] flex flex-col text-slate-900 overflow-hidden">
                 {/* Header */}
                 <div className="p-5 border-b border-slate-200 flex items-center justify-between bg-slate-50/80">
                     <div className="flex items-center gap-3">
@@ -80,8 +81,8 @@ const EggBatchStagesModal = ({
                         </div>
                     ) : (
                         <>
-                            {/* 4 Etapas Stepper / Timeline */}
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                            {/* 5 Etapas Stepper / Timeline */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
                                 {/* ETAPA 1: QUEBRAJE */}
                                 <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/60 relative flex flex-col justify-between">
                                     <div>
@@ -295,6 +296,67 @@ const EggBatchStagesModal = ({
                                                 Reabrir Empaque
                                             </button>
                                         )}
+                                    </div>
+                                </div>
+
+                                {/* ETAPA 5: CALIDAD E INOCUIDAD (FQ & MB) */}
+                                <div className="border border-slate-200 rounded-xl p-4 bg-teal-50/40 border-teal-200/80 relative flex flex-col justify-between">
+                                    <div>
+                                        <div className="flex items-center justify-between mb-2">
+                                            <span className="px-2 py-0.5 bg-teal-100 text-teal-800 rounded-md text-[10px] font-bold uppercase">
+                                                Etapa 5: Calidad (LAB-004)
+                                            </span>
+                                            <span
+                                                className={`w-2.5 h-2.5 rounded-full ${
+                                                    stagesModal.data?.batch?.status === 'aprobado_calidad'
+                                                        ? 'bg-emerald-500'
+                                                        : stagesModal.data?.batch?.status === 'bloqueado_haccp'
+                                                        ? 'bg-rose-500'
+                                                        : 'bg-amber-400 animate-pulse'
+                                                }`}
+                                                title={stagesModal.data?.batch?.status === 'aprobado_calidad' ? 'Liberado para Venta' : 'En Cuarentena / Evaluación'}
+                                            />
+                                        </div>
+                                        <h4 className="font-bold text-xs text-slate-800">FQ & Microbiología</h4>
+                                        <div className="mt-2 space-y-1 text-xs text-slate-600">
+                                            <div>
+                                                Dictamen:{' '}
+                                                <b className={`capitalize font-bold ${
+                                                    stagesModal.data?.batch?.status === 'aprobado_calidad'
+                                                        ? 'text-emerald-700'
+                                                        : stagesModal.data?.batch?.status === 'bloqueado_haccp'
+                                                        ? 'text-rose-700'
+                                                        : 'text-amber-700'
+                                                }`}>
+                                                    {stagesModal.data?.batch?.status === 'aprobado_calidad'
+                                                        ? 'Liberado'
+                                                        : stagesModal.data?.batch?.status === 'bloqueado_haccp'
+                                                        ? 'Bloqueado HACCP'
+                                                        : 'En Cuarentena'}
+                                                </b>
+                                            </div>
+                                            {stagesModal.data?.batch?.measured_solids_pct && (
+                                                <div>Sólidos: <b>{stagesModal.data.batch.measured_solids_pct}%</b></div>
+                                            )}
+                                            {stagesModal.data?.batch?.measured_brix && (
+                                                <div>Brix: <b>{stagesModal.data.batch.measured_brix}°Bx</b></div>
+                                            )}
+                                            <div className="text-[10px] text-slate-500 pt-1">
+                                                {stagesModal.data?.batch?.status === 'aprobado_calidad'
+                                                    ? '✓ Lote 100% conforme para despacho'
+                                                    : '⏳ Medición FQ / Incubación MB 48h'}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="mt-4">
+                                        <button
+                                            type="button"
+                                            onClick={() => onOpenQualityEvaluation && onOpenQualityEvaluation(stagesModal.batch || stagesModal.data?.batch)}
+                                            className="w-full py-1.5 px-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1 shadow-xs"
+                                        >
+                                            <FlaskConical size={13} />
+                                            Evaluar Calidad FQ / MB
+                                        </button>
                                     </div>
                                 </div>
                             </div>
