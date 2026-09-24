@@ -2,7 +2,7 @@
 
 > **GENERADO AUTOMÁTICAMENTE** — no editar a mano.
 > Regenerar con: `node scripts/generate-project-structure.js`
-> Última generación: 2026-09-23
+> Última generación: 2026-09-24
 >
 > Mapa exhaustivo de la estructura física del repositorio con la función de
 > cada archivo. Para reglas de negocio y convenciones ver AGENTS.md, CLAUDE.md
@@ -123,6 +123,7 @@ Express.js, patrón controller → service → model (los modelos son SQL direct
 | `audit.js` | Middleware de auditoría: registra acciones sensibles en la bitácora. |
 | `auth.js` | verifyToken (JWT) y checkPermission: autenticación y permisos granulares por rol. |
 | `tenant.js` | tenantMiddleware: aislamiento multi-empresa mediante header x-company-id. |
+| `validate.middleware.js` | Validate.middleware. |
 
 #### `server/src/routes/`
 | Archivo | Descripción |
@@ -165,6 +166,7 @@ Express.js, patrón controller → service → model (los modelos son SQL direct
 | `officeDb.service.js` | Pool y helpers de conexión a la BD externa Office. |
 | `pdf.modern_rtee.js` | Pdf.modern rtee. |
 | `pdf.service.js` | Generación de PDFs (pdfkit/pdf-lib/jspdf): facturas, reportes, etiquetas. |
+| `reportWorkerPool.service.js` | Report Worker Pool.service. |
 | `rhAccionPersonalPdf.service.js` | Rh Accion Personal Pdf.service. |
 | `rhReportPdf.service.js` | Rh Report Pdf.service. |
 | `rrsVentasTiendaAutoSync.service.js` | Rrs Ventas Tienda Auto Sync.service. |
@@ -444,11 +446,24 @@ React 18 + Vite. Estado servidor con TanStack Query (`queryKey: ['recurso', sear
 | `GasValesModal.jsx` | Gas Vales Modal. |
 | `index.js` | Index. |
 
+**`client/src/components/gas/orders/`**
+
+| Archivo | Descripción |
+|---|---|
+| `GasOrderConfirmSeenModal.jsx` | Gas Order Confirm Seen Modal. |
+| `GasOrderDetailModal.jsx` | Gas Order Detail Modal. |
+| `GasOrderMethodModal.jsx` | Gas Order Method Modal. |
+| `GasOrderReceiveModal.jsx` | Gas Order Receive Modal. |
+| `index.js` | Index. |
+
 **`client/src/components/inventory/`**
 
 | Archivo | Descripción |
 |---|---|
 | `AdjustmentDetailModal.jsx` | Adjustment Detail Modal. |
+| `AdjustmentEditModal.jsx` | Adjustment Edit Modal. |
+| `AdjustmentMotivosModal.jsx` | Adjustment Motivos Modal. |
+| `index.js` | Index. |
 | `KardexOriginModal.jsx` | Kardex Origin Modal. |
 | `TransferDetailModal.jsx` | Transfer Detail Modal. |
 
@@ -539,6 +554,15 @@ React 18 + Vite. Estado servidor con TanStack Query (`queryKey: ['recurso', sear
 | `Table.jsx` | Tabla estándar con estados loading/vacío según CATALOG_RULES. |
 | `TemplateEditor.jsx` | Editor de plantillas con inserción de variables (correos/documentos). |
 | `VariableBadge.jsx` | Chip visual de variable insertable en editores de plantillas. |
+
+**`client/src/components/users/`**
+
+| Archivo | Descripción |
+|---|---|
+| `index.js` | Index. |
+| `UserAccessAssignModal.jsx` | User Access Assign Modal. |
+| `UserAccessBulkRoleModal.jsx` | User Access Bulk Role Modal. |
+| `UserAccessCloneModal.jsx` | User Access Clone Modal. |
 
 #### `client/src/pages/`
 
@@ -861,8 +885,8 @@ oficiales viven en `cumplientoDTE/svfe-json-schemas/` y la firma en `services/si
 
 Patrón de nombres: `migration_v<N>_<descripcion>.{sql|js}` y un runner `run_migration_v<N>.js` por versión.
 
-- Rango de versiones detectado: **v2 → v228**
-- Total de archivos: **430** (176 .sql · 82 .js migración · 170 runners run_migration* · 2 .json · 0 otros)
+- Rango de versiones detectado: **v2 → v229**
+- Total de archivos: **432** (177 .sql · 82 .js migración · 171 runners run_migration* · 2 .json · 0 otros)
 
 > Los archivos NO se listan individualmente por su volumen: para conocer el esquema vigente usa
 > `SELECT ... FROM information_schema` o revisa `server/src/config/db.schema.js`,
