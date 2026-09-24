@@ -3,6 +3,7 @@
  * Users, Profiles, User Company/Branch Access, and Roles.
  */
 const { z } = require('zod');
+const { optionalString, requiredString } = require('./schemaHelpers');
 
 // Email regex pattern
 const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
@@ -23,44 +24,50 @@ const branchItemSchema = z.union([
 // 1. USUARIOS (Users)
 // ==========================================
 const userCreateSchema = z.object({
-    username: z.string({ error: 'El nombre de usuario es obligatorio' })
-        .trim()
-        .min(1, 'El nombre de usuario no puede estar vacío')
-        .max(50, 'El usuario no puede exceder 50 caracteres'),
+    username: requiredString('El nombre de usuario es obligatorio'),
     password: z.string({ error: 'La contraseña es obligatoria' })
         .min(4, 'La contraseña debe tener al menos 4 caracteres'),
-    nombre: z.string({ error: 'El nombre del usuario es obligatorio' })
-        .trim()
-        .min(1, 'El nombre del usuario no puede estar vacío')
-        .max(100, 'El nombre no puede exceder 100 caracteres'),
+    nombre: requiredString('El nombre del usuario es obligatorio'),
     email: z.string().trim().nullable().optional().refine(val => {
         if (!val || val === '') return true;
         return emailRegex.test(val);
     }, { message: 'El correo electrónico no tiene un formato válido' }),
-    telefono: z.string().trim().nullable().optional().refine(val => {
-        if (!val || val === '') return true;
-        return phoneRegex.test(val);
-    }, { message: 'El teléfono debe tener el formato 0000-0000' }),
+    telefono: z.preprocess(
+        val => (val === undefined || val === null || val === '' ? null : String(val).trim()),
+        z.string().nullable().optional().refine(val => {
+            if (!val || val === '') return true;
+            return phoneRegex.test(val);
+        }, { message: 'El teléfono debe tener el formato 0000-0000' })
+    ),
     role_id: z.coerce.number().optional(),
     branches: z.array(branchItemSchema).optional(),
     allowed_ips: z.any().optional()
 }).passthrough();
 
 const userUpdateSchema = z.object({
-    username: z.string().trim().min(1, 'El nombre de usuario no puede estar vacío').max(50).optional(),
+    username: z.preprocess(
+        val => (val === undefined || val === null ? undefined : String(val).trim()),
+        z.string().min(1, 'El nombre de usuario no puede estar vacío').max(50).optional()
+    ),
     password: z.string().optional().refine(val => {
         if (!val || val.trim() === '') return true;
         return val.length >= 4;
     }, { message: 'La contraseña debe tener al menos 4 caracteres' }),
-    nombre: z.string().trim().min(1, 'El nombre no puede estar vacío').max(100).optional(),
+    nombre: z.preprocess(
+        val => (val === undefined || val === null ? undefined : String(val).trim()),
+        z.string().min(1, 'El nombre no puede estar vacío').max(100).optional()
+    ),
     email: z.string().trim().nullable().optional().refine(val => {
         if (!val || val === '') return true;
         return emailRegex.test(val);
     }, { message: 'El correo electrónico no tiene un formato válido' }),
-    telefono: z.string().trim().nullable().optional().refine(val => {
-        if (!val || val === '') return true;
-        return phoneRegex.test(val);
-    }, { message: 'El teléfono debe tener el formato 0000-0000' }),
+    telefono: z.preprocess(
+        val => (val === undefined || val === null || val === '' ? null : String(val).trim()),
+        z.string().nullable().optional().refine(val => {
+            if (!val || val === '') return true;
+            return phoneRegex.test(val);
+        }, { message: 'El teléfono debe tener el formato 0000-0000' })
+    ),
     status: z.enum(['activo', 'inactivo'], { error: 'Estado de usuario inválido' }).optional(),
     role_id: z.coerce.number().optional(),
     branches: z.array(branchItemSchema).optional(),
@@ -159,16 +166,16 @@ const permissionsParser = z.any().superRefine((val, ctx) => {
 });
 
 const roleCreateSchema = z.object({
-    name: z.string({ error: 'El nombre del rol es obligatorio' })
-        .trim()
-        .min(1, 'El nombre del rol no puede estar vacío')
-        .max(100, 'El nombre no puede exceder 100 caracteres'),
+    name: requiredString('El nombre del rol es obligatorio'),
     permissions: permissionsParser,
     default_dashboard: z.enum(['general', 'pista', 'tienda', 'andelsa', 'server']).optional().default('general')
 }).passthrough();
 
 const roleUpdateSchema = z.object({
-    name: z.string().trim().min(1, 'El nombre del rol no puede estar vacío').max(100).optional(),
+    name: z.preprocess(
+        val => (val === undefined || val === null ? undefined : String(val).trim()),
+        z.string().min(1, 'El nombre del rol no puede estar vacío').max(100).optional()
+    ),
     permissions: permissionsParser.optional(),
     default_dashboard: z.enum(['general', 'pista', 'tienda', 'andelsa', 'server']).optional()
 }).passthrough();

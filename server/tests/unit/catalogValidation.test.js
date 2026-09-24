@@ -69,6 +69,31 @@ async function runTests() {
     });
     assert(prodValid.success, 'Producto válido debe pasar');
 
+    // Válido con tipos enviados por el frontend (tipo_operacion numérico, booleano afecta_inventario, branches)
+    const { productUpdateSchema } = require('../../src/schemas/catalogSchemas');
+    const prodFrontendPayload = {
+        codigo: 'PROD-002',
+        nombre: 'Galón Gasolina Regular',
+        tipo_operacion: 1, // number
+        tipo_combustible: 1, // number
+        afecta_inventario: true, // boolean
+        permitir_existencia_negativa: false, // boolean
+        costo: 3.85,
+        stock_minimo: 100,
+        codigo_barra: 741000123, // number coerced to string
+        branches: [
+            { branch_id: 1, precio_unitario: 4.25 },
+            { branch_id: 2, precio_unitario: 4.30 }
+        ]
+    };
+    const prodUpdateValid = productUpdateSchema.safeParse(prodFrontendPayload);
+    assert(prodUpdateValid.success, 'Actualización de producto desde frontend debe pasar sin error de tipo string/number');
+    assert.equal(prodUpdateValid.data.tipo_operacion, 1);
+    assert.equal(prodUpdateValid.data.tipo_combustible, 1);
+    assert.equal(prodUpdateValid.data.afecta_inventario, 1);
+    assert.equal(prodUpdateValid.data.permitir_existencia_negativa, 0);
+    assert.equal(prodUpdateValid.data.codigo_barra, '741000123');
+
     // Inválido (sin código)
     const prodNoCode = productSchema.safeParse({ nombre: 'Producto sin código' });
     assert(!prodNoCode.success, 'Producto sin código debe fallar');

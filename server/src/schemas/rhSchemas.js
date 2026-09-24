@@ -3,9 +3,7 @@
  * Employees, Personal Actions, Vacation Payroll, Aguinaldo Payroll, Discounts.
  */
 const { z } = require('zod');
-
-// Helper to sanitize/trim strings or convert empty string to null
-const emptyToNull = z.string().trim().transform(val => (val === '' ? null : val));
+const { emptyToNull } = require('./schemaHelpers');
 
 // Email regex pattern
 const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
@@ -25,7 +23,10 @@ const nitRegex = /^(\d{4}-\d{6}-\d{3}-\d{1}|\d{14})$/;
 const emergencyContactSchema = z.object({
     id: z.coerce.number().optional(),
     nombre: z.string().trim().min(1, 'El nombre del contacto es obligatorio'),
-    telefono: z.string().trim().optional().or(z.literal('')),
+    telefono: z.preprocess(
+        val => (val === undefined || val === null ? '' : String(val).trim()),
+        z.string().optional().or(z.literal(''))
+    ),
     parentesco: emptyToNull.nullable().optional()
 }).passthrough();
 
@@ -48,10 +49,13 @@ const empleadoBaseShape = {
     departamento: emptyToNull.nullable().optional(),
     municipio: emptyToNull.nullable().optional(),
     distrito: emptyToNull.nullable().optional(),
-    telefono: z.string().trim().nullable().optional().refine(val => {
-        if (!val || val === '') return true;
-        return phoneRegex.test(val);
-    }, { message: 'El teléfono debe tener el formato 0000-0000' }),
+    telefono: z.preprocess(
+        val => (val === undefined || val === null || val === '' ? null : String(val).trim()),
+        z.string().nullable().optional().refine(val => {
+            if (!val || val === '') return true;
+            return phoneRegex.test(val);
+        }, { message: 'El teléfono debe tener el formato 0000-0000' })
+    ),
     correo: z.string().trim().nullable().optional().refine(val => {
         if (!val || val === '') return true;
         return emailRegex.test(val);

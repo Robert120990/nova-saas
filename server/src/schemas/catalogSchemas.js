@@ -4,9 +4,7 @@
  */
 const { z } = require('zod');
 const { validateDocumentNumber } = require('../utils/svfeValidators');
-
-// Helper to sanitize/trim strings or convert empty string to null
-const emptyToNull = z.string().trim().transform(val => (val === '' ? null : val));
+const { emptyToNull, requiredString } = require('./schemaHelpers');
 
 // Email regex pattern matching controller regex
 const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
@@ -15,15 +13,15 @@ const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 // 1. CATEGORÍAS (product_categories)
 // ==========================================
 const categorySchema = z.object({
-    name: z.string({ error: 'El nombre de la categoría es obligatorio' })
-        .trim()
-        .min(1, 'El nombre de la categoría no puede estar vacío')
-        .max(150, 'El nombre no puede exceder 150 caracteres'),
+    name: requiredString('El nombre de la categoría es obligatorio'),
     description: emptyToNull.nullable().optional()
 }).passthrough();
 
 const categoryUpdateSchema = z.object({
-    name: z.string().trim().min(1, 'El nombre no puede estar vacío').max(150).optional(),
+    name: z.preprocess(
+        val => (val === undefined || val === null ? undefined : String(val).trim()),
+        z.string().min(1, 'El nombre no puede estar vacío').max(150).optional()
+    ),
     description: emptyToNull.nullable().optional()
 }).passthrough();
 
@@ -52,33 +50,53 @@ const sellerUpdateSchema = sellerSchema.partial().passthrough();
 // 3. PRODUCTOS (products)
 // ==========================================
 const productSchema = z.object({
-    codigo: z.string({ error: 'El código del producto es obligatorio' })
-        .trim()
-        .min(1, 'El código del producto no puede estar vacío')
-        .max(50, 'El código no puede exceder 50 caracteres'),
+    codigo: z.union([z.string(), z.number()]).transform(String)
+        .pipe(z.string({ error: 'El código del producto es obligatorio' })
+            .trim()
+            .min(1, 'El código del producto no puede estar vacío')
+            .max(50, 'El código no puede exceder 50 caracteres')),
     nombre: z.string({ error: 'El nombre del producto es obligatorio' })
         .trim()
         .min(1, 'El nombre del producto no puede estar vacío')
         .max(255, 'El nombre no puede exceder 255 caracteres'),
     descripcion: emptyToNull.nullable().optional(),
     codigo_barra: emptyToNull.nullable().optional(),
-    costo: z.coerce.number({ error: 'El costo debe ser un valor numérico' })
-        .min(0, 'El costo no puede ser negativo')
-        .nullable()
-        .optional(),
-    precio_unitario: z.coerce.number({ error: 'El precio unitario debe ser un valor numérico' })
-        .min(0, 'El precio no puede ser negativo')
-        .nullable()
-        .optional(),
+    costo: z.preprocess(
+        val => (val === '' || val === null || val === undefined || (typeof val === 'number' && Number.isNaN(val)) ? null : Number(val)),
+        z.number({ error: 'El costo debe ser un valor numérico' }).min(0, 'El costo no puede ser negativo').nullable().optional()
+    ),
+    precio_unitario: z.preprocess(
+        val => (val === '' || val === null || val === undefined || (typeof val === 'number' && Number.isNaN(val)) ? null : Number(val)),
+        z.number({ error: 'El precio unitario debe ser un valor numérico' }).min(0, 'El precio no puede ser negativo').nullable().optional()
+    ),
     unidad_medida: emptyToNull.nullable().optional(),
-    category_id: z.coerce.number().nullable().optional(),
-    provider_id: z.coerce.number().nullable().optional(),
-    tipo_item: z.coerce.number().nullable().optional(),
-    tipo_combustible: emptyToNull.nullable().optional(),
-    tipo_operacion: emptyToNull.nullable().optional(),
-    stock_minimo: z.coerce.number().min(0, 'El stock mínimo no puede ser negativo').nullable().optional(),
-    afecta_inventario: z.coerce.number().optional(),
-    permitir_existencia_negativa: z.coerce.number().optional(),
+    category_id: z.preprocess(
+        val => (val === '' || val === null || val === undefined || (typeof val === 'number' && Number.isNaN(val)) ? null : Number(val)),
+        z.number().nullable().optional()
+    ),
+    provider_id: z.preprocess(
+        val => (val === '' || val === null || val === undefined || (typeof val === 'number' && Number.isNaN(val)) ? null : Number(val)),
+        z.number().nullable().optional()
+    ),
+    tipo_item: emptyToNull.nullable().optional(),
+    tipo_combustible: z.preprocess(
+        val => (val === '' || val === null || val === undefined || (typeof val === 'number' && Number.isNaN(val)) ? null : Number(val)),
+        z.number().nullable().optional()
+    ),
+    tipo_operacion: z.preprocess(
+        val => (val === '' || val === null || val === undefined || (typeof val === 'number' && Number.isNaN(val)) ? null : Number(val)),
+        z.number().nullable().optional()
+    ),
+    stock_minimo: z.preprocess(
+        val => (val === '' || val === null || val === undefined || (typeof val === 'number' && Number.isNaN(val)) ? null : Number(val)),
+        z.number().min(0, 'El stock mínimo no puede ser negativo').nullable().optional()
+    ),
+    afecta_inventario: z.union([z.boolean(), z.coerce.number()]).transform(val => (typeof val === 'boolean' ? (val ? 1 : 0) : Number(val))).optional(),
+    permitir_existencia_negativa: z.union([z.boolean(), z.coerce.number()]).transform(val => (typeof val === 'boolean' ? (val ? 1 : 0) : Number(val))).optional(),
+    discount_from_id: z.preprocess(
+        val => (val === '' || val === null || val === undefined || (typeof val === 'number' && Number.isNaN(val)) ? null : Number(val)),
+        z.number().nullable().optional()
+    ),
     status: z.enum(['activo', 'inactivo']).optional(),
     branches: z.array(z.any()).optional(),
     pos: z.array(z.any()).optional(),

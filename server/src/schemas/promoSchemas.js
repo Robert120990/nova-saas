@@ -1,4 +1,5 @@
 const { z } = require('zod');
+const { optionalString } = require('./schemaHelpers');
 
 /**
  * Validation schemas for Combos, Promotions & Discount Rules
@@ -15,8 +16,8 @@ const comboItemSchema = z.object({
 const comboShape = {
     name: z.string({ required_error: 'El nombre del combo es requerido' })
         .trim().min(1, 'El nombre no puede estar vacío'),
-    barcode: z.string().trim().nullable().optional(),
-    description: z.string().trim().nullable().optional(),
+    barcode: optionalString,
+    description: optionalString,
     price: z.coerce.number({ required_error: 'El precio es requerido' })
         .min(0, 'El precio no puede ser negativo'),
     branch_id: z.coerce.number().int().positive().nullable().optional(),
@@ -55,8 +56,8 @@ const discountRuleShape = {
     discount_type: z.enum(['percentage', 'fixed']).default('percentage').optional(),
     discount_value: z.coerce.number({ required_error: 'El valor de descuento es requerido' })
         .positive('El valor de descuento debe ser mayor a cero'),
-    start_date: z.string().trim().nullable().optional(),
-    end_date: z.string().trim().nullable().optional(),
+    start_date: optionalString,
+    end_date: optionalString,
     active: z.union([z.boolean(), z.number()]).optional()
 };
 
@@ -66,7 +67,7 @@ const discountRuleUpdateSchema = z.object(discountRuleShape).partial();
 const promotionShape = {
     name: z.string({ required_error: 'El nombre de la promoción es requerido' })
         .trim().min(1, 'El nombre no puede estar vacío'),
-    description: z.string().trim().nullable().optional(),
+    description: optionalString,
     branch_id: z.coerce.number().int().positive().nullable().optional(),
     promotion_type: z.enum(['nxm', 'second_unit_discount', 'bundle_fixed_price', 'volume_tier'], {
         required_error: 'El tipo de promoción es requerido'
@@ -75,11 +76,11 @@ const promotionShape = {
     pay_quantity: z.coerce.number().positive().default(1).optional(),
     discount_percentage: z.coerce.number().min(0).max(100).nullable().optional(),
     bundle_price: z.coerce.number().min(0).nullable().optional(),
-    start_date: z.string().trim().nullable().optional(),
-    end_date: z.string().trim().nullable().optional(),
+    start_date: optionalString,
+    end_date: optionalString,
     days_of_week: z.string().trim().default('1,2,3,4,5,6,7').optional(),
-    start_time: z.string().trim().nullable().optional(),
-    end_time: z.string().trim().nullable().optional(),
+    start_time: optionalString,
+    end_time: optionalString,
     max_applications_per_sale: z.coerce.number().int().positive().nullable().optional(),
     is_cumulative: z.boolean().default(false).optional(),
     active: z.union([z.boolean(), z.number()]).default(true).optional(),

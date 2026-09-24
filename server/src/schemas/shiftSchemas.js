@@ -1,4 +1,5 @@
 const { z } = require('zod');
+const { optionalString } = require('./schemaHelpers');
 
 /**
  * Validation schemas for POS Points of Sale & Cash Shifts (Turnos de Caja / Arqueos)
@@ -10,7 +11,7 @@ const posShape = {
     branch_id: z.coerce.number({ required_error: 'La sucursal es requerida' })
         .int('El ID de sucursal debe ser un número entero')
         .positive('Debe indicar una sucursal válida'),
-    codigo: z.string().trim().nullable().optional(),
+    codigo: optionalString,
     allow_discounts: z.union([z.boolean(), z.number(), z.string()]).optional(),
     status: z.enum(['activo', 'inactivo']).default('activo').optional()
 };
@@ -22,8 +23,8 @@ const sellerItemSchema = z.union([
     z.object({
         seller_id: z.coerce.number().int().positive().optional(),
         id: z.coerce.number().int().positive().optional(),
-        nombre: z.string().optional().nullable(),
-        seller_name: z.string().optional().nullable()
+        nombre: optionalString,
+        seller_name: optionalString
     }).passthrough(),
     z.coerce.number().int().positive()
 ]);
@@ -43,23 +44,23 @@ const shiftOpenSchema = z.object({
 });
 
 const shiftArqueoExpenseSchema = z.object({
-    description: z.string().trim().nullable().optional(),
+    description: optionalString,
     amount: z.coerce.number().min(0, 'El monto no puede ser negativo')
 });
 
 const shiftArqueoIncomeSchema = z.object({
-    description: z.string().trim().nullable().optional(),
+    description: optionalString,
     amount: z.coerce.number().min(0, 'El monto no puede ser negativo'),
-    payment_method: z.string().trim().optional()
+    payment_method: optionalString
 });
 
 const shiftArqueoRemesaSchema = z.object({
-    description: z.string().trim().nullable().optional(),
+    description: optionalString,
     amount: z.coerce.number().min(0, 'El monto no puede ser negativo')
 });
 
 const shiftArqueoPuntoSchema = z.object({
-    description: z.string().trim().nullable().optional(),
+    description: optionalString,
     amount: z.coerce.number().min(0, 'El monto no puede ser negativo')
 });
 

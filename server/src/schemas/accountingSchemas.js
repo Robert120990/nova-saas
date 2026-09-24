@@ -3,20 +3,14 @@
  * Account Types, Entry Types, Chart of Accounts, Accounting Entries, Correlativos.
  */
 const { z } = require('zod');
-
-// Helper to sanitize/trim strings or convert empty string to null
-const emptyToNull = z.string().trim().transform(val => (val === '' ? null : val));
+const { emptyToNull, requiredString } = require('./schemaHelpers');
 
 // ==========================================
 // 1. TIPOS DE CUENTA (Account Types)
 // ==========================================
 const accountTypeSchema = z.object({
-    name: z.string({ error: 'El nombre del tipo de cuenta es obligatorio' })
-        .trim()
-        .min(1, 'El nombre no puede estar vacío'),
-    code: z.string({ error: 'El código del tipo de cuenta es obligatorio' })
-        .trim()
-        .min(1, 'El código no puede estar vacío'),
+    name: requiredString('El nombre del tipo de cuenta es obligatorio'),
+    code: requiredString('El código del tipo de cuenta es obligatorio'),
     nature: z.enum(['debit', 'credit'], {
         error: 'La naturaleza debe ser debit o credit'
     }).optional()
@@ -29,12 +23,8 @@ const accountTypeUpdateSchema = accountTypeSchema.partial().passthrough();
 // 2. TIPOS DE PARTIDA (Entry Types)
 // ==========================================
 const entryTypeSchema = z.object({
-    name: z.string({ error: 'El nombre del tipo de partida es obligatorio' })
-        .trim()
-        .min(1, 'El nombre no puede estar vacío'),
-    code: z.string({ error: 'El código del tipo de partida es obligatorio' })
-        .trim()
-        .min(1, 'El código no puede estar vacío')
+    name: requiredString('El nombre del tipo de partida es obligatorio'),
+    code: requiredString('El código del tipo de partida es obligatorio')
 }).passthrough();
 
 const entryTypeUpdateSchema = entryTypeSchema.partial().passthrough();
@@ -44,14 +34,13 @@ const entryTypeUpdateSchema = entryTypeSchema.partial().passthrough();
 // 3. CATÁLOGO DE CUENTAS (Chart of Accounts)
 // ==========================================
 const accountSchema = z.object({
-    code: z.string({ error: 'El código de cuenta es obligatorio' })
-        .trim()
-        .min(1, 'El código de cuenta no puede estar vacío')
-        .max(50, 'El código no puede exceder 50 caracteres'),
-    name: z.string({ error: 'El nombre de la cuenta es obligatorio' })
-        .trim()
-        .min(1, 'El nombre de la cuenta no puede estar vacío')
-        .max(255, 'El nombre no puede exceder 255 caracteres'),
+    code: z.preprocess(
+        val => (val === undefined || val === null ? '' : String(val).trim()),
+        z.string({ error: 'El código de cuenta es obligatorio' })
+            .min(1, 'El código de cuenta no puede estar vacío')
+            .max(50, 'El código no puede exceder 50 caracteres')
+    ),
+    name: requiredString('El nombre de la cuenta es obligatorio'),
     account_type_id: z.coerce.number({ error: 'El tipo de cuenta es obligatorio' }),
     parent_id: z.coerce.number().nullable().optional(),
     level: z.coerce.number().optional(),
@@ -61,8 +50,14 @@ const accountSchema = z.object({
 }).passthrough();
 
 const accountUpdateSchema = z.object({
-    code: z.string().trim().min(1, 'El código no puede estar vacío').max(50).optional(),
-    name: z.string().trim().min(1, 'El nombre no puede estar vacío').max(255).optional(),
+    code: z.preprocess(
+        val => (val === undefined || val === null ? undefined : String(val).trim()),
+        z.string().min(1, 'El código no puede estar vacío').max(50).optional()
+    ),
+    name: z.preprocess(
+        val => (val === undefined || val === null ? undefined : String(val).trim()),
+        z.string().min(1, 'El nombre no puede estar vacío').max(255).optional()
+    ),
     account_type_id: z.coerce.number().optional(),
     parent_id: z.coerce.number().nullable().optional(),
     level: z.coerce.number().optional(),

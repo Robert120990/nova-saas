@@ -1,9 +1,10 @@
 const { z } = require('zod');
+const { emptyToNullId, optionalString } = require('./schemaHelpers');
 
 // Init Closeout
 const initCloseoutSchema = z.object({
     seller_id: z.coerce.number().int().positive({ message: 'El vendedor/cajero es requerido' }),
-    seller_name: z.string().optional().nullable(),
+    seller_name: optionalString,
     fecha_turno: z.string({ message: 'La fecha del turno es requerida' }).min(1, { message: 'La fecha del turno es requerida' }),
     numero_turno: z.coerce.number().int().positive({ message: 'El número de turno es requerido' }),
     despachadores: z.array(
@@ -11,7 +12,7 @@ const initCloseoutSchema = z.object({
             z.object({
                 despachador_id: z.coerce.number().int().positive().optional(),
                 id: z.coerce.number().int().positive().optional(),
-                nombre: z.string().optional().nullable()
+                nombre: optionalString
             }).passthrough(),
             z.coerce.number().int().positive()
         ])
@@ -44,26 +45,21 @@ const closeoutFechaTurnoSchema = z.object({
     numero_turno: z.coerce.number().int().positive().optional()
 }).passthrough();
 
-const emptyToNullId = z.preprocess(
-    val => (val === '' || val === undefined || val === 0 || val === '0' ? null : val),
-    z.coerce.number().int().positive().nullable().optional()
-);
-
 // Closeout Collections
 const closeoutExpensesSchema = z.object({
     expenses: z.array(z.object({
         id: z.union([z.number(), z.string()]).optional().nullable(),
         despachador_id: emptyToNullId,
-        rubro: z.string().optional().nullable(),
-        fecha: z.string().optional().nullable(),
-        documento: z.string().optional().nullable(),
-        tipo: z.string().optional().nullable(),
+        rubro: optionalString,
+        fecha: optionalString,
+        documento: optionalString,
+        tipo: optionalString,
         provider_id: emptyToNullId,
-        proveedor: z.string().optional().nullable(),
+        proveedor: optionalString,
         valor: z.coerce.number().optional().nullable(),
         monto: z.coerce.number().optional().nullable(),
-        descripcion: z.string().optional().nullable(),
-        comentario: z.string().optional().nullable()
+        descripcion: optionalString,
+        comentario: optionalString
     }).passthrough()).optional().default([])
 }).passthrough();
 
@@ -71,10 +67,10 @@ const closeoutRemesasSchema = z.object({
     remesas: z.array(z.object({
         id: z.union([z.number(), z.string()]).optional().nullable(),
         despachador_id: emptyToNullId,
-        codigo: z.string().optional().nullable(),
-        documento: z.string().optional().nullable(),
-        descripcion: z.string().optional().nullable(),
-        tipo_operacion: z.string().optional().nullable(),
+        codigo: optionalString,
+        documento: optionalString,
+        descripcion: optionalString,
+        tipo_operacion: optionalString,
         monto: z.coerce.number().optional().default(0),
         entregada: z.union([z.number(), z.boolean()]).optional().nullable(),
         entrega_id: emptyToNullId
@@ -86,11 +82,11 @@ const closeoutCuponesSchema = z.object({
         id: z.union([z.number(), z.string()]).optional().nullable(),
         despachador_id: emptyToNullId,
         distribuidora_id: emptyToNullId,
-        distribuidora_nombre: z.string().optional().nullable(),
+        distribuidora_nombre: optionalString,
         producto_id: emptyToNullId,
-        producto_codigo: z.string().optional().nullable(),
-        producto_descripcion: z.string().optional().nullable(),
-        cupon: z.string().optional().nullable(),
+        producto_codigo: optionalString,
+        producto_descripcion: optionalString,
+        cupon: optionalString,
         monto: z.coerce.number().optional().default(0)
     }).passthrough()).optional().default([])
 }).passthrough();
@@ -100,11 +96,11 @@ const closeoutDescuentosSchema = z.object({
         id: z.union([z.number(), z.string()]).optional().nullable(),
         despachador_id: emptyToNullId,
         cliente_id: emptyToNullId,
-        cliente_nombre: z.string().optional().nullable(),
-        documento: z.string().optional().nullable(),
+        cliente_nombre: optionalString,
+        documento: optionalString,
         producto_id: emptyToNullId,
-        producto_codigo: z.string().optional().nullable(),
-        producto_descripcion: z.string().optional().nullable(),
+        producto_codigo: optionalString,
+        producto_descripcion: optionalString,
         cantidad: z.coerce.number().optional().default(0),
         galones: z.coerce.number().optional().default(0),
         valor: z.coerce.number().optional().default(0),
@@ -118,24 +114,24 @@ const closeoutAdelantosSchema = z.object({
     adelantos: z.array(z.object({
         id: z.union([z.number(), z.string()]).optional().nullable(),
         despachador_id: emptyToNullId,
-        empleado: z.string().optional().nullable(),
+        empleado: optionalString,
         cliente_id: emptyToNullId,
         monto: z.coerce.number().optional().default(0),
-        notas: z.string().optional().nullable()
+        notas: optionalString
     }).passthrough()).optional().default([])
 }).passthrough();
 
 const closeoutTarjetasSchema = z.object({
     tarjetas: z.array(z.object({
         id: z.union([z.number(), z.string()]).optional().nullable(),
-        num_tarjeta: z.string().optional().nullable(),
-        num_autorizacion: z.string().optional().nullable(),
+        num_tarjeta: optionalString,
+        num_autorizacion: optionalString,
         pos_type_id: emptyToNullId,
         despachador_id: emptyToNullId,
-        tipo_operacion: z.string().optional().nullable(),
+        tipo_operacion: optionalString,
         monto: z.coerce.number().optional().default(0),
-        lote: z.string().optional().nullable(),
-        voucher: z.string().optional().nullable()
+        lote: optionalString,
+        voucher: optionalString
     }).passthrough()).optional().default([])
 }).passthrough();
 
@@ -144,16 +140,16 @@ const closeoutCreditosSchema = z.object({
         id: z.union([z.number(), z.string()]).optional().nullable(),
         despachador_id: emptyToNullId,
         cliente_id: emptyToNullId,
-        cliente_nombre: z.string().optional().nullable(),
-        tipo_documento: z.string().optional().nullable(),
-        documento: z.string().optional().nullable(),
-        producto_codigo: z.string().optional().nullable(),
-        producto_descripcion: z.string().optional().nullable(),
+        cliente_nombre: optionalString,
+        tipo_documento: optionalString,
+        documento: optionalString,
+        producto_codigo: optionalString,
+        producto_descripcion: optionalString,
         cantidad: z.coerce.number().optional().default(0),
         precio: z.coerce.number().optional().default(0),
         monto: z.coerce.number().optional().default(0),
-        placa: z.string().optional().nullable(),
-        kilometraje: z.string().optional().nullable()
+        placa: optionalString,
+        kilometraje: optionalString
     }).passthrough()).optional().default([])
 }).passthrough();
 
@@ -162,17 +158,17 @@ const closeoutValesSchema = z.object({
         id: z.union([z.number(), z.string()]).optional().nullable(),
         despachador_id: emptyToNullId,
         cliente_id: emptyToNullId,
-        cliente_nombre: z.string().optional().nullable(),
-        tipo_documento: z.string().optional().nullable(),
-        documento: z.string().optional().nullable(),
-        producto_codigo: z.string().optional().nullable(),
-        producto_descripcion: z.string().optional().nullable(),
+        cliente_nombre: optionalString,
+        tipo_documento: optionalString,
+        documento: optionalString,
+        producto_codigo: optionalString,
+        producto_descripcion: optionalString,
         cantidad: z.coerce.number().optional().default(0),
         galones: z.coerce.number().optional().default(0),
         precio: z.coerce.number().optional().default(0),
         monto: z.coerce.number().optional().default(0),
-        placa: z.string().optional().nullable(),
-        kilometraje: z.string().optional().nullable()
+        placa: optionalString,
+        kilometraje: optionalString
     }).passthrough()).optional().default([])
 }).passthrough();
 
@@ -181,17 +177,17 @@ const closeoutAnticiposDespSchema = z.object({
         id: z.union([z.number(), z.string()]).optional().nullable(),
         despachador_id: emptyToNullId,
         cliente_id: emptyToNullId,
-        cliente_nombre: z.string().optional().nullable(),
+        cliente_nombre: optionalString,
         anticipo_id: emptyToNullId,
-        tipo_documento: z.string().optional().nullable(),
-        documento: z.string().optional().nullable(),
-        producto_codigo: z.string().optional().nullable(),
-        producto_descripcion: z.string().optional().nullable(),
+        tipo_documento: optionalString,
+        documento: optionalString,
+        producto_codigo: optionalString,
+        producto_descripcion: optionalString,
         cantidad: z.coerce.number().optional().default(0),
         precio: z.coerce.number().optional().default(0),
         monto: z.coerce.number().optional().default(0),
-        placa: z.string().optional().nullable(),
-        kilometraje: z.string().optional().nullable()
+        placa: optionalString,
+        kilometraje: optionalString
     }).passthrough()).optional().default([])
 }).passthrough();
 
@@ -200,16 +196,16 @@ const closeoutTrupputDespSchema = z.object({
         id: z.union([z.number(), z.string()]).optional().nullable(),
         despachador_id: emptyToNullId,
         cliente_id: emptyToNullId,
-        cliente_nombre: z.string().optional().nullable(),
+        cliente_nombre: optionalString,
         trupput_id: emptyToNullId,
-        documento: z.string().optional().nullable(),
-        producto_codigo: z.string().optional().nullable(),
-        producto_descripcion: z.string().optional().nullable(),
+        documento: optionalString,
+        producto_codigo: optionalString,
+        producto_descripcion: optionalString,
         galones: z.coerce.number().optional().default(0),
         precio: z.coerce.number().optional().default(0),
         monto: z.coerce.number().optional().default(0),
-        placa: z.string().optional().nullable(),
-        kilometraje: z.string().optional().nullable()
+        placa: optionalString,
+        kilometraje: optionalString
     }).passthrough()).optional().default([])
 }).passthrough();
 
@@ -217,8 +213,8 @@ const closeoutLubricantesSchema = z.object({
     readings: z.array(z.object({
         id: z.union([z.number(), z.string()]).optional().nullable(),
         producto_id: z.coerce.number().int().positive({ message: 'El producto es requerido' }),
-        producto_codigo: z.string().optional().nullable(),
-        producto_descripcion: z.string().optional().nullable(),
+        producto_codigo: optionalString,
+        producto_descripcion: optionalString,
         lectura_inicial: z.coerce.number().optional().default(0),
         recarga: z.coerce.number().optional().default(0),
         lectura_final: z.coerce.number().optional().default(0),
