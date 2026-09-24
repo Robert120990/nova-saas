@@ -650,9 +650,15 @@ const generateRTEEModern = (data) => {
                 let curY = tableStartY + 24;
 
                 items.forEach((item, idx) => {
-                    doc.fontSize(7.5).font('Helvetica');
-                    const descH = doc.heightOfString(item.descripcion || '', { width: 285 });
-                    const rowH = Math.max(descH, 12) + 8;
+                    let displayUnitPrice = parseFloat(item.precioUnitario) || 0;
+                    let displayTotalItem = parseFloat(item.totalItem) || 0;
+                    const displayDescuento = parseFloat(item.montoDescuento || 0);
+                    const isDescItem = displayUnitPrice === 0 && displayTotalItem === 0;
+
+                    const descWidth = isDescItem ? 485 : 285;
+                    doc.fontSize(isDescItem ? 7.2 : 7.5).font(isDescItem ? 'Helvetica-Bold' : 'Helvetica');
+                    const descH = doc.heightOfString(item.descripcion || '', { width: descWidth });
+                    const rowH = Math.max(descH, 12) + (isDescItem ? 4 : 8);
 
                     if (curY + rowH > 670) {
                         doc.addPage();
@@ -664,10 +670,6 @@ const generateRTEEModern = (data) => {
                     const formattedQty = Number(item.cantidad) % 1 === 0 ? 
                         item.cantidad.toString() : 
                         Number(item.cantidad).toFixed(4).replace(/0+$/, '').replace(/\.$/, '');
-
-                    let displayUnitPrice = parseFloat(item.precioUnitario) || 0;
-                    let displayTotalItem = parseFloat(item.totalItem) || 0;
-                    const displayDescuento = parseFloat(item.montoDescuento || 0);
 
                     if (esConsumidorFinal && tieneImpuestosCombustible && isFuelItem(item)) {
                         const cant = parseFloat(item.cantidad) || 0;
@@ -688,20 +690,26 @@ const generateRTEEModern = (data) => {
                            .fill();
                     }
 
-                    doc.fillColor(THEME.navyDark).fontSize(7.5).font('Helvetica');
-                    doc.text(formattedQty, startX + 8, curY, { width: 38, align: 'center' });
-                    doc.text(item.descripcion || '', startX + 52, curY, { width: 285 });
-                    doc.text(`$${displayUnitPrice.toFixed(4)}`, startX + 345, curY, { align: 'right', width: 62 });
-
-                    if (displayDescuento > 0) {
-                        doc.fillColor(THEME.dangerRed).font('Helvetica-Bold').text(`$${displayDescuento.toFixed(2)}`, startX + 415, curY, { align: 'right', width: 55 });
-                        doc.fillColor(THEME.navyDark).font('Helvetica');
+                    if (isDescItem) {
+                        // Renglón de descripción informativa (Lote, sucursal, notas adicionales bajo el producto)
+                        doc.fillColor(THEME.textMedium).fontSize(7.2).font('Helvetica-Bold');
+                        doc.text(item.descripcion || '', startX + 52, curY, { width: descWidth });
                     } else {
-                        doc.fillColor(THEME.textMuted).text(`$ -`, startX + 415, curY, { align: 'right', width: 55 });
-                        doc.fillColor(THEME.navyDark);
-                    }
+                        doc.fillColor(THEME.navyDark).fontSize(7.5).font('Helvetica');
+                        doc.text(formattedQty, startX + 8, curY, { width: 38, align: 'center' });
+                        doc.text(item.descripcion || '', startX + 52, curY, { width: 285 });
+                        doc.text(`$${displayUnitPrice.toFixed(4)}`, startX + 345, curY, { align: 'right', width: 62 });
 
-                    doc.font('Helvetica-Bold').text(`$${displayTotalItem.toFixed(2)}`, startX + 475, curY, { align: 'right', width: 68 });
+                        if (displayDescuento > 0) {
+                            doc.fillColor(THEME.dangerRed).font('Helvetica-Bold').text(`$${displayDescuento.toFixed(2)}`, startX + 415, curY, { align: 'right', width: 55 });
+                            doc.fillColor(THEME.navyDark).font('Helvetica');
+                        } else {
+                            doc.fillColor(THEME.textMuted).text(`$ -`, startX + 415, curY, { align: 'right', width: 55 });
+                            doc.fillColor(THEME.navyDark);
+                        }
+
+                        doc.font('Helvetica-Bold').text(`$${displayTotalItem.toFixed(2)}`, startX + 475, curY, { align: 'right', width: 68 });
+                    }
 
                     // Línea divisoria suave
                     doc.moveTo(startX, curY + rowH - 3)

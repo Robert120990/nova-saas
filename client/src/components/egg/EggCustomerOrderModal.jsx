@@ -86,6 +86,7 @@ export default function EggCustomerOrderModal({
             quantity_units: '',
             quantity_lbs: '',
             quantity_kg: '',
+            billing_unit: 'units',
             price_per_lb: '',
             price_source_note: '',
             batch_id: '',
@@ -186,6 +187,7 @@ export default function EggCustomerOrderModal({
                         quantity_units: units,
                         quantity_lbs: lbs,
                         quantity_kg: kg,
+                        billing_unit: it.billing_unit || 'units',
                         price_per_lb: it.price_per_lb !== undefined ? it.price_per_lb : '',
                         price_source_note: it.price_source_note || '',
                         batch_id: it.batch_id || '',
@@ -206,6 +208,7 @@ export default function EggCustomerOrderModal({
                         quantity_units: units,
                         quantity_lbs: lbs,
                         quantity_kg: kg,
+                        billing_unit: orderToEdit.billing_unit || 'units',
                         price_per_lb: orderToEdit.price_per_lb !== undefined ? orderToEdit.price_per_lb : '',
                         price_source_note: '',
                         batch_id: orderToEdit.batch_id || '',
@@ -242,6 +245,7 @@ export default function EggCustomerOrderModal({
                 quantity_units: '',
                 quantity_lbs: '',
                 quantity_kg: '',
+                billing_unit: 'units',
                 price_per_lb: '',
                 price_source_note: '',
                 batch_id: '',
@@ -368,6 +372,7 @@ export default function EggCustomerOrderModal({
                 quantity_units: '',
                 quantity_lbs: '',
                 quantity_kg: '',
+                billing_unit: 'units',
                 price_per_lb: '',
                 price_source_note: '',
                 batch_id: '',
@@ -410,6 +415,16 @@ export default function EggCustomerOrderModal({
                 const lbs = units > 0 ? Math.round(units * factor.lbs * 100) / 100 : '';
                 const kg = lbs ? Math.round(lbs * 0.45359237 * 100) / 100 : '';
                 updated.quantity_lbs = lbs;
+                updated.quantity_kg = kg;
+            }
+
+            // Si cambia la cantidad en libras, recalcular unidades y kg
+            if (field === 'quantity_lbs') {
+                const factor = getPresentationFactors(updated.presentation);
+                const lbs = parseFloat(value) || 0;
+                const units = (lbs > 0 && factor.lbs > 0) ? Math.round((lbs / factor.lbs) * 100) / 100 : '';
+                const kg = lbs ? Math.round(lbs * 0.45359237 * 100) / 100 : '';
+                updated.quantity_units = units;
                 updated.quantity_kg = kg;
             }
 
@@ -553,8 +568,10 @@ export default function EggCustomerOrderModal({
                     product_type: it.product_type,
                     presentation: it.presentation,
                     quantity_units: Number.isFinite(parseFloat(it.quantity_units)) ? parseFloat(it.quantity_units) : 0,
+                    units: Number.isFinite(parseFloat(it.quantity_units)) ? parseFloat(it.quantity_units) : 0,
                     quantity_lbs: Number.isFinite(parseFloat(it.quantity_lbs)) ? parseFloat(it.quantity_lbs) : 0,
                     quantity_kg: Number.isFinite(parseFloat(it.quantity_kg)) ? parseFloat(it.quantity_kg) : 0,
+                    billing_unit: it.billing_unit || 'units',
                     price_per_lb: Number.isFinite(parseFloat(it.price_per_lb)) ? parseFloat(it.price_per_lb) : 0,
                     price_source_note: it.price_source_note || '',
                     batch_id: it.batch_id ? (parseInt(it.batch_id, 10) || null) : null,
@@ -885,15 +902,29 @@ export default function EggCustomerOrderModal({
                                             onChange={(e) => handleItemChange(it.id, 'quantity_units', e.target.value)}
                                             className="w-full text-xs font-black border border-slate-200 rounded-lg px-2 py-1.5 text-indigo-700 outline-none focus:border-indigo-500"
                                         />
-                                        <div className="mt-1 flex items-center gap-1 text-[10px] font-bold text-slate-500">
-                                            <span className="text-indigo-600 bg-indigo-50 px-1 py-0.2 rounded border border-indigo-100">
-                                                = {it.quantity_lbs ? `${it.quantity_lbs.toLocaleString()} lb` : '0 lb'}
-                                            </span>
-                                            {it.quantity_kg ? (
-                                                <span className="text-emerald-700 bg-emerald-50 px-1 py-0.2 rounded border border-emerald-100">
-                                                    {it.quantity_kg.toLocaleString()} kg
+                                        <div className="mt-1 flex items-center justify-between gap-1 flex-wrap">
+                                            <div className="flex items-center gap-1 text-[10px] font-bold text-slate-500">
+                                                <span className="text-indigo-600 bg-indigo-50 px-1 py-0.2 rounded border border-indigo-100">
+                                                    = {it.quantity_lbs ? `${it.quantity_lbs.toLocaleString()} lb` : '0 lb'}
                                                 </span>
-                                            ) : null}
+                                                {it.quantity_kg ? (
+                                                    <span className="text-emerald-700 bg-emerald-50 px-1 py-0.2 rounded border border-emerald-100">
+                                                        {it.quantity_kg.toLocaleString()} kg
+                                                    </span>
+                                                ) : null}
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleItemChange(it.id, 'billing_unit', it.billing_unit === 'lbs' ? 'units' : 'lbs')}
+                                                title={it.billing_unit === 'lbs' ? 'Facturar por Libras (Peso) en DTE' : 'Facturar por Presentación (Uds) en DTE'}
+                                                className={`text-[9px] font-bold px-1.5 py-0.5 rounded border transition ${
+                                                    it.billing_unit === 'lbs'
+                                                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                                                        : 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'
+                                                }`}
+                                            >
+                                                {it.billing_unit === 'lbs' ? '⚖️ Factura: Lbs' : '📦 Factura: Uds'}
+                                            </button>
                                         </div>
                                     </div>
 

@@ -105,6 +105,9 @@ export default function RouteAutoInvoicingModal({
                                 initProd = `${rawBarcode} ${initProd}`.trim();
                             }
 
+                            const isUnitDefault = it.billing_unit === 'units' || 
+                                (it.billing_unit !== 'lbs' && (isCustomerCallejas || (parsedUnits && parsedUnits > 0)));
+
                             return {
                                 product_type: initProd,
                                 original_product_type: it.product_type || 'Huevo Entero Pasteurizado',
@@ -112,6 +115,7 @@ export default function RouteAutoInvoicingModal({
                                 original_presentation: it.presentation || 'cubeta 30LB',
                                 units: parsedUnits,
                                 quantity_units: parsedUnits,
+                                billing_unit: it.billing_unit || (isUnitDefault ? 'units' : 'lbs'),
                                 quantity_lbs: parseFloat(it.quantity_lbs || stop.quantity_lbs || 0),
                                 quantity_kg: it.quantity_kg ? parseFloat(it.quantity_kg) : (parseFloat(it.quantity_lbs || stop.quantity_lbs || 0) * 0.45359237),
                                 price_per_lb: parseFloat(it.price_per_lb || stop.price_per_lb || 0),
@@ -148,6 +152,9 @@ export default function RouteAutoInvoicingModal({
                     initProd = `${rawBarcode} ${initProd}`.trim();
                 }
 
+                const isUnitDefault = stop.billing_unit === 'units' || 
+                    (stop.billing_unit !== 'lbs' && (isCustomerCallejas || (parsedStopUnits && parsedStopUnits > 0)));
+
                 items = [{
                     product_type: initProd,
                     original_product_type: stop.product_type || 'Huevo Entero Pasteurizado',
@@ -155,6 +162,7 @@ export default function RouteAutoInvoicingModal({
                     original_presentation: stop.presentation || 'cubeta 30LB',
                     units: parsedStopUnits,
                     quantity_units: parsedStopUnits,
+                    billing_unit: stop.billing_unit || (isUnitDefault ? 'units' : 'lbs'),
                     quantity_lbs: parseFloat(stop.quantity_lbs || 0),
                     quantity_kg: stop.quantity_kg ? parseFloat(stop.quantity_kg) : (parseFloat(stop.quantity_lbs || 0) * 0.45359237),
                     price_per_lb: parseFloat(stop.price_per_lb || 0),
@@ -441,6 +449,54 @@ export default function RouteAutoInvoicingModal({
         });
     };
 
+    // Alternar modalidad de facturación (Presentación / Unidades vs Libras / Peso)
+    const handleToggleBillingUnit = (stopId, itemIndex) => {
+        setStopsConfig(prev => {
+            const currentStop = prev[stopId];
+            if (!currentStop || currentStop.is_billed) return prev;
+            const newItems = [...currentStop.items];
+            const it = newItems[itemIndex];
+            const currentMode = it.billing_unit || 'units';
+            const nextMode = currentMode === 'units' ? 'lbs' : 'units';
+            newItems[itemIndex] = {
+                ...it,
+                billing_unit: nextMode
+            };
+            return {
+                ...prev,
+                [stopId]: {
+                    ...currentStop,
+                    items: newItems
+                }
+            };
+        });
+    };
+
+    // Cambiar modalidad global para todas las paradas pendientes
+    const handleSetAllBillingUnit = (mode) => {
+        setStopsConfig(prev => {
+            const updated = { ...prev };
+            Object.keys(updated).forEach(stopId => {
+                const stopCfg = updated[stopId];
+                if (!stopCfg || stopCfg.is_billed) return;
+                updated[stopId] = {
+                    ...stopCfg,
+                    items: (stopCfg.items || []).map(it => {
+                        if (it.is_custom_detail) return it;
+                        return {
+                            ...it,
+                            billing_unit: mode
+                        };
+                    })
+                };
+            });
+            return updated;
+        });
+        toast.info(mode === 'units'
+            ? 'Modalidad cambiada: Facturar por Presentación (Uds) en todas las paradas.'
+            : 'Modalidad cambiada: Facturar por Libras (Peso) en todas las paradas.');
+    };
+
     // Filtrar lotes en el modal de selección
     const filteredLots = useMemo(() => {
         let list = availableLots;
@@ -552,6 +608,8 @@ export default function RouteAutoInvoicingModal({
                         dias_credito: parseInt(cfg.dias_credito, 10) || 0,
                         items: (cfg.items || []).map(it => ({
                             ...it,
+                            billing_unit: it.billing_unit || 'units',
+                            units: it.units ?? it.quantity_units ?? null,
                             quantity_lbs: Number.isFinite(parseFloat(it.quantity_lbs)) ? parseFloat(it.quantity_lbs) : 0,
                             price_per_lb: Number.isFinite(parseFloat(it.price_per_lb)) ? parseFloat(it.price_per_lb) : 0,
                             batch_id: it.batch_id ? (parseInt(it.batch_id, 10) || null) : null,
@@ -642,14 +700,36 @@ export default function RouteAutoInvoicingModal({
 
             {/* 2. Lista de Paradas / Pedidos */}
             <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                    <h4 className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
-                        <Receipt className="w-4 h-4 text-indigo-600" />
-                        <span>Paradas de la Ruta y Parámetros de Facturación</span>
-                    </h4>
-                    <span className="text-[11px] font-bold text-slate-400">
-                        {stats.selectedCount} seleccionada(s) para emitir
-                    </span>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-1 border-b border-slate-200">
+                    <div className="flex items-center gap-2">
+                        <h4 className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                            <Receipt className="w-4 h-4 text-indigo-600" />
+                            <span>Paradas de la Ruta y Parámetros de Facturación</span>
+                        </h4>
+                        <span className="text-[11px] font-bold text-slate-400">
+                            ({stats.selectedCount} seleccionada(s))
+                        </span>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-[10px] font-bold text-slate-500 uppercase mr-1">Modalidad global:</span>
+                        <button
+                            type="button"
+                            onClick={() => handleSetAllBillingUnit('units')}
+                            className="text-[10px] font-bold px-2 py-1 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 transition flex items-center gap-1"
+                            title="Establecer facturación por presentación/unidades para todas las paradas pendientes"
+                        >
+                            <span>📦 Todas por Presentación (Uds)</span>
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => handleSetAllBillingUnit('lbs')}
+                            className="text-[10px] font-bold px-2 py-1 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200 transition flex items-center gap-1"
+                            title="Establecer facturación por peso/libras para todas las paradas pendientes"
+                        >
+                            <span>⚖️ Todas por Libras (Peso)</span>
+                        </button>
+                    </div>
                 </div>
 
                 <div className="space-y-3 max-h-[420px] overflow-y-auto pr-1">
@@ -940,6 +1020,10 @@ export default function RouteAutoInvoicingModal({
                                             units = Number.isInteger(calc) ? calc : Math.round(calc * 100) / 100;
                                         }
 
+                                        const isBillingByUnits = (it.billing_unit ?? 'units') === 'units';
+                                        const effectiveBilledQty = (isBillingByUnits && units > 0) ? units : qtyLbs;
+                                        const effectiveUnitPrice = effectiveBilledQty > 0 ? (itemTotal / effectiveBilledQty) : priceLb;
+
                                         return (
                                             <div
                                                 key={itemIdx}
@@ -954,10 +1038,22 @@ export default function RouteAutoInvoicingModal({
                                                 <div className="flex-1 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 items-center">
                                                     {/* 1. Producto */}
                                                     <div className="col-span-2 sm:col-span-1 md:col-span-2 space-y-1">
-                                                        <div className="flex items-center justify-between gap-1">
+                                                        <div className="flex items-center justify-between gap-1 flex-wrap">
                                                             <span className="block text-[9px] font-black uppercase text-slate-400">Producto</span>
                                                             {!isBilled && (
-                                                                <div className="flex items-center gap-1">
+                                                                <div className="flex items-center gap-1 flex-wrap">
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => handleToggleBillingUnit(stop.id, itemIdx)}
+                                                                        title={isBillingByUnits ? 'Cambiar a facturar por Libras (Peso)' : 'Cambiar a facturar por Presentación (Unidades)'}
+                                                                        className={`text-[9px] font-black px-1.5 py-0.5 rounded border transition flex items-center gap-1 ${
+                                                                            isBillingByUnits
+                                                                                ? 'bg-blue-100 text-blue-800 border-blue-300 hover:bg-blue-200'
+                                                                                : 'bg-emerald-100 text-emerald-800 border-emerald-300 hover:bg-emerald-200'
+                                                                        }`}
+                                                                    >
+                                                                        {isBillingByUnits ? '📦 x Presentación' : '⚖️ x Libras'}
+                                                                    </button>
                                                                     {it.barcode && (
                                                                         <button
                                                                             type="button"
@@ -1014,38 +1110,65 @@ export default function RouteAutoInvoicingModal({
 
                                                     {/* 3. Cant. Unidades */}
                                                     <div className="text-center sm:text-left">
-                                                        <span className="block text-[9px] font-black uppercase text-slate-400">Unidades</span>
-                                                        <span className="font-black text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100 inline-block">
+                                                        <div className="flex items-center gap-1">
+                                                            <span className={`block text-[9px] font-black uppercase ${isBillingByUnits ? 'text-blue-700' : 'text-slate-400'}`}>
+                                                                {isBillingByUnits ? 'Cant. DTE (Uds)' : 'Unidades'}
+                                                            </span>
+                                                            {isBillingByUnits && (
+                                                                <span className="text-[8px] bg-blue-100 text-blue-700 font-extrabold px-1 rounded">DTE</span>
+                                                            )}
+                                                        </div>
+                                                        <span className={`font-black px-2 py-0.5 rounded-md border inline-block text-xs mt-0.5 ${
+                                                            isBillingByUnits 
+                                                                ? 'text-blue-900 bg-blue-50 border-blue-200 shadow-2xs' 
+                                                                : 'text-slate-500 bg-slate-100 border-slate-200'
+                                                        }`}>
                                                             {units} Uds
                                                         </span>
                                                     </div>
 
                                                     {/* 4. Cant. Libras / Kilogramos */}
                                                     <div className="text-center sm:text-left">
-                                                        <span className="block text-[9px] font-black uppercase text-slate-400">
-                                                            {it.is_kg_mode ? 'Kilogramos' : 'Libras (Peso)'}
-                                                        </span>
-                                                        <span className="font-black text-slate-900">
+                                                        <div className="flex items-center gap-1">
+                                                            <span className={`block text-[9px] font-black uppercase ${!isBillingByUnits ? 'text-emerald-700' : 'text-slate-400'}`}>
+                                                                {!isBillingByUnits 
+                                                                    ? (it.is_kg_mode ? 'Cant. DTE (Kg)' : 'Cant. DTE (Lbs)')
+                                                                    : (it.is_kg_mode ? 'Peso (Kg)' : 'Peso (Lbs)')
+                                                                }
+                                                            </span>
+                                                            {!isBillingByUnits && (
+                                                                <span className="text-[8px] bg-emerald-100 text-emerald-700 font-extrabold px-1 rounded">DTE</span>
+                                                            )}
+                                                        </div>
+                                                        <span className={`font-black px-2 py-0.5 rounded-md border inline-block text-xs mt-0.5 ${
+                                                            !isBillingByUnits 
+                                                                ? 'text-emerald-900 bg-emerald-50 border-emerald-200 shadow-2xs' 
+                                                                : 'text-slate-600 bg-slate-100 border-slate-200'
+                                                        }`}>
                                                             {it.is_kg_mode
                                                                 ? `${(qtyLbs * 0.45359237).toFixed(2)} Kg`
                                                                 : `${qtyLbs.toLocaleString()} Lbs`
                                                             }
                                                         </span>
-                                                        {it.is_kg_mode && (
-                                                            <span className="block text-[10px] text-slate-400 font-medium">
-                                                                ({qtyLbs.toLocaleString()} Lbs)
-                                                            </span>
-                                                        )}
                                                     </div>
 
                                                     {/* 5 & 6. Precio y Total */}
                                                     <div className="text-right">
-                                                        <span className="block text-[9px] font-black uppercase text-slate-400">
-                                                            @ <Money value={priceLb} />/lb
+                                                        <span className="block text-[9px] font-black uppercase text-slate-500">
+                                                            {isBillingByUnits ? (
+                                                                <>@ <Money value={effectiveUnitPrice} />/ud</>
+                                                            ) : (
+                                                                <>@ <Money value={priceLb} />/lb</>
+                                                            )}
                                                         </span>
                                                         <span className="font-black text-slate-900 text-sm">
                                                             <Money value={itemTotal} />
                                                         </span>
+                                                        {isBillingByUnits && (
+                                                            <span className="block text-[9px] text-slate-400 font-medium">
+                                                                (@ <Money value={priceLb} />/lb)
+                                                            </span>
+                                                        )}
                                                     </div>
                                                 </div>
 

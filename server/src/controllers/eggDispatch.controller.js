@@ -2206,22 +2206,34 @@ const autoInvoiceDispatchRoute = async (req, res) => {
 
             const ivaRate = 0.13;
 
-            for (let i = 0; i < stop.items.length; i++) {
-                const it = stop.items[i];
+            // Separar productos comerciales y detalles libres/notas de la parada
+            const fiscalProductItems = [];
+            const customDetailItems = [];
+
+            for (const it of (stop.items || [])) {
                 const isCustom = !!it.is_custom_detail;
                 const rawQty = safeNum(it.quantity_lbs ?? it.quantity ?? 0, 0);
                 const rawPrice = safeNum(it.price_per_lb ?? it.price ?? 0, 0);
 
-                // Si es detalle libre/nota, o si tiene cantidad <= 0 o precio <= 0
-                // NO debe incluirse como renglón de ítem fiscal en la factura
                 if (isCustom || rawPrice <= 0 || rawQty <= 0) {
-                    const descNote = (it.product_type || it.descripcion || it.description || '').trim();
-                    if (descNote) {
-                        const noteDetail = rawPrice > 0 ? `${descNote} ($${rawPrice.toFixed(2)})` : descNote;
-                        freeNotes.push(noteDetail);
-                    }
-                    continue;
+                    customDetailItems.push(it);
+                } else {
+                    fiscalProductItems.push(it);
                 }
+            }
+
+            // Validar que la parada tenga al menos un producto facturable válido
+            if (fiscalProductItems.length === 0 && dteType !== '04') {
+                await connection.rollback();
+                return res.status(400).json({
+                    message: `La parada del cliente "${customer.nombre}" (Pedido #${stop.order_number || stop.order_id}) no contiene productos facturables válidos con cantidad y precio mayores a cero.`
+                });
+            }
+
+            for (let i = 0; i < fiscalProductItems.length; i++) {
+                const it = fiscalProductItems[i];
+                const rawQty = safeNum(it.quantity_lbs ?? it.quantity ?? 0, 0);
+                const rawPrice = safeNum(it.price_per_lb ?? it.price ?? 0, 0);
 
                 // Ítem normal de producto ovoproducto legítimo
                 const qtyLbs = rawQty;
@@ -2234,7 +2246,6 @@ const autoInvoiceDispatchRoute = async (req, res) => {
 
                 let ventaGravada = 0;
                 let ivaItem = 0;
-                let precioUnitario = priceLb;
 
                 if (dteType === '11') {
                     ventaGravada = itemTotal;
@@ -2242,7 +2253,6 @@ const autoInvoiceDispatchRoute = async (req, res) => {
                 } else if (dteType === '04') {
                     ventaGravada = 0;
                     ivaItem = 0;
-                    precioUnitario = 0.00001;
                 } else {
                     const gravNeto = Math.round((itemTotal / (1 + ivaRate)) * 100) / 100;
                     ivaItem = Math.round((itemTotal - gravNeto) * 100) / 100;
@@ -2254,7 +2264,8 @@ const autoInvoiceDispatchRoute = async (req, res) => {
 
                 const productType = (it.product_type || 'Ovoproducto').trim();
                 const presentation = (it.presentation || 'cubeta 30LB').trim();
-                const lotCode = (it.lot_code || 'S/L').trim();
+                const rawLot = (it.lot_code || stop.order_lot_code || stop.lot_code || stop.linked_batch_code || '').trim();
+                const lotCode = rawLot.replace(/\s*-\s*/g, '-');
 
                 // Calcular unidades según presentación o usar unidades provistas
                 let units = safeNum(it.units ?? it.quantity_units ?? 0, 0);
@@ -2267,10 +2278,10 @@ const autoInvoiceDispatchRoute = async (req, res) => {
                 // Resolver equivalencia con producto comercial del catálogo
                 const resolved = await resolveEggCatalogProduct(connection, company_id, productType, presentation);
                 const resolvedProductId = it.product_id || resolved.catalog_product_id || null;
-                const catalogCode = resolved.catalog_code || lotCode || 'OVO-01';
+                const catalogCode = resolved.catalog_code || (lotCode !== 'S/L' && lotCode !== 'N/A' && lotCode ? lotCode : 'OVO-01');
                 const isReturnable = resolved.is_returnable;
                 const unitOfMeasure = (resolved.unit_of_measure || '').toLowerCase();
-                const stockQty = ['cubeta', 'galon', 'unidad', 'caja', 'carton'].includes(unitOfMeasure) ? units : qtyLbs;
+                const stockQty = ['cubeta', 'galon', 'unidad', 'caja', 'carton', 'litro', 'botella'].includes(unitOfMeasure) ? units : qtyLbs;
 
                 // Detección de cliente Callejas (exige código de barra antes del nombre)
                 const isCallejas = (customer.nombre || '').toUpperCase().includes('CALLEJA') || customer.id === 11316 || customer.id === 32555;
@@ -2297,15 +2308,40 @@ const autoInvoiceDispatchRoute = async (req, res) => {
                     weightDesc = `${qtyKg.toFixed(2)} Kg`;
                 }
 
-                // Si el usuario especificó una descripción manual en el modal, se respeta; sino se genera con la inteligencia aplicada
-                const defaultDesc = `${displayProductName} | Presentación: ${displayPresentation || 'Unidad'} | Lote: ${lotCode} | Cant: ${units} Uds (${weightDesc})`;
-                const itemDesc = (it.custom_description || '').trim() || defaultDesc;
+                // Modalidad de facturación: por unidades/presentación (ej: 40 litros) o por peso en libras (ej: 80 lbs)
+                // Se factura por presentación/unidades cuando it.billing_unit === 'units' o por defecto para Calleja o pedidos con unidades
+                const shouldBillByUnits = it.billing_unit === 'units' || 
+                    (it.billing_unit !== 'lbs' && (isCallejas || (units > 0 && it.billing_by_presentation !== false)));
+
+                const billedQty = (shouldBillByUnits && units > 0) ? units : qtyLbs;
+                let precioUnitario = priceLb;
+
+                if (dteType === '11') {
+                    precioUnitario = billedQty > 0 ? Math.round((itemTotal / billedQty) * 1000000) / 1000000 : itemTotal;
+                } else if (dteType === '04') {
+                    precioUnitario = 0.00001;
+                } else if (dteType === '03') {
+                    // Crédito fiscal: precio unitario es neto sin IVA
+                    precioUnitario = billedQty > 0 ? Math.round((ventaGravada / billedQty) * 1000000) / 1000000 : ventaGravada;
+                } else {
+                    // Consumidor final: precio unitario incluye IVA
+                    precioUnitario = billedQty > 0 ? Math.round((itemTotal / billedQty) * 1000000) / 1000000 : itemTotal;
+                }
+
+                // Renglón del producto fiscal limpio: sin lote incrustado con pipes
+                let defaultDesc = shouldBillByUnits
+                    ? `${displayProductName} | Presentación: ${displayPresentation || 'Unidad'} (${weightDesc})`
+                    : `${displayProductName} | Presentación: ${displayPresentation || 'Unidad'} | Cant: ${units} Uds (${weightDesc})`;
+
+                if (it.custom_description && it.custom_description.trim()) {
+                    defaultDesc = it.custom_description.replace(/\s*\|\s*Lote:\s*[^|]+/i, '').trim();
+                }
 
                 itemsProcessed.push({
                     product_id: resolvedProductId,
                     codigo: catalogCode,
-                    descripcion: itemDesc,
-                    cantidad: qtyLbs,
+                    descripcion: defaultDesc,
+                    cantidad: billedQty,
                     precio_unitario: safeNum(precioUnitario, 0),
                     monto_descuento: 0,
                     venta_gravada: safeNum(ventaGravada, 0),
@@ -2315,13 +2351,85 @@ const autoInvoiceDispatchRoute = async (req, res) => {
                     returnable_units: Math.ceil(units),
                     stock_qty: stockQty
                 });
+
+                // Renglón de Lote: SIEMPRE ABAJO DEL PRODUCTO
+                // 1. Buscar si hay una nota libre explícita de lote (ej: "Lote: 01-266-26 estado liquido")
+                const lotNoteIdx = customDetailItems.findIndex(c => {
+                    const txt = (c.product_type || c.descripcion || '').trim();
+                    return /^\s*lote\b/i.test(txt);
+                });
+
+                let lotDescLine = null;
+                if (lotNoteIdx !== -1) {
+                    const rawLotTxt = (customDetailItems[lotNoteIdx].product_type || customDetailItems[lotNoteIdx].descripcion).trim();
+                    lotDescLine = rawLotTxt.toLowerCase().startsWith('lote') ? rawLotTxt : `Lote: ${rawLotTxt}`;
+                    // Extraer para no duplicarlo como nota genérica
+                    customDetailItems.splice(lotNoteIdx, 1);
+                } else if (lotCode && lotCode !== 'N/A' && lotCode !== 'S/L') {
+                    lotDescLine = `Lote: ${lotCode}`;
+                } else if (lotCode === 'S/L') {
+                    lotDescLine = `Lote: S/L`;
+                }
+
+                if (lotDescLine) {
+                    freeNotes.push(lotDescLine);
+                    itemsProcessed.push({
+                        product_id: null,
+                        codigo: null,
+                        descripcion: lotDescLine,
+                        cantidad: 1,
+                        precio_unitario: 0,
+                        monto_descuento: 0,
+                        venta_gravada: 0,
+                        venta_exenta: 0,
+                        tributos: dteType === '11' || dteType === '04' ? [] : ['20'],
+                        is_returnable: false,
+                        returnable_units: 0,
+                        stock_qty: 0
+                    });
+                }
             }
 
-            // Validar que la parada tenga al menos un producto facturable válido
-            if (itemsProcessed.length === 0) {
-                await connection.rollback();
-                return res.status(400).json({
-                    message: `La parada del cliente "${customer.nombre}" (Pedido #${stop.order_number || stop.order_id}) no contiene productos facturables válidos con cantidad y precio mayores a cero.`
+            // Procesar el resto de detalles libres (Sucursal, observaciones de entrega, etc.)
+            for (const cd of customDetailItems) {
+                const descNote = (cd.product_type || cd.descripcion || cd.description || '').trim();
+                if (!descNote) continue;
+
+                freeNotes.push(descNote);
+                itemsProcessed.push({
+                    product_id: null,
+                    codigo: null,
+                    descripcion: descNote,
+                    cantidad: 1,
+                    precio_unitario: 0,
+                    monto_descuento: 0,
+                    venta_gravada: 0,
+                    venta_exenta: 0,
+                    tributos: dteType === '11' || dteType === '04' ? [] : ['20'],
+                    is_returnable: false,
+                    returnable_units: 0,
+                    stock_qty: 0
+                });
+            }
+
+            // Si la parada tiene sucursal asociada y no fue agregada aún en las notas, incorporarla
+            const branchName = stop.branch_name || stop.customer_branch_name;
+            if (branchName && !freeNotes.some(n => n.toLowerCase().includes(branchName.toLowerCase()))) {
+                const branchDescLine = branchName.toLowerCase().startsWith('sucursal') ? branchName : `Sucursal: ${branchName}`;
+                freeNotes.push(branchDescLine);
+                itemsProcessed.push({
+                    product_id: null,
+                    codigo: null,
+                    descripcion: branchDescLine,
+                    cantidad: 1,
+                    precio_unitario: 0,
+                    monto_descuento: 0,
+                    venta_gravada: 0,
+                    venta_exenta: 0,
+                    tributos: dteType === '11' || dteType === '04' ? [] : ['20'],
+                    is_returnable: false,
+                    returnable_units: 0,
+                    stock_qty: 0
                 });
             }
 
