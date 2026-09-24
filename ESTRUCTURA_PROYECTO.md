@@ -879,6 +879,8 @@ oficiales viven en `cumplientoDTE/svfe-json-schemas/` y la firma en `services/si
 #### `dte-api/src/queue/`
 | Archivo | Descripción |
 |---|---|
+| `contingencyQueue.js` | Contingency Queue. |
+| `index.js` | Index. |
 | `transmissionQueue.js` | Cola persistente de transmisión con reintentos y backoff. |
 
 #### `dte-api/src/transmission/`
