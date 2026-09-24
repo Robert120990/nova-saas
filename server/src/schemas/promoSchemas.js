@@ -83,7 +83,11 @@ const promotionShape = {
     max_applications_per_sale: z.coerce.number().int().positive().nullable().optional(),
     is_cumulative: z.boolean().default(false).optional(),
     active: z.union([z.boolean(), z.number()]).default(true).optional(),
-    product_ids: z.array(z.coerce.number().int().positive(), {
+    product_ids: z.array(
+        z.union([
+            z.object({ id: z.coerce.number().int().positive().optional(), product_id: z.coerce.number().int().positive().optional() }).passthrough(),
+            z.coerce.number().int().positive()
+        ]), {
         required_error: 'Debe seleccionar al menos un producto participante'
     }).min(1, 'Debe seleccionar al menos un producto participante')
 };
@@ -91,7 +95,12 @@ const promotionShape = {
 const promotionSchema = z.object(promotionShape);
 const promotionUpdateSchema = z.object({
     ...promotionShape,
-    product_ids: z.array(z.coerce.number().int().positive()).optional()
+    product_ids: z.array(
+        z.union([
+            z.object({ id: z.coerce.number().int().positive().optional(), product_id: z.coerce.number().int().positive().optional() }).passthrough(),
+            z.coerce.number().int().positive()
+        ])
+    ).optional()
 }).partial();
 
 module.exports = {

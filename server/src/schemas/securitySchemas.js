@@ -10,6 +10,15 @@ const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 // Phone regex (0000-0000)
 const phoneRegex = /^\d{4}-\d{4}$/;
 
+// Helper for branch items (accepts numeric ID or { id / branch_id } object)
+const branchItemSchema = z.union([
+    z.object({
+        branch_id: z.coerce.number().int().positive().optional(),
+        id: z.coerce.number().int().positive().optional()
+    }).passthrough(),
+    z.coerce.number().int().positive()
+]);
+
 // ==========================================
 // 1. USUARIOS (Users)
 // ==========================================
@@ -33,7 +42,7 @@ const userCreateSchema = z.object({
         return phoneRegex.test(val);
     }, { message: 'El teléfono debe tener el formato 0000-0000' }),
     role_id: z.coerce.number().optional(),
-    branches: z.array(z.coerce.number()).optional(),
+    branches: z.array(branchItemSchema).optional(),
     allowed_ips: z.any().optional()
 }).passthrough();
 
@@ -54,7 +63,7 @@ const userUpdateSchema = z.object({
     }, { message: 'El teléfono debe tener el formato 0000-0000' }),
     status: z.enum(['activo', 'inactivo'], { error: 'Estado de usuario inválido' }).optional(),
     role_id: z.coerce.number().optional(),
-    branches: z.array(z.coerce.number()).optional(),
+    branches: z.array(branchItemSchema).optional(),
     allowed_ips: z.any().optional()
 }).passthrough();
 
@@ -79,7 +88,7 @@ const userAccessSchema = z.object({
     userId: z.coerce.number({ error: 'El ID de usuario es obligatorio' }),
     companyId: z.coerce.number({ error: 'El ID de empresa es obligatorio' }),
     roleId: z.coerce.number({ error: 'El rol es obligatorio' }),
-    branches: z.array(z.coerce.number()).optional().default([])
+    branches: z.array(branchItemSchema).optional().default([])
 }).passthrough();
 
 const bulkAccessSchema = z.object({
@@ -88,7 +97,7 @@ const bulkAccessSchema = z.object({
     assignments: z.array(z.object({
         companyId: z.coerce.number({ error: 'El ID de empresa es obligatorio' }),
         roleId: z.coerce.number({ error: 'El ID de rol es obligatorio' }),
-        branches: z.array(z.coerce.number()).optional()
+        branches: z.array(branchItemSchema).optional()
     }), { error: 'Debe especificar al menos una empresa con rol' })
         .min(1, 'Debe especificar al menos una empresa con rol')
 }).passthrough();

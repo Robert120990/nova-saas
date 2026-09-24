@@ -44,16 +44,21 @@ const closeoutFechaTurnoSchema = z.object({
     numero_turno: z.coerce.number().int().positive().optional()
 }).passthrough();
 
+const emptyToNullId = z.preprocess(
+    val => (val === '' || val === undefined || val === 0 || val === '0' ? null : val),
+    z.coerce.number().int().positive().nullable().optional()
+);
+
 // Closeout Collections
 const closeoutExpensesSchema = z.object({
     expenses: z.array(z.object({
         id: z.union([z.number(), z.string()]).optional().nullable(),
-        despachador_id: z.coerce.number().int().positive({ message: 'El despachador es requerido' }).optional().nullable(),
+        despachador_id: emptyToNullId,
         rubro: z.string().optional().nullable(),
         fecha: z.string().optional().nullable(),
         documento: z.string().optional().nullable(),
         tipo: z.string().optional().nullable(),
-        provider_id: z.coerce.number().int().positive().optional().nullable(),
+        provider_id: emptyToNullId,
         proveedor: z.string().optional().nullable(),
         valor: z.coerce.number().optional().nullable(),
         monto: z.coerce.number().optional().nullable(),
@@ -65,24 +70,24 @@ const closeoutExpensesSchema = z.object({
 const closeoutRemesasSchema = z.object({
     remesas: z.array(z.object({
         id: z.union([z.number(), z.string()]).optional().nullable(),
-        despachador_id: z.coerce.number().int().positive().optional().nullable(),
+        despachador_id: emptyToNullId,
         codigo: z.string().optional().nullable(),
         documento: z.string().optional().nullable(),
         descripcion: z.string().optional().nullable(),
         tipo_operacion: z.string().optional().nullable(),
         monto: z.coerce.number().optional().default(0),
         entregada: z.union([z.number(), z.boolean()]).optional().nullable(),
-        entrega_id: z.coerce.number().int().positive().optional().nullable()
+        entrega_id: emptyToNullId
     }).passthrough()).optional().default([])
 }).passthrough();
 
 const closeoutCuponesSchema = z.object({
     cupones: z.array(z.object({
         id: z.union([z.number(), z.string()]).optional().nullable(),
-        despachador_id: z.coerce.number().int().positive().optional().nullable(),
-        distribuidora_id: z.coerce.number().int().positive().optional().nullable(),
+        despachador_id: emptyToNullId,
+        distribuidora_id: emptyToNullId,
         distribuidora_nombre: z.string().optional().nullable(),
-        producto_id: z.coerce.number().int().positive().optional().nullable(),
+        producto_id: emptyToNullId,
         producto_codigo: z.string().optional().nullable(),
         producto_descripcion: z.string().optional().nullable(),
         cupon: z.string().optional().nullable(),
@@ -93,11 +98,11 @@ const closeoutCuponesSchema = z.object({
 const closeoutDescuentosSchema = z.object({
     descuentos: z.array(z.object({
         id: z.union([z.number(), z.string()]).optional().nullable(),
-        despachador_id: z.coerce.number().int().positive().optional().nullable(),
-        cliente_id: z.coerce.number().int().positive().optional().nullable(),
+        despachador_id: emptyToNullId,
+        cliente_id: emptyToNullId,
         cliente_nombre: z.string().optional().nullable(),
         documento: z.string().optional().nullable(),
-        producto_id: z.coerce.number().int().positive().optional().nullable(),
+        producto_id: emptyToNullId,
         producto_codigo: z.string().optional().nullable(),
         producto_descripcion: z.string().optional().nullable(),
         cantidad: z.coerce.number().optional().default(0),
@@ -112,9 +117,9 @@ const closeoutDescuentosSchema = z.object({
 const closeoutAdelantosSchema = z.object({
     adelantos: z.array(z.object({
         id: z.union([z.number(), z.string()]).optional().nullable(),
-        despachador_id: z.coerce.number().int().positive().optional().nullable(),
+        despachador_id: emptyToNullId,
         empleado: z.string().optional().nullable(),
-        cliente_id: z.coerce.number().int().positive().optional().nullable(),
+        cliente_id: emptyToNullId,
         monto: z.coerce.number().optional().default(0),
         notas: z.string().optional().nullable()
     }).passthrough()).optional().default([])
@@ -125,8 +130,8 @@ const closeoutTarjetasSchema = z.object({
         id: z.union([z.number(), z.string()]).optional().nullable(),
         num_tarjeta: z.string().optional().nullable(),
         num_autorizacion: z.string().optional().nullable(),
-        pos_type_id: z.coerce.number().int().positive().optional().nullable(),
-        despachador_id: z.coerce.number().int().positive().optional().nullable(),
+        pos_type_id: emptyToNullId,
+        despachador_id: emptyToNullId,
         tipo_operacion: z.string().optional().nullable(),
         monto: z.coerce.number().optional().default(0),
         lote: z.string().optional().nullable(),
@@ -137,8 +142,8 @@ const closeoutTarjetasSchema = z.object({
 const closeoutCreditosSchema = z.object({
     creditos: z.array(z.object({
         id: z.union([z.number(), z.string()]).optional().nullable(),
-        despachador_id: z.coerce.number().int().positive().optional().nullable(),
-        cliente_id: z.coerce.number().int().positive().optional().nullable(),
+        despachador_id: emptyToNullId,
+        cliente_id: emptyToNullId,
         cliente_nombre: z.string().optional().nullable(),
         tipo_documento: z.string().optional().nullable(),
         documento: z.string().optional().nullable(),
@@ -155,8 +160,8 @@ const closeoutCreditosSchema = z.object({
 const closeoutValesSchema = z.object({
     vales: z.array(z.object({
         id: z.union([z.number(), z.string()]).optional().nullable(),
-        despachador_id: z.coerce.number().int().positive().optional().nullable(),
-        cliente_id: z.coerce.number().int().positive().optional().nullable(),
+        despachador_id: emptyToNullId,
+        cliente_id: emptyToNullId,
         cliente_nombre: z.string().optional().nullable(),
         tipo_documento: z.string().optional().nullable(),
         documento: z.string().optional().nullable(),
@@ -174,10 +179,10 @@ const closeoutValesSchema = z.object({
 const closeoutAnticiposDespSchema = z.object({
     anticipos: z.array(z.object({
         id: z.union([z.number(), z.string()]).optional().nullable(),
-        despachador_id: z.coerce.number().int().positive().optional().nullable(),
-        cliente_id: z.coerce.number().int().positive().optional().nullable(),
+        despachador_id: emptyToNullId,
+        cliente_id: emptyToNullId,
         cliente_nombre: z.string().optional().nullable(),
-        anticipo_id: z.coerce.number().int().positive().optional().nullable(),
+        anticipo_id: emptyToNullId,
         tipo_documento: z.string().optional().nullable(),
         documento: z.string().optional().nullable(),
         producto_codigo: z.string().optional().nullable(),
@@ -193,10 +198,10 @@ const closeoutAnticiposDespSchema = z.object({
 const closeoutTrupputDespSchema = z.object({
     despachos: z.array(z.object({
         id: z.union([z.number(), z.string()]).optional().nullable(),
-        despachador_id: z.coerce.number().int().positive().optional().nullable(),
-        cliente_id: z.coerce.number().int().positive().optional().nullable(),
+        despachador_id: emptyToNullId,
+        cliente_id: emptyToNullId,
         cliente_nombre: z.string().optional().nullable(),
-        trupput_id: z.coerce.number().int().positive().optional().nullable(),
+        trupput_id: emptyToNullId,
         documento: z.string().optional().nullable(),
         producto_codigo: z.string().optional().nullable(),
         producto_descripcion: z.string().optional().nullable(),

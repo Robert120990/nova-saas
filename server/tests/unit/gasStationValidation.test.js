@@ -219,6 +219,15 @@ describe('Gas Station Module Validation', () => {
             const parsedCred = closeoutCreditosSchema.safeParse(cred);
             assert.equal(parsedCred.success, true);
             assert.equal(parsedCred.data.creditos[0].placa, 'P123-456');
+
+            // Validar que strings vacíos en selects opcionales (ej: provider_id: '', despachador_id: '') se transformen en null sin error
+            const expWithEmptySelects = {
+                expenses: [{ despachador_id: '', provider_id: '', rubro: 'Varios', monto: 10.00 }]
+            };
+            const parsedEmptyExp = closeoutExpensesSchema.safeParse(expWithEmptySelects);
+            assert.equal(parsedEmptyExp.success, true);
+            assert.equal(parsedEmptyExp.data.expenses[0].despachador_id, null);
+            assert.equal(parsedEmptyExp.data.expenses[0].provider_id, null);
         });
     });
 });

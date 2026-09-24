@@ -54,7 +54,12 @@ const gasRemesaDeliveryShape = {
     responsable: z.string().optional().nullable(),
     comentario: z.string().optional().nullable(),
     referencia: z.string({ message: 'El número de referencia es requerido' }).trim().min(1, { message: 'El número de referencia es requerido' }),
-    remesa_ids: z.array(z.coerce.number().int().positive()).optional().default([]),
+    remesa_ids: z.array(
+        z.union([
+            z.object({ id: z.coerce.number().int().positive().optional(), remesa_id: z.coerce.number().int().positive().optional() }).passthrough(),
+            z.coerce.number().int().positive()
+        ])
+    ).optional().default([]),
     remesas_extra: z.array(remesaExtraItemSchema).optional().default([])
 };
 

@@ -87,7 +87,11 @@ const saleCreateSchema = z.object({
 });
 
 const saleChangeShiftSchema = z.object({
-    ids: z.array(z.coerce.number().int().positive({ message: 'ID de venta inválido' }), {
+    ids: z.array(
+        z.union([
+            z.object({ id: z.coerce.number().int().positive().optional(), sale_id: z.coerce.number().int().positive().optional() }).passthrough(),
+            z.coerce.number().int().positive({ message: 'ID de venta inválido' })
+        ]), {
         required_error: 'Debe seleccionar al menos una venta'
     }).min(1, 'Debe seleccionar al menos una venta'),
     shift_id: z.coerce.number({ required_error: 'Debe indicar el turno destino' })
@@ -121,7 +125,12 @@ const salesRemesaDeliveryShape = {
         .trim().min(1, 'El número de referencia es requerido'),
     responsable: z.string().trim().nullable().optional(),
     comentario: z.string().trim().nullable().optional(),
-    remesa_ids: z.array(z.coerce.number().int().positive()).optional(),
+    remesa_ids: z.array(
+        z.union([
+            z.object({ id: z.coerce.number().int().positive().optional(), remesa_id: z.coerce.number().int().positive().optional() }).passthrough(),
+            z.coerce.number().int().positive()
+        ])
+    ).optional(),
     monto_entregado: z.coerce.number().positive().nullable().optional()
 };
 

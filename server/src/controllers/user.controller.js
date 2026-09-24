@@ -230,8 +230,14 @@ const assignCompanyAccess = async (req, res) => {
 
         // Insertar nuevos
         if (branches && Array.isArray(branches) && branches.length > 0) {
-            const values = branches.map(branchId => [userId, branchId]);
-            await connection.query('INSERT INTO usuario_sucursal (usuario_id, sucursal_id) VALUES ?', [values]);
+            const values = branches
+                .map(b => typeof b === 'object' && b !== null ? (b.branch_id || b.id) : b)
+                .map(Number)
+                .filter(id => id && !isNaN(id))
+                .map(branchId => [userId, branchId]);
+            if (values.length > 0) {
+                await connection.query('INSERT INTO usuario_sucursal (usuario_id, sucursal_id) VALUES ?', [values]);
+            }
         }
 
         await connection.commit();
@@ -434,11 +440,17 @@ const assignBulkAccess = async (req, res) => {
 
                 // 3. Insertar nuevas sucursales
                 if (Array.isArray(branches) && branches.length > 0) {
-                    const branchValues = branches.map(branchId => [userId, branchId]);
-                    await connection.query(
-                        `INSERT IGNORE INTO usuario_sucursal (usuario_id, sucursal_id) VALUES ?`,
-                        [branchValues]
-                    );
+                    const branchValues = branches
+                        .map(b => typeof b === 'object' && b !== null ? (b.branch_id || b.id) : b)
+                        .map(Number)
+                        .filter(id => id && !isNaN(id))
+                        .map(branchId => [userId, branchId]);
+                    if (branchValues.length > 0) {
+                        await connection.query(
+                            `INSERT IGNORE INTO usuario_sucursal (usuario_id, sucursal_id) VALUES ?`,
+                            [branchValues]
+                        );
+                    }
                 }
             }
         }

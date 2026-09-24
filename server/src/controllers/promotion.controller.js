@@ -215,7 +215,11 @@ const createPromotion = async (req, res) => {
         const promoId = result.insertId;
 
         // Insertar productos participantes
-        const productValues = product_ids.map(pid => [promoId, parseInt(pid, 10)]);
+        const productValues = product_ids
+            .map(pid => typeof pid === 'object' && pid !== null ? (pid.id || pid.product_id) : pid)
+            .map(pid => parseInt(pid, 10))
+            .filter(pid => pid && !isNaN(pid))
+            .map(pid => [promoId, pid]);
         await connection.query(
             'INSERT INTO sales_promotion_products (promotion_id, product_id) VALUES ?',
             [productValues]
@@ -326,7 +330,11 @@ const updatePromotion = async (req, res) => {
 
         // Actualizar productos participantes
         await connection.query('DELETE FROM sales_promotion_products WHERE promotion_id = ?', [id]);
-        const productValues = product_ids.map(pid => [id, parseInt(pid, 10)]);
+        const productValues = product_ids
+            .map(pid => typeof pid === 'object' && pid !== null ? (pid.id || pid.product_id) : pid)
+            .map(pid => parseInt(pid, 10))
+            .filter(pid => pid && !isNaN(pid))
+            .map(pid => [id, pid]);
         await connection.query(
             'INSERT INTO sales_promotion_products (promotion_id, product_id) VALUES ?',
             [productValues]

@@ -18,6 +18,16 @@ const posShape = {
 const posSchema = z.object(posShape);
 const posUpdateSchema = z.object(posShape).partial();
 
+const sellerItemSchema = z.union([
+    z.object({
+        seller_id: z.coerce.number().int().positive().optional(),
+        id: z.coerce.number().int().positive().optional(),
+        nombre: z.string().optional().nullable(),
+        seller_name: z.string().optional().nullable()
+    }).passthrough(),
+    z.coerce.number().int().positive()
+]);
+
 const shiftOpenSchema = z.object({
     pos_id: z.coerce.number({ required_error: 'El punto de venta es requerido' })
         .int('El ID de punto de venta debe ser un número entero')
@@ -29,7 +39,7 @@ const shiftOpenSchema = z.object({
         .int('El ID de vendedor debe ser un número entero')
         .positive('Debe indicar un vendedor válido'),
     opening_balance: z.coerce.number().min(0, 'El fondo de apertura no puede ser negativo').default(0).optional(),
-    assigned_sellers: z.array(z.coerce.number().int().positive()).optional()
+    assigned_sellers: z.array(sellerItemSchema).optional()
 });
 
 const shiftArqueoExpenseSchema = z.object({
@@ -62,7 +72,7 @@ const shiftArqueoSchema = z.object({
 });
 
 const shiftSellersUpdateSchema = z.object({
-    seller_ids: z.array(z.coerce.number().int().positive()).optional().default([])
+    seller_ids: z.array(sellerItemSchema).optional().default([])
 });
 
 const shiftUpdateSchema = z.object({

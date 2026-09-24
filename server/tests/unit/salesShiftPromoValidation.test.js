@@ -182,6 +182,17 @@ describe('Turnos POS & Puntos de Venta Validation Schemas', () => {
         const result = shiftOpenSchema.safeParse(payload);
         assert.equal(result.success, true);
         assert.equal(result.data.opening_balance, 100);
+
+        // Validar soporte defensivo de asignación como arreglo de objetos
+        const payloadWithObjs = {
+            pos_id: 1,
+            branch_id: 1,
+            seller_id: 2,
+            assigned_sellers: [{ seller_id: 3, nombre: 'Juan' }, { id: 4, seller_name: 'Pedro' }]
+        };
+        const resultWithObjs = shiftOpenSchema.safeParse(payloadWithObjs);
+        assert.equal(resultWithObjs.success, true);
+        assert.equal(resultWithObjs.data.assigned_sellers.length, 2);
     });
 
     it('should validate shiftArqueoSchema with expenses and remesas', () => {
@@ -203,6 +214,12 @@ describe('Turnos POS & Puntos de Venta Validation Schemas', () => {
         const result = shiftSellersUpdateSchema.safeParse(payload);
         assert.equal(result.success, true);
         assert.deepEqual(result.data.seller_ids, [1, 2, 5]);
+
+        // Validar soporte de objetos en actualización de vendedores
+        const payloadObjs = { seller_ids: [{ seller_id: 1, nombre: 'Cajero' }, { id: 5 }] };
+        const resultObjs = shiftSellersUpdateSchema.safeParse(payloadObjs);
+        assert.equal(resultObjs.success, true);
+        assert.equal(resultObjs.data.seller_ids.length, 2);
 
         const updateResult = shiftUpdateSchema.safeParse({ opening_balance: 150.00, seller_id: 3 });
         assert.equal(updateResult.success, true);
