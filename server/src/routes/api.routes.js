@@ -308,6 +308,8 @@ router.get('/catalogs/departments', catalogController.getDepartments);
 router.get('/catalogs/municipalities', catalogController.getMunicipalities);
 router.get('/catalogs/actividades', catalogController.getActividades);
 router.get('/catalogs/districts', catalogController.getDistritos);
+router.get('/catalogs/status', catalogController.getCatalogStatus);
+router.post('/catalogs/refresh', checkPermission('manage_companies'), catalogController.refreshCatalogs);
 router.get('/catalogs/:table', catalogController.getGenericCatalog);
 
 // New Global User Access Routes (After verifyToken but before tenantMiddleware)

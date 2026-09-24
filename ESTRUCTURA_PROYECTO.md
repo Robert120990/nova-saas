@@ -112,8 +112,10 @@ Express.js, patrón controller → service → model (los modelos son SQL direct
 #### `server/src/config/`
 | Archivo | Descripción |
 |---|---|
+| `cache.js` | Cache. |
 | `db.js` | Pool MySQL principal (db_sistema_saas) usado por todos los servicios. |
 | `db.schema.js` | Constantes DB_SCHEMA y AI_QUERY_MAX_ROWS: esquema de tablas expuesto al asistente IA. |
+| `redis.js` | Redis. |
 | `rrsDb.js` | Pool MySQL hacia la base externa RRS (sistema de la gasolinera). |
 | `sentry.js` | Sentry. |
 | `upload.js` | Configuración Multer para subida de archivos (uploads/). |
@@ -144,6 +146,7 @@ Express.js, patrón controller → service → model (los modelos son SQL direct
 | `ai.assistant.js` | Lógica conversacional del asistente IA: prompts, contexto y formateo de respuestas. |
 | `ai.service.js` | Clientes de modelos IA (OpenAI/Gemini) y generación SQL segura sobre DB_SCHEMA. |
 | `audit.service.js` | Escritura estructurada de eventos en la bitácora de auditoría. |
+| `catalogCache.service.js` | Catalog Cache.service. |
 | `condition.service.js` | Evaluador genérico de condiciones (evaluate/evaluateAll) usado por reglas de negocio. |
 | `crmQuotationDocx.service.js` | Crm Quotation Docx.service. |
 | `crmQuotationPdf.service.js` | Crm Quotation Pdf.service. |
@@ -788,8 +791,10 @@ oficiales viven en `cumplientoDTE/svfe-json-schemas/` y la firma en `services/si
 #### `dte-api/src/config/`
 | Archivo | Descripción |
 |---|---|
+| `cache.js` | Cache. |
 | `db.js` | Pool MySQL compartido (db_sistema_saas) para documentos DTE. |
 | `haciendaConfig.js` | Endpoints y credenciales de Hacienda según HACIENDA_ENV (test|production). |
+| `redis.js` | Redis. |
 | `sentry.js` | Sentry. |
 
 #### `dte-api/src/middlewares/`

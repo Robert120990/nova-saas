@@ -125,6 +125,7 @@ const { startWorker } = require('./services/notificationWorker');
 const { startBot: startTelegramBot } = require('./services/telegram.service');
 const { startSuspiciousSalesDetector } = require('./services/suspiciousSalesDetector');
 const { startRrsAutoSyncCron } = require('./services/rrsVentasTiendaAutoSync.service');
+const { preloadHaciendaCatalogs } = require('./services/catalogCache.service');
 
 // Evitar que un error no capturado (unhandledRejection) tumbe el servidor
 // a mitad de una respuesta: se registra la causa y el proceso sigue vivo.
@@ -149,4 +150,5 @@ server.listen(PORT, () => {
     startTelegramBot();
     startSuspiciousSalesDetector();
     startRrsAutoSyncCron();
+    preloadHaciendaCatalogs();
 });

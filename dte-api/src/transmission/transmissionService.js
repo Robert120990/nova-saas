@@ -5,25 +5,21 @@
 const axios = require('axios');
 const qs = require('querystring');
 const { getEndpoint } = require('../config/haciendaConfig');
-
-// Caché en memoria de tokens de Hacienda: key = `${apiUser}_${ambiente}` -> { token, expiresAt }
-const tokenCache = new Map();
+const cache = require('../config/cache');
 
 /**
  * Autentica contra la API de Hacienda o devuelve el token en caché si sigue vigente.
  * El token oficial de Hacienda tiene vigencia de 24 horas; se reutiliza durante 23.5 horas.
  */
 async function authenticate(apiUser, apiPassword, ambiente, forceRefresh = false) {
-    const cacheKey = `${apiUser}_${ambiente}`;
-    const now = Date.now();
+    const cacheKey = `mh:token:${apiUser}:${ambiente}`;
 
-    if (!forceRefresh && tokenCache.has(cacheKey)) {
-        const cached = tokenCache.get(cacheKey);
-        // Si el token aún tiene al menos 30 minutos de vida útil, se reutiliza
-        if (cached.expiresAt > now + 30 * 60 * 1000) {
+    if (!forceRefresh) {
+        const cachedToken = await cache.get(cacheKey);
+        if (cachedToken) {
             return {
                 success: true,
-                token: cached.token,
+                token: cachedToken,
                 cached: true
             };
         }
@@ -45,9 +41,8 @@ async function authenticate(apiUser, apiPassword, ambiente, forceRefresh = false
 
         if (response.data && response.data.status === 'OK') {
             const token = response.data.body.token;
-            // Token válido por 24 horas en MH. Guardar en memoria por 23.5 horas
-            const expiresAt = now + (23.5 * 60 * 60 * 1000);
-            tokenCache.set(cacheKey, { token, expiresAt });
+            // Token válido por 24 horas en MH. Guardar en caché por 23.5 horas (84,600 segundos)
+            await cache.set(cacheKey, token, 84600);
 
             return {
                 success: true,
@@ -78,14 +73,14 @@ async function authenticate(apiUser, apiPassword, ambiente, forceRefresh = false
     }
 }
 
-function invalidateToken(apiUser, ambiente) {
+async function invalidateToken(apiUser, ambiente) {
     if (!apiUser) {
-        tokenCache.clear();
+        await cache.delByPattern('mh:token:*');
         console.log('[HaciendaAuth] Caché de tokens de Hacienda limpiada globalmente.');
         return;
     }
-    const cacheKey = `${apiUser}_${ambiente}`;
-    tokenCache.delete(cacheKey);
+    const cacheKey = `mh:token:${apiUser}:${ambiente}`;
+    await cache.del(cacheKey);
     console.log(`[HaciendaAuth] Token en caché invalidado para ${cacheKey}`);
 }
 
@@ -126,7 +121,7 @@ async function transmitDTE(token, signedDte, dteInfo) {
         
         if (isAuthError && dteInfo.apiUser) {
             console.warn(`[MH-Transmission] Token rechazado con 401 por MH. Purgando caché para ${dteInfo.apiUser}...`);
-            invalidateToken(dteInfo.apiUser, dteInfo.ambiente);
+            await invalidateToken(dteInfo.apiUser, dteInfo.ambiente);
         }
 
         return {
