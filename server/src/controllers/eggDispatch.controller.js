@@ -2320,11 +2320,12 @@ const autoInvoiceDispatchRoute = async (req, res) => {
                     precioUnitario = billedQty > 0 ? Math.round((itemTotal / billedQty) * 1000000) / 1000000 : itemTotal;
                 } else if (dteType === '04') {
                     precioUnitario = 0.00001;
-                } else if (dteType === '03') {
-                    // Crédito fiscal: precio unitario es neto sin IVA
-                    precioUnitario = billedQty > 0 ? Math.round((ventaGravada / billedQty) * 1000000) / 1000000 : ventaGravada;
                 } else {
-                    // Consumidor final: precio unitario incluye IVA
+                    // Para 01 (Factura), 03 (Crédito Fiscal) y demás DTEs:
+                    // En el modelo del sistema los precios comerciales unitarios incluyen IVA (inclusive).
+                    // Para Crédito Fiscal (03), dte-api (calculateItem) se encarga de extraer el precio neto
+                    // (precioUni = precioUnitario / 1.13) en cuerpoDocumento y liquidar el débito fiscal en el resumen.
+                    // Si se enviara ya neto, dte-api lo dividiría por 1.13 por segunda vez distorsionando el total.
                     precioUnitario = billedQty > 0 ? Math.round((itemTotal / billedQty) * 1000000) / 1000000 : itemTotal;
                 }
 
