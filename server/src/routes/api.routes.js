@@ -596,6 +596,8 @@ router.put('/sales/:id/customer', validate(saleCustomerUpdateSchema), salesContr
 router.get('/contingency/status', salesController.getContingencyStatus);
 router.post('/contingency/start', salesController.startContingency);
 router.post('/contingency/stop/:id', salesController.stopContingency);
+router.post('/contingency/simulate-outage', salesController.simulateOutage);
+router.post('/contingency/trigger-autoclose', salesController.triggerAutoClose);
 
 // Retorno / ERET (proxy to dte-api)
 router.get('/retorno', salesController.listRetornos);

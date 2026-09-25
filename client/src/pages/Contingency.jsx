@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
-import { AlertTriangle, Play, StopCircle, RefreshCw, Clock } from 'lucide-react';
+import { AlertTriangle, Play, StopCircle, Clock } from 'lucide-react';
 import { toast } from 'sonner';
 import Modal from '../components/ui/Modal';
+import { formatDateTime } from '../utils/dateUtils';
 
 const CONTINGENCY_TYPES = {
     1: 'No disponibilidad del sistema MH',
@@ -16,6 +17,7 @@ const CONTINGENCY_TYPES = {
 const Contingency = () => {
     const queryClient = useQueryClient();
     const [isStartModalOpen, setIsStartModalOpen] = useState(false);
+    const [isStopConfirmOpen, setIsStopConfirmOpen] = useState(false);
     const [motivo, setMotivo] = useState('');
     const [tipoContingencia, setTipoContingencia] = useState(1);
 
@@ -28,24 +30,31 @@ const Contingency = () => {
     const startMutation = useMutation({
         mutationFn: (data) => axios.post('/api/contingency/start', data),
         onSuccess: () => {
-            queryClient.invalidateQueries(['contingency']);
+            queryClient.invalidateQueries({ queryKey: ['contingency'] });
+            refetch();
             setIsStartModalOpen(false);
+            setMotivo('');
             toast.success('Contingencia activada');
         },
-        onError: (err) => toast.error(err.response?.data?.message || 'Error'),
+        onError: (err) => toast.error(err.response?.data?.message || 'Error al activar contingencia'),
     });
 
     const stopMutation = useMutation({
         mutationFn: (id) => axios.post(`/api/contingency/stop/${id}`),
         onSuccess: (data) => {
-            queryClient.invalidateQueries(['contingency']);
+            queryClient.invalidateQueries({ queryKey: ['contingency'] });
+            refetch();
+            setIsStopConfirmOpen(false);
             if (data.data?.report?.success) {
                 toast.success('Contingencia cerrada y reporte enviado a Hacienda');
             } else {
-                toast.success('Contingencia cerrada');
+                toast.success('Contingencia cerrada exitosamente');
             }
         },
-        onError: (err) => toast.error(err.response?.data?.message || 'Error'),
+        onError: (err) => {
+            setIsStopConfirmOpen(false);
+            toast.error(err.response?.data?.message || err.message || 'Error al cerrar contingencia');
+        },
     });
 
     const history = status?.history || [];
@@ -64,21 +73,18 @@ const Contingency = () => {
                     <p className="text-slate-500 font-medium mt-1">Gestión de modo contingencia para documentos tributarios</p>
                 </div>
                 <div className="flex gap-3">
-                    <button onClick={() => refetch()} className="p-3 bg-slate-100 hover:bg-slate-200 rounded-2xl transition-all" title="Refrescar">
-                        <RefreshCw size={18} className="text-slate-600" />
-                    </button>
                     {!activeContingency ? (
                         <button
                             onClick={() => setIsStartModalOpen(true)}
-                            className="bg-amber-500 hover:bg-amber-600 text-white px-6 py-3 rounded-2xl font-black uppercase text-xs tracking-widest flex items-center gap-2 shadow-lg"
+                            className="bg-amber-500 hover:bg-amber-600 text-white px-6 py-3 rounded-2xl font-black uppercase text-xs tracking-widest flex items-center gap-2 shadow-lg transition-all"
                         >
                             <Play size={16} /> Activar Contingencia
                         </button>
                     ) : (
                         <button
-                            onClick={() => { if (confirm('¿Cerrar contingencia y enviar reporte a Hacienda?')) stopMutation.mutate(activeContingency.id); }}
+                            onClick={() => setIsStopConfirmOpen(true)}
                             disabled={stopMutation.isPending}
-                            className="bg-red-500 hover:bg-red-600 text-white px-6 py-3 rounded-2xl font-black uppercase text-xs tracking-widest flex items-center gap-2 shadow-lg"
+                            className="bg-red-500 hover:bg-red-600 active:scale-95 text-white px-6 py-3 rounded-2xl font-black uppercase text-xs tracking-widest flex items-center gap-2 shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             <StopCircle size={16} /> {stopMutation.isPending ? 'Cerrando...' : 'Cerrar y Reportar'}
                         </button>
@@ -109,42 +115,67 @@ const Contingency = () => {
                 </div>
             </div>
 
-            {/* Historial */}
+            {/* Historial Compacto en una sola fila sin scroll horizontal */}
             <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-                <div className="px-6 py-4 border-b border-slate-50 bg-slate-50/50">
-                    <h3 className="text-sm font-black text-slate-900 uppercase flex items-center gap-2">
-                        <Clock size={14} /> Historial de Contingencias
+                <div className="px-5 py-3 border-b border-slate-100 bg-slate-50/60 flex items-center justify-between">
+                    <h3 className="text-xs font-black text-slate-800 uppercase tracking-wide flex items-center gap-2">
+                        <Clock size={14} className="text-indigo-600" /> Historial de Contingencias
                     </h3>
+                    <span className="text-[11px] font-semibold text-slate-400">
+                        {history.length} {history.length === 1 ? 'registro' : 'registros'}
+                    </span>
                 </div>
-                <table className="w-full text-left">
-                    <thead className="bg-slate-50 border-b border-slate-100">
-                        <tr>
-                            <th className="px-6 py-3 text-[10px] font-bold text-slate-500 uppercase">Inicio</th>
-                            <th className="px-6 py-3 text-[10px] font-bold text-slate-500 uppercase">Fin</th>
-                            <th className="px-6 py-3 text-[10px] font-bold text-slate-500 uppercase">Tipo</th>
-                            <th className="px-6 py-3 text-[10px] font-bold text-slate-500 uppercase">Motivo</th>
-                            <th className="px-6 py-3 text-[10px] font-bold text-slate-500 uppercase">Estado</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-50">
-                        {history.map(row => (
-                            <tr key={row.id} className="hover:bg-slate-50/50">
-                                <td className="px-6 py-3 text-xs font-bold">{new Date(row.fecha_inicio).toLocaleString('es-SV')}</td>
-                                <td className="px-6 py-3 text-xs">{row.fecha_fin ? new Date(row.fecha_fin).toLocaleString('es-SV') : '—'}</td>
-                                <td className="px-6 py-3 text-xs">{CONTINGENCY_TYPES[row.tipo_contingencia] || 'Tipo ' + row.tipo_contingencia}</td>
-                                <td className="px-6 py-3 text-xs text-slate-500 max-w-xs truncate">{row.motivo}</td>
-                                <td className="px-6 py-3">
-                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${row.estado === 'OPEN' ? 'bg-amber-50 text-amber-600' : 'bg-slate-100 text-slate-400'}`}>
-                                        {row.estado === 'OPEN' ? 'Activo' : 'Cerrado'}
-                                    </span>
-                                </td>
+                <div className="w-full">
+                    <table className="w-full table-fixed text-left border-collapse">
+                        <thead className="bg-slate-50 border-b border-slate-100">
+                            <tr>
+                                <th className="w-12 px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider text-center">ID</th>
+                                <th className="w-36 px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Inicio</th>
+                                <th className="w-36 px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Fin</th>
+                                <th className="w-48 px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Tipo</th>
+                                <th className="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Motivo</th>
+                                <th className="w-24 px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider text-center">Estado</th>
                             </tr>
-                        ))}
-                        {history.length === 0 && (
-                            <tr><td colSpan={5} className="px-6 py-12 text-center text-slate-400 italic">Sin registros de contingencia</td></tr>
-                        )}
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                            {history.map(row => (
+                                <tr key={row.id} className="hover:bg-slate-50/80 transition-colors">
+                                    <td className="px-3 py-2 text-[11px] font-mono font-bold text-slate-600 text-center truncate">
+                                        #{row.id}
+                                    </td>
+                                    <td className="px-3 py-2 text-xs font-bold text-slate-800 truncate" title={formatDateTime(row.fecha_inicio)}>
+                                        {formatDateTime(row.fecha_inicio)}
+                                    </td>
+                                    <td className="px-3 py-2 text-xs text-slate-600 truncate" title={row.fecha_fin ? formatDateTime(row.fecha_fin) : 'En curso...'}>
+                                        {row.fecha_fin ? formatDateTime(row.fecha_fin) : <span className="text-amber-600 font-bold">En curso...</span>}
+                                    </td>
+                                    <td className="px-3 py-2 text-xs font-medium text-slate-700 truncate" title={CONTINGENCY_TYPES[row.tipo_contingencia] || 'Tipo ' + row.tipo_contingencia}>
+                                        {CONTINGENCY_TYPES[row.tipo_contingencia] || 'Tipo ' + row.tipo_contingencia}
+                                    </td>
+                                    <td className="px-3 py-2 text-xs text-slate-500 truncate" title={row.motivo || '—'}>
+                                        {row.motivo || '—'}
+                                    </td>
+                                    <td className="px-3 py-2 text-center truncate">
+                                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                                            row.estado === 'OPEN' 
+                                                ? 'bg-amber-100 text-amber-800 border border-amber-200' 
+                                                : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                        }`}>
+                                            {row.estado === 'OPEN' ? 'Activo' : 'Cerrado'}
+                                        </span>
+                                    </td>
+                                </tr>
+                            ))}
+                            {history.length === 0 && (
+                                <tr>
+                                    <td colSpan={6} className="px-3 py-8 text-center text-xs text-slate-400 italic">
+                                        Sin registros de contingencia
+                                    </td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
             </div>
 
             <Modal isOpen={isStartModalOpen} onClose={() => setIsStartModalOpen(false)} title="Activar Contingencia" maxWidth="max-w-md">
@@ -166,6 +197,41 @@ const Contingency = () => {
                         </button>
                     </div>
                 </form>
+            </Modal>
+
+            {/* Modal de Confirmación del Sistema para Cerrar y Reportar */}
+            <Modal isOpen={isStopConfirmOpen} onClose={() => !stopMutation.isPending && setIsStopConfirmOpen(false)} title="Confirmar Cierre de Contingencia" maxWidth="max-w-md">
+                <div className="space-y-4 pt-2">
+                    <div className="flex items-start gap-3 p-4 bg-amber-50 rounded-2xl border border-amber-200/70">
+                        <AlertTriangle className="text-amber-600 shrink-0 mt-0.5" size={24} />
+                        <div className="space-y-1">
+                            <p className="text-sm font-black text-slate-900">
+                                ¿Desea cerrar el período de contingencia?
+                            </p>
+                            <p className="text-xs text-slate-600 leading-relaxed">
+                                Al confirmar, el sistema generará y transmitirá el informe oficial del evento a Hacienda e iniciará el reenvío automático de los documentos acumulados ({pendingDocs} pendientes).
+                            </p>
+                        </div>
+                    </div>
+                    <div className="flex gap-3 pt-2">
+                        <button 
+                            type="button" 
+                            disabled={stopMutation.isPending}
+                            onClick={() => setIsStopConfirmOpen(false)} 
+                            className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-black uppercase tracking-wider transition-colors disabled:opacity-50"
+                        >
+                            Cancelar
+                        </button>
+                        <button 
+                            type="button" 
+                            disabled={stopMutation.isPending}
+                            onClick={() => activeContingency && stopMutation.mutate(activeContingency.id)} 
+                            className="flex-1 bg-red-600 hover:bg-red-700 text-white py-3 rounded-xl font-black uppercase text-xs tracking-wider shadow-lg transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                        >
+                            {stopMutation.isPending ? 'Cerrando...' : 'Sí, Cerrar y Reportar'}
+                        </button>
+                    </div>
+                </div>
             </Modal>
         </div>
     );

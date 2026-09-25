@@ -20,7 +20,10 @@ import {
     Handshake,
     Loader2,
     Layers,
-    Sparkles
+    Sparkles,
+    AlertTriangle,
+    Wifi,
+    WifiOff
 } from 'lucide-react';
 import { toast } from 'sonner';
 import SearchableSelect from '../components/ui/SearchableSelect';
@@ -182,6 +185,13 @@ const SalesTerminal = () => {
         queryKey: ['tax-settings'],
         queryFn: async () => (await axios.get('/api/taxes')).data,
     });
+
+    const { data: contingencyData } = useQuery({
+        queryKey: ['contingency', 'status'],
+        queryFn: async () => (await axios.get('/api/contingency/status')).data,
+        refetchInterval: 5000,
+    });
+    const activeContingency = (contingencyData?.history || []).find(c => c.estado === 'OPEN');
 
     const [customersCache, setCustomersCache] = useState({});
 
@@ -1071,7 +1081,7 @@ const SalesTerminal = () => {
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [cart.length, isAuthModalOpen, isSuccessModalOpen, isFuelModalOpen, tipoDte, navigate, activeView, saleResult, linkedDocs.length, posAllowsDiscounts, canApplyGeneralDiscount, hasItemDiscounts]);
+    }, [cart.length, isProductModalOpen, isAuthModalOpen, isSuccessModalOpen, isFuelModalOpen, tipoDte, navigate, activeView, saleResult, linkedDocs.length, posAllowsDiscounts, canApplyGeneralDiscount, hasItemDiscounts]);
 
     // Detect if any modal or overlay dialog is active to prevent stealing focus
     const isAnyModalOpen = Boolean(
@@ -1349,7 +1359,8 @@ const SalesTerminal = () => {
                     active_address: activeAddressInfo?.direccion || selectedCustomerData.direccion
                 } : { nombre: manualCustomerName || 'Consumidor Final' },
                 tipoDteName: tipoDte === '01' ? 'Factura' : tipoDte === '03' ? 'Crédito Fiscal' : tipoDte === '04' ? 'Nota Remisión' : tipoDte === '05' ? 'Nota Crédito' : tipoDte === '07' ? 'Comprobante Retención' : tipoDte === '11' ? 'Factura Exportación' : 'Documento',
-                seller: sellerSession?.seller_name
+                seller: sellerSession?.seller_name,
+                contingency: Boolean(data?.dte?.contingency || activeContingency)
             });
             setIsSuccessModalOpen(true);
             
@@ -1357,11 +1368,14 @@ const SalesTerminal = () => {
             queryClient.invalidateQueries(['sales']);
         },
         onError: (error) => {
-            const baseMsg = error.response?.data?.message || error.message;
-            const details = error.response?.data?.details;
+            const data = error.response?.data;
+            const baseMsg = data?.error || data?.message || error.message;
+            const details = data?.details;
             let fullMsg = baseMsg;
             if (details && Array.isArray(details) && details.length > 0) {
-                fullMsg = details.map(d => d.message || d).join('; ');
+                fullMsg = `${baseMsg}: ` + details.map(d => d.message || d).join('; ');
+            } else if (data?.message && data?.error && data.message !== data.error) {
+                fullMsg = `${data.message}: ${data.error}`;
             }
             toast.error(fullMsg, { duration: 8000 });
         }
@@ -1378,6 +1392,8 @@ const SalesTerminal = () => {
         setManualCustomerName('');
         setLinkedDocs([]);
         setActiveView('pos');
+        setTipoDte('01'); // Restablecer a Factura (01) por defecto para la siguiente venta
+        setCondicionPago('1'); // Restablecer a Contado (1) por defecto
         setSellerSession(null);
         setSellerId('');
         setReferencingSale(null);
@@ -1446,6 +1462,15 @@ const SalesTerminal = () => {
                     <div class="flex-between"><span>N° CONTROL:</span><span style="font-size: 9px;">${sale.dte?.numero_control || '---'}</span></div>
                     <div class="flex-between"><span>CÓDIGO GENERACIÓN:</span><span style="font-size: 7px;">${sale.dte?.codigo_generacion || '---'}</span></div>
                     ${sale.dte?.sello_recepcion ? `<div class="flex-between"><span>SELLO:</span><span style="font-size: 7px;">${sale.dte.sello_recepcion}</span></div>` : ''}
+                    ${sale.dte?.contingency || sale.contingency ? `
+                    <div style="border: 2px solid #000; padding: 4px 2px; margin: 5px 0; text-align: center;">
+                        <div class="bold" style="font-size: 10px; letter-spacing: 1px; color: #000;">
+                            *** EMITIDO EN CONTINGENCIA ***
+                        </div>
+                        <div style="font-size: 8px; margin-top: 2px; color: #000; font-weight: bold;">
+                            TRANSMISI&Oacute;N DIFERIDA A HACIENDA
+                        </div>
+                    </div>` : ''}
                     <div class="flex-between"><span>FECHA:</span><span>${fechaStr}</span></div>
                     <div class="flex-between"><span>HORA:</span><span>${horaStr}</span></div>
                     <div class="dashed"></div>
@@ -2626,7 +2651,16 @@ const SalesTerminal = () => {
                         {/* Tipo DTE + Vendedor Section (Col 7-11) */}
                         <div className="md:col-span-5 flex flex-col gap-3 pt-1">
                             <div className="flex flex-col gap-1.5">
-                                <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider ml-1">Tipo Documento</label>
+                                <div className="flex items-center justify-between ml-1">
+                                    <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Tipo Documento</label>
+                                    <div className="flex items-center gap-2">
+                                        {activeContingency && (
+                                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-500 text-white animate-pulse shadow-sm">
+                                                <AlertTriangle size={11} /> CONTINGENCIA ACTIVA
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
                                 <select 
                                     value={tipoDte}
                                     onChange={(e) => setTipoDte(e.target.value)}
@@ -3226,18 +3260,20 @@ const SalesTerminal = () => {
                                     })()}
                                 </div>
 
-                                <div className="flex justify-between items-end p-3 bg-indigo-600 rounded-2xl text-white shadow-lg">
-                                    <span className="font-black uppercase text-[10px] tracking-widest opacity-80">Total Cobrado</span>
-                                    <span className="text-xl font-black tracking-tighter">${payments.reduce((acc, p) => acc + parseFloat(p.monto || 0), 0).toFixed(2)}</span>
-                                </div>
-                                {condicionPago === '1' && (
-                                    <div className="flex justify-between items-end p-3 bg-white rounded-2xl border border-slate-200 shadow-sm italic">
-                                        <span className="text-slate-400 font-black uppercase text-[10px] tracking-widest">Saldo Pendiente</span>
-                                        <span className={`text-xl font-black tracking-tighter ${totals.total - payments.reduce((acc, p) => acc + parseFloat(p.monto || 0), 0) > 0.01 ? 'text-rose-500' : 'text-emerald-500'}`}>
-                                            ${Math.max(0, totals.total - payments.reduce((acc, p) => acc + parseFloat(p.monto || 0), 0)).toFixed(2)}
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div className="flex flex-col justify-between p-3.5 bg-indigo-600 rounded-2xl text-white shadow-md">
+                                        <span className="font-black uppercase text-[10px] tracking-widest opacity-80">Total Cobrado</span>
+                                        <span className="text-xl font-black tracking-tight mt-1">
+                                            <Money value={payments.reduce((acc, p) => acc + parseFloat(p.monto || 0), 0)} />
                                         </span>
                                     </div>
-                                )}
+                                    <div className="flex flex-col justify-between p-3.5 bg-white rounded-2xl border border-slate-200 shadow-sm">
+                                        <span className="text-slate-400 font-black uppercase text-[10px] tracking-widest">Saldo Pendiente</span>
+                                        <span className={`text-xl font-black tracking-tight mt-1 ${condicionPago === '1' && (totals.total - payments.reduce((acc, p) => acc + parseFloat(p.monto || 0), 0) > 0.01) ? 'text-rose-500' : 'text-emerald-500'}`}>
+                                            <Money value={condicionPago === '1' ? Math.max(0, totals.total - payments.reduce((acc, p) => acc + parseFloat(p.monto || 0), 0)) : 0} />
+                                        </span>
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
@@ -3417,16 +3453,33 @@ const SalesTerminal = () => {
                                     {processSale.isPending ? (
                                         <>
                                             <Loader2 size={20} className="animate-spin text-white" />
-                                            <span>Transmitiendo DTE a Hacienda...</span>
+                                            <span>{activeContingency ? 'Emitiendo DTE en Contingencia...' : 'Transmitiendo DTE a Hacienda...'}</span>
                                         </>
                                     ) : (
                                         <>
-                                            <span>Finalizar y Facturar</span>
-                                            <ChevronRight size={20} />
+                                            <span>{activeContingency ? 'Emitir en Contingencia' : 'Finalizar y Facturar'}</span>
+                                            <span className="px-2 py-0.5 bg-white/20 hover:bg-white/30 rounded-lg text-xs font-mono font-bold tracking-normal border border-white/30">
+                                                F10
+                                            </span>
+                                            {activeContingency ? (
+                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black bg-amber-400 text-amber-950 uppercase tracking-tight shadow-xs">
+                                                    <AlertTriangle size={11} /> Contingencia
+                                                </span>
+                                            ) : (
+                                                <ChevronRight size={20} />
+                                            )}
                                         </>
                                     )}
                                 </button>
-                                <p className="text-center text-slate-400 text-[10px] font-bold uppercase tracking-widest">Al confirmar, el documento será enviado a @HaciendaSV</p>
+                                <p className="text-center text-slate-400 text-[10px] font-bold uppercase tracking-widest">
+                                    {activeContingency ? (
+                                        <span className="text-amber-600 font-black inline-flex items-center gap-1">
+                                            <AlertTriangle size={11} /> El DTE se emitirá localmente en contingencia y se enviará a @HaciendaSV al reanudar conexión
+                                        </span>
+                                    ) : (
+                                        'Al confirmar, el documento será enviado a @HaciendaSV'
+                                    )}
+                                </p>
                             </div>
                         </div>
                     </div>
@@ -3609,7 +3662,10 @@ const SalesTerminal = () => {
             )}
 
             {/* Overlay de Procesamiento y Transmisión de DTE a Hacienda */}
-            <DteTransmittingOverlay isVisible={processSale.isPending} />
+            <DteTransmittingOverlay 
+                isVisible={processSale.isPending} 
+                isContingency={Boolean(activeContingency)}
+            />
         </div>
     );
 };

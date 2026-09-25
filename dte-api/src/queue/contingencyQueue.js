@@ -109,6 +109,15 @@ class ContingencyQueueService {
     async processDocumentJob(data) {
         const { docId, codigoGeneracion, companyId } = data;
 
+        // 0. Double check: Simulated outage must NOT be active
+        const { isSimulatedOutage } = require('../config/haciendaConfig');
+        const [flagRows] = await pool.query('SELECT flag_value FROM system_runtime_flags WHERE flag_key = "simulated_outage" LIMIT 1');
+        const dbOutage = flagRows.length > 0 && (flagRows[0].flag_value === 'true' || flagRows[0].flag_value === '1');
+        if (isSimulatedOutage() || dbOutage) {
+            logger.info({ companyId, codigoGeneracion }, '[ContingencyQueue] Simulación de corte activa. Intento pospuesto.');
+            throw new Error('Simulación de corte activa. Retransmisión en espera.');
+        }
+
         // 1. Double check: Contingency must NOT be OPEN
         const [openContingencies] = await pool.query(
             'SELECT id FROM dte_contingencies WHERE company_id = ? AND estado = "OPEN" LIMIT 1',
@@ -139,6 +148,22 @@ class ContingencyQueueService {
             return { alreadyProcessed: true };
         }
 
+        // 2b. Validación de Normativa MH: Verificar que el Evento de Contingencia asociado haya sido RECIBIDO por Hacienda
+        if (task.contingency_id) {
+            const [contEvent] = await pool.query(
+                'SELECT id, estado, sello_recepcion, respuesta_hacienda FROM dte_contingencies WHERE id = ?',
+                [task.contingency_id]
+            );
+            if (contEvent.length > 0 && !contEvent[0].sello_recepcion) {
+                logger.info({ contingencyId: task.contingency_id, codigoGeneracion }, '[ContingencyQueue] Evento aún no registrado en Hacienda. Transmitiendo reporte de evento primero...');
+                const { sendContingencyReport } = require('../contingency/contingencyService');
+                const reportResult = await sendContingencyReport(task.contingency_id);
+                if (!reportResult.success && !reportResult.selloRecepcion) {
+                    throw new Error(`Evento de contingencia #${task.contingency_id} no pudo ser confirmado por Hacienda: ${reportResult.message}. Intento de DTE pospuesto.`);
+                }
+            }
+        }
+
         // 3. Authenticate with Hacienda
         const auth = await authenticate(task.api_user, task.api_password, task.ambiente);
         if (!auth.success) {
@@ -156,33 +181,40 @@ class ContingencyQueueService {
             apiUser: task.api_user
         });
 
+        const isAlreadyInMH = !result.success && (
+            result.error?.descripcionMsg?.includes('YA EXISTE UN REGISTRO CON ESE VALOR') ||
+            result.error?.codigoMsg === '004'
+        );
+
         // 5. Handle MH response
-        if (result.success && result.status === 'PROCESADO') {
-            let formattedDate = result.fhProcesamiento || null;
+        if ((result.success && result.status === 'PROCESADO') || isAlreadyInMH) {
+            let formattedDate = result.fhProcesamiento || result.error?.fhProcesamiento || null;
             if (formattedDate && formattedDate.includes('/')) {
                 const [datePart, timePart] = formattedDate.split(' ');
                 const [day, month, year] = datePart.split('/');
                 formattedDate = `${year}-${month}-${day} ${timePart}`;
             }
 
+            const selloRecepcion = result.selloRecepcion || result.error?.selloRecibido || null;
+
             await pool.query(
                 'UPDATE dte_contingency_documents SET estado_envio = "SENT", fecha_envio_hacienda = NOW() WHERE id = ?',
                 [task.id]
             );
             await pool.query(
-                'UPDATE dtes SET status = "ACCEPTED", sello_recepcion = ?, fh_procesamiento = ? WHERE codigo_generacion = ?',
-                [result.selloRecepcion, formattedDate, task.codigo_generacion]
+                'UPDATE dtes SET status = "ACCEPTED", sello_recepcion = COALESCE(?, sello_recepcion), fh_procesamiento = COALESCE(?, fh_procesamiento) WHERE codigo_generacion = ?',
+                [selloRecepcion, formattedDate, task.codigo_generacion]
             );
             await pool.query(
-                'UPDATE sales_headers SET sello_recepcion = ?, fh_procesamiento = ? WHERE codigo_generacion = ?',
-                [result.selloRecepcion, formattedDate, task.codigo_generacion]
+                'UPDATE sales_headers SET sello_recepcion = COALESCE(?, sello_recepcion), fh_procesamiento = COALESCE(?, fh_procesamiento) WHERE codigo_generacion = ?',
+                [selloRecepcion, formattedDate, task.codigo_generacion]
             );
             await pool.query(
                 'INSERT INTO dte_events (dte_id, event_type, description) VALUES (?, "RETRANSMITTED", "Documento retransmitido y aceptado por MH post-contingencia")',
                 [task.dte_id]
             );
 
-            logger.info({ codigoGeneracion: task.codigo_generacion, sello: result.selloRecepcion }, '[ContingencyQueue] DTE aceptado con sello oficial');
+            logger.info({ codigoGeneracion: task.codigo_generacion, sello: selloRecepcion }, '[ContingencyQueue] DTE aceptado con sello oficial');
 
             // Notify main server to send official email asynchronously
             if (task.venta_id) {
@@ -215,8 +247,8 @@ class ContingencyQueueService {
                 throw new Error(`Error temporal de conexión con Hacienda: ${lastErrorMsg}`);
             }
 
-            // Definite rejection: update status
-            await pool.query('UPDATE dtes SET status = "ERROR" WHERE codigo_generacion = ?', [task.codigo_generacion]);
+            // Definite rejection: update status to REJECTED so SalesHistory and UI display "Rechazado" with AI diagnosis
+            await pool.query('UPDATE dtes SET status = "REJECTED", respuesta_hacienda = ? WHERE codigo_generacion = ?', [lastErrorMsg, task.codigo_generacion]);
             await pool.query(
                 'INSERT INTO dte_errors (dte_id, codigo_error, mensaje_error) VALUES (?, "CONT_RETRY_ERR", ?)',
                 [task.dte_id, lastErrorMsg]

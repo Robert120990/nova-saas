@@ -42,6 +42,8 @@ app.use(express.json());
 
 // Initialization
 initValidators();
+const { initHaciendaConfig } = require('./config/haciendaConfig');
+initHaciendaConfig().catch(() => {});
 // Reconciliación pasiva de contingencia cada 30m (el reenvío principal es reactivo inmediato vía BullMQ)
 startContingencyWorker(1800000);
 startAutoCloseWorker(300000); // Check auto-recovery every 5m

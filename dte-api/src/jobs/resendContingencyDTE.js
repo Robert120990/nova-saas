@@ -13,6 +13,14 @@ const MAX_RETRIES = 5;
 
 async function processContingencyQueue() {
     try {
+        const { isSimulatedOutage } = require('../config/haciendaConfig');
+        const [flagRows] = await pool.query('SELECT flag_value FROM system_runtime_flags WHERE flag_key = "simulated_outage" LIMIT 1');
+        const dbOutage = flagRows.length > 0 && (flagRows[0].flag_value === 'true' || flagRows[0].flag_value === '1');
+        if (isSimulatedOutage() || dbOutage) {
+            console.log('[ContingencyWorker] Simulación de corte activa. Se pospone procesamiento de cola.');
+            return;
+        }
+
         console.log('[ContingencyWorker] Processing queue...');
 
         // 1. Get pending contingency documents (solo de empresas cuya contingencia esté CERRADA)
@@ -30,15 +38,32 @@ async function processContingencyQueue() {
             [MAX_RETRIES]
         );
 
-    if (tasks.length === 0) return;
+        if (tasks.length === 0) return;
 
-    console.log(`[ContingencyWorker] Processing ${tasks.length} pending documents`);
+        console.log(`[ContingencyWorker] Processing ${tasks.length} pending documents`);
 
-    for (const task of tasks) {
-        try {
-            // 2. Authenticate
-            const auth = await authenticate(task.api_user, task.api_password, task.ambiente);
-            if (!auth.success) throw new Error(auth.message);
+        for (const task of tasks) {
+            try {
+                // Validación de Normativa MH: Verificar que el Evento de Contingencia asociado haya sido RECIBIDO por Hacienda
+                if (task.contingency_id) {
+                    const [contEvent] = await pool.query(
+                        'SELECT id, estado, sello_recepcion, respuesta_hacienda FROM dte_contingencies WHERE id = ?',
+                        [task.contingency_id]
+                    );
+                    if (contEvent.length > 0 && !contEvent[0].sello_recepcion) {
+                        console.log(`[ContingencyWorker] Evento #${task.contingency_id} sin confirmar ante Hacienda. Transmitiendo reporte de evento primero...`);
+                        const { sendContingencyReport } = require('../contingency/contingencyService');
+                        const reportResult = await sendContingencyReport(task.contingency_id);
+                        if (!reportResult.success && !reportResult.selloRecepcion) {
+                            console.warn(`[ContingencyWorker] Evento de contingencia #${task.contingency_id} no pudo ser confirmado por Hacienda: ${reportResult.message}. Intento de DTE pospuesto.`);
+                            continue;
+                        }
+                    }
+                }
+
+                // 2. Authenticate
+                const auth = await authenticate(task.api_user, task.api_password, task.ambiente);
+                if (!auth.success) throw new Error(auth.message);
 
             // 3. Transmit
             const version = getSchemaVersion(task.tipo_documento);
@@ -51,14 +76,21 @@ async function processContingencyQueue() {
                 apiUser: task.api_user
             });
 
-            if (result.success && result.status === 'PROCESADO') {
+            const isAlreadyInMH = !result.success && (
+                result.error?.descripcionMsg?.includes('YA EXISTE UN REGISTRO CON ESE VALOR') ||
+                result.error?.codigoMsg === '004'
+            );
+
+            if ((result.success && result.status === 'PROCESADO') || isAlreadyInMH) {
                 // Formatear fhProcesamiento si viene como DD/MM/YYYY HH:MM:SS
-                let formattedDate = result.fhProcesamiento || null;
+                let formattedDate = result.fhProcesamiento || result.error?.fhProcesamiento || null;
                 if (formattedDate && formattedDate.includes('/')) {
                     const [datePart, timePart] = formattedDate.split(' ');
                     const [day, month, year] = datePart.split('/');
                     formattedDate = `${year}-${month}-${day} ${timePart}`;
                 }
+
+                const selloRecepcion = result.selloRecepcion || result.error?.selloRecibido || null;
 
                 // 4a. Success
                 await pool.query(
@@ -66,18 +98,18 @@ async function processContingencyQueue() {
                     [task.id]
                 );
                 await pool.query(
-                    'UPDATE dtes SET status = "ACCEPTED", sello_recepcion = ?, fh_procesamiento = ? WHERE codigo_generacion = ?',
-                    [result.selloRecepcion, formattedDate, task.codigo_generacion]
+                    'UPDATE dtes SET status = "ACCEPTED", sello_recepcion = COALESCE(?, sello_recepcion), fh_procesamiento = COALESCE(?, fh_procesamiento) WHERE codigo_generacion = ?',
+                    [selloRecepcion, formattedDate, task.codigo_generacion]
                 );
                 await pool.query(
-                    'UPDATE sales_headers SET sello_recepcion = ?, fh_procesamiento = ? WHERE codigo_generacion = ?',
-                    [result.selloRecepcion, formattedDate, task.codigo_generacion]
+                    'UPDATE sales_headers SET sello_recepcion = COALESCE(?, sello_recepcion), fh_procesamiento = COALESCE(?, fh_procesamiento) WHERE codigo_generacion = ?',
+                    [selloRecepcion, formattedDate, task.codigo_generacion]
                 );
                 await pool.query(
                     'INSERT INTO dte_events (dte_id, event_type, description) VALUES (?, "RETRANSMITTED", "Documento retransmitido y aceptado por MH post-contingencia")',
                     [task.dte_id]
                 );
-                console.log(`[ContingencyWorker] ✅ ${task.codigo_generacion} retransmitido y aceptado con sello ${result.selloRecepcion}`);
+                console.log(`[ContingencyWorker] ✅ ${task.codigo_generacion} retransmitido y aceptado con sello ${selloRecepcion}`);
 
                 // 4b. Disparar envío automático de correo al cliente con sello de Hacienda oficial
                 if (task.venta_id) {

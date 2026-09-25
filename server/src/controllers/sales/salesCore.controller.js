@@ -536,11 +536,13 @@ const createSale = async (req, res) => {
 
         // 6. Vincular datos del DTE a la venta (dentro de la transacción)
         if (dteInfo.codigo_generacion) {
+            const isContingency = Boolean(dteResult?.contingency || dteInfo.contingency);
             await connection.query('UPDATE sales_headers SET ? WHERE id = ?', [{
                 codigo_generacion: dteInfo.codigo_generacion,
                 numero_control: dteInfo.numero_control || null,
                 sello_recepcion: dteInfo.sello_recepcion || null,
-                fh_procesamiento: dteInfo.fh_procesamiento || null
+                fh_procesamiento: dteInfo.fh_procesamiento || null,
+                estado: isContingency ? 'contingencia' : 'emitido'
             }, saleId]);
 
             await connection.query(

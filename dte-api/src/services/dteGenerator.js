@@ -42,8 +42,6 @@ async function resolveCountryCode(rawInput) {
         'NICARAGUA': 'NI',
         'COSTA RICA': 'CR',
         'PANAMA': 'PA',
-        'PANAMÁ': 'PA',
-        'MEXICO': 'MX',
         'MÉXICO': 'MX'
     };
 
@@ -245,10 +243,10 @@ async function generateDTE(payload) {
     const [taxRows] = await pool.query('SELECT iva_rate FROM tax_configurations WHERE company_id = ?', [companyId]);
     const ivaRate = taxRows.length > 0 ? parseFloat(taxRows[0].iva_rate) : 13;
 
-    // Verificar contingencia activa
+    // Verificar contingencia activa (a nivel de empresa o sucursal específica)
     const [contRows] = await pool.query(
-        'SELECT id, tipo_contingencia, motivo FROM dte_contingencies WHERE company_id = ? AND estado = ? LIMIT 1',
-        [companyId, 'OPEN']
+        'SELECT id, tipo_contingencia, motivo FROM dte_contingencies WHERE company_id = ? AND (branch_id = ? OR branch_id IS NULL) AND estado = ? ORDER BY id DESC LIMIT 1',
+        [companyId, branchId || null, 'OPEN']
     );
     const activeContingency = contRows.length > 0 ? contRows[0] : null;
 
@@ -281,7 +279,7 @@ async function generateDTE(payload) {
         tipoModelo: activeContingency ? 2 : 1,
         tipoOperacion: activeContingency ? 2 : 1,
         tipoContingencia: activeContingency ? activeContingency.tipo_contingencia : null,
-        motivoContin: null,
+        motivoContin: activeContingency?.motivo ? String(activeContingency.motivo).trim().substring(0, 500) : null,
         fecEmi: fecEmi,
         horEmi: horEmi,
         tipoMoneda: 'USD',

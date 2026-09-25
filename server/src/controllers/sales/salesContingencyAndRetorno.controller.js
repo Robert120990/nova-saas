@@ -23,6 +23,8 @@ const {
     resolveActividadOficial
 } = require('./salesUtils');
 
+const DTE_API_URL = process.env.DTE_API_URL || 'http://localhost:5000/api';
+const DTE_JWT_SECRET = process.env.DTE_JWT_SECRET || 'saas_dte_api_secret_2024';
 
 // --- CONTINGENCIA Y EVENTOS DE RETORNO (ERET) ---
 const getContingencyStatus = async (req, res) => {
@@ -59,6 +61,34 @@ const stopContingency = async (req, res) => {
         const response = await fetch(`${DTE_API_URL}/contingency/stop/${req.params.id}`, {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${token}`, 'x-company-id': req.company_id }
+        });
+        const data = await response.json();
+        res.json(data);
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+const simulateOutage = async (req, res) => {
+    try {
+        const response = await fetch(`${DTE_API_URL}/contingency/simulate-outage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(req.body)
+        });
+        const data = await response.json();
+        res.json(data);
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+const triggerAutoClose = async (req, res) => {
+    try {
+        const response = await fetch(`${DTE_API_URL}/contingency/trigger-autoclose`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(req.body)
         });
         const data = await response.json();
         res.json(data);
@@ -115,6 +145,8 @@ module.exports = {
     getContingencyStatus,
     startContingency,
     stopContingency,
+    simulateOutage,
+    triggerAutoClose,
     listRetornos,
     emitRetorno,
     getRetornoStatus

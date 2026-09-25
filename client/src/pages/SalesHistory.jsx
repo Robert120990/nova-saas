@@ -585,6 +585,15 @@ const SalesHistory = () => {
                         <div class="flex-between"><span>N° CONTROL:</span><span style="font-size: 9px;">${detail.numero_control || '---'}</span></div>
                         <div class="flex-between"><span>CÓDIGO GENERACIÓN:</span><span style="font-size: 7px;">${detail.codigo_generacion || '---'}</span></div>
                         ${detail.sello_recepcion ? `<div class="flex-between"><span>SELLO:</span><span style="font-size: 7px;">${detail.sello_recepcion}</span></div>` : ''}
+                        ${(detail.estado === 'contingencia' || !detail.sello_recepcion) && detail.codigo_generacion ? `
+                        <div style="border: 2px solid #000; padding: 4px 2px; margin: 5px 0; text-align: center;">
+                            <div class="bold" style="font-size: 10px; letter-spacing: 1px; color: #000;">
+                                *** EMITIDO EN CONTINGENCIA ***
+                            </div>
+                            <div style="font-size: 8px; margin-top: 2px; color: #000; font-weight: bold;">
+                                TRANSMISI&Oacute;N DIFERIDA A HACIENDA
+                            </div>
+                        </div>` : ''}
                         <div class="flex-between"><span>FECHA:</span><span>${fechaStr}</span></div>
                         <div class="flex-between"><span>HORA:</span><span>${horaStr}</span></div>
                         <div class="dashed"></div>
@@ -661,6 +670,7 @@ const SalesHistory = () => {
                 return <span className="flex items-center gap-1 px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-lg text-[9px] font-black uppercase tracking-wider"><CheckCircle2 size={11} /> Aceptado</span>;
             case 'REJECTED':
             case 'RECHAZADO':
+            case 'ERROR':
                 return (
                     <button
                         type="button"

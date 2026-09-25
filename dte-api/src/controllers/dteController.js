@@ -86,6 +86,21 @@ async function emit(req, res) {
         if (dte.identificacion.tipoOperacion === 2) {
             console.log(`[ContingencyEmit] Empresa ${req.company_id} en modo contingencia activo. Registrando DTE ${codigoGeneracion} para retransmisión posterior...`);
 
+            // Asegurar que exista y obtener el ID del evento de contingencia abierto
+            const [openPeriods] = await pool.query(
+                'SELECT id FROM dte_contingencies WHERE company_id = ? AND estado = "OPEN" ORDER BY id DESC LIMIT 1',
+                [req.company_id]
+            );
+            let activeContingencyId = openPeriods.length > 0 ? openPeriods[0].id : null;
+            if (!activeContingencyId) {
+                const [insertCont] = await pool.query(
+                    'INSERT INTO dte_contingencies (company_id, branch_id, fecha_inicio, motivo, tipo_contingencia, estado) VALUES (?, ?, DATE_SUB(NOW(), INTERVAL 1 MINUTE), ?, 1, "OPEN")',
+                    [req.company_id, req.branch_id || null, 'No disponibilidad del sistema de Hacienda (activación automática)']
+                );
+                activeContingencyId = insertCont.insertId;
+                console.log(`[ContingencyEmit] Período de contingencia #${activeContingencyId} creado automáticamente para empresa ${req.company_id}`);
+            }
+
             await pool.query(
                 'INSERT INTO dtes (venta_id, codigo_generacion, numero_control, tipo_dte, company_id, branch_id, usuario_id, status, ambiente, json_original, json_firmado, sello_recepcion, fh_procesamiento, respuesta_hacienda) ' +
                 'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
@@ -103,14 +118,14 @@ async function emit(req, res) {
                     jwsString,
                     null,
                     null,
-                    'EMITIDO_EN_CONTINGENCIA'
+                    JSON.stringify({ estado: 'CONTINGENCIA_PENDIENTE', mensaje: 'EMITIDO_EN_CONTINGENCIA' })
                 ]
             );
 
             await pool.query(
-                'INSERT INTO dte_contingency_documents (codigo_generacion, tipo_documento, json_dte, json_firmado, estado_envio, fecha_generacion) VALUES (?, ?, ?, ?, ?, NOW()) ' +
-                'ON DUPLICATE KEY UPDATE json_firmado = VALUES(json_firmado), estado_envio = "PENDING"',
-                [codigoGeneracion, tipoDte, JSON.stringify(dte), jwsString, 'PENDING']
+                'INSERT INTO dte_contingency_documents (contingency_id, codigo_generacion, tipo_documento, json_dte, json_firmado, estado_envio, fecha_generacion) VALUES (?, ?, ?, ?, ?, ?, NOW()) ' +
+                'ON DUPLICATE KEY UPDATE contingency_id = VALUES(contingency_id), json_firmado = VALUES(json_firmado), estado_envio = "PENDING"',
+                [activeContingencyId, codigoGeneracion, tipoDte, JSON.stringify(dte), jwsString, 'PENDING']
             );
 
             return res.status(200).json({
@@ -237,16 +252,19 @@ async function emit(req, res) {
         if (isConnectivityFailure) {
             console.warn(`[AutoContingency] Falla de red con Hacienda detectada (${connectivityMessage}). Activando contingencia automática para empresa ${req.company_id}...`);
 
-            // Abrir período de contingencia automático si no hay uno abierto
+            // 1. REGISTRAR PRIMERO EL EVENTO DE CONTINGENCIA ANTES QUE EL DOCUMENTO
             const [openPeriods] = await pool.query(
-                'SELECT id FROM dte_contingencies WHERE company_id = ? AND estado = "OPEN" LIMIT 1',
+                'SELECT id FROM dte_contingencies WHERE company_id = ? AND estado = "OPEN" ORDER BY id DESC LIMIT 1',
                 [req.company_id]
             );
-            if (openPeriods.length === 0) {
-                await pool.query(
-                    'INSERT INTO dte_contingencies (company_id, branch_id, fecha_inicio, motivo, tipo_contingencia, estado) VALUES (?, ?, NOW(), ?, 1, "OPEN")',
+            let activeContingencyId = openPeriods.length > 0 ? openPeriods[0].id : null;
+            if (!activeContingencyId) {
+                const [insertCont] = await pool.query(
+                    'INSERT INTO dte_contingencies (company_id, branch_id, fecha_inicio, motivo, tipo_contingencia, estado) VALUES (?, ?, DATE_SUB(NOW(), INTERVAL 1 MINUTE), ?, 1, "OPEN")',
                     [req.company_id, req.branch_id || null, 'No disponibilidad del sistema de Hacienda (activación automática)']
                 );
+                activeContingencyId = insertCont.insertId;
+                console.log(`[AutoContingency] Período de contingencia #${activeContingencyId} registrado PRIMERO para empresa ${req.company_id}`);
             }
 
             // Actualizar DTE a contingencia (tipoOperacion: 2, tipoModelo: 2)
@@ -284,14 +302,14 @@ async function emit(req, res) {
                     jwsString,
                     null,
                     null,
-                    `CONTINGENCIA_AUTOMATICA: ${connectivityMessage}`.substring(0, 500)
+                    JSON.stringify({ estado: 'CONTINGENCIA_AUTOMATICA', detalle: String(connectivityMessage).substring(0, 500) })
                 ]
             );
 
             await pool.query(
-                'INSERT INTO dte_contingency_documents (codigo_generacion, tipo_documento, json_dte, json_firmado, estado_envio, fecha_generacion) VALUES (?, ?, ?, ?, ?, NOW()) ' +
-                'ON DUPLICATE KEY UPDATE json_firmado = VALUES(json_firmado), estado_envio = "PENDING"',
-                [codigoGeneracion, tipoDte, JSON.stringify(dte), jwsString, 'PENDING']
+                'INSERT INTO dte_contingency_documents (contingency_id, codigo_generacion, tipo_documento, json_dte, json_firmado, estado_envio, fecha_generacion) VALUES (?, ?, ?, ?, ?, ?, NOW()) ' +
+                'ON DUPLICATE KEY UPDATE contingency_id = VALUES(contingency_id), json_firmado = VALUES(json_firmado), estado_envio = "PENDING"',
+                [activeContingencyId, codigoGeneracion, tipoDte, JSON.stringify(dte), jwsString, 'PENDING']
             );
 
             return res.status(200).json({

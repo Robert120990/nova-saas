@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { 
     Package, 
     X, 
@@ -38,10 +39,28 @@ const PosProductCatalogModal = ({
     getCustomerAgreedPrice,
     modalPage
 }) => {
+    useEffect(() => {
+        if (!isOpen) return;
+        const handleKeyDown = (e) => {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                e.stopPropagation();
+                onClose?.();
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [isOpen, onClose]);
+
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs z-[100] flex items-center justify-center p-2 sm:p-4 animate-in fade-in duration-150">
+        <div 
+            className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs z-[100] flex items-center justify-center p-2 sm:p-4 animate-in fade-in duration-150"
+            onClick={(e) => {
+                if (e.target === e.currentTarget) onClose?.();
+            }}
+        >
             <div className="bg-white rounded-2xl w-full max-w-5xl max-h-[92vh] sm:max-h-[88vh] overflow-hidden shadow-2xl flex flex-col border border-slate-200">
                 {/* Header Compacto */}
                 <div className="px-4 py-2.5 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800 shrink-0">
@@ -89,6 +108,13 @@ const PosProductCatalogModal = ({
                                 placeholder="Buscar por nombre, código o código de barras... (ESC para salir)"
                                 value={productSearch}
                                 onChange={(e) => setProductSearch(e.target.value)}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Escape') {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        onClose?.();
+                                    }
+                                }}
                                 className="w-full pl-8 pr-7 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-xs"
                             />
                             {productSearch && (

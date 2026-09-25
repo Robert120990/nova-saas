@@ -85,6 +85,17 @@ async function invalidateToken(apiUser, ambiente) {
 }
 
 async function transmitDTE(token, signedDte, dteInfo) {
+    const { isSimulatedOutage } = require('../config/haciendaConfig');
+    if (isSimulatedOutage()) {
+        console.warn(`[MH-Transmission] ⚠️ Caída de Hacienda simulada activada. Rechazando transmisión por timeout/conectividad para DTE ${dteInfo.codigoGeneracion}...`);
+        return {
+            success: false,
+            statusCode: 503,
+            isAuthError: false,
+            error: 'ECONNREFUSED connect ECONNREFUSED 127.0.0.1:59999 (Simulación de caída de Hacienda)'
+        };
+    }
+
     const receptionUrl = getEndpoint('recepcion', dteInfo.ambiente);
 
     try {
