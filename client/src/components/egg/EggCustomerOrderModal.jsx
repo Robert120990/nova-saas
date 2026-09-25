@@ -62,6 +62,46 @@ const getPresWeight = (pres) => {
     return m ? parseFloat(m[1]) : null;
 };
 
+const inferPresentation = (productName, weightLbs, fallbackPres = '') => {
+    const pName = String(productName || '').toLowerCase();
+    const w = parseFloat(weightLbs);
+
+    // 1. Contenedor específico en el nombre del propio SKU
+    if (pName.includes('carton') || pName.includes('cartón')) return `carton ${w || 55} lb`;
+    if (pName.includes('caja')) return `caja ${w || 32} lb`;
+    if (pName.includes('unidad') || pName.includes('unid')) return `unidad ${w || 0.2} lb`;
+    if (pName.includes('cubeta')) return `cubeta ${w || 30} lb`;
+    if (pName.includes('galon') || pName.includes('galón')) {
+        if (pName.includes('1/2') || pName.includes('medio') || (w && Math.abs(w - 4) < 0.2)) {
+            return `medio galon ${w || 4} lb`;
+        }
+        return `galon ${w || 8} lb`;
+    }
+    if (pName.includes('litro')) {
+        if (pName.includes('1/2') || pName.includes('medio') || (w && Math.abs(w - 1) < 0.2)) {
+            return `medio litro ${w || 1} lb`;
+        }
+        return `litro ${w || 2} lb`;
+    }
+
+    // 2. Empaque estándar industrial por peso
+    if (w) {
+        if (Math.abs(w - 30) < 0.2) return 'cubeta 30 lb';
+        if (Math.abs(w - 32) < 0.2) return 'cubeta 32 lb';
+        if (Math.abs(w - 55) < 0.2) return 'carton 55 lb';
+        if (Math.abs(w - 8) < 0.2) return 'galon 8 lb';
+        if (Math.abs(w - 7.5) < 0.2) return 'galon 7.5 lb';
+        if (Math.abs(w - 4) < 0.2) return 'medio galon 4 lb';
+        if (Math.abs(w - 2) < 0.2) return 'litro 2 lb';
+        if (Math.abs(w - 1) < 0.2) return 'medio litro 1 lb';
+        if (w <= 0.5) return `unidad ${w} lb`;
+        return `${w} lb`;
+    }
+
+    if (fallbackPres && fallbackPres.trim()) return fallbackPres.trim();
+    return 'cubeta 30 lb';
+};
+
 const parseMappingItems = (m) => {
     if (m?.code_weights_json) {
         try {
@@ -70,12 +110,15 @@ const parseMappingItems = (m) => {
                 return parsed.map((item) => {
                     const lbs = Number(item.weight_lbs || m.unit_weight_lbs || m.weight_lbs || 1);
                     const kg = Number(item.weight_kg || (lbs * 0.45359237));
+                    const pName = item.product_name || m.catalog_product_name || m.product_name || '';
+                    const pres = inferPresentation(pName, lbs, m.presentation);
                     return {
                         code: String(item.code || '').trim(),
                         weight_lbs: lbs > 0 ? lbs : 1,
                         weight_kg: kg > 0 ? kg : 0.45,
-                        product_id: item.product_id || null,
-                        product_name: item.product_name || ''
+                        product_id: item.product_id || m.catalog_product_id || null,
+                        product_name: pName,
+                        presentation: pres
                     };
                 }).filter((it) => it.code);
             }
@@ -89,86 +132,151 @@ const parseMappingItems = (m) => {
         .filter(Boolean);
     const defaultLbs = Number(m?.unit_weight_lbs ?? m?.weight_lbs ?? 1);
     const defaultKg = Number(m?.unit_weight_kg ?? m?.weight_kg ?? (defaultLbs * 0.45359237));
+    const pName = m?.product_name || m?.catalog_product_name || '';
+    const pres = inferPresentation(pName, defaultLbs, m?.presentation);
     return rawCodes.map(code => ({
         code,
         weight_lbs: defaultLbs > 0 ? defaultLbs : 1,
         weight_kg: defaultKg > 0 ? defaultKg : 0.45,
         product_id: m?.product_id || m?.catalog_product_id || null,
-        product_name: m?.product_name || m?.catalog_product_name || ''
+        product_name: pName,
+        presentation: pres
     }));
+};
+
+const findMappingsForProductType = (prodType, mappings) => {
+    if (!prodType || !mappings || mappings.length === 0) return [];
+    const cType = normalizeText(prodType);
+    if (!cType) return [];
+
+    // 1. Coincidencia exacta de nombre de catálogo, receta o producto
+    let matches = mappings.filter(m => {
+        const t1 = normalizeText(m.catalog_product_name);
+        const t2 = normalizeText(m.recipe_name);
+        const t4 = normalizeText(m.product_name);
+        return (t1 && t1 === cType) || (t2 && t2 === cType) || (t4 && t4 === cType);
+    });
+
+    if (matches.length > 0) return matches;
+
+    // 2. Coincidencia de tipo industrial exacto SOLO si no tiene un catalog_product_name diferente
+    matches = mappings.filter(m => {
+        const t3 = normalizeText(m.industrial_product_type);
+        const t1 = normalizeText(m.catalog_product_name);
+        if (t3 && t3 === cType) {
+            return !t1 || t1 === cType;
+        }
+        return false;
+    });
+
+    if (matches.length > 0) return matches;
+
+    // 3. Coincidencia por sinónimos o palabras clave (ej: cascarón / cáscara)
+    if (cType.includes('cascara') || cType.includes('cascaron')) {
+        matches = mappings.filter(m => {
+            const t1 = normalizeText(m.catalog_product_name);
+            const t2 = normalizeText(m.recipe_name);
+            const t4 = normalizeText(m.product_name);
+            return (t1 && (t1.includes('cascara') || t1.includes('cascaron'))) ||
+                   (t2 && (t2.includes('cascara') || t2.includes('cascaron'))) ||
+                   (t4 && (t4.includes('cascara') || t4.includes('cascaron')));
+        });
+        if (matches.length > 0) return matches;
+    }
+
+    // 4. Inclusión estricta (mínimo 4 caracteres y NUNCA strings vacíos)
+    matches = mappings.filter(m => {
+        const t1 = normalizeText(m.catalog_product_name);
+        const t2 = normalizeText(m.recipe_name);
+        const t4 = normalizeText(m.product_name);
+        const check = (val) => val && val.length >= 4 && (val.includes(cType) || cType.includes(val));
+        return check(t1) || check(t2) || check(t4);
+    });
+
+    return matches;
 };
 
 const findBestMatrixMatch = (prodType, pres, mappings) => {
     if (!mappings || mappings.length === 0) return null;
-    const cType = normalizeText(prodType);
-    const cPres = normalizeText(pres);
-    const targetWeight = getPresWeight(pres);
+    const matches = findMappingsForProductType(prodType, mappings);
+    if (matches.length === 0) return null;
 
-    // 1. Coincidencia exacta de nombre de producto o tipo
-    let bestMapping = mappings.find(m => normalizeText(m.catalog_product_name) === cType);
-    if (!bestMapping) {
-        bestMapping = mappings.find(m => normalizeText(m.recipe_name) === cType);
-    }
-    if (!bestMapping) {
-        bestMapping = mappings.find(m => normalizeText(m.industrial_product_type) === cType);
-    }
-    if (!bestMapping) {
-        bestMapping = mappings.find(m => {
-            const t1 = normalizeText(m.catalog_product_name);
-            const t2 = normalizeText(m.recipe_name);
-            const t3 = normalizeText(m.industrial_product_type);
-            const t4 = normalizeText(m.product_name);
-            return t1.includes(cType) || cType.includes(t1) ||
-                   t2.includes(cType) || cType.includes(t2) ||
-                   t3.includes(cType) || cType.includes(t3) ||
-                   t4.includes(cType) || cType.includes(t4);
+    const allItems = [];
+    matches.forEach(m => {
+        const parsed = parseMappingItems(m);
+        parsed.forEach(it => {
+            allItems.push({
+                ...it,
+                mapping_catalog_name: m.catalog_product_name,
+                mapping_recipe_name: m.recipe_name,
+                mapping_prod_name: m.product_name,
+                mapping_catalog_id: m.catalog_product_id
+            });
         });
+    });
+
+    if (allItems.length === 0) return null;
+
+    const targetWeight = getPresWeight(pres);
+    const cPres = normalizeText(pres);
+
+    // 1. Prioridad por coincidencia de presentación textual exacta (ej: "cubeta 30 lb")
+    if (cPres) {
+        const presMatch = allItems.find(it => normalizeText(it.presentation) === cPres);
+        if (presMatch) {
+            return {
+                code: presMatch.code,
+                product_name: presMatch.product_name || presMatch.mapping_catalog_name || presMatch.mapping_prod_name,
+                product_type: presMatch.mapping_catalog_name || presMatch.mapping_recipe_name || prodType,
+                presentation: presMatch.presentation,
+                weight_lbs: parseFloat(presMatch.weight_lbs) || targetWeight || 1,
+                product_id: presMatch.product_id || presMatch.mapping_catalog_id
+            };
+        }
     }
 
-    if (!bestMapping) return null;
-
-    const items = parseMappingItems(bestMapping);
-    if (items.length === 0) return null;
-
-    // Prioridad por peso exacto
+    // 2. Prioridad por peso exacto
     if (targetWeight !== null) {
-        const exact = items.find(it => Math.abs(parseFloat(it.weight_lbs) - targetWeight) < 0.1);
+        const exact = allItems.find(it => Math.abs(parseFloat(it.weight_lbs) - targetWeight) < 0.1);
         if (exact) {
             return {
                 code: exact.code,
-                product_name: exact.product_name || bestMapping.catalog_product_name || bestMapping.product_name,
-                product_type: bestMapping.catalog_product_name || bestMapping.recipe_name || bestMapping.product_name,
-                presentation: bestMapping.presentation || `${exact.weight_lbs} lb`,
+                product_name: exact.product_name || exact.mapping_catalog_name || exact.mapping_prod_name,
+                product_type: exact.mapping_catalog_name || exact.mapping_recipe_name || prodType,
+                presentation: exact.presentation || `${exact.weight_lbs} lb`,
                 weight_lbs: parseFloat(exact.weight_lbs) || targetWeight,
-                product_id: exact.product_id || bestMapping.catalog_product_id
+                product_id: exact.product_id || exact.mapping_catalog_id
             };
         }
     }
 
-    // Coincidencia por texto de presentación o código
-    for (const it of items) {
-        const cCode = normalizeText(it.code);
-        const cProdName = normalizeText(it.product_name);
-        if (cProdName.includes(cPres) || cPres.includes(cCode)) {
-            return {
-                code: it.code,
-                product_name: it.product_name || bestMapping.catalog_product_name || bestMapping.product_name,
-                product_type: bestMapping.catalog_product_name || bestMapping.recipe_name || bestMapping.product_name,
-                presentation: bestMapping.presentation || `${it.weight_lbs} lb`,
-                weight_lbs: parseFloat(it.weight_lbs) || 1,
-                product_id: it.product_id || bestMapping.catalog_product_id
-            };
+    // 3. Coincidencia por texto de presentación en el nombre del producto o código
+    if (cPres) {
+        for (const it of allItems) {
+            const cCode = normalizeText(it.code);
+            const cProdName = normalizeText(it.product_name);
+            if ((cProdName && cProdName.length >= 3 && cProdName.includes(cPres)) || (cCode && cCode.length >= 3 && cPres.includes(cCode))) {
+                return {
+                    code: it.code,
+                    product_name: it.product_name || it.mapping_catalog_name || it.mapping_prod_name,
+                    product_type: it.mapping_catalog_name || it.mapping_recipe_name || prodType,
+                    presentation: it.presentation,
+                    weight_lbs: parseFloat(it.weight_lbs) || 1,
+                    product_id: it.product_id || it.mapping_catalog_id
+                };
+            }
         }
     }
 
-    const first = items[0];
+    // 4. Fallback al primer item mapeado
+    const first = allItems[0];
     return {
         code: first.code,
-        product_name: first.product_name || bestMapping.catalog_product_name || bestMapping.product_name,
-        product_type: bestMapping.catalog_product_name || bestMapping.recipe_name || bestMapping.product_name,
-        presentation: bestMapping.presentation || `${first.weight_lbs} lb`,
+        product_name: first.product_name || first.mapping_catalog_name || first.mapping_prod_name,
+        product_type: first.mapping_catalog_name || first.mapping_recipe_name || prodType,
+        presentation: first.presentation,
         weight_lbs: parseFloat(first.weight_lbs) || 1,
-        product_id: first.product_id || bestMapping.catalog_product_id
+        product_id: first.product_id || first.mapping_catalog_id
     };
 };
 
@@ -465,7 +573,7 @@ export default function EggCustomerOrderModal({
                     code: it.code,
                     product_name: it.product_name || prodType,
                     product_type: prodType,
-                    presentation: m.presentation || (it.weight_lbs ? `cubeta ${it.weight_lbs} lb` : 'cubeta 30 lb'),
+                    presentation: it.presentation || m.presentation || (it.weight_lbs ? `cubeta ${it.weight_lbs} lb` : 'cubeta 30 lb'),
                     weight_lbs: parseFloat(it.weight_lbs) || 1,
                     weight_kg: parseFloat(it.weight_kg) || 0.45,
                     product_id: it.product_id || m.catalog_product_id || null,
@@ -479,18 +587,7 @@ export default function EggCustomerOrderModal({
     // Obtener presentaciones mapeadas para un tipo de producto específico
     const getPresentationsForProduct = (prodType) => {
         if (!prodType || !codeMappings || codeMappings.length === 0) return [];
-        const cType = normalizeText(prodType);
-
-        const matches = codeMappings.filter(m => {
-            const t1 = normalizeText(m.catalog_product_name);
-            const t2 = normalizeText(m.recipe_name);
-            const t3 = normalizeText(m.industrial_product_type);
-            const t4 = normalizeText(m.product_name);
-            return t1 === cType || t2 === cType || t3 === cType || t4 === cType ||
-                   t1.includes(cType) || cType.includes(t1) ||
-                   t2.includes(cType) || cType.includes(t2) ||
-                   t3.includes(cType) || cType.includes(t3);
-        });
+        const matches = findMappingsForProductType(prodType, codeMappings);
 
         const result = [];
         const seenCodes = new Set();
@@ -500,7 +597,7 @@ export default function EggCustomerOrderModal({
                 if (!seenCodes.has(it.code)) {
                     seenCodes.add(it.code);
                     result.push({
-                        presentation: m.presentation || `${it.weight_lbs} lb`,
+                        presentation: it.presentation || m.presentation || `${it.weight_lbs} lb`,
                         code: it.code,
                         product_name: it.product_name || m.catalog_product_name || m.product_name,
                         weight_lbs: parseFloat(it.weight_lbs) || 1,
@@ -529,6 +626,7 @@ export default function EggCustomerOrderModal({
                     catalog_code: matched.code,
                     catalog_product_id: matched.product_id,
                     catalog_product_name: matched.product_name,
+                    presentation: matched.presentation || it.presentation,
                     unit_weight_lbs: factorLbs,
                     quantity_lbs: lbs,
                     quantity_kg: kg
@@ -665,14 +763,13 @@ export default function EggCustomerOrderModal({
         let defaultProdName = null;
         let defaultWeightLbs = 30;
 
-        if (allMatrixCodes.length > 0) {
-            const first = allMatrixCodes[0];
-            defaultProd = first.product_type;
-            defaultPres = first.presentation;
-            defaultCode = first.code;
-            defaultProdId = first.product_id;
-            defaultProdName = first.product_name;
-            defaultWeightLbs = first.weight_lbs;
+        const matched = findBestMatrixMatch(defaultProd, defaultPres, codeMappings);
+        if (matched) {
+            defaultPres = matched.presentation;
+            defaultCode = matched.code;
+            defaultProdId = matched.product_id;
+            defaultProdName = matched.product_name;
+            defaultWeightLbs = matched.weight_lbs;
         }
 
         setItems(prev => [
@@ -692,7 +789,8 @@ export default function EggCustomerOrderModal({
                 price_per_lb: '',
                 price_source_note: '',
                 batch_id: '',
-                lot_code: ''
+                lot_code: '',
+                selected_by_code: false
             }
         ]);
 
@@ -740,7 +838,8 @@ export default function EggCustomerOrderModal({
                         catalog_product_name: codeItem.product_name,
                         unit_weight_lbs: weightLbs,
                         quantity_lbs: lbs,
-                        quantity_kg: kg
+                        quantity_kg: kg,
+                        selected_by_code: true
                     };
 
                     if (updated.batch_id) {
@@ -804,7 +903,8 @@ export default function EggCustomerOrderModal({
                 catalog_product_name: nextProdName,
                 unit_weight_lbs: nextWeightLbs,
                 quantity_lbs: lbs,
-                quantity_kg: kg
+                quantity_kg: kg,
+                selected_by_code: false
             };
 
             if (updated.batch_id) {
@@ -835,7 +935,10 @@ export default function EggCustomerOrderModal({
     const handlePresentationSelectChange = (id, rawValue) => {
         if (rawValue.startsWith('code:')) {
             const selectedCode = rawValue.replace('code:', '').trim();
-            const codeItem = allMatrixCodes.find(c => c.code.toLowerCase() === selectedCode.toLowerCase());
+            const currentItem = items.find(x => x.id === id);
+            const productPres = getPresentationsForProduct(currentItem?.product_type);
+            const codeItem = productPres.find(c => c.code.toLowerCase() === selectedCode.toLowerCase())
+                          || allMatrixCodes.find(c => c.code.toLowerCase() === selectedCode.toLowerCase());
             if (codeItem) {
                 setItems(prev => prev.map(it => {
                     if (it.id !== id) return it;
@@ -1521,7 +1624,11 @@ export default function EggCustomerOrderModal({
                                             #{idx + 1} Tipo de Producto *
                                         </label>
                                         <select
-                                            value={it.catalog_code ? `code:${it.catalog_code}` : it.product_type}
+                                            value={
+                                                it.selected_by_code && it.catalog_code 
+                                                    ? `code:${it.catalog_code}` 
+                                                    : (availableProducts.includes(it.product_type) ? it.product_type : (it.catalog_code ? `code:${it.catalog_code}` : it.product_type))
+                                            }
                                             onChange={(e) => handleProductSelectChange(it.id, e.target.value)}
                                             className="w-full text-xs font-bold border border-slate-200 rounded-lg px-2 py-1.5 text-slate-800 outline-none focus:border-indigo-500"
                                         >
@@ -1565,7 +1672,11 @@ export default function EggCustomerOrderModal({
                                             Presentación
                                         </label>
                                         <select
-                                            value={it.catalog_code ? `code:${it.catalog_code}` : it.presentation}
+                                            value={
+                                                it.catalog_code && getPresentationsForProduct(it.product_type).some(pm => pm.code === it.catalog_code)
+                                                    ? `code:${it.catalog_code}`
+                                                    : it.presentation
+                                            }
                                             onChange={(e) => handlePresentationSelectChange(it.id, e.target.value)}
                                             className="w-full text-xs font-medium border border-slate-200 rounded-lg px-2 py-1.5 text-slate-800 outline-none focus:border-indigo-500"
                                         >
