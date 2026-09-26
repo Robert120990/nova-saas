@@ -1,12 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { toast } from 'sonner';
 import {
-    FlaskConical, CheckCircle2, AlertTriangle, ShieldAlert,
-    Clock, Calendar, User, Save, FileText, X,
-    Download, FileSpreadsheet, FileDown, Loader2, Building2
+    FlaskConical, CheckCircle2, Calendar, User, Save, FileText, X, FileSpreadsheet, FileDown, Loader2, Building2
 } from 'lucide-react';
-import { formatDate } from '../../../utils/dateUtils';
 
 const PRODUCT_STANDARDS = {
     we: { name: 'Huevo Entero (WE)', ph: [7.0, 8.0], sol: [23.7, 24.7], temp: [2.0, 4.0], dens: [0.115, 0.145], hasSal: false },
@@ -36,7 +33,7 @@ const EggQualityFinishedProductModal = ({
 }) => {
     const [activeTab, setActiveTab] = useState('fq'); // 'fq', 'mb', 'release'
     const [saving, setSaving] = useState(false);
-    const [fetching, setFetching] = useState(false);
+    const [_fetching, setFetching] = useState(false);
     const [existingLogId, setExistingLogId] = useState(null);
     const [downloadScope, setDownloadScope] = useState('all'); // 'all', 'fq', 'mb'
     const [downloadingFmt, setDownloadingFmt] = useState(null); // 'pdf', 'excel', 'word', null

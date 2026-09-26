@@ -1,23 +1,18 @@
-import React, { useMemo } from 'react';
+import { useMemo } from 'react';
 import {
     Clock,
     User,
     CheckCircle2,
     Calendar,
     ShoppingBag,
-    Boxes,
-    FileText,
     Truck,
-    Split,
-    AlertCircle,
     CheckSquare,
-    DollarSign,
-    Layers,
-    Tag
+    Layers
 } from 'lucide-react';
 import { formatDate } from '../../utils/dateUtils';
 import Money from '../ui/Money';
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const isProductionFinished = (prod) => {
     if (!prod) return false;
     const pStatus = (prod.status || '').toLowerCase();
@@ -29,9 +24,7 @@ export const isProductionFinished = (prod) => {
 };
 
 export const EggCalendarPreviewPopover = ({ hoverPreview }) => {
-    if (!hoverPreview || !hoverPreview.data) return null;
-
-    const { type, data, rect } = hoverPreview;
+    const rect = hoverPreview?.rect;
 
     const positionStyle = useMemo(() => {
         if (!rect) return { top: '100px', left: '100px' };
@@ -57,6 +50,10 @@ export const EggCalendarPreviewPopover = ({ hoverPreview }) => {
             left: `${left}px`
         };
     }, [rect]);
+
+    if (!hoverPreview || !hoverPreview.data) return null;
+
+    const { type, data } = hoverPreview;
 
     if (type === 'production') {
         const prod = data;

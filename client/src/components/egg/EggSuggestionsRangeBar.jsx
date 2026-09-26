@@ -1,5 +1,4 @@
-import React from 'react';
-import { Calendar, Sparkles, RefreshCw, ShieldAlert, Check } from 'lucide-react';
+import { Calendar, RefreshCw } from 'lucide-react';
 
 export const EggSuggestionsRangeBar = ({
     startDate,

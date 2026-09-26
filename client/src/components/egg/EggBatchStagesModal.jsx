@@ -1,7 +1,7 @@
 import {
     Layers, XCircle, FileText, FileSpreadsheet, FileCheck,
     Plus, AlertOctagon, CheckCircle2, ChevronRight, Pencil, Trash2, Scale,
-    Lock, Flame, Boxes, FlaskConical
+    Lock, Boxes, FlaskConical
 } from 'lucide-react';
 import { formatDate } from '../../utils/dateUtils';
 

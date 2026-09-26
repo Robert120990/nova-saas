@@ -21,9 +21,7 @@ import {
     Loader2,
     Layers,
     Sparkles,
-    AlertTriangle,
-    Wifi,
-    WifiOff
+    AlertTriangle
 } from 'lucide-react';
 import { toast } from 'sonner';
 import SearchableSelect from '../components/ui/SearchableSelect';

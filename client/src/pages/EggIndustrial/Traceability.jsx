@@ -82,22 +82,6 @@ const EggTraceability = () => {
     const [batches, setBatches] = useState([]);
     const [qualityModal, setQualityModal] = useState({ isOpen: false, batch: null, logId: null });
     const [labReleaseFilter, setLabReleaseFilter] = useState('todos'); // 'todos', 'cuarentena', 'liberado', 'bloqueado_haccp'
-    const [isLabModalOpen, setIsLabModalOpen] = useState(false);
-    const [editingLogId, setEditingLogId] = useState(null);
-
-    const initialLabForm = {
-        batch_id: '',
-        customer_id: '',
-        customer_name: '',
-        presentation: 'Cubeta 30 Lb',
-        sample_date: new Date().toISOString().split('T')[0],
-        status: 'aprobado',
-        analyst_name: 'Mario (Control de Calidad)',
-        observations: '',
-        dynamicReadings: {},
-        dynamicCriteria: {}
-    };
-    const [labForm, setLabForm] = useState(initialLabForm);
 
     // Multi-Lot Selection & Unified Email States
     const [selectedLogIds, setSelectedLogIds] = useState([]);
@@ -407,23 +391,6 @@ const EggTraceability = () => {
         }
     };
 
-    // Parámetros activos filtrados para el lote seleccionado en el formulario
-    const selectedBatch = useMemo(() => {
-        return batches.find(b => String(b.id) === String(labForm.batch_id));
-    }, [batches, labForm.batch_id]);
-
-    const activeProductParams = useMemo(() => {
-        if (!selectedBatch) {
-            return qualityParameters.filter(p => p.is_active);
-        }
-        const pType = (selectedBatch.product_type || '').toLowerCase();
-        return qualityParameters.filter(p => {
-            if (!p.is_active) return false;
-            const applicable = (p.applicable_product || 'todos').toLowerCase();
-            return applicable === 'todos' || pType.includes(applicable) || applicable.includes(pType);
-        });
-    }, [qualityParameters, selectedBatch]);
-
     // Abrir modal para crear nuevo análisis de calidad FQ/MB
     const handleOpenCreateLab = () => {
         setQualityModal({ isOpen: true, batch: null, logId: null });
@@ -463,68 +430,6 @@ const EggTraceability = () => {
         } catch (error) {
             console.error('Error exportando Excel de Mario:', error);
             toast.error('Error al descargar el Excel de calidad.');
-        }
-    };
-
-    // Guardar / Actualizar Registro LAB-004
-    const handleSaveLabLog = async (e) => {
-        e.preventDefault();
-        if (!labForm.batch_id) return toast.error('Debe seleccionar un lote de producción.');
-
-        try {
-            // Construir array de custom_parameters
-            const customParametersPayload = activeProductParams.map(param => {
-                const readingVal = labForm.dynamicReadings[param.id] !== undefined ? labForm.dynamicReadings[param.id] : (param.default_value || '');
-                const criterionVal = labForm.dynamicCriteria[param.id] !== undefined ? labForm.dynamicCriteria[param.id] : (param.expected_criterion || 'CONFORME');
-                return {
-                    parameter_id: param.id,
-                    category: param.category,
-                    parameter_name: param.parameter_name,
-                    specification: param.specification,
-                    unit: param.unit,
-                    value: readingVal,
-                    criterion: criterionVal
-                };
-            });
-
-            // Extraer valores para campos legacy compatibles
-            const findReading = (pattern) => {
-                const item = customParametersPayload.find(p => p.parameter_name.toLowerCase().includes(pattern));
-                return item ? item.value : null;
-            };
-
-            const payload = {
-                batch_id: parseInt(labForm.batch_id),
-                customer_id: labForm.customer_id ? parseInt(labForm.customer_id) : null,
-                customer_name: labForm.customer_name || null,
-                presentation: labForm.presentation || 'Cubeta 30 Lb',
-                sample_date: labForm.sample_date,
-                status: labForm.status,
-                analyst_name: labForm.analyst_name,
-                observations: labForm.observations,
-                custom_parameters: customParametersPayload,
-                mesofilos_aerobios: findReading('mesófilo') || findReading('aerobio'),
-                coliformes_totales: findReading('coliforme'),
-                escherichia_coli: findReading('coli'),
-                salmonella_spp: findReading('salmonella'),
-                hongos_levaduras: findReading('hongo') || findReading('levadura'),
-                solidos_totales_pct: findReading('sólido') || findReading('solido'),
-                ph: findReading('ph')
-            };
-
-            if (editingLogId) {
-                await axios.put(`/api/egg-industrial/lab/logs/${editingLogId}`, payload);
-                toast.success('Análisis de laboratorio LAB-004 actualizado exitosamente.');
-            } else {
-                await axios.post('/api/egg-industrial/lab/logs', payload);
-                toast.success('Análisis de laboratorio LAB-004 registrado exitosamente.');
-            }
-
-            setIsLabModalOpen(false);
-            fetchBatchesAndLab();
-        } catch (error) {
-            console.error('Error guardando análisis LAB-004:', error);
-            toast.error(error.response?.data?.message || 'Error al procesar análisis microbiológico.');
         }
     };
 

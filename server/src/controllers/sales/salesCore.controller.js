@@ -549,6 +549,8 @@ const createSale = async (req, res) => {
                 'UPDATE dtes SET venta_id = ? WHERE codigo_generacion = ? AND company_id = ?',
                 [saleId, dteInfo.codigo_generacion, req.company_id]
             );
+        }
+
         // 6b. Control de Envases Retornables (Cubetas y Tapaderas de Huevo Industrial)
         try {
             await eggReturnableService.recordSaleReturnables(connection, {

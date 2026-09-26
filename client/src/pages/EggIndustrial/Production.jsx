@@ -3572,7 +3572,7 @@ const EggProduction = () => {
                 onClose={() => setQualityModal({ isOpen: false, batch: null })}
                 batch={qualityModal.batch}
                 onSuccess={() => {
-                    fetchBatches();
+                    fetchData();
                     if (stagesModal.isOpen && stagesModal.batch) {
                         handleOpenStagesModal(stagesModal.batch);
                     }

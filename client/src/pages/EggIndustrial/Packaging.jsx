@@ -17,8 +17,6 @@ import {
     Pencil,
     Trash2,
     Lock,
-    Scale,
-    CheckCircle2,
     FlaskConical
 } from 'lucide-react';
 import { formatDate } from '../../utils/dateUtils';
