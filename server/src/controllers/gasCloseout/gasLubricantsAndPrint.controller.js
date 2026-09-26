@@ -109,6 +109,7 @@ exports.getCloseoutPrintData = async (req, res) => {
 
         const [closeouts] = await pool.query(`
             SELECT co.*, c.razon_social as company_name, c.nit as company_nit,
+                   c.nrc as company_nrc,
                    c.nombre_comercial as company_commercial_name,
                    b.nombre as branch_name, b.direccion as branch_address,
                    b.telefono as branch_phone
@@ -123,10 +124,16 @@ exports.getCloseoutPrintData = async (req, res) => {
         }
 
         const [readings] = await pool.query(
-            `SELECT r.*, p.tipo_combustible
+            `SELECT r.*, p.tipo_combustible,
+                    n.island_id,
+                    COALESCE(i.codigo, '') as island_codigo,
+                    COALESCE(i.descripcion, 'ISLA GENERAL') as island_descripcion
              FROM gas_station_closeout_readings r
              JOIN products p ON r.product_id = p.id
-             WHERE r.closeout_id = ? ORDER BY r.codigo_pistola ASC`, [id]
+             LEFT JOIN gas_station_nozzles n ON r.nozzle_id = n.id
+             LEFT JOIN gas_station_islands i ON n.island_id = i.id
+             WHERE r.closeout_id = ?
+             ORDER BY COALESCE(i.codigo, '999') ASC, CAST(r.codigo_pistola AS UNSIGNED), r.codigo_pistola ASC`, [id]
         );
 
         let tankReadings = [];
@@ -141,8 +148,9 @@ exports.getCloseoutPrintData = async (req, res) => {
         } catch (e) { /* table may not exist */ }
 
         const [despachadores] = await pool.query(
-            `SELECT cd.*, d.codigo as despachador_codigo, COALESCE(NULLIF(cd.nombre, ''), d.descripcion, '') as despachador_descripcion
+            `SELECT cd.*, co.numero_turno, d.codigo as despachador_codigo, COALESCE(NULLIF(cd.nombre, ''), d.descripcion, '') as despachador_descripcion
              FROM gas_station_closeout_despachadores cd
+             JOIN gas_station_closeouts co ON co.id = cd.closeout_id
              JOIN gas_station_despachadores d ON d.id = cd.despachador_id
              WHERE cd.closeout_id = ?`, [id]
         );
@@ -715,6 +723,7 @@ exports.getAccumulatedDayPrintData = async (req, res) => {
 
         const [closeouts] = await pool.query(`
             SELECT co.*, c.razon_social as company_name, c.nit as company_nit,
+                   c.nrc as company_nrc,
                    c.nombre_comercial as company_commercial_name,
                    b.nombre as branch_name, b.direccion as branch_address,
                    b.telefono as branch_phone
@@ -771,9 +780,15 @@ exports.getAccumulatedDayPrintData = async (req, res) => {
         // Aggregate readings across all closeouts
         const placeholders = closeoutIds.map(() => '?').join(',');
         const [allReadings] = await pool.query(`
-            SELECT * FROM gas_station_closeout_readings
-            WHERE closeout_id IN (${placeholders})
-            ORDER BY codigo_pistola ASC, closeout_id ASC
+            SELECT r.*,
+                   n.island_id,
+                   COALESCE(i.codigo, '') as island_codigo,
+                   COALESCE(i.descripcion, 'ISLA GENERAL') as island_descripcion
+            FROM gas_station_closeout_readings r
+            LEFT JOIN gas_station_nozzles n ON r.nozzle_id = n.id
+            LEFT JOIN gas_station_islands i ON n.island_id = i.id
+            WHERE r.closeout_id IN (${placeholders})
+            ORDER BY COALESCE(i.codigo, '999') ASC, CAST(r.codigo_pistola AS UNSIGNED), r.codigo_pistola ASC, r.closeout_id ASC
         `, closeoutIds);
 
         const aggrReadings = {};
@@ -835,26 +850,21 @@ exports.getAccumulatedDayPrintData = async (req, res) => {
             tankReadings = Object.values(aggrTank);
         } catch (e) { /* table may not exist */ }
 
-        // Despachadores - aggregate
+        // Despachadores with shift information
         const [allDespachadores] = await pool.query(`
-            SELECT cd.*, d.codigo as despachador_codigo, COALESCE(NULLIF(cd.nombre, ''), d.descripcion, '') as despachador_descripcion
+            SELECT cd.*,
+                   co.numero_turno,
+                   co.fecha_turno,
+                   d.codigo as despachador_codigo,
+                   COALESCE(NULLIF(cd.nombre, ''), d.descripcion, '') as despachador_descripcion
             FROM gas_station_closeout_despachadores cd
+            JOIN gas_station_closeouts co ON co.id = cd.closeout_id
             JOIN gas_station_despachadores d ON d.id = cd.despachador_id
             WHERE cd.closeout_id IN (${placeholders})
+            ORDER BY co.numero_turno ASC, d.codigo ASC
         `, closeoutIds);
 
-        const aggrDesp = {};
-        for (const d of allDespachadores) {
-            const key = d.despachador_id;
-            if (aggrDesp[key]) {
-                aggrDesp[key].total_venta += Number(d.total_venta || 0);
-                aggrDesp[key].total_no_percibido += Number(d.total_no_percibido || 0);
-                aggrDesp[key].total_entregado += Number(d.total_entregado || 0);
-            } else {
-                aggrDesp[key] = { ...d };
-            }
-        }
-        const despachadores = Object.values(aggrDesp);
+        const despachadores = allDespachadores;
 
         const aggregateRows = async (table) => {
             const [rows] = await pool.query(
@@ -900,6 +910,7 @@ exports.getAccumulatedDayPrintData = async (req, res) => {
         res.json({
             closeout: accumulated,
             readings,
+            shiftReadings: allReadings,
             tankReadings,
             despachadores,
             despachadorNozzleAssignments: nozzleAssignments,
