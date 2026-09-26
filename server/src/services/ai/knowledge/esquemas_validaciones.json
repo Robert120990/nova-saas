@@ -1,0 +1,26 @@
+[
+  {
+    "id": "val-fe-01-consumidor-final",
+    "titulo": "Reglas de Emisión para Factura Electrónica (DTE-01)",
+    "documento": "Normativa de Cumplimiento DTE Versión 2.0 (DGII)",
+    "pagina": 24,
+    "tags": ["factura", "consumidor final", "dte-01", "200 dolares", "dui obligatorio", "sin dui", "receptor"],
+    "contenido": "Reglas de Validación para Factura de Consumidor Final (01):\n- Umbral de $200.00: Para operaciones con importe total MENOR a $200.00 USD, NO es obligatorio identificar al receptor con documento (DUI/NIT). El campo receptor puede ser nulo o genérico (Consumidor Final / Cliente Ocasional).\n- Si el importe de la factura es IGUAL o MAYOR a $200.00 USD, es OBLIGATORIO identificar al receptor con: Nombre completo, Tipo de documento de identificación válido (ej. 13 para DUI o 03 para Pasaporte) y Número de documento real (Hacienda rechaza documentos con todo ceros o formatos ficticios como 00000000-0).\n- Los precios en la Factura de Consumidor Final deben incluir el IVA (precios con IVA incluido al consumidor)."
+  },
+  {
+    "id": "val-ccf-03-credito-fiscal",
+    "titulo": "Reglas de Emisión para Comprobante de Crédito Fiscal (DTE-03)",
+    "documento": "Normativa de Cumplimiento DTE Versión 2.0 (DGII)",
+    "pagina": 31,
+    "tags": ["credito fiscal", "ccf", "dte-03", "nrc", "nit", "actividad economica", "gran contribuyente"],
+    "contenido": "Reglas de Validación para Crédito Fiscal (03):\n- Requisitos obligatorios del Receptor:\n  * NRC (Número de Registro de Contribuyente): Obligatorio y con formato válido (ej. 1 a 8 dígitos numéricos).\n  * NIT (o DUI homologado como NIT de 9 dígitos): Obligatorio y válido (no se admiten ceros ficticios).\n  * Nombre o Razón Social registrada ante la DGII.\n  * Actividad Económica (Código de 5 dígitos según catálogo oficial CAT-019).\n  * Dirección completa del receptor (departamento y municipio según CAT-012 y CAT-013).\n- Desglose de impuestos: En CCF los precios de los ítems se expresan SIN IVA; el IVA del 13% se calcula y detalla explícitamente en el bloque de resumen tributario."
+  },
+  {
+    "id": "val-nc-05-nota-credito",
+    "titulo": "Reglas de Emisión para Nota de Crédito (DTE-05)",
+    "documento": "Normativa de Cumplimiento DTE Versión 2.0 (DGII)",
+    "pagina": 42,
+    "tags": ["nota de credito", "dte-05", "documento relacionado", "anulacion ccf", "devolucion"],
+    "contenido": "Reglas de Validación para Nota de Crédito (05):\n- Documento Relacionado OBLIGATORIO: Toda Nota de Crédito debe tener completada la sección 'documentoRelacionado' haciendo referencia directa al DTE que modifica (generalmente CCF tipo 03 o Comprobante de Retención tipo 07).\n- Campos requeridos en documentoRelacionado: Tipo de documento (03), Tipo de generación (electrónico/físico), Número de documento (Código de Generación UUID del CCF original o número preimpreso) y Fecha de emisión del documento original.\n- El receptor de la Nota de Crédito debe ser exactamente el mismo contribuyente (mismo NIT y NRC) que figuraba en el CCF original."
+  }
+]

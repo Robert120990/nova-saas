@@ -8,7 +8,8 @@ const {
     generateStatementPDF,
     generateProviderStatementPDF,
     generateTrupputStatementPDF,
-    generatePaymentReceiptPDF
+    generatePaymentReceiptPDF,
+    generateAdvanceReceiptPDF
 } = require('./pdf.service');
 
 // ── Private Helpers ─────────────────────────────────────────────────────────
@@ -78,6 +79,23 @@ const sendCustomerStatementEmail = async (customerId, branchId, companyId) => {
         const customer = customerRows[0];
         const smtp = await getSMTPSettings(branchId, companyId);
 
+        // Check gas station settings for creditos_afectan_cxc
+        let gasActive = false;
+        let desdeFecha = null;
+        try {
+            const [settingsRows] = await pool.query(
+                `SELECT setting_key, setting_value FROM gas_station_settings
+                 WHERE company_id = ? AND (branch_id = ? OR branch_id IS NULL)
+                   AND setting_key IN ('creditos_afectan_cxc', 'creditos_afectan_cxc_desde')
+                 ORDER BY (branch_id = ?) DESC`,
+                [companyId, branchId, branchId]
+            );
+            gasActive = settingsRows.find(r => r.setting_key === 'creditos_afectan_cxc')?.setting_value === '1';
+            desdeFecha = settingsRows.find(r => r.setting_key === 'creditos_afectan_cxc_desde')?.setting_value || null;
+        } catch (err) {
+            console.error('Error reading gas station settings in mailer:', err);
+        }
+
         // Fetch movements data
         const [sales] = await pool.query(`
             SELECT h.fecha_emision as fecha, h.tipo_documento as tipo, COALESCE(d.numero_control, h.id) as numero,
@@ -89,14 +107,49 @@ const sendCustomerStatementEmail = async (customerId, branchId, companyId) => {
             AND (d.status IS NULL OR d.status != 'INVALIDADO')
         `, [companyId, branchId, customerId]);
 
+        let gasCredits = [];
+        if (gasActive) {
+            const [gRows] = await pool.query(`
+                SELECT 
+                    c.fecha_turno as fecha,
+                    gcc.tipo_documento as tipo,
+                    CONCAT('VALE/CRÉDITO #', COALESCE(NULLIF(gcc.documento, ''), gcc.id)) as numero,
+                    gcc.monto as cargo,
+                    0 as abono,
+                    CONCAT('CRÉDITO TURNO #', COALESCE(c.numero_turno, c.id), CASE WHEN gcc.producto_descripcion != '' THEN CONCAT(' - ', gcc.producto_descripcion) ELSE '' END) as concepto
+                FROM gas_station_closeout_creditos gcc
+                JOIN gas_station_closeouts c ON gcc.closeout_id = c.id
+                WHERE c.company_id = ? AND c.branch_id = ? AND gcc.cliente_id = ?
+                ${desdeFecha ? 'AND c.fecha_turno >= ?' : ''}
+            `, [
+                companyId, branchId, customerId,
+                ...(desdeFecha ? [desdeFecha] : [])
+            ]);
+            gasCredits = gRows;
+        }
+
         const [payments] = await pool.query(`
             SELECT p.fecha_pago as fecha, 'RECIBO' as tipo, p.referencia as numero,
                    0 as cargo, p.monto as abono, 'ABONO' as concepto
             FROM customer_payments p
             WHERE p.company_id = ? AND p.branch_id = ? AND p.customer_id = ?
-        `, [companyId, branchId, customerId]);
+            AND (
+                p.gas_credito_id IS NULL OR (
+                    ? = 1 AND EXISTS (
+                        SELECT 1 FROM gas_station_closeout_creditos gcc2
+                        JOIN gas_station_closeouts c2 ON gcc2.closeout_id = c2.id
+                        WHERE gcc2.id = p.gas_credito_id
+                        ${desdeFecha ? 'AND c2.fecha_turno >= ?' : ''}
+                    )
+                )
+            )
+        `, [
+            companyId, branchId, customerId,
+            gasActive ? 1 : 0,
+            ...(gasActive && desdeFecha ? [desdeFecha] : [])
+        ]);
 
-        const movementsAll = [...sales, ...payments].sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+        const movementsAll = [...sales, ...gasCredits, ...payments].sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
         let currentBalance = 0;
         const history = movementsAll.map(m => {
             const cargo = parseFloat(m.cargo || 0);
@@ -406,13 +459,20 @@ const sendPaymentReceiptEmail = async (paymentId) => {
                    c.nombre AS customer_name, c.correo AS customer_email,
                    b.nombre AS branch_name, b.logo_url AS branch_logo_url, b.company_id,
                    comp.razon_social AS company_name, comp.logo_url AS company_logo_url, comp.nit AS company_nit,
-                   COALESCE(cat.description, h.tipo_documento) as documento_tipo,
-                   COALESCE(d.numero_control, CONCAT('VTA-', h.id)) as documento_aplicado
+                   CASE
+                       WHEN p.gas_credito_id IS NOT NULL THEN CONCAT('Crédito Turno - ', gcc.tipo_documento)
+                       ELSE COALESCE(cat.description, h.tipo_documento)
+                   END as documento_tipo,
+                   CASE
+                       WHEN p.gas_credito_id IS NOT NULL THEN CONCAT('VALE/CRÉDITO #', COALESCE(NULLIF(gcc.documento, ''), gcc.id))
+                       ELSE COALESCE(d.numero_control, CONCAT('VTA-', h.id))
+                   END as documento_aplicado
             FROM customer_payments p
             JOIN customers c ON p.customer_id = c.id
             JOIN branches b ON p.branch_id = b.id
             JOIN companies comp ON b.company_id = comp.id
             LEFT JOIN sales_headers h ON p.sale_id = h.id
+            LEFT JOIN gas_station_closeout_creditos gcc ON p.gas_credito_id = gcc.id
             LEFT JOIN cat_002_tipo_dte cat ON h.tipo_documento = cat.code
             LEFT JOIN dtes d ON h.id = d.venta_id
             WHERE p.id = ?
@@ -537,12 +597,116 @@ const sendMail = async ({ branchId, to, subject, text, html, attachments }) => {
     }
 };
 
+/**
+ * Sends a customer advance receipt email
+ */
+const sendAdvanceReceiptEmail = async (advanceId, recipientEmail = null) => {
+    console.log(`[Mailer] Iniciando proceso de envío de recibo de anticipo ID: ${advanceId}`);
+    try {
+        const [rows] = await pool.query(`
+            SELECT a.*, 
+                   c.nombre AS customer_nombre, c.nrc, c.nit, c.direccion AS customer_direccion, 
+                   c.telefono AS customer_telefono, c.correo AS customer_email,
+                   b.nombre AS branch_name, b.direccion AS branch_direccion, b.telefono AS branch_telefono, b.logo_url AS branch_logo_url,
+                   comp.razon_social AS company_name, comp.nombre_comercial AS company_nombre_comercial, comp.nit AS company_nit, 
+                   comp.nrc AS company_nrc, comp.actividad_economica AS company_giro,
+                   comp.direccion AS company_direccion, comp.telefono AS company_telefono, comp.logo_url AS company_logo_url
+            FROM gas_station_advances a
+            LEFT JOIN customers c ON a.cliente_id = c.id
+            LEFT JOIN branches b ON a.branch_id = b.id
+            LEFT JOIN companies comp ON a.company_id = comp.id
+            WHERE a.id = ?
+        `, [advanceId]);
+
+        if (rows.length === 0) throw new Error('No se encontró el registro del anticipo indicado.');
+        const advance = rows[0];
+
+        const targetEmail = (recipientEmail && recipientEmail.trim()) || advance.customer_email;
+        if (!targetEmail || !targetEmail.trim()) {
+            throw new Error('El cliente no tiene un correo electrónico registrado y no se especificó ningún destinatario.');
+        }
+
+        const smtp = await getSMTPSettings(advance.branch_id, advance.company_id);
+        const pdfBuffer = await generateAdvanceReceiptPDF(advance);
+        const transporter = createTransporter(smtp);
+
+        const fechaStr = new Date(advance.fecha).toLocaleDateString('es-SV');
+        const companyName = advance.company_nombre_comercial || advance.company_name || 'Estación de Servicio';
+        const clientName = advance.cliente_nombre || advance.customer_nombre || 'Estimado(a) Cliente';
+        const montoNum = parseFloat(advance.monto || 0).toFixed(2);
+
+        await transporter.sendMail({
+            from: `"${smtp.from_name || companyName}" <${smtp.from_email || smtp.user}>`,
+            to: targetEmail.trim(),
+            subject: `Comprobante de Pago Anticipado No. ${advance.numero || advance.id} - ${companyName}`,
+            html: `
+                <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; padding: 24px; border: 1px solid #e2e8f0; border-radius: 16px; max-width: 600px; margin: auto; background-color: #ffffff;">
+                    <div style="text-align: center; margin-bottom: 20px;">
+                        <h2 style="color: #4f46e5; margin: 0 0 6px 0; font-size: 22px;">Confirmación de Pago Anticipado</h2>
+                        <span style="display: inline-block; background-color: #eef2ff; color: #4338ca; font-size: 11px; font-weight: bold; padding: 4px 12px; border-radius: 9999px; text-transform: uppercase; letter-spacing: 0.5px;">
+                            No. Anticipo: ${advance.numero || String(advance.id).padStart(6, '0')}
+                        </span>
+                    </div>
+
+                    <p style="font-size: 15px; color: #1e293b; line-height: 1.5;">Estimado(a) <b>${clientName}</b>,</p>
+                    <p style="font-size: 14px; color: #475569; line-height: 1.5;">
+                        Le confirmamos que hemos registrado satisfactoriamente su pago en concepto de anticipo para suministro de combustibles y productos en nuestra estación de servicio <b>${advance.branch_name || companyName}</b>.
+                    </p>
+
+                    <div style="background: #f8fafc; padding: 18px; border-radius: 12px; margin: 20px 0; border: 1px solid #e2e8f0;">
+                        <table style="width: 100%; font-size: 13px; border-collapse: collapse;">
+                            <tr>
+                                <td style="color: #64748b; padding: 6px 0;">Monto Recibido:</td>
+                                <td style="font-weight: 800; text-align: right; color: #0f172a; font-size: 16px;">$${montoNum}</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #64748b; padding: 6px 0;">Fecha:</td>
+                                <td style="font-weight: 600; text-align: right; color: #334155;">${fechaStr}</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #64748b; padding: 6px 0;">Sucursal:</td>
+                                <td style="font-weight: 600; text-align: right; color: #334155;">${advance.branch_name || 'Central'}</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #64748b; padding: 6px 0;">Saldo Disponible Actual:</td>
+                                <td style="font-weight: 700; text-align: right; color: #059669;">$${parseFloat(advance.monto_disponible || 0).toFixed(2)}</td>
+                            </tr>
+                        </table>
+                    </div>
+
+                    <p style="font-size: 13px; color: #64748b; text-align: center; margin-top: 16px;">
+                        Adjuntamos su comprobante de pago oficial en formato PDF.
+                    </p>
+
+                    <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid #f1f5f9; text-align: center;">
+                        <p style="font-size: 11px; color: #94a3b8; margin: 0;">
+                            ${companyName} • Sistema de Gestión y Facturación Electrónica Sipe Web SaaS
+                        </p>
+                    </div>
+                </div>
+            `,
+            attachments: [{
+                filename: `Recibo_Anticipo_${advance.numero || advance.id}.pdf`,
+                content: pdfBuffer,
+                contentType: 'application/pdf'
+            }]
+        });
+
+        console.log(`[Mailer] Recibo de anticipo ${advanceId} enviado exitosamente a ${targetEmail}`);
+        return true;
+    } catch (error) {
+        console.error(`[Mailer] Error enviando recibo de anticipo ${advanceId}:`, error);
+        throw error;
+    }
+};
+
 module.exports = {
     sendCustomerStatementEmail,
     sendAnticiposStatementEmail,
     sendTrupputStatementEmail,
     sendProviderStatementEmail,
     sendPaymentReceiptEmail,
+    sendAdvanceReceiptEmail,
     sendProviderPaymentReceiptEmail,
     getSMTPSettings,
     createTransporter,
@@ -641,6 +805,7 @@ module.exports = {
             const reportData = {
                 emisor: {
                     nombre: venta.company_name,
+                    razon_social: venta.company_name,
                     nombre_comercial: dteJson.emisor?.nombreComercial || null,
                     sucursal_nombre: venta.branch_name || dteJson.emisor?.nombreComercial || null,
                     cod_establecimiento: venta.branch_codigo_mh || dteJson.emisor?.codEstable || dteJson.emisor?.codEstableMH || null,
@@ -651,8 +816,10 @@ module.exports = {
                     nrc: venta.company_nrc,
                     descActividad: dteJson.emisor.descActividad,
                     direccion: dteJson.emisor.direccion,
-                    telefono: dteJson.emisor.telefono || venta.branch_telefono,
-                    correo: dteJson.emisor.correo || venta.branch_correo,
+                    telefono: venta.branch_telefono || dteJson.emisor.telefono,
+                    correo: venta.branch_correo || dteJson.emisor.correo,
+                    sucursal_telefono: venta.branch_telefono || null,
+                    sucursal_correo: venta.branch_correo || null,
                     departamento_nombre: 'San Salvador',
                     municipio_nombre: 'San Salvador',
                     logoPath: venta.branch_logo_url || venta.company_logo_url || null
@@ -680,11 +847,15 @@ module.exports = {
                     fecha_emision: dteJson.identificacion.fecEmi,
                     hora_emision: dteJson.identificacion.horEmi,
                     condicion_operacion: dteJson.resumen.condicionOperacion || 1,
+                    subtotal_ventas: dteJson.resumen?.subTotalVentas || dteJson.resumen?.totalGravada || 0,
                     total_gravado: dteJson.resumen.totalGravada || dteJson.resumen.totalSujetoRetencion || 0,
                     total_exento: dteJson.resumen.totalExenta || 0,
                     total_nosujetas: dteJson.resumen.totalNoSuj || 0,
                     total_iva: dteJson.resumen.totalIva || dteJson.resumen.totalIvaRetenido || dteJson.resumen.totalIVAretenido || (dteJson.resumen.tributos?.find(t => t.codigo === '20')?.valor || 0),
-                    total_descuento: dteJson.resumen.descuNoExenta || 0,
+                    total_descuento: dteJson.resumen?.totalDescu ?? dteJson.resumen?.descuGravada ?? venta.descuento_general ?? 0,
+                    descuento_general: dteJson.resumen?.descuGravada ?? venta.descuento_general ?? 0,
+                    porcentaje_descuento: dteJson.resumen?.porcentajeDescuento ?? 0,
+                    subtotal: dteJson.resumen?.subTotal ?? 0,
                     total_pagar: dteJson.resumen.totalPagar || dteJson.resumen.totalIvaRetenido || dteJson.resumen.totalIVAretenido || parseFloat(venta.total_pagar) || 0,
                     total_letras: dteJson.resumen.totalLetras || dteJson.resumen.totalIVAretenidoLetras || '',
                     fovial: parseFloat(venta.fovial) || 0,
@@ -815,6 +986,7 @@ module.exports = {
             const reportData = {
                 emisor: {
                     nombre: venta.company_name,
+                    razon_social: venta.company_name,
                     nombre_comercial: dteJson.emisor?.nombreComercial || null,
                     sucursal_nombre: venta.branch_name || dteJson.emisor?.nombreComercial || null,
                     cod_establecimiento: venta.branch_codigo_mh || dteJson.emisor?.codEstable || dteJson.emisor?.codEstableMH || null,
@@ -825,8 +997,10 @@ module.exports = {
                     nrc: venta.company_nrc,
                     descActividad: dteJson.emisor.descActividad,
                     direccion: dteJson.emisor.direccion,
-                    telefono: dteJson.emisor.telefono || venta.branch_telefono,
-                    correo: dteJson.emisor.correo || venta.branch_correo,
+                    telefono: venta.branch_telefono || dteJson.emisor.telefono,
+                    correo: venta.branch_correo || dteJson.emisor.correo,
+                    sucursal_telefono: venta.branch_telefono || null,
+                    sucursal_correo: venta.branch_correo || null,
                     departamento_nombre: 'San Salvador',
                     municipio_nombre: 'San Salvador',
                     logoPath: venta.branch_logo_url || venta.company_logo_url || null
@@ -854,11 +1028,15 @@ module.exports = {
                     fecha_emision: dteJson.identificacion.fecEmi,
                     hora_emision: dteJson.identificacion.horEmi,
                     condicion_operacion: dteJson.resumen.condicionOperacion || 1,
+                    subtotal_ventas: dteJson.resumen?.subTotalVentas || dteJson.resumen?.totalGravada || 0,
                     total_gravado: dteJson.resumen.totalGravada || dteJson.resumen.totalSujetoRetencion || 0,
                     total_exento: dteJson.resumen.totalExenta || 0,
                     total_nosujetas: dteJson.resumen.totalNoSuj || 0,
                     total_iva: dteJson.resumen.totalIva || dteJson.resumen.totalIvaRetenido || dteJson.resumen.totalIVAretenido || (dteJson.resumen.tributos?.find(t => t.codigo === '20')?.valor || 0),
-                    total_descuento: dteJson.resumen.descuNoExenta || 0,
+                    total_descuento: dteJson.resumen?.totalDescu ?? dteJson.resumen?.descuGravada ?? venta.descuento_general ?? 0,
+                    descuento_general: dteJson.resumen?.descuGravada ?? venta.descuento_general ?? 0,
+                    porcentaje_descuento: dteJson.resumen?.porcentajeDescuento ?? 0,
+                    subtotal: dteJson.resumen?.subTotal ?? 0,
                     total_pagar: dteJson.resumen.totalPagar || dteJson.resumen.totalIvaRetenido || dteJson.resumen.totalIVAretenido || parseFloat(venta.total_pagar) || 0,
                     total_letras: dteJson.resumen.totalLetras || dteJson.resumen.totalIVAretenidoLetras || '',
                     fovial: parseFloat(venta.fovial) || 0,
@@ -969,5 +1147,13 @@ module.exports = {
         } catch (error) {
             console.error(`[Mailer] Error enviando notificación de invalidación ID ${saleId}:`, error.message);
         }
-    }
+    },
+
+    // Background queue helpers (delegates to BullMQ mailQueue with fallback)
+    queueDTEEmail: (saleId, companyId = null) => require('../queue').mailQueue.enqueueDTEEmail(saleId, companyId),
+    queueInvalidatedDTEEmail: (saleId, companyId = null) => require('../queue').mailQueue.enqueueInvalidatedDTEEmail(saleId, companyId),
+    queuePaymentReceipt: (paymentId) => require('../queue').mailQueue.enqueuePaymentReceipt(paymentId),
+    queueAdvanceReceipt: (advanceId, recipientEmail = null) => require('../queue').mailQueue.enqueueAdvanceReceipt(advanceId, recipientEmail),
+    queueMail: (options) => require('../queue').mailQueue.enqueueMail(options)
 };
+

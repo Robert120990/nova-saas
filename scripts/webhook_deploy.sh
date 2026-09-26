@@ -42,6 +42,8 @@ cd "$APP_DIR/database"
 node run_migration_v167.js >> "$LOG_FILE" 2>&1 || true
 node run_migration_v168.js >> "$LOG_FILE" 2>&1 || true
 node run_migration_v170.js >> "$LOG_FILE" 2>&1 || true
+node run_migration_v214.js >> "$LOG_FILE" 2>&1 || true
+node run_migration_v215.js >> "$LOG_FILE" 2>&1 || true
 
 # 4. Compilar frontend de producción
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] [BUILD] Compilando frontend cliente Vite..." >> "$LOG_FILE"

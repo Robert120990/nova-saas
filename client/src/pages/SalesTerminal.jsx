@@ -5,9 +5,8 @@ import axios from 'axios';
 import { 
     Search, 
     Plus, 
+    Minus,
     Trash2, 
-    Package, 
-    User, 
     CreditCard, 
     Banknote, 
     ChevronRight, 
@@ -15,28 +14,38 @@ import {
     Calculator,
     Tag,
     History,
-    FileText,
-    Zap,
     Barcode,
     Edit,
     UserPlus,
-    Printer,
-    CheckCircle2,
     Handshake,
     Loader2,
-    ShieldCheck,
-    Radio,
+    Layers,
+    Sparkles,
     AlertTriangle,
-    Layers
+    Wifi,
+    WifiOff
 } from 'lucide-react';
 import { toast } from 'sonner';
-import Modal from '../components/ui/Modal';
-import Pagination from '../components/ui/Pagination';
 import SearchableSelect from '../components/ui/SearchableSelect';
 import { printTicket } from '../utils/qzPrint';
 import { useAuth } from '../context/AuthContext';
 import Money, { MoneyInput } from '../components/ui/Money';
 import { useDirtyTracker } from '../hooks/useDirtyTracker';
+import { validateDocumentNumber, isValidDocumentNumber } from '../utils/svfeValidators';
+
+import ItemDiscountDialog from '../components/pos/ItemDiscountDialog';
+import GeneralDiscountDialog from '../components/pos/GeneralDiscountDialog';
+import PosSuccessModal from '../components/pos/PosSuccessModal';
+import PosLotSelectionModal from '../components/pos/PosLotSelectionModal';
+import DteTransmittingOverlay from '../components/pos/DteTransmittingOverlay';
+import PosProductCatalogModal from '../components/pos/PosProductCatalogModal';
+import PosCustomerSearchModal from '../components/pos/PosCustomerSearchModal';
+import PosLinkedDocModal from '../components/pos/PosLinkedDocModal';
+import PosSupervisorAuthModal from '../components/pos/PosSupervisorAuthModal';
+import PosCustomerModal from '../components/pos/PosCustomerModal';
+import PosFuelEntryModal from '../components/pos/PosFuelEntryModal';
+
+import { isPromoApplicableNow, computePromotionDiscount } from '../utils/posCalculations';
 
 const SalesTerminal = () => {
     const navigate = useNavigate();
@@ -80,7 +89,10 @@ const SalesTerminal = () => {
     
     // Items State
     const [cart, setCart] = useState([]);
-    const [generalDiscount] = useState(0);
+    const [generalDiscount, setGeneralDiscount] = useState(0);
+    const [generalDiscountPercentage, setGeneralDiscountPercentage] = useState(null);
+    const [isGeneralDiscountModalOpen, setIsGeneralDiscountModalOpen] = useState(false);
+    const [selectedDiscountItem, setSelectedDiscountItem] = useState(null);
 
     // Payment State
     const [payments, setPayments] = useState([]);
@@ -98,6 +110,8 @@ const SalesTerminal = () => {
     const [productSearch, setProductSearch] = useState('');
     const [debouncedProductSearch, setDebouncedProductSearch] = useState('');
     const [modalPage, setModalPage] = useState(1);
+    const [selectedCategoryFilter, setSelectedCategoryFilter] = useState('');
+    const [productViewMode, setProductViewMode] = useState('grid'); // 'grid' | 'list'
     
     // Lot Selection Modal State (Alt + Shift + L)
     const [isLotModalOpen, setIsLotModalOpen] = useState(false);
@@ -115,8 +129,10 @@ const SalesTerminal = () => {
     // Customer Management State
     const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
     const [editingCustomer, setEditingCustomer] = useState(null);
-    const [nitValue, setNitValue] = useState('');
+    const [docNumberValue, setDocNumberValue] = useState('');
     const [docType, setDocType] = useState('DUI');
+    const [nrcValue, setNrcValue] = useState('');
+    const [condicionFiscal, setCondicionFiscal] = useState('contribuyente');
     const [selectedDept, setSelectedDept] = useState('');
     const [selectedMun, setSelectedMun] = useState('');
     const [selectedDistrito, setSelectedDistrito] = useState('');
@@ -170,6 +186,13 @@ const SalesTerminal = () => {
         queryFn: async () => (await axios.get('/api/taxes')).data,
     });
 
+    const { data: contingencyData } = useQuery({
+        queryKey: ['contingency', 'status'],
+        queryFn: async () => (await axios.get('/api/contingency/status')).data,
+        refetchInterval: 5000,
+    });
+    const activeContingency = (contingencyData?.history || []).find(c => c.estado === 'OPEN');
+
     const [customersCache, setCustomersCache] = useState({});
 
     const loadCustomersOptions = useCallback(async (search, page) => {
@@ -210,14 +233,27 @@ const SalesTerminal = () => {
         return () => clearTimeout(timer);
     }, [customerName, customerNit, customerNrc]);
 
+    // Categorías de productos para filtro en modal F3
+    const { data: productCategoriesData } = useQuery({
+        queryKey: ['categories-terminal'],
+        queryFn: async () => (await axios.get('/api/categories', { params: { limit: 1000 } })).data,
+        enabled: isProductModalOpen,
+        staleTime: 1000 * 60 * 5
+    });
+    const categoriesList = useMemo(() => {
+        if (!productCategoriesData) return [];
+        return Array.isArray(productCategoriesData.data) ? productCategoriesData.data : (Array.isArray(productCategoriesData) ? productCategoriesData : []);
+    }, [productCategoriesData]);
+
     const { data: modalProductsData = { data: [], total: 0, totalPages: 0 }, isLoading: isLoadingModalProducts } = useQuery({
-        queryKey: ['terminal-products', debouncedProductSearch, sellerSession?.branch_id, sellerSession?.pos_id, modalPage],
+        queryKey: ['terminal-products', debouncedProductSearch, sellerSession?.branch_id, sellerSession?.pos_id, selectedCategoryFilter, modalPage],
         queryFn: async () => (await axios.get('/api/products', {
             params: {
                 search: debouncedProductSearch || undefined,
                 branch_id: sellerSession?.branch_id,
                 pos_id: sellerSession?.pos_id,
-                limit: 20,
+                category_id: (selectedCategoryFilter && selectedCategoryFilter !== 'combos') ? selectedCategoryFilter : undefined,
+                limit: 24,
                 page: modalPage
             }
         })).data,
@@ -225,7 +261,7 @@ const SalesTerminal = () => {
     });
 
     React.useEffect(() => {
-        const timer = setTimeout(() => { setDebouncedProductSearch(productSearch); setModalPage(1); }, 500);
+        const timer = setTimeout(() => { setDebouncedProductSearch(productSearch); setModalPage(1); }, 350);
         return () => clearTimeout(timer);
     }, [productSearch]);
 
@@ -234,6 +270,71 @@ const SalesTerminal = () => {
         queryFn: async () => (await axios.get('/api/combos', { params: { limit: 1000, branch_id: sellerSession?.branch_id } })).data?.data || [],
         enabled: !!sellerSession?.branch_id
     });
+
+    // POS & Branch info for policies and discount controls
+    const { data: posList = [] } = useQuery({
+        queryKey: ['pos'],
+        queryFn: async () => (await axios.get('/api/pos')).data,
+        staleTime: 60000,
+    });
+
+    const currentPos = useMemo(() => {
+        if (!sellerSession?.pos_id || !posList.length) return null;
+        return posList.find(p => String(p.id) === String(sellerSession.pos_id)) || null;
+    }, [sellerSession?.pos_id, posList]);
+
+    const { data: branchList = [] } = useQuery({
+        queryKey: ['branches'],
+        queryFn: async () => (await axios.get('/api/branches')).data,
+        staleTime: 60000,
+    });
+
+    const currentBranch = useMemo(() => {
+        const bId = sellerSession?.branch_id || user?.branch_id;
+        if (!bId || !branchList.length) return null;
+        return branchList.find(b => String(b.id) === String(bId)) || null;
+    }, [sellerSession?.branch_id, user?.branch_id, branchList]);
+
+    const userPermissions = useMemo(() => {
+        if (!user) return [];
+        if (user.role === 'SuperAdmin') return ['ALL'];
+        let p = user.permissions;
+        if (typeof p === 'string') {
+            try { p = JSON.parse(p); } catch { p = []; }
+        }
+        return Array.isArray(p) ? p : [];
+    }, [user]);
+
+    const hasPerm = useCallback((key) => {
+        if (!user) return false;
+        if (user.role === 'SuperAdmin') return true;
+        return userPermissions.includes(key);
+    }, [user, userPermissions]);
+
+    const posAllowsDiscounts = Boolean(currentPos && currentPos.allow_discounts && Number(currentPos.allow_discounts) !== 0);
+    const canApplyItemDiscount = posAllowsDiscounts && hasPerm('apply_item_discount');
+    const canApplyGeneralDiscount = posAllowsDiscounts && hasPerm('apply_general_discount');
+
+    const hasItemDiscounts = useMemo(() => cart.some(item => (parseFloat(item.descuento) || 0) > 0), [cart]);
+    const hasGeneralDiscount = (parseFloat(generalDiscount) || 0) > 0;
+
+    const branchPercentages = useMemo(() => {
+        const raw = currentBranch?.discount_percentages;
+        if (!raw) return [5, 10, 15, 20];
+        if (Array.isArray(raw)) return raw.map(Number).filter(n => !isNaN(n) && n > 0);
+        if (typeof raw === 'string') {
+            try {
+                const parsed = JSON.parse(raw);
+                if (Array.isArray(parsed)) return parsed.map(Number).filter(n => !isNaN(n) && n > 0);
+            } catch {
+                return raw.split(',').map(s => parseFloat(s.trim())).filter(n => !isNaN(n) && n > 0);
+            }
+        }
+        return [5, 10, 15, 20];
+    }, [currentBranch]);
+
+    const maxDiscountAmount = currentBranch?.max_discount_amount ? parseFloat(currentBranch.max_discount_amount) : null;
+    const maxDiscountPercentage = currentBranch?.max_discount_percentage ? parseFloat(currentBranch.max_discount_percentage) : null;
 
     // Lotes Ovoproductos para selección rápida (Alt + Shift + L)
     const { 
@@ -397,24 +498,166 @@ const SalesTerminal = () => {
         return productDiscountRules.find(r => r.product_id == productId && r.active);
     };
 
+    // Promociones comerciales de tienda activas (2x1, 2da al 50%, paquetes fijos, escala volumen)
+    const { data: activePromotions = [] } = useQuery({
+        queryKey: ['active-promotions-pos', sellerSession?.branch_id || user?.branch_id],
+        queryFn: async () => {
+            const bId = sellerSession?.branch_id || user?.branch_id;
+            const res = await axios.get('/api/promotions/active-pos', {
+                params: bId ? { branch_id: bId } : undefined
+            });
+            return Array.isArray(res.data) ? res.data : [];
+        },
+        staleTime: 60000,
+    });
+
+    const findPromotionForProduct = useCallback((productId) => {
+        if (!productId || !activePromotions?.length) return null;
+        const numId = Number(productId);
+        return activePromotions.find(promo => {
+            if (!isPromoApplicableNow(promo)) return false;
+            return Array.isArray(promo.product_ids) && promo.product_ids.some(id => Number(id) === numId);
+        }) || null;
+    }, [activePromotions]);
+
+    const computeItemDiscount = useCallback((item, newQty, newPrice = null) => {
+        const qty = parseFloat(newQty) || 0;
+        const price = newPrice !== null ? parseFloat(newPrice) : (parseFloat(item.precio) || 0);
+        const lineGross = qty * price;
+        const isFuel = item.tipo_combustible > 0;
+        const fovial = isFuel ? Math.round(qty * parseFloat(taxSettings?.fovial_rate || 0.20) * 100) / 100 : 0;
+        const cotrans = isFuel ? Math.round(qty * parseFloat(taxSettings?.cotrans_rate || 0.10) * 100) / 100 : 0;
+        const fuelTaxes = fovial + cotrans;
+        const discountableBase = Math.max(0, lineGross - fuelTaxes);
+
+        if (qty <= 0 || discountableBase <= 0) {
+            return { descuento: 0, unitDiscount: 0, promoApplied: null, upsellPromo: null, discountApplied: false };
+        }
+
+        // 1. Evaluar promoción comercial activa de tienda si no tiene descuento manual explícito
+        if (!item.isManual && !item.combo_id && item.id && !item.isManualDiscount) {
+            const promo = findPromotionForProduct(item.id);
+            if (promo) {
+                const promoRes = computePromotionDiscount(promo, qty, price, discountableBase);
+                if (promoRes.discount > 0 || promoRes.upsellPromo) {
+                    const unitDiscount = qty > 0 ? (promoRes.discount / qty) : 0;
+                    return {
+                        descuento: promoRes.discount,
+                        unitDiscount,
+                        promoApplied: promoRes.promoApplied,
+                        upsellPromo: promoRes.upsellPromo,
+                        discountApplied: promoRes.discount > 0
+                    };
+                }
+            }
+        }
+
+        // 2. Regla de descuento de producto si fue aplicada
+        if (item.discountRule && item.discountApplied) {
+            const rule = item.discountRule;
+            let discountAmount = 0;
+            if (rule.discount_type === 'percentage') {
+                const pct = parseFloat(rule.discount_value) || 0;
+                discountAmount = Math.round((discountableBase * (pct / 100)) * 100) / 100;
+            } else {
+                const fixedUnit = parseFloat(rule.discount_value) || 0;
+                const fixedTotal = Math.round((fixedUnit * qty) * 100) / 100;
+                discountAmount = Math.min(fixedTotal, discountableBase);
+            }
+            discountAmount = Math.min(discountAmount, discountableBase);
+            const unitDiscount = qty > 0 ? (discountAmount / qty) : 0;
+            return { descuento: discountAmount, unitDiscount, promoApplied: null, upsellPromo: null, discountApplied: true };
+        }
+
+        // 3. Descuento manual previo por unidad
+        if (item.unitDiscount > 0) {
+            const discountAmount = Math.min(Math.round((item.unitDiscount * qty) * 100) / 100, discountableBase);
+            return { descuento: discountAmount, unitDiscount: item.unitDiscount, promoApplied: null, upsellPromo: null, discountApplied: discountAmount > 0 };
+        }
+
+        if (item.descuento > 0 && item.cantidad > 0) {
+            const prevUnit = item.descuento / item.cantidad;
+            const discountAmount = Math.min(Math.round((prevUnit * qty) * 100) / 100, discountableBase);
+            return { descuento: discountAmount, unitDiscount: prevUnit, promoApplied: null, upsellPromo: null, discountApplied: discountAmount > 0 };
+        }
+
+        return { descuento: 0, unitDiscount: 0, promoApplied: null, upsellPromo: null, discountApplied: false };
+    }, [taxSettings, findPromotionForProduct]);
+
+    // Re-evaluar promociones del carrito cuando se carguen o cambien las promociones activas
+    useEffect(() => {
+        if (!activePromotions?.length || !cart.length) return;
+        setCart(prevCart => {
+            let anyChanged = false;
+            const updated = prevCart.map(item => {
+                if (item.isManual || item.combo_id || item.isManualDiscount) return item;
+                const res = computeItemDiscount(item, item.cantidad, item.precio);
+                if (
+                    res.descuento !== (item.descuento || 0) ||
+                    JSON.stringify(res.promoApplied) !== JSON.stringify(item.promoApplied || null) ||
+                    JSON.stringify(res.upsellPromo) !== JSON.stringify(item.upsellPromo || null)
+                ) {
+                    anyChanged = true;
+                    return {
+                        ...item,
+                        descuento: res.descuento,
+                        unitDiscount: res.unitDiscount,
+                        promoApplied: res.promoApplied,
+                        upsellPromo: res.upsellPromo,
+                        discountApplied: res.descuento > 0
+                    };
+                }
+                return item;
+            });
+            return anyChanged ? updated : prevCart;
+        });
+    }, [activePromotions, computeItemDiscount]);
+
     const applyDiscountRule = (itemId) => {
+        if (!posAllowsDiscounts) {
+            toast.error('Los descuentos están inhabilitados en este punto de venta.');
+            return;
+        }
+        if (hasGeneralDiscount) {
+            toast.error('No se puede aplicar descuento por producto: ya existe un descuento general activo en la venta.');
+            return;
+        }
         const item = cart.find(i => i.id === itemId || i.combo_id === itemId);
         if (!item || !item.discountRule) return;
-        const rule = item.discountRule;
+
+        const qty = parseFloat(item.cantidad) || 0;
         const price = parseFloat(item.precio) || 0;
+        const lineGross = qty * price;
+        const isFuel = item.tipo_combustible > 0;
+        const fovial = isFuel ? Math.round(qty * parseFloat(taxSettings?.fovial_rate || 0.20) * 100) / 100 : 0;
+        const cotrans = isFuel ? Math.round(qty * parseFloat(taxSettings?.cotrans_rate || 0.10) * 100) / 100 : 0;
+        const fuelTaxes = fovial + cotrans;
+        const discountableBase = Math.max(0, lineGross - fuelTaxes);
+
+        if (discountableBase <= 0) {
+            toast.error('Este producto no cuenta con base gravada descontable.');
+            return;
+        }
+
+        const rule = item.discountRule;
         let discountAmount = 0;
         if (rule.discount_type === 'percentage') {
-            discountAmount = price * (parseFloat(rule.discount_value) / 100);
+            const pct = parseFloat(rule.discount_value) || 0;
+            discountAmount = Math.round((discountableBase * (pct / 100)) * 100) / 100;
         } else {
-            discountAmount = parseFloat(rule.discount_value);
+            const fixedUnit = parseFloat(rule.discount_value) || 0;
+            const fixedTotal = Math.round((fixedUnit * qty) * 100) / 100;
+            discountAmount = Math.min(fixedTotal, discountableBase);
         }
-        discountAmount = Math.min(discountAmount, price); // No descontar más del precio
+
+        const unitDiscount = qty > 0 ? (discountAmount / qty) : 0;
+
         setCart(cart.map(i =>
             (i.id === itemId || i.combo_id === itemId)
-                ? { ...i, descuento: discountAmount, discountApplied: true }
+                ? { ...i, descuento: discountAmount, unitDiscount, discountApplied: true }
                 : i
         ));
-        toast.success(`${item.nombre}: descuento de $${discountAmount.toFixed(2)} aplicado`);
+        toast.success(`${item.nombre}: descuento de $${discountAmount.toFixed(2)} aplicado (${rule.discount_type === 'percentage' ? `${rule.discount_value}%` : `$${rule.discount_value}/u`})`);
     };
 
     const calculateDiscountedPrice = (originalPrice, discount) => {
@@ -423,6 +666,57 @@ const SalesTerminal = () => {
             return originalPrice * (1 - parseFloat(discount.discount_value) / 100);
         }
         return Math.max(0, originalPrice - parseFloat(discount.discount_value));
+    };
+
+    const handleApplyItemDiscount = (itemId, discountAmount) => {
+        if (discountAmount > 0 && hasGeneralDiscount) {
+            toast.error('No se puede aplicar descuento por producto: ya existe un descuento general activo en la venta.');
+            return;
+        }
+        setCart(prev => prev.map(item => {
+            if (item.id === itemId || item.combo_id === itemId) {
+                const qty = parseFloat(item.cantidad) || 1;
+                return { 
+                    ...item, 
+                    descuento: discountAmount, 
+                    discountApplied: discountAmount > 0,
+                    isManualDiscount: discountAmount > 0,
+                    promoApplied: null,
+                    upsellPromo: null,
+                    unitDiscount: qty > 0 ? (discountAmount / qty) : 0
+                };
+            }
+            return item;
+        }));
+        toast.success(`Descuento de $${discountAmount.toFixed(2)} aplicado al producto`);
+    };
+
+    const handleRemoveItemDiscount = (itemId) => {
+        setCart(prev => prev.map(item => {
+            if (item.id === itemId || item.combo_id === itemId) {
+                const cleanItem = { ...item, descuento: 0, unitDiscount: 0, discountApplied: false, isManualDiscount: false, promoApplied: null, upsellPromo: null };
+                const recomputed = computeItemDiscount(cleanItem, cleanItem.cantidad, cleanItem.precio);
+                return { ...cleanItem, ...recomputed };
+            }
+            return item;
+        }));
+        toast.info('Descuento de producto removido');
+    };
+
+    const handleApplyGeneralDiscount = (discountAmount, discountPercentage = null) => {
+        if (hasItemDiscounts) {
+            toast.error('No se puede aplicar descuento general: ya existen productos con descuento individual en la venta.');
+            return;
+        }
+        setGeneralDiscount(discountAmount);
+        setGeneralDiscountPercentage(discountPercentage);
+        toast.success(`Descuento general de $${discountAmount.toFixed(2)} aplicado a la venta`);
+    };
+
+    const handleRemoveGeneralDiscount = () => {
+        setGeneralDiscount(0);
+        setGeneralDiscountPercentage(null);
+        toast.info('Descuento general removido');
     };
 
     // Catalogs for Customer Modal
@@ -468,23 +762,28 @@ const SalesTerminal = () => {
         queryFn: async () => (await axios.get('/api/catalogs/cat_016_condicion_operacion')).data
     });
 
-    // Helper: Format NIT
-    const formatNIT = (value, type = 'DUI') => {
+    // Helper: Format NRC
+    const formatNRC = (value) => {
+        if (!value) return '';
         const digits = value.replace(/\D/g, '');
-        let formatted = '';
-        
+        if (digits.length <= 6) return digits;
+        return `${digits.slice(0, 6)}-${digits.slice(6, 7)}`;
+    };
+
+    // Helper: Format Document Number (DUI / NIT)
+    const formatDocumentNumber = (value, type = 'DUI') => {
+        if (!value) return '';
+        const digits = value.replace(/\D/g, '');
         if (type === 'DUI') {
-            // Formato DUI: 00000000-0
-            if (digits.length > 0) formatted += digits.substring(0, 8);
-            if (digits.length > 8) formatted += '-' + digits.substring(8, 9);
-        } else {
-            // Formato NIT: 0000-000000-000-0
-            if (digits.length > 0) formatted += digits.substring(0, 4);
-            if (digits.length > 4) formatted += '-' + digits.substring(4, 10);
-            if (digits.length > 10) formatted += '-' + digits.substring(10, 13);
-            if (digits.length > 13) formatted += '-' + digits.substring(13, 14);
+            if (digits.length <= 8) return digits;
+            return `${digits.slice(0, 8)}-${digits.slice(8, 9)}`;
+        } else if (type === 'NIT') {
+            if (digits.length <= 4) return digits;
+            if (digits.length <= 10) return `${digits.slice(0, 4)}-${digits.slice(4, 10)}`;
+            if (digits.length <= 13) return `${digits.slice(0, 4)}-${digits.slice(4, 10)}-${digits.slice(10, 13)}`;
+            return `${digits.slice(0, 4)}-${digits.slice(4, 10)}-${digits.slice(10, 13)}-${digits.slice(13, 14)}`;
         }
-        return formatted;
+        return value;
     };
 
     // Helper: Find selected customer data
@@ -555,7 +854,8 @@ const SalesTerminal = () => {
             const cust = option || customersCache[parseInt(value)];
             if (cust) {
                 const missing = getMissingLocationFields(cust);
-                if (missing.length > 0) {
+                // Solo alertar si no es Factura (01) o si la venta es >= $200
+                if (missing.length > 0 && (tipoDte !== '01' || (totals?.total || 0) >= 200)) {
                     toast.warning(`El cliente "${cust.nombre}" no tiene ${missing.join(', ')}. Complételos para facturar.`);
                 }
             }
@@ -571,23 +871,26 @@ const SalesTerminal = () => {
         if (!isProductModalOpen) return { filteredProducts: [], filteredCombos: [] };
         
         const search = productSearch.toLowerCase().trim();
-        if (!search) {
-            return {
-                filteredCombos: combos.slice(0, 10),
-                filteredProducts: modalProductsData.data.slice(0, 20)
-            };
+
+        let fCombos = [];
+        if (!selectedCategoryFilter || selectedCategoryFilter === 'combos') {
+            if (!search) {
+                fCombos = combos.slice(0, 24);
+            } else {
+                fCombos = combos.filter(c => 
+                    (c.name || '').toLowerCase().includes(search) || 
+                    (c.barcode || '').toLowerCase().includes(search)
+                ).slice(0, 24);
+            }
         }
 
-        const fCombos = combos.filter(c => 
-            (c.name || '').toLowerCase().includes(search) || 
-            (c.barcode || '').toLowerCase().includes(search)
-        );
+        const fProducts = selectedCategoryFilter === 'combos' ? [] : (modalProductsData?.data || []);
 
         return {
-            filteredCombos: fCombos.slice(0, 20),
-            filteredProducts: modalProductsData.data.slice(0, 20)
+            filteredCombos: fCombos,
+            filteredProducts: fProducts
         };
-    }, [modalProductsData, combos, productSearch, isProductModalOpen]);
+    }, [modalProductsData, combos, productSearch, isProductModalOpen, selectedCategoryFilter]);
 
     const handleEditCustomer = () => {
         if (!selectedCustomerData) return;
@@ -596,11 +899,23 @@ const SalesTerminal = () => {
         setSelectedMun(selectedCustomerData.municipio || '');
         setSelectedDistrito(selectedCustomerData.distrito || '');
         setSelectedActivity(selectedCustomerData.codigo_actividad || '');
-        setDocType(selectedCustomerData.tipo_documento || 'DUI');
-        setNitValue(selectedCustomerData.nit || '');
+        setCondicionFiscal(selectedCustomerData.condicion_fiscal || (selectedCustomerData.nrc ? 'contribuyente' : 'otro'));
+        
+        // Carga transparente de documento histórico (si solo tenía nit, lo carga en el campo único)
+        const rawDoc = selectedCustomerData.numero_documento || selectedCustomerData.nit || '';
+        const cleanDigits = rawDoc.replace(/\D/g, '');
+        let inferredType = selectedCustomerData.tipo_documento || 'DUI';
+        if (!selectedCustomerData.tipo_documento && selectedCustomerData.nit) {
+            inferredType = cleanDigits.length === 14 ? 'NIT' : 'DUI';
+        }
+        setDocType(inferredType);
+        setDocNumberValue(formatDocumentNumber(rawDoc, inferredType));
+        setNrcValue(formatNRC(selectedCustomerData.nrc || ''));
         setSelectedPais(selectedCustomerData.pais || '9579');
         setIsCustomerModalOpen(true);
     };
+
+    const isCustomerForeign = docType === 'Pasaporte' || docType === 'Carnet Resident' || docType === 'Otro' || condicionFiscal === 'extranjero';
 
     const handleCustomerSubmit = async (e) => {
         e.preventDefault();
@@ -609,7 +924,28 @@ const SalesTerminal = () => {
         data.exento_iva = formData.get('exento_iva') === 'on';
         data.aplica_fovial = formData.get('aplica_fovial') === 'on';
         data.aplica_cotrans = formData.get('aplica_cotrans') === 'on';
-        data.codigo_actividad = selectedActivity;
+        data.codigo_actividad = selectedActivity || null;
+        data.tipo_documento = docType;
+        data.condicion_fiscal = condicionFiscal;
+
+        // Documento unificado y homologación automática DUI = NIT
+        const rawDoc = (docNumberValue || '').trim();
+        data.numero_documento = rawDoc || null;
+        data.nit = rawDoc || null;
+        data.nrc = (nrcValue || data.nrc || '').trim() || null;
+
+        // Normalización de condición fiscal: sin NRC no puede ser contribuyente de IVA (es consumidor final / 'otro')
+        if (!data.nrc && data.condicion_fiscal === 'contribuyente') {
+            data.condicion_fiscal = 'otro';
+        } else if (data.nrc && data.condicion_fiscal === 'otro') {
+            data.condicion_fiscal = 'contribuyente';
+        }
+
+        // Inferencia automática de tipo de persona (2: Jurídica si tiene NIT o NRC, 1: Natural)
+        data.tipo_persona = (docType === 'NIT' || data.nrc) ? '2' : (editingCustomer?.tipo_persona || '1');
+
+        // País: si no es extranjero, se asigna El Salvador (9579)
+        data.pais = isCustomerForeign ? (data.pais || selectedPais || '9579') : (editingCustomer?.pais || '9579');
 
         const correoTrimmed = (data.correo || '').trim();
         if (correoTrimmed) {
@@ -623,10 +959,25 @@ const SalesTerminal = () => {
             data.correo = null;
         }
 
-        const distritoSel = distritos.find(d => d.code === data.distrito);
-        if (distritoSel && data.municipio && data.municipio !== distritoSel.muni_code) {
-            toast.error('El municipio seleccionado no corresponde al distrito');
-            return;
+        data.departamento = (data.departamento || '').trim() || null;
+        data.distrito = (data.distrito || '').trim() || null;
+        data.municipio = (data.municipio || '').trim() || null;
+        data.direccion = (data.direccion || '').trim() || null;
+
+        if (data.distrito) {
+            const distritoSel = distritos.find(d => d.code === data.distrito);
+            if (distritoSel && data.municipio && data.municipio !== distritoSel.muni_code) {
+                toast.error('El municipio seleccionado no corresponde al distrito');
+                return;
+            }
+        }
+
+        if (data.numero_documento) {
+            const docCheck = validateDocumentNumber(data.numero_documento, docType);
+            if (!docCheck.isValid) {
+                toast.error(`Documento no válido: ${docCheck.error}`);
+                return;
+            }
         }
 
         try {
@@ -661,6 +1012,20 @@ const SalesTerminal = () => {
                 e.preventDefault();
                 setIsProductModalOpen(true);
             }
+            if (e.key === 'F8') {
+                e.preventDefault();
+                if (!posAllowsDiscounts) {
+                    toast.error('Los descuentos están inhabilitados en este punto de venta.');
+                } else if (!canApplyGeneralDiscount) {
+                    toast.error('No tiene permisos para aplicar descuentos globales.');
+                } else if (cart.length === 0) {
+                    toast.error('Agregue productos al carrito antes de aplicar un descuento.');
+                } else if (hasItemDiscounts) {
+                    toast.error('No se puede aplicar descuento general: ya existen productos con descuento individual en la venta.');
+                } else {
+                    setIsGeneralDiscountModalOpen(true);
+                }
+            }
             if (e.key === 'F9') {
                 e.preventDefault();
                 setIsLinkedDocModalOpen(true);
@@ -678,6 +1043,14 @@ const SalesTerminal = () => {
             if (e.key === 'Enter' && isSuccessModalOpen) {
                 e.preventDefault();
                 handleCloseSuccessRef.current();
+            }
+            if (e.key === 'Escape' && isProductModalOpen) {
+                e.preventDefault();
+                setIsProductModalOpen(false);
+            }
+            if (e.key === 'Escape' && isFuelModalOpen) {
+                e.preventDefault();
+                setIsFuelModalOpen(false);
             }
             if (e.key === 'Escape' && isAuthModalOpen) {
                 navigate('/dashboard');
@@ -708,18 +1081,35 @@ const SalesTerminal = () => {
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [cart.length, isAuthModalOpen, isSuccessModalOpen, tipoDte, navigate, activeView, saleResult, linkedDocs.length]);
+    }, [cart.length, isProductModalOpen, isAuthModalOpen, isSuccessModalOpen, isFuelModalOpen, tipoDte, navigate, activeView, saleResult, linkedDocs.length, posAllowsDiscounts, canApplyGeneralDiscount, hasItemDiscounts]);
 
-    // Auto-focus barcode input when starting POS
+    // Detect if any modal or overlay dialog is active to prevent stealing focus
+    const isAnyModalOpen = Boolean(
+        isAuthModalOpen || 
+        isProductModalOpen || 
+        isLinkedDocModalOpen || 
+        isFuelModalOpen || 
+        isCustomerModalOpen || 
+        isCustomerSearchOpen || 
+        isLotModalOpen || 
+        isSuccessModalOpen || 
+        isGeneralDiscountModalOpen || 
+        selectedDiscountItem
+    );
+
+    // Auto-focus barcode input when starting POS or returning to POS without modals open
     useEffect(() => {
-        if (activeView === 'pos' && !isAuthModalOpen && !isProductModalOpen && !isLinkedDocModalOpen) {
+        if (activeView === 'pos' && !isAnyModalOpen) {
             if (quickAddFocusRef.current) {
                 quickAddFocusRef.current = false;
                 return;
             }
-            setTimeout(() => barcodeInputRef.current?.focus(), 300);
+            const timer = setTimeout(() => {
+                barcodeInputRef.current?.focus();
+            }, 300);
+            return () => clearTimeout(timer);
         }
-    }, [activeView, isAuthModalOpen, isProductModalOpen, isLinkedDocModalOpen]);
+    }, [activeView, isAnyModalOpen]);
 
     // Check shift status on mount or when seller session changes
     useEffect(() => {
@@ -787,25 +1177,70 @@ const SalesTerminal = () => {
         const normalizedActividad = (rawActividad.length === 4 && /^\d+$/.test(rawActividad)) ? rawActividad.padStart(5, '0') : rawActividad;
 
         if (tipoDte === '03') { // Crédito Fiscal
-            if (!customer.nit && !customer.numero_documento) missing.push('NIT o DUI');
-            if (!customer.nrc) missing.push('NRC');
+            const rawNit = customer.nit || customer.numero_documento;
+            const nitVal = validateDocumentNumber(rawNit, 'NIT');
+            if (!nitVal.isValid) {
+                missing.push(`NIT inválido: ${nitVal.error}`);
+            }
+            const cleanNrc = String(customer.nrc || '').replace(/\D/g, '');
+            if (!cleanNrc || /^0+$/.test(cleanNrc)) {
+                missing.push('NRC inválido');
+            }
             if (!normalizedActividad || normalizedActividad.length < 5) missing.push('Giro/Actividad');
             if (!customer.departamento) missing.push('Departamento');
             if (!customer.municipio) missing.push('Municipio');
             if (!customer.distrito) missing.push('Distrito');
             if (!customer.direccion) missing.push('Dirección');
         } else if (tipoDte === '01') { // Factura
-            if (!customer.numero_documento && !customer.nit) missing.push('DUI o NIT');
-            if (!customer.departamento) missing.push('Departamento');
-            if (!customer.municipio) missing.push('Municipio');
-            if (!customer.distrito) missing.push('Distrito');
-            if (!customer.direccion) missing.push('Dirección');
+            const isOver200 = (totals?.total || 0) >= 200;
+            const rawDoc = customer.numero_documento || customer.nit;
+            const cleanDoc = String(rawDoc || '').replace(/[-\s]/g, '');
+            const hasDoc = cleanDoc.length > 0;
+            const docVal = hasDoc ? validateDocumentNumber(cleanDoc, customer.tipo_documento) : null;
+            const hasValidDoc = docVal && docVal.isValid;
+
+            if (isOver200) {
+                if (!hasDoc) {
+                    missing.push('DUI o NIT (obligatorio para ventas ≥ $200.00)');
+                } else if (!hasValidDoc) {
+                    missing.push(`DUI/NIT inválido: ${docVal.error}`);
+                }
+            }
+
+            // Para Factura (01), la dirección solo es obligatoria por normativa si la venta es >= $200
+            if (isOver200) {
+                if (!customer.departamento) missing.push('Departamento');
+                if (!customer.municipio) missing.push('Municipio');
+                if (!customer.distrito) missing.push('Distrito');
+                if (!customer.direccion) missing.push('Dirección');
+            }
         } else if (tipoDte === '11') { // FEX
             if (!customer.numero_documento) missing.push('Doc. Identidad');
             if (!customer.pais || customer.pais === '059') missing.push('País de Destino (Extranjero)');
             if (!customer.direccion) missing.push('Dirección');
         } else if (tipoDte === '05') { // Nota de Crédito
-            if (!customer.nit && !customer.numero_documento) missing.push('NIT o DUI');
+            const isReferencingCCF = referencingSale?.tipo_documento === '03' || 
+                                     linkedDocs.some(d => d.doc_type === '03' || d.tipoDte === '03');
+            if (isReferencingCCF) {
+                const rawNit = customer.nit || customer.numero_documento;
+                const nitVal = validateDocumentNumber(rawNit, 'NIT');
+                if (!nitVal.isValid) {
+                    missing.push(`NIT inválido para NC sobre Crédito Fiscal: ${nitVal.error}`);
+                }
+                const cleanNrc = String(customer.nrc || '').replace(/\D/g, '');
+                if (!cleanNrc || /^0+$/.test(cleanNrc)) {
+                    missing.push('NRC inválido');
+                }
+            } else {
+                const rawDoc = customer.numero_documento || customer.nit;
+                const cleanDoc = String(rawDoc || '').replace(/[-\s]/g, '');
+                if (cleanDoc.length > 0) {
+                    const docVal = validateDocumentNumber(cleanDoc, customer.tipo_documento);
+                    if (!docVal.isValid) {
+                        missing.push(`Documento inválido: ${docVal.error}`);
+                    }
+                }
+            }
             if (!customer.departamento) missing.push('Departamento');
             if (!customer.municipio) missing.push('Municipio');
             if (!customer.distrito) missing.push('Distrito');
@@ -814,8 +1249,14 @@ const SalesTerminal = () => {
             if (!customer.tipo_documento || (customer.tipo_documento !== 'NIT' && customer.tipo_documento !== '36')) {
                 missing.push('Tipo Documento debe ser NIT');
             }
-            if (!customer.nit) missing.push('NIT');
-            if (!customer.nrc) missing.push('NRC');
+            const nitVal = validateDocumentNumber(customer.nit, 'NIT');
+            if (!nitVal.isValid) {
+                missing.push(`NIT inválido: ${nitVal.error}`);
+            }
+            const cleanNrc = String(customer.nrc || '').replace(/\D/g, '');
+            if (!cleanNrc || /^0+$/.test(cleanNrc)) {
+                missing.push('NRC inválido');
+            }
             if (!normalizedActividad || normalizedActividad.length < 5) missing.push('Giro/Actividad');
             if (!customer.departamento) missing.push('Departamento');
             if (!customer.municipio) missing.push('Municipio');
@@ -910,6 +1351,7 @@ const SalesTerminal = () => {
                 ...data,
                 items: [...cart],
                 totals: { ...totals },
+                descuento_general: generalDiscount,
                 customer: selectedCustomerData ? {
                     ...selectedCustomerData,
                     branch_name: selectedBranchData?.nombre || null,
@@ -917,7 +1359,8 @@ const SalesTerminal = () => {
                     active_address: activeAddressInfo?.direccion || selectedCustomerData.direccion
                 } : { nombre: manualCustomerName || 'Consumidor Final' },
                 tipoDteName: tipoDte === '01' ? 'Factura' : tipoDte === '03' ? 'Crédito Fiscal' : tipoDte === '04' ? 'Nota Remisión' : tipoDte === '05' ? 'Nota Crédito' : tipoDte === '07' ? 'Comprobante Retención' : tipoDte === '11' ? 'Factura Exportación' : 'Documento',
-                seller: sellerSession?.seller_name
+                seller: sellerSession?.seller_name,
+                contingency: Boolean(data?.dte?.contingency || activeContingency)
             });
             setIsSuccessModalOpen(true);
             
@@ -925,11 +1368,14 @@ const SalesTerminal = () => {
             queryClient.invalidateQueries(['sales']);
         },
         onError: (error) => {
-            const baseMsg = error.response?.data?.message || error.message;
-            const details = error.response?.data?.details;
+            const data = error.response?.data;
+            const baseMsg = data?.error || data?.message || error.message;
+            const details = data?.details;
             let fullMsg = baseMsg;
             if (details && Array.isArray(details) && details.length > 0) {
-                fullMsg = details.map(d => d.message || d).join('; ');
+                fullMsg = `${baseMsg}: ` + details.map(d => d.message || d).join('; ');
+            } else if (data?.message && data?.error && data.message !== data.error) {
+                fullMsg = `${data.message}: ${data.error}`;
             }
             toast.error(fullMsg, { duration: 8000 });
         }
@@ -939,11 +1385,15 @@ const SalesTerminal = () => {
         setIsSuccessModalOpen(false);
         setSaleResult(null);
         setCart([]);
+        setGeneralDiscount(0);
+        setGeneralDiscountPercentage(null);
         setCustomerId('');
         setCustomerBranchId('');
         setManualCustomerName('');
         setLinkedDocs([]);
         setActiveView('pos');
+        setTipoDte('01'); // Restablecer a Factura (01) por defecto para la siguiente venta
+        setCondicionPago('1'); // Restablecer a Contado (1) por defecto
         setSellerSession(null);
         setSellerId('');
         setReferencingSale(null);
@@ -983,6 +1433,10 @@ const SalesTerminal = () => {
                 ${descuento > 0 ? ` (-$${descuento.toFixed(2)})` : ''}
                 = $${(cantidad * precio - descuento).toFixed(2)}
             </div>` : ''}
+            ${item.promoApplied && descuento > 0 ? `
+            <div style="font-size: 9px; color: #047857; margin-left: 8px; font-weight: bold;">
+                ↳ 🏷️ PROMO ${item.promoApplied.name.toUpperCase()}: -$${descuento.toFixed(2)}
+            </div>` : ''}
         `}).join('');
 
         const ticketHtml = `
@@ -1008,6 +1462,15 @@ const SalesTerminal = () => {
                     <div class="flex-between"><span>N° CONTROL:</span><span style="font-size: 9px;">${sale.dte?.numero_control || '---'}</span></div>
                     <div class="flex-between"><span>CÓDIGO GENERACIÓN:</span><span style="font-size: 7px;">${sale.dte?.codigo_generacion || '---'}</span></div>
                     ${sale.dte?.sello_recepcion ? `<div class="flex-between"><span>SELLO:</span><span style="font-size: 7px;">${sale.dte.sello_recepcion}</span></div>` : ''}
+                    ${sale.dte?.contingency || sale.contingency ? `
+                    <div style="border: 2px solid #000; padding: 4px 2px; margin: 5px 0; text-align: center;">
+                        <div class="bold" style="font-size: 10px; letter-spacing: 1px; color: #000;">
+                            *** EMITIDO EN CONTINGENCIA ***
+                        </div>
+                        <div style="font-size: 8px; margin-top: 2px; color: #000; font-weight: bold;">
+                            TRANSMISI&Oacute;N DIFERIDA A HACIENDA
+                        </div>
+                    </div>` : ''}
                     <div class="flex-between"><span>FECHA:</span><span>${fechaStr}</span></div>
                     <div class="flex-between"><span>HORA:</span><span>${horaStr}</span></div>
                     <div class="dashed"></div>
@@ -1045,14 +1508,26 @@ const SalesTerminal = () => {
                         <div>VENTAS NO SUJETAS</div>
                         <div>$${sale.totals.noSujeto.toFixed(2)}</div>
                     </div>
+                    ${parseFloat(sale.totals.totalItemDiscounts || 0) > 0 ? `
+                    <div class="flex-between bold" style="color: #b91c1c;">
+                        <div>DESCUENTOS ÍTEMS</div>
+                        <div>-$${parseFloat(sale.totals.totalItemDiscounts).toFixed(2)}</div>
+                    </div>` : ''}
+                    ${parseFloat(sale.descuento_general || 0) > 0 ? `
+                    <div class="flex-between bold" style="color: #b91c1c;">
+                        <div>DESCUENTO GENERAL</div>
+                        <div>-$${parseFloat(sale.descuento_general).toFixed(2)}</div>
+                    </div>` : ''}
+                    ${sale.totals.cotrans > 0 ? `
                     <div class="flex-between">
                         <div>COTRANS</div>
                         <div>$${sale.totals.cotrans.toFixed(2)}</div>
-                    </div>
+                    </div>` : ''}
+                    ${sale.totals.fovial > 0 ? `
                     <div class="flex-between">
                         <div>FOVIAL</div>
                         <div>$${sale.totals.fovial.toFixed(2)}</div>
-                    </div>
+                    </div>` : ''}
                     <div class="flex-between bold" style="font-size: 1.2em; margin-top: 5px;">
                         <div>TOTAL A PAGAR</div>
                         <div>$${sale.totals.total.toFixed(2)}</div>
@@ -1127,6 +1602,45 @@ const SalesTerminal = () => {
             }
         }
 
+        // 2b. Validaciones de límites de descuento de la sucursal (Margen y Tope Ticket)
+        if (maxDiscountAmount && totals.totalDescuentos > (maxDiscountAmount + 0.01)) {
+            const hasManualGeneral = generalDiscount > 0;
+            const hasManualItemDiscount = cart.some(item => parseFloat(item.descuento || 0) > 0 && !item.discountRule && !item.promoApplied);
+            if (hasManualGeneral || hasManualItemDiscount) {
+                return toast.error(`El total de descuentos aplicados ($${totals.totalDescuentos.toFixed(2)}) excede el monto máximo permitido por ticket en esta sucursal ($${maxDiscountAmount.toFixed(2)})`);
+            }
+        }
+
+        if (maxDiscountPercentage) {
+            for (const item of cart) {
+                const disc = parseFloat(item.descuento) || 0;
+                if (disc > 0 && !item.discountRule && !item.promoApplied) {
+                    const price = parseFloat(item.precio) || 0;
+                    const qty = parseFloat(item.cantidad) || 0;
+                    const lineGross = price * qty;
+                    let discountableBase = lineGross;
+                    if (item.tipo_combustible > 0 && tipoDte !== '04') {
+                        const itemFovial = Math.round(qty * parseFloat(taxSettings?.fovial_rate || 0.20) * 100) / 100;
+                        const itemCotrans = Math.round(qty * parseFloat(taxSettings?.cotrans_rate || 0.10) * 100) / 100;
+                        discountableBase = Math.max(0, lineGross - itemFovial - itemCotrans);
+                    }
+                    if (discountableBase > 0) {
+                        const itemPct = (disc / discountableBase) * 100;
+                        if (itemPct > (maxDiscountPercentage + 0.01)) {
+                            return toast.error(`El producto "${item.nombre}" tiene un descuento de ${itemPct.toFixed(1)}%, que supera el porcentaje máximo permitido (${maxDiscountPercentage}%)`);
+                        }
+                    }
+                }
+            }
+
+            if (generalDiscount > 0 && totals.gravadoBruto > 0) {
+                const genPct = (generalDiscount / totals.gravadoBruto) * 100;
+                if (genPct > (maxDiscountPercentage + 0.01)) {
+                    return toast.error(`El descuento general representa un ${genPct.toFixed(1)}%, que supera el porcentaje máximo permitido (${maxDiscountPercentage}%)`);
+                }
+            }
+        }
+
         // 3. Validar que el total pagado cubra la venta (excepto crédito, CR y NC)
         if (tipoDte !== '07' && tipoDte !== '05') {
             const totalPaid = payments.reduce((acc, p) => acc + parseFloat(p.monto), 0);
@@ -1136,6 +1650,21 @@ const SalesTerminal = () => {
         }
 
 
+
+        if (tipoDte === '01' && (totals.total || 0) < 200 && selectedCustomerData?.id) {
+            const rawDoc = selectedCustomerData.numero_documento || selectedCustomerData.nit;
+            const cleanDoc = String(rawDoc || '').replace(/[-\s]/g, '');
+            if (cleanDoc.length > 0 && !isValidDocumentNumber(cleanDoc, selectedCustomerData.tipo_documento)) {
+                setCustomersCache(prev => ({
+                    ...prev,
+                    [selectedCustomerData.id]: {
+                        ...prev[selectedCustomerData.id],
+                        numero_documento: null,
+                        nit: null
+                    }
+                }));
+            }
+        }
 
         const saleData = {
             header: {
@@ -1156,6 +1685,7 @@ const SalesTerminal = () => {
                 total_exento: totals.exento,
                 total_gravado: totals.gravadoNeto,
                 descuento_general: generalDiscount,
+                porcentaje_descuento: generalDiscountPercentage,
                 fovial: totals.fovial,
                 cotrans: totals.cotrans,
                 total_pagar: tipoDte === '07' ? totals.totalIVAretenido : totals.total,
@@ -1197,7 +1727,7 @@ const SalesTerminal = () => {
                         { codigo: "D1", descripcion: "FOVIAL", valor: itemFovial },
                         { codigo: "C8", descripcion: "COTRANS", valor: itemCotrans }
                     ] : [],
-                    referencedDoc: item.referencedDoc || null
+                    referencedDoc: (tipoDte === '05' && linkedDocs.length > 0) ? linkedDocs[0].doc_number : (item.referencedDoc || null)
                 };
             }),
             payments: (tipoDte === '05' || tipoDte === '07') ? [] : payments.map(p => ({
@@ -1224,11 +1754,13 @@ const SalesTerminal = () => {
         let noSujeto = 0;
         let fovial = 0;
         let cotrans = 0;
+        let totalItemDiscounts = 0;
 
         cart.forEach(item => {
             const price = parseFloat(item.precio) || 0;
             const qty = parseFloat(item.cantidad) || 0;
             const disc = parseFloat(item.descuento) || 0;
+            totalItemDiscounts += disc;
             const subtotal = (price * qty) - disc;
 
             if (item.exento) exento += subtotal;
@@ -1252,13 +1784,38 @@ const SalesTerminal = () => {
         });
 
         const ivaRate = parseFloat(taxSettings?.iva_rate || 13) / 100;
-        // En SV el precio de venta al consumidor ya suele llevar IVA.
-        // Si es Factura (01) o Crédito Fiscal (03), hay que desglosarlo internamente.
-        // FEX (11): el gravadoBruto ya viene neto, no se extrae IVA.
-        // Asumiendo que `gravadoBruto` ya incluye IVA:
-        const iva = (tipoDte === '11') ? 0 : (gravadoBruto - (gravadoBruto / (1 + ivaRate)));
-        const gravadoNeto = gravadoBruto - iva;
-        const subtotalGeneral = gravadoBruto + exento + noSujeto + fovial + cotrans;
+        // Aplicar descuento general exclusivamente a operaciones gravadas (sin tocar combustibles ni exentos/no sujetos)
+        const safeGeneralDiscount = Math.min(generalDiscount, Math.max(0, gravadoBruto));
+
+        let iva = 0;
+        let gravadoNeto = 0;
+        let viewGravadas = 0;
+        let viewIva = 0;
+        let subtotalGeneral = 0;
+
+        if (tipoDte === '01') {
+            const gravadoFinalConIva = Math.max(0, gravadoBruto - safeGeneralDiscount);
+            iva = gravadoFinalConIva - (gravadoFinalConIva / (1 + ivaRate));
+            gravadoNeto = gravadoFinalConIva - iva;
+            viewGravadas = gravadoFinalConIva;
+            viewIva = 0;
+            subtotalGeneral = gravadoFinalConIva + exento + noSujeto + fovial + cotrans;
+        } else if (tipoDte === '11') {
+            gravadoNeto = Math.max(0, gravadoBruto - safeGeneralDiscount);
+            iva = 0;
+            viewGravadas = gravadoNeto;
+            viewIva = 0;
+            subtotalGeneral = gravadoNeto + exento + noSujeto + fovial + cotrans;
+        } else {
+            // CCF (03) y otros comprobantes
+            const gravadoNetoAntes = gravadoBruto / (1 + ivaRate);
+            const netGeneralDisc = safeGeneralDiscount / (1 + ivaRate);
+            gravadoNeto = Math.max(0, gravadoNetoAntes - netGeneralDisc);
+            iva = gravadoNeto * ivaRate;
+            viewGravadas = gravadoNeto;
+            viewIva = iva;
+            subtotalGeneral = gravadoNeto + iva + exento + noSujeto + fovial + cotrans;
+        }
         
         // Retención y Percepción
         let retencion = 0;
@@ -1279,14 +1836,7 @@ const SalesTerminal = () => {
             }
         }
 
-        const totalFinal = subtotalGeneral - retencion + percepcion - generalDiscount;
-
-        // Visualización dinámica según tipo de DTE
-        // En Factura (01), el IVA se muestra como 0.0 (porque ya está en Gravadas)
-        // En Crédito Fiscal (03), se desglosa el Neto y el IVA
-        // En FEX (11), no se cobra IVA (exportación)
-        const viewIva = (tipoDte === '01' || tipoDte === '11') ? 0 : iva;
-        const viewGravadas = tipoDte === '01' ? gravadoBruto : gravadoNeto;
+        const totalFinal = subtotalGeneral - retencion + percepcion;
 
         // CR: totales de retención desde documentos vinculados
         const totalSujetoRetencion = linkedDocs.reduce((s, d) => s + parseFloat(d.montoSujeto || 0), 0);
@@ -1304,6 +1854,9 @@ const SalesTerminal = () => {
             cotrans,
             retencion,
             percepcion,
+            totalItemDiscounts,
+            safeGeneralDiscount,
+            totalDescuentos: totalItemDiscounts + safeGeneralDiscount,
             subtotal: subtotalGeneral,
             montoOperacion: subtotalGeneral,
             total: Math.max(0, totalFinal),
@@ -1374,15 +1927,28 @@ const SalesTerminal = () => {
         );
 
         if (existing) {
-            setCart(cart.map(item => 
-                (isCombo ? item.combo_id === itemData.id : (item.id === itemData.id && !item.isManual && !item.combo_id))
-                ? { ...item, cantidad: item.cantidad + 1, precio: itemPrice, isAgreedPrice: !!agreedPriceInfo || item.isAgreedPrice } 
-                : item
-            ));
+            setCart(cart.map(item => {
+                if (isCombo ? item.combo_id === itemData.id : (item.id === itemData.id && !item.isManual && !item.combo_id)) {
+                    const newQty = item.cantidad + 1;
+                    const res = computeItemDiscount(item, newQty, itemPrice);
+                    return { 
+                        ...item, 
+                        cantidad: newQty, 
+                        precio: itemPrice, 
+                        descuento: res.descuento, 
+                        unitDiscount: res.unitDiscount, 
+                        promoApplied: res.promoApplied,
+                        upsellPromo: res.upsellPromo,
+                        discountApplied: res.discountApplied,
+                        isAgreedPrice: !!agreedPriceInfo || item.isAgreedPrice 
+                    };
+                }
+                return item;
+            }));
         } else {
             // Verificar regla de descuento de producto (solo marcar, no aplicar)
             const productRule = getProductDiscountRule(itemData.id);
-            setCart([...cart, {
+            const tempItem = {
                 id: isCombo ? null : itemData.id,
                 combo_id: isCombo ? itemData.id : null,
                 nombre: itemName,
@@ -1397,6 +1963,15 @@ const SalesTerminal = () => {
                 discountRule: productRule || null,
                 isAgreedPrice: !!agreedPriceInfo,
                 agreedPriceInfo: agreedPriceInfo || null
+            };
+            const res = computeItemDiscount(tempItem, 1, itemPrice);
+            setCart([...cart, {
+                ...tempItem,
+                descuento: res.descuento,
+                unitDiscount: res.unitDiscount,
+                promoApplied: res.promoApplied,
+                upsellPromo: res.upsellPromo,
+                discountApplied: res.discountApplied
             }]);
         }
         setIsProductModalOpen(false);
@@ -1411,6 +1986,12 @@ const SalesTerminal = () => {
     };
 
     const handleSelectLot = (lot) => {
+        if (lot.release_status === 'bloqueado_haccp' || lot.quality_status === 'bloqueado_haccp' || lot.status === 'bloqueado_haccp') {
+            return toast.error(`BLOQUEO HACCP: El lote ${lot.lot_code} está bloqueado por calidad y no puede ser facturado.`);
+        }
+        if (lot.release_status === 'cuarentena' || lot.quality_status === 'cuarentena') {
+            toast.warning(`Lote ${lot.lot_code} en CUARENTENA: Pendiente de aprobación microbiológica oficial.`);
+        }
         if (!lot.has_stock || lot.units_in_stock <= 0) {
             setLotWarningTarget(lot);
             return;
@@ -1430,6 +2011,7 @@ const SalesTerminal = () => {
 
         if (tipoDte === '04') unitPrice = 0.00001;
 
+        const productRule = matched?.id ? getProductDiscountRule(matched.id) : null;
         setCart(prev => [...prev, {
             id: matched?.id || null,
             combo_id: null,
@@ -1441,6 +2023,7 @@ const SalesTerminal = () => {
             descuento: 0,
             exento: false,
             isManual: !matched,
+            discountRule: productRule || null,
             lot_code: lot.lot_code,
             batch_id: lot.batch_id,
             packaging_id: lot.packaging_id,
@@ -1507,14 +2090,27 @@ const SalesTerminal = () => {
         );
 
         if (existing) {
-            setCart(cart.map(item => 
-                (isCombo ? item.combo_id === product.id : (item.id === product.id && !item.isManual && !item.combo_id))
-                ? { ...item, cantidad: item.cantidad + 1, precio: finalPrice, isAgreedPrice: isAgreed || item.isAgreedPrice } 
-                : item
-            ));
+            setCart(cart.map(item => {
+                if (isCombo ? item.combo_id === product.id : (item.id === product.id && !item.isManual && !item.combo_id)) {
+                    const newQty = item.cantidad + 1;
+                    const res = computeItemDiscount(item, newQty, finalPrice);
+                    return { 
+                        ...item, 
+                        cantidad: newQty, 
+                        precio: finalPrice, 
+                        descuento: res.descuento, 
+                        unitDiscount: res.unitDiscount, 
+                        promoApplied: res.promoApplied,
+                        upsellPromo: res.upsellPromo,
+                        discountApplied: res.discountApplied,
+                        isAgreedPrice: isAgreed || item.isAgreedPrice 
+                    };
+                }
+                return item;
+            }));
         } else {
             const productRule = getProductDiscountRule(product.id);
-            setCart([...cart, {
+            const tempItem = {
                 id: isCombo ? null : product.id,
                 combo_id: isCombo ? product.id : null,
                 nombre: (product.nombre || product.name),
@@ -1527,6 +2123,15 @@ const SalesTerminal = () => {
                 isManual: false,
                 discountRule: productRule || null,
                 isAgreedPrice: isAgreed
+            };
+            const res = computeItemDiscount(tempItem, 1, finalPrice);
+            setCart([...cart, {
+                ...tempItem,
+                descuento: res.descuento,
+                unitDiscount: res.unitDiscount,
+                promoApplied: res.promoApplied,
+                upsellPromo: res.upsellPromo,
+                discountApplied: res.discountApplied
             }]);
         }
 
@@ -1663,13 +2268,27 @@ const SalesTerminal = () => {
             );
 
             if (existing) {
-                setCart(cart.map(item => 
-                    (isCombo ? item.combo_id === quickProd.id : (item.id === quickProd.id && !item.isManual && !item.combo_id))
-                    ? { ...item, cantidad: item.cantidad + qty, precio: price, isAgreedPrice: isAgreed || item.isAgreedPrice } 
-                    : item
-                ));
+                setCart(cart.map(item => {
+                    if (isCombo ? item.combo_id === quickProd.id : (item.id === quickProd.id && !item.isManual && !item.combo_id)) {
+                        const newQty = item.cantidad + qty;
+                        const res = computeItemDiscount(item, newQty, price);
+                        return { 
+                            ...item, 
+                            cantidad: newQty, 
+                            precio: price, 
+                            descuento: res.descuento, 
+                            unitDiscount: res.unitDiscount, 
+                            promoApplied: res.promoApplied,
+                            upsellPromo: res.upsellPromo,
+                            discountApplied: res.discountApplied,
+                            isAgreedPrice: isAgreed || item.isAgreedPrice 
+                        };
+                    }
+                    return item;
+                }));
             } else {
-                setCart([...cart, {
+                const productRule = !isCombo ? getProductDiscountRule(quickProd.id) : null;
+                const tempItem = {
                     id: isCombo ? null : quickProd.id,
                     combo_id: isCombo ? quickProd.id : null,
                     nombre: (quickProd.nombre || quickProd.name),
@@ -1680,8 +2299,18 @@ const SalesTerminal = () => {
                     descuento: 0,
                     exento: false,
                     isManual: false,
+                    discountRule: productRule || null,
                     isAgreedPrice: isAgreed,
                     agreedPriceInfo: agreedPriceInfo || quickProd.agreedPriceInfo || null
+                };
+                const res = computeItemDiscount(tempItem, qty, price);
+                setCart([...cart, {
+                    ...tempItem,
+                    descuento: res.descuento,
+                    unitDiscount: res.unitDiscount,
+                    promoApplied: res.promoApplied,
+                    upsellPromo: res.upsellPromo,
+                    discountApplied: res.discountApplied
                 }]);
             }
             toast.success(`${isCombo ? 'Combo' : 'Producto'} añadido al carrito`);
@@ -1711,7 +2340,12 @@ const SalesTerminal = () => {
     };
 
     const removeFromCart = (id) => {
-        setCart(cart.filter(item => item.id !== id));
+        const nextCart = cart.filter(item => item.id !== id);
+        setCart(nextCart);
+        if (nextCart.length === 0) {
+            setGeneralDiscount(0);
+            setGeneralDiscountPercentage(null);
+        }
     };
 
     const updateItem = (id, field, value) => {
@@ -1719,9 +2353,17 @@ const SalesTerminal = () => {
             if (item.id === id) {
                 // Validación para Nota de Crédito (05)
                 if (tipoDte === '05') {
-                    if (field === 'cantidad' && item.originalQty !== undefined && value > item.originalQty) {
-                        toast.error(`La cantidad no puede superar el original (${item.originalQty})`);
-                        return item;
+                    if (field === 'cantidad') {
+                        const numVal = parseFloat(value) || 0;
+                        if (item.originalQty !== undefined && numVal > item.originalQty) {
+                            toast.error(`La cantidad no puede superar el original (${item.originalQty})`);
+                            return item;
+                        }
+                        const unitDisc = (item.unitDiscount !== undefined) 
+                            ? item.unitDiscount 
+                            : (item.originalQty > 0 ? (parseFloat(item.descuento || 0) / item.originalQty) : 0);
+                        const newDescuento = Math.round((unitDisc * numVal) * 100) / 100;
+                        return { ...item, cantidad: value, descuento: newDescuento, unitDiscount: unitDisc };
                     }
                     if (field === 'precio' && item.originalPrice !== undefined && value > item.originalPrice) {
                         toast.error(`El precio no puede superar el original ($${item.originalPrice})`);
@@ -1733,6 +2375,35 @@ const SalesTerminal = () => {
                 if (tipoDte === '04' && field === 'precio') {
                     return item;
                 }
+
+                if (field === 'cantidad') {
+                    const newQty = parseFloat(value) || 0;
+                    const res = computeItemDiscount(item, newQty);
+                    return { 
+                        ...item, 
+                        cantidad: value, 
+                        descuento: res.descuento, 
+                        unitDiscount: res.unitDiscount,
+                        promoApplied: res.promoApplied,
+                        upsellPromo: res.upsellPromo,
+                        discountApplied: res.discountApplied
+                    };
+                }
+
+                if (field === 'precio') {
+                    const newPrice = parseFloat(value) || 0;
+                    const res = computeItemDiscount(item, item.cantidad, newPrice);
+                    return { 
+                        ...item, 
+                        precio: value, 
+                        descuento: res.descuento, 
+                        unitDiscount: res.unitDiscount,
+                        promoApplied: res.promoApplied,
+                        upsellPromo: res.upsellPromo,
+                        discountApplied: res.discountApplied
+                    };
+                }
+
                 return { ...item, [field]: value };
             }
             return item;
@@ -1827,8 +2498,10 @@ const SalesTerminal = () => {
                                     <button 
                                         onClick={() => {
                                             setEditingCustomer(null);
-                                            setNitValue('');
+                                            setDocNumberValue('');
+                                            setNrcValue('');
                                             setDocType('DUI');
+                                            setCondicionFiscal('otro');
                                             setSelectedDept('');
                                             setSelectedMun('');
                                             setSelectedDistrito('');
@@ -1913,9 +2586,11 @@ const SalesTerminal = () => {
 
                                         <div className="flex flex-col col-span-2 sm:col-span-1 border-t border-indigo-100/30 pt-1">
                                             <span className="text-[8px] font-black text-indigo-400 uppercase tracking-tighter">Condición Fiscal</span>
-                                            <span className="text-[10px] font-bold truncate uppercase" title={selectedCustomerData.condicion_fiscal || 'contribuyente'}
+                                            <span className="text-[10px] font-bold truncate uppercase" title={selectedCustomerData.condicion_fiscal || (selectedCustomerData.nrc ? 'contribuyente' : 'otro')}
                                                 style={{ color: selectedCustomerData.condicion_fiscal === 'gran contribuyente' ? '#d97706' : '#334155' }}>
-                                                {(selectedCustomerData.condicion_fiscal || 'contribuyente').toUpperCase()}
+                                                {selectedCustomerData.condicion_fiscal === 'otro' 
+                                                    ? 'CONSUMIDOR FINAL' 
+                                                    : (selectedCustomerData.condicion_fiscal || (selectedCustomerData.nrc ? 'CONTRIBUYENTE' : 'CONSUMIDOR FINAL')).toUpperCase()}
                                             </span>
                                         </div>
 
@@ -1938,7 +2613,7 @@ const SalesTerminal = () => {
                                             </span>
                                         </div>
                                     </div>
-                                    {selectedCustomerMissing.length > 0 && (
+                                    {selectedCustomerMissing.length > 0 && (tipoDte !== '01' || (totals?.total || 0) >= 200) && (
                                         <div className="mt-2 px-3 py-2 bg-amber-50 rounded-xl border border-amber-200 flex items-center justify-between gap-2 animate-in fade-in zoom-in-95 duration-200">
                                             <span className="text-[10px] font-bold text-amber-700">
                                                 Faltan: {selectedCustomerMissing.join(', ')} — obligatorio para facturar
@@ -1976,7 +2651,16 @@ const SalesTerminal = () => {
                         {/* Tipo DTE + Vendedor Section (Col 7-11) */}
                         <div className="md:col-span-5 flex flex-col gap-3 pt-1">
                             <div className="flex flex-col gap-1.5">
-                                <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider ml-1">Tipo Documento</label>
+                                <div className="flex items-center justify-between ml-1">
+                                    <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Tipo Documento</label>
+                                    <div className="flex items-center gap-2">
+                                        {activeContingency && (
+                                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-500 text-white animate-pulse shadow-sm">
+                                                <AlertTriangle size={11} /> CONTINGENCIA ACTIVA
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
                                 <select 
                                     value={tipoDte}
                                     onChange={(e) => setTipoDte(e.target.value)}
@@ -2217,31 +2901,118 @@ const SalesTerminal = () => {
                                                             </span>
                                                         )}
                                                     </div>
-                                                    {item.discountRule && !item.discountApplied && (
+                                                    {item.promoApplied && (
+                                                        <div className="mt-1 flex items-center gap-1.5 text-[9px] font-extrabold text-emerald-800 bg-emerald-50 border border-emerald-300 px-2 py-0.5 rounded-md inline-flex shadow-xs">
+                                                            <Sparkles size={10} className="text-emerald-600" />
+                                                            <span>↳ 🏷️ PROMO {item.promoApplied.name.toUpperCase()}: -${parseFloat(item.descuento || 0).toFixed(2)}</span>
+                                                        </div>
+                                                    )}
+                                                    {item.upsellPromo && (
+                                                        <div className="mt-1 flex items-center gap-2 flex-wrap">
+                                                            <span className="inline-flex items-center gap-1 text-[9px] font-bold text-amber-800 bg-amber-50 border border-amber-300 px-2 py-0.5 rounded-md shadow-xs">
+                                                                <Sparkles size={10} className="text-amber-600" />
+                                                                {item.upsellPromo.hint}
+                                                            </span>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => updateItem(item.id, 'cantidad', item.upsellPromo.targetQty)}
+                                                                className="text-[9px] font-black uppercase text-indigo-700 hover:text-white bg-indigo-50 hover:bg-indigo-600 border border-indigo-200 hover:border-indigo-600 px-2 py-0.5 rounded transition-all shadow-xs active:scale-95"
+                                                                title={`Aumentar a ${item.upsellPromo.targetQty} unidades para completar la promoción`}
+                                                            >
+                                                                + Aplicar ({item.upsellPromo.targetQty}u)
+                                                            </button>
+                                                        </div>
+                                                    )}
+                                                    {!item.promoApplied && item.discountRule && !item.discountApplied && (
                                                         <button
-                                                            onClick={() => applyDiscountRule(item.id)}
-                                                            className="mt-1 flex items-center gap-1 text-[8px] font-bold text-amber-600 bg-amber-50 hover:bg-amber-100 border border-amber-200 px-2 py-0.5 rounded-full transition-all"
+                                                            type="button"
+                                                            onClick={() => {
+                                                                if (hasGeneralDiscount) {
+                                                                    toast.error('No se puede aplicar descuento por producto: ya existe un descuento general activo en la venta.');
+                                                                    return;
+                                                                }
+                                                                if (!posAllowsDiscounts) {
+                                                                    toast.error('Los descuentos están inhabilitados en este punto de venta.');
+                                                                    return;
+                                                                }
+                                                                applyDiscountRule(item.id);
+                                                            }}
+                                                            className={`mt-1 flex items-center gap-1 text-[8px] font-bold border px-2 py-0.5 rounded-full transition-all ${
+                                                                hasGeneralDiscount || !posAllowsDiscounts
+                                                                    ? 'text-slate-400 bg-slate-50 border-slate-200 opacity-60 cursor-not-allowed'
+                                                                    : 'text-amber-700 bg-amber-50 hover:bg-amber-100 border-amber-300 shadow-sm'
+                                                            }`}
+                                                            title={hasGeneralDiscount ? "Inhabilitado: descuento general activo" : !posAllowsDiscounts ? "Inhabilitado en este POS" : "Aplicar regla de descuento configurada"}
                                                         >
                                                             <Tag size={10} />
                                                             {item.discountRule.discount_type === 'percentage'
-                                                                ? `-${parseFloat(item.discountRule.discount_value)}%`
-                                                                : `-$${parseFloat(item.discountRule.discount_value).toFixed(2)}`
+                                                                ? `Aplicar Regla: -${parseFloat(item.discountRule.discount_value)}%`
+                                                                : `Aplicar Regla: -$${parseFloat(item.discountRule.discount_value).toFixed(2)}/u`
                                                             }
                                                         </button>
                                                     )}
-                                                    {item.discountApplied && (
-                                                        <span className="mt-1 inline-flex items-center gap-1 text-[8px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
-                                                            <Tag size={10} /> Descuento aplicado
-                                                        </span>
+                                                    {!item.promoApplied && item.discountRule && item.discountApplied && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleRemoveItemDiscount(item.id)}
+                                                            className="mt-1 flex items-center gap-1 text-[8px] font-bold border px-2 py-0.5 rounded-full transition-all text-emerald-700 bg-emerald-50 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 border-emerald-200 group/disc shadow-sm"
+                                                            title="Regla aplicada. Clic para remover el descuento"
+                                                        >
+                                                            <Tag size={10} />
+                                                            <span>
+                                                                {item.discountRule.discount_type === 'percentage'
+                                                                    ? `Regla: -${parseFloat(item.discountRule.discount_value)}% (-$${parseFloat(item.descuento || 0).toFixed(2)})`
+                                                                    : `Regla: -$${parseFloat(item.discountRule.discount_value).toFixed(2)}/u (-$${parseFloat(item.descuento || 0).toFixed(2)})`
+                                                                }
+                                                            </span>
+                                                            <X size={9} className="opacity-60 group-hover/disc:opacity-100" />
+                                                        </button>
                                                     )}
                                                 </td>
-                                                <td className="px-4 py-4 text-center" data-label="Cant.">
-                                                    <input 
-                                                        type="number"
-                                                        className="w-14 text-center bg-slate-100 rounded-lg font-black text-xs py-1"
-                                                        value={item.cantidad}
-                                                        onChange={(e) => updateItem(item.id, 'cantidad', parseFloat(e.target.value) || 0)}
-                                                    />
+                                                <td className="px-2 sm:px-4 py-4 text-center" data-label="Cant.">
+                                                    <div className="inline-flex items-center justify-center bg-slate-100 p-0.5 rounded-xl border border-slate-200 shadow-sm">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                const current = parseFloat(item.cantidad) || 0;
+                                                                if (current > 1) {
+                                                                    updateItem(item.id, 'cantidad', Math.round((current - 1) * 100) / 100);
+                                                                } else if (current > 0.01 && current <= 1) {
+                                                                    updateItem(item.id, 'cantidad', Math.max(0.01, Math.round((current - 0.1) * 100) / 100));
+                                                                }
+                                                            }}
+                                                            disabled={parseFloat(item.cantidad) <= 0.01}
+                                                            className="w-6 h-6 sm:w-7 sm:h-7 flex items-center justify-center rounded-lg text-slate-600 hover:text-indigo-600 hover:bg-white active:scale-90 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                                                            title="Disminuir cantidad"
+                                                        >
+                                                            <Minus size={13} strokeWidth={2.5} />
+                                                        </button>
+                                                        <input 
+                                                            type="number"
+                                                            step="any"
+                                                            min="0.01"
+                                                            className="w-10 sm:w-12 text-center bg-transparent font-black text-xs py-1 outline-none text-slate-800"
+                                                            value={item.cantidad}
+                                                            onChange={(e) => updateItem(item.id, 'cantidad', parseFloat(e.target.value) || 0)}
+                                                            onFocus={(e) => e.target.select()}
+                                                        />
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                const current = parseFloat(item.cantidad) || 0;
+                                                                if (tipoDte === '05' && item.originalQty !== undefined && current >= item.originalQty) {
+                                                                    toast.error(`La cantidad no puede superar el original (${item.originalQty})`);
+                                                                    return;
+                                                                }
+                                                                updateItem(item.id, 'cantidad', Math.round((current + 1) * 100) / 100);
+                                                            }}
+                                                            disabled={tipoDte === '05' && item.originalQty !== undefined && parseFloat(item.cantidad) >= item.originalQty}
+                                                            className="w-6 h-6 sm:w-7 sm:h-7 flex items-center justify-center rounded-lg text-slate-600 hover:text-indigo-600 hover:bg-white active:scale-90 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                                                            title="Aumentar cantidad"
+                                                        >
+                                                            <Plus size={13} strokeWidth={2.5} />
+                                                        </button>
+                                                    </div>
                                                 </td>
                                                 <td className="px-4 py-4 text-right" data-label="Precio">
                                                     {tipoDte === '05' ? (
@@ -2260,7 +3031,35 @@ const SalesTerminal = () => {
                                                         <div className="font-bold text-xs text-slate-700">${(tipoDte === '11' ? parseFloat(item.precio || 0) / (1 + parseFloat(taxSettings?.iva_rate || 13) / 100) : parseFloat(item.precio || 0)).toFixed(2)}</div>
                                                     )}
                                                 </td>
-                                                <td className="px-4 py-4 text-right text-rose-500 font-bold text-xs" data-label="Desc.">-<Money value={item.descuento || 0} /></td>
+                                                <td className="px-4 py-4 text-right" data-label="Desc.">
+                                                    {canApplyItemDiscount ? (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                if (hasGeneralDiscount && (parseFloat(item.descuento) || 0) <= 0) {
+                                                                    toast.error('No se puede aplicar descuento por producto: ya existe un descuento general activo en la venta.');
+                                                                    return;
+                                                                }
+                                                                setSelectedDiscountItem(item);
+                                                            }}
+                                                            className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-bold transition-all ${
+                                                                (item.descuento || 0) > 0 
+                                                                    ? 'bg-rose-50 text-rose-600 border border-rose-200 hover:bg-rose-100 shadow-sm' 
+                                                                    : hasGeneralDiscount
+                                                                        ? 'text-slate-300 border border-transparent cursor-not-allowed opacity-60'
+                                                                        : 'text-slate-400 hover:text-indigo-600 hover:bg-slate-100 border border-transparent'
+                                                            }`}
+                                                            title={hasGeneralDiscount && (parseFloat(item.descuento) || 0) <= 0 ? "Inhabilitado: descuento general activo" : "Editar o aplicar descuento a este producto"}
+                                                        >
+                                                            <Tag size={11} />
+                                                            <span>{(item.descuento || 0) > 0 ? `-$${parseFloat(item.descuento).toFixed(2)}` : '$0.00'}</span>
+                                                        </button>
+                                                    ) : (
+                                                        <span className="text-rose-500 font-bold text-xs">
+                                                            {(item.descuento || 0) > 0 ? `-$${parseFloat(item.descuento).toFixed(2)}` : '$0.00'}
+                                                        </span>
+                                                    )}
+                                                </td>
                                                 <td className="px-4 py-4 text-right font-black text-slate-900 text-xs" data-label="Subtotal">
                                                     ${(tipoDte === '11' ? (((parseFloat(item.precio || 0) * (parseFloat(item.cantidad || 0))) - (parseFloat(item.descuento || 0))) / (1 + parseFloat(taxSettings?.iva_rate || 13) / 100)) : ((parseFloat(item.precio || 0) * (parseFloat(item.cantidad || 0))) - (parseFloat(item.descuento || 0)))).toFixed(2)}
                                                 </td>
@@ -2287,19 +3086,79 @@ const SalesTerminal = () => {
                                         <>
                                     <div className="flex justify-between border-b border-white/10 pb-1"><span>Gravadas</span><span>${totals.viewGravadas.toFixed(2)}</span></div>
                                     <div className="flex justify-between border-b border-white/10 pb-1"><span>IVA ({(taxSettings?.iva_rate || 13)}%)</span><span>${totals.viewIva.toFixed(2)}</span></div>
-                                    <div className="flex justify-between border-b border-white/10 pb-1 text-orange-300"><span>FOVIAL (${(taxSettings?.fovial_rate || 0.20)}/gal)</span><span>${totals.fovial.toFixed(2)}</span></div>
-                                    <div className="flex justify-between border-b border-white/10 pb-1 text-amber-300"><span>COTRANS (${(taxSettings?.cotrans_rate || 0.10)}/gal)</span><span>${totals.cotrans.toFixed(2)}</span></div>
-                                    <div className="flex justify-between border-b border-white/10 pb-1 text-blue-300"><span>Exentas</span><span>${totals.exento.toFixed(2)}</span></div>
-                                    <div className="flex justify-between border-b border-white/10 pb-1 text-slate-400"><span>No Sujetas</span><span>${totals.noSujeto.toFixed(2)}</span></div>
+                                    <div className="flex justify-between items-center border-b border-white/10 pb-1 text-orange-200">
+                                        <span>FOVIAL ${totals.fovial.toFixed(2)}</span>
+                                        <span className="opacity-40 font-normal">|</span>
+                                        <span>COTRANS ${totals.cotrans.toFixed(2)}</span>
+                                    </div>
+                                    <div className="flex justify-between items-center border-b border-white/10 pb-1 text-blue-300">
+                                        <span>EXENTAS ${totals.exento.toFixed(2)}</span>
+                                        <span className="opacity-40 font-normal">|</span>
+                                        <span className="text-slate-400">NO SUJETAS ${totals.noSujeto.toFixed(2)}</span>
+                                    </div>
                                     <div className="flex justify-between border-b border-white/10 pb-1 font-black text-indigo-300"><span>Subtotal s/Impuestos</span><span>${totals.subtotal.toFixed(2)}</span></div>
-                                    <div className="flex justify-between border-b border-white/10 pb-1 text-rose-300"><span>Retención ({(taxSettings?.retencion_rate || 1)}%)</span><span>-${totals.retencion.toFixed(2)}</span></div>
-                                    <div className="flex justify-between border-b border-white/10 pb-1 text-emerald-300"><span>Percepción ({(taxSettings?.percepcion_rate || 1)}%)</span><span>+${totals.percepcion.toFixed(2)}</span></div>
+                                    <div className="flex justify-between items-center border-b border-white/10 pb-1 text-rose-300">
+                                        <span>RETENCIÓN -${totals.retencion.toFixed(2)}</span>
+                                        <span className="opacity-40 font-normal">|</span>
+                                        <span>PERCEPCIÓN +${totals.percepcion.toFixed(2)}</span>
+                                    </div>
+                                    <div className={`flex justify-between border-b border-white/10 pb-1 items-center ${totals.totalItemDiscounts > 0 ? 'text-rose-300 font-bold' : 'text-slate-400'}`}>
+                                        <span className="flex items-center gap-1"><Tag size={10} /> Desc. Ítems</span>
+                                        <span className="font-mono text-[10px]">-${totals.totalItemDiscounts.toFixed(2)}</span>
+                                    </div>
+                                    <div className={`flex justify-between border-b border-white/10 pb-1 items-center ${generalDiscount > 0 ? 'text-rose-300 font-bold' : 'text-slate-400'}`}>
+                                        <span className="flex items-center gap-1"><Tag size={10} /> Desc. General</span>
+                                        <span className="font-mono text-[10px]">-${generalDiscount.toFixed(2)}</span>
+                                    </div>
                                     <div className="flex justify-between border-b border-white/10 pb-1 text-indigo-400"><span>Monto Operación</span><span>${totals.montoOperacion.toFixed(2)}</span></div>
                                         </>
                                     )}
-                                    {generalDiscount > 0 && <div className="flex justify-between text-rose-300"><span>Descuento Gral.</span><span>-${generalDiscount.toFixed(2)}</span></div>}
                                 </div>
-                                <div className="text-4xl font-black mb-4 tracking-tighter">${(tipoDte === '07' ? totals.totalIVAretenido : totals.total).toFixed(2)}</div>
+                                <div className="text-4xl font-black mb-3 tracking-tighter">${(tipoDte === '07' ? totals.totalIVAretenido : totals.total).toFixed(2)}</div>
+                                
+                                {canApplyGeneralDiscount && cart.length > 0 && tipoDte !== '07' && tipoDte !== '05' && (
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            if (hasItemDiscounts && !hasGeneralDiscount) {
+                                                toast.error('No se puede aplicar descuento general: ya existen productos con descuento individual en la venta.');
+                                                return;
+                                            }
+                                            setIsGeneralDiscountModalOpen(true);
+                                        }}
+                                        className={`w-full mb-3 px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-between border ${
+                                            generalDiscount > 0 
+                                                ? 'bg-rose-500/20 text-rose-200 border-rose-500/40 hover:bg-rose-500/30' 
+                                                : hasItemDiscounts
+                                                    ? 'bg-white/5 text-slate-400 border-white/5 cursor-not-allowed opacity-60'
+                                                    : 'bg-white/10 text-slate-200 border-white/10 hover:bg-white/15'
+                                        }`}
+                                        title={hasItemDiscounts && !hasGeneralDiscount ? "Inhabilitado: ya existen productos con descuento individual" : "Descuento general"}
+                                    >
+                                        <span className="flex items-center gap-1.5">
+                                            <Tag size={13} className={generalDiscount > 0 ? 'text-rose-300' : 'text-slate-300'} />
+                                            <span>{generalDiscount > 0 ? `Desc. General: -$${generalDiscount.toFixed(2)}` : 'Descuento General'}</span>
+                                        </span>
+                                        <div className="flex items-center gap-1">
+                                            {generalDiscount > 0 && (
+                                                <span 
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setGeneralDiscount(0);
+                                                        setGeneralDiscountPercentage(null);
+                                                        toast.info('Descuento general eliminado');
+                                                    }}
+                                                    className="p-1 text-rose-300 hover:text-white hover:bg-rose-600/40 rounded transition-colors"
+                                                    title="Quitar descuento"
+                                                >
+                                                    <X size={12} />
+                                                </span>
+                                            )}
+                                            <span className="text-[10px] font-mono bg-white/10 px-1.5 py-0.5 rounded text-slate-300">F8</span>
+                                        </div>
+                                    </button>
+                                )}
+
                                 <button 
                                     disabled={tipoDte === '07' ? linkedDocs.length === 0 : (tipoDte === '05' ? (cart.length === 0 || linkedDocs.length === 0) : cart.length === 0)}
                                     onClick={goToPayment}
@@ -2325,13 +3184,30 @@ const SalesTerminal = () => {
                             <div className="space-y-1 mb-4 text-[11px] font-bold text-slate-500 uppercase">
                                 <div className="flex justify-between border-b border-slate-100 pb-0.5"><span>Gravadas</span><span>${totals.viewGravadas.toFixed(2)}</span></div>
                                 <div className="flex justify-between border-b border-slate-100 pb-0.5"><span>IVA ({(taxSettings?.iva_rate || 13)}%)</span><span>${totals.viewIva.toFixed(2)}</span></div>
-                                <div className="flex justify-between border-b border-slate-100 pb-0.5 text-orange-600"><span>FOVIAL (${(taxSettings?.fovial_rate || 0.20)}/gal)</span><span>${totals.fovial.toFixed(2)}</span></div>
-                                <div className="flex justify-between border-b border-slate-100 pb-0.5 text-amber-600"><span>COTRANS (${(taxSettings?.cotrans_rate || 0.10)}/gal)</span><span>${totals.cotrans.toFixed(2)}</span></div>
-                                <div className="flex justify-between border-b border-slate-100 pb-0.5"><span>Exentas</span><span>${totals.exento.toFixed(2)}</span></div>
-                                <div className="flex justify-between border-b border-slate-100 pb-0.5"><span>No Sujetas</span><span>${totals.noSujeto.toFixed(2)}</span></div>
+                                <div className="flex justify-between items-center border-b border-slate-100 pb-0.5 text-orange-600">
+                                    <span>FOVIAL ${totals.fovial.toFixed(2)}</span>
+                                    <span className="opacity-40 font-normal">|</span>
+                                    <span>COTRANS ${totals.cotrans.toFixed(2)}</span>
+                                </div>
+                                <div className="flex justify-between items-center border-b border-slate-100 pb-0.5 text-blue-600">
+                                    <span>EXENTAS ${totals.exento.toFixed(2)}</span>
+                                    <span className="opacity-40 font-normal">|</span>
+                                    <span className="text-slate-400">NO SUJETAS ${totals.noSujeto.toFixed(2)}</span>
+                                </div>
                                 <div className="flex justify-between border-b border-slate-100 pb-0.5 font-black text-indigo-600"><span>Subtotal s/Impuestos</span><span>${totals.subtotal.toFixed(2)}</span></div>
-                                <div className="flex justify-between border-b border-slate-100 pb-0.5 text-rose-500"><span>Retención ({(taxSettings?.retencion_rate || 1)}%)</span><span>-${totals.retencion.toFixed(2)}</span></div>
-                                <div className="flex justify-between border-b border-slate-100 pb-0.5 text-emerald-600"><span>Percepción ({(taxSettings?.percepcion_rate || 1)}%)</span><span>+${totals.percepcion.toFixed(2)}</span></div>
+                                <div className="flex justify-between items-center border-b border-slate-100 pb-0.5 text-slate-700">
+                                    <span>RETENCIÓN -${totals.retencion.toFixed(2)}</span>
+                                    <span className="opacity-40 font-normal">|</span>
+                                    <span>PERCEPCIÓN +${totals.percepcion.toFixed(2)}</span>
+                                </div>
+                                <div className={`flex justify-between border-b border-slate-100 pb-0.5 items-center ${totals.totalItemDiscounts > 0 ? 'text-rose-600 font-bold' : 'text-slate-400'}`}>
+                                    <span className="flex items-center gap-1"><Tag size={10} /> Desc. Ítems</span>
+                                    <span className="font-mono text-[10px]">-${totals.totalItemDiscounts.toFixed(2)}</span>
+                                </div>
+                                <div className={`flex justify-between border-b border-slate-100 pb-0.5 items-center ${generalDiscount > 0 ? 'text-rose-600 font-bold' : 'text-slate-400'}`}>
+                                    <span className="flex items-center gap-1"><Tag size={10} /> Desc. General</span>
+                                    <span className="font-mono text-[10px]">-${generalDiscount.toFixed(2)}</span>
+                                </div>
                                 <div className="flex justify-between font-black text-slate-900 pt-1 text-xs italic"><span>Monto Operación</span><span>${totals.montoOperacion.toFixed(2)}</span></div>
                             </div>
 
@@ -2384,18 +3260,20 @@ const SalesTerminal = () => {
                                     })()}
                                 </div>
 
-                                <div className="flex justify-between items-end p-3 bg-indigo-600 rounded-2xl text-white shadow-lg">
-                                    <span className="font-black uppercase text-[10px] tracking-widest opacity-80">Total Cobrado</span>
-                                    <span className="text-xl font-black tracking-tighter">${payments.reduce((acc, p) => acc + parseFloat(p.monto || 0), 0).toFixed(2)}</span>
-                                </div>
-                                {condicionPago === '1' && (
-                                    <div className="flex justify-between items-end p-3 bg-white rounded-2xl border border-slate-200 shadow-sm italic">
-                                        <span className="text-slate-400 font-black uppercase text-[10px] tracking-widest">Saldo Pendiente</span>
-                                        <span className={`text-xl font-black tracking-tighter ${totals.total - payments.reduce((acc, p) => acc + parseFloat(p.monto || 0), 0) > 0.01 ? 'text-rose-500' : 'text-emerald-500'}`}>
-                                            ${Math.max(0, totals.total - payments.reduce((acc, p) => acc + parseFloat(p.monto || 0), 0)).toFixed(2)}
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div className="flex flex-col justify-between p-3.5 bg-indigo-600 rounded-2xl text-white shadow-md">
+                                        <span className="font-black uppercase text-[10px] tracking-widest opacity-80">Total Cobrado</span>
+                                        <span className="text-xl font-black tracking-tight mt-1">
+                                            <Money value={payments.reduce((acc, p) => acc + parseFloat(p.monto || 0), 0)} />
                                         </span>
                                     </div>
-                                )}
+                                    <div className="flex flex-col justify-between p-3.5 bg-white rounded-2xl border border-slate-200 shadow-sm">
+                                        <span className="text-slate-400 font-black uppercase text-[10px] tracking-widest">Saldo Pendiente</span>
+                                        <span className={`text-xl font-black tracking-tight mt-1 ${condicionPago === '1' && (totals.total - payments.reduce((acc, p) => acc + parseFloat(p.monto || 0), 0) > 0.01) ? 'text-rose-500' : 'text-emerald-500'}`}>
+                                            <Money value={condicionPago === '1' ? Math.max(0, totals.total - payments.reduce((acc, p) => acc + parseFloat(p.monto || 0), 0)) : 0} />
+                                        </span>
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
@@ -2575,16 +3453,33 @@ const SalesTerminal = () => {
                                     {processSale.isPending ? (
                                         <>
                                             <Loader2 size={20} className="animate-spin text-white" />
-                                            <span>Transmitiendo DTE a Hacienda...</span>
+                                            <span>{activeContingency ? 'Emitiendo DTE en Contingencia...' : 'Transmitiendo DTE a Hacienda...'}</span>
                                         </>
                                     ) : (
                                         <>
-                                            <span>Finalizar y Facturar</span>
-                                            <ChevronRight size={20} />
+                                            <span>{activeContingency ? 'Emitir en Contingencia' : 'Finalizar y Facturar'}</span>
+                                            <span className="px-2 py-0.5 bg-white/20 hover:bg-white/30 rounded-lg text-xs font-mono font-bold tracking-normal border border-white/30">
+                                                F10
+                                            </span>
+                                            {activeContingency ? (
+                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black bg-amber-400 text-amber-950 uppercase tracking-tight shadow-xs">
+                                                    <AlertTriangle size={11} /> Contingencia
+                                                </span>
+                                            ) : (
+                                                <ChevronRight size={20} />
+                                            )}
                                         </>
                                     )}
                                 </button>
-                                <p className="text-center text-slate-400 text-[10px] font-bold uppercase tracking-widest">Al confirmar, el documento será enviado a @HaciendaSV</p>
+                                <p className="text-center text-slate-400 text-[10px] font-bold uppercase tracking-widest">
+                                    {activeContingency ? (
+                                        <span className="text-amber-600 font-black inline-flex items-center gap-1">
+                                            <AlertTriangle size={11} /> El DTE se emitirá localmente en contingencia y se enviará a @HaciendaSV al reanudar conexión
+                                        </span>
+                                    ) : (
+                                        'Al confirmar, el documento será enviado a @HaciendaSV'
+                                    )}
+                                </p>
                             </div>
                         </div>
                     </div>
@@ -2592,1029 +3487,185 @@ const SalesTerminal = () => {
             )}
 
             {/* Modals */}
-            {isProductModalOpen && (
-                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-                    <div className="bg-white rounded-[2.5rem] w-full max-w-4xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col">
-                        <div className="p-4 md:p-8 border-b bg-slate-50/30 flex justify-between items-center">
-                            <h3 className="text-2xl font-black text-slate-900 tracking-tight">Seleccionar Ítem</h3>
-                            <button onClick={() => setIsProductModalOpen(false)} className="p-2 hover:bg-white rounded-xl shadow-sm transition-all"><X size={20} /></button>
-                        </div>
-                        <div className="p-4 md:p-8 md:pb-4">
-                            <div className="relative">
-                                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
-                                <input 
-                                    autoFocus
-                                    type="text"
-                                    placeholder="Buscar productos o combos..."
-                                    value={productSearch}
-                                    onChange={(e) => setProductSearch(e.target.value)}
-                                    className="w-full pl-12 pr-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-500/5 font-bold transition-all shadow-inner"
-                                />
-                            </div>
-                        </div>
-                        <div className="flex-1 overflow-y-auto p-4 md:p-8 md:pt-4 custom-scrollbar">
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-                                {/* Combos */}
-                                {filteredCombos.map(c => (
-                                    <button key={`combo-${c.id}`} onClick={() => addToCart(c, true)} className="flex items-center gap-3 p-3 rounded-2xl border border-amber-100 bg-amber-50/20 hover:border-amber-400 hover:bg-amber-100/30 transition-all text-left group">
-                                        <div className="p-2 bg-white rounded-xl shadow-sm text-amber-500 group-hover:scale-110 transition-transform"><Zap size={20} /></div>
-                                        <div className="flex-1 min-w-0">
-                                            <div className="font-bold text-slate-900 text-sm truncate leading-tight">{c.name}</div>
-                                            <div className="text-[10px] font-mono text-slate-400 font-bold uppercase">{c.barcode}</div>
-                                            <div className="font-black text-amber-700 mt-0.5"><Money value={c.price || 0} /></div>
-                                        </div>
-                                    </button>
-                                ))}
+            {/* Modal de Catálogo de Productos (F3) */}
+            <PosProductCatalogModal
+                isOpen={isProductModalOpen}
+                onClose={() => setIsProductModalOpen(false)}
+                productSearch={productSearch}
+                setProductSearch={setProductSearch}
+                selectedCategoryFilter={selectedCategoryFilter}
+                setSelectedCategoryFilter={setSelectedCategoryFilter}
+                setModalPage={setModalPage}
+                categoriesList={categoriesList}
+                combos={combos}
+                productViewMode={productViewMode}
+                setProductViewMode={setProductViewMode}
+                isLoadingModalProducts={isLoadingModalProducts}
+                modalProductsData={modalProductsData}
+                filteredCombos={filteredCombos}
+                filteredProducts={filteredProducts}
+                addToCart={addToCart}
+                getCustomerAgreedPrice={getCustomerAgreedPrice}
+                modalPage={modalPage}
+            />
 
-                                {/* Productos */}
-                                {isLoadingModalProducts ? (
-                                    <div className="col-span-full py-16 text-center text-slate-400 text-sm font-medium">Cargando productos...</div>
-                                ) : filteredProducts.map(p => {
-                                    const agreed = getCustomerAgreedPrice(p);
-                                    return (
-                                        <button key={p.id} onClick={() => addToCart(p)} className={`flex items-center gap-3 p-3 rounded-2xl border transition-all text-left group ${agreed ? 'border-indigo-200 bg-indigo-50/20 hover:border-indigo-500 hover:bg-indigo-50/50' : 'border-slate-50 hover:border-indigo-400 hover:bg-indigo-50/40'}`}>
-                                            <div className={`p-2 bg-white rounded-xl shadow-sm transition-transform group-hover:scale-110 ${agreed ? 'text-indigo-600' : 'text-slate-400 group-hover:text-indigo-500'}`}><Package size={20} /></div>
-                                            <div className="flex-1 min-w-0">
-                                                <div className="flex items-center gap-1.5">
-                                                    <span className="font-bold text-slate-900 text-sm truncate leading-tight">{p.nombre}</span>
-                                                    {agreed && (
-                                                        <span className="inline-flex items-center gap-0.5 text-[9px] font-bold text-indigo-700 bg-indigo-100/80 px-1.5 py-0.5 rounded-full shrink-0">
-                                                            <Handshake size={10} /> Pactado
-                                                        </span>
-                                                    )}
-                                                </div>
-                                                <div className="text-[10px] font-mono text-indigo-400 font-bold uppercase">{p.codigo}</div>
-                                                <div className="flex items-baseline gap-2 mt-0.5">
-                                                    {agreed ? (
-                                                        <>
-                                                            <span className="font-black text-indigo-700 text-sm"><Money value={agreed.agreedUnitPrice} /></span>
-                                                            <span className="text-[10px] text-slate-400 line-through"><Money value={p.precio_unitario || 0} /></span>
-                                                        </>
-                                                    ) : (
-                                                        <span className="font-black text-slate-700"><Money value={p.precio_unitario || 0} /></span>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                            {!isLoadingModalProducts && filteredProducts.length === 0 && filteredCombos.length === 0 && (
-                                <div className="text-center py-20 opacity-30">
-                                    <Search size={64} className="mx-auto mb-4" />
-                                    <p className="font-black uppercase tracking-widest text-sm">No se encontraron resultados</p>
-                                    <p className="text-[10px] font-bold mt-2 italic">Intenta escribir una palabra clave diferente</p>
-                                </div>
-                            )}
-                        </div>
-                        {modalProductsData.totalPages > 1 && (
-                            <div className="border-t border-slate-100 p-4">
-                                <Pagination
-                                    currentPage={modalPage}
-                                    totalPages={modalProductsData.totalPages}
-                                    totalItems={modalProductsData.total}
-                                    onPageChange={setModalPage}
-                                    itemsOnPage={filteredProducts.length}
-                                    isLoading={isLoadingModalProducts}
-                                />
-                            </div>
-                        )}
-                    </div>
-                </div>
-            )}
+            {/* Modal de Búsqueda Avanzada de Clientes */}
+            <PosCustomerSearchModal
+                isOpen={isCustomerSearchOpen}
+                onClose={() => setIsCustomerSearchOpen(false)}
+                customerName={customerName}
+                setCustomerName={setCustomerName}
+                customerNit={customerNit}
+                setCustomerNit={setCustomerNit}
+                customerNrc={customerNrc}
+                setCustomerNrc={setCustomerNrc}
+                handleCustomerSelect={handleCustomerSelect}
+                isLoadingCustomerSearch={isLoadingCustomerSearch}
+                customerSearchData={customerSearchData}
+                customerSearchPage={customerSearchPage}
+                setCustomerSearchPage={setCustomerSearchPage}
+                personTypes={personTypes}
+            />
 
-            {isCustomerSearchOpen && (
-                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-                    <div className="bg-white rounded-[2.5rem] w-full max-w-3xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col">
-                        <div className="p-4 md:p-8 border-b bg-slate-50/30 flex justify-between items-center">
-                            <h3 className="text-2xl font-black text-slate-900 tracking-tight">Buscar Cliente</h3>
-                            <button onClick={() => setIsCustomerSearchOpen(false)} className="p-2 hover:bg-white rounded-xl shadow-sm transition-all"><X size={20} /></button>
-                        </div>
-                        <div className="p-4 md:p-8 md:pb-4 flex flex-col gap-3">
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                                <div className="relative">
-                                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                                    <input
-                                        autoFocus
-                                        type="text"
-                                        placeholder="Nombre / Razón Social"
-                                        value={customerName}
-                                        onChange={(e) => setCustomerName(e.target.value)}
-                                        className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none focus:ring-4 focus:ring-indigo-500/5 text-[13px] font-bold transition-all shadow-inner"
-                                    />
-                                </div>
-                                <div className="relative">
-                                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                                    <input
-                                        type="text"
-                                        placeholder="NIT"
-                                        value={customerNit}
-                                        onChange={(e) => setCustomerNit(e.target.value)}
-                                        className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none focus:ring-4 focus:ring-indigo-500/5 text-[13px] font-bold transition-all shadow-inner"
-                                    />
-                                </div>
-                                <div className="relative">
-                                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                                    <input
-                                        type="text"
-                                        placeholder="NRC"
-                                        value={customerNrc}
-                                        onChange={(e) => setCustomerNrc(e.target.value)}
-                                        className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-xl outline-none focus:ring-4 focus:ring-indigo-500/5 text-[13px] font-bold transition-all shadow-inner"
-                                    />
-                                </div>
-                            </div>
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    handleCustomerSelect('', null);
-                                    setIsCustomerSearchOpen(false);
-                                }}
-                                className="self-start text-[11px] font-black text-slate-500 hover:text-indigo-600 bg-slate-50 hover:bg-indigo-50 px-3 py-1.5 rounded-lg uppercase transition-all"
-                            >
-                                Consumidor Final (General)
-                            </button>
-                        </div>
-                        <div className="flex-1 overflow-y-auto px-4 py-4 md:px-8 md:py-4 custom-scrollbar">
-                            {isLoadingCustomerSearch ? (
-                                <div className="py-16 text-center text-slate-400 text-sm font-medium">Cargando clientes...</div>
-                            ) : customerSearchData.data.length === 0 ? (
-                                <div className="text-center py-16 opacity-30">
-                                    <User size={64} className="mx-auto mb-4" />
-                                    <p className="font-black uppercase tracking-widest text-sm">No se encontraron clientes</p>
-                                    <p className="text-[10px] font-bold mt-2 italic">Prueba con otro nombre, NIT o NRC</p>
-                                </div>
-                            ) : (
-                                <div className="flex flex-col gap-2">
-                                    {customerSearchData.data.map(c => (
-                                        <button
-                                            key={c.id}
-                                            onClick={() => {
-                                                handleCustomerSelect(c.id, c);
-                                                setIsCustomerSearchOpen(false);
-                                            }}
-                                            className="flex items-center gap-3 p-3 rounded-2xl border border-slate-50 hover:border-indigo-400 hover:bg-indigo-50/40 transition-all text-left group"
-                                        >
-                                            <div className="p-2 bg-white rounded-xl shadow-sm text-slate-400 group-hover:text-indigo-500 group-hover:scale-110 transition-transform"><User size={20} /></div>
-                                            <div className="flex-1 min-w-0">
-                                                <div className="font-bold text-slate-900 text-sm truncate leading-tight">{c.nombre}</div>
-                                                <div className="text-[10px] font-mono text-indigo-400 font-bold uppercase">
-                                                    {c.nit ? `NIT: ${c.nit}` : ''}
-                                                    {c.nit && c.nrc ? ' | ' : ''}
-                                                    {c.nrc ? `NRC: ${c.nrc}` : ''}
-                                                    {!c.nit && !c.nrc ? (c.numero_documento || 'S/D') : ''}
-                                                </div>
-                                            </div>
-                                            <div className="text-[10px] font-bold text-slate-400 uppercase whitespace-nowrap">
-                                                {personTypes.find(t => t.code === c.tipo_persona)?.description || 'NATURAL'}
-                                            </div>
-                                        </button>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-                        {customerSearchData.totalPages > 1 && (
-                            <div className="border-t border-slate-100 p-4">
-                                <Pagination
-                                    currentPage={customerSearchPage}
-                                    totalPages={customerSearchData.totalPages}
-                                    totalItems={customerSearchData.total}
-                                    onPageChange={setCustomerSearchPage}
-                                    itemsOnPage={customerSearchData.data.length}
-                                    isLoading={isLoadingCustomerSearch}
-                                />
-                            </div>
-                        )}
-                    </div>
-                </div>
-            )}
-
-            {isLinkedDocModalOpen && (
-                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
-                    <div className="bg-white rounded-[2.5rem] w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col">
-                        <div className="p-4 md:p-8 border-b bg-slate-50/30 flex justify-between items-center">
-                            <h3 className="text-2xl font-black text-slate-900">Referencias Documentales</h3>
-                            <button onClick={() => setIsLinkedDocModalOpen(false)} className="p-2 hover:bg-white rounded-xl shadow-sm"><X size={20} /></button>
-                        </div>
-                            <div className="p-4 md:p-8 space-y-4">
-                                {tipoDte === '05' && customerId ? (
-                                    <div className="flex flex-col gap-4">
-                                        <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Seleccionar Documento del Cliente</label>
-                                        <div className="max-h-60 overflow-y-auto custom-scrollbar border border-slate-100 rounded-2xl divide-y">
-                                            {isLoadingCustomerSales ? (
-                                                <div className="p-8 text-center text-slate-400 text-xs font-bold animate-pulse">Cargando documentos...</div>
-                                            ) : customerSales.length === 0 ? (
-                                                <div className="p-8 text-center text-slate-400 text-xs font-bold">No se encontraron documentos previos para este cliente.</div>
-                                            ) : (
-                                                customerSales.filter(s => ['01', '03', '07'].includes(s.dte_type)).map(sale => (
-                                                    <button 
-                                                        key={sale.id}
-                                                        onClick={async () => {
-                                                            try {
-                                                                const { data: fullSale } = await axios.get(`/api/sales/${sale.id}`);
-                                                                setReferencingSale(fullSale);
-                                                                const refDoc = fullSale.codigo_generacion || fullSale.numero_control || fullSale.dte_control;
-                                                                
-                                                                // Cargar items al carrito
-                                                                const newItems = fullSale.items.map(item => ({
-                                                                    id: item.product_id,
-                                                                    nombre: item.descripcion,
-                                                                    codigo: item.codigo,
-                                                                    precio: item.precio_unitario,
-                                                                    originalPrice: item.precio_unitario,
-                                                                    cantidad: item.cantidad,
-                                                                    originalQty: item.cantidad,
-                                                                    descuento: item.monto_descuento,
-                                                                    exento: item.venta_exenta > 0,
-                                                                    isManual: !item.product_id,
-                                                                    referencedDoc: refDoc
-                                                                }));
-                                                                setCart(newItems);
-
-                                                                // Vincular documento
-                                                                setLinkedDocs([{
-                                                                    doc_type: sale.dte_type,
-                                                                    doc_number: sale.numero_control || sale.dte_control || sale.codigo_generacion || sale.id.toString(),
-                                                                    emission_date: sale.fecha_emision.split('T')[0],
-                                                                    generation_type: 1 // Electrónico
-                                                                }]);
-                                                                
-                                                                setIsLinkedDocModalOpen(false);
-                                                                toast.success('Documento referenciado y productos cargados');
-                                                            } catch (error) {
-                                                                toast.error('Error al cargar detalle del documento');
-                                                            }
-                                                        }}
-                                                        className="w-full p-4 flex items-center justify-between hover:bg-indigo-50 transition-colors text-left group"
-                                                    >
-                                                        <div>
-                                                            <div className="font-black text-slate-900 text-xs tracking-tight group-hover:text-indigo-600 transition-colors">
-                                                                {sale.tipo_documento_name} - {sale.numero_control || sale.dte_control || sale.codigo_generacion || `ID: ${sale.id}`}
-                                                            </div>
-                                                            <div className="text-[10px] font-bold text-slate-400 uppercase mt-0.5">
-                                                                {new Date(sale.fecha_emision).toLocaleDateString()} • TOTAL: <Money value={sale.total_pagar} />
-                                                            </div>
-                                                        </div>
-                                                        <ChevronRight size={16} className="text-slate-300 group-hover:text-indigo-400 transition-colors" />
-                                                    </button>
-                                                ))
-                            )}
-                        </div>
-                                        <div className="relative flex items-center gap-2">
-                                            <div className="flex-1 h-[1px] bg-slate-100"></div>
-                                            <span className="text-[8px] font-black text-slate-300 uppercase tracking-widest">O entrada manual</span>
-                                            <div className="flex-1 h-[1px] bg-slate-100"></div>
-                                        </div>
-                                    </div>
-                                ) : null}
-
-                                {tipoDte === '07' ? (
-                                    /* CR: formulario con campos de retención */
-                                    <div className="space-y-3">
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                            <select id="link-type" className="p-3 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-xs outline-none focus:ring-2 focus:ring-indigo-500/20">
-                                                <option value="01">Factura (01)</option>
-                                                <option value="03">Créd. Fiscal (03)</option>
-                                            </select>
-                                            <select id="link-gen-type" className="p-3 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-xs outline-none focus:ring-2 focus:ring-indigo-500/20">
-                                                <option value="1">Físico</option>
-                                                <option value="2">Electrónico</option>
-                                            </select>
-                                        </div>
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                            <input id="link-number" className="p-3 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-xs outline-none focus:ring-2 focus:ring-indigo-500/20" placeholder="Número de Documento" />
-                                            <div>
-                                                <input 
-                                                    id="link-date" 
-                                                    type="date" 
-                                                    min={`${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-01`}
-                                                    max={new Date().toISOString().split('T')[0]}
-                                                    defaultValue={new Date().toISOString().split('T')[0]} 
-                                                    className="w-full p-3 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-xs outline-none focus:ring-2 focus:ring-indigo-500/20" 
-                                                />
-                                                <span className="text-[9px] text-indigo-500 font-semibold ml-1 block mt-0.5">
-                                                    * Período actual: {new Date().toLocaleDateString('es-SV', { month: 'long', year: 'numeric' })}
-                                                </span>
-                                            </div>
-                                        </div>
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                            <div>
-                                                <label className="text-[8px] font-black text-slate-400 uppercase ml-1 block mb-1">Monto Gravado ($)</label>
-                                                <input id="link-gravadas" type="number" step="0.01" className="w-full p-3 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-xs outline-none focus:ring-2 focus:ring-indigo-500/20" placeholder="0.00" onChange={(e) => {
-                                                    const grav = parseFloat(e.target.value) || 0;
-                                                    document.getElementById('link-retencion').value = (grav * 0.01).toFixed(2);
-                                                }} />
-                                            </div>
-                                            <div>
-                                                <label className="text-[8px] font-black text-slate-400 uppercase ml-1 block mb-1">Retención 1% ($)</label>
-                                                <input id="link-retencion" type="number" step="0.01" className="w-full p-3 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-xs outline-none focus:ring-2 focus:ring-rose-500/20 text-rose-600" placeholder="0.00" />
-                                            </div>
-                                        </div>
-                                        <button 
-                                            onClick={async () => {
-                                                const type = document.getElementById('link-type').value;
-                                                const genType = parseInt(document.getElementById('link-gen-type').value) || 2;
-                                                const num = document.getElementById('link-number').value.trim();
-                                                const date = document.getElementById('link-date').value;
-                                                const gravadas = parseFloat(document.getElementById('link-gravadas').value) || 0;
-                                                const retencion = parseFloat(document.getElementById('link-retencion').value) || 0;
-                                                if(!num) return toast.error('El número de documento es obligatorio');
-                                                if(!date) return toast.error('La fecha del documento es obligatoria');
-
-                                                // Validación de período tributario para Comprobante de Retención (DTE-07)
-                                                const todayStr = new Date().toISOString().split('T')[0];
-                                                const currentPeriod = todayStr.substring(0, 7); // YYYY-MM
-                                                const docPeriod = date.substring(0, 7); // YYYY-MM
-
-                                                if (docPeriod !== currentPeriod) {
-                                                    return toast.error(`El documento a retener debe corresponder al mismo período tributario (${currentPeriod}). Hacienda rechaza comprobantes de retención para documentos de otros meses.`);
-                                                }
-
-                                                if (date > todayStr) {
-                                                    return toast.error('La fecha del documento a retener no puede ser una fecha futura');
-                                                }
-
-                                                if(gravadas < 100) return toast.error('El monto gravado debe ser mayor o igual a $100.00');
-                                                if(retencion <= 0) return toast.error('La retención debe ser mayor a $0.00');
-                                                // Validar que no esté duplicado en el CR actual
-                                                if(linkedDocs.some(d => d.doc_number === num && d.doc_type === type)) {
-                                                    return toast.error('Este documento ya fue agregado al CR');
-                                                }
-                                                // Validar que no exista otro CR para este documento
-                                                try {
-                                                    const { data: checkData } = await axios.get(`/api/sales/check-cr?doc_number=${encodeURIComponent(num)}&doc_type=${type}`);
-                                                    if (checkData.exists) {
-                                                        return toast.error(`Ya existe un Comprobante de Retención para el documento ${num}`);
-                                                    }
-                                                } catch (err) {
-                                                    // Si falla la verificación, permitir continuar
-                                                    console.warn('No se pudo verificar CR existente:', err.message);
-                                                }
-                                                const dteName = type === '01' ? 'Factura' : type === '03' ? 'Créd. Fiscal' : 'DTE ' + type;
-                                                const descripcion = `RETENCION IVA 1% AL DOCUMENTO ${num} (${dteName})`;
-                                                setLinkedDocs([...linkedDocs, { 
-                                                    doc_type: type, 
-                                                    doc_number: num, 
-                                                    emission_date: date, 
-                                                    generation_type: genType,
-                                                    montoSujeto: gravadas,
-                                                    ivaRetenido: retencion,
-                                                    descripcion: descripcion
-                                                }]);
-                                                document.getElementById('link-number').value = '';
-                                                document.getElementById('link-gravadas').value = '';
-                                                document.getElementById('link-retencion').value = '';
-                                                toast.success('Documento agregado');
-                                            }}
-                                            className="w-full bg-slate-900 text-white py-4 rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-black transition-all active:scale-95"
-                                        >
-                                            Agregar Documento
-                                        </button>
-                                    </div>
-                                ) : (
-                                    /* Formulario estándar para otros tipos de DTE */
-                                    <>  
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                    <select id="link-type" className="p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-sm outline-none focus:ring-2 focus:ring-indigo-500/20" defaultValue={tipoDte === '05' ? '01' : '01'}>
-                                        <option value="01">Factura</option>
-                                        <option value="03">C. Fiscal</option>
-                                        <option value="07">C. Retención</option>
-                                    </select>
-                                    <input id="link-date" type="date" className="p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-sm outline-none focus:ring-2 focus:ring-indigo-500/20" defaultValue={new Date().toISOString().split('T')[0]} />
-                                </div>
-                                <input id="link-number" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-sm outline-none focus:ring-2 focus:ring-indigo-500/20" placeholder="UUID o Número de Documento" />
-                                <button 
-                                    onClick={() => {
-                                        const type = document.getElementById('link-type').value;
-                                        const num = document.getElementById('link-number').value;
-                                        const date = document.getElementById('link-date').value;
-                                        if(!num) return toast.error('El número es obligatorio');
-                                        setLinkedDocs([...linkedDocs, { doc_type: type, doc_number: num, emission_date: date, generation_type: 2 }]);
-                                        document.getElementById('link-number').value = '';
-                                    }}
-                                    className="w-full bg-slate-900 text-white py-4 rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-black transition-all active:scale-95"
-                                >
-                                    Vincular Manualmente
-                                </button>
-                                    </>
-                                )}
-                            </div>
-
-                            <div className="mt-8 border-t pt-6 space-y-2 max-h-48 overflow-y-auto custom-scrollbar">
-                                {linkedDocs.map((doc, idx) => (
-                                    <div key={idx} className="flex justify-between items-center p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                                        <div className="truncate pr-4">
-                                            <div className="font-black text-sm truncate">{doc.doc_number}</div>
-                                            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                                                {doc.doc_type === '01' ? 'Factura' : doc.doc_type === '03' ? 'C. Fiscal' : 'DTE ' + doc.doc_type} • {doc.emission_date}
-                                                {tipoDte === '07' && doc.montoSujeto ? ` • Grav $${parseFloat(doc.montoSujeto).toFixed(2)}` : ''}
-                                                {tipoDte === '07' && doc.ivaRetenido ? ` • Ret $${parseFloat(doc.ivaRetenido).toFixed(2)}` : ''}
-                                            </div>
-                                        </div>
-                                        <button onClick={() => setLinkedDocs(linkedDocs.filter((_, i) => i !== idx))} className="text-rose-400 p-2"><Trash2 size={16} /></button>
-                                    </div>
-                                ))}
-                                {linkedDocs.length === 0 && <p className="text-center py-8 text-slate-300 font-bold uppercase text-[10px] tracking-widest italic">No hay documentos vinculados</p>}
-                            </div>
-                        </div>
-                    </div>
-            )}
+            {/* Modal de Referencias Documentales DTE (F9) */}
+            <PosLinkedDocModal
+                isOpen={isLinkedDocModalOpen}
+                onClose={() => setIsLinkedDocModalOpen(false)}
+                tipoDte={tipoDte}
+                customerId={customerId}
+                isLoadingCustomerSales={isLoadingCustomerSales}
+                customerSales={customerSales}
+                linkedDocs={linkedDocs}
+                setLinkedDocs={setLinkedDocs}
+                setReferencingSale={setReferencingSale}
+                setCart={setCart}
+                setGeneralDiscount={setGeneralDiscount}
+                setGeneralDiscountPercentage={setGeneralDiscountPercentage}
+            />
 
             {/* Modal de Autenticación Logística */}
-            {isAuthModalOpen && (
-                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[200] flex items-center justify-center p-4">
-                    <form onSubmit={handleSellerAuth} className="bg-white rounded-[3rem] w-full max-w-md p-6 md:p-10 shadow-2xl border border-slate-100 animate-in zoom-in-95 duration-300">
-                        <div className="flex flex-col items-center text-center mb-8">
-                            <div className="p-4 bg-indigo-100 rounded-3xl text-indigo-600 mb-4">
-                                <FileText size={40} />
-                            </div>
-                            <h3 className="text-3xl font-black text-slate-900 tracking-tight">Acceso Logística</h3>
-                            <p className="text-slate-400 font-bold text-sm mt-2">Configura el documento y verifica tu acceso</p>
-                        </div>
-                        
-                        <div className="space-y-6">
-                            <div className="flex flex-col gap-2">
-                                <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider ml-1">Tipo de Documento</label>
-                                <select 
-                                    value={tipoDte}
-                                    onChange={(e) => setTipoDte(e.target.value)}
-                                    className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-lg font-black outline-none focus:ring-4 focus:ring-indigo-500/5 focus:border-indigo-400 transition-all"
-                                >
-                                    <option value="01">Factura (01)</option>
-                                    <option value="03">Crédito Fiscal (03)</option>
-                                    <option value="04">Nota Remisión (04)</option>
-                                    <option value="05">Nota Crédito (05)</option>
-                                    <option value="07">Comprobante Retención (07)</option>
-                                    <option value="11">FEX (11)</option>
-                                </select>
-                            </div>
+            <PosSupervisorAuthModal
+                isOpen={isAuthModalOpen}
+                onSubmit={handleSellerAuth}
+                tipoDte={tipoDte}
+                setTipoDte={setTipoDte}
+                authPassword={authPassword}
+                setAuthPassword={setAuthPassword}
+                onExit={() => navigate('/dashboard')}
+            />
 
-                            <div className="flex flex-col gap-2">
-                                <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider ml-1">Contraseña de Vendedor</label>
-                                <input 
-                                    autoFocus
-                                    type="password"
-                                    value={authPassword}
-                                    onChange={(e) => setAuthPassword(e.target.value)}
-                                    placeholder="••••••••"
-                                    className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-2xl font-black text-center tracking-[0.5em] outline-none focus:ring-4 focus:ring-indigo-500/5 focus:border-indigo-400 transition-all placeholder:tracking-normal placeholder:font-bold"
-                                />
-                            </div>
-
-                            <button 
-                                type="submit"
-                                className="w-full bg-slate-900 hover:bg-black text-white py-5 rounded-2xl font-black uppercase text-sm tracking-[0.2em] shadow-xl transition-all active:scale-95 flex items-center justify-center gap-3 mt-4"
-                            >
-                                Iniciar Terminal
-                                <ChevronRight size={20} />
-                            </button>
-
-                            <button 
-                                type="button"
-                                onClick={() => navigate('/dashboard')}
-                                className="w-full bg-slate-100 hover:bg-slate-200 text-slate-600 py-4 rounded-2xl font-black uppercase text-xs tracking-widest transition-all mt-4 border border-slate-200 shadow-sm"
-                            >
-                                Salir al Panel Principal (Esc)
-                            </button>
-                        </div>
-                    </form>
-                </div>
-            )}
             {/* Modal de Gestión de Clientes */}
-            <Modal
+            <PosCustomerModal
                 isOpen={isCustomerModalOpen}
                 onClose={() => setIsCustomerModalOpen(false)}
-                title={editingCustomer ? 'Editar Cliente' : 'Nuevo Cliente'}
-                maxWidth="max-w-lg"
-            >
-                <form onSubmit={handleCustomerSubmit} className="space-y-4">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-xs font-semibold text-slate-500 mb-1">Tipo de Persona</label>
-                            <select name="tipo_persona" defaultValue={editingCustomer?.tipo_persona || '1'} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-sm" required>
-                                {personTypes.map(t => <option key={t.code} value={t.code}>{t.description}</option>)}
-                            </select>
-                        </div>
-                        <div>
-                            <label className="block text-xs font-semibold text-slate-500 mb-1">País</label>
-                            <select name="pais" value={selectedPais} onChange={(e) => setSelectedPais(e.target.value)} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-sm" required>
-                                {countries.map(t => <option key={t.code} value={t.code}>{t.description}</option>)}
-                            </select>
-                        </div>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-xs font-semibold text-slate-500 mb-1">Tipo Documento</label>
-                            <select 
-                                name="tipo_documento" 
-                                value={docType} 
-                                onChange={(e) => setDocType(e.target.value)}
-                                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-sm"
-                            >
-                                <option value="DUI">DUI</option>
-                                <option value="NIT">NIT</option>
-                                <option value="Pasaporte">Pasaporte</option>
-                                <option value="Carnet Resident">Carnet Residente</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label className="block text-xs font-semibold text-slate-500 mb-1">Número Documento</label>
-                            <input name="numero_documento" defaultValue={editingCustomer?.numero_documento} placeholder="00000000-0" className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-sm" />
-                        </div>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-xs font-semibold text-slate-500 mb-1">NIT</label>
-                            <input 
-                                name="nit" 
-                                value={nitValue} 
-                                onChange={(e) => setNitValue(formatNIT(e.target.value, docType))}
-                                placeholder={docType === 'DUI' ? "00000000-0" : "0000-000000-000-0"} 
-                                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-sm" 
-                                maxLength={docType === 'DUI' ? 10 : 17}
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-xs font-semibold text-slate-500 mb-1">NRC</label>
-                            <input name="nrc" defaultValue={editingCustomer?.nrc} placeholder="000000-0" className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-sm" />
-                        </div>
-                    </div>
-                    <div>
-                        <label className="block text-xs font-semibold text-slate-500 mb-1">Nombre / Razón Social</label>
-                        <input name="nombre" defaultValue={editingCustomer?.nombre} required className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-sm" />
-                    </div>
-                    <div>
-                        <label className="block text-xs font-semibold text-slate-500 mb-1">Nombre Comercial</label>
-                        <input name="nombre_comercial" defaultValue={editingCustomer?.nombre_comercial} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-sm" />
-                    </div>
-                    <div>
-                        <label className="block text-xs font-semibold text-slate-500 mb-1">Actividad Económica</label>
-                        <SearchableSelect 
-                            name="codigo_actividad" 
-                            options={activities} 
-                            value={selectedActivity} 
-                            onChange={(e) => setSelectedActivity(e.target.value)}
-                            placeholder="Seleccionar actividad"
-                        />
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-xs font-semibold text-slate-500 mb-1">Teléfono</label>
-                            <input name="telefono" defaultValue={editingCustomer?.telefono} placeholder="2200-0000" className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-sm" />
-                        </div>
-                        <div>
-                            <label className="block text-xs font-semibold text-slate-500 mb-1">Correo Electrónico</label>
-                            <input name="correo" type="email" defaultValue={editingCustomer?.correo} placeholder="cliente@ejemplo.com" className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-sm" />
-                        </div>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-xs font-semibold text-slate-500 mb-1">Departamento</label>
-                            <select name="departamento" className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-sm" value={selectedDept} onChange={(e) => { setSelectedDept(e.target.value); setSelectedMun(''); setSelectedDistrito(''); }} required>
-                                <option value="">Seleccionar</option>
-                                {departments?.map(d => <option key={d.code} value={d.code}>{d.description}</option>)}
-                            </select>
-                        </div>
-                        <div>
-                            <label className="block text-xs font-semibold text-slate-500 mb-1">Distrito</label>
-                            <select name="distrito" value={selectedDistrito} onChange={(e) => { const sel = distritos.find(d => d.code === e.target.value); setSelectedDistrito(e.target.value); setSelectedMun(sel?.muni_code || ''); }} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-sm" required>
-                                <option value="">Seleccionar</option>
-                                {distritos?.map(d => <option key={d.code} value={d.code}>{d.description}</option>)}
-                            </select>
-                        </div>
-                        <div>
-                            <label className="block text-xs font-semibold text-slate-500 mb-1">Municipio</label>
-                            <select name="municipio" value={selectedMun} onChange={(e) => setSelectedMun(e.target.value)} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-sm" required>
-                                <option value="">Seleccionar</option>
-                                {municipalities?.map(m => <option key={m.code} value={m.code}>{m.description}</option>)}
-                            </select>
-                        </div>
-                    </div>
-                    <div>
-                        <label className="block text-xs font-semibold text-slate-500 mb-1">Dirección Exacta</label>
-                        <textarea name="direccion" defaultValue={editingCustomer?.direccion} required placeholder="Dirección completa..." className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-sm h-16 resize-none" />
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                        {[
-                            { id: 'exento_iva', label: 'Exento de IVA', default: false },
-                            { id: 'aplica_fovial', label: 'Aplica FOVIAL', default: true },
-                            { id: 'aplica_cotrans', label: 'Aplica COTRANS', default: true }
-                        ].map(tax => (
-                            <label key={tax.id} className="flex items-center gap-2 p-2 bg-slate-50 rounded-lg border border-slate-100 cursor-pointer hover:border-indigo-200 transition-all text-xs font-semibold text-slate-600">
-                                <input type="checkbox" name={tax.id} defaultChecked={editingCustomer ? editingCustomer[tax.id] : tax.default} className="accent-indigo-600 w-4 h-4" />
-                                {tax.label}
-                            </label>
-                        ))}
-                    </div>
-                    <div className="flex justify-end gap-3 pt-2 border-t border-slate-100">
-                        <button type="button" onClick={() => setIsCustomerModalOpen(false)} className="px-4 py-2 text-slate-500 font-semibold hover:text-slate-700 transition-colors text-sm">Cancelar</button>
-                        <button type="submit" className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-lg font-bold transition-all text-sm active:scale-95">
-                            {editingCustomer ? 'Actualizar' : 'Registrar'}
-                        </button>
-                    </div>
-                </form>
-            </Modal>
+                editingCustomer={editingCustomer}
+                handleCustomerSubmit={handleCustomerSubmit}
+                condicionFiscal={condicionFiscal}
+                setCondicionFiscal={setCondicionFiscal}
+                nrcValue={nrcValue}
+                setNrcValue={setNrcValue}
+                docType={docType}
+                setDocType={setDocType}
+                docNumberValue={docNumberValue}
+                setDocNumberValue={setDocNumberValue}
+                formatDocumentNumber={formatDocumentNumber}
+                formatNRC={formatNRC}
+                isCustomerForeign={isCustomerForeign}
+                selectedPais={selectedPais}
+                setSelectedPais={setSelectedPais}
+                countries={countries}
+                activities={activities}
+                selectedActivity={selectedActivity}
+                setSelectedActivity={setSelectedActivity}
+                selectedDept={selectedDept}
+                setSelectedDept={setSelectedDept}
+                selectedMun={selectedMun}
+                setSelectedMun={setSelectedMun}
+                selectedDistrito={selectedDistrito}
+                setSelectedDistrito={setSelectedDistrito}
+                departments={departments}
+                distritos={distritos}
+                municipalities={municipalities}
+            />
+
             {/* Modal de Ingreso de Combustible */}
-            {isFuelModalOpen && (
-                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[300] flex items-center justify-center p-4">
-                    <div className="bg-white rounded-[3rem] w-full max-w-lg p-6 md:p-10 shadow-2xl border border-slate-100 animate-in zoom-in-95 duration-300">
-                        <div className="flex flex-col items-center text-center mb-8">
-                            <div className="p-4 bg-orange-100 rounded-3xl text-orange-600 mb-4">
-                                <Zap size={40} />
-                            </div>
-                            <h3 className="text-3xl font-black text-slate-900 tracking-tight">{fuelProd?.nombre}</h3>
-                            {(() => {
-                                const discountRule = getCustomerDiscount(fuelProd?.id);
-                                const finalPrice = calculateDiscountedPrice(parseFloat(fuelProd?.precio_unitario || 0), discountRule);
-                                return (
-                                    <div className="mt-2">
-                                        <p className={`font-bold text-sm ${discountRule ? 'text-slate-400 line-through' : 'text-slate-400'}`}>
-                                            Precio Ref: ${parseFloat(fuelProd?.precio_unitario || 0).toFixed(3)} / gal
-                                        </p>
-                                        {discountRule && (
-                                            <p className="text-indigo-600 font-black text-lg animate-pulse uppercase italic">
-                                                Precio Especial: ${finalPrice.toFixed(3)} / gal
-                                            </p>
-                                        )}
-                                    </div>
-                                );
-                            })()}
-                        </div>
+            <PosFuelEntryModal
+                isOpen={isFuelModalOpen}
+                onClose={() => {
+                    setIsFuelModalOpen(false);
+                    setTimeout(() => barcodeInputRef.current?.focus(), 100);
+                }}
+                fuelProd={fuelProd}
+                getCustomerDiscount={getCustomerDiscount}
+                calculateDiscountedPrice={calculateDiscountedPrice}
+                fuelAmount={fuelAmount}
+                setFuelAmount={setFuelAmount}
+                fuelQty={fuelQty}
+                setFuelQty={setFuelQty}
+                handleAddFuelToCart={handleAddFuelToCart}
+            />
 
-                        <div className="space-y-6">
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                <div className="flex flex-col gap-2">
-                                    <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider ml-1">Monto en Dólares ($)</label>
-                                    <div className="relative">
-                                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-2xl font-black text-slate-300">$</span>
-                                        <input 
-                                            autoFocus
-                                            type="number"
-                                            value={fuelAmount}
-                                            onFocus={(e) => e.target.select()}
-                                            onKeyDown={(e) => {
-                                                if(e.key === 'Enter') handleAddFuelToCart();
-                                            }}
-                                            onChange={(e) => {
-                                                const val = e.target.value;
-                                                setFuelAmount(val);
-                                                const discountRule = getCustomerDiscount(fuelProd?.id);
-                                                const price = calculateDiscountedPrice(parseFloat(fuelProd?.precio_unitario || 0), discountRule);
-                                                if (price > 0 && val) {
-                                                    setFuelQty((parseFloat(val) / price).toFixed(4));
-                                                } else {
-                                                    setFuelQty('');
-                                                }
-                                            }}
-                                            placeholder="0.00"
-                                            className="w-full pl-10 pr-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-2xl font-black text-right outline-none focus:ring-4 focus:ring-indigo-500/5 focus:border-indigo-400 transition-all"
-                                        />
-                                    </div>
-                                </div>
-
-                                <div className="flex flex-col gap-2">
-                                    <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider ml-1">Cantidad en Galones</label>
-                                    <input 
-                                        type="number"
-                                        value={fuelQty}
-                                        onFocus={(e) => e.target.select()}
-                                        onKeyDown={(e) => {
-                                            if(e.key === 'Enter') handleAddFuelToCart();
-                                        }}
-                                        onChange={(e) => {
-                                            const val = e.target.value;
-                                            setFuelQty(val);
-                                            const discountRule = getCustomerDiscount(fuelProd?.id);
-                                            const price = calculateDiscountedPrice(parseFloat(fuelProd?.precio_unitario || 0), discountRule);
-                                            if (price > 0 && val) {
-                                                setFuelAmount((parseFloat(val) * price).toFixed(2));
-                                            } else {
-                                                setFuelAmount('');
-                                            }
-                                        }}
-                                        placeholder="0.0000"
-                                        className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-2xl font-black text-right outline-none focus:ring-4 focus:ring-indigo-500/5 focus:border-indigo-400 transition-all"
-                                    />
-                                </div>
-                            </div>
-
-                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                                {[5, 10, 20, 40].map(val => (
-                                    <button 
-                                        key={val}
-                                        type="button"
-                                        onClick={() => {
-                                            setFuelAmount(val.toString());
-                                            const discountRule = getCustomerDiscount(fuelProd?.id);
-                                            const price = calculateDiscountedPrice(parseFloat(fuelProd?.precio_unitario || 0), discountRule);
-                                            setFuelQty((val / price).toFixed(4));
-                                        }}
-                                        className="py-3 bg-slate-50 hover:bg-indigo-50 hover:text-indigo-600 rounded-xl font-black text-xs transition-all border border-slate-100 hover:border-indigo-200"
-                                    >
-                                        ${val}
-                                    </button>
-                                ))}
-                            </div>
-
-                            <div className="flex gap-4 mt-8">
-                                <button 
-                                    type="button"
-                                    onClick={() => setIsFuelModalOpen(false)}
-                                    className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-600 py-4 rounded-2xl font-black uppercase text-xs tracking-widest transition-all"
-                                >
-                                    Cancelar
-                                </button>
-                                <button 
-                                    type="button"
-                                    onClick={handleAddFuelToCart}
-                                    className="flex-[2] bg-indigo-600 hover:bg-indigo-700 text-white py-4 rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl shadow-indigo-200 transition-all active:scale-95"
-                                >
-                                    Añadir al Carrito (Enter)
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
-            
             {/* Modal de Éxito de Venta */}
-            {isSuccessModalOpen && saleResult && (
-                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[400] flex items-center justify-center p-4">
-                    <div className="bg-white rounded-[3rem] w-full max-w-lg p-6 md:p-10 shadow-2xl border border-slate-100 animate-in zoom-in-95 duration-300">
-                        <div className="flex flex-col items-center text-center mb-8">
-                            <div className="p-4 bg-emerald-100 rounded-3xl text-emerald-600 mb-4">
-                                <CheckCircle2 size={40} />
-                            </div>
-                            <h3 className="text-3xl font-black text-slate-900 tracking-tight">¡Venta Exitosa!</h3>
-                            <p className="text-slate-400 font-bold text-sm mt-2">El documento ha sido procesado correctamente</p>
-                        </div>
-
-                        <div className="bg-slate-50 rounded-3xl p-6 space-y-4 mb-8">
-                            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-                                <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Documento</span>
-                                <span className="font-bold text-slate-900">{saleResult.tipoDteName}</span>
-                            </div>
-                            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-                                <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Número Control</span>
-                                <span className="font-mono font-bold text-indigo-600 tracking-tighter">{saleResult.dte?.numero_control || '---'}</span>
-                            </div>
-                            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-                                <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Total</span>
-                                <span className="text-xl font-black text-slate-900 tracking-tight">${saleResult.totals.total.toFixed(2)}</span>
-                            </div>
-                            <div className="flex flex-col gap-1">
-                                <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Código Generación</span>
-                                <span className="font-mono text-[10px] text-slate-500 break-all bg-white p-2 rounded-xl border border-slate-100">{saleResult.dte?.codigo_generacion || '---'}</span>
-                            </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 gap-4">
-                            <button 
-                                onClick={() => handlePrintTicket(saleResult)}
-                                className="flex items-center justify-center gap-3 bg-slate-900 hover:bg-black text-white py-5 rounded-2xl font-black uppercase text-sm tracking-widest shadow-xl transition-all active:scale-95 w-full"
-                            >
-                                <Printer size={20} />
-                                Imprimir Ticket  [F10]
-                            </button>
-                            <button 
-                                onClick={handleCloseSuccess}
-                                className="flex items-center justify-center gap-3 bg-white border-2 border-slate-100 hover:border-indigo-100 hover:text-indigo-600 text-slate-500 py-4 rounded-2xl font-black uppercase text-xs tracking-widest transition-all w-full"
-                            >
-                                Nueva Venta  [Enter]
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            <PosSuccessModal
+                isOpen={isSuccessModalOpen}
+                saleResult={saleResult}
+                onPrintTicket={handlePrintTicket}
+                onNewSale={handleCloseSuccess}
+            />
 
             {/* Modal de Selección de Lotes Ovoproductos (Alt + Shift + L) */}
-            {isLotModalOpen && hasEggLots && (
-                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[350] flex items-center justify-center p-3 md:p-6 animate-in fade-in duration-200">
-                    <div className="bg-white rounded-[2.5rem] w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl border border-slate-100 overflow-hidden animate-in zoom-in-95 duration-200">
-                        {/* Header */}
-                        <div className="p-5 md:p-6 bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border-b border-slate-100 flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                                <div className="w-12 h-12 rounded-2xl bg-amber-500 text-white flex items-center justify-center shadow-lg shadow-amber-500/30">
-                                    <Layers size={24} />
-                                </div>
-                                <div>
-                                    <div className="flex items-center gap-2">
-                                        <h3 className="text-xl font-black text-slate-900 tracking-tight">Lotes de Producción Ovoproductos</h3>
-                                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-200">
-                                            Alt + Shift + L
-                                        </span>
-                                    </div>
-                                    <p className="text-xs text-slate-500 font-medium mt-0.5">Selección de lotes envasados para venta con control de stock y advertencia interactiva</p>
-                                </div>
-                            </div>
-                            <button 
-                                type="button"
-                                onClick={() => { setIsLotModalOpen(false); setLotWarningTarget(null); }}
-                                className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition-all"
-                            >
-                                <X size={20} />
-                            </button>
-                        </div>
+            <PosLotSelectionModal
+                isOpen={isLotModalOpen && hasEggLots}
+                onClose={() => { setIsLotModalOpen(false); setLotWarningTarget(null); }}
+                lotSearch={lotSearch}
+                setLotSearch={setLotSearch}
+                showAllLots={showAllLots}
+                setShowAllLots={setShowAllLots}
+                isLoadingLots={isLoadingLots}
+                availableLots={availableLots}
+                handleSelectLot={handleSelectLot}
+                lotWarningTarget={lotWarningTarget}
+                setLotWarningTarget={setLotWarningTarget}
+                executeAddLot={executeAddLot}
+            />
 
-                        {/* Search and Filters Bar */}
-                        <div className="p-4 md:p-6 bg-slate-50 border-b border-slate-100 flex flex-col md:flex-row gap-3 items-center justify-between">
-                            <div className="relative flex-1 w-full">
-                                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                                <input 
-                                    autoFocus
-                                    type="text"
-                                    value={lotSearch}
-                                    onChange={e => setLotSearch(e.target.value)}
-                                    placeholder="Buscar por lote, código de barras, producto o presentación..."
-                                    className="w-full pl-10 pr-8 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-400 transition-all"
-                                />
-                                {lotSearch && (
-                                    <button onClick={() => setLotSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
-                                        <X size={14} />
-                                    </button>
-                                )}
-                            </div>
-                            
-                            <label className="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer select-none bg-white px-3 py-2 rounded-xl border border-slate-200 hover:border-amber-300 transition-all shrink-0">
-                                <input 
-                                    type="checkbox" 
-                                    checked={showAllLots} 
-                                    onChange={e => setShowAllLots(e.target.checked)}
-                                    className="rounded text-amber-600 focus:ring-amber-500 w-4 h-4 accent-amber-600"
-                                />
-                                <span>Mostrar lotes sin existencias (Stock: 0)</span>
-                            </label>
-                        </div>
-
-                        {/* Lots List / Cards */}
-                        <div className="flex-1 overflow-y-auto p-4 md:p-6 custom-scrollbar">
-                            {isLoadingLots ? (
-                                <div className="py-16 flex flex-col items-center justify-center text-slate-400 gap-3">
-                                    <Loader2 size={32} className="animate-spin text-amber-500" />
-                                    <span className="text-xs font-bold uppercase tracking-wider">Cargando inventario de lotes...</span>
-                                </div>
-                            ) : availableLots.length === 0 ? (
-                                <div className="py-16 flex flex-col items-center justify-center text-slate-400 gap-2 text-center">
-                                    <Package size={40} className="text-slate-300 mb-2" />
-                                    <p className="text-sm font-bold text-slate-600">No se encontraron lotes disponibles</p>
-                                    <p className="text-xs text-slate-400 max-w-sm">Prueba activando la casilla "Mostrar lotes sin existencias" o modificando el término de búsqueda.</p>
-                                </div>
-                            ) : (
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                    {availableLots.map(lot => {
-                                        const hasStock = lot.has_stock;
-                                        return (
-                                            <div 
-                                                key={lot.packaging_id}
-                                                className={`p-4 rounded-2xl border transition-all flex flex-col justify-between ${hasStock ? 'bg-white hover:border-amber-400 hover:shadow-md border-slate-200/80' : 'bg-rose-50/40 border-rose-200/80 opacity-90'}`}
-                                            >
-                                                <div>
-                                                    <div className="flex items-start justify-between gap-2 mb-2">
-                                                        <div>
-                                                            <div className="flex items-center gap-2">
-                                                                <span className="font-mono text-sm font-black text-slate-900 tracking-tight">
-                                                                    {lot.lot_code}
-                                                                </span>
-                                                                {hasStock ? (
-                                                                    <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-200">
-                                                                        {lot.units_in_stock} cubetas ({lot.total_weight_lbs} Lbs)
-                                                                    </span>
-                                                                ) : (
-                                                                    <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-rose-100 text-rose-700 border border-rose-200 flex items-center gap-1">
-                                                                        <AlertTriangle size={10} /> Agotado (0)
-                                                                    </span>
-                                                                )}
-                                                            </div>
-                                                            <p className="text-xs font-bold text-slate-700 mt-1">{lot.product_type} - {lot.presentation}</p>
-                                                        </div>
-                                                        <span className="text-[10px] font-bold px-2 py-1 rounded-lg bg-slate-100 text-slate-600 uppercase">
-                                                            {lot.warehouse_zone || 'COOLER'}
-                                                        </span>
-                                                    </div>
-
-                                                    <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-500 my-2 pt-2 border-t border-slate-100">
-                                                        <div>
-                                                            <span className="text-[9px] font-bold uppercase text-slate-400 block">Vencimiento</span>
-                                                            <span className={`font-semibold ${lot.is_expired ? 'text-rose-600 font-bold' : 'text-slate-700'}`}>
-                                                                {lot.expiry_date ? new Date(lot.expiry_date).toLocaleDateString('es-SV') : 'N/A'}
-                                                                {lot.is_expired && ' (Vencido)'}
-                                                            </span>
-                                                        </div>
-                                                        <div>
-                                                            <span className="text-[9px] font-bold uppercase text-slate-400 block">Calidad</span>
-                                                            <span className="font-bold text-emerald-600 uppercase flex items-center gap-1">
-                                                                <CheckCircle2 size={12} /> {lot.quality_status || 'Aprobado'}
-                                                            </span>
-                                                        </div>
-                                                    </div>
-                                                </div>
-
-                                                <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
-                                                    <span className="font-mono text-[10px] text-slate-400">
-                                                        {lot.barcode || 'Sin CB'}
-                                                    </span>
-                                                    <button 
-                                                        type="button"
-                                                        onClick={() => handleSelectLot(lot)}
-                                                        className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 shadow-sm active:scale-95 ${hasStock ? 'bg-amber-500 hover:bg-amber-600 text-white shadow-amber-500/20' : 'bg-rose-600 hover:bg-rose-700 text-white shadow-rose-600/20'}`}
-                                                    >
-                                                        <Plus size={14} />
-                                                        {hasStock ? 'Seleccionar' : 'Seleccionar (Sin Stock)'}
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Footer */}
-                        <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500 font-medium">
-                            <span>Mostrando {availableLots.length} lotes encontrados</span>
-                            <button 
-                                type="button"
-                                onClick={() => { setIsLotModalOpen(false); setLotWarningTarget(null); }}
-                                className="px-4 py-2 bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 font-bold rounded-xl transition-all"
-                            >
-                                Cerrar (Esc)
-                            </button>
-                        </div>
-                    </div>
-                </div>
+            {/* Modal de Descuento por Ítem */}
+            {selectedDiscountItem && (
+                <ItemDiscountDialog
+                    item={selectedDiscountItem}
+                    onClose={() => setSelectedDiscountItem(null)}
+                    onApply={handleApplyItemDiscount}
+                    onRemove={handleRemoveItemDiscount}
+                    branchPercentages={branchPercentages}
+                    maxDiscountAmount={maxDiscountAmount}
+                    maxDiscountPercentage={maxDiscountPercentage}
+                    currentCartTotalDiscounts={totals.totalItemDiscounts}
+                    currentGeneralDiscount={generalDiscount}
+                />
             )}
 
-            {/* Modal de Advertencia por Lote Sin Existencias */}
-            {lotWarningTarget && (
-                <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[360] flex items-center justify-center p-4 animate-in fade-in duration-150">
-                    <div className="bg-white rounded-[2.5rem] p-6 md:p-8 max-w-md w-full shadow-2xl border border-rose-100 flex flex-col items-center text-center animate-in zoom-in-95 duration-150">
-                        <div className="w-16 h-16 rounded-3xl bg-rose-100 text-rose-600 flex items-center justify-center mb-4 shadow-lg shadow-rose-100">
-                            <AlertTriangle size={32} />
-                        </div>
-                        <h4 className="text-xl font-black text-slate-900 tracking-tight uppercase">Advertencia de Inventario</h4>
-                        <p className="text-xs text-slate-600 font-medium mt-3 leading-relaxed">
-                            El lote seleccionado <strong className="text-rose-600 font-mono font-bold">#{lotWarningTarget.lot_code}</strong> ({lotWarningTarget.product_type}) <span className="font-bold underline text-rose-700">no cuenta con existencias registradas en inventario</span> (Stock actual: 0 unidades).
-                        </p>
-                        <p className="text-[11px] text-slate-500 bg-amber-50 p-3 rounded-xl border border-amber-200 mt-3 text-left">
-                            ¿Desea forzar la inclusión de este lote en la venta actual de todas formas?
-                        </p>
-
-                        <div className="grid grid-cols-2 gap-3 w-full mt-6">
-                            <button 
-                                type="button"
-                                onClick={() => setLotWarningTarget(null)}
-                                className="w-full py-3 rounded-xl text-xs font-bold uppercase tracking-wider bg-slate-100 hover:bg-slate-200 text-slate-700 transition-all"
-                            >
-                                Cancelar
-                            </button>
-                            <button 
-                                type="button"
-                                onClick={() => executeAddLot(lotWarningTarget)}
-                                className="w-full py-3 rounded-xl text-xs font-black uppercase tracking-wider bg-rose-600 hover:bg-rose-700 text-white shadow-lg shadow-rose-600/30 transition-all active:scale-95"
-                            >
-                                Sí, agregar
-                            </button>
-                        </div>
-                    </div>
-                </div>
+            {/* Modal de Descuento General */}
+            {isGeneralDiscountModalOpen && (
+                <GeneralDiscountDialog
+                    isOpen={isGeneralDiscountModalOpen}
+                    onClose={() => setIsGeneralDiscountModalOpen(false)}
+                    currentDiscount={generalDiscount}
+                    currentDiscountPercentage={generalDiscountPercentage}
+                    onApply={handleApplyGeneralDiscount}
+                    onRemove={handleRemoveGeneralDiscount}
+                    gravadoBruto={totals.gravadoBruto}
+                    branchPercentages={branchPercentages}
+                    maxDiscountAmount={maxDiscountAmount}
+                    maxDiscountPercentage={maxDiscountPercentage}
+                    currentCartTotalDiscounts={totals.totalItemDiscounts}
+                />
             )}
 
             {/* Overlay de Procesamiento y Transmisión de DTE a Hacienda */}
-            {processSale.isPending && (
-                <div className="fixed inset-0 z-[120] bg-slate-950/70 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200">
-                    <div className="bg-white rounded-[2.5rem] p-8 max-w-md w-full shadow-2xl border border-slate-100 flex flex-col items-center text-center animate-in zoom-in-95 duration-200">
-                        <div className="relative mb-5">
-                            <div className="w-20 h-20 rounded-3xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shadow-xl shadow-indigo-100/60">
-                                <Loader2 size={38} className="animate-spin text-indigo-600" />
-                            </div>
-                            <span className="absolute -bottom-1 -right-1 flex h-6 w-6">
-                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
-                                <span className="relative inline-flex rounded-full h-6 w-6 bg-indigo-600 text-white items-center justify-center text-[10px]">
-                                    <Radio size={12} className="animate-pulse" />
-                                </span>
-                            </span>
-                        </div>
-
-                        <h3 className="text-xl font-black tracking-tight text-slate-900 uppercase">
-                            Transmitiendo DTE
-                        </h3>
-                        
-                        <div className="flex items-center gap-1.5 text-[10px] font-black text-indigo-700 bg-indigo-50 px-3 py-1 rounded-full uppercase tracking-wider mt-2 border border-indigo-200/70">
-                            <ShieldCheck size={13} />
-                            <span>Firma Electrónica & Hacienda</span>
-                        </div>
-
-                        <p className="text-xs text-slate-500 font-medium mt-4 leading-relaxed max-w-xs">
-                            Firmando comprobante y comunicando con los servidores del <strong className="text-slate-700 font-bold">Ministerio de Hacienda</strong>.
-                        </p>
-
-                        <div className="mt-6 p-3 rounded-2xl bg-slate-50 border border-slate-100 w-full flex items-center justify-center gap-2 text-[11px] font-bold text-slate-400">
-                            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0"></span>
-                            <span>Por favor no recargue ni cierre esta pantalla</span>
-                        </div>
-                    </div>
-                </div>
-            )}
+            <DteTransmittingOverlay 
+                isVisible={processSale.isPending} 
+                isContingency={Boolean(activeContingency)}
+            />
         </div>
     );
 };

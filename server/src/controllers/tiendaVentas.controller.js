@@ -156,3 +156,19 @@ exports.sendVentasToRrs = async (req, res) => {
         res.status(500).json({ message: error.message || 'Error al enviar ventas a RRS' });
     }
 };
+
+/**
+ * POST /api/sales/tienda/sync-auto
+ * Ejecuta bajo demanda la sincronización automática de ventas de tienda con RRS
+ */
+exports.syncAutoNow = async (req, res) => {
+    try {
+        const { syncYesterdayVentasTiendaToRrs } = require('../services/rrsVentasTiendaAutoSync.service');
+        const { date } = req.body || {};
+        const result = await syncYesterdayVentasTiendaToRrs({ manual: true, targetDate: date || null });
+        res.json({ message: 'Sincronización automática de Ventas Tienda a RRS ejecutada', ...result });
+    } catch (error) {
+        console.error('Error syncAutoNow:', error);
+        res.status(500).json({ message: error.message || 'Error al ejecutar sincronización automática de RRS' });
+    }
+};

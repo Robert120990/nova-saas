@@ -5,6 +5,180 @@ const tenantMiddleware = require('../middlewares/tenant');
 const upload = require('../config/upload');
 const multer = require('multer');
 const memoryUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
+const validate = require('../middlewares/validate.middleware');
+const {
+    categorySchema,
+    categoryUpdateSchema,
+    sellerSchema,
+    sellerUpdateSchema,
+    productSchema,
+    productUpdateSchema,
+    customerSchema,
+    customerUpdateSchema,
+    providerSchema,
+    providerUpdateSchema
+} = require('../schemas/catalogSchemas');
+const {
+    companyCreateSchema,
+    companyUpdateSchema,
+    branchCreateSchema,
+    branchUpdateSchema
+} = require('../schemas/companySchemas');
+const {
+    userCreateSchema,
+    userUpdateSchema,
+    userProfileSchema,
+    userAccessSchema,
+    bulkAccessSchema,
+    cloneAccessSchema,
+    bulkUpdateRoleSchema,
+    bulkDeleteAccessSchema,
+    roleCreateSchema,
+    roleUpdateSchema
+} = require('../schemas/securitySchemas');
+const {
+    agreementSchema,
+    crmSettingsSchema,
+    quotationCreateSchema,
+    quotationUpdateSchema,
+    quotationStatusSchema,
+    userSignatureSchema,
+    quotationEmailSchema
+} = require('../schemas/crmSchemas');
+const {
+    accountTypeSchema,
+    accountTypeUpdateSchema,
+    entryTypeSchema,
+    entryTypeUpdateSchema,
+    accountSchema,
+    accountUpdateSchema,
+    entrySchema,
+    entryUpdateSchema,
+    accountingCorrelativosSchema,
+    accountingRenumberSchema
+} = require('../schemas/accountingSchemas');
+const {
+    empleadoSchema,
+    empleadoUpdateSchema,
+    accionPersonalSchema,
+    accionPersonalUpdateSchema,
+    planillaVacacionesSchema,
+    planillaVacacionesUpdateSchema,
+    planillaAguinaldosSchema,
+    rhDescuentoSchema
+} = require('../schemas/rhSchemas');
+const {
+    pozoServicioSchema,
+    pozoServicioUpdateSchema,
+    pozoDespachoSchema,
+    pozoDespachoUpdateSchema,
+    pozoCorteSchema,
+    pozoCorteOdometroSchema,
+    pozoEntregaEfectivoSchema,
+    pozoEntregaEfectivoUpdateSchema
+} = require('../schemas/pozoSchemas');
+const {
+    inventoryTransferSchema,
+    inventoryPhysicalSchema,
+    inventoryMotivoSchema,
+    inventoryMotivoUpdateSchema,
+    inventoryAdjustmentSchema,
+    inventoryAdjustmentUpdateSchema
+} = require('../schemas/inventorySchemas');
+const {
+    purchaseCreateSchema,
+    purchaseUpdateSchema,
+    purchaseCheckSchema,
+    purchaseCheckUpdateSchema,
+    purchaseCheckConfigSchema,
+    quedanSchema,
+    quedanUpdateSchema
+} = require('../schemas/purchaseSchemas');
+const {
+    cxpPaymentSchema,
+    cxpPaymentUpdateSchema
+} = require('../schemas/cxpSchemas');
+const {
+    cxcPaymentSchema,
+    cxcPaymentUpdateSchema
+} = require('../schemas/cxcSchemas');
+const {
+    expenseCreateSchema,
+    expenseUpdateSchema
+} = require('../schemas/expenseSchemas');
+const {
+    gasDistributorSchema,
+    gasDistributorUpdateSchema,
+    gasIslandSchema,
+    gasIslandUpdateSchema,
+    gasNozzleSchema,
+    gasNozzleUpdateSchema,
+    gasTankSchema,
+    gasTankUpdateSchema,
+    gasDespachadorSchema,
+    gasDespachadorUpdateSchema,
+    gasDespachadorNozzlesSchema,
+    gasPosTypeSchema,
+    gasPosTypeUpdateSchema,
+    gasExpenseCategorySchema,
+    gasExpenseCategoryUpdateSchema,
+    gasSettingsSchema
+} = require('../schemas/gasCatalogSchemas');
+const {
+    gasAdvanceSchema,
+    gasAdvanceUpdateSchema,
+    gasTrupputSchema,
+    gasTrupputUpdateSchema,
+    gasRemesaDeliverySchema,
+    gasRemesaDeliveryUpdateSchema,
+    gasCouponLiquidationSchema,
+    gasCouponLiquidationUpdateSchema
+} = require('../schemas/gasOpsSchemas');
+const {
+    initCloseoutSchema,
+    batchReadingsSchema,
+    singleReadingUpdateSchema,
+    singleTankReadingUpdateSchema,
+    closeoutFechaTurnoSchema,
+    closeoutExpensesSchema,
+    closeoutRemesasSchema,
+    closeoutCuponesSchema,
+    closeoutDescuentosSchema,
+    closeoutAdelantosSchema,
+    closeoutTarjetasSchema,
+    closeoutCreditosSchema,
+    closeoutValesSchema,
+    closeoutAnticiposDespSchema,
+    closeoutTrupputDespSchema,
+    closeoutLubricantesSchema
+} = require('../schemas/gasCloseoutSchemas');
+const {
+    saleCreateSchema,
+    saleChangeShiftSchema,
+    saleCustomerUpdateSchema,
+    salesSettingsSchema,
+    salesRemesaDeliverySchema,
+    salesRemesaDeliveryUpdateSchema,
+    salesTiendaRrsSchema,
+    editDTEItemsSchema
+} = require('../schemas/salesSchemas');
+const {
+    posSchema,
+    posUpdateSchema,
+    shiftOpenSchema,
+    shiftArqueoSchema,
+    shiftSellersUpdateSchema,
+    shiftUpdateSchema
+} = require('../schemas/shiftSchemas');
+const {
+    comboSchema,
+    comboUpdateSchema,
+    customerDiscountSchema,
+    discountRuleSchema,
+    discountRuleUpdateSchema,
+    promotionSchema,
+    promotionUpdateSchema
+} = require('../schemas/promoSchemas');
 
 // Import Controllers
 const companyController = require('../controllers/company.controller');
@@ -31,6 +205,7 @@ const salesController = require('../controllers/sales.controller');
 const salesConfigController = require('../controllers/salesConfig.controller');
 const tiendaVentasController = require('../controllers/tiendaVentas.controller');
 const storeProfitabilityController = require('../controllers/storeProfitability.controller');
+const topProductsReportController = require('../controllers/topProductsReport.controller');
 const periodController = require('../controllers/period.controller');
 const dashboardController = require('../controllers/dashboard.controller');
 const shiftController = require('../controllers/shift.controller');
@@ -39,6 +214,7 @@ const vatBooksController = require('../controllers/vatBooks.controller');
 const customerDiscountController = require('../controllers/customerDiscount.controller');
 const customerBranchController = require('../controllers/customerBranch.controller');
 const discountRulesController = require('../controllers/discountRules.controller');
+const promotionController = require('../controllers/promotion.controller');
 const accountingController = require('../controllers/accounting.controller');
 const accountingGenerationController = require('../controllers/accounting.generation.controller');
 const accountingCorrelativosController = require('../controllers/accounting.correlativos.controller');
@@ -64,6 +240,7 @@ const rhPlanillaVacacionesController = require('../controllers/rhPlanillaVacacio
 const rhPlanillaLiquidacionesController = require('../controllers/rhPlanillaLiquidaciones.controller');
 const rhHonorariosController = require('../controllers/rhHonorarios.controller');
 const rhPlanillaAguinaldosController = require('../controllers/rhPlanillaAguinaldos.controller');
+const rhPlanillaQuincena25Controller = require('../controllers/rhPlanillaQuincena25.controller');
 const rhCuentaPlanillaController = require('../controllers/rhCuentaPlanilla.controller');
 const rhPlanillaController = require('../controllers/rhPlanilla.controller');
 const rhReportesController = require('../controllers/rhReportes.controller');
@@ -131,41 +308,43 @@ router.get('/catalogs/departments', catalogController.getDepartments);
 router.get('/catalogs/municipalities', catalogController.getMunicipalities);
 router.get('/catalogs/actividades', catalogController.getActividades);
 router.get('/catalogs/districts', catalogController.getDistritos);
+router.get('/catalogs/status', catalogController.getCatalogStatus);
+router.post('/catalogs/refresh', checkPermission('manage_companies'), catalogController.refreshCatalogs);
 router.get('/catalogs/:table', catalogController.getGenericCatalog);
 
 // New Global User Access Routes (After verifyToken but before tenantMiddleware)
-router.get('/all-users', userController.getAllUsers);
-router.get('/users/access-summary', userController.getAccessSummary);
-router.post('/users/assign-access', userController.assignCompanyAccess);
-router.delete('/users/access/:userId/:companyId', userController.deleteCompanyAccess);
-router.get('/users/companies-branches-tree', userController.getCompaniesWithBranchesTree);
-router.post('/users/assign-access-bulk', userController.assignBulkAccess);
-router.post('/users/clone-access', userController.cloneUserAccess);
-router.post('/users/bulk-update-role', userController.bulkUpdateRole);
-router.post('/users/bulk-delete-access', userController.bulkDeleteAccess);
-router.get('/companies/modules-matrix', companyController.getCompanyModulesMatrix);
-router.put('/companies/:id/modules', companyController.updateCompanyModules);
-router.get('/companies', companyController.getCompanies);
-router.post('/companies', upload.fields([{ name: 'logo', maxCount: 1 }, { name: 'certificate', maxCount: 1 }, { name: 'certificate_crt', maxCount: 1 }]), companyController.createCompany);
-router.put('/companies/:id', upload.fields([{ name: 'logo', maxCount: 1 }, { name: 'certificate', maxCount: 1 }, { name: 'certificate_crt', maxCount: 1 }]), companyController.updateCompany);
-router.delete('/companies/:id', companyController.deleteCompany);
+router.get('/all-users', checkPermission('manage_user_access'), userController.getAllUsers);
+router.get('/users/access-summary', checkPermission('manage_user_access'), userController.getAccessSummary);
+router.post('/users/assign-access', checkPermission('manage_user_access'), validate(userAccessSchema), userController.assignCompanyAccess);
+router.delete('/users/access/:userId/:companyId', checkPermission('manage_user_access'), userController.deleteCompanyAccess);
+router.get('/users/companies-branches-tree', checkPermission('manage_user_access'), userController.getCompaniesWithBranchesTree);
+router.post('/users/assign-access-bulk', checkPermission('manage_user_access'), validate(bulkAccessSchema), userController.assignBulkAccess);
+router.post('/users/clone-access', checkPermission('manage_user_access'), validate(cloneAccessSchema), userController.cloneUserAccess);
+router.post('/users/bulk-update-role', checkPermission('manage_user_access'), validate(bulkUpdateRoleSchema), userController.bulkUpdateRole);
+router.post('/users/bulk-delete-access', checkPermission('manage_user_access'), validate(bulkDeleteAccessSchema), userController.bulkDeleteAccess);
+router.get('/companies/modules-matrix', checkPermission('manage_companies'), companyController.getCompanyModulesMatrix);
+router.put('/companies/:id/modules', checkPermission('manage_companies'), companyController.updateCompanyModules);
+router.get('/companies', checkPermission(['manage_companies', 'manage_user_access']), companyController.getCompanies);
+router.post('/companies', checkPermission('manage_companies'), upload.fields([{ name: 'logo', maxCount: 1 }, { name: 'certificate', maxCount: 1 }, { name: 'certificate_crt', maxCount: 1 }]), validate(companyCreateSchema), companyController.createCompany);
+router.put('/companies/:id', checkPermission('manage_companies'), upload.fields([{ name: 'logo', maxCount: 1 }, { name: 'certificate', maxCount: 1 }, { name: 'certificate_crt', maxCount: 1 }]), validate(companyUpdateSchema), companyController.updateCompany);
+router.delete('/companies/:id', checkPermission('manage_companies'), companyController.deleteCompany);
 
-router.get('/users', userController.getUsers);
-router.post('/users', userController.createUser);
-router.put('/users/me', userController.updateProfile);
-router.put('/users/:id', userController.updateUser);
-router.delete('/users/:id', userController.deleteUser);
+router.get('/users', checkPermission('manage_users'), userController.getUsers);
+router.post('/users', checkPermission('manage_users'), validate(userCreateSchema), userController.createUser);
+router.put('/users/me', validate(userProfileSchema), userController.updateProfile);
+router.put('/users/:id', checkPermission('manage_users'), validate(userUpdateSchema), userController.updateUser);
+router.delete('/users/:id', checkPermission('manage_users'), userController.deleteUser);
 
 // Connected users (before tenant for cross-branch visibility)
-router.get('/users/connected', userController.getConnectedSessions);
-router.post('/users/sessions/:id/terminate', userController.terminateSession);
+router.get('/users/connected', checkPermission('manage_connected_users'), userController.getConnectedSessions);
+router.post('/users/sessions/:id/terminate', checkPermission('manage_connected_users'), userController.terminateSession);
 
 // Changelog (global, no tenant scope)
 router.get('/changelog', changelogController.getChangelog);
 
-// System Metrics (Monitor del Servidor - global, no tenant scope)
-router.get('/system/metrics', verifyToken, systemMetricsController.getSystemMetrics);
-router.post('/system/trigger-deploy', verifyToken, systemMetricsController.triggerDeploy);
+// System Metrics (Monitor del Servidor - global, no tenant scope, protegido por permiso manage_server_terminal)
+router.get('/system/metrics', verifyToken, checkPermission('manage_server_terminal'), systemMetricsController.getSystemMetrics);
+router.post('/system/trigger-deploy', verifyToken, checkPermission('manage_server_terminal'), systemMetricsController.triggerDeploy);
 
 // Terminal & SSH (global server maintenance, protected by verifyToken & manage_server_terminal)
 router.use('/terminal', require('./terminal.routes'));
@@ -176,8 +355,8 @@ router.use(require('../middlewares/audit'));
 
 // Security (Roles & Users)
 router.get('/roles', roleController.getRoles);
-router.post('/roles', roleController.createRole);
-router.put('/roles/:id', roleController.updateRole);
+router.post('/roles', validate(roleCreateSchema), roleController.createRole);
+router.put('/roles/:id', validate(roleUpdateSchema), roleController.updateRole);
 router.delete('/roles/:id', roleController.deleteRole);
 
 // Menu Items
@@ -195,27 +374,29 @@ router.get('/audit-log/:id', auditController.getLogById);
 
 // Branches
 router.get('/branches', branchController.getBranches);
-router.post('/branches', upload.single('logo'), branchController.createBranch);
-router.put('/branches/:id', upload.single('logo'), branchController.updateBranch);
+router.post('/branches', upload.single('logo'), validate(branchCreateSchema), branchController.createBranch);
+router.put('/branches/:id', upload.single('logo'), validate(branchUpdateSchema), branchController.updateBranch);
 router.delete('/branches/:id', branchController.deleteBranch);
 
 // POS
 router.get('/pos', posController.getPOS);
-router.post('/pos', posController.createPOS);
-router.put('/pos/:id', posController.updatePOS);
+router.post('/pos', validate(posSchema), posController.createPOS);
+router.put('/pos/:id', validate(posUpdateSchema), posController.updatePOS);
 router.delete('/pos/:id', posController.deletePOS);
 
 // Sellers
 router.get('/sellers', sellerController.getSellers);
-router.post('/sellers', sellerController.createSeller);
+router.post('/sellers', validate(sellerSchema), sellerController.createSeller);
 router.post('/sellers/login-pos', sellerController.loginPos);
-router.put('/sellers/:id', sellerController.updateSeller);
+router.put('/sellers/:id', validate(sellerUpdateSchema), sellerController.updateSeller);
 router.delete('/sellers/:id', sellerController.deleteSeller);
 
 // Customers
 router.get('/customers', customerController.getCustomers);
-router.post('/customers', customerController.createCustomer);
-router.put('/customers/:id', customerController.updateCustomer);
+router.get('/customers/reports/pdf', customerController.getCustomersReportPDF);
+router.get('/customers/:id', customerController.getCustomerById);
+router.post('/customers', validate(customerSchema), customerController.createCustomer);
+router.put('/customers/:id', validate(customerUpdateSchema), customerController.updateCustomer);
 router.delete('/customers/batch', checkPermission('manage_customers_batch_delete'), customerController.deleteBatchCustomers);
 router.delete('/customers/:id', customerController.deleteCustomer);
 
@@ -227,14 +408,15 @@ router.delete('/customer-branches/:id', customerBranchController.deleteBranch);
 
 // Providers
 router.get('/providers', providerController.getProviders);
-router.post('/providers', providerController.createProvider);
-router.put('/providers/:id', providerController.updateProvider);
+router.get('/providers/reports/pdf', providerController.getProvidersReportPDF);
+router.post('/providers', validate(providerSchema), providerController.createProvider);
+router.put('/providers/:id', validate(providerUpdateSchema), providerController.updateProvider);
 router.delete('/providers/:id', providerController.deleteProvider);
 
 // Categories
 router.get('/categories', categoryController.getCategories);
-router.post('/categories', categoryController.createCategory);
-router.put('/categories/:id', categoryController.updateCategory);
+router.post('/categories', validate(categorySchema), categoryController.createCategory);
+router.put('/categories/:id', validate(categoryUpdateSchema), categoryController.updateCategory);
 router.delete('/categories/:id', categoryController.deleteCategory);
 
 // Products
@@ -244,8 +426,8 @@ router.post('/products/update-branch-price', productController.updateProductBran
 router.get('/products/fuel', productController.getFuelProducts);
 router.patch('/products/fuel/prices', productController.updateFuelPrices);
 router.get('/products/lookup/:code', productController.lookupProduct);
-router.post('/products', productController.createProduct);
-router.put('/products/:id', productController.updateProduct);
+router.post('/products', validate(productSchema), productController.createProduct);
+router.put('/products/:id', validate(productUpdateSchema), productController.updateProduct);
 router.delete('/products/:id', productController.deleteProduct);
 
 // SMTP Configuration
@@ -264,7 +446,7 @@ router.use('/taxes', taxRoutes);
 router.get('/inventory/physical/products', inventoryController.getProductsForPhysicalInventory);
 router.get('/inventory/physical', inventoryController.getPhysicalInventories);
 router.get('/inventory/physical/:id', inventoryController.getPhysicalInventoryDetail);
-router.post('/inventory/physical/save', inventoryController.savePhysicalInventory);
+router.post('/inventory/physical/save', validate(inventoryPhysicalSchema), inventoryController.savePhysicalInventory);
 router.post('/inventory/physical/:id/apply', inventoryController.applyPhysicalInventory);
 router.delete('/inventory/physical/:id', inventoryController.deletePhysicalInventory);
 
@@ -281,29 +463,30 @@ router.get('/inventory/stock-report', inventoryController.getInventoryStockRepor
 router.get('/inventory/movements-report', inventoryController.getInventoryMovementsReport);
 router.get('/inventory/kardex', inventoryController.getKardex);
 router.get('/inventory/kardex-report', inventoryController.getKardexReport);
+router.get('/inventory/kardex/origin/:id', inventoryController.getKardexOriginDetail);
 router.get('/inventory/valuation-report', inventoryController.getInventoryValuationReport);
 router.get('/inventory/turnover-report', inventoryController.getInventoryTurnoverReport);
 router.get('/inventory/transfers', inventoryController.getTransfers);
 router.get('/inventory/transfers/reports/pdf', inventoryController.getTransfersReportPDF);
 router.get('/inventory/transfers/:id', inventoryController.getTransferDetail);
-router.post('/inventory/transfers', inventoryController.createTransfer);
+router.post('/inventory/transfers', validate(inventoryTransferSchema), inventoryController.createTransfer);
 router.delete('/inventory/transfers/:id', inventoryController.deleteTransfer);
 
 // Inventory Adjustments
 router.get('/inventory/motivos', inventoryAdjustmentController.getMotivos);
-router.post('/inventory/motivos', inventoryAdjustmentController.createMotivo);
-router.put('/inventory/motivos/:id', inventoryAdjustmentController.updateMotivo);
+router.post('/inventory/motivos', validate(inventoryMotivoSchema), inventoryAdjustmentController.createMotivo);
+router.put('/inventory/motivos/:id', validate(inventoryMotivoUpdateSchema), inventoryAdjustmentController.updateMotivo);
 router.delete('/inventory/motivos/:id', inventoryAdjustmentController.deleteMotivo);
 router.get('/inventory/adjustments', inventoryAdjustmentController.getAdjustments);
 router.get('/inventory/adjustments/reports/pdf', inventoryAdjustmentController.getAdjustmentsReportPDF);
-router.post('/inventory/adjustments', inventoryAdjustmentController.createAdjustment);
+router.post('/inventory/adjustments', validate(inventoryAdjustmentSchema), inventoryAdjustmentController.createAdjustment);
 router.get('/inventory/adjustments/:id', inventoryAdjustmentController.getAdjustmentById);
-router.put('/inventory/adjustments/:id', inventoryAdjustmentController.updateAdjustment);
+router.put('/inventory/adjustments/:id', validate(inventoryAdjustmentUpdateSchema), inventoryAdjustmentController.updateAdjustment);
 router.post('/inventory/adjustments/:id/void', inventoryAdjustmentController.voidAdjustment);
 
 // Purchases
 router.get('/purchases', purchaseController.getPurchases);
-router.post('/purchases', purchaseController.createPurchase);
+router.post('/purchases', validate(purchaseCreateSchema), purchaseController.createPurchase);
 router.post('/purchases/scan-dte', memoryUpload.single('file'), purchaseController.scanDteInvoice);
 router.post('/purchases/scan-session', purchaseController.createScanSession);
 router.get('/purchases/scan-session/:sessionId', purchaseController.getScanSessionStatus);
@@ -314,16 +497,16 @@ router.get('/purchases/pdf/:id', purchaseController.exportPurchasePDF);
 const purchaseCheckController = require('../controllers/purchaseCheck.controller');
 router.get('/purchases/checks/reports/pdf', purchaseCheckController.getPurchaseCheckReportPDF);
 router.get('/purchases/checks', purchaseCheckController.getChecks);
-router.post('/purchases/checks', purchaseCheckController.createCheck);
+router.post('/purchases/checks', validate(purchaseCheckSchema), purchaseCheckController.createCheck);
 router.get('/purchases/checks/verify-rrs-providers', purchaseCheckController.verifyProvidersInRrs);
 router.get('/purchases/checks/:id', purchaseCheckController.getCheckById);
-router.put('/purchases/checks/:id', purchaseCheckController.updateCheck);
+router.put('/purchases/checks/:id', validate(purchaseCheckUpdateSchema), purchaseCheckController.updateCheck);
 router.delete('/purchases/checks/:id', purchaseCheckController.deleteCheck);
 router.post('/purchases/checks/:id/deliver', purchaseCheckController.deliverCheck);
 router.post('/purchases/checks/:id/request', purchaseCheckController.requestCheck);
 router.post('/purchases/checks/:id/revert', purchaseCheckController.revertCheck);
 router.get('/purchases/checks/config/:branchId', purchaseCheckController.getChqConfig);
-router.post('/purchases/checks/config', purchaseCheckController.saveChqConfig);
+router.post('/purchases/checks/config', validate(purchaseCheckConfigSchema), purchaseCheckController.saveChqConfig);
 router.post('/purchases/checks/rrs-num-cheque', purchaseCheckController.getRrsNumCheque);
 router.post('/purchases/checks/sync-providers', purchaseCheckController.syncProviders);
 
@@ -331,26 +514,26 @@ router.post('/purchases/checks/sync-providers', purchaseCheckController.syncProv
 const quedanController = require('../controllers/quedan.controller');
 router.get('/purchases/quedans/reports/pdf', quedanController.getQuedanReportPDF);
 router.get('/purchases/quedans', quedanController.getQuedans);
-router.post('/purchases/quedans', quedanController.createQuedan);
+router.post('/purchases/quedans', validate(quedanSchema), quedanController.createQuedan);
 router.get('/purchases/quedans/:id', quedanController.getQuedanById);
-router.put('/purchases/quedans/:id', quedanController.updateQuedan);
+router.put('/purchases/quedans/:id', validate(quedanUpdateSchema), quedanController.updateQuedan);
 router.delete('/purchases/quedans/:id', quedanController.deleteQuedan);
 router.post('/purchases/quedans/:id/deliver', quedanController.deliverQuedan);
 router.post('/purchases/quedans/:id/request', quedanController.requestQuedan);
 router.post('/purchases/quedans/:id/revert', quedanController.revertQuedan);
 
 router.get('/purchases/:id', purchaseController.getPurchaseById);
-router.put('/purchases/:id', purchaseController.updatePurchase);
+router.put('/purchases/:id', validate(purchaseUpdateSchema), purchaseController.updatePurchase);
 router.post('/purchases/:id/void', purchaseController.voidPurchase);
 
 // Expenses
 router.get('/expenses', expenseController.getExpenses);
 router.get('/expenses/types', expenseController.getExpenseTypes);
 router.get('/expenses/reports/pdf', expenseController.getExpenseReportPDF);
-router.post('/expenses', expenseController.createExpense);
+router.post('/expenses', validate(expenseCreateSchema), expenseController.createExpense);
 router.post('/expenses/scan-dte', memoryUpload.single('file'), purchaseController.scanDteInvoice);
 router.get('/expenses/:id', expenseController.getExpenseById);
-router.put('/expenses/:id', expenseController.updateExpense);
+router.put('/expenses/:id', validate(expenseUpdateSchema), expenseController.updateExpense);
 router.post('/expenses/:id/void', expenseController.voidExpense);
 
 // Sales
@@ -365,46 +548,56 @@ router.get('/sales/reports/by-customer/pdf', salesController.exportSalesByCustom
 router.get('/sales/reports/pos', salesController.getSalesByPOS);
 router.get('/sales/reports/pos/pdf', salesController.exportSalesByPOSPDF);
 router.get('/sales/reports/detalle/pdf', salesController.exportSalesDetailPDF);
+router.get('/sales/reports/discounts', checkPermission('view_sales_discounts_report'), salesController.getSalesDiscountsData);
+router.get('/sales/reports/discounts/pdf', checkPermission('view_sales_discounts_report'), salesController.exportSalesDiscountsReport);
 router.get('/sales/reports/store-profitability', checkPermission('view_store_profitability_report'), storeProfitabilityController.getStoreProfitabilityData);
 router.get('/sales/reports/store-profitability/pdf', checkPermission('view_store_profitability_report'), storeProfitabilityController.exportStoreProfitabilityPDF);
-router.post('/sales', salesController.createSale);
+router.get('/sales/reports/top-products-by-category', checkPermission('view_sales_top_products_category_report'), topProductsReportController.getTopProductsByCategoryData);
+router.get('/sales/reports/top-products-by-category/pdf', checkPermission('view_sales_top_products_category_report'), topProductsReportController.exportTopProductsByCategory);
+router.post('/sales', validate(saleCreateSchema), salesController.createSale);
 router.get('/sales/rtee/:id', salesController.exportRTEE);
 router.post('/sales/resend-email/:id', salesController.resendDTEEmail);
 router.get('/sales/dte-json/:id', salesController.getDTEJson);
 
 // Sales Settings (Configuración Tienda) — antes de /sales/:id
 router.get('/sales/settings', salesConfigController.getSettings);
-router.put('/sales/settings', salesConfigController.updateSettings);
+router.put('/sales/settings', validate(salesSettingsSchema), salesConfigController.updateSettings);
 
 // Sales - Remesa Deliveries (Entrega de Remesas - Ventas/Tienda) — antes de /sales/:id
 router.get('/sales/remesas/pending', salesRemesaDeliveryController.getPendingRemesas);
 router.get('/sales/remesa-deliveries', salesRemesaDeliveryController.getDeliveries);
-router.post('/sales/remesa-deliveries', salesRemesaDeliveryController.createDelivery);
-router.put('/sales/remesa-deliveries/:id', salesRemesaDeliveryController.updateDelivery);
+router.post('/sales/remesa-deliveries', validate(salesRemesaDeliverySchema), salesRemesaDeliveryController.createDelivery);
+router.put('/sales/remesa-deliveries/:id', validate(salesRemesaDeliveryUpdateSchema), salesRemesaDeliveryController.updateDelivery);
 router.get('/sales/remesa-deliveries/:id', salesRemesaDeliveryController.getDelivery);
 router.put('/sales/remesa-deliveries/:id/entregar', salesRemesaDeliveryController.entregarDelivery);
+router.post('/sales/remesa-deliveries/:id/send-to-rrs', salesRemesaDeliveryController.resendToRrs);
 router.get('/sales/remesa-deliveries/:id/pdf', salesRemesaDeliveryController.getDeliveryPdf);
 router.delete('/sales/remesa-deliveries/:id', salesRemesaDeliveryController.deleteDelivery);
 
 // Sales - Ventas Tienda por fecha (Envío a RRS) — antes de /sales/:id
 router.get('/sales/tienda/ventas', checkPermission('send_sales_rrs'), tiendaVentasController.getVentasByDate);
-router.post('/sales/tienda/ventas/rrs', checkPermission('send_sales_rrs'), tiendaVentasController.sendVentasToRrs);
+router.post('/sales/tienda/ventas/rrs', checkPermission('send_sales_rrs'), validate(salesTiendaRrsSchema), tiendaVentasController.sendVentasToRrs);
+router.post('/sales/tienda/sync-auto', checkPermission('send_sales_rrs'), tiendaVentasController.syncAutoNow);
 
-router.put('/sales/change-shift', checkPermission('manage_dte_shift_change'), salesController.changeSalesShift);
+router.put('/sales/change-shift', checkPermission('manage_dte_shift_change'), validate(saleChangeShiftSchema), salesController.changeSalesShift);
 
 // DTE Statistics
 router.get('/sales/dte-stats', salesController.getDteStats);
 
 router.get('/sales/:id', salesController.getSaleById);
+router.get('/sales/:id/dte-diagnosis', salesController.getDteDiagnosis);
 router.post('/sales/:id/void', salesController.voidSale);
 router.post('/sales/:id/retransmit', salesController.retransmitSaleDTE);
 router.post('/sales/:id/regenerate-dte', checkPermission('regenerate_dte'), salesController.regenerateDTE);
-router.put('/sales/:id/edit-dte-items', salesController.editDTEItems);
+router.put('/sales/:id/edit-dte-items', validate(editDTEItemsSchema), salesController.editDTEItems);
+router.put('/sales/:id/customer', validate(saleCustomerUpdateSchema), salesController.updateSaleCustomer);
 
 // Contingency (proxy to dte-api)
 router.get('/contingency/status', salesController.getContingencyStatus);
 router.post('/contingency/start', salesController.startContingency);
 router.post('/contingency/stop/:id', salesController.stopContingency);
+router.post('/contingency/simulate-outage', salesController.simulateOutage);
+router.post('/contingency/trigger-autoclose', salesController.triggerAutoClose);
 
 // Retorno / ERET (proxy to dte-api)
 router.get('/retorno', salesController.listRetornos);
@@ -418,13 +611,13 @@ router.get('/dte/:codigoGeneracion', salesController.getDTEByCodigoGeneracion);
 router.get('/shifts', shiftController.getShiftsHistory);
 router.get('/shifts/reports/arqueos/pdf', shiftController.exportArqueosPDF);
 router.get('/shifts/current', shiftController.getCurrentShift);
-router.post('/shifts/open', shiftController.openShift);
+router.post('/shifts/open', validate(shiftOpenSchema), shiftController.openShift);
 router.get('/shifts/:id/summary', shiftController.getShiftSummary);
-router.post('/shifts/:id/arqueo', shiftController.saveArqueo);
-router.post('/shifts/:id/close', shiftController.closeShift);
+router.post('/shifts/:id/arqueo', validate(shiftArqueoSchema), shiftController.saveArqueo);
+router.post('/shifts/:id/close', validate(shiftArqueoSchema), shiftController.closeShift);
 router.get('/shifts/:id/sellers', shiftController.getShiftSellers);
-router.put('/shifts/:id/sellers', shiftController.updateShiftSellers);
-router.put('/shifts/:id', checkPermission('manage_shifts_edit'), shiftController.updateShift);
+router.put('/shifts/:id/sellers', validate(shiftSellersUpdateSchema), shiftController.updateShiftSellers);
+router.put('/shifts/:id', checkPermission('manage_shifts_edit'), validate(shiftUpdateSchema), shiftController.updateShift);
 router.delete('/shifts/:id', checkPermission('manage_shifts_edit'), shiftController.deleteShift);
 
 // Dashboard
@@ -437,20 +630,28 @@ router.get('/dashboard/server-stats', dashboardController.getServerStats);
 
 // Product Combos
 router.get('/combos', comboController.getCombos);
-router.post('/combos', comboController.createCombo);
-router.put('/combos/:id', comboController.updateCombo);
+router.post('/combos', validate(comboSchema), comboController.createCombo);
+router.put('/combos/:id', validate(comboUpdateSchema), comboController.updateCombo);
 router.delete('/combos/:id', comboController.deleteCombo);
 
 // Customer Specific Discounts
 router.get('/customer-discounts', customerDiscountController.getDiscounts);
-router.post('/customer-discounts', customerDiscountController.createDiscount);
+router.post('/customer-discounts', validate(customerDiscountSchema), customerDiscountController.createDiscount);
 router.delete('/customer-discounts/:id', customerDiscountController.deleteDiscount);
 
 // Product Discount Rules
 router.get('/discount-rules', discountRulesController.getRules);
-router.post('/discount-rules', discountRulesController.createRule);
-router.put('/discount-rules/:id', discountRulesController.updateRule);
+router.post('/discount-rules', validate(discountRuleSchema), discountRulesController.createRule);
+router.put('/discount-rules/:id', validate(discountRuleUpdateSchema), discountRulesController.updateRule);
 router.delete('/discount-rules/:id', discountRulesController.deleteRule);
+
+// Sales Promotions
+router.get('/promotions', promotionController.getPromotions);
+router.get('/promotions/active-pos', promotionController.getActivePromotionsForPos);
+router.get('/promotions/:id', promotionController.getPromotionById);
+router.post('/promotions', validate(promotionSchema), promotionController.createPromotion);
+router.put('/promotions/:id', validate(promotionUpdateSchema), promotionController.updatePromotion);
+router.delete('/promotions/:id', promotionController.deletePromotion);
 
 // Accounts Receivable (CXC)
 router.get('/cxc/statement', cxcController.getCustomerStatement);
@@ -463,8 +664,8 @@ router.post('/cxc/aging-report/send-email', cxcController.sendAgingEmail);
 router.get('/cxc/pending-documents', cxcController.getPendingDocuments);
 router.get('/cxc/payments', cxcController.getPaymentHistory);
 router.get('/cxc/payments/:id', cxcController.getPaymentById);
-router.post('/cxc/payments', cxcController.registerPayment);
-router.put('/cxc/payments/:id', cxcController.updatePayment);
+router.post('/cxc/payments', validate(cxcPaymentSchema), cxcController.registerPayment);
+router.put('/cxc/payments/:id', validate(cxcPaymentUpdateSchema), cxcController.updatePayment);
 router.delete('/cxc/payments/:id', cxcController.deletePayment);
 router.post('/cxc/payments/:id/send-email', cxcController.sendReceiptEmail);
 router.get('/cxc/payments/:id/pdf', cxcController.exportPaymentPDF);
@@ -477,7 +678,6 @@ router.get('/cxc/trupput/statement', cxcController.getTrupputStatement);
 router.get('/cxc/trupput/statement/pdf', cxcController.exportTrupputStatementPDF);
 router.post('/cxc/trupput/statement/send-email', cxcController.sendTrupputStatementEmail);
 
- 
 // Accounts Payable (CXP)
 const cxpController = require('../controllers/cxp.controller');
 router.get('/cxp/statement', cxpController.getProviderStatement);
@@ -490,8 +690,8 @@ router.get('/cxp/pending-documents', cxpController.getPendingDocuments);
 router.get('/cxp/reports/pending-detailed/pdf', cxpController.exportProviderPendingDocumentsDetailedPDF);
 router.get('/cxp/payments', cxpController.getPaymentHistory);
 router.get('/cxp/payments/:id', cxpController.getPaymentById);
-router.post('/cxp/payments', cxpController.registerPayment);
-router.put('/cxp/payments/:id', cxpController.updatePayment);
+router.post('/cxp/payments', validate(cxpPaymentSchema), cxpController.registerPayment);
+router.put('/cxp/payments/:id', validate(cxpPaymentUpdateSchema), cxpController.updatePayment);
 router.delete('/cxp/payments/:id', cxpController.deletePayment);
 router.post('/cxp/payments/:id/send-email', cxpController.sendReceiptEmail);
 router.get('/cxp/balances-report', cxpController.getProviderBalancesReport);
@@ -510,51 +710,24 @@ router.get('/vat-books/liquidation/excel', checkPermission('view_vat_liquidation
 
 // Accounting Module
 router.get('/accounting/account-types', accountingController.getAccountTypes);
-router.post('/accounting/account-types', accountingController.createAccountType);
-router.put('/accounting/account-types/:id', accountingController.updateAccountType);
+router.post('/accounting/account-types', validate(accountTypeSchema), accountingController.createAccountType);
+router.put('/accounting/account-types/:id', validate(accountTypeUpdateSchema), accountingController.updateAccountType);
 router.delete('/accounting/account-types/:id', accountingController.deleteAccountType);
 
 router.get('/accounting/entry-types', accountingController.getEntryTypes);
-router.post('/accounting/entry-types', accountingController.createEntryType);
-router.put('/accounting/entry-types/:id', accountingController.updateEntryType);
+router.post('/accounting/entry-types', validate(entryTypeSchema), accountingController.createEntryType);
+router.put('/accounting/entry-types/:id', validate(entryTypeUpdateSchema), accountingController.updateEntryType);
 router.delete('/accounting/entry-types/:id', accountingController.deleteEntryType);
 
 router.get('/accounting/accounts', accountingController.getAccounts);
-router.post('/accounting/accounts', accountingController.createAccount);
-router.put('/accounting/accounts/:id', accountingController.updateAccount);
+router.post('/accounting/accounts', validate(accountSchema), accountingController.createAccount);
+router.put('/accounting/accounts/:id', validate(accountUpdateSchema), accountingController.updateAccount);
 router.delete('/accounting/accounts/:id', accountingController.deleteAccount);
 
 router.get('/accounting/entries', accountingController.getEntries);
 router.get('/accounting/entries/:id', accountingController.getEntry);
-router.post('/accounting/entries', accountingController.createEntry);
-router.put('/accounting/entries/:id', accountingController.updateEntry);
-router.put('/accounting/entries/:id/void', accountingController.voidEntry);
-router.get('/accounting/trial-balance', accountingController.getTrialBalance);
-router.post('/accounting/closing', accountingController.performClosing);
-router.post('/cxp/payments/:id/send-email', cxpController.sendReceiptEmail);
-router.get('/cxp/balances-report', cxpController.getProviderBalancesReport);
-router.get('/cxp/payments/:id/pdf', cxpController.exportPaymentPDF);
-
-// Accounting Module
-router.get('/accounting/account-types', accountingController.getAccountTypes);
-router.post('/accounting/account-types', accountingController.createAccountType);
-router.put('/accounting/account-types/:id', accountingController.updateAccountType);
-router.delete('/accounting/account-types/:id', accountingController.deleteAccountType);
-
-router.get('/accounting/entry-types', accountingController.getEntryTypes);
-router.post('/accounting/entry-types', accountingController.createEntryType);
-router.put('/accounting/entry-types/:id', accountingController.updateEntryType);
-router.delete('/accounting/entry-types/:id', accountingController.deleteEntryType);
-
-router.get('/accounting/accounts', accountingController.getAccounts);
-router.post('/accounting/accounts', accountingController.createAccount);
-router.put('/accounting/accounts/:id', accountingController.updateAccount);
-router.delete('/accounting/accounts/:id', accountingController.deleteAccount);
-
-router.get('/accounting/entries', accountingController.getEntries);
-router.get('/accounting/entries/:id', accountingController.getEntry);
-router.post('/accounting/entries', accountingController.createEntry);
-router.put('/accounting/entries/:id', accountingController.updateEntry);
+router.post('/accounting/entries', validate(entrySchema), accountingController.createEntry);
+router.put('/accounting/entries/:id', validate(entryUpdateSchema), accountingController.updateEntry);
 router.put('/accounting/entries/:id/void', accountingController.voidEntry);
 router.get('/accounting/trial-balance', accountingController.getTrialBalance);
 router.post('/accounting/closing', accountingController.performClosing);
@@ -573,8 +746,8 @@ router.post('/accounting/generation/entity-accounts', accountingGenerationContro
 
 // Accounting Correlativos (numeracion de partidas)
 router.get('/accounting/correlativos', accountingCorrelativosController.getCorrelativos);
-router.post('/accounting/correlativos', accountingCorrelativosController.saveCorrelativos);
-router.post('/accounting/correlativos/renumber', accountingCorrelativosController.renumber);
+router.post('/accounting/correlativos', validate(accountingCorrelativosSchema), accountingCorrelativosController.saveCorrelativos);
+router.post('/accounting/correlativos/renumber', validate(accountingRenumberSchema), accountingCorrelativosController.renumber);
 
 // Office DB Connection
 router.get('/accounting/office/connection', officeConnectionController.getConnection);
@@ -607,54 +780,54 @@ router.use('/egg-industrial', eggIndustrialRoutes);
 // CRM — Acuerdos Comerciales de Precios con Clientes y Configuración
 router.get('/crm/customer-agreements', crmAgreementsController.getAgreements);
 router.get('/crm/customer-agreements/active-by-customer/:customerId', crmAgreementsController.getActiveAgreementsByCustomer);
-router.post('/crm/customer-agreements', crmAgreementsController.saveAgreement);
+router.post('/crm/customer-agreements', validate(agreementSchema), crmAgreementsController.saveAgreement);
 router.delete('/crm/customer-agreements/:id', crmAgreementsController.deleteAgreement);
 router.get('/crm/settings', crmAgreementsController.getCrmSettings);
-router.post('/crm/settings', crmAgreementsController.updateCrmSettings);
+router.post('/crm/settings', validate(crmSettingsSchema), crmAgreementsController.updateCrmSettings);
 
 // CRM — Cotizador Comercial y Firmas Digitales
 router.get('/crm/quotations', crmQuotationController.getQuotations);
 router.get('/crm/quotations/:id', crmQuotationController.getQuotationById);
-router.post('/crm/quotations', crmQuotationController.createQuotation);
-router.put('/crm/quotations/:id', crmQuotationController.updateQuotation);
+router.post('/crm/quotations', validate(quotationCreateSchema), crmQuotationController.createQuotation);
+router.put('/crm/quotations/:id', validate(quotationUpdateSchema), crmQuotationController.updateQuotation);
 router.delete('/crm/quotations/:id', crmQuotationController.deleteQuotation);
-router.patch('/crm/quotations/:id/status', crmQuotationController.updateStatus);
+router.patch('/crm/quotations/:id/status', validate(quotationStatusSchema), crmQuotationController.updateStatus);
 router.post('/crm/quotations/:id/convert-to-agreement', crmQuotationController.convertToAgreement);
 router.post('/crm/quotations/:id/duplicate', crmQuotationController.duplicateQuotation);
 router.get('/crm/quotations/:id/pdf', crmQuotationController.getQuotationPdf);
 router.get('/crm/quotations/:id/docx', crmQuotationController.getQuotationDocx);
-router.post('/crm/quotations/:id/send-email', crmQuotationController.sendQuotationEmail);
-router.post('/crm/user-signature', crmQuotationController.saveUserSignature);
+router.post('/crm/quotations/:id/send-email', validate(quotationEmailSchema), crmQuotationController.sendQuotationEmail);
+router.post('/crm/user-signature', validate(userSignatureSchema), crmQuotationController.saveUserSignature);
 router.get('/crm/user-signature', crmQuotationController.getUserSignature);
 
 
 
 // Gas Station - Distributors
 router.get('/gas-station/distributors', gasDistributorController.getDistributors);
-router.post('/gas-station/distributors', gasDistributorController.createDistributor);
-router.put('/gas-station/distributors/:id', gasDistributorController.updateDistributor);
+router.post('/gas-station/distributors', validate(gasDistributorSchema), gasDistributorController.createDistributor);
+router.put('/gas-station/distributors/:id', validate(gasDistributorUpdateSchema), gasDistributorController.updateDistributor);
 router.delete('/gas-station/distributors/:id', gasDistributorController.deleteDistributor);
 
 // Gas Station - Islands
 router.get('/gas-station/islands', islandController.getIslands);
-router.post('/gas-station/islands', islandController.createIsland);
-router.put('/gas-station/islands/:id', islandController.updateIsland);
+router.post('/gas-station/islands', validate(gasIslandSchema), islandController.createIsland);
+router.put('/gas-station/islands/:id', validate(gasIslandUpdateSchema), islandController.updateIsland);
 router.delete('/gas-station/islands/:id', islandController.deleteIsland);
 
 // Gas Station - Nozzles
 router.get('/gas-station/nozzles', nozzleController.getNozzles);
-router.post('/gas-station/nozzles', nozzleController.createNozzle);
-router.put('/gas-station/nozzles/:id', nozzleController.updateNozzle);
+router.post('/gas-station/nozzles', validate(gasNozzleSchema), nozzleController.createNozzle);
+router.put('/gas-station/nozzles/:id', validate(gasNozzleUpdateSchema), nozzleController.updateNozzle);
 router.delete('/gas-station/nozzles/:id', nozzleController.deleteNozzle);
 
 // Gas Station - Tanks
 router.get('/gas-station/tanks', tankController.getTanks);
-router.post('/gas-station/tanks', tankController.createTank);
-router.put('/gas-station/tanks/:id', tankController.updateTank);
+router.post('/gas-station/tanks', validate(gasTankSchema), tankController.createTank);
+router.put('/gas-station/tanks/:id', validate(gasTankUpdateSchema), tankController.updateTank);
 router.delete('/gas-station/tanks/:id', tankController.deleteTank);
 
 // Gas Station - Closeouts (Cierre de Lecturas)
-router.post('/gas-station/closeouts/init', gasCloseoutController.initCloseout);
+router.post('/gas-station/closeouts/init', validate(initCloseoutSchema), gasCloseoutController.initCloseout);
 router.post('/gas-station/closeouts/:id/tank-readings/init', gasCloseoutController.initTankReadings);
 router.get('/gas-station/closeouts/next-turno', gasCloseoutController.getNextTurno);
 router.get('/gas-station/closeouts/last-turno', gasCloseoutController.getLastTurno);
@@ -662,106 +835,109 @@ router.get('/gas-station/closeouts/print-day', gasCloseoutController.getAccumula
 router.get('/gas-station/closeouts', gasCloseoutController.getCloseouts);
 router.get('/gas-station/closeouts/:id', gasCloseoutController.getCloseout);
 router.get('/gas-station/closeouts/:id/changes', gasCloseoutController.getCloseoutChanges);
-router.patch('/gas-station/closeouts/:closeoutId/readings/batch', gasCloseoutController.batchUpdateReadings);
-router.patch('/gas-station/closeouts/:closeoutId/readings/:id', gasCloseoutController.updateReading);
-router.patch('/gas-station/closeouts/:closeoutId/tank-readings/:id', gasCloseoutController.updateTankReading);
+router.patch('/gas-station/closeouts/:closeoutId/readings/batch', validate(batchReadingsSchema), gasCloseoutController.batchUpdateReadings);
+router.patch('/gas-station/closeouts/:closeoutId/readings/:id', validate(singleReadingUpdateSchema), gasCloseoutController.updateReading);
+router.patch('/gas-station/closeouts/:closeoutId/tank-readings/:id', validate(singleTankReadingUpdateSchema), gasCloseoutController.updateTankReading);
 router.post('/gas-station/closeouts/:id/close', gasCloseoutController.closeCloseout);
 router.post('/gas-station/closeouts/:id/reopen', checkPermission('manage_gas_closeout_reopen'), gasCloseoutController.reopenCloseout);
-router.patch('/gas-station/closeouts/:id/fecha-turno', gasCloseoutController.updateCloseoutFechaTurno);
+router.patch('/gas-station/closeouts/:id/fecha-turno', validate(closeoutFechaTurnoSchema), gasCloseoutController.updateCloseoutFechaTurno);
 router.delete('/gas-station/closeouts/:id', gasCloseoutController.deleteCloseout);
 router.put('/gas-station/closeouts/:id/despachadores', gasCloseoutController.updateCloseoutDespachadores);
 router.put('/gas-station/closeouts/:id/despachador-nozzles', gasCloseoutController.updateCloseoutDespachadorNozzles);
 
 // Gas Station - Expense Categories
 router.get('/gas-station/expense-categories', gasCloseoutController.getExpenseCategories);
-router.post('/gas-station/expense-categories', gasCloseoutController.createExpenseCategory);
-router.put('/gas-station/expense-categories/:id', gasCloseoutController.updateExpenseCategory);
+router.post('/gas-station/expense-categories', validate(gasExpenseCategorySchema), gasCloseoutController.createExpenseCategory);
+router.put('/gas-station/expense-categories/:id', validate(gasExpenseCategoryUpdateSchema), gasCloseoutController.updateExpenseCategory);
 router.delete('/gas-station/expense-categories/:id', gasCloseoutController.deleteExpenseCategory);
 
 // Gas Station - Closeout Expenses
 router.get('/gas-station/closeouts/:id/expenses', gasCloseoutController.getExpenses);
-router.post('/gas-station/closeouts/:id/expenses', gasCloseoutController.saveExpenses);
+router.post('/gas-station/closeouts/:id/expenses', validate(closeoutExpensesSchema), gasCloseoutController.saveExpenses);
 router.delete('/gas-station/closeouts/:id/expenses/:expenseId', gasCloseoutController.deleteExpense);
 
 // Gas Station - Closeout Remesas
 router.get('/gas-station/closeouts/:id/remesas', gasCloseoutController.getRemesas);
-router.post('/gas-station/closeouts/:id/remesas', gasCloseoutController.saveRemesas);
+router.post('/gas-station/closeouts/:id/remesas', validate(closeoutRemesasSchema), gasCloseoutController.saveRemesas);
 router.delete('/gas-station/closeouts/:id/remesas/:remesaId', gasCloseoutController.deleteRemesa);
 
 // Gas Station - Closeout Cupones
 router.get('/gas-station/closeouts/:id/cupones', gasCloseoutController.getCupones);
-router.post('/gas-station/closeouts/:id/cupones', gasCloseoutController.saveCupones);
+router.post('/gas-station/closeouts/:id/cupones', validate(closeoutCuponesSchema), gasCloseoutController.saveCupones);
 router.delete('/gas-station/closeouts/:id/cupones/:cuponId', gasCloseoutController.deleteCupon);
 
 // Gas Station - Closeout Descuentos
 router.get('/gas-station/closeouts/:id/descuentos', gasCloseoutController.getDescuentos);
-router.post('/gas-station/closeouts/:id/descuentos', gasCloseoutController.saveDescuentos);
+router.post('/gas-station/closeouts/:id/descuentos', validate(closeoutDescuentosSchema), gasCloseoutController.saveDescuentos);
 router.delete('/gas-station/closeouts/:id/descuentos/:descuentoId', gasCloseoutController.deleteDescuento);
 
 // Gas Station - Closeout Adelantos
 router.get('/gas-station/closeouts/:id/adelantos', gasCloseoutController.getAdelantos);
-router.post('/gas-station/closeouts/:id/adelantos', gasCloseoutController.saveAdelantos);
+router.post('/gas-station/closeouts/:id/adelantos', validate(closeoutAdelantosSchema), gasCloseoutController.saveAdelantos);
 router.delete('/gas-station/closeouts/:id/adelantos/:adelantoId', gasCloseoutController.deleteAdelanto);
 
 // Gas Station - Settings
 router.get('/gas-station/settings', gasConfigController.getSettings);
-router.put('/gas-station/settings', gasConfigController.updateSettings);
+router.put('/gas-station/settings', validate(gasSettingsSchema), gasConfigController.updateSettings);
 
 // Gas Station - Lubricant Products
 router.get('/products/lubricants', productController.getLubricantProducts);
 
 // Gas Station - Closeout Lubricant Readings
 router.get('/gas-station/closeouts/:id/lubricantes', gasCloseoutController.getLubricantReadings);
-router.post('/gas-station/closeouts/:id/lubricantes', gasCloseoutController.saveLubricantReadings);
+router.post('/gas-station/closeouts/:id/lubricantes', validate(closeoutLubricantesSchema), gasCloseoutController.saveLubricantReadings);
 
 // Gas Station - Despachadores
 router.get('/gas-station/despachadores', gasDespachadorController.getDespachadores);
-router.post('/gas-station/despachadores', gasDespachadorController.createDespachador);
-router.put('/gas-station/despachadores/:id', gasDespachadorController.updateDespachador);
+router.post('/gas-station/despachadores', validate(gasDespachadorSchema), gasDespachadorController.createDespachador);
+router.put('/gas-station/despachadores/:id', validate(gasDespachadorUpdateSchema), gasDespachadorController.updateDespachador);
 router.delete('/gas-station/despachadores/:id', gasDespachadorController.deleteDespachador);
 
 // Gas Station - Despachador Nozzle Assignments
 router.get('/gas-station/despachadores/:id/nozzles', gasDespachadorController.getDespachadorNozzles);
-router.put('/gas-station/despachadores/:id/nozzles', gasDespachadorController.updateDespachadorNozzles);
+router.put('/gas-station/despachadores/:id/nozzles', validate(gasDespachadorNozzlesSchema), gasDespachadorController.updateDespachadorNozzles);
 router.get('/gas-station/despachador-nozzles/all', gasDespachadorController.getAllAssignments);
 
 // Gas Station - POS Types
 router.get('/gas-station/pos-types', gasPosTypeController.getPosTypes);
-router.post('/gas-station/pos-types', gasPosTypeController.createPosType);
-router.put('/gas-station/pos-types/:id', gasPosTypeController.updatePosType);
+router.post('/gas-station/pos-types', validate(gasPosTypeSchema), gasPosTypeController.createPosType);
+router.put('/gas-station/pos-types/:id', validate(gasPosTypeUpdateSchema), gasPosTypeController.updatePosType);
 router.delete('/gas-station/pos-types/:id', gasPosTypeController.deletePosType);
 
 // Gas Station - Closeout Tarjetas
 router.get('/gas-station/closeouts/:id/tarjetas', gasCloseoutController.getTarjetas);
-router.post('/gas-station/closeouts/:id/tarjetas', gasCloseoutController.saveTarjetas);
+router.post('/gas-station/closeouts/:id/tarjetas', validate(closeoutTarjetasSchema), gasCloseoutController.saveTarjetas);
 router.delete('/gas-station/closeouts/:id/tarjetas/:tarjetaId', gasCloseoutController.deleteTarjeta);
 
 // Gas Station - Closeout Creditos
 router.get('/gas-station/closeouts/:id/creditos', gasCloseoutController.getCreditos);
-router.post('/gas-station/closeouts/:id/creditos', gasCloseoutController.saveCreditos);
+router.post('/gas-station/closeouts/:id/creditos', validate(closeoutCreditosSchema), gasCloseoutController.saveCreditos);
 router.delete('/gas-station/closeouts/:id/creditos/:creditoId', gasCloseoutController.deleteCredito);
 
 // Gas Station - Closeout Vales
 router.get('/gas-station/closeouts/:id/vales', gasCloseoutController.getVales);
-router.post('/gas-station/closeouts/:id/vales', gasCloseoutController.saveVales);
+router.post('/gas-station/closeouts/:id/vales', validate(closeoutValesSchema), gasCloseoutController.saveVales);
 router.delete('/gas-station/closeouts/:id/vales/:valeId', gasCloseoutController.deleteVale);
 
 // Gas Station - Advances
 router.get('/gas-station/advances', gasAdvanceController.getAdvances);
-router.post('/gas-station/advances', gasAdvanceController.createAdvance);
-router.put('/gas-station/advances/:id', gasAdvanceController.updateAdvance);
+router.get('/gas-station/advances/report/pdf', gasAdvanceController.getAdvancesReportPDF);
+router.post('/gas-station/advances', validate(gasAdvanceSchema), gasAdvanceController.createAdvance);
+router.put('/gas-station/advances/:id', validate(gasAdvanceUpdateSchema), gasAdvanceController.updateAdvance);
 router.delete('/gas-station/advances/:id', gasAdvanceController.deleteAdvance);
+router.get('/gas-station/advances/:id/receipt/pdf', gasAdvanceController.getAdvanceReceiptPDF);
+router.post('/gas-station/advances/:id/send-email', gasAdvanceController.sendAdvanceReceiptEmail);
 router.get('/gas-station/advances/available/:cliente_id', gasAdvanceController.getAvailableAdvancesByClient);
 
 // Gas Station - Closeout Anticipos Despachados
 router.get('/gas-station/closeouts/:id/anticipos-desp', gasCloseoutController.getAnticiposDesp);
-router.post('/gas-station/closeouts/:id/anticipos-desp', gasCloseoutController.saveAnticiposDesp);
+router.post('/gas-station/closeouts/:id/anticipos-desp', validate(closeoutAnticiposDespSchema), gasCloseoutController.saveAnticiposDesp);
 router.delete('/gas-station/closeouts/:id/anticipos-desp/:anticipoId', gasCloseoutController.deleteAnticipoDesp);
 
 // Gas Station - Trupput (prepago por galonaje)
 router.get('/gas-station/trupput', gasTrupputController.getTrupput);
-router.post('/gas-station/trupput', gasTrupputController.createTrupput);
-router.put('/gas-station/trupput/:id', gasTrupputController.updateTrupput);
+router.post('/gas-station/trupput', validate(gasTrupputSchema), gasTrupputController.createTrupput);
+router.put('/gas-station/trupput/:id', validate(gasTrupputUpdateSchema), gasTrupputController.updateTrupput);
 router.delete('/gas-station/trupput/:id', gasTrupputController.deleteTrupput);
 router.get('/gas-station/trupput/available/:cliente_id', gasTrupputController.getAvailableTrupputByClient);
 
@@ -777,7 +953,7 @@ router.get('/gas-station/vouchers/validate', gasOrderController.validateVoucher)
 
 // Gas Station - Closeout Despachos Trupput
 router.get('/gas-station/closeouts/:id/trupput-desp', gasCloseoutController.getTrupputDesp);
-router.post('/gas-station/closeouts/:id/trupput-desp', gasCloseoutController.saveTrupputDesp);
+router.post('/gas-station/closeouts/:id/trupput-desp', validate(closeoutTrupputDespSchema), gasCloseoutController.saveTrupputDesp);
 router.delete('/gas-station/closeouts/:id/trupput-desp/:despachoId', gasCloseoutController.deleteTrupputDesp);
 
 // Print full closeout data
@@ -803,6 +979,7 @@ router.get('/gas-station/reports/fuel-inventory/pdf', gasReporteController.getFu
 router.get('/gas-station/reports/galonaje-vendido/pdf', gasReporteController.getGalonajeVendidoPDF);
 router.get('/gas-station/reports/fuel-sales-summary/pdf', gasReporteController.getFuelSalesSummaryPDF);
 router.get('/gas-station/reports/lubricants-sold/pdf', gasReporteController.getLubricantsSoldPDF);
+router.get('/gas-station/reports/lubricants-comparison/pdf', gasReporteController.getLubricantsComparisonReport);
 router.get('/gas-station/reports/complementarias/data', gasReporteController.getComplementariasReportData);
 router.get('/gas-station/reports/complementarias/pdf', gasReporteController.getComplementariasReportPDF);
 router.get('/gas-station/reports/ventas-analytics/data', gasReporteController.getVentasLecturasAnalyticsData);
@@ -811,54 +988,53 @@ router.get('/gas-station/reports/ventas-analytics/pdf', gasReporteController.get
 // Gas Station - Remesa Deliveries
 router.get('/gas-station/remesas/pending', gasRemesaDeliveryController.getPendingRemesas);
 router.get('/gas-station/remesa-deliveries', gasRemesaDeliveryController.getDeliveries);
-router.post('/gas-station/remesa-deliveries', gasRemesaDeliveryController.createDelivery);
-router.put('/gas-station/remesa-deliveries/:id', gasRemesaDeliveryController.updateDelivery);
+router.post('/gas-station/remesa-deliveries', validate(gasRemesaDeliverySchema), gasRemesaDeliveryController.createDelivery);
+router.put('/gas-station/remesa-deliveries/:id', validate(gasRemesaDeliveryUpdateSchema), gasRemesaDeliveryController.updateDelivery);
 router.get('/gas-station/remesa-deliveries/:id', gasRemesaDeliveryController.getDelivery);
 router.put('/gas-station/remesa-deliveries/:id/entregar', gasRemesaDeliveryController.entregarDelivery);
 router.put('/gas-station/remesa-deliveries/:id/revertir-entregado', gasRemesaDeliveryController.revertirEntregado);
+router.post('/gas-station/remesa-deliveries/:id/send-to-rrs', gasRemesaDeliveryController.resendToRrs);
 router.get('/gas-station/remesa-deliveries/:id/pdf', gasRemesaDeliveryController.getDeliveryPdf);
 router.delete('/gas-station/remesa-deliveries/:id', gasRemesaDeliveryController.deleteDelivery);
 
 // Gas Station - Coupon Liquidations (Sistema vs Físicos)
 router.get('/gas-station/coupon-liquidations/pending-cupones', gasCouponLiquidationController.getPendingCupones);
 router.get('/gas-station/coupon-liquidations', gasCouponLiquidationController.getLiquidaciones);
-router.post('/gas-station/coupon-liquidations', checkPermission('manage_gas_coupon_liquidation'), gasCouponLiquidationController.createLiquidacion);
+router.post('/gas-station/coupon-liquidations', checkPermission('manage_gas_coupon_liquidation'), validate(gasCouponLiquidationSchema), gasCouponLiquidationController.createLiquidacion);
 router.get('/gas-station/coupon-liquidations/:id', gasCouponLiquidationController.getLiquidacionById);
-router.put('/gas-station/coupon-liquidations/:id', checkPermission('manage_gas_coupon_liquidation'), gasCouponLiquidationController.updateLiquidacion);
+router.put('/gas-station/coupon-liquidations/:id', checkPermission('manage_gas_coupon_liquidation'), validate(gasCouponLiquidationUpdateSchema), gasCouponLiquidationController.updateLiquidacion);
 router.delete('/gas-station/coupon-liquidations/:id', checkPermission('manage_gas_coupon_liquidation'), gasCouponLiquidationController.deleteLiquidacion);
 router.get('/gas-station/coupon-liquidations/:id/pdf', gasCouponLiquidationController.exportPDF);
 router.get('/gas-station/coupon-liquidations/:id/excel', gasCouponLiquidationController.exportExcel);
 
 // Control de Pozo - Servicios
 router.get('/pozo/servicios', pozoController.getServicios);
-router.post('/pozo/servicios', pozoController.createServicio);
-router.put('/pozo/servicios/:id', pozoController.updateServicio);
+router.post('/pozo/servicios', validate(pozoServicioSchema), pozoController.createServicio);
+router.put('/pozo/servicios/:id', validate(pozoServicioUpdateSchema), pozoController.updateServicio);
 router.delete('/pozo/servicios/:id', pozoController.deleteServicio);
 
 // Control de Pozo - Despachos
 router.get('/pozo/despachos', pozoController.getDespachos);
 router.get('/pozo/despachos/:id', pozoController.getDespacho);
-router.post('/pozo/despachos', pozoController.createDespacho);
-router.put('/pozo/despachos/:id', pozoController.updateDespacho);
+router.post('/pozo/despachos', validate(pozoDespachoSchema), pozoController.createDespacho);
+router.put('/pozo/despachos/:id', validate(pozoDespachoUpdateSchema), pozoController.updateDespacho);
 router.delete('/pozo/despachos/:id', pozoController.deleteDespacho);
 
 // Control de Pozo - Cortes
-    router.get('/pozo/cortes', pozoController.getCortes);
-    router.get('/pozo/cortes/consultar', pozoController.consultarCorte);
-    router.post('/pozo/cortes', pozoController.saveCorte);
-    router.get('/pozo/cortes/:id', pozoController.getCorte);
-    router.delete('/pozo/cortes/:id', pozoController.deleteCorte);
-    router.post('/pozo/cortes/:id/close', pozoController.closeCorte);
-    router.post('/pozo/cortes/:id/reopen', checkPermission('close_pozo_cortes'), pozoController.reopenCorte);
-    router.put('/pozo/cortes/:id/odometro-final', pozoController.updateCorteOdometroFinal);
+router.get('/pozo/cortes', pozoController.getCortes);
+router.get('/pozo/cortes/consultar', pozoController.consultarCorte);
+router.post('/pozo/cortes', validate(pozoCorteSchema), pozoController.saveCorte);
+router.get('/pozo/cortes/:id', pozoController.getCorte);
+router.delete('/pozo/cortes/:id', pozoController.deleteCorte);
+router.post('/pozo/cortes/:id/close', pozoController.closeCorte);
+router.post('/pozo/cortes/:id/reopen', checkPermission('close_pozo_cortes'), pozoController.reopenCorte);
+router.put('/pozo/cortes/:id/odometro-final', validate(pozoCorteOdometroSchema), pozoController.updateCorteOdometroFinal);
 
-    router.get('/pozo/entregas-efectivo', pozoController.getEntregasEfectivo);
-    router.get('/pozo/entregas-efectivo/pendiente', pozoController.getPendienteEntregas);
-
-    router.get('/pozo/entregas-efectivo', pozoController.getEntregasEfectivo);
-    router.post('/pozo/entregas-efectivo', pozoController.createEntregaEfectivo);
-    router.put('/pozo/entregas-efectivo/:id', pozoController.updateEntregaEfectivo);
-    router.delete('/pozo/entregas-efectivo/:id', pozoController.deleteEntregaEfectivo);
+router.get('/pozo/entregas-efectivo', pozoController.getEntregasEfectivo);
+router.get('/pozo/entregas-efectivo/pendiente', pozoController.getPendienteEntregas);
+router.post('/pozo/entregas-efectivo', validate(pozoEntregaEfectivoSchema), pozoController.createEntregaEfectivo);
+router.put('/pozo/entregas-efectivo/:id', validate(pozoEntregaEfectivoUpdateSchema), pozoController.updateEntregaEfectivo);
+router.delete('/pozo/entregas-efectivo/:id', pozoController.deleteEntregaEfectivo);
 
 // RRHH - AFPs
 router.get('/rh/afps', rhAfpController.getAfps);
@@ -874,7 +1050,7 @@ router.delete('/rh/cargos/:id', rhCargoController.deleteCargo);
 
 // RRHH - Descuentos Programados
 router.get('/rh/descuentos-programados', rhDescuentoController.getDescuentos);
-router.post('/rh/descuentos-programados', rhDescuentoController.createDescuento);
+router.post('/rh/descuentos-programados', validate(rhDescuentoSchema), rhDescuentoController.createDescuento);
 router.put('/rh/descuentos-programados/:id', rhDescuentoController.updateDescuento);
 router.delete('/rh/descuentos-programados/:id', rhDescuentoController.deleteDescuento);
 
@@ -936,14 +1112,14 @@ router.put('/rh/config', upload.fields([{ name: 'firma', maxCount: 1 }, { name: 
 // RRHH - Empleados
 router.get('/rh/empleados', rhEmpleadoController.getEmpleados);
 router.get('/rh/empleados/next-code', rhEmpleadoController.getNextCode);
-router.post('/rh/empleados', rhEmpleadoController.createEmpleado);
+router.post('/rh/empleados', validate(empleadoSchema), rhEmpleadoController.createEmpleado);
 router.get('/rh/empleados/:id', rhEmpleadoController.getEmpleado);
-router.put('/rh/empleados/:id', rhEmpleadoController.updateEmpleado);
+router.put('/rh/empleados/:id', validate(empleadoUpdateSchema), rhEmpleadoController.updateEmpleado);
 router.delete('/rh/empleados/:id', rhEmpleadoController.deleteEmpleado);
 
 // RRHH - Empleado Descuentos Programados
 router.get('/rh/empleados/:id/descuentos', rhEmpleadoController.getDescuentos);
-router.post('/rh/empleados/:id/descuentos', rhEmpleadoController.createDescuento);
+router.post('/rh/empleados/:id/descuentos', validate(rhDescuentoSchema), rhEmpleadoController.createDescuento);
 router.put('/rh/empleados/:id/descuentos/:did', rhEmpleadoController.updateDescuento);
 router.delete('/rh/empleados/:id/descuentos/:did', rhEmpleadoController.deleteDescuento);
 
@@ -962,9 +1138,9 @@ router.delete('/rh/empleados/:id/ausencias/:aid', rhEmpleadoController.deleteAus
 // RRHH - Acciones de Personal / Amonestaciones
 router.get('/rh/acciones-personal/infracciones', rhAccionPersonalController.getInfraccionesCatalogo);
 router.get('/rh/acciones-personal', rhAccionPersonalController.getAcciones);
-router.post('/rh/acciones-personal', rhAccionPersonalController.createAccion);
+router.post('/rh/acciones-personal', validate(accionPersonalSchema), rhAccionPersonalController.createAccion);
 router.get('/rh/acciones-personal/:id', rhAccionPersonalController.getAccion);
-router.put('/rh/acciones-personal/:id', rhAccionPersonalController.updateAccion);
+router.put('/rh/acciones-personal/:id', validate(accionPersonalUpdateSchema), rhAccionPersonalController.updateAccion);
 router.delete('/rh/acciones-personal/:id', rhAccionPersonalController.deleteAccion);
 router.get('/rh/acciones-personal/:id/pdf', rhAccionPersonalController.exportPDF);
 
@@ -974,10 +1150,10 @@ router.get('/rh/planilla-vacaciones/empleado/:id', rhPlanillaVacacionesControlle
 router.get('/rh/planilla-vacaciones/ultima/:empleado_id', rhPlanillaVacacionesController.getUltimaVacacion);
 router.get('/rh/planilla-vacaciones/elegibles', rhPlanillaVacacionesController.getElegibles);
 router.get('/rh/planilla-vacaciones', rhPlanillaVacacionesController.getPlanillas);
-router.post('/rh/planilla-vacaciones', rhPlanillaVacacionesController.createPlanilla);
+router.post('/rh/planilla-vacaciones', validate(planillaVacacionesSchema), rhPlanillaVacacionesController.createPlanilla);
 router.get('/rh/planilla-vacaciones/:id/pdf', rhPlanillaVacacionesController.exportPDF);
 router.get('/rh/planilla-vacaciones/:id', rhPlanillaVacacionesController.getPlanilla);
-router.put('/rh/planilla-vacaciones/:id', rhPlanillaVacacionesController.updatePlanilla);
+router.put('/rh/planilla-vacaciones/:id', validate(planillaVacacionesUpdateSchema), rhPlanillaVacacionesController.updatePlanilla);
 router.delete('/rh/planilla-vacaciones/:id', rhPlanillaVacacionesController.deletePlanilla);
 
 // RRHH - Planilla de Liquidaciones
@@ -1008,8 +1184,21 @@ router.get('/rh/planilla-aguinaldos/resumen', rhPlanillaAguinaldosController.get
 router.get('/rh/planilla-aguinaldos/pdf', rhPlanillaAguinaldosController.exportPDF);
 router.get('/rh/planilla-aguinaldos/recibos', rhPlanillaAguinaldosController.exportRecibos);
 router.get('/rh/planilla-aguinaldos', rhPlanillaAguinaldosController.getPlanilla);
-router.post('/rh/planilla-aguinaldos', rhPlanillaAguinaldosController.savePlanilla);
+router.post('/rh/planilla-aguinaldos', validate(planillaAguinaldosSchema), rhPlanillaAguinaldosController.savePlanilla);
 router.delete('/rh/planilla-aguinaldos/periodo', rhPlanillaAguinaldosController.deletePeriodo);
+
+// RRHH - Planilla 25 (Quincena 25)
+router.get('/rh/planilla-quincena25/calcular', rhPlanillaQuincena25Controller.calcular);
+router.get('/rh/planilla-quincena25/resumen', rhPlanillaQuincena25Controller.getResumen);
+router.get('/rh/planilla-quincena25/pdf', rhPlanillaQuincena25Controller.exportPDF);
+router.get('/rh/planilla-quincena25/recibos', rhPlanillaQuincena25Controller.exportRecibos);
+router.get('/rh/planilla-quincena25/export-banco', rhPlanillaQuincena25Controller.exportBanco);
+router.get('/rh/planilla-quincena25/export-hacienda', rhPlanillaQuincena25Controller.exportHaciendaF14);
+router.get('/rh/planilla-quincena25', rhPlanillaQuincena25Controller.getPlanilla);
+router.post('/rh/planilla-quincena25', rhPlanillaQuincena25Controller.savePlanilla);
+router.post('/rh/planilla-quincena25/cerrar-periodo', rhPlanillaQuincena25Controller.cerrarPeriodo);
+router.post('/rh/planilla-quincena25/reabrir-periodo', rhPlanillaQuincena25Controller.reabrirPeriodo);
+router.delete('/rh/planilla-quincena25/periodo', rhPlanillaQuincena25Controller.deletePeriodo);
 
 // RRHH - Planillas Quincenales
 router.get('/rh/planillas/cuentas-activas', rhPlanillaController.getCuentasActivas);
@@ -1017,6 +1206,7 @@ router.get('/rh/planillas/abiertas', rhPlanillaController.getPlanillasAbiertas);
 router.post('/rh/planillas/calcular', rhPlanillaController.calcular);
 router.post('/rh/planillas/generar', rhPlanillaController.generarPlanilla);
 router.post('/rh/planillas/sincronizar', rhPlanillaController.sincronizarPlanilla);
+router.post('/rh/planillas/sincronizar-comisiones-huevo', rhPlanillaController.syncIndustrialCommissions);
 router.get('/rh/planillas/grupos', rhPlanillaController.getGruposPlanilla);
 router.get('/rh/planillas/recibos-masivos', rhPlanillaController.exportRecibosMasivos);
 router.post('/rh/planillas/cerrar-periodo', rhPlanillaController.cerrarPeriodo);

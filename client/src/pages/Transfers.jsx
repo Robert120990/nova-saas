@@ -20,13 +20,14 @@ import {
     Eye,
     FileSpreadsheet,
     FileText as FilePdf,
-    Barcode,
-    Maximize2
+    Barcode
 } from 'lucide-react';
-import * as XLSX from 'xlsx';
+import { exportJsonToExcel } from '../utils/excelExport';
+import TransferDetailModal from '../components/inventory/TransferDetailModal';
 import PdfViewerModal from '../components/ui/PdfViewerModal';
 import Table from '../components/ui/Table';
 import Pagination from '../components/ui/Pagination';
+import ProductSearchModal from '../components/products/ProductSearchModal';
 
 import { useAuth } from '../context/AuthContext';
 import { useDirtyTracker } from '../hooks/useDirtyTracker';
@@ -54,9 +55,6 @@ const Transfers = () => {
     const [viewingTransfer, setViewingTransfer] = useState(null);
     const [isProductModalOpen, setIsProductModalOpen] = useState(false);
     const [quickBarcode, setQuickBarcode] = useState('');
-    const [productSearchModal, setProductSearchModal] = useState('');
-    const [debouncedModalSearch, setDebouncedModalSearch] = useState('');
-    const [modalPage, setModalPage] = useState(1);
 
     // PDF Report Modal State
     const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
@@ -72,11 +70,6 @@ const Transfers = () => {
 
     useDirtyTracker('transferencias', origenBranch && destinoBranch && selectedItems.length > 0);
 
-    React.useEffect(() => {
-        const timer = setTimeout(() => { setDebouncedModalSearch(productSearchModal); setModalPage(1); }, 500);
-        return () => clearTimeout(timer);
-    }, [productSearchModal]);
-    
     // Refs for focus management
     const qtyRef = React.useRef(null);
 
@@ -85,15 +78,6 @@ const Transfers = () => {
         queryKey: ['branches'],
         queryFn: async () => (await axios.get('/api/branches')).data
     });
-
-    const { data: modalProductsData = { data: [], total: 0, totalPages: 0 }, isLoading: isLoadingModalProducts } = useQuery({
-        queryKey: ['transfer-products', debouncedModalSearch, origenBranch, modalPage],
-        queryFn: async () => (await axios.get('/api/products', {
-            params: { search: debouncedModalSearch || undefined, branch_id: origenBranch || undefined, limit: 20, page: modalPage }
-        })).data,
-        enabled: isProductModalOpen
-    });
-    const modalProducts = modalProductsData.data.filter(p => p.status === 'activo');
 
     const { data: transfersData = { data: [], totalItems: 0, totalPages: 0 }, isLoading: loadingTransfers } = useQuery({
         queryKey: ['transfers', historySearch, historyPage, user?.branch_id],
@@ -181,8 +165,10 @@ const Transfers = () => {
     };
 
     const exportToExcel = () => {
-        if (!transfersData?.data?.length) return;
-        const worksheet = XLSX.utils.json_to_sheet(transfersData.data.map(t => ({
+        if (!transfersData?.data?.length) {
+            return toast.warning('No hay traslados para exportar');
+        }
+        const rows = transfersData.data.map(t => ({
             Documento: `TR-${String(t.id).padStart(6, '0')}`,
             Fecha: new Date(t.fecha).toLocaleString(),
             Origen: t.origen_nombre,
@@ -190,10 +176,8 @@ const Transfers = () => {
             Usuario: t.usuario_nombre,
             Items: t.items_count,
             Estado: t.status
-        })));
-        const workbook = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(workbook, worksheet, "Traslados");
-        XLSX.writeFile(workbook, `Traslados_${new Date().toISOString().split('T')[0]}.xlsx`);
+        }));
+        exportJsonToExcel(rows, `Traslados_${new Date().toISOString().split('T')[0]}`, 'Traslados');
     };
 
     const handleOpenPdfModal = async () => {
@@ -693,79 +677,18 @@ const Transfers = () => {
             />
 
             {/* Product Selection Modal */}
-            {isProductModalOpen && (
-                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-                    <div className="bg-white rounded-[2.5rem] w-full max-w-3xl max-h-[85vh] overflow-hidden shadow-2xl flex flex-col">
-                        <div className="p-4 md:p-8 border-b bg-slate-50/30 flex justify-between items-center">
-                            <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight">Seleccionar Producto</h3>
-                            <button onClick={() => setIsProductModalOpen(false)} className="p-2 hover:bg-slate-100 rounded-xl transition-all"><X size={20} /></button>
-                        </div>
-                        <div className="p-6">
-                            <div className="relative">
-                                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                                <input 
-                                    autoFocus
-                                    type="text"
-                                    placeholder="Buscar por nombre o código..."
-                                    value={productSearchModal}
-                                    onChange={(e) => setProductSearchModal(e.target.value)}
-                                    className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-500/5 font-bold transition-all"
-                                />
-                            </div>
-                        </div>
-                        <div className="flex-1 overflow-y-auto p-6 pt-0 space-y-2 custom-scrollbar">
-                            {isLoadingModalProducts ? (
-                                <div className="py-16 text-center text-slate-400 text-sm font-medium">Cargando productos...</div>
-                            ) : modalProducts.length === 0 ? (
-                                <div className="py-16 text-center text-slate-400 text-sm font-medium">No se encontraron productos para esta selección</div>
-                            ) : modalProducts.map(p => (
-                                    <button 
-                                        key={p.id} 
-                                        onClick={() => {
-                                            setCurrentProduct(p.id);
-                                            setCurrentProductObj(p);
-                                            setIsProductModalOpen(false);
-                                            setProductSearchModal('');
-                                            setModalPage(1);
-                                        }} 
-                                        className="w-full flex items-center justify-between p-4 rounded-2xl border border-slate-50 hover:border-indigo-200 hover:bg-indigo-50/50 transition-all group text-left"
-                                    >
-                                        <div className="flex items-center gap-4 min-w-0">
-                                            <div className="p-2.5 bg-white rounded-xl shadow-sm border border-slate-100 group-hover:text-indigo-600 transition-colors">
-                                                <Box size={20} />
-                                            </div>
-                                            <div className="truncate">
-                                                <p className="font-black text-slate-900 uppercase text-sm leading-tight truncate">{p.nombre}</p>
-                                                <p className="text-[10px] font-mono font-bold text-indigo-400 tracking-wider mt-0.5">{p.codigo}</p>
-                                            </div>
-                                        </div>
-                                        <div className="flex items-center gap-4 text-right shrink-0">
-                                            <div className="flex flex-col items-end">
-                                                <span className="text-[9px] font-black text-slate-400 uppercase">Precio</span>
-                                                <span className="text-sm font-black text-slate-900">${parseFloat(p.precio_unitario || 0).toFixed(2)}</span>
-                                            </div>
-                                            <div className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg group-hover:bg-indigo-600 group-hover:text-white transition-all shadow-sm">
-                                                <Maximize2 size={16} />
-                                            </div>
-                                        </div>
-                                    </button>
-                                ))}
-                        </div>
-                        {modalProductsData.totalPages > 1 && (
-                            <div className="border-t border-slate-100 p-4">
-                                <Pagination
-                                    currentPage={modalPage}
-                                    totalPages={modalProductsData.totalPages}
-                                    totalItems={modalProductsData.total}
-                                    onPageChange={setModalPage}
-                                    itemsOnPage={modalProducts.length}
-                                    isLoading={isLoadingModalProducts}
-                                />
-                            </div>
-                        )}
-                    </div>
-                </div>
-            )}
+            <ProductSearchModal
+                isOpen={isProductModalOpen}
+                onClose={() => setIsProductModalOpen(false)}
+                onSelectProduct={(p) => {
+                    setCurrentProduct(p.id);
+                    setCurrentProductObj(p);
+                    setIsProductModalOpen(false);
+                    setTimeout(() => qtyRef.current?.focus(), 100);
+                }}
+                branchId={origenBranch}
+                mode="transfer"
+            />
 
             {/* Modal de Visualización Interactiva de Reporte PDF */}
             <PdfViewerModal
@@ -782,77 +705,6 @@ const Transfers = () => {
                 fileName={`Traslados_${new Date().toISOString().split('T')[0]}.pdf`}
                 footerNote="Formato contable estándar oficial • Presentación Carta sin firmas"
             />
-        </div>
-    );
-};
-
-const TransferDetailModal = ({ transfer, onClose }) => {
-    const { data: items, isLoading } = useQuery({
-        queryKey: ['transfer-detail', transfer?.id],
-        queryFn: async () => (await axios.get(`/api/inventory/transfers/${transfer.id}`)).data,
-        enabled: !!transfer
-    });
-
-    if (!transfer) return null;
-
-    return (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-3xl w-full max-w-3xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col">
-                <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-                    <div>
-                        <div className="flex items-center gap-2">
-                            <h3 className="text-xl font-bold text-slate-900">Detalle de Traslado</h3>
-                            <span className="text-xs font-mono font-black text-indigo-600 bg-indigo-50 px-2 py-1 rounded">
-                                TR-{String(transfer.id).padStart(6, '0')}
-                            </span>
-                        </div>
-                        <p className="text-xs text-slate-500 font-bold uppercase mt-1">Realizado por {transfer.usuario_nombre} el {new Date(transfer.fecha).toLocaleString()}</p>
-                    </div>
-                    <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-xl transition-colors">
-                        <X size={20} className="text-slate-400" />
-                    </button>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 p-6 border-b border-slate-100">
-                    <div>
-                        <div className="text-[10px] font-black uppercase text-slate-400 mb-1">Sucursal Origen</div>
-                        <div className="text-sm font-bold text-slate-700">{transfer.origen_nombre}</div>
-                    </div>
-                    <div>
-                        <div className="text-[10px] font-black uppercase text-indigo-400 mb-1 font-[Spanish]">Sucursal Destino</div>
-                        <div className="text-sm font-bold text-indigo-600">{transfer.destino_nombre}</div>
-                    </div>
-                    {transfer.observaciones && (
-                        <div className="col-span-2">
-                            <div className="text-[10px] font-black uppercase text-slate-400 mb-1">Observaciones</div>
-                            <div className="text-sm text-slate-600 bg-slate-50 p-3 rounded-xl border border-slate-100 italic">{transfer.observaciones}</div>
-                        </div>
-                    )}
-                </div>
-
-                <div className="flex-1 overflow-auto">
-                    <table className="w-full text-left">
-                        <thead className="sticky top-0 bg-slate-50 border-b border-slate-100 text-[10px] font-black text-slate-500 uppercase tracking-widest font-[Spanish]">
-                            <tr>
-                                <th className="px-6 py-4">Producto</th>
-                                <th className="px-6 py-4 text-center">Código</th>
-                                <th className="px-6 py-4 text-center">Cantidad</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                            {isLoading ? (
-                                <tr><td colSpan="3" className="px-6 py-10 text-center text-sm text-slate-400">Cargando ítems...</td></tr>
-                            ) : items?.map(item => (
-                                <tr key={item.id}>
-                                    <td className="px-6 py-4 text-sm font-bold text-slate-700">{item.nombre}</td>
-                                    <td className="px-6 py-4 text-center text-xs font-mono font-bold text-slate-500">{item.codigo}</td>
-                                    <td className="px-6 py-4 text-center font-black text-indigo-600">{item.cantidad}</td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
         </div>
     );
 };

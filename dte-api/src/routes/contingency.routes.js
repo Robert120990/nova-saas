@@ -11,5 +11,7 @@ router.post('/start', authMiddleware, tenantMiddleware, contingencyController.st
 router.post('/stop/:id', authMiddleware, tenantMiddleware, contingencyController.stop);
 router.post('/report', authMiddleware, tenantMiddleware, contingencyController.reportDocument);
 router.get('/status', authMiddleware, tenantMiddleware, contingencyController.getStatus);
+router.post('/simulate-outage', contingencyController.simulateOutage);
+router.post('/trigger-autoclose', contingencyController.triggerAutoCloseCheck);
 
 module.exports = router;

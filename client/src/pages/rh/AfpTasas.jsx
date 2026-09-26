@@ -1,3 +1,4 @@
+import { formatDate } from '../../utils/dateUtils';
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
@@ -72,16 +73,6 @@ const AfpTasas = () => {
     const cls = "w-full px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-sm";
     const lbl = "block text-xs font-semibold text-slate-500 mb-1";
 
-    const formatDate = (date) => {
-        if (!date) return 'Indefinido';
-        const d = new Date(date);
-        if (isNaN(d.getTime())) return 'Fecha inválida';
-        const year = d.getFullYear();
-        const month = String(d.getMonth() + 1).padStart(2, '0');
-        const day = String(d.getDate()).padStart(2, '0');
-        return `${day}/${month}/${year}`;
-    };
-
     return (
         <div className="space-y-3">
             <div className="flex items-center justify-between">
@@ -109,7 +100,7 @@ const AfpTasas = () => {
                             </div>
                         </td>
                         <td className="px-3 py-1 text-xs text-slate-500">{formatDate(item.fecha_desde)}</td>
-                        <td className="px-3 py-1 text-xs text-slate-500">{formatDate(item.fecha_hasta)}</td>
+                        <td className="px-3 py-1 text-xs text-slate-500">{formatDate(item.fecha_hasta, 'Indefinido')}</td>
                         <td className="px-3 py-1 text-xs text-slate-700 font-semibold">{item.porcentaje_empleado}%</td>
                         <td className="px-3 py-1 text-xs text-slate-700 font-semibold">{item.porcentaje_patrono}%</td>
                         <td className="px-3 py-1 text-xs text-slate-700 font-semibold">${parseFloat(item.tope_quincenal).toFixed(2)}</td>

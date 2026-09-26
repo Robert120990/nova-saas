@@ -33,12 +33,17 @@ class DteService {
 
             // Guardia: cliente seleccionado debe tener dirección completa (Hacienda rechaza 096)
             if (payload.header.customer_id && payload.header.dte_type !== '11') {
-                const addressError = await this.validateCustomerAddress(
-                    payload.header.customer_id,
-                    payload.header.customer_branch_id || null
-                );
-                if (addressError) {
-                    return { success: false, error: addressError };
+                const totalSale = parseFloat(payload.header.total_pagar || payload.header.total || 0);
+                const isFacturaMinor = payload.header.dte_type === '01' && totalSale < 200;
+
+                if (!isFacturaMinor) {
+                    const addressError = await this.validateCustomerAddress(
+                        payload.header.customer_id,
+                        payload.header.customer_branch_id || null
+                    );
+                    if (addressError) {
+                        return { success: false, error: addressError };
+                    }
                 }
             }
 
@@ -68,8 +73,17 @@ class DteService {
                 condicionOperacion: payload.header.condicion_operacion || 1, // 1: Contado, 2: Crédito
                 dias_credito: payload.dias_credito != null ? parseInt(payload.dias_credito) || 15
                             : (payload.header.dias_credito != null ? parseInt(payload.header.dias_credito) || 15 : 15),
-                retencion: parseFloat(payload.header.total_retencion || 0),
-                percepcion: parseFloat(payload.header.total_percepcion || 0),
+                retencion: parseFloat(payload.header.total_retencion ?? payload.header.iva_retenido ?? 0),
+                percepcion: parseFloat(payload.header.total_percepcion ?? payload.header.iva_percibido ?? 0),
+                descuento_general: parseFloat(payload.header.descuento_general ?? payload.header.total_descuento ?? payload.descuento_general ?? 0),
+                descuGravada: payload.header.descuGravada !== undefined ? parseFloat(payload.header.descuGravada) : undefined,
+                porcentajeDescuento: (payload.header.porcentajeDescuento !== undefined && payload.header.porcentajeDescuento !== null)
+                    ? parseFloat(payload.header.porcentajeDescuento)
+                    : ((payload.header.porcentaje_descuento !== undefined && payload.header.porcentaje_descuento !== null)
+                        ? parseFloat(payload.header.porcentaje_descuento)
+                        : ((payload.porcentaje_descuento !== undefined && payload.porcentaje_descuento !== null)
+                            ? parseFloat(payload.porcentaje_descuento)
+                            : undefined)),
                 items: payload.header.dte_type === '07' 
                     ? (payload.linkedDocuments || []).map(doc => ({
                         tipoDte: doc.doc_type || '03',
@@ -80,20 +94,27 @@ class DteService {
                         ivaRetenido: doc.ivaRetenido || doc.iva_retenido || 0,
                         descripcion: doc.descripcion || `RETENCION AL DOCUMENTO ${doc.doc_number || ''}`
                     }))
-                    : payload.items.map(item => ({
-                    descripcion: item.descripcion || item.nombre,
-                    codigo: item.codigo,
-                    cantidad: item.cantidad,
-                    precioUnitario: item.precio_unitario || item.precio,
-                    montoDescu: item.monto_descuento || item.descuento || 0,
-                    referencedDoc: item.referencedDoc || null,
-                    // Preservar tributos específicos o usar IVA por defecto
-                    tributos: payload.header.dte_type === '11' ? []
-                        : (item.tributos && Array.isArray(item.tributos) && item.tributos.length > 0
-                            ? item.tributos 
-                            : (item.exento ? [] : ["20"])),
-                    tipoItem: payload.header.dte_type === '11' ? 1 : (item.exento ? 2 : 1) // 1: Gravado, 2: Exento
-                })),
+                    : (payload.items || []).map(item => {
+                        const fallbackRef = (payload.header?.dte_type === '05' && payload.linkedDocuments && payload.linkedDocuments.length === 1)
+                            ? payload.linkedDocuments[0].doc_number
+                            : null;
+                        return {
+                            descripcion: item.descripcion || item.nombre,
+                            codigo: item.codigo,
+                            cantidad: item.cantidad,
+                            precioUnitario: item.precio_unitario || item.precio,
+                            montoDescu: item.monto_descuento || item.descuento || 0,
+                            referencedDoc: (payload.header?.dte_type === '05' && fallbackRef)
+                                ? (item.referencedDoc || fallbackRef)
+                                : (item.referencedDoc || null),
+                            // Preservar tributos específicos o usar IVA por defecto
+                            tributos: payload.header.dte_type === '11' ? []
+                                : (item.tributos && Array.isArray(item.tributos) && item.tributos.length > 0
+                                    ? item.tributos 
+                                    : (item.exento ? [] : ["20"])),
+                            tipoItem: payload.header.dte_type === '11' ? 1 : (item.exento ? 2 : 1) // 1: Gravado, 2: Exento
+                        };
+                    }),
                 pagos: payload.payments || [],
                 totalLetras: payload.header.total_letras || '',
                 taxes: [...(payload.header.taxes || []), ...extraTaxes],
@@ -115,12 +136,16 @@ class DteService {
                     nombreChofer: payload.header.transporter_name,
                     numPlaca: payload.header.vehicle_plate
                 } : null,
-                documentoRelacionado: (payload.linkedDocuments || []).map(doc => ({
-                    tipoDocumento: doc.doc_type,
-                    tipoGeneracion: doc.generation_type || 1,
-                    numeroDocumento: doc.doc_number,
-                    fechaEmision: doc.emission_date
-                }))
+                documentoRelacionado: (payload.linkedDocuments || []).map(doc => {
+                    const rawDocNum = String(doc.doc_number || doc.numeroDocumento || '').trim().toUpperCase();
+                    const isUUID = /^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$/.test(rawDocNum);
+                    return {
+                        tipoDocumento: doc.doc_type || doc.tipoDocumento || '03',
+                        tipoGeneracion: doc.generation_type || (isUUID ? 1 : 2),
+                        numeroDocumento: rawDocNum,
+                        fechaEmision: doc.emission_date || doc.fechaEmision
+                    };
+                })
             };
 
             console.log(`[DteService] Llamando a dte-api para emisión...`);
@@ -308,43 +333,54 @@ class DteService {
             }
         }
 
-        let departamento = String(c.departamento || '06').padStart(2, '0');
-        let municipio = String(c.municipio || '23').padStart(2, '0');
-        let distrito = String(c.distrito || '14').padStart(2, '0');
-        let complemento = c.direccion || 'San Salvador';
+        let direccion = null;
+        const hasAddressData = c.departamento || c.municipio || c.distrito || c.direccion || customerBranchId;
+        if (hasAddressData) {
+            let departamento = String(c.departamento || '06').padStart(2, '0');
+            let municipio = String(c.municipio || '23').padStart(2, '0');
+            let distrito = String(c.distrito || '14').padStart(2, '0');
+            let complemento = c.direccion || 'San Salvador';
 
-        if (customerBranchId) {
-            const [branches] = await pool.query('SELECT * FROM customer_branches WHERE id = ? AND customer_id = ?', [customerBranchId, customerId]);
-            if (branches.length > 0) {
-                const b = branches[0];
-                departamento = (b.departamento && String(b.departamento).trim()) ? String(b.departamento).trim().padStart(2, '0') : departamento;
-                municipio = (b.municipio && String(b.municipio).trim()) ? String(b.municipio).trim().padStart(2, '0') : municipio;
-                distrito = (b.distrito && String(b.distrito).trim()) ? String(b.distrito).trim().padStart(2, '0') : distrito;
-                complemento = (b.direccion && String(b.direccion).trim()) || complemento;
-            }
-        }
-
-        // Asegurar que la combinación de depto, municipio y distrito sea válida en CAT-008
-        try {
-            const [validDist] = await pool.query(
-                'SELECT code, dep_code, muni_code FROM cat_008_distrito WHERE dep_code = ? AND muni_code = ? AND code = ?',
-                [departamento, municipio, distrito]
-            );
-            if (validDist.length === 0) {
-                // Si el distrito no es válido para ese municipio, buscar por municipio o cabecera
-                const [muniDist] = await pool.query(
-                    'SELECT code FROM cat_008_distrito WHERE dep_code = ? AND muni_code = ? ORDER BY code LIMIT 1',
-                    [departamento, municipio]
-                );
-                if (muniDist.length > 0) {
-                    distrito = muniDist[0].code;
-                } else if (departamento === '06') {
-                    municipio = '23';
-                    distrito = '14';
+            if (customerBranchId) {
+                const [branches] = await pool.query('SELECT * FROM customer_branches WHERE id = ? AND customer_id = ?', [customerBranchId, customerId]);
+                if (branches.length > 0) {
+                    const b = branches[0];
+                    departamento = (b.departamento && String(b.departamento).trim()) ? String(b.departamento).trim().padStart(2, '0') : departamento;
+                    municipio = (b.municipio && String(b.municipio).trim()) ? String(b.municipio).trim().padStart(2, '0') : municipio;
+                    distrito = (b.distrito && String(b.distrito).trim()) ? String(b.distrito).trim().padStart(2, '0') : distrito;
+                    complemento = (b.direccion && String(b.direccion).trim()) || complemento;
                 }
             }
-        } catch (e) {
-            console.warn('[DteService] Error verificando cat_008_distrito:', e.message);
+
+            // Asegurar que la combinación de depto, municipio y distrito sea válida en CAT-008
+            try {
+                const [validDist] = await pool.query(
+                    'SELECT code, dep_code, muni_code FROM cat_008_distrito WHERE dep_code = ? AND muni_code = ? AND code = ?',
+                    [departamento, municipio, distrito]
+                );
+                if (validDist.length === 0) {
+                    // Si el distrito no es válido para ese municipio, buscar por municipio o cabecera
+                    const [muniDist] = await pool.query(
+                        'SELECT code FROM cat_008_distrito WHERE dep_code = ? AND muni_code = ? ORDER BY code LIMIT 1',
+                        [departamento, municipio]
+                    );
+                    if (muniDist.length > 0) {
+                        distrito = muniDist[0].code;
+                    } else if (departamento === '06') {
+                        municipio = '23';
+                        distrito = '14';
+                    }
+                }
+            } catch (e) {
+                console.warn('[DteService] Error verificando cat_008_distrito:', e.message);
+            }
+
+            direccion = {
+                departamento,
+                municipio,
+                distrito,
+                complemento
+            };
         }
 
         const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
@@ -366,12 +402,7 @@ class DteService {
             tipo_persona: c.tipo_persona || 1,
             pais_code: c.pais_code || c.pais || null,
             pais_name: c.pais_name || null,
-            direccion: {
-                departamento,
-                municipio,
-                distrito,
-                complemento
-            }
+            direccion
         };
     }
 

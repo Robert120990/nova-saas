@@ -26,28 +26,20 @@ import {
     RotateCcw,
     Sparkles
 } from 'lucide-react';
-import * as XLSX from 'xlsx';
+import { exportJsonToExcel } from '../utils/excelExport';
 import SearchableSelect from '../components/ui/SearchableSelect';
 import Pagination from '../components/ui/Pagination';
-import Modal from '../components/ui/Modal';
 import { useAuth } from '../context/AuthContext';
 import { useConfirm } from '../context/ConfirmContext';
 import Money from '../components/ui/Money';
 import { useDirtyTracker } from '../hooks/useDirtyTracker';
+import { unwrapList } from '../utils/apiUtils';
 import ProviderModal from '../components/providers/ProviderModal';
-import { getTodayString } from '../utils/dateUtils';
+import ExpenseDetailModal from '../components/expenses/ExpenseDetailModal';
+import ExpensePeriodModal from '../components/expenses/ExpensePeriodModal';
+import { getTodayString, formatDate } from '../utils/dateUtils';
 
-// Helper for date formatting DD/MM/YYYY
-const formatDate = (dateStr) => {
-    if (!dateStr) return '---';
-    try {
-        const datePart = String(dateStr).split('T')[0];
-        const [year, month, day] = datePart.split('-');
-        return `${day}/${month}/${year}`;
-    } catch {
-        return dateStr;
-    }
-};
+
 
 // 12 Months catalog
 const MONTHS = [
@@ -350,7 +342,7 @@ const Expenses = () => {
     // Queries
     const { data: currentCompany } = useQuery({
         queryKey: ['company', user?.company_id],
-        queryFn: async () => (await axios.get(`/api/companies`)).data.find(c => c.id === user.company_id),
+        queryFn: async () => unwrapList(await axios.get(`/api/companies`)).find(c => c.id === user.company_id),
         enabled: !!user?.company_id
     });
 
@@ -377,13 +369,13 @@ const Expenses = () => {
 
     const { data: branches = [] } = useQuery({
         queryKey: ['branches', user?.company_id],
-        queryFn: async () => (await axios.get('/api/branches')).data
+        queryFn: async () => unwrapList(await axios.get('/api/branches'))
     });
 
 
     const { data: condiciones = [] } = useQuery({
         queryKey: ['catalog', '016'],
-        queryFn: async () => (await axios.get('/api/catalogs/cat_016_condicion_operacion')).data
+        queryFn: async () => unwrapList(await axios.get('/api/catalogs/cat_016_condicion_operacion'))
     });
 
     const { data: activePeriod } = useQuery({
@@ -405,7 +397,7 @@ const Expenses = () => {
 
     const { data: taxSettings } = useQuery({
         queryKey: ['tax-settings'],
-        queryFn: async () => (await axios.get('/api/taxes')).data,
+        queryFn: async () => unwrapList(await axios.get('/api/taxes')),
     });
 
     // Expenses History Query
@@ -1044,10 +1036,7 @@ const Expenses = () => {
             ESTADO: e.status,
             PERIODO: `${e.period_month || ''}/${e.period_year || ''}`
         }));
-        const ws = XLSX.utils.json_to_sheet(data);
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "Gastos");
-        XLSX.writeFile(wb, `Historial_Gastos_${filterMonth}_${filterYear}.xlsx`);
+        exportJsonToExcel(data, `Historial_Gastos_${filterMonth}_${filterYear}`, 'Gastos');
     };
 
     const inputCls = "w-full px-3 py-2 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-[12px] font-semibold text-slate-800 uppercase";
@@ -2394,254 +2383,28 @@ const Expenses = () => {
             )}
 
             {/* Modal Ver Detalle (Solo Lectura) */}
-            <Modal
+            <ExpenseDetailModal
                 isOpen={isDetailModalOpen}
                 onClose={() => {
                     setIsDetailModalOpen(false);
                     setViewingExpense(null);
                 }}
-                title={`Detalle de Gasto: ${viewingExpense?.numero_documento || ''}`}
-                maxWidth="max-w-3xl"
-            >
-                {viewingExpense && (
-                    <div className="space-y-4 text-slate-800">
-                        {/* Cabecera del Documento */}
-                        <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 grid grid-cols-2 sm:grid-cols-4 gap-3">
-                            <div>
-                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Fecha</span>
-                                <span className="text-xs font-black text-slate-800">{formatDate(viewingExpense.fecha)}</span>
-                            </div>
-                            <div>
-                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Tipo Documento</span>
-                                <span className="text-xs font-black text-slate-800">{viewingExpense.tipo_documento_id} - {viewingExpense.tipo_documento_nombre || 'Gasto'}</span>
-                            </div>
-                            <div>
-                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">No. Documento</span>
-                                <span className="text-xs font-black text-slate-800">{viewingExpense.numero_documento}</span>
-                            </div>
-                            <div>
-                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Estado</span>
-                                <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${
-                                    viewingExpense.status === 'ACTIVO' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
-                                }`}>
-                                    {viewingExpense.status}
-                                </span>
-                            </div>
-                            <div className="sm:col-span-2">
-                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Proveedor</span>
-                                <span className="text-xs font-bold text-slate-900">{viewingExpense.provider_nombre}</span>
-                                <div className="text-[10px] text-slate-500 mt-0.5">
-                                    NRC: {viewingExpense.provider_nrc || 'N/A'} · NIT: {viewingExpense.provider_nit || 'N/A'}
-                                </div>
-                            </div>
-                            <div className="sm:col-span-2">
-                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Sucursal / Usuario</span>
-                                <span className="text-xs font-medium text-slate-700">
-                                    {viewingExpense.branch_nombre || '---'} {viewingExpense.usuario_nombre && `(${viewingExpense.usuario_nombre})`}
-                                </span>
-                            </div>
-                            {viewingExpense.num_control && (
-                                <div className="sm:col-span-2">
-                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Número de Control (DTE)</span>
-                                    <span className="text-xs font-mono text-slate-700">{viewingExpense.num_control}</span>
-                                </div>
-                            )}
-                            {viewingExpense.sello_recepcion && (
-                                <div className="sm:col-span-2">
-                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Sello Recepción (MH)</span>
-                                    <span className="text-xs font-mono text-slate-700 truncate block">{viewingExpense.sello_recepcion}</span>
-                                </div>
-                            )}
-                            {viewingExpense.documento_afectado && (
-                                <div className="sm:col-span-4 p-2.5 bg-rose-50 rounded-xl border border-rose-200">
-                                    <span className="text-[10px] font-black text-rose-700 uppercase tracking-widest block">Documento Afectado</span>
-                                    <span className="text-xs font-bold text-rose-900">{viewingExpense.documento_afectado} ({formatDate(viewingExpense.fecha_afectada)})</span>
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Clasificación F-07 MH */}
-                        <div className="p-3 bg-indigo-50/50 rounded-xl border border-indigo-100 grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
-                            <div>
-                                <span className="text-[9px] font-black text-indigo-700 uppercase tracking-widest block">Operación</span>
-                                <span className="font-bold text-slate-800">
-                                    {F07_TIPOS_OPERACION.find(o => o.code === viewingExpense.tipo_operacion)?.label || viewingExpense.tipo_operacion}
-                                </span>
-                            </div>
-                            <div>
-                                <span className="text-[9px] font-black text-indigo-700 uppercase tracking-widest block">Clasificación</span>
-                                <span className="font-bold text-slate-800">
-                                    {F07_TIPOS_CLASIFICACION.find(c => c.code === viewingExpense.tipo_clasificacion)?.label || viewingExpense.tipo_clasificacion}
-                                </span>
-                            </div>
-                            <div>
-                                <span className="text-[9px] font-black text-indigo-700 uppercase tracking-widest block">Sector</span>
-                                <span className="font-bold text-slate-800">
-                                    {F07_TIPOS_SECTOR.find(s => s.code === viewingExpense.tipo_sector)?.label || viewingExpense.tipo_sector}
-                                </span>
-                            </div>
-                            <div>
-                                <span className="text-[9px] font-black text-indigo-700 uppercase tracking-widest block">Tipo Costo</span>
-                                <span className="font-bold text-slate-800 truncate block" title={viewingExpense.tipo_costo}>
-                                    {F07_TIPOS_COSTO.find(c => c.code === viewingExpense.tipo_costo)?.label || viewingExpense.tipo_costo}
-                                </span>
-                            </div>
-                        </div>
-
-                        {/* Observaciones */}
-                        {viewingExpense.observaciones && (
-                            <div className="text-xs text-slate-700 bg-slate-50 p-3 rounded-xl border border-slate-200">
-                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-0.5">Concepto General / Observaciones</span>
-                                <p className="font-medium text-slate-800">{viewingExpense.observaciones}</p>
-                            </div>
-                        )}
-
-                        {/* Liquidación de Totales y Desglose Fiscal */}
-                        <div>
-                            <h4 className="text-xs font-black uppercase text-slate-500 mb-2">Desglose de Liquidación Fiscal</h4>
-                            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 grid grid-cols-2 sm:grid-cols-4 gap-3">
-                                <div>
-                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Compras Gravadas</span>
-                                    <span className="text-xs font-mono font-bold text-slate-800"><Money value={viewingExpense.total_gravada} /></span>
-                                </div>
-                                <div>
-                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Gastos Exentos</span>
-                                    <span className="text-xs font-mono text-slate-700"><Money value={viewingExpense.total_exenta} /></span>
-                                </div>
-                                <div>
-                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">No Sujetas</span>
-                                    <span className="text-xs font-mono text-slate-700"><Money value={viewingExpense.total_nosujeta} /></span>
-                                </div>
-                                <div>
-                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">IVA Crédito Fiscal (13%)</span>
-                                    <span className="text-xs font-mono font-bold text-emerald-600"><Money value={viewingExpense.iva} /></span>
-                                </div>
-                                {parseFloat(viewingExpense.gravadas_importaciones || 0) > 0 && (
-                                    <div>
-                                        <span className="text-[10px] font-black text-purple-600 uppercase tracking-widest block">Grav. Importaciones</span>
-                                        <span className="text-xs font-mono font-bold text-slate-800"><Money value={viewingExpense.gravadas_importaciones} /></span>
-                                    </div>
-                                )}
-                                {parseFloat(viewingExpense.iva_importaciones || 0) > 0 && (
-                                    <div>
-                                        <span className="text-[10px] font-black text-purple-600 uppercase tracking-widest block">IVA Importaciones</span>
-                                        <span className="text-xs font-mono font-bold text-purple-700"><Money value={viewingExpense.iva_importaciones} /></span>
-                                    </div>
-                                )}
-                                <div>
-                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Retención 1%</span>
-                                    <span className="text-xs font-mono text-rose-600 font-semibold"><Money value={viewingExpense.retencion} /></span>
-                                </div>
-                                <div>
-                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Percepción 1%</span>
-                                    <span className="text-xs font-mono text-amber-600 font-semibold"><Money value={viewingExpense.percepcion} /></span>
-                                </div>
-                                <div>
-                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">FOVIAL / COTRANS</span>
-                                    <span className="text-xs font-mono text-slate-700">
-                                        <Money value={parseFloat(viewingExpense.fovial || 0) + parseFloat(viewingExpense.cotrans || 0)} />
-                                    </span>
-                                </div>
-                                {parseFloat(viewingExpense.anticipo_cuenta || 0) > 0 && (
-                                    <div>
-                                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Anticipo a Cuenta</span>
-                                        <span className="text-xs font-mono text-blue-600 font-bold">
-                                            <Money value={viewingExpense.anticipo_cuenta} />
-                                        </span>
-                                    </div>
-                                )}
-                                {parseFloat(viewingExpense.monto_sujeto || 0) > 0 && (
-                                    <div>
-                                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Monto Sujeto</span>
-                                        <span className="text-xs font-mono text-indigo-600 font-bold">
-                                            <Money value={viewingExpense.monto_sujeto} />
-                                        </span>
-                                    </div>
-                                )}
-                                <div className="sm:col-span-2 p-3 bg-white rounded-xl border border-slate-200">
-                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Total Liquidado del Gasto</span>
-                                    <span className="text-lg font-mono font-black text-slate-900"><Money value={viewingExpense.monto_total} /></span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="flex justify-end pt-2">
-                            <button
-                                type="button"
-                                onClick={() => setIsDetailModalOpen(false)}
-                                className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold transition-all"
-                            >
-                                Cerrar
-                            </button>
-                        </div>
-                    </div>
-                )}
-            </Modal>
+                expense={viewingExpense}
+            />
 
             {/* Modal Cambiar Período Activo */}
-            <Modal
+            <ExpensePeriodModal
                 isOpen={modalPeriodoOpen}
                 onClose={() => setModalPeriodoOpen(false)}
-                title="Configurar Período de Compras Activo"
-                maxWidth="max-w-md"
-            >
-                <form
-                    onSubmit={(e) => {
-                        e.preventDefault();
-                        updatePeriodMutation.mutate({ year: nuevoPeriodoAnio, month: nuevoPeriodoMes });
-                    }}
-                    className="space-y-4 text-slate-800"
-                >
-                    <p className="text-xs text-slate-600">
-                        El período activo determina el mes y año en el cual se computan y declaran las compras y gastos tributarios de la empresa en curso.
-                    </p>
-
-                    <div className="grid grid-cols-2 gap-3">
-                        <div>
-                            <label className={labelCls}>Mes Activo *</label>
-                            <select
-                                value={nuevoPeriodoMes}
-                                onChange={(e) => setNuevoPeriodoMes(parseInt(e.target.value, 10))}
-                                className={inputCls}
-                            >
-                                {MONTHS.map(m => (
-                                    <option key={m.value} value={m.value}>{m.label}</option>
-                                ))}
-                            </select>
-                        </div>
-
-                        <div>
-                            <label className={labelCls}>Año Activo *</label>
-                            <select
-                                value={nuevoPeriodoAnio}
-                                onChange={(e) => setNuevoPeriodoAnio(parseInt(e.target.value, 10))}
-                                className={inputCls}
-                            >
-                                {YEARS.map(y => (
-                                    <option key={y} value={y}>{y}</option>
-                                ))}
-                            </select>
-                        </div>
-                    </div>
-
-                    <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
-                        <button
-                            type="button"
-                            onClick={() => setModalPeriodoOpen(false)}
-                            className="px-3.5 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold"
-                        >
-                            Cancelar
-                        </button>
-                        <button
-                            type="submit"
-                            disabled={updatePeriodMutation.isPending}
-                            className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-sm transition-all"
-                        >
-                            {updatePeriodMutation.isPending ? 'Guardando...' : 'Guardar Período Activo'}
-                        </button>
-                    </div>
-                </form>
-            </Modal>
+                year={nuevoPeriodoAnio}
+                month={nuevoPeriodoMes}
+                onYearChange={setNuevoPeriodoAnio}
+                onMonthChange={setNuevoPeriodoMes}
+                onSubmit={() => updatePeriodMutation.mutate({ year: nuevoPeriodoAnio, month: nuevoPeriodoMes })}
+                isSubmitting={updatePeriodMutation.isPending}
+                months={MONTHS}
+                years={YEARS}
+            />
 
             {/* Modal Crear / Editar Proveedor Integrado */}
             {isProviderModalOpen && (

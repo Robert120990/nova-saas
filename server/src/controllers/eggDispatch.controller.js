@@ -509,6 +509,10 @@ const getDispatchRouteDetail = async (req, res) => {
         // Obtener paradas con datos de pedido, cliente, sucursal, productos y lotes
         const [stops] = await pool.query(
             `SELECT s.*,
+                    COALESCE(o.customer_id, s.customer_id) AS customer_id,
+                    COALESCE(o.customer_branch_id, s.customer_branch_id) AS customer_branch_id,
+                    COALESCE(o.batch_id, s.batch_id) AS batch_id,
+                    COALESCE(o.lot_code, s.lot_code, b.batch_code_display) AS lot_code,
                     o.order_number,
                     o.product_type,
                     o.presentation,
@@ -520,7 +524,7 @@ const getDispatchRouteDetail = async (req, res) => {
                     o.lot_code AS order_lot_code,
                     o.required_delivery_date,
                     b.batch_code_display AS linked_batch_code,
-                    COALESCE(s.lot_code, o.lot_code, b.batch_code_display) AS lot_code_display,
+                    COALESCE(o.lot_code, s.lot_code, b.batch_code_display) AS lot_code_display,
                     ROUND(o.quantity_lbs / 30.0, 0) AS calculated_buckets,
                     c.nombre AS customer_name,
                     c.nombre_comercial AS customer_commercial_name,
@@ -568,9 +572,9 @@ const getDispatchRouteDetail = async (req, res) => {
                      END) AS is_rejected
              FROM egg_dispatch_stops s
              JOIN egg_customer_orders o ON s.order_id = o.id
-             LEFT JOIN egg_production_batches b ON o.batch_id = b.id
-             LEFT JOIN customers c ON s.customer_id = c.id
-             LEFT JOIN customer_branches cb ON s.customer_branch_id = cb.id
+             LEFT JOIN egg_production_batches b ON COALESCE(o.batch_id, s.batch_id) = b.id
+             LEFT JOIN customers c ON COALESCE(o.customer_id, s.customer_id) = c.id
+             LEFT JOIN customer_branches cb ON COALESCE(o.customer_branch_id, s.customer_branch_id) = cb.id
              LEFT JOIN sales_headers sh ON (s.sale_id = sh.id OR o.sale_id = sh.id OR (s.dte_codigo_generacion IS NOT NULL AND s.dte_codigo_generacion COLLATE utf8mb4_unicode_ci = sh.codigo_generacion COLLATE utf8mb4_unicode_ci))
              LEFT JOIN dtes d ON d.venta_id = sh.id
              WHERE s.dispatch_route_id = ?
@@ -714,6 +718,7 @@ const saveDispatchRoute = async (req, res) => {
 
         let routeId = id;
 
+        let existingStopsMap = {};
         if (id) {
             await connection.query(
                 `UPDATE egg_dispatch_routes SET
@@ -744,15 +749,32 @@ const saveDispatchRoute = async (req, res) => {
                 ]
             );
 
-            // Liberar pedidos anteriores que ya no estén en la ruta
-            await connection.query(
-                `UPDATE egg_customer_orders SET dispatch_route_id = NULL, delivery_status = 'pendiente'
-                 WHERE dispatch_route_id = ? AND company_id = ?`,
-                [id, company_id]
+            // Obtener paradas existentes para preservar datos de facturación (sale_id, dte_codigo_generacion, entrega)
+            const [currentStops] = await connection.query(
+                'SELECT * FROM egg_dispatch_stops WHERE dispatch_route_id = ?',
+                [id]
             );
+            currentStops.forEach(s => {
+                existingStopsMap[s.order_id] = s;
+            });
 
-            // Eliminar paradas previas para reconstruir la secuencia limpia
-            await connection.query('DELETE FROM egg_dispatch_stops WHERE dispatch_route_id = ?', [id]);
+            const newOrderIds = stopList.map(s => safeInt(s.order_id)).filter(Boolean);
+
+            // Identificar paradas removidas que no deben seguir en la ruta
+            const removedStops = currentStops.filter(s => !newOrderIds.includes(s.order_id));
+            for (const rem of removedStops) {
+                // Si la parada NO fue facturada, la liberamos a pendiente
+                if (!rem.sale_id && !rem.dte_codigo_generacion) {
+                    await connection.query(
+                        `UPDATE egg_customer_orders 
+                         SET dispatch_route_id = NULL, delivery_status = 'pendiente', status = 'pendiente'
+                         WHERE id = ? AND company_id = ?`,
+                        [rem.order_id, company_id]
+                    );
+                    await connection.query('DELETE FROM egg_dispatch_stops WHERE id = ?', [rem.id]);
+                }
+                // Si ya fue facturada, la conservamos en la ruta para no perder trazabilidad fiscal
+            }
         } else {
             const [insRes] = await connection.query(
                 `INSERT INTO egg_dispatch_routes (
@@ -783,7 +805,7 @@ const saveDispatchRoute = async (req, res) => {
             routeId = insRes.insertId;
         }
 
-        // 5. Insertar paradas y asociar pedidos con trazabilidad de lotes
+        // 5. Insertar o actualizar paradas y asociar pedidos con trazabilidad de lotes
         for (let idx = 0; idx < stopList.length; idx++) {
             const stop = stopList[idx];
             const ordenVisita = stop.orden_visita !== undefined ? safeInt(stop.orden_visita, idx + 1) : (idx + 1);
@@ -795,31 +817,55 @@ const saveDispatchRoute = async (req, res) => {
             const stopBatchId = safeInt(oData[0]?.batch_id);
             const stopLotCode = oData[0]?.lot_code || null;
 
-            await connection.query(
-                `INSERT INTO egg_dispatch_stops (
-                    dispatch_route_id, order_id, customer_id, customer_branch_id,
-                    orden_visita, prioridad, estado_entrega, batch_id, lot_code
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                [
-                    safeInt(routeId),
-                    safeInt(stop.order_id),
-                    safeInt(stop.customer_id),
-                    safeInt(stop.customer_branch_id),
-                    ordenVisita,
-                    stop.prioridad || 'normal',
-                    'pendiente',
-                    stopBatchId,
-                    stopLotCode
-                ]
-            );
+            const existing = existingStopsMap[stop.order_id];
+
+            if (existing) {
+                // Actualizar parada existente preservando sale_id, dte_codigo_generacion, etc.
+                await connection.query(
+                    `UPDATE egg_dispatch_stops SET
+                        customer_branch_id = ?,
+                        orden_visita = ?,
+                        prioridad = ?,
+                        batch_id = COALESCE(batch_id, ?),
+                        lot_code = COALESCE(lot_code, ?)
+                     WHERE id = ?`,
+                    [
+                        safeInt(stop.customer_branch_id),
+                        ordenVisita,
+                        stop.prioridad || existing.prioridad || 'normal',
+                        stopBatchId,
+                        stopLotCode,
+                        existing.id
+                    ]
+                );
+            } else {
+                // Insertar nueva parada a la ruta existente o nueva
+                await connection.query(
+                    `INSERT INTO egg_dispatch_stops (
+                        dispatch_route_id, order_id, customer_id, customer_branch_id,
+                        orden_visita, prioridad, estado_entrega, batch_id, lot_code
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                    [
+                        safeInt(routeId),
+                        safeInt(stop.order_id),
+                        safeInt(stop.customer_id),
+                        safeInt(stop.customer_branch_id),
+                        ordenVisita,
+                        stop.prioridad || 'normal',
+                        'pendiente',
+                        stopBatchId,
+                        stopLotCode
+                    ]
+                );
+            }
 
             // Actualizar pedido a 'en_ruta' o 'programado'
             await connection.query(
                 `UPDATE egg_customer_orders SET
                     dispatch_route_id = ?,
                     customer_branch_id = COALESCE(?, customer_branch_id),
-                    delivery_status = 'en_ruta',
-                    status = 'en_proceso',
+                    delivery_status = CASE WHEN delivery_status = 'entregado' THEN 'entregado' ELSE 'en_ruta' END,
+                    status = CASE WHEN status = 'entregado' THEN 'entregado' ELSE 'en_proceso' END,
                     priority = ?
                  WHERE id = ? AND company_id = ?`,
                 [safeInt(routeId), safeInt(stop.customer_branch_id), stop.prioridad || 'normal', safeInt(stop.order_id), company_id]
@@ -860,14 +906,41 @@ const deleteDispatchRoute = async (req, res) => {
         const { id } = req.params;
         const company_id = req.company_id || req.user?.company_id;
 
-        // Liberar pedidos
-        await connection.query(
-            `UPDATE egg_customer_orders SET dispatch_route_id = NULL, delivery_status = 'pendiente'
-             WHERE dispatch_route_id = ? AND company_id = ?`,
-            [id, company_id]
+        // 1. Obtener órdenes asociadas a la ruta (directamente o por paradas)
+        const [associatedStops] = await connection.query(
+            `SELECT s.id as stop_id, s.order_id, s.sale_id, s.dte_codigo_generacion,
+                    o.status as order_status, o.delivery_status as order_delivery_status
+             FROM egg_dispatch_stops s
+             LEFT JOIN egg_customer_orders o ON s.order_id = o.id
+             WHERE s.dispatch_route_id = ?`,
+            [id]
         );
 
-        // Liberar camión si estaba en ruta
+        // 2. Liberar pedidos no facturados: volver a estado 'pendiente' y delivery_status 'pendiente'
+        // Esto evita que queden en el limbo con status 'en_proceso'
+        await connection.query(
+            `UPDATE egg_customer_orders 
+             SET dispatch_route_id = NULL, delivery_status = 'pendiente', status = 'pendiente'
+             WHERE (dispatch_route_id = ? OR id IN (SELECT order_id FROM egg_dispatch_stops WHERE dispatch_route_id = ?))
+               AND company_id = ?
+               AND (sale_id IS NULL AND (dte_codigo_generacion IS NULL OR dte_codigo_generacion = ''))`,
+            [id, id, company_id]
+        );
+
+        // 3. Para pedidos que ya estaban facturados en esta ruta: desvincular de la ruta pero preservar venta y estado
+        await connection.query(
+            `UPDATE egg_customer_orders 
+             SET dispatch_route_id = NULL
+             WHERE (dispatch_route_id = ? OR id IN (SELECT order_id FROM egg_dispatch_stops WHERE dispatch_route_id = ?))
+               AND company_id = ?
+               AND (sale_id IS NOT NULL OR (dte_codigo_generacion IS NOT NULL AND dte_codigo_generacion != ''))`,
+            [id, id, company_id]
+        );
+
+        // 4. Eliminar paradas de la ruta explícitamente para evitar bloqueos por Foreign Key
+        await connection.query('DELETE FROM egg_dispatch_stops WHERE dispatch_route_id = ?', [id]);
+
+        // 5. Liberar camión si estaba en ruta
         const [rRows] = await connection.query(
             'SELECT vehicle_id FROM egg_dispatch_routes WHERE id = ? AND company_id = ?',
             [id, company_id]
@@ -879,14 +952,15 @@ const deleteDispatchRoute = async (req, res) => {
             );
         }
 
+        // 6. Eliminar la ruta de despacho
         await connection.query('DELETE FROM egg_dispatch_routes WHERE id = ? AND company_id = ?', [id, company_id]);
 
         await connection.commit();
-        res.json({ message: 'Ruta de despacho eliminada y pedidos liberados.' });
+        res.json({ message: 'Ruta de despacho eliminada y pedidos liberados correctamente.' });
     } catch (error) {
         await connection.rollback();
         console.error('Error al eliminar ruta de despacho:', error);
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ message: error.message || 'Error al eliminar ruta de despacho' });
     } finally {
         connection.release();
     }
@@ -1393,8 +1467,8 @@ const removeStopFromRoute = async (req, res) => {
 
         // 2. Liberar el pedido (vuelve a pendiente sin ruta)
         await connection.query(
-            `UPDATE egg_customer_orders SET dispatch_route_id = NULL, delivery_status = 'pendiente'
-             WHERE id = ? AND company_id = ?`,
+            `UPDATE egg_customer_orders SET dispatch_route_id = NULL, delivery_status = 'pendiente', status = 'pendiente'
+             WHERE id = ? AND company_id = ? AND sale_id IS NULL`,
             [stop.order_id, company_id]
         );
 
@@ -1956,7 +2030,7 @@ const autoInvoiceDispatchRoute = async (req, res) => {
                 `SELECT s.id, s.order_id, s.sale_id, s.dte_codigo_generacion, o.order_number, c.nombre as customer_name
                  FROM egg_dispatch_stops s
                  JOIN egg_customer_orders o ON s.order_id = o.id
-                 JOIN customers c ON s.customer_id = c.id
+                 JOIN customers c ON COALESCE(o.customer_id, s.customer_id) = c.id
                  WHERE s.id IN (?) AND s.dispatch_route_id = ?`,
                 [stopIds, route_id]
             );
@@ -2015,23 +2089,13 @@ const autoInvoiceDispatchRoute = async (req, res) => {
             resolvedPosId = validPos.length > 0 ? validPos[0].id : null;
         }
 
-        // 4. Validar que cada producto a facturar tenga lote asignado (excluyendo detalles libres)
+        // 4. Validar que cada parada seleccionada contenga productos válidos (el lote es opcional según requerimiento operativo)
         for (const stop of stops) {
             if (!stop.items || !Array.isArray(stop.items) || stop.items.length === 0) {
                 await connection.rollback();
                 return res.status(400).json({
                     message: `La parada del cliente ID ${stop.customer_id} no contiene productos.`
                 });
-            }
-            for (const it of stop.items) {
-                if (it.is_custom_detail) continue; // Los detalles libres no requieren lote de inventario
-                const lotCode = (it.lot_code || '').trim();
-                if (!lotCode) {
-                    await connection.rollback();
-                    return res.status(400).json({
-                        message: `El producto "${it.product_type}" en el pedido ${stop.order_number || stop.order_id} no tiene lote asignado. Todos los productos deben contar con lote antes de facturar.`
-                    });
-                }
             }
         }
 
@@ -2112,7 +2176,13 @@ const autoInvoiceDispatchRoute = async (req, res) => {
 
             // Validaciones DTE si la empresa tiene DTE activo
             if (company.dte_active) {
-                if (dteType !== '11') {
+                const stopEstimatedTotal = (stop.items || []).reduce((sum, it) => {
+                    const rawQty = safeNum(it.quantity_lbs ?? it.quantity ?? 0, 0);
+                    const rawPrice = safeNum(it.price_per_lb ?? it.price ?? 0, 0);
+                    return sum + (rawQty * rawPrice);
+                }, 0);
+                const isFacturaMinor = dteType === '01' && stopEstimatedTotal < 200;
+                if (dteType !== '11' && !isFacturaMinor) {
                     const addressError = await dteService.validateCustomerAddress(stop.customer_id, stop.customer_branch_id || null);
                     if (addressError) {
                         await connection.rollback();
@@ -2137,22 +2207,34 @@ const autoInvoiceDispatchRoute = async (req, res) => {
 
             const ivaRate = 0.13;
 
-            for (let i = 0; i < stop.items.length; i++) {
-                const it = stop.items[i];
+            // Separar productos comerciales y detalles libres/notas de la parada
+            const fiscalProductItems = [];
+            const customDetailItems = [];
+
+            for (const it of (stop.items || [])) {
                 const isCustom = !!it.is_custom_detail;
                 const rawQty = safeNum(it.quantity_lbs ?? it.quantity ?? 0, 0);
                 const rawPrice = safeNum(it.price_per_lb ?? it.price ?? 0, 0);
 
-                // Si es detalle libre/nota, o si tiene cantidad <= 0 o precio <= 0
-                // NO debe incluirse como renglón de ítem fiscal en la factura
                 if (isCustom || rawPrice <= 0 || rawQty <= 0) {
-                    const descNote = (it.product_type || it.descripcion || it.description || '').trim();
-                    if (descNote) {
-                        const noteDetail = rawPrice > 0 ? `${descNote} ($${rawPrice.toFixed(2)})` : descNote;
-                        freeNotes.push(noteDetail);
-                    }
-                    continue;
+                    customDetailItems.push(it);
+                } else {
+                    fiscalProductItems.push(it);
                 }
+            }
+
+            // Validar que la parada tenga al menos un producto facturable válido
+            if (fiscalProductItems.length === 0 && dteType !== '04') {
+                await connection.rollback();
+                return res.status(400).json({
+                    message: `La parada del cliente "${customer.nombre}" (Pedido #${stop.order_number || stop.order_id}) no contiene productos facturables válidos con cantidad y precio mayores a cero.`
+                });
+            }
+
+            for (let i = 0; i < fiscalProductItems.length; i++) {
+                const it = fiscalProductItems[i];
+                const rawQty = safeNum(it.quantity_lbs ?? it.quantity ?? 0, 0);
+                const rawPrice = safeNum(it.price_per_lb ?? it.price ?? 0, 0);
 
                 // Ítem normal de producto ovoproducto legítimo
                 const qtyLbs = rawQty;
@@ -2165,7 +2247,6 @@ const autoInvoiceDispatchRoute = async (req, res) => {
 
                 let ventaGravada = 0;
                 let ivaItem = 0;
-                let precioUnitario = priceLb;
 
                 if (dteType === '11') {
                     ventaGravada = itemTotal;
@@ -2173,7 +2254,6 @@ const autoInvoiceDispatchRoute = async (req, res) => {
                 } else if (dteType === '04') {
                     ventaGravada = 0;
                     ivaItem = 0;
-                    precioUnitario = 0.00001;
                 } else {
                     const gravNeto = Math.round((itemTotal / (1 + ivaRate)) * 100) / 100;
                     ivaItem = Math.round((itemTotal - gravNeto) * 100) / 100;
@@ -2185,7 +2265,8 @@ const autoInvoiceDispatchRoute = async (req, res) => {
 
                 const productType = (it.product_type || 'Ovoproducto').trim();
                 const presentation = (it.presentation || 'cubeta 30LB').trim();
-                const lotCode = (it.lot_code || 'S/L').trim();
+                const rawLot = (it.lot_code || stop.order_lot_code || stop.lot_code || stop.linked_batch_code || '').trim();
+                const lotCode = rawLot.replace(/\s*-\s*/g, '-');
 
                 // Calcular unidades según presentación o usar unidades provistas
                 let units = safeNum(it.units ?? it.quantity_units ?? 0, 0);
@@ -2195,24 +2276,74 @@ const autoInvoiceDispatchRoute = async (req, res) => {
                     units = Number.isInteger(calcUnits) ? calcUnits : Math.round(calcUnits * 100) / 100;
                 }
 
-                // Descripción completa requerida por normativa y solicitud del usuario:
-                // Producto, Presentación, Lote, Cantidad en unidades, Cantidad en libras
-                // (Precio y Total van en sus columnas fiscales respectivas)
-                const itemDesc = `${productType} | Presentación: ${presentation} | Lote: ${lotCode} | Cant: ${units} Uds (${qtyLbs.toFixed(2)} Lbs)`;
-
                 // Resolver equivalencia con producto comercial del catálogo
                 const resolved = await resolveEggCatalogProduct(connection, company_id, productType, presentation);
                 const resolvedProductId = it.product_id || resolved.catalog_product_id || null;
-                const catalogCode = resolved.catalog_code || lotCode || 'OVO-01';
+                const catalogCode = resolved.catalog_code || (lotCode !== 'S/L' && lotCode !== 'N/A' && lotCode ? lotCode : 'OVO-01');
                 const isReturnable = resolved.is_returnable;
                 const unitOfMeasure = (resolved.unit_of_measure || '').toLowerCase();
-                const stockQty = ['cubeta', 'galon', 'unidad', 'caja', 'carton'].includes(unitOfMeasure) ? units : qtyLbs;
+                const stockQty = ['cubeta', 'galon', 'unidad', 'caja', 'carton', 'litro', 'botella'].includes(unitOfMeasure) ? units : qtyLbs;
+
+                // Detección de cliente Callejas (exige código de barra antes del nombre)
+                const isCallejas = (customer.nombre || '').toUpperCase().includes('CALLEJA') || customer.id === 11316 || customer.id === 32555;
+                const barcode = (it.barcode || it.product_barcode || resolved.catalog_barcode || '').trim();
+
+                let displayProductName = productType;
+                // Si el cliente es Callejas o si tiene código de barra y el nombre aún no lo incluye, anteponerlo
+                if ((isCallejas || barcode) && barcode && !displayProductName.startsWith(barcode)) {
+                    displayProductName = `${barcode} ${displayProductName}`;
+                }
+
+                // Detección de cliente Comidas Especializadas o modo Kilogramos
+                const isComidasEsp = (customer.nombre || '').toUpperCase().includes('COMIDAS ESPECIALIZADAS') || (customer.nombre || '').toUpperCase().includes('COMIDAS E INDUSTRIAS');
+                const isKgMode = !!it.is_kg_mode || isComidasEsp || it.unit_of_measure === 'kg';
+
+                let displayPresentation = presentation;
+                let weightDesc = `${qtyLbs.toFixed(2)} Lbs`;
+
+                if (isKgMode) {
+                    // Limpiar menciones de "lb" / "LB" de la presentación y del nombre
+                    displayPresentation = displayPresentation.replace(/\b(\d+)?\s*(lbs?|lb)\b/gi, '').replace(/\s+/g, ' ').trim();
+                    displayProductName = displayProductName.replace(/\b(\d+)?\s*(lbs?|lb)\b/gi, '').replace(/\s+/g, ' ').trim();
+                    const qtyKg = safeNum(it.quantity_kg, parseFloat((qtyLbs * 0.45359237).toFixed(2)));
+                    weightDesc = `${qtyKg.toFixed(2)} Kg`;
+                }
+
+                // Modalidad de facturación: por unidades/presentación (ej: 40 litros) o por peso en libras (ej: 80 lbs)
+                // Se factura por presentación/unidades cuando it.billing_unit === 'units' o por defecto para Calleja o pedidos con unidades
+                const shouldBillByUnits = it.billing_unit === 'units' || 
+                    (it.billing_unit !== 'lbs' && (isCallejas || (units > 0 && it.billing_by_presentation !== false)));
+
+                const billedQty = (shouldBillByUnits && units > 0) ? units : qtyLbs;
+                let precioUnitario = priceLb;
+
+                if (dteType === '11') {
+                    precioUnitario = billedQty > 0 ? Math.round((itemTotal / billedQty) * 1000000) / 1000000 : itemTotal;
+                } else if (dteType === '04') {
+                    precioUnitario = 0.00001;
+                } else {
+                    // Para 01 (Factura), 03 (Crédito Fiscal) y demás DTEs:
+                    // En el modelo del sistema los precios comerciales unitarios incluyen IVA (inclusive).
+                    // Para Crédito Fiscal (03), dte-api (calculateItem) se encarga de extraer el precio neto
+                    // (precioUni = precioUnitario / 1.13) en cuerpoDocumento y liquidar el débito fiscal en el resumen.
+                    // Si se enviara ya neto, dte-api lo dividiría por 1.13 por segunda vez distorsionando el total.
+                    precioUnitario = billedQty > 0 ? Math.round((itemTotal / billedQty) * 1000000) / 1000000 : itemTotal;
+                }
+
+                // Renglón del producto fiscal limpio: sin lote incrustado con pipes
+                let defaultDesc = shouldBillByUnits
+                    ? `${displayProductName} | Presentación: ${displayPresentation || 'Unidad'} (${weightDesc})`
+                    : `${displayProductName} | Presentación: ${displayPresentation || 'Unidad'} | Cant: ${units} Uds (${weightDesc})`;
+
+                if (it.custom_description && it.custom_description.trim()) {
+                    defaultDesc = it.custom_description.replace(/\s*\|\s*Lote:\s*[^|]+/i, '').trim();
+                }
 
                 itemsProcessed.push({
                     product_id: resolvedProductId,
                     codigo: catalogCode,
-                    descripcion: itemDesc,
-                    cantidad: qtyLbs,
+                    descripcion: defaultDesc,
+                    cantidad: billedQty,
                     precio_unitario: safeNum(precioUnitario, 0),
                     monto_descuento: 0,
                     venta_gravada: safeNum(ventaGravada, 0),
@@ -2222,13 +2353,85 @@ const autoInvoiceDispatchRoute = async (req, res) => {
                     returnable_units: Math.ceil(units),
                     stock_qty: stockQty
                 });
+
+                // Renglón de Lote: SIEMPRE ABAJO DEL PRODUCTO
+                // 1. Buscar si hay una nota libre explícita de lote (ej: "Lote: 01-266-26 estado liquido")
+                const lotNoteIdx = customDetailItems.findIndex(c => {
+                    const txt = (c.product_type || c.descripcion || '').trim();
+                    return /^\s*lote\b/i.test(txt);
+                });
+
+                let lotDescLine = null;
+                if (lotNoteIdx !== -1) {
+                    const rawLotTxt = (customDetailItems[lotNoteIdx].product_type || customDetailItems[lotNoteIdx].descripcion).trim();
+                    lotDescLine = rawLotTxt.toLowerCase().startsWith('lote') ? rawLotTxt : `Lote: ${rawLotTxt}`;
+                    // Extraer para no duplicarlo como nota genérica
+                    customDetailItems.splice(lotNoteIdx, 1);
+                } else if (lotCode && lotCode !== 'N/A' && lotCode !== 'S/L') {
+                    lotDescLine = `Lote: ${lotCode}`;
+                } else if (lotCode === 'S/L') {
+                    lotDescLine = `Lote: S/L`;
+                }
+
+                if (lotDescLine) {
+                    freeNotes.push(lotDescLine);
+                    itemsProcessed.push({
+                        product_id: null,
+                        codigo: null,
+                        descripcion: lotDescLine,
+                        cantidad: 1,
+                        precio_unitario: 0,
+                        monto_descuento: 0,
+                        venta_gravada: 0,
+                        venta_exenta: 0,
+                        tributos: dteType === '11' || dteType === '04' ? [] : ['20'],
+                        is_returnable: false,
+                        returnable_units: 0,
+                        stock_qty: 0
+                    });
+                }
             }
 
-            // Validar que la parada tenga al menos un producto facturable válido
-            if (itemsProcessed.length === 0) {
-                await connection.rollback();
-                return res.status(400).json({
-                    message: `La parada del cliente "${customer.nombre}" (Pedido #${stop.order_number || stop.order_id}) no contiene productos facturables válidos con cantidad y precio mayores a cero.`
+            // Procesar el resto de detalles libres (Sucursal, observaciones de entrega, etc.)
+            for (const cd of customDetailItems) {
+                const descNote = (cd.product_type || cd.descripcion || cd.description || '').trim();
+                if (!descNote) continue;
+
+                freeNotes.push(descNote);
+                itemsProcessed.push({
+                    product_id: null,
+                    codigo: null,
+                    descripcion: descNote,
+                    cantidad: 1,
+                    precio_unitario: 0,
+                    monto_descuento: 0,
+                    venta_gravada: 0,
+                    venta_exenta: 0,
+                    tributos: dteType === '11' || dteType === '04' ? [] : ['20'],
+                    is_returnable: false,
+                    returnable_units: 0,
+                    stock_qty: 0
+                });
+            }
+
+            // Si la parada tiene sucursal asociada y no fue agregada aún en las notas, incorporarla
+            const branchName = stop.branch_name || stop.customer_branch_name;
+            if (branchName && !freeNotes.some(n => n.toLowerCase().includes(branchName.toLowerCase()))) {
+                const branchDescLine = branchName.toLowerCase().startsWith('sucursal') ? branchName : `Sucursal: ${branchName}`;
+                freeNotes.push(branchDescLine);
+                itemsProcessed.push({
+                    product_id: null,
+                    codigo: null,
+                    descripcion: branchDescLine,
+                    cantidad: 1,
+                    precio_unitario: 0,
+                    monto_descuento: 0,
+                    venta_gravada: 0,
+                    venta_exenta: 0,
+                    tributos: dteType === '11' || dteType === '04' ? [] : ['20'],
+                    is_returnable: false,
+                    returnable_units: 0,
+                    stock_qty: 0
                 });
             }
 
@@ -2489,11 +2692,17 @@ const autoInvoiceDispatchRoute = async (req, res) => {
                 safeInt(company_id)
             ]);
 
-            // 5h. Descontar existencias del lote específico según su tipo de producto (Huevo Entero vs Clara vs Yema)
+            // 5h. Descontar existencias del lote específico según su tipo de producto (respetando lote vinculado aunque se edite el texto para el cliente)
             for (const it of stop.items) {
-                const lotCode = (it.lot_code || '').trim();
                 const qtyLbs = safeNum(it.quantity_lbs ?? it.quantity ?? 0, 0);
-                if (!lotCode || qtyLbs <= 0) continue;
+                if (qtyLbs <= 0) continue;
+
+                const targetPackagingId = safeInt(it.packaging_id, null);
+                const targetLotCode = (it.original_lot_code || it.lot_code || '').trim();
+                const targetBatchId = safeInt(it.batch_id, null);
+
+                // Si no hay lote vinculado ni especificado, se continúa (facturación sin lote permitida)
+                if (!targetPackagingId && !targetLotCode && !targetBatchId) continue;
 
                 let units = safeNum(it.units ?? it.quantity_units ?? 0, 0);
                 const presentation = (it.presentation || 'cubeta 30LB').trim();
@@ -2503,19 +2712,43 @@ const autoInvoiceDispatchRoute = async (req, res) => {
                     units = Number.isInteger(calcUnits) ? calcUnits : Math.round(calcUnits * 100) / 100;
                 }
 
-                // Buscar el empaque específico para este lot_code y su tipo de producto
-                const [pkgRows] = await connection.query(`
-                    SELECT id, product_type, presentation, units_packaged, weight_per_unit_lbs, total_batch_weight_lbs
-                    FROM egg_packaging_records
-                    WHERE company_id = ? AND lot_code = ?
-                    ORDER BY 
-                        CASE 
-                            WHEN LOWER(product_type) = LOWER(?) THEN 1
-                            WHEN LOWER(product_type) LIKE CONCAT('%', LOWER(?), '%') THEN 2
-                            ELSE 3
-                        END ASC, id DESC
-                    LIMIT 1
-                `, [company_id, lotCode, it.product_type, it.product_type]);
+                // Buscar el empaque específico priorizando packaging_id, original_lot_code, batch_id o lot_code
+                let pkgRows = [];
+                if (targetPackagingId) {
+                    [pkgRows] = await connection.query(`
+                        SELECT id, lot_code, product_type, presentation, units_packaged, weight_per_unit_lbs, total_batch_weight_lbs
+                        FROM egg_packaging_records
+                        WHERE id = ? AND company_id = ?
+                    `, [targetPackagingId, company_id]);
+                }
+                if (pkgRows.length === 0 && targetLotCode) {
+                    [pkgRows] = await connection.query(`
+                        SELECT id, lot_code, product_type, presentation, units_packaged, weight_per_unit_lbs, total_batch_weight_lbs
+                        FROM egg_packaging_records
+                        WHERE company_id = ? AND lot_code = ?
+                        ORDER BY 
+                            CASE 
+                                WHEN LOWER(product_type) = LOWER(?) THEN 1
+                                WHEN LOWER(product_type) LIKE CONCAT('%', LOWER(?), '%') THEN 2
+                                ELSE 3
+                            END ASC, id DESC
+                        LIMIT 1
+                    `, [company_id, targetLotCode, it.product_type, it.product_type]);
+                }
+                if (pkgRows.length === 0 && targetBatchId) {
+                    [pkgRows] = await connection.query(`
+                        SELECT id, lot_code, product_type, presentation, units_packaged, weight_per_unit_lbs, total_batch_weight_lbs
+                        FROM egg_packaging_records
+                        WHERE company_id = ? AND batch_id = ?
+                        ORDER BY 
+                            CASE 
+                                WHEN LOWER(product_type) = LOWER(?) THEN 1
+                                WHEN LOWER(product_type) LIKE CONCAT('%', LOWER(?), '%') THEN 2
+                                ELSE 3
+                            END ASC, id DESC
+                        LIMIT 1
+                    `, [company_id, targetBatchId, it.product_type, it.product_type]);
+                }
 
                 if (pkgRows.length > 0) {
                     const pkg = pkgRows[0];
@@ -2526,13 +2759,22 @@ const autoInvoiceDispatchRoute = async (req, res) => {
                         WHERE id = ? AND company_id = ?
                     `, [units, qtyLbs, pkg.id, company_id]);
 
+                    const invoicedLotText = (it.lot_code || pkg.lot_code || 'S/L').trim();
                     await connection.query(`
                         INSERT INTO egg_industrial_events (company_id, event_type, severity, description, payload, operator_name, created_at)
                         VALUES (?, 'DESPACHO_SALIDA_LOTE', 'INFO', ?, ?, ?, NOW())
                     `, [
                         company_id,
-                        `Salida de Lote ${lotCode} (${pkg.product_type || it.product_type}): -${units} uds (${qtyLbs} Lbs) en Facturación Pedido #${stop.order_number || stop.order_id}`,
-                        JSON.stringify({ packaging_id: pkg.id, lot_code: lotCode, product_type: pkg.product_type, units_deducted: units, lbs_deducted: qtyLbs, sale_id: saleId }),
+                        `Salida de Lote ${pkg.lot_code} (facturado como "${invoicedLotText}"): -${units} uds (${qtyLbs} Lbs) en Facturación Pedido #${stop.order_number || stop.order_id}`,
+                        JSON.stringify({ 
+                            packaging_id: pkg.id, 
+                            real_lot_code: pkg.lot_code, 
+                            invoiced_lot_code: invoicedLotText, 
+                            product_type: pkg.product_type, 
+                            units_deducted: units, 
+                            lbs_deducted: qtyLbs, 
+                            sale_id: saleId 
+                        }),
                         req.user?.nombre || 'Sistema Despacho'
                     ]);
                 }
@@ -2570,23 +2812,13 @@ const autoInvoiceDispatchRoute = async (req, res) => {
 
         await connection.commit();
 
-        // 6. Enviar correo formal con DTE a los clientes tras emisión exitosa (proceso formal idéntico al Punto de Venta)
+        // 6. Enviar correo formal con DTE a los clientes tras emisión exitosa vía cola BullMQ
         if (successfulSalesForEmail.length > 0) {
-            (async () => {
-                for (const item of successfulSalesForEmail) {
-                    try {
-                        console.log(`[AutoInvoice] Enviando correo formal con DTE a cliente "${item.customerName}" para Venta #${item.saleId}...`);
-                        const mailResult = await mailerService.sendDTEEmail(item.saleId, company_id);
-                        if (mailResult?.success) {
-                            console.log(`[AutoInvoice] ✓ Correo DTE enviado exitosamente a "${item.customerName}" (${mailResult.email || item.customerEmail}) para Venta #${item.saleId}`);
-                        } else if (mailResult?.skip) {
-                            console.log(`[AutoInvoice] ℹ Cliente "${item.customerName}" sin correo registrado. Envío omitido para Venta #${item.saleId}`);
-                        }
-                    } catch (mailErr) {
-                        console.error(`[AutoInvoice] Error enviando correo DTE para Venta #${item.saleId}:`, mailErr.message);
-                    }
-                }
-            })();
+            for (const item of successfulSalesForEmail) {
+                mailerService.queueDTEEmail(item.saleId, company_id).catch(mailErr => {
+                    console.error(`[AutoInvoice] Error encolando correo DTE para Venta #${item.saleId}:`, mailErr.message);
+                });
+            }
         }
 
         res.json({

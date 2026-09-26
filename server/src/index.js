@@ -1,14 +1,18 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const morgan = require('morgan');
 const path = require('path');
 const fs = require('fs');
+const { initSentry, setupSentryErrorHandler } = require('./config/sentry');
+const { logger, httpLogger } = require('./utils/logger');
 const authRoutes = require('./routes/auth.routes');
 const apiRoutes = require('./routes/api.routes');
 
 const app = express();
 app.set('trust proxy', 1);
+
+// Initialize Sentry tracking
+initSentry(app);
 
 // Ensure uploads directories exist
 const uploadsDir = path.join(__dirname, '..', 'uploads');
@@ -21,13 +25,10 @@ const crtsDir = path.join(__dirname, '..', 'certificados-crt');
     }
 });
 
-// File logger setup
+// File logger fallback stream setup
 const logsDir = path.join(__dirname, '..', 'logs');
 if (!fs.existsSync(logsDir)) fs.mkdirSync(logsDir, { recursive: true });
 const logFile = fs.createWriteStream(path.join(logsDir, 'server.log'), { flags: 'a' });
-morgan.token('safe-url', (req) => (req.originalUrl || req.url).replace(/([?&])token=[^&]+/g, '$1token=***'));
-
-app.use(morgan(':method :safe-url :status :response-time ms - :res[content-length]', { stream: { write: (msg) => logFile.write(msg) } }));
 
 const _log = console.log;
 const _error = console.error;
@@ -49,10 +50,10 @@ console.error = (...args) => { logFile.write(`[${new Date().toISOString()}] [ERR
 console.warn = (...args) => { logFile.write(`[${new Date().toISOString()}] [WARN] ${args.map(serializeLogArg).join(' ')}\n`); _warn.apply(console, args); };
 
 // Middlewares
+app.use(httpLogger);
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
-app.use(morgan(':method :safe-url :status :response-time ms - :res[content-length]'));
 app.use('/uploads', express.static(uploadsDir));
 
 // Routes
@@ -60,8 +61,9 @@ app.use('/api/auth', authRoutes);
 
 // Restart DTE API (reinicia proceso dte-api en puerto 5000)
 app.post('/api/restart', express.json(), async (req, res) => {
-    const key = req.body?.restart_key || req.headers['x-restart-key'];
-    if (!key || key !== 'novarestart2026') {
+    const expectedKey = process.env.RESTART_KEY;
+    const key = req.body?.restart_key || req.body?.key || req.headers['x-restart-key'];
+    if (!expectedKey || !key || key !== expectedKey) {
         return res.status(401).json({ message: 'restart_key inválida' });
     }
     try {
@@ -83,7 +85,7 @@ app.use('/api', apiRoutes);
 const SERVER_VERSION = (() => {
     try {
         return require('child_process').execSync('git rev-parse --short HEAD', { cwd: __dirname }).toString().trim();
-    } catch (e) {
+    } catch {
         return 'unknown';
     }
 })();
@@ -103,9 +105,13 @@ if (process.env.NODE_ENV === 'production' && fs.existsSync(clientDist)) {
     });
 }
 
+// Setup Sentry express error handler
+setupSentryErrorHandler(app);
+
 // Error handler
+// eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
-    console.error('GLOBAL ERROR:', err);
+    logger.error({ err, path: req.path, method: req.method }, `GLOBAL ERROR: ${err.message}`);
     res.status(500).json({ 
         message: 'Error interno del servidor', 
         error: err.message,
@@ -118,15 +124,31 @@ const { initWebSocket } = require('./services/websocket.service');
 const { startWorker } = require('./services/notificationWorker');
 const { startBot: startTelegramBot } = require('./services/telegram.service');
 const { startSuspiciousSalesDetector } = require('./services/suspiciousSalesDetector');
+const { startRrsAutoSyncCron } = require('./services/rrsVentasTiendaAutoSync.service');
+const { preloadHaciendaCatalogs } = require('./services/catalogCache.service');
+const { mailQueue } = require('./queue');
 
 // Evitar que un error no capturado (unhandledRejection) tumbe el servidor
 // a mitad de una respuesta: se registra la causa y el proceso sigue vivo.
 process.on('unhandledRejection', (reason) => {
-    console.error('Unhandled Rejection (no tumba el server):', reason);
+    logger.error({ reason }, 'Unhandled Rejection (no tumba el server)');
 });
 process.on('uncaughtException', (err) => {
-    console.error('Uncaught Exception (no tumba el server):', err);
+    logger.error({ err }, 'Uncaught Exception (no tumba el server)');
 });
+
+const gracefulShutdown = async () => {
+    logger.info('Iniciando cierre ordenado del servidor...');
+    try {
+        await mailQueue.close();
+    } catch (e) {
+        logger.error({ err: e.message }, 'Error cerrando mailQueue');
+    }
+    process.exit(0);
+};
+
+process.on('SIGTERM', gracefulShutdown);
+process.on('SIGINT', gracefulShutdown);
 
 const PORT = process.env.PORT || 4000;
 const server = http.createServer(app);
@@ -141,4 +163,6 @@ server.listen(PORT, () => {
     console.log(`Servidor SaaS corriendo en puerto ${PORT}`);
     startTelegramBot();
     startSuspiciousSalesDetector();
+    startRrsAutoSyncCron();
+    preloadHaciendaCatalogs();
 });

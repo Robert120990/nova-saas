@@ -58,6 +58,12 @@ async function generateDTEPDF(dteData, stream) {
     doc.text('SUBTOTAL:', 400, y);
     doc.text(resumen.subTotal.toFixed(2), 480, y, { align: 'right' });
     y += 15;
+    if (resumen.totalDescu > 0) {
+        doc.fillColor('#b91c1c').text('(-) DESCUENTO:', 400, y);
+        doc.text(`-$${resumen.totalDescu.toFixed(2)}`, 480, y, { align: 'right' });
+        doc.fillColor('#000000');
+        y += 15;
+    }
     const isConsumidorFinal = identificacion.tipoDte === '01' || identificacion.tipoDte === 1;
     doc.text('IVA (13%):', 400, y);
     doc.text((isConsumidorFinal ? 0 : (resumen.totalIva || 0)).toFixed(2), 480, y, { align: 'right' });

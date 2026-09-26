@@ -1,3 +1,4 @@
+import { formatDate } from '../utils/dateUtils';
 import React, { useState } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import axios from 'axios';
@@ -25,12 +26,7 @@ const formatDateTime = (dateStr) => {
     return `${day}/${month}/${year} ${hours}:${minutes}`;
 };
 
-const formatDate = (dateStr) => {
-    if (!dateStr) return 'N/A';
-    const date = new Date(dateStr);
-    if (isNaN(date.getTime())) return 'N/A';
-    return date.toLocaleDateString('es-SV');
-};
+
 
 const getStatusBadge = (status) => {
     switch (status) {
@@ -38,6 +34,7 @@ const getStatusBadge = (status) => {
             return <span className="flex items-center gap-1 px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-lg text-[9px] font-black uppercase tracking-wider"><CheckCircle2 size={11} /> Aceptado</span>;
         case 'REJECTED':
         case 'RECHAZADO':
+        case 'ERROR':
             return <span className="flex items-center gap-1 px-2 py-0.5 bg-rose-50 text-rose-700 rounded-lg text-[9px] font-black uppercase tracking-wider"><XCircle size={11} /> Rechazado</span>;
         case 'SENT':
             return <span className="flex items-center gap-1 px-2 py-0.5 bg-blue-50 text-blue-700 rounded-lg text-[9px] font-black uppercase tracking-wider"><Clock size={11} /> Enviado</span>;

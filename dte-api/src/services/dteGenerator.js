@@ -42,8 +42,6 @@ async function resolveCountryCode(rawInput) {
         'NICARAGUA': 'NI',
         'COSTA RICA': 'CR',
         'PANAMA': 'PA',
-        'PANAMÁ': 'PA',
-        'MEXICO': 'MX',
         'MÉXICO': 'MX'
     };
 
@@ -245,10 +243,10 @@ async function generateDTE(payload) {
     const [taxRows] = await pool.query('SELECT iva_rate FROM tax_configurations WHERE company_id = ?', [companyId]);
     const ivaRate = taxRows.length > 0 ? parseFloat(taxRows[0].iva_rate) : 13;
 
-    // Verificar contingencia activa
+    // Verificar contingencia activa (a nivel de empresa o sucursal específica)
     const [contRows] = await pool.query(
-        'SELECT id, tipo_contingencia, motivo FROM dte_contingencies WHERE company_id = ? AND estado = ? LIMIT 1',
-        [companyId, 'OPEN']
+        'SELECT id, tipo_contingencia, motivo FROM dte_contingencies WHERE company_id = ? AND (branch_id = ? OR branch_id IS NULL) AND estado = ? ORDER BY id DESC LIMIT 1',
+        [companyId, branchId || null, 'OPEN']
     );
     const activeContingency = contRows.length > 0 ? contRows[0] : null;
 
@@ -281,7 +279,7 @@ async function generateDTE(payload) {
         tipoModelo: activeContingency ? 2 : 1,
         tipoOperacion: activeContingency ? 2 : 1,
         tipoContingencia: activeContingency ? activeContingency.tipo_contingencia : null,
-        motivoContin: null,
+        motivoContin: activeContingency?.motivo ? String(activeContingency.motivo).trim().substring(0, 500) : null,
         fecEmi: fecEmi,
         horEmi: horEmi,
         tipoMoneda: 'USD',
@@ -463,9 +461,20 @@ async function generateDTE(payload) {
             itemTributos = ['20'];
         }
 
-        const relatedDoc = (payload.documentoRelacionado && payload.documentoRelacionado.length > 0)
-            ? payload.documentoRelacionado[0].numeroDocumento
-            : ".";
+        const relatedDocs = (payload.documentoRelacionado && payload.documentoRelacionado.length > 0)
+            ? payload.documentoRelacionado
+            : [];
+        const firstRelatedNum = relatedDocs.length > 0
+            ? String(relatedDocs[0].numeroDocumento || relatedDocs[0].doc_number || '').trim().toUpperCase()
+            : null;
+
+        let itemNumeroDoc = item.referencedDoc ? String(item.referencedDoc).trim().toUpperCase() : null;
+        if (tipoDte === '05') {
+            // En Nota de Crédito, el número de documento de cada ítem DEBE coincidir con documentoRelacionado
+            if (relatedDocs.length === 1 || !itemNumeroDoc) {
+                itemNumeroDoc = firstRelatedNum;
+            }
+        }
 
         let itemFinalTributos;
         if (tipoDte === '04') {
@@ -484,7 +493,7 @@ async function generateDTE(payload) {
         const baseItem = {
             numItem: index + 1,
             tipoItem: item.tipoItem || 1, // 1: Gravada
-            numeroDocumento: item.referencedDoc || (tipoDte === '05' ? relatedDoc : null),
+            numeroDocumento: itemNumeroDoc || (tipoDte === '05' ? firstRelatedNum : null),
             cantidad: round4(item.cantidad),
             codigo: item.codigo || `P-${index + 1}`,
             codTributo: item.codTributo || null,
@@ -525,7 +534,7 @@ async function generateDTE(payload) {
 
     // 5. Resumen
     if (tipoDte !== '07') {
-    const calculatedItems = items.map(item => calculateItem(item, tipoDte));
+    const calculatedItems = items.map(item => calculateItem(item, tipoDte, ivaRate));
     
     // Para Crédito Fiscal (03) y Nota de Crédito (05) con combustible, FOVIAL (D1) y COTRANS (C8)
     // se reportan como tributos del resumen. Ya se quitaron del precio en calculateItem (base + IVA
@@ -559,7 +568,9 @@ async function generateDTE(payload) {
             resumenTaxes.push({ codigo: 'C8', descripcion: 'COTRANS', valor: round(itemFuelTax.C8) });
         }
     }
-    totals = calculateTotals(calculatedItems, resumenTaxes, tipoDte);
+    const generalDiscount = payload.descuento_general ?? payload.descuentoGeneral ?? payload.header?.descuento_general ?? 0;
+    const generalDiscountPercentage = payload.porcentajeDescuento ?? payload.porcentaje_descuento ?? payload.header?.porcentajeDescuento ?? payload.header?.porcentaje_descuento ?? null;
+    totals = calculateTotals(calculatedItems, resumenTaxes, tipoDte, generalDiscount, ivaRate, generalDiscountPercentage);
     
     // Payments mapping
     pagos = (payload.pagos || [
@@ -615,11 +626,11 @@ async function generateDTE(payload) {
             totalExenta: totals.totalExenta,
             totalGravada: totals.totalGravada,
             subTotalVentas: totals.subTotalVentas,
-            descuNoSuj: 0,
-            descuExenta: 0,
-            descuGravada: 0,
-            porcentajeDescuento: 0,
-            totalDescu: totals.totalDescu,
+            descuNoSuj: totals.descuNoSuj || 0,
+            descuExenta: totals.descuExenta || 0,
+            descuGravada: totals.descuGravada || 0,
+            porcentajeDescuento: totals.porcentajeDescuento || 0,
+            totalDescu: totals.totalDescu || 0,
             observaciones: 'Ninguna',
             tributos: (() => {
                 const isFactura = type === '01';
@@ -676,12 +687,27 @@ async function generateDTE(payload) {
 
         if (type === '01') {
             base.totalIva = totals.montoPorIVA;
-            base.ivaRete = 0;
+            const ret = round(payload.retencion ?? payload.header?.total_retencion ?? payload.header?.iva_retenido ?? 0);
+            base.ivaRete = ret;
+            if (ret > 0) {
+                const adjustedTotal = round(totals.totalPagar - ret);
+                base.totalPagar = adjustedTotal;
+                base.totalLetras = getAmountInWords(adjustedTotal);
+                if (base.pagos && base.pagos.length === 1) {
+                    base.pagos[0].montoPago = adjustedTotal;
+                } else if (base.pagos && base.pagos.length > 1) {
+                    let pSum = 0;
+                    for (let i = 0; i < base.pagos.length - 1; i++) {
+                        pSum = round(pSum + base.pagos[i].montoPago);
+                    }
+                    base.pagos[base.pagos.length - 1].montoPago = round(adjustedTotal - pSum);
+                }
+            }
             base.saldoFavor = 0;
             base.numPagoElectronico = null;
         } else if (type === '03') {
-            const ret = round(payload.retencion || 0);
-            const perc = round(payload.percepcion || 0);
+            const ret = round(payload.retencion ?? payload.header?.total_retencion ?? payload.header?.iva_retenido ?? 0);
+            const perc = round(payload.percepcion ?? payload.header?.total_percepcion ?? payload.header?.iva_percibido ?? 0);
             base.ivaPerci = perc;
             base.ivaRete = ret;
             if (ret > 0 || perc > 0) {
@@ -908,8 +934,16 @@ async function generateDTE(payload) {
     }
 
     if (tipoDte !== '11' && tipoDte !== '07' && (tipoDte === '01' || tipoDte === '04' || tipoDte === '05')) {
-        // Consumidor Final sin documento: dejar campos como null
-        const isConsumidorFinal = !receptor.nit && !receptor.numDocumento;
+        // Consumidor Final sin documento o con documento ficticio en Factura < $200: sanitizar campos a null
+        const cleanNit = cleanNumbers(receptor.nit);
+        const cleanDoc = cleanNumbers(receptor.numDocumento);
+        const isFictitiousDoc = cleanDoc && (/^0+$/.test(cleanDoc) || /^(\d)\1+$/.test(cleanDoc) || cleanDoc.length < 9);
+        const isFictitiousNit = cleanNit && (/^0+$/.test(cleanNit) || /^(\d)\1+$/.test(cleanNit) || (cleanNit.length !== 9 && cleanNit.length !== 14));
+
+        const totalVenta = totals.totalPagar || 0;
+        const isConsumidorFinal = (!cleanNit || (tipoDte === '01' && totalVenta < 200 && isFictitiousNit)) &&
+                                  (!cleanDoc || (tipoDte === '01' && totalVenta < 200 && isFictitiousDoc));
+
         if (isConsumidorFinal && tipoDte === '01') {
             finalReceptor.tipoDocumento = null;
             finalReceptor.numDocumento = null;
@@ -964,7 +998,20 @@ async function generateDTE(payload) {
     }
 
     if (tipoDte !== '11' && tipoDte !== '07') {
-        dte.documentoRelacionado = (payload.documentoRelacionado && payload.documentoRelacionado.length > 0) ? payload.documentoRelacionado : null;
+        if (payload.documentoRelacionado && payload.documentoRelacionado.length > 0) {
+            dte.documentoRelacionado = payload.documentoRelacionado.map(doc => {
+                const rawNum = String(doc.numeroDocumento || doc.doc_number || doc.numDocumento || '').trim().toUpperCase();
+                const isUUID = /^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$/.test(rawNum);
+                return {
+                    tipoDocumento: String(doc.tipoDocumento || doc.doc_type || '03'),
+                    tipoGeneracion: parseInt(doc.tipoGeneracion ?? doc.generation_type) || (isUUID ? 1 : 2),
+                    numeroDocumento: rawNum,
+                    fechaEmision: String(doc.fechaEmision || doc.emission_date || '').substring(0, 10)
+                };
+            });
+        } else {
+            dte.documentoRelacionado = null;
+        }
     }
 
     if (tipoDte === '11') {

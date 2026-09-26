@@ -3,14 +3,32 @@
  */
 
 const axios = require('axios');
-const qs = require('qs');
+const qs = require('querystring');
 const { getEndpoint } = require('../config/haciendaConfig');
+const cache = require('../config/cache');
 
-async function authenticate(apiUser, apiPassword, ambiente) {
+/**
+ * Autentica contra la API de Hacienda o devuelve el token en caché si sigue vigente.
+ * El token oficial de Hacienda tiene vigencia de 24 horas; se reutiliza durante 23.5 horas.
+ */
+async function authenticate(apiUser, apiPassword, ambiente, forceRefresh = false) {
+    const cacheKey = `mh:token:${apiUser}:${ambiente}`;
+
+    if (!forceRefresh) {
+        const cachedToken = await cache.get(cacheKey);
+        if (cachedToken) {
+            return {
+                success: true,
+                token: cachedToken,
+                cached: true
+            };
+        }
+    }
+
     const authUrl = getEndpoint('auth', ambiente);
 
     try {
-        console.log(`[HaciendaAuth] Attempting login for user: ${apiUser}`);
+        console.log(`[HaciendaAuth] Solicitando nuevo token a MH para usuario: ${apiUser} (${ambiente})`);
         const response = await axios.post(authUrl, qs.stringify({
             user: apiUser,
             pwd: apiPassword
@@ -22,9 +40,13 @@ async function authenticate(apiUser, apiPassword, ambiente) {
         });
 
         if (response.data && response.data.status === 'OK') {
+            const token = response.data.body.token;
+            // Token válido por 24 horas en MH. Guardar en caché por 23.5 horas (84,600 segundos)
+            await cache.set(cacheKey, token, 84600);
+
             return {
                 success: true,
-                token: response.data.body.token
+                token: token
             };
         } else {
             const msg = response.data?.message || response.data?.body?.mensaje || 'Respuesta de autenticación no reconocida';
@@ -51,7 +73,29 @@ async function authenticate(apiUser, apiPassword, ambiente) {
     }
 }
 
+async function invalidateToken(apiUser, ambiente) {
+    if (!apiUser) {
+        await cache.delByPattern('mh:token:*');
+        console.log('[HaciendaAuth] Caché de tokens de Hacienda limpiada globalmente.');
+        return;
+    }
+    const cacheKey = `mh:token:${apiUser}:${ambiente}`;
+    await cache.del(cacheKey);
+    console.log(`[HaciendaAuth] Token en caché invalidado para ${cacheKey}`);
+}
+
 async function transmitDTE(token, signedDte, dteInfo) {
+    const { isSimulatedOutage } = require('../config/haciendaConfig');
+    if (isSimulatedOutage()) {
+        console.warn(`[MH-Transmission] ⚠️ Caída de Hacienda simulada activada. Rechazando transmisión por timeout/conectividad para DTE ${dteInfo.codigoGeneracion}...`);
+        return {
+            success: false,
+            statusCode: 503,
+            isAuthError: false,
+            error: 'ECONNREFUSED connect ECONNREFUSED 127.0.0.1:59999 (Simulación de caída de Hacienda)'
+        };
+    }
+
     const receptionUrl = getEndpoint('recepcion', dteInfo.ambiente);
 
     try {
@@ -82,9 +126,19 @@ async function transmitDTE(token, signedDte, dteInfo) {
             data: response.data
         };
     } catch (error) {
+        const statusCode = error.response ? error.response.status : null;
+        const isAuthError = statusCode === 401;
         console.error('MH Transmission Error:', error.response ? error.response.data : error.message);
+        
+        if (isAuthError && dteInfo.apiUser) {
+            console.warn(`[MH-Transmission] Token rechazado con 401 por MH. Purgando caché para ${dteInfo.apiUser}...`);
+            await invalidateToken(dteInfo.apiUser, dteInfo.ambiente);
+        }
+
         return {
             success: false,
+            statusCode,
+            isAuthError,
             error: error.response ? error.response.data : error.message
         };
     }
@@ -121,13 +175,23 @@ async function consultDTE(token, dteInfo, ambiente) {
             data: response.data
         };
     } catch (error) {
+        const statusCode = error.response ? error.response.status : null;
+        const isAuthError = statusCode === 401;
         console.warn(`[MH-Consult] Consulta de DTE ${dteInfo.codigoGeneracion} no exitosa:`, error.response ? error.response.data : error.message);
+
+        if (isAuthError && dteInfo.apiUser) {
+            console.warn(`[MH-Consult] Token rechazado con 401 por MH en consulta. Purgando caché para ${dteInfo.apiUser}...`);
+            invalidateToken(dteInfo.apiUser, ambiente);
+        }
+
         return {
             success: false,
             processed: false,
+            statusCode,
+            isAuthError,
             error: error.response ? error.response.data : error.message
         };
     }
 }
 
-module.exports = { authenticate, transmitDTE, consultDTE };
+module.exports = { authenticate, transmitDTE, consultDTE, invalidateToken };

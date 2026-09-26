@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { toast } from 'sonner';
@@ -25,13 +25,8 @@ import {
     Sparkles,
     Loader2,
     QrCode,
-    Smartphone,
-    CheckCircle2,
-    Copy,
-    RefreshCw
 } from 'lucide-react';
-import { QRCodeSVG } from 'qrcode.react';
-import * as XLSX from 'xlsx';
+import { exportJsonToExcel } from '../utils/excelExport';
 import SearchableSelect from '../components/ui/SearchableSelect';
 import Table from '../components/ui/Table';
 import Pagination from '../components/ui/Pagination';
@@ -39,15 +34,14 @@ import { useAuth } from '../context/AuthContext';
 import { useConfirm } from '../context/ConfirmContext';
 import Money, { MoneyInput } from '../components/ui/Money';
 import { useDirtyTracker } from '../hooks/useDirtyTracker';
+import { unwrapList } from '../utils/apiUtils';
 import ProviderModal from '../components/providers/ProviderModal';
-import { getTodayString } from '../utils/dateUtils';
+import ProductSearchModal from '../components/products/ProductSearchModal';
+import QrScanModal from '../components/purchases/QrScanModal';
+import PurchaseDetailModal from '../components/purchases/PurchaseDetailModal';
+import { getTodayString, formatDate } from '../utils/dateUtils';
 
-const formatDate = (dateStr) => {
-    if (!dateStr) return '';
-    const d = new Date(dateStr);
-    if (isNaN(d.getTime())) return '';
-    return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
-};
+
 
 const MONTHS = [
     { value: 1, label: '01 - ENE' },
@@ -65,6 +59,19 @@ const MONTHS = [
 ];
 const currentYearVal = new Date().getFullYear();
 const YEARS = Array.from({ length: 9 }, (_, i) => currentYearVal - 4 + i);
+
+const getShortDocType = (name, code) => {
+    if (code === '03' || /cr[eé]dito\s+fiscal/i.test(name)) return 'Crédito Fiscal';
+    if (code === '01' || /^factura/i.test(name)) return 'Factura';
+    if (code === '05' || /nota\s+de\s+cr[eé]dito/i.test(name)) return 'Nota Crédito';
+    if (code === '06' || /nota\s+de\s+d[eé]bito/i.test(name)) return 'Nota Débito';
+    if (code === '14' || /sujeto\s+excluido/i.test(name)) return 'Sujeto Excluido';
+    if (code === '11' || /exportaci[oó]n/i.test(name)) return 'Exportación';
+    if (code === '07' || /retenci[oó]n/i.test(name)) return 'Retención';
+    if (code === '08' || /liquidaci[oó]n/i.test(name)) return 'Liquidación';
+    if (!name) return 'Documento';
+    return name.replace(/\s+electr[oó]nic[oa]/gi, '').replace(/^comprobante\s+de\s+/gi, '').trim();
+};
 
 const Purchases = () => {
     const { user } = useAuth();
@@ -124,9 +131,6 @@ const Purchases = () => {
     const [quickCosto, setQuickCosto] = useState('0');
     const [quickProd, setQuickProd] = useState(null);
     const [isProductModalOpen, setIsProductModalOpen] = useState(false);
-    const [productSearch, setProductSearch] = useState('');
-    const [debouncedProductSearch, setDebouncedProductSearch] = useState('');
-    const [modalPage, setModalPage] = useState(1);
 
     const barcodeInputRef = useRef(null);
     const descInputRef = useRef(null);
@@ -208,7 +212,7 @@ const Purchases = () => {
     // Queries
     const { data: currentCompany } = useQuery({
         queryKey: ['company', user?.company_id],
-        queryFn: async () => (await axios.get(`/api/companies`)).data.find(c => c.id === user.company_id),
+        queryFn: async () => unwrapList(await axios.get(`/api/companies`)).find(c => c.id === user.company_id),
         enabled: !!user?.company_id
     });
 
@@ -261,30 +265,17 @@ const Purchases = () => {
 
     const { data: branches = [] } = useQuery({
         queryKey: ['branches', user?.company_id],
-        queryFn: async () => (await axios.get('/api/branches')).data
+        queryFn: async () => unwrapList(await axios.get('/api/branches'))
     });
-
-    const { data: modalProductsData = { data: [], total: 0, totalPages: 0 }, isLoading: isLoadingModalProducts } = useQuery({
-        queryKey: ['purchase-products', debouncedProductSearch, branchId, modalPage],
-        queryFn: async () => (await axios.get('/api/products', {
-            params: { search: debouncedProductSearch || undefined, branch_id: branchId || undefined, limit: 20, page: modalPage }
-        })).data,
-        enabled: isProductModalOpen
-    });
-
-    React.useEffect(() => {
-        const timer = setTimeout(() => { setDebouncedProductSearch(productSearch); setModalPage(1); }, 500);
-        return () => clearTimeout(timer);
-    }, [productSearch]);
 
     const { data: tipoDocs = [] } = useQuery({
         queryKey: ['catalog', '002'],
-        queryFn: async () => (await axios.get('/api/catalogs/cat_002_tipo_dte')).data
+        queryFn: async () => unwrapList(await axios.get('/api/catalogs/cat_002_tipo_dte'))
     });
 
     const { data: condiciones = [] } = useQuery({
         queryKey: ['catalog', '016'],
-        queryFn: async () => (await axios.get('/api/catalogs/cat_016_condicion_operacion')).data
+        queryFn: async () => unwrapList(await axios.get('/api/catalogs/cat_016_condicion_operacion'))
     });
 
     const applyExtractedDteData = (data) => {
@@ -498,9 +489,9 @@ const Purchases = () => {
         retry: false
     });
 
-    const { data: taxSettings } = useQuery({
+    const { data: taxSettings = [] } = useQuery({
         queryKey: ['tax-settings'],
-        queryFn: async () => (await axios.get('/api/taxes')).data,
+        queryFn: async () => unwrapList(await axios.get('/api/taxes')),
     });
 
     // Mutations
@@ -640,7 +631,6 @@ const Purchases = () => {
         setQuickDesc(product.nombre || '');
         setQuickCosto(product.costo || '0');
         setIsProductModalOpen(false);
-        setProductSearch('');
         setTimeout(() => qtyInputRef.current?.focus(), 100);
     };
 
@@ -652,18 +642,6 @@ const Purchases = () => {
         setQuickCant('1');
         setTimeout(() => descInputRef.current?.focus(), 100);
     };
-
-    const filteredProducts = useMemo(() => {
-        let list = modalProductsData.data.filter(p => p.status === 'activo');
-
-        // Filter by branch if selected
-        if (branchId) {
-            const bid = parseInt(branchId);
-            list = list.filter(p => p.branches?.includes(bid));
-        }
-
-        return list;
-    }, [modalProductsData, branchId]);
 
     const performBarcodeLookup = async () => {
         if (!quickBarcode) return;
@@ -850,12 +828,29 @@ const Purchases = () => {
                     let matchedCount = 0;
 
                     for (const item of body) {
-                        const code = (item.codigo || '').toUpperCase();
+                        const code = (item.codigo || '').trim().toUpperCase();
+                        const desc = (item.descripcion || '').trim();
                         let prod = null;
                         if (code && branchId) {
                             try {
                                 const { data } = await axios.get(`/api/products/lookup/${encodeURIComponent(code)}`, { params: { branch_id: branchId } });
                                 prod = data;
+                            } catch { prod = null; }
+                        }
+
+                        // Búsqueda secundaria por descripción en catálogo si no hubo coincidencia por código
+                        if (!prod && desc && desc.length > 2 && branchId) {
+                            try {
+                                const { data: searchRes } = await axios.get('/api/products', {
+                                    params: { search: desc, limit: 5, branch_id: branchId, status: 'activo' }
+                                });
+                                const exactMatch = (searchRes?.data || []).find(p => 
+                                    (p.nombre || '').trim().toLowerCase() === desc.toLowerCase() ||
+                                    (p.descripcion || '').trim().toLowerCase() === desc.toLowerCase()
+                                );
+                                if (exactMatch) {
+                                    prod = exactMatch;
+                                }
                             } catch { prod = null; }
                         }
                         
@@ -936,12 +931,27 @@ const Purchases = () => {
         e.target.value = null; 
     };
 
-    const handleSubmit = () => {
+    const handleSubmit = async () => {
         if (!branchId) return toast.error('Seleccione una sucursal');
         if (!providerId) return toast.error('Seleccione un proveedor');
         if (!numeroDoc) return toast.error('Ingrese el número de documento o factura');
         if (tipoDocId === '06' && !docAfectado) return toast.error('Documento afectado es requerido para Notas de Crédito');
         if (selectedItems.length === 0) return toast.error('Agregue productos');
+
+        // Validar si existen productos sin vincular al catálogo de inventario
+        const unlinkedItems = selectedItems.filter(it => !it.product_id);
+        if (unlinkedItems.length > 0) {
+            const sampleNames = unlinkedItems.slice(0, 3).map(it => `«${it.nombre}»`).join(', ');
+            const more = unlinkedItems.length > 3 ? ` y ${unlinkedItems.length - 3} más` : '';
+            const ok = await confirm({
+                title: 'Productos sin vincular al catálogo',
+                message: `Atención: Hay ${unlinkedItems.length} producto(s) sin código vinculado al inventario (${sampleNames}${more}).\n\nEstos ítems se guardarán como detalle contable de la compra, pero NO generarán entradas en el Kárdex ni aumentarán las existencias de inventario.\n\n¿Desea registrar la compra de todas formas?`,
+                confirmLabel: 'Sí, guardar sin inventario',
+                cancelLabel: 'Revisar y vincular',
+                variant: 'warning'
+            });
+            if (!ok) return;
+        }
 
         const d = fecha ? new Date(fecha) : new Date();
         const docYear = !isNaN(d.getTime()) ? d.getFullYear() : new Date().getFullYear();
@@ -968,6 +978,7 @@ const Purchases = () => {
             period_year: finalPeriodYear, period_month: finalPeriodMonth,
             items: selectedItems.map(it => ({
                 product_id: it.product_id || null,
+                codigo: it.codigo && it.codigo !== '—' ? it.codigo : null,
                 nombre: it.nombre,
                 descripcion: it.nombre,
                 cantidad: it.cantidad,
@@ -1067,8 +1078,8 @@ const Purchases = () => {
     };
 
     const handleExportExcel = () => {
-        if (!purchasesData.data || purchasesData.data.length === 0) {
-            return toast.error('No hay datos para exportar');
+        if (!purchasesData?.data || purchasesData.data.length === 0) {
+            return toast.warning('No hay compras para exportar');
         }
 
         const dataToExport = purchasesData.data.map(p => ({
@@ -1091,10 +1102,7 @@ const Purchases = () => {
             'ESTADO': p.status === 'voided' ? 'ANULADO' : 'ACTIVO'
         }));
 
-        const ws = XLSX.utils.json_to_sheet(dataToExport);
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, 'COMPRAS');
-        XLSX.writeFile(wb, `Reporte_Compras_${new Date().toISOString().split('T')[0]}.xlsx`);
+        exportJsonToExcel(dataToExport, `Reporte_Compras_${new Date().toISOString().split('T')[0]}`, 'COMPRAS');
     };
 
     const handleOpenPdfModal = async () => {
@@ -1898,40 +1906,60 @@ const Purchases = () => {
                             compact={true}
                             renderRow={(c) => (
                                 <tr key={c.id} className="hover:bg-slate-50 border-b border-slate-50 last:border-0 grow">
-                                    <td className="px-5 py-1 font-black text-slate-800 text-[10px] uppercase tracking-tighter">
-                                        <div>{c.numero_documento}</div>
-                                        {c.numero_control && (
-                                            <div className="text-[8px] font-mono text-indigo-600 font-bold tracking-tight">CTRL: {c.numero_control}</div>
-                                        )}
-                                        {c.num_quedan && (
-                                            <div className="text-[8px] font-mono text-amber-600 font-bold tracking-tight">QD: {c.num_quedan}</div>
-                                        )}
-                                        {c.sello_recepcion && (
-                                            <div className="text-[7px] font-mono text-slate-400 truncate max-w-[140px]" title={c.sello_recepcion}>
-                                                SELLO: {c.sello_recepcion.substring(0, 16)}...
-                                            </div>
-                                        )}
-                                        {c.documento_afectado && <div className="text-[7px] text-rose-500 flex items-center gap-1 mt-0.5">REF: {c.documento_afectado}</div>}
-                                    </td>
-                                    <td className="px-5 py-1">
-                                        <div className="flex flex-col">
-                                            <span className="text-[8px] font-black text-indigo-500 bg-indigo-50 px-2 py-0.5 rounded uppercase w-fit">
-                                                {c.tipo_documento_nombre}
-                                            </span>
-                                            {c.condicion_operacion_nombre && (
-                                                <span className="text-[7px] font-bold text-slate-400 uppercase mt-0.5">
-                                                    {c.condicion_operacion_nombre}{String(c.condicion_operacion_id) === '2' && c.dias_credito ? ` (${c.dias_credito}d)` : ''}
+                                    <td className="px-5 py-1.5 font-black text-slate-800 text-[10px] uppercase tracking-tighter whitespace-nowrap">
+                                        <div 
+                                            className="whitespace-nowrap font-mono text-[9.5px] leading-tight flex items-center gap-1.5"
+                                            title={[
+                                                `Doc: ${c.numero_documento}`,
+                                                c.numero_control ? `Control: ${c.numero_control}` : null,
+                                                c.sello_recepcion ? `Sello: ${c.sello_recepcion}` : null,
+                                                c.num_quedan ? `Quedan: ${c.num_quedan}` : null
+                                            ].filter(Boolean).join('\n')}
+                                        >
+                                            <span>{c.numero_documento}</span>
+                                            {c.documento_afectado && (
+                                                <span className="text-[7px] font-sans font-bold text-rose-500 bg-rose-50 px-1 py-0.5 rounded" title={`Doc afectado: ${c.documento_afectado}`}>
+                                                    REF: {c.documento_afectado}
                                                 </span>
                                             )}
                                         </div>
+                                        {c.numero_control && (
+                                            <div className="text-[8px] font-mono text-indigo-600 font-bold tracking-tight whitespace-nowrap mt-0.5">
+                                                CTRL: {c.numero_control}
+                                            </div>
+                                        )}
                                     </td>
-                                    <td className="px-5 py-1 text-[9px] font-bold text-slate-400">{formatDate(c.fecha)}</td>
-                                    <td className="px-5 py-1 text-[10px] font-bold text-slate-600 uppercase">{c.provider_nombre}</td>
-                                    <td className="px-5 py-1 font-black text-slate-900 text-[10px]"><Money value={c.monto_total} /></td>
-                                    <td className="px-5 py-1">
-                                        <span className={`px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest ${c.status === 'COMPLETADO' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>{c.status}</span>
+                                    <td className="px-5 py-1.5 whitespace-nowrap">
+                                        <div className="flex flex-col items-start">
+                                            <span 
+                                                className="text-[8px] font-black text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded uppercase whitespace-nowrap"
+                                                title={c.tipo_documento_nombre}
+                                            >
+                                                {getShortDocType(c.tipo_documento_nombre, c.tipo_documento_id)}
+                                            </span>
+                                            <div className="flex items-center gap-1.5 mt-0.5 whitespace-nowrap">
+                                                {c.condicion_operacion_nombre && (
+                                                    <span className="text-[7px] font-bold text-slate-400 uppercase">
+                                                        {c.condicion_operacion_nombre}{String(c.condicion_operacion_id) === '2' && c.dias_credito ? ` (${c.dias_credito}d)` : ''}
+                                                    </span>
+                                                )}
+                                                {c.num_quedan && (
+                                                    <span className="text-[7px] font-bold font-mono text-amber-600 bg-amber-50 px-1 rounded" title={`No. Quedan: ${c.num_quedan}`}>
+                                                        QD: {c.num_quedan}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
                                     </td>
-                                    <td className="px-5 py-1 text-right">
+                                    <td className="px-5 py-1.5 text-[9px] font-bold text-slate-400 whitespace-nowrap">{formatDate(c.fecha)}</td>
+                                    <td className="px-5 py-1.5 text-[10px] font-bold text-slate-700 uppercase whitespace-nowrap" title={c.provider_nombre}>
+                                        {c.provider_nombre}
+                                    </td>
+                                    <td className="px-5 py-1.5 font-black text-slate-900 text-[10px] whitespace-nowrap"><Money value={c.monto_total} /></td>
+                                    <td className="px-5 py-1.5 whitespace-nowrap">
+                                        <span className={`px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest whitespace-nowrap ${c.status === 'COMPLETADO' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>{c.status}</span>
+                                    </td>
+                                    <td className="px-5 py-1.5 text-right whitespace-nowrap">
                                         <div className="flex justify-end gap-1">
                                             <button 
                                                 onClick={() => setViewingPurchase(c)} 
@@ -1981,153 +2009,13 @@ const Purchases = () => {
                 </div>
             )}
 
-            {viewingPurchase && (
-                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-white rounded-[2rem] w-full max-w-2xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col border border-slate-200 animate-in zoom-in-95 duration-200">
-                         <div className="p-5 border-b border-slate-100 flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                                <div className="p-2 bg-indigo-50 rounded-xl text-indigo-600">
-                                    <Eye size={16} />
-                                </div>
-                                <div>
-                                    <h3 className="font-black text-slate-900 uppercase text-[10px] tracking-widest leading-none">Detalle de Compra</h3>
-                                    <p className="text-[9px] font-bold text-slate-400 uppercase mt-1">Ref: {viewingPurchase.numero_documento}</p>
-                                </div>
-                            </div>
-                            <button onClick={() => setViewingPurchase(null)} className="p-2 hover:bg-slate-100 rounded-xl transition-colors"><X size={16} /></button>
-                         </div>
-
-                         <div className="p-6 overflow-y-auto space-y-6">
-                            {loadingDetail ? (
-                                <div className="py-20 text-center space-y-3">
-                                    <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto" />
-                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Cargando información detallada...</p>
-                                </div>
-                            ) : purchaseDetail && (
-                                <>
-                                    <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
-                                        <div className="space-y-1">
-                                            <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest block">Proveedor</label>
-                                            <p className="text-[11px] font-black text-slate-800 uppercase leading-tight">{purchaseDetail.provider_nombre}</p>
-                                        </div>
-                                        <div className="space-y-1">
-                                            <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest block">Sucursal</label>
-                                            <p className="text-[11px] font-bold text-slate-600 uppercase leading-tight">{purchaseDetail.branch_nombre}</p>
-                                        </div>
-                                        <div className="space-y-1">
-                                            <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest block">Fecha</label>
-                                            <p className="text-[11px] font-bold text-slate-600 uppercase leading-tight">{formatDate(purchaseDetail.fecha) || new Date(purchaseDetail.fecha).toLocaleDateString()}</p>
-                                        </div>
-                                        <div className="space-y-1">
-                                            <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest block">Tipo Documento</label>
-                                            <p className="text-[11px] font-bold text-indigo-600 uppercase leading-tight">{purchaseDetail.tipo_documento_nombre || viewingPurchase.tipo_documento_nombre || '---'}</p>
-                                        </div>
-                                        <div className="space-y-1">
-                                            <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest block">Documento / Cód. Generación</label>
-                                            <p className="text-[11px] font-bold text-slate-800 uppercase leading-tight font-mono">{purchaseDetail.numero_documento}</p>
-                                        </div>
-                                        <div className="space-y-1">
-                                            <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest block">Número de Control</label>
-                                            <p className="text-[11px] font-bold text-slate-800 uppercase leading-tight font-mono">{purchaseDetail.numero_control || '---'}</p>
-                                        </div>
-                                        <div className="space-y-1">
-                                            <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest block">Condición</label>
-                                            <p className="text-[11px] font-bold text-slate-800 uppercase leading-tight">
-                                                {purchaseDetail.condicion_operacion_nombre || (String(purchaseDetail.condicion_operacion_id) === '2' ? 'Crédito' : String(purchaseDetail.condicion_operacion_id) === '1' ? 'Contado' : '---')}
-                                                {String(purchaseDetail.condicion_operacion_id) === '2' && Number(purchaseDetail.dias_credito) > 0 && (
-                                                    <span className="text-slate-500 font-semibold ml-1">({purchaseDetail.dias_credito} días)</span>
-                                                )}
-                                            </p>
-                                            {String(purchaseDetail.condicion_operacion_id) === '2' && purchaseDetail.fecha_vencimiento && (
-                                                <p className="text-[8px] font-bold text-amber-600 uppercase mt-0.5">
-                                                    Vence: {formatDate(purchaseDetail.fecha_vencimiento)}
-                                                </p>
-                                            )}
-                                        </div>
-                                        {purchaseDetail.num_quedan && (
-                                            <div className="space-y-1">
-                                                <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest block">N° Quedan</label>
-                                                <p className="text-[11px] font-bold text-slate-800 uppercase leading-tight font-mono">
-                                                    {purchaseDetail.num_quedan}
-                                                </p>
-                                            </div>
-                                        )}
-                                        <div className="space-y-1">
-                                            <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest block">Estado</label>
-                                            <span className={`text-[8px] font-black px-2 py-0.5 rounded-full uppercase ${purchaseDetail.status === 'ANULADO' ? 'bg-rose-50 text-rose-500' : 'bg-emerald-50 text-emerald-600'}`}>
-                                                {purchaseDetail.status}
-                                            </span>
-                                        </div>
-                                        {purchaseDetail.observaciones && (
-                                            <div className="space-y-1 col-span-2 md:col-span-3">
-                                                <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest block">Observaciones</label>
-                                                <p className="text-[11px] font-medium text-slate-600 leading-tight bg-slate-50 p-2 rounded-xl border border-slate-200/60">
-                                                    {purchaseDetail.observaciones}
-                                                </p>
-                                            </div>
-                                        )}
-                                        <div className="space-y-1 col-span-2 md:col-span-3">
-                                            <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest block">Sello de Recepción (MH)</label>
-                                            <p className="text-[11px] font-mono text-slate-700 uppercase leading-tight break-all bg-slate-50 p-2 rounded-xl border border-slate-200/60">
-                                                {purchaseDetail.sello_recepcion || 'NO REGISTRADO'}
-                                            </p>
-                                        </div>
-                                    </div>
-
-                                    <div className="mt-8">
-                                        <label className="text-[9px] font-black text-slate-900 uppercase tracking-[0.2em] mb-4 block border-b border-slate-100 pb-2">Productos Comprados</label>
-                                        <div className="overflow-x-auto rounded-2xl border border-slate-100">
-                                            <table className="w-full text-left">
-                                                <thead className="bg-slate-50 border-b border-slate-100 text-[8px] font-black text-slate-400 uppercase tracking-widest">
-                                                    <tr>
-                                                        <th className="px-4 py-2">Producto</th>
-                                                        <th className="px-4 py-2 text-right">Cant</th>
-                                                        <th className="px-4 py-2 text-right">Precio U.</th>
-                                                        <th className="px-4 py-2 text-right">Total</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody className="divide-y divide-slate-50">
-                                                    {purchaseDetail.items?.map((item, idx) => (
-                                                        <tr key={idx} className="text-[10px] font-bold text-slate-600">
-                                                            <td className="px-4 py-2 uppercase italic">{item.nombre}</td>
-                                                            <td className="px-4 py-2 text-right font-black text-slate-800">{parseFloat(item.cantidad).toFixed(2)}</td>
-                                                            <td className="px-4 py-2 text-right text-slate-400"><Money value={item.precio_unitario} /></td>
-                                                            <td className="px-4 py-2 text-right font-black text-indigo-600"><Money value={item.total} /></td>
-                                                        </tr>
-                                                    ))}
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    </div>
-
-                                    <div className="bg-slate-50 p-6 rounded-3xl flex justify-between items-center mt-6">
-                                        <div className="space-y-1">
-                                            <p className="text-[10px] font-black text-slate-800 uppercase tracking-widest">Monto Total Invertido</p>
-                                            <div className="flex flex-wrap gap-3 text-[9px] font-bold text-slate-400 uppercase">
-                                                <span>Gravada: <Money value={purchaseDetail.total_gravada} /></span>
-                                                <span>IVA: <Money value={purchaseDetail.iva} /></span>
-                                                {parseFloat(purchaseDetail.fovial || 0) > 0 && (
-                                                    <span className="text-amber-600">FOVIAL: <Money value={purchaseDetail.fovial} /></span>
-                                                )}
-                                                {parseFloat(purchaseDetail.cotrans || 0) > 0 && (
-                                                    <span className="text-cyan-600">COTRANS: <Money value={purchaseDetail.cotrans} /></span>
-                                                )}
-                                                {parseFloat(purchaseDetail.retencion || 0) > 0 && (
-                                                    <span className="text-rose-500">Retención: -<Money value={purchaseDetail.retencion} /></span>
-                                                )}
-                                                {parseFloat(purchaseDetail.percepcion || 0) > 0 && (
-                                                    <span className="text-emerald-600">Percepción: +<Money value={purchaseDetail.percepcion} /></span>
-                                                )}
-                                            </div>
-                                        </div>
-                                        <p className="text-2xl font-black tracking-tighter text-indigo-600"><Money value={purchaseDetail.monto_total} /></p>
-                                    </div>
-                                </>
-                            )}
-                         </div>
-                    </div>
-                </div>
-            )}
+            <PurchaseDetailModal
+                isOpen={Boolean(viewingPurchase)}
+                onClose={() => setViewingPurchase(null)}
+                purchase={viewingPurchase}
+                detail={purchaseDetail}
+                loading={loadingDetail}
+            />
             <ProviderModal 
                 isOpen={isProviderModalOpen}
                 onClose={() => {
@@ -2142,17 +2030,12 @@ const Purchases = () => {
                     }
                 }}
             />
-            <ProductSelectionModal 
+            <ProductSearchModal 
                 isOpen={isProductModalOpen}
                 onClose={() => setIsProductModalOpen(false)}
-                productSearch={productSearch}
-                setProductSearch={setProductSearch}
-                products={filteredProducts}
-                handleSelect={handleSelectProduct}
-                isLoading={isLoadingModalProducts}
-                modalData={modalProductsData}
-                modalPage={modalPage}
-                setModalPage={setModalPage}
+                onSelectProduct={handleSelectProduct}
+                branchId={branchId}
+                mode="purchase"
             />
 
             {/* Modal de Visualización Interactiva de Reporte PDF */}
@@ -2184,292 +2067,6 @@ const Purchases = () => {
                 recognizeProducts={recognizeProducts}
                 onToggleRecognizeProducts={setRecognizeProducts}
             />
-        </div>
-    );
-};
-
-const ProductSelectionModal = ({ isOpen, onClose, productSearch, setProductSearch, products, handleSelect, isLoading, modalData, modalPage, setModalPage }) => {
-    if (!isOpen) return null;
-    return (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-3xl w-full max-w-4xl max-h-[90vh] overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col">
-                <div className="p-6 border-b border-slate-100 flex items-center justify-between">
-                    <div>
-                        <h3 className="text-xl font-bold text-slate-900 border-none">Seleccionar Producto</h3>
-                        <p className="text-xs text-slate-500 font-medium uppercase tracking-widest mt-1">Buscador rápido de ítems para compra</p>
-                    </div>
-                    <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-xl transition-colors">
-                        <X size={20} className="text-slate-400" />
-                    </button>
-                </div>
-                
-                <div className="p-6 bg-slate-50/50 border-b border-slate-100">
-                    <div className="relative">
-                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
-                        <input 
-                            autoFocus
-                            type="text"
-                            placeholder="Buscar por nombre o código..."
-                            value={productSearch}
-                            onChange={(e) => setProductSearch(e.target.value)}
-                            className="w-full pl-12 pr-4 py-3 bg-white border border-slate-100 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-500/5 focus:border-indigo-400 transition-all font-medium"
-                        />
-                    </div>
-                </div>
-
-                <div className="flex-1 overflow-y-auto p-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {isLoading ? (
-                            <div className="col-span-full py-12 text-center text-slate-400 text-sm font-medium">Cargando productos...</div>
-                        ) : products.map(p => (
-                            <button 
-                                key={p.id}
-                                onClick={() => handleSelect(p)}
-                                className="flex items-start gap-4 p-4 rounded-2xl border border-slate-100 hover:border-indigo-200 hover:bg-indigo-50/30 transition-all text-left group"
-                            >
-                                <div className="bg-white p-2.5 rounded-xl border border-slate-100 shadow-sm group-hover:shadow-indigo-100 transition-all">
-                                    <Package size={20} className="text-slate-400 group-hover:text-indigo-500" />
-                                </div>
-                                <div>
-                                    <div className="text-sm font-bold text-slate-900 line-clamp-1">{p.nombre}</div>
-                                    <div className="text-xs font-mono font-bold text-indigo-500 mt-1">{p.codigo}</div>
-                                    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] font-black uppercase text-slate-400">
-                                        <span>Stock: <span className="text-slate-900">{p.stock || 0}</span></span>
-                                        {p.costo !== undefined && (
-                                            <span>Últ. Costo: <span className="text-slate-900 font-bold"><Money value={p.costo || 0} /></span></span>
-                                        )}
-                                    </div>
-                                    {p.provider_name && (
-                                        <div className="text-[10px] text-slate-400 font-medium mt-1 truncate">
-                                            Prov: <span className="text-slate-600 font-bold">{p.provider_name}</span>
-                                        </div>
-                                    )}
-                                </div>
-                            </button>
-                        ))}
-                        {!isLoading && products.length === 0 && (
-                            <div className="col-span-full py-12 text-center text-slate-400">
-                                <Package size={40} className="mx-auto opacity-20 mb-2" />
-                                <p className="font-bold uppercase tracking-widest text-xs italic">Cargue productos en el inventario para que aparezcan aquí</p>
-                            </div>
-                        )}
-                    </div>
-                </div>
-                {modalData?.totalPages > 1 && (
-                    <div className="border-t border-slate-100 p-4">
-                        <Pagination
-                            currentPage={modalPage}
-                            totalPages={modalData.totalPages}
-                            totalItems={modalData.total}
-                            onPageChange={setModalPage}
-                            itemsOnPage={products.length}
-                            isLoading={isLoading}
-                        />
-                    </div>
-                )}
-            </div>
-        </div>
-    );
-};
-
-const QrScanModal = ({ 
-    isOpen, 
-    onClose, 
-    sessionId, 
-    lanIp, 
-    isLoading, 
-    error, 
-    status, 
-    onRetry,
-    recognizeProducts,
-    onToggleRecognizeProducts
-}) => {
-    const [copied, setCopied] = useState(false);
-    if (!isOpen) return null;
-
-    const queryParam = recognizeProducts ? '?recognize_items=1' : '';
-    let qrUrl = '';
-    if (sessionId) {
-        if ((window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') && lanIp) {
-            qrUrl = `${window.location.protocol}//${lanIp}:${window.location.port}/scan-dte/${sessionId}${queryParam}`;
-        } else {
-            qrUrl = `${window.location.origin}/scan-dte/${sessionId}${queryParam}`;
-        }
-    }
-
-    const handleCopy = () => {
-        if (!qrUrl) return;
-        navigator.clipboard.writeText(qrUrl);
-        setCopied(true);
-        toast.success('Enlace copiado al portapapeles');
-        setTimeout(() => setCopied(false), 2500);
-    };
-
-    return (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
-            <div className="bg-white rounded-3xl w-full max-w-md overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col border border-slate-100">
-                {/* Header */}
-                <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-linear-to-r from-indigo-50/50 via-white to-violet-50/50">
-                    <div className="flex items-center gap-3">
-                        <div className="p-2 bg-indigo-600 text-white rounded-xl shadow-xs">
-                            <Smartphone size={20} />
-                        </div>
-                        <div>
-                            <h3 className="text-base font-black text-slate-900 tracking-tight leading-none uppercase">
-                                Escanear con Teléfono
-                            </h3>
-                            <p className="text-[11px] text-slate-500 font-medium mt-1">
-                                Usa la cámara de tu smartphone para capturar el DTE
-                            </p>
-                        </div>
-                    </div>
-                    <button
-                        onClick={onClose}
-                        className="p-1.5 hover:bg-slate-100 text-slate-400 hover:text-slate-600 rounded-xl transition-colors cursor-pointer"
-                    >
-                        <X size={18} />
-                    </button>
-                </div>
-
-                {/* Content */}
-                <div className="p-6 flex flex-col items-center text-center space-y-4">
-                    {isLoading ? (
-                        <div className="py-12 flex flex-col items-center gap-3">
-                            <Loader2 size={36} className="animate-spin text-indigo-600" />
-                            <p className="text-xs font-bold uppercase tracking-wider text-slate-600">
-                                Generando sesión segura de escaneo...
-                            </p>
-                        </div>
-                    ) : error ? (
-                        <div className="py-8 flex flex-col items-center gap-3">
-                            <div className="p-3 bg-rose-50 text-rose-600 rounded-2xl">
-                                <AlertCircle size={32} />
-                            </div>
-                            <p className="text-sm font-bold text-rose-700">{error}</p>
-                            <button
-                                onClick={onRetry}
-                                className="mt-2 inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold uppercase tracking-wider hover:bg-indigo-700 transition-all cursor-pointer shadow-sm"
-                            >
-                                <RefreshCw size={14} /> Reintentar
-                            </button>
-                        </div>
-                    ) : (
-                        <>
-                            {/* Toggle Reconocimiento de Productos */}
-                            <div className="w-full p-3 rounded-2xl bg-slate-50 border border-slate-200/80 flex items-center justify-between gap-3 text-left">
-                                <div className="space-y-0.5">
-                                    <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800">
-                                        <Package size={14} className="text-indigo-600" />
-                                        <span>Reconocer productos con IA</span>
-                                    </div>
-                                    <p className="text-[10px] text-slate-500 leading-tight">
-                                        Extrae automáticamente las líneas de productos, cantidades y precios
-                                    </p>
-                                </div>
-                                <label className="relative inline-flex items-center cursor-pointer shrink-0">
-                                    <input 
-                                        type="checkbox" 
-                                        checked={recognizeProducts} 
-                                        onChange={(e) => onToggleRecognizeProducts?.(e.target.checked)} 
-                                        className="sr-only peer"
-                                    />
-                                    <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
-                                </label>
-                            </div>
-
-                            {/* QR Code Container */}
-                            <div className="relative p-4 bg-white rounded-2xl border-2 border-indigo-100 shadow-inner flex items-center justify-center">
-                                {sessionId && (
-                                    <QRCodeSVG
-                                        value={qrUrl}
-                                        size={210}
-                                        level="M"
-                                        includeMargin={false}
-                                        className="rounded-lg"
-                                    />
-                                )}
-
-                                {status === 'processing' && (
-                                    <div className="absolute inset-0 bg-white/90 backdrop-blur-xs rounded-2xl flex flex-col items-center justify-center p-4 gap-2 animate-in fade-in">
-                                        <Loader2 size={36} className="animate-spin text-violet-600" />
-                                        <span className="text-xs font-black uppercase tracking-wider text-violet-700">
-                                            Analizando DTE con IA...
-                                        </span>
-                                        <span className="text-[11px] text-slate-500 font-medium text-center">
-                                            La foto fue recibida del teléfono. Extrayendo datos...
-                                        </span>
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Status Indicator */}
-                            {status === 'pending' && (
-                                <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200/70 rounded-full text-xs font-bold">
-                                    <span className="relative flex h-2 w-2">
-                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                                        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                                    </span>
-                                    <span>Esperando captura desde el teléfono...</span>
-                                </div>
-                            )}
-
-                            {status === 'processing' && (
-                                <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-violet-50 text-violet-700 border border-violet-200/70 rounded-full text-xs font-bold">
-                                    <Loader2 size={13} className="animate-spin text-violet-600" />
-                                    <span>Procesando imagen con IA...</span>
-                                </div>
-                            )}
-
-                            {/* Steps / Instructions */}
-                            <div className="w-full bg-slate-50 rounded-2xl p-3.5 text-left border border-slate-100 space-y-2">
-                                <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">
-                                    Instrucciones rápidas:
-                                </p>
-                                <ol className="text-[12px] text-slate-600 space-y-1.5 font-medium">
-                                    <li className="flex items-start gap-2">
-                                        <span className="w-4 h-4 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-black flex items-center justify-center shrink-0 mt-0.5">1</span>
-                                        <span>Abre la app de cámara de tu teléfono y enfoca el código QR.</span>
-                                    </li>
-                                    <li className="flex items-start gap-2">
-                                        <span className="w-4 h-4 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-black flex items-center justify-center shrink-0 mt-0.5">2</span>
-                                        <span>Toca el enlace para abrir la pantalla de escaneo móvil.</span>
-                                    </li>
-                                    <li className="flex items-start gap-2">
-                                        <span className="w-4 h-4 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-black flex items-center justify-center shrink-0 mt-0.5">3</span>
-                                        <span>Toma la foto del DTE/factura física y presiona procesar.</span>
-                                    </li>
-                                    <li className="flex items-start gap-2">
-                                        <span className="w-4 h-4 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-black flex items-center justify-center shrink-0 mt-0.5">✓</span>
-                                        <span>Los datos se completarán aquí automáticamente en tiempo real.</span>
-                                    </li>
-                                </ol>
-                            </div>
-                        </>
-                    )}
-                </div>
-
-                {/* Footer */}
-                <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-2">
-                    {sessionId && !error && (
-                        <button
-                            type="button"
-                            onClick={handleCopy}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-2xs"
-                            title="Copiar enlace directo"
-                        >
-                            {copied ? <CheckCircle2 size={13} className="text-emerald-600" /> : <Copy size={13} />}
-                            <span>{copied ? 'Copiado' : 'Copiar enlace'}</span>
-                        </button>
-                    )}
-                    <button
-                        type="button"
-                        onClick={onClose}
-                        className="ml-auto px-4 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer"
-                    >
-                        Cerrar
-                    </button>
-                </div>
-            </div>
         </div>
     );
 };

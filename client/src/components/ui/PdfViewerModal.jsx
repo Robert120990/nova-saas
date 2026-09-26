@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState } from 'react';
-import { FileText, Download, Printer, ExternalLink, X, Loader2, RefreshCw } from 'lucide-react';
+import { FileText, Download, Printer, ExternalLink, X, Loader2, RefreshCw, Mail } from 'lucide-react';
 import { extractPdfPageCount } from '../../utils/pdfPagination';
 import PdfPageNavigator from './PdfPageNavigator';
 
@@ -31,7 +31,10 @@ const PdfViewerModal = ({
     error = null,
     onRetry = null,
     fileName = 'reporte.pdf',
-    footerNote = 'Formato contable estándar oficial • Presentación Carta sin firmas'
+    footerNote = 'Formato contable estándar oficial • Presentación Carta sin firmas',
+    onSendEmail = null,
+    isSendingEmail = false,
+    sendEmailLabel = 'Enviar por Correo'
 }) => {
     const iframeRef = useRef(null);
     const [currentPage, setCurrentPage] = useState(1);
@@ -180,6 +183,18 @@ const PdfViewerModal = ({
                                     <Printer size={14} />
                                     <span className="hidden md:inline">Imprimir</span>
                                 </button>
+                                {onSendEmail && (
+                                    <button
+                                        type="button"
+                                        onClick={onSendEmail}
+                                        disabled={isSendingEmail}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl font-bold text-xs transition-colors border border-indigo-200 shadow-xs cursor-pointer disabled:opacity-50"
+                                        title="Enviar documento por correo electrónico"
+                                    >
+                                        {isSendingEmail ? <Loader2 size={14} className="animate-spin" /> : <Mail size={14} />}
+                                        <span className="hidden md:inline">{isSendingEmail ? 'Enviando...' : sendEmailLabel}</span>
+                                    </button>
+                                )}
                                 <button
                                     type="button"
                                     onClick={() => window.open(pdfUrl, '_blank')}

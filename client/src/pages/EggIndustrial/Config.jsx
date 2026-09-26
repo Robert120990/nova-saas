@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { toast } from 'sonner';
 import axios from 'axios';
-import SearchableSelect from '../../components/ui/SearchableSelect';
+import ProviderLotConfigModal from '../../components/egg/ProviderLotConfigModal';
 import Money from '../../components/ui/Money';
 import {
     DEFAULT_INDUSTRIAL_MEASUREMENT_UNIT,
@@ -174,7 +175,25 @@ const EggConfig = () => {
     const companyId = user?.company_id || 1;
 
     // Tabs
-    const [activeTab, setActiveTab] = useState('costs'); // 'costs', 'lot-prefixes', 'products'
+    const [searchParams, setSearchParams] = useSearchParams();
+    const tabFromUrl = searchParams.get('tab');
+    const [activeTab, setActiveTab] = useState(
+        tabFromUrl && ['costs', 'lot-prefixes', 'products', 'code-mappings'].includes(tabFromUrl)
+            ? tabFromUrl
+            : 'costs'
+    );
+
+    useEffect(() => {
+        const tab = searchParams.get('tab');
+        if (tab && ['costs', 'lot-prefixes', 'products', 'code-mappings'].includes(tab)) {
+            setActiveTab(tab);
+        }
+    }, [searchParams]);
+
+    const handleTabChange = (newTab) => {
+        setActiveTab(newTab);
+        setSearchParams({ tab: newTab });
+    };
 
     // Lists
     const [config, setConfig] = useState([]);
@@ -203,12 +222,13 @@ const EggConfig = () => {
     // Provider Lot Config Modal
     const [isLotConfigModalOpen, setIsLotConfigModalOpen] = useState(false);
     const [editingLotConfig, setEditingLotConfig] = useState(null);
-    const [lotConfigForm, setLotConfigForm] = useState({
-        provider_id: '',
-        lot_prefix: '',
-        suffix_format: 'correlativo',
-        notes: ''
-    });
+
+    const loadProvidersOptions = async (search, page) => {
+        const { data } = await axios.get('/api/providers', {
+            params: { search: search || undefined, page, limit: 50 }
+        });
+        return data;
+    };
 
     // Mapeo de Códigos de Producto (Página 5 del documento)
     const [codeMappings, setCodeMappings] = useState([]);
@@ -282,7 +302,7 @@ const EggConfig = () => {
                 axios.get('/api/egg-industrial/product-config'),
                 axios.get('/api/egg-industrial/cost-concepts'),
                 axios.get('/api/egg-industrial/provider-lot-configs'),
-                axios.get('/api/providers'),
+                axios.get('/api/providers', { params: { limit: 2000 } }),
                 axios.get('/api/egg-industrial/code-mappings'),
                 axios.get('/api/products?limit=500&status=activo')
             ]);
@@ -900,45 +920,16 @@ const EggConfig = () => {
     // Provider Lot Configuration Handlers
     // -------------------------------------------------------------
     const handleOpenLotConfigModal = (configItem = null) => {
-        if (configItem) {
-            setEditingLotConfig(configItem);
-            setLotConfigForm({
-                provider_id: configItem.provider_id,
-                lot_prefix: configItem.lot_prefix || '',
-                suffix_format: configItem.suffix_format || 'correlativo',
-                notes: configItem.notes || ''
-            });
-        } else {
-            setEditingLotConfig(null);
-            setLotConfigForm({
-                provider_id: '',
-                lot_prefix: '',
-                suffix_format: 'correlativo',
-                notes: ''
-            });
-        }
+        setEditingLotConfig(configItem);
         setIsLotConfigModalOpen(true);
     };
 
-    const handleSaveLotConfig = async (e) => {
-        e.preventDefault();
-        if (!lotConfigForm.provider_id) return toast.error('Debe seleccionar un proveedor.');
-        if (!lotConfigForm.lot_prefix.trim()) return toast.error('Debe ingresar un prefijo de lote.');
-
+    const handleLotConfigSaved = async () => {
         try {
-            await axios.post('/api/egg-industrial/provider-lot-configs', {
-                provider_id: lotConfigForm.provider_id,
-                lot_prefix: lotConfigForm.lot_prefix.trim().toUpperCase(),
-                suffix_format: lotConfigForm.suffix_format,
-                notes: lotConfigForm.notes
-            });
-            toast.success('Parametrización de lote para proveedor guardada.');
-            setIsLotConfigModalOpen(false);
             const res = await axios.get('/api/egg-industrial/provider-lot-configs');
             setProviderLotConfigs(Array.isArray(res.data) ? res.data : []);
         } catch (error) {
-            console.error('Error saving lot config:', error);
-            toast.error(error.response?.data?.message || 'Error al guardar parametrización de lote.');
+            console.error('Error refreshing lot configs:', error);
         }
     };
 
@@ -970,8 +961,8 @@ const EggConfig = () => {
                 {/* Navigation Pills */}
                 <div className="flex flex-wrap gap-1.5 p-1 bg-slate-100/90 rounded-xl border border-slate-200">
                     <button
-                        onClick={() => setActiveTab('costs')}
-                        className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${activeTab === 'costs'
+                        onClick={() => handleTabChange('costs')}
+                        className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${activeTab === 'costs'
                             ? 'bg-white text-indigo-700 shadow-xs border border-slate-200/80'
                             : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
                             }`}
@@ -980,8 +971,8 @@ const EggConfig = () => {
                         Costos y Planillas
                     </button>
                     <button
-                        onClick={() => setActiveTab('lot-prefixes')}
-                        className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${activeTab === 'lot-prefixes'
+                        onClick={() => handleTabChange('lot-prefixes')}
+                        className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${activeTab === 'lot-prefixes'
                             ? 'bg-white text-indigo-700 shadow-xs border border-slate-200/80'
                             : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
                             }`}
@@ -990,8 +981,8 @@ const EggConfig = () => {
                         Prefijos de Lote por Proveedor
                     </button>
                     <button
-                        onClick={() => setActiveTab('products')}
-                        className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${activeTab === 'products'
+                        onClick={() => handleTabChange('products')}
+                        className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${activeTab === 'products'
                             ? 'bg-white text-indigo-700 shadow-xs border border-slate-200/80'
                             : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
                             }`}
@@ -1000,8 +991,8 @@ const EggConfig = () => {
                         Rendimientos de Producto
                     </button>
                     <button
-                        onClick={() => setActiveTab('code-mappings')}
-                        className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${activeTab === 'code-mappings'
+                        onClick={() => handleTabChange('code-mappings')}
+                        className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${activeTab === 'code-mappings'
                             ? 'bg-white text-indigo-700 shadow-xs border border-slate-200/80'
                             : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
                             }`}
@@ -1211,6 +1202,8 @@ const EggConfig = () => {
                                     <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase tracking-wider text-[10px]">
                                         <th className="px-4 py-3">Proveedor</th>
                                         <th className="px-4 py-3">Prefijo Configurado</th>
+                                        <th className="px-4 py-3">Taras Base (Por Tarima)</th>
+                                        <th className="px-4 py-3">Empaque Habitual</th>
                                         <th className="px-4 py-3">Último Lote Registrado</th>
                                         <th className="px-4 py-3">Formato de Sufijo</th>
                                         <th className="px-4 py-3">Notas / Identificación Granja</th>
@@ -1218,36 +1211,72 @@ const EggConfig = () => {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
-                                    {providerLotConfigs.map(item => (
-                                        <tr key={item.id} className="hover:bg-slate-50/75 transition-colors">
-                                            <td className="px-4 py-3">
-                                                <div className="flex flex-col">
-                                                    <span className="font-bold text-slate-900 text-xs">{item.provider_name || 'Proveedor sin nombre'}</span>
-                                                    {item.provider_nrc && (
-                                                        <span className="text-[10px] text-slate-400 font-medium">NRC: {item.provider_nrc}</span>
-                                                    )}
-                                                </div>
-                                            </td>
-                                            <td className="px-4 py-3">
-                                                <span className="inline-flex items-center px-2.5 py-1 rounded-md bg-indigo-50 border border-indigo-200 text-indigo-700 font-mono font-bold text-xs">
-                                                    {item.lot_prefix}
-                                                </span>
-                                            </td>
-                                            <td className="px-4 py-3">
-                                                {item.last_used_lot ? (
-                                                    <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200 text-slate-800 font-mono text-[11px] font-semibold">
-                                                        {item.last_used_lot}
+                                    {providerLotConfigs.map(item => {
+                                        const baseB = item.base_boxes_per_tarima || 24;
+                                        const tarimaTare = parseFloat(item.tare_tarima_lbs !== undefined ? item.tare_tarima_lbs : 0);
+                                        const sepTare = parseFloat(item.tare_separador_lbs !== undefined ? item.tare_separador_lbs : 48);
+                                        const boxTare = parseFloat(item.tare_caja_lbs !== undefined ? item.tare_caja_lbs : 30);
+                                        const hasBox = item.default_has_caja !== undefined ? Boolean(item.default_has_caja) : true;
+                                        const totalTare = tarimaTare + sepTare + (hasBox ? boxTare : 0);
+
+                                        return (
+                                            <tr key={item.id} className="hover:bg-slate-50/75 transition-colors">
+                                                <td className="px-4 py-3">
+                                                    <div className="flex flex-col">
+                                                        <span className="font-bold text-slate-900 text-xs">{item.provider_name || 'Proveedor sin nombre'}</span>
+                                                        {item.provider_nrc && (
+                                                            <span className="text-[10px] text-slate-400 font-medium">NRC: {item.provider_nrc}</span>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                                <td className="px-4 py-3">
+                                                    <span className="inline-flex items-center px-2.5 py-1 rounded-md bg-indigo-50 border border-indigo-200 text-indigo-700 font-mono font-bold text-xs">
+                                                        {item.lot_prefix}
                                                     </span>
-                                                ) : (
-                                                    <span className="text-slate-400 italic text-[11px]">Sin lotes previos</span>
-                                                )}
-                                            </td>
+                                                </td>
+                                                <td className="px-4 py-3">
+                                                    <div className="flex flex-col gap-0.5 text-[11px]">
+                                                        <div className="flex items-center gap-1.5 font-bold text-slate-800">
+                                                            <span className="font-black text-indigo-700">{totalTare.toFixed(1)} lb</span>
+                                                            <span className="text-[10px] text-slate-400">({baseB} cjs)</span>
+                                                        </div>
+                                                        {tarimaTare > 0 && (
+                                                            <div className="text-[10px] text-slate-500">
+                                                                Tarima: <span className="font-semibold text-slate-700">{tarimaTare.toFixed(1)} lb</span>
+                                                            </div>
+                                                        )}
+                                                        <div className="text-[10px] text-slate-500">
+                                                            Sep: <span className="font-semibold text-slate-700">{sepTare.toFixed(1)} lb</span> ({ (sepTare / baseB).toFixed(2) }/cj)
+                                                        </div>
+                                                        <div className="text-[10px] text-slate-500">
+                                                            Caja: <span className="font-semibold text-slate-700">{boxTare.toFixed(1)} lb</span> ({ (boxTare / baseB).toFixed(2) }/cj)
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                                <td className="px-4 py-3">
+                                                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                                        hasBox
+                                                            ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                                                            : 'bg-amber-50 text-amber-700 border border-amber-200'
+                                                    }`}>
+                                                        {hasBox ? 'Con Cajas / Jabas' : 'A Granel (Solo Separador)'}
+                                                    </span>
+                                                </td>
+                                                <td className="px-4 py-3">
+                                                    {item.last_used_lot ? (
+                                                        <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200 text-slate-800 font-mono text-[11px] font-semibold">
+                                                            {item.last_used_lot}
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-slate-400 italic text-[11px]">Sin lotes previos</span>
+                                                    )}
+                                                </td>
                                             <td className="px-4 py-3 capitalize">
                                                 <span className="text-slate-600 font-medium text-[11px]">
-                                                    {item.suffix_format === 'correlativo' && 'Correlativo numérico (-01, -02)'}
-                                                    {item.suffix_format === 'fecha-juliana' && 'Fecha Juliana (J-DDD)'}
-                                                    {item.suffix_format === 'secuencial' && 'Secuencial continuo'}
-                                                    {!item.suffix_format && 'Correlativo estándar'}
+                                                    {(item.suffix_format === 'correlativo' || item.format_pattern === 'correlativo') && 'Correlativo numérico (-01, -02)'}
+                                                    {(item.suffix_format === 'fecha-juliana' || item.format_pattern === 'fecha-juliana') && 'Fecha Juliana (J-DDD)'}
+                                                    {(item.suffix_format === 'secuencial' || item.format_pattern === 'secuencial') && 'Secuencial continuo'}
+                                                    {!item.suffix_format && !item.format_pattern && 'Correlativo estándar'}
                                                 </span>
                                             </td>
                                             <td className="px-4 py-3 text-slate-500 text-[11px]">
@@ -1272,7 +1301,8 @@ const EggConfig = () => {
                                                 </div>
                                             </td>
                                         </tr>
-                                    ))}
+                                    );
+                                })}
                                 </tbody>
                             </table>
                         </div>
@@ -2551,112 +2581,14 @@ const EggConfig = () => {
             )}
 
             {/* MODAL DE PARAMETRIZACIÓN DE PREFIJO DE LOTE POR PROVEEDOR */}
-            {isLotConfigModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
-                    <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-2xl max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto text-slate-900 space-y-5">
-                        <div className="flex items-center justify-between border-b border-slate-200 pb-4">
-                            <div className="flex items-center gap-2.5">
-                                <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl border border-indigo-100">
-                                    <Tag size={20} />
-                                </div>
-                                <div>
-                                    <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide">
-                                        {editingLotConfig ? 'Editar Parametrización de Lote' : 'Asignar Prefijo de Lote a Proveedor'}
-                                    </h3>
-                                    <p className="text-xs text-slate-500">Reglas de codificación de lotes para recepción de materia prima</p>
-                                </div>
-                            </div>
-                            <button
-                                onClick={() => setIsLotConfigModalOpen(false)}
-                                className="text-slate-400 hover:text-slate-700 p-1 rounded-lg"
-                            >
-                                <XCircle size={20} />
-                            </button>
-                        </div>
-
-                        <form onSubmit={handleSaveLotConfig} className="space-y-4">
-                            <div className="space-y-1">
-                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block">Proveedor Avícola *</label>
-                                <SearchableSelect
-                                    options={providers}
-                                    value={lotConfigForm.provider_id}
-                                    onChange={(e) => setLotConfigForm({ ...lotConfigForm, provider_id: e.target.value })}
-                                    valueKey="id"
-                                    labelKey="nombre"
-                                    placeholder="Seleccionar proveedor de huevo..."
-                                    codeKey="nrc"
-                                    codeLabel="NRC"
-                                />
-                            </div>
-
-                            <div className="space-y-1">
-                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block">
-                                    Prefijo de Lote Habitual *
-                                </label>
-                                <input
-                                    type="text"
-                                    value={lotConfigForm.lot_prefix}
-                                    onChange={(e) => setLotConfigForm({ ...lotConfigForm, lot_prefix: e.target.value.toUpperCase() })}
-                                    placeholder="Ej: HD-25918, GC-CANDY, LOTE-AV"
-                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-mono font-bold uppercase focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                                />
-                                <span className="text-[10px] text-slate-400 block mt-0.5">
-                                    Prefijo asignado por la granja o registrado habitualmente en las remesas de huevo.
-                                </span>
-                            </div>
-
-                            <div className="space-y-1">
-                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block">Formato de Sufijo Correlativo</label>
-                                <select
-                                    value={lotConfigForm.suffix_format}
-                                    onChange={(e) => setLotConfigForm({ ...lotConfigForm, suffix_format: e.target.value })}
-                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                                >
-                                    <option value="correlativo">Correlativo Numérico (-01, -02, -03...)</option>
-                                    <option value="fecha-juliana">Fecha Juliana del Día (J-DDD)</option>
-                                    <option value="secuencial">Secuencial Puro (1, 2, 3...)</option>
-                                </select>
-                            </div>
-
-                            <div className="space-y-1">
-                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block">Notas o Ubicación de Granja</label>
-                                <textarea
-                                    value={lotConfigForm.notes}
-                                    onChange={(e) => setLotConfigForm({ ...lotConfigForm, notes: e.target.value })}
-                                    placeholder="Ej: Galpón principal, granja Sonsonate..."
-                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 h-20"
-                                />
-                            </div>
-
-                            {/* Preview */}
-                            {lotConfigForm.lot_prefix && (
-                                <div className="p-3 bg-indigo-50/70 border border-indigo-200 rounded-xl text-xs text-indigo-900 flex items-center justify-between">
-                                    <span className="font-semibold text-[11px]">Sugerencia de lote en recepción:</span>
-                                    <span className="font-mono font-bold bg-white px-2 py-0.5 rounded border border-indigo-200 text-indigo-700">
-                                        {lotConfigForm.lot_prefix}-01
-                                    </span>
-                                </div>
-                            )}
-
-                            <div className="flex justify-end gap-3 pt-3 border-t border-slate-200">
-                                <button
-                                    type="button"
-                                    onClick={() => setIsLotConfigModalOpen(false)}
-                                    className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all border border-slate-200"
-                                >
-                                    Cancelar
-                                </button>
-                                <button
-                                    type="submit"
-                                    className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm"
-                                >
-                                    Guardar Regla
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            )}
+            <ProviderLotConfigModal
+                isOpen={isLotConfigModalOpen}
+                onClose={() => setIsLotConfigModalOpen(false)}
+                configToEdit={editingLotConfig}
+                providers={providers}
+                loadProvidersOptions={loadProvidersOptions}
+                onSaved={handleLotConfigSaved}
+            />
         </div>
     );
 };

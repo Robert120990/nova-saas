@@ -27,17 +27,25 @@ async function stop(req, res) {
         // Cerrar el período
         const result = await contingencyService.stopContingency(id);
         // Enviar reporte a Hacienda
+        let reportOk = false;
         try {
             const reportResult = await contingencyService.sendContingencyReport(id);
             result.report = reportResult;
+            reportOk = Boolean(reportResult?.success && reportResult?.selloRecepcion);
         } catch (err) {
             console.error('[Contingency] Error enviando reporte:', err.message);
             result.reportError = err.message;
         }
 
-        // Iniciar de inmediato la retransmisión de documentos acumulados
-        const { processContingencyQueue } = require('../jobs/resendContingencyDTE');
-        processContingencyQueue().catch(err => console.error('[ContingencyController] Error disparando retransmisión:', err.message));
+        // Iniciar de inmediato la retransmisión de documentos acumulados vía BullMQ solo si el evento fue confirmado en MH
+        if (reportOk || !result.report) {
+            const { contingencyQueue } = require('../queue');
+            contingencyQueue.enqueueContingencyDocuments(req.company_id).catch(err => {
+                console.error('[ContingencyController] Error encolando documentos en BullMQ:', err.message);
+            });
+        } else {
+            console.warn(`[ContingencyController] Reporte de evento #${id} no confirmado aún por MH (${result.report?.message}). Los documentos se retransmitirán tan pronto el evento sea aceptado.`);
+        }
 
         res.status(200).json(result);
     } catch (error) {
@@ -64,4 +72,25 @@ async function getStatus(req, res) {
     }
 }
 
-module.exports = { start, stop, reportDocument, getStatus };
+async function simulateOutage(req, res) {
+    try {
+        const { enabled } = req.body;
+        const { setSimulatedOutage, isSimulatedOutage } = require('../config/haciendaConfig');
+        await setSimulatedOutage(enabled);
+        res.status(200).json({ success: true, simulatedOutage: isSimulatedOutage() });
+    } catch (error) {
+        res.status(400).json({ success: false, message: error.message });
+    }
+}
+
+async function triggerAutoCloseCheck(req, res) {
+    try {
+        const { checkAndAutoCloseContingencies } = require('../jobs/autoCloseContingency');
+        await checkAndAutoCloseContingencies({ bypassCooldown: req.body?.bypassCooldown !== false });
+        res.status(200).json({ success: true, message: 'Verificación ejecutada' });
+    } catch (error) {
+        res.status(400).json({ success: false, message: error.message });
+    }
+}
+
+module.exports = { start, stop, reportDocument, getStatus, simulateOutage, triggerAutoCloseCheck };

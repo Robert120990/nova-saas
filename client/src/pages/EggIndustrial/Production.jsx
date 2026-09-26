@@ -25,13 +25,27 @@ import {
     Download,
     FileSpreadsheet,
     FileText,
-    CheckCircle2,
-    ChevronRight,
     AlertTriangle,
     FileCheck,
-    Barcode
+    Scale,
+    FlaskConical
 } from 'lucide-react';
 import ProductionTarimaScannerModal from '../../components/egg/ProductionTarimaScannerModal';
+import EggBatchStagesModal from '../../components/egg/EggBatchStagesModal';
+import EggAddTarimasModal from '../../components/egg/EggAddTarimasModal';
+import EggTarimaSearchModal from '../../components/egg/EggTarimaSearchModal';
+import EggRemanenteModal from '../../components/egg/EggRemanenteModal';
+import EggBatchWastesModal from '../../components/egg/EggBatchWastesModal';
+import EggClosePasteurizationModal from '../../components/egg/EggClosePasteurizationModal';
+import { EggQualityFinishedProductModal } from '../../components/egg/quality';
+import { formatDate, formatDateTime } from '../../utils/dateUtils';
+import { getJulianDayInfo } from '../../utils/julianDate';
+
+const getNowDateTimeLocal = () => {
+    const now = new Date();
+    now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+    return now.toISOString().slice(0, 16);
+};
 
 const EggProduction = () => {
     const { user } = useAuth();
@@ -47,6 +61,7 @@ const EggProduction = () => {
     const [scannerModalOpen, setScannerModalOpen] = useState(false);
     const [tarimaPickerModal, setTarimaPickerModal] = useState({ isOpen: false, lot: null, availableTarimas: [] });
     const [tarimaSearchPickerOpen, setTarimaSearchPickerOpen] = useState(false);
+    const [qualityModal, setQualityModal] = useState({ isOpen: false, batch: null });
 
     // Lists
     const [batches, setBatches] = useState([]);
@@ -90,6 +105,8 @@ const EggProduction = () => {
         duration_minutes: '45',
         operator_name: user?.nombre || '',
         validation_status: 'completado',
+        created_at: getNowDateTimeLocal(),
+        batch_id: '',
         notes: ''
     });
 
@@ -123,9 +140,17 @@ const EggProduction = () => {
     const isAdmin = user?.role === 'SuperAdmin' || user?.role === 'Admin' || user?.role_id <= 2;
     const canEditProduction = isAdmin || userPermissions.includes('edit_egg_production');
     const canDeleteProduction = isAdmin || userPermissions.includes('delete_egg_production');
+    const canManageLots = isAdmin || userPermissions.includes('manage_egg_production_lots');
 
     // Modals for Stages, Wastes, Remanentes, Edit & Delete
     const [stagesModal, setStagesModal] = useState({ isOpen: false, batch: null, data: null, loading: false });
+    const [closePasteurizationModal, setClosePasteurizationModal] = useState({
+        isOpen: false,
+        batch: null,
+        pasteurization_lot: '',
+        notes: '',
+        isSubmitting: false
+    });
     const [scannerContext, setScannerContext] = useState('new_batch'); // 'new_batch' | 'add_tarimas'
     const [editingBatch, setEditingBatch] = useState(null);
     const [addTarimasModal, setAddTarimasModal] = useState({
@@ -183,11 +208,111 @@ const EggProduction = () => {
         }
     };
 
+    const handleOpenClosePasteurization = (batch) => {
+        if (!batch) return;
+        setClosePasteurizationModal({
+            isOpen: true,
+            batch,
+            pasteurization_lot: batch.pasteurization_lot || (batch.batch_code_display ? `PAST-${batch.batch_code_display}` : `PAST-${batch.id}`),
+            notes: '',
+            isSubmitting: false
+        });
+    };
+
+    const handleConfirmClosePasteurization = async (e) => {
+        if (e && e.preventDefault) e.preventDefault();
+        const { batch, pasteurization_lot, notes } = closePasteurizationModal;
+        if (!batch) return;
+        if (!pasteurization_lot?.trim()) {
+            return toast.error('Debe ingresar un identificador o lote de pasteurización.');
+        }
+
+        setClosePasteurizationModal(prev => ({ ...prev, isSubmitting: true }));
+        try {
+            const res = await axios.post(`/api/egg-industrial/batches/${batch.id}/close-pasteurization`, {
+                pasteurization_lot: pasteurization_lot.trim(),
+                notes: notes?.trim() || null
+            });
+            toast.success(res.data?.message || 'Pasteurización cerrada exitosamente.');
+            setClosePasteurizationModal(prev => ({ ...prev, isOpen: false, isSubmitting: false, batch: null }));
+            fetchData();
+            if (stagesModal.isOpen && stagesModal.batch?.id === batch.id) {
+                handleOpenStagesModal(batch);
+            }
+        } catch (err) {
+            console.error('Error cerrando pasteurización:', err);
+            toast.error(err.response?.data?.message || 'Error al cerrar pasteurización.');
+            setClosePasteurizationModal(prev => ({ ...prev, isSubmitting: false }));
+        }
+    };
+
+    const handleReopenPasteurization = async (batch) => {
+        if (!batch) return;
+        if (!window.confirm(`¿Confirmas que deseas reabrir la pasteurización del lote ${batch.batch_code_display || batch.id}? Esto permitirá volver a modificar parámetros térmicos y agregar tarimas.`)) {
+            return;
+        }
+
+        try {
+            const res = await axios.post(`/api/egg-industrial/batches/${batch.id}/reopen-pasteurization`);
+            toast.success(res.data?.message || 'Pasteurización reabierta con éxito.');
+            fetchData();
+            if (stagesModal.isOpen && stagesModal.batch?.id === batch.id) {
+                handleOpenStagesModal(batch);
+            }
+        } catch (err) {
+            console.error('Error reabriendo pasteurización:', err);
+            toast.error(err.response?.data?.message || 'Error al reabrir pasteurización.');
+        }
+    };
+
+    const handleReopenBatchPackaging = async (batchId) => {
+        if (!window.confirm('¿Confirmas que deseas volver a abrir el empaque para este lote? Se revertirá el cierre técnico y se habilitará nuevamente el envasado.')) {
+            return;
+        }
+
+        try {
+            const res = await axios.post(`/api/egg-industrial/batches/${batchId}/reopen-packaging`);
+            toast.success(res.data?.message || 'Empaque reabierto con éxito.');
+            fetchData();
+            if (stagesModal.isOpen && stagesModal.batch?.id === batchId) {
+                handleOpenStagesModal({ id: batchId });
+            }
+        } catch (err) {
+            console.error('Error al reabrir empaque:', err);
+            toast.error(err.response?.data?.message || 'Error al reabrir empaque.');
+        }
+    };
+
+    const handleOpenBalanceModal = (batch) => {
+        if (!batch) return;
+        setSelectedBatchForComplete(batch);
+        const hasExistingBalance = parseFloat(batch.yield_liquid_lbs || 0) > 0;
+        if (hasExistingBalance) {
+            setCompleteForm({
+                yield_liquid_lbs: String(batch.yield_liquid_lbs || ''),
+                waste_shell_lbs: String(batch.waste_shell_lbs || '0'),
+                waste_loss_lbs: String(batch.waste_loss_lbs || '0')
+            });
+        } else {
+            const cfg = productConfig.find(c => c.product_type === batch.product_type) || {};
+            const yieldPct = parseFloat(cfg.yield_pct || 85) / 100;
+            const shellPct = parseFloat(cfg.waste_shell_pct || 12) / 100;
+            const lossPct = parseFloat(cfg.waste_loss_pct || 3) / 100;
+            const inputLbs = parseFloat(batch.input_weight_lbs || 0);
+            setCompleteForm({
+                yield_liquid_lbs: inputLbs > 0 ? (inputLbs * yieldPct).toFixed(2) : '',
+                waste_shell_lbs: inputLbs > 0 ? (inputLbs * shellPct).toFixed(2) : '0',
+                waste_loss_lbs: inputLbs > 0 ? (inputLbs * lossPct).toFixed(2) : '0'
+            });
+        }
+    };
+
     const handleOpenWastesModal = async (batch) => {
         setWastesModal({
             isOpen: true,
             batch,
             wastes: [],
+            editingWasteId: null,
             stage: 'quebraje',
             waste_type: 'cascaron',
             weight_lbs: '',
@@ -204,6 +329,29 @@ const EggProduction = () => {
         }
     };
 
+    const handleOpenEditWaste = (waste, batch) => {
+        const targetBatch = batch || stagesModal.batch || wastesModal.batch;
+        setWastesModal({
+            isOpen: true,
+            batch: targetBatch,
+            wastes: wastesModal.batch?.id === targetBatch?.id ? wastesModal.wastes : [],
+            editingWasteId: waste.id,
+            stage: waste.stage || 'quebraje',
+            waste_type: waste.waste_type || 'cascaron',
+            weight_lbs: String(waste.weight_lbs || waste.quantity_lbs || ''),
+            notes: waste.notes || waste.reason || '',
+            loading: false,
+            isSubmitting: false
+        });
+        if (targetBatch?.id) {
+            axios.get(`/api/egg-industrial/batches/${targetBatch.id}/wastes`)
+                .then(res => {
+                    setWastesModal(prev => ({ ...prev, wastes: res.data || [] }));
+                })
+                .catch(() => {});
+        }
+    };
+
     const handleCreateWaste = async (e) => {
         e.preventDefault();
         if (!wastesModal.weight_lbs || parseFloat(wastesModal.weight_lbs) <= 0) {
@@ -211,41 +359,99 @@ const EggProduction = () => {
         }
         setWastesModal(prev => ({ ...prev, isSubmitting: true }));
         try {
-            await axios.post(`/api/egg-industrial/batches/${wastesModal.batch.id}/wastes`, {
-                stage: wastesModal.stage,
-                waste_type: wastesModal.waste_type,
-                weight_lbs: parseFloat(wastesModal.weight_lbs),
-                quantity_lbs: parseFloat(wastesModal.weight_lbs),
-                notes: wastesModal.notes,
-                reason: wastesModal.notes,
-                operator_name: user?.nombre || ''
-            });
-            toast.success('Merma registrada con éxito.');
+            if (wastesModal.editingWasteId) {
+                await axios.put(`/api/egg-industrial/batches/${wastesModal.batch.id}/wastes/${wastesModal.editingWasteId}`, {
+                    stage: wastesModal.stage,
+                    waste_type: wastesModal.waste_type,
+                    weight_lbs: parseFloat(wastesModal.weight_lbs),
+                    quantity_lbs: parseFloat(wastesModal.weight_lbs),
+                    notes: wastesModal.notes,
+                    reason: wastesModal.notes
+                });
+                toast.success('Merma actualizada con éxito.');
+            } else {
+                await axios.post(`/api/egg-industrial/batches/${wastesModal.batch.id}/wastes`, {
+                    stage: wastesModal.stage,
+                    waste_type: wastesModal.waste_type,
+                    weight_lbs: parseFloat(wastesModal.weight_lbs),
+                    quantity_lbs: parseFloat(wastesModal.weight_lbs),
+                    notes: wastesModal.notes,
+                    reason: wastesModal.notes,
+                    operator_name: user?.nombre || ''
+                });
+                toast.success('Merma registrada con éxito.');
+            }
             const res = await axios.get(`/api/egg-industrial/batches/${wastesModal.batch.id}/wastes`);
             setWastesModal(prev => ({
                 ...prev,
+                editingWasteId: null,
                 wastes: res.data || [],
                 weight_lbs: '',
                 notes: '',
                 isSubmitting: false
             }));
             fetchData();
+            if (stagesModal.isOpen && stagesModal.batch?.id === wastesModal.batch?.id) {
+                handleOpenStagesModal(wastesModal.batch);
+            }
         } catch (err) {
-            console.error('Error al registrar merma:', err);
-            toast.error(err.response?.data?.message || 'Error al registrar merma.');
+            console.error('Error al guardar merma:', err);
+            toast.error(err.response?.data?.message || 'Error al guardar merma.');
             setWastesModal(prev => ({ ...prev, isSubmitting: false }));
         }
     };
 
-    const handleDeleteWaste = async (wasteId) => {
+    const handleDeleteWaste = async (wasteId, batchIdOverride) => {
+        const targetBatchId = batchIdOverride || wastesModal.batch?.id || stagesModal.batch?.id;
+        if (!targetBatchId) return;
+        if (!window.confirm('¿Confirmas que deseas eliminar este registro de merma?')) return;
         try {
-            await axios.delete(`/api/egg-industrial/batches/${wastesModal.batch.id}/wastes/${wasteId}`);
+            await axios.delete(`/api/egg-industrial/batches/${targetBatchId}/wastes/${wasteId}`);
             toast.success('Merma eliminada.');
-            const res = await axios.get(`/api/egg-industrial/batches/${wastesModal.batch.id}/wastes`);
-            setWastesModal(prev => ({ ...prev, wastes: res.data || [] }));
+            if (wastesModal.isOpen && wastesModal.batch?.id) {
+                const res = await axios.get(`/api/egg-industrial/batches/${wastesModal.batch.id}/wastes`);
+                setWastesModal(prev => ({ ...prev, wastes: res.data || [] }));
+            }
             fetchData();
+            if (stagesModal.isOpen && stagesModal.batch?.id === targetBatchId) {
+                handleOpenStagesModal(stagesModal.batch);
+            }
         } catch (err) {
+            console.error('Error al eliminar merma:', err);
             toast.error('Error al eliminar merma.');
+        }
+    };
+
+    const handleOpenEditRemanente = (rem, batch) => {
+        const targetBatch = batch || stagesModal.batch;
+        setRemanenteModal({
+            isOpen: true,
+            id: rem.id,
+            batch: targetBatch,
+            product_type: rem.product_type || targetBatch?.product_type || 'huevo entero',
+            presentation: rem.presentation || targetBatch?.presentation || 'cubeta 30LB',
+            weight_lbs: String(rem.quantity_lbs || rem.weight_lbs || ''),
+            is_pasteurized: rem.is_pasteurized !== undefined ? !!rem.is_pasteurized : (targetBatch?.status === 'pasteurizado'),
+            destination: rem.destination || rem.storage_location || 'proximo_empaque',
+            notes: rem.notes || '',
+            isSubmitting: false
+        });
+    };
+
+    const handleDeleteRemanente = async (remId, batchIdOverride) => {
+        const batchId = batchIdOverride || stagesModal.batch?.id;
+        if (!batchId) return;
+        if (!window.confirm('¿Confirmas que deseas eliminar este registro de remanente?')) return;
+        try {
+            await axios.delete(`/api/egg-industrial/batches/${batchId}/remanentes/${remId}`);
+            toast.success('Remanente eliminado exitosamente.');
+            fetchData();
+            if (stagesModal.isOpen && stagesModal.batch?.id === batchId) {
+                handleOpenStagesModal(stagesModal.batch);
+            }
+        } catch (err) {
+            console.error('Error eliminando remanente:', err);
+            toast.error(err.response?.data?.message || 'Error al eliminar remanente.');
         }
     };
 
@@ -268,7 +474,8 @@ const EggProduction = () => {
 
         let runNum = batch.run_number || 1;
         if (batch.batch_code_display) {
-            const match = batch.batch_code_display.match(/^(\d+)/);
+            const cleanCode = batch.batch_code_display.toUpperCase().replace(/^LOTE\s*/i, '').trim();
+            const match = cleanCode.match(/^(\d+)/);
             if (match) runNum = parseInt(match[1], 10);
         }
 
@@ -282,6 +489,8 @@ const EggProduction = () => {
             presentation: presStr,
             presentations: presList.length > 0 ? presList : ['cubeta 30LB'],
             run_number: runNum,
+            batch_code_display: batch.batch_code_display || '',
+            pasteurization_lot: batch.pasteurization_lot || '',
             scheduled_production_id: batch.scheduled_production_id || null,
             raw_materials: mappedRms.length > 0 ? mappedRms : [{ raw_material_id: '', quantity_lbs: '', boxes_count: '', tarimas: [] }],
             remanente_ids: assignedRemIds,
@@ -304,7 +513,7 @@ const EggProduction = () => {
             .then(res => {
                 if (res.data) setAvailableRemanentes(res.data);
             })
-            .catch(() => {});
+            .catch(() => { });
 
         setCipBlockedError(null);
         setIsNewBatchModalOpen(true);
@@ -371,6 +580,7 @@ const EggProduction = () => {
             quantity_lbs: availLbs.toFixed(2),
             available_lbs: availLbs,
             barcode: tarimaObj.barcode || '',
+            storage_location: tarimaObj.storage_location || rm.storage_location || 'abajo',
             is_partial: false
         };
 
@@ -415,6 +625,7 @@ const EggProduction = () => {
                 quantity_lbs: availLbs.toFixed(2),
                 available_lbs: availLbs,
                 barcode: t.barcode || '',
+                storage_location: t.storage_location || rm.storage_location || 'abajo',
                 is_partial: false
             };
         });
@@ -613,25 +824,38 @@ const EggProduction = () => {
         }
         setRemanenteModal(prev => ({ ...prev, isSubmitting: true }));
         try {
-            const res = await axios.post(`/api/egg-industrial/batches/${remanenteModal.batch.id}/remanentes`, {
-                product_type: remanenteModal.product_type,
-                presentation: remanenteModal.presentation,
-                weight_lbs: parseFloat(remanenteModal.weight_lbs),
-                quantity_lbs: parseFloat(remanenteModal.weight_lbs),
-                is_pasteurized: remanenteModal.is_pasteurized,
-                destination: remanenteModal.destination,
-                notes: remanenteModal.notes,
-                created_by: user?.nombre || ''
-            });
-            toast.success(res.data?.message || 'Remanente / sobrante registrado exitosamente.');
-            setRemanenteModal(prev => ({ ...prev, isOpen: false, isSubmitting: false }));
+            if (remanenteModal.id) {
+                const res = await axios.put(`/api/egg-industrial/batches/${remanenteModal.batch.id}/remanentes/${remanenteModal.id}`, {
+                    product_type: remanenteModal.product_type,
+                    presentation: remanenteModal.presentation,
+                    weight_lbs: parseFloat(remanenteModal.weight_lbs),
+                    quantity_lbs: parseFloat(remanenteModal.weight_lbs),
+                    is_pasteurized: remanenteModal.is_pasteurized,
+                    destination: remanenteModal.destination,
+                    notes: remanenteModal.notes
+                });
+                toast.success(res.data?.message || 'Remanente actualizado exitosamente.');
+            } else {
+                const res = await axios.post(`/api/egg-industrial/batches/${remanenteModal.batch.id}/remanentes`, {
+                    product_type: remanenteModal.product_type,
+                    presentation: remanenteModal.presentation,
+                    weight_lbs: parseFloat(remanenteModal.weight_lbs),
+                    quantity_lbs: parseFloat(remanenteModal.weight_lbs),
+                    is_pasteurized: remanenteModal.is_pasteurized,
+                    destination: remanenteModal.destination,
+                    notes: remanenteModal.notes,
+                    created_by: user?.nombre || ''
+                });
+                toast.success(res.data?.message || 'Remanente / sobrante registrado exitosamente.');
+            }
+            setRemanenteModal(prev => ({ ...prev, isOpen: false, isSubmitting: false, id: null }));
             fetchData();
-            if (stagesModal.isOpen && stagesModal.batch?.id === remanenteModal.batch.id) {
+            if (stagesModal.isOpen && stagesModal.batch?.id === remanenteModal.batch?.id) {
                 handleOpenStagesModal(remanenteModal.batch);
             }
         } catch (err) {
             console.error('Error guardando remanente:', err);
-            toast.error(err.response?.data?.message || 'Error al registrar remanente.');
+            toast.error(err.response?.data?.message || 'Error al guardar remanente.');
             setRemanenteModal(prev => ({ ...prev, isSubmitting: false }));
         }
     };
@@ -698,17 +922,40 @@ const EggProduction = () => {
         setLoading(true);
         try {
             const [bRes, rmRes, cRes, cfgRes, remRes] = await Promise.all([
-                axios.get('/api/egg-industrial/batches'),
-                axios.get('/api/egg-industrial/raw-materials', { params: { only_with_stock: 'true' } }),
-                axios.get('/api/egg-industrial/cip'),
-                axios.get('/api/egg-industrial/product-config'),
-                axios.get('/api/egg-industrial/remanentes/available').catch(() => ({ data: [] }))
+                axios.get('/api/egg-industrial/batches').catch(err => {
+                    console.error('Error fetching batches:', err);
+                    return { data: [] };
+                }),
+                axios.get('/api/egg-industrial/raw-materials', { params: { only_with_stock: 'true' } }).catch(err => {
+                    console.error('Error fetching raw materials:', err);
+                    return { data: [] };
+                }),
+                axios.get('/api/egg-industrial/cip').catch(err => {
+                    console.error('Error fetching cip:', err);
+                    return { data: [] };
+                }),
+                axios.get('/api/egg-industrial/product-config').catch(err => {
+                    console.error('Error fetching product-config:', err);
+                    return { data: {} };
+                }),
+                axios.get('/api/egg-industrial/remanentes/available').catch(err => {
+                    console.error('Error fetching remanentes:', err);
+                    return { data: [] };
+                })
             ]);
-            setBatches(bRes.data);
-            setRawMaterials(rmRes.data.filter(rm => rm.status === 'aprobado'));
-            setCipLogs(cRes.data);
-            setProductConfig(cfgRes.data);
-            setAvailableRemanentes(remRes.data || []);
+            const batchesList = Array.isArray(bRes.data) ? bRes.data : (bRes.data?.data || []);
+            setBatches(batchesList);
+
+            const rawMaterialsList = Array.isArray(rmRes.data) ? rmRes.data : (rmRes.data?.data || []);
+            setRawMaterials(rawMaterialsList.filter(rm => rm && rm.status === 'aprobado'));
+
+            const cipList = Array.isArray(cRes.data) ? cRes.data : (cRes.data?.data || []);
+            setCipLogs(cipList);
+
+            setProductConfig(cfgRes.data?.data || cfgRes.data || {});
+
+            const remList = Array.isArray(remRes.data) ? remRes.data : (remRes.data?.data || []);
+            setAvailableRemanentes(remList);
         } catch (error) {
             console.error('Error fetching production data:', error);
             toast.error('Error al cargar datos del módulo de producción.');
@@ -722,7 +969,7 @@ const EggProduction = () => {
             const res = await axios.get('/api/egg-industrial/calendar', {
                 params: { status: 'programado' }
             });
-            setScheduledProductions(res.data || []);
+            setScheduledProductions(Array.isArray(res.data) ? res.data : (res.data?.data || []));
         } catch (err) {
             console.error('Error al cargar producciones programadas:', err);
         }
@@ -822,6 +1069,7 @@ const EggProduction = () => {
             quantity_lbs: availLbs.toFixed(2),
             available_lbs: availLbs,
             barcode: tarimaObj.barcode || '',
+            storage_location: tarimaObj.storage_location || rm.storage_location || 'abajo',
             is_partial: false
         };
 
@@ -865,6 +1113,7 @@ const EggProduction = () => {
                 quantity_lbs: availLbs.toFixed(2),
                 available_lbs: availLbs,
                 barcode: t.barcode || '',
+                storage_location: t.storage_location || rm.storage_location || 'abajo',
                 is_partial: false
             };
         });
@@ -1055,6 +1304,92 @@ const EggProduction = () => {
         setScannerModalOpen(false);
     };
 
+    // Helper para determinar si un producto requiere separación de clara y yema
+    const isSeparationProduct = (productType) => {
+        const p = (productType || '').toLowerCase();
+        return p.includes('clara') || p.includes('yema') || p.includes('separad');
+    };
+
+    // Lotes disponibles con stock aprobados (ordenados por FIFO desde el backend)
+    const availableRawLots = (Array.isArray(rawMaterials) ? rawMaterials : []).filter(m => !m.is_depleted && parseFloat(m.stock_lbs || 0) > 0.01);
+    const oldestFifoLot = availableRawLots[0] || null;
+    const oldestAALot = availableRawLots.find(m => (m.egg_classification || '').toLowerCase().includes('aa')) || null;
+    const isCurrentSeparation = isSeparationProduct(batchForm.product_type);
+
+    const recommendedLot = isCurrentSeparation
+        ? (oldestAALot || oldestFifoLot)
+        : oldestFifoLot;
+
+    const recommendationReason = isCurrentSeparation
+        ? (oldestAALot
+            ? '⭐ Grado AA recomendado para separación (membrana vitelina firme que previene roturas de yema en claras).'
+            : '⚠️ No hay lotes Grado AA en bodega. Se sugiere el lote FIFO más antiguo con precaución de supervisión.')
+        : '🔄 Rotación FIFO: Lote recepcionado más antiguo para garantizar rotación de inventario en bodega.';
+
+    // Lote no AA seleccionado para producto de separación (alerta de calidad informativa)
+    const nonAALotSelectedForSeparation = isCurrentSeparation && (batchForm.raw_materials || []).some(rm => {
+        if (!rm.raw_material_id) return false;
+        const lot = rawMaterials.find(m => String(m.id) === String(rm.raw_material_id));
+        return lot && !(lot.egg_classification || '').toLowerCase().includes('aa');
+    });
+
+    const nonAALotObj = isCurrentSeparation
+        ? rawMaterials.find(m => (batchForm.raw_materials || []).some(r => String(r.raw_material_id) === String(m.id) && !(m.egg_classification || '').toLowerCase().includes('aa')))
+        : null;
+
+    // Aplicar lote recomendado con 1 clic al formulario de producción
+    const handleApplyRecommendedLot = (lot) => {
+        if (!lot) return;
+        let lotTarimas = lot.tarimas_available || [];
+        if (lotTarimas.length === 0 && lot.tarimas_json) {
+            try {
+                lotTarimas = typeof lot.tarimas_json === 'string'
+                    ? JSON.parse(lot.tarimas_json || '[]')
+                    : (lot.tarimas_json || []);
+            } catch (e) { lotTarimas = []; }
+        }
+
+        const validTarimas = lotTarimas.filter(t => !t.is_depleted && !(t.available_boxes <= 0 && t.available_lbs <= 0.01));
+
+        if (validTarimas.length > 0) {
+            const mappedTarimas = validTarimas.map(t => ({
+                tarima_number: t.tarima_number,
+                barcode: t.barcode,
+                boxes_count: t.available_boxes ?? t.boxes_count ?? 0,
+                quantity_lbs: parseFloat(t.available_lbs ?? t.net_weight_lbs ?? t.gross_weight_lbs ?? 0).toFixed(2),
+                available_boxes: t.available_boxes ?? t.boxes_count ?? 0,
+                available_lbs: parseFloat(t.available_lbs ?? t.net_weight_lbs ?? t.gross_weight_lbs ?? 0),
+                storage_location: t.storage_location || lot.storage_location || 'abajo',
+                is_partial: false
+            }));
+
+            const totalLbs = mappedTarimas.reduce((sum, t) => sum + parseFloat(t.quantity_lbs || 0), 0);
+            const totalBoxes = mappedTarimas.reduce((sum, t) => sum + (parseInt(t.boxes_count) || 0), 0);
+
+            setBatchForm(prev => ({
+                ...prev,
+                raw_materials: [{
+                    raw_material_id: String(lot.id),
+                    quantity_lbs: totalLbs.toFixed(2),
+                    boxes_count: String(totalBoxes),
+                    tarimas: mappedTarimas
+                }]
+            }));
+        } else {
+            setBatchForm(prev => ({
+                ...prev,
+                raw_materials: [{
+                    raw_material_id: String(lot.id),
+                    quantity_lbs: String(lot.stock_lbs || ''),
+                    boxes_count: String(lot.total_boxes || ''),
+                    tarimas: []
+                }]
+            }));
+        }
+
+        toast.success(`Lote ${lot.provider_lot} aplicado (${lot.egg_classification || 'Grado A'}) según rotación.`);
+    };
+
     // Handle new / edit production batch with optional bypass
     const handleCreateBatch = async (e, forceBypass = false) => {
         if (e && e.preventDefault) e.preventDefault();
@@ -1084,7 +1419,9 @@ const EggProduction = () => {
                     notes: batchForm.notes,
                     raw_materials: batchForm.raw_materials,
                     remanente_ids: batchForm.remanente_ids || [],
-                    ingredients: batchForm.ingredients
+                    ingredients: batchForm.ingredients,
+                    batch_code_display: canManageLots ? batchForm.batch_code_display : undefined,
+                    pasteurization_lot: canManageLots ? batchForm.pasteurization_lot : undefined
                 });
                 toast.success(res.data?.message || 'Lote de producción actualizado exitosamente.');
                 setEditingBatch(null);
@@ -1171,7 +1508,9 @@ const EggProduction = () => {
             await axios.post('/api/egg-industrial/cip', {
                 ...cipForm,
                 temperature_c: parseFloat(cipForm.temperature_c),
-                duration_minutes: parseInt(cipForm.duration_minutes)
+                duration_minutes: parseInt(cipForm.duration_minutes),
+                batch_id: cipForm.batch_id ? parseInt(cipForm.batch_id, 10) : null,
+                created_at: cipForm.created_at || null
             });
             toast.success('Registro de sanitización CIP guardado.');
             setCipForm({
@@ -1181,6 +1520,8 @@ const EggProduction = () => {
                 duration_minutes: '45',
                 operator_name: user?.nombre || '',
                 validation_status: 'completado',
+                created_at: getNowDateTimeLocal(),
+                batch_id: '',
                 notes: ''
             });
             fetchData();
@@ -1190,6 +1531,22 @@ const EggProduction = () => {
             toast.error('Error al guardar registro CIP.');
         } finally {
             setIsSubmitting(false);
+        }
+    };
+
+    // Handle CIP log deletion
+    const handleDeleteCip = async (id) => {
+        if (!window.confirm('¿Está seguro de eliminar este registro de sanitización CIP?')) {
+            return;
+        }
+
+        try {
+            await axios.delete(`/api/egg-industrial/cip/${id}`);
+            toast.success('Registro de sanitización CIP eliminado.');
+            fetchData();
+        } catch (error) {
+            console.error('Error deleting CIP log:', error);
+            toast.error(error.response?.data?.message || 'Error al eliminar el registro CIP.');
         }
     };
 
@@ -1232,7 +1589,7 @@ const EggProduction = () => {
         }
     };
 
-    // Handle complete batch
+    // Handle complete / balance batch
     const handleCompleteBatch = async (e) => {
         e.preventDefault();
         if (!completeForm.yield_liquid_lbs || parseFloat(completeForm.yield_liquid_lbs) <= 0) {
@@ -1240,19 +1597,23 @@ const EggProduction = () => {
         }
 
         setIsSubmitting(true);
+        const batchToUpdate = selectedBatchForComplete;
         try {
-            await axios.put(`/api/egg-industrial/batches/${selectedBatchForComplete.id}/complete`, {
+            await axios.put(`/api/egg-industrial/batches/${batchToUpdate.id}/complete`, {
                 yield_liquid_lbs: parseFloat(completeForm.yield_liquid_lbs),
                 waste_shell_lbs: parseFloat(completeForm.waste_shell_lbs || 0),
                 waste_loss_lbs: parseFloat(completeForm.waste_loss_lbs || 0)
             });
-            toast.success('Lote finalizado correctamente.');
+            toast.success('Balance de masas registrado y actualizado correctamente.');
             setSelectedBatchForComplete(null);
             setCompleteForm({ yield_liquid_lbs: '', waste_shell_lbs: '', waste_loss_lbs: '' });
             fetchData();
+            if (stagesModal.isOpen && stagesModal.batch?.id === batchToUpdate.id) {
+                handleOpenStagesModal(batchToUpdate);
+            }
         } catch (error) {
             console.error('Error completing batch:', error);
-            toast.error('Error al finalizar el lote.');
+            toast.error(error.response?.data?.message || 'Error al guardar balance de masas.');
         } finally {
             setIsSubmitting(false);
         }
@@ -1278,7 +1639,8 @@ const EggProduction = () => {
         }
     };
 
-    const filteredBatches = batches.filter(b =>
+    const filteredBatches = (Array.isArray(batches) ? batches : []).filter(b =>
+        b.batch_code_display?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         b.batch_uuid?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         b.product_type?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         b.presentation?.toLowerCase().includes(searchTerm.toLowerCase())
@@ -1328,22 +1690,25 @@ const EggProduction = () => {
                     <button
                         onClick={() => {
                             setEditingBatch(null);
-                            const today = new Date();
-                            const startOfYear = new Date(today.getFullYear(), 0, 0);
-                            const diff = today - startOfYear;
-                            const dayOfYear = Math.floor(diff / (1000 * 60 * 60 * 24));
-                            const todayBatches = batches.filter(b => {
+                            const dayInfo = getJulianDayInfo();
+                            const todayBatches = (Array.isArray(batches) ? batches : []).filter(b => {
                                 if (!b.batch_code_display) return false;
-                                const parts = b.batch_code_display.split('-').map(s => s.trim());
-                                return parts.length === 3 && parseInt(parts[1], 10) === dayOfYear;
+                                const parts = b.batch_code_display.toUpperCase().replace(/^LOTE\s*/i, '').split('-').map(s => s.trim());
+                                return parts.length === 3 && parseInt(parts[1], 10) === dayInfo.dayOfYear;
                             });
-                            const nextRun = todayBatches.length > 0 ? Math.max(...todayBatches.map(b => parseInt(b.run_number, 10) || 1)) + 1 : 1;
+                            const nextRun = todayBatches.length > 0
+                                ? Math.max(...todayBatches.map(b => {
+                                    const parts = (b.batch_code_display || '').toUpperCase().replace(/^LOTE\s*/i, '').split('-').map(s => s.trim());
+                                    return parseInt(b.run_number, 10) || parseInt(parts[0], 10) || 1;
+                                })) + 1
+                                : 1;
 
                             setBatchForm({
                                 product_type: 'huevo entero',
                                 presentation: 'cubeta 30LB',
                                 presentations: ['cubeta 30LB'],
                                 run_number: nextRun,
+                                batch_code_display: `LOTE ${String(nextRun).padStart(2, '0')}-${dayInfo.dayOfYearStr}-${dayInfo.year2Digit}`,
                                 scheduled_production_id: null,
                                 raw_materials: [],
                                 remanente_ids: [],
@@ -1432,6 +1797,16 @@ const EggProduction = () => {
                                                             {b.batch_code_display}
                                                         </span>
                                                     ) : null}
+                                                    {b.pasteurization_status === 'cerrado' ? (
+                                                        <span className="bg-emerald-50 border border-emerald-200 text-emerald-700 font-mono text-[9px] font-bold px-1.5 py-0.5 rounded-md w-fit flex items-center gap-1" title={`Pasteurización Cerrada: ${b.pasteurization_lot || ''}`}>
+                                                            <Lock size={10} />
+                                                            Past: {b.pasteurization_lot || 'Cerrado'}
+                                                        </span>
+                                                    ) : b.pasteurization_lot ? (
+                                                        <span className="bg-amber-50 border border-amber-200 text-amber-700 font-mono text-[9px] font-bold px-1.5 py-0.5 rounded-md w-fit flex items-center gap-1">
+                                                            Past: {b.pasteurization_lot}
+                                                        </span>
+                                                    ) : null}
                                                     <div className="flex items-center gap-1">
                                                         <span className="font-mono text-[10px] text-slate-500 select-all truncate max-w-[180px]">{b.batch_uuid}</span>
                                                         <button
@@ -1481,9 +1856,14 @@ const EggProduction = () => {
                                                 ) : '-'}
                                             </td>
                                             <td className="px-3 py-2.5 text-center">
-                                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${getBatchStatusBadge(b.status)}`}>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setQualityModal({ isOpen: true, batch: b })}
+                                                    className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase transition-all hover:scale-105 ${getBatchStatusBadge(b.status)}`}
+                                                    title="Haga clic para ver o evaluar dictamen de calidad FQ & MB"
+                                                >
                                                     {b.status}
-                                                </span>
+                                                </button>
                                             </td>
                                             <td className="px-3 py-2.5 text-[10px] text-slate-600 space-y-0.5 min-w-[180px]">
                                                 <div>
@@ -1499,12 +1879,28 @@ const EggProduction = () => {
                                             </td>
                                             <td className="px-3 py-2.5 text-center">
                                                 <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                                                    {/* Control de Calidad FQ / MB */}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setQualityModal({ isOpen: true, batch: b })}
+                                                        className={`p-1.5 rounded-lg border transition-colors shadow-xs ${
+                                                            b.status === 'aprobado_calidad'
+                                                                ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200'
+                                                                : b.status === 'bloqueado_haccp'
+                                                                ? 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200'
+                                                                : 'bg-teal-50 hover:bg-teal-100 text-teal-700 border-teal-200'
+                                                        }`}
+                                                        title="Control de Calidad LAB-004 (FQ & MB) y Liberación"
+                                                    >
+                                                        <FlaskConical size={13} />
+                                                    </button>
+
                                                     {/* Visualizador de Etapas */}
                                                     <button
                                                         type="button"
                                                         onClick={() => handleOpenStagesModal(b)}
                                                         className="p-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg border border-indigo-200 transition-colors shadow-xs"
-                                                        title="Visualizador de Etapas Cumplidas del Proceso (Quebraje, Pasteurización, Remanentes, Envasado)"
+                                                        title="Visualizador de Etapas Cumplidas del Proceso (Quebraje, Pasteurización, Remanentes, Envasado, Calidad)"
                                                     >
                                                         <Layers size={13} />
                                                     </button>
@@ -1574,24 +1970,14 @@ const EggProduction = () => {
                                                         )}
                                                     </div>
 
-                                                    {/* Balance si pasteurizado */}
-                                                    {b.status === 'pasteurizado' && (
+                                                    {/* Balance de Masas */}
+                                                    {b.status !== 'creado' && b.status !== 'bloqueado_haccp' && (
                                                         <button
-                                                            onClick={() => {
-                                                                setSelectedBatchForComplete(b);
-                                                                const cfg = productConfig.find(c => c.product_type === b.product_type) || {};
-                                                                const yieldPct = parseFloat(cfg.yield_pct || 85) / 100;
-                                                                const shellPct = parseFloat(cfg.waste_shell_pct || 12) / 100;
-                                                                const lossPct = parseFloat(cfg.waste_loss_pct || 3) / 100;
-                                                                setCompleteForm({
-                                                                    yield_liquid_lbs: (parseFloat(b.input_weight_lbs) * yieldPct).toFixed(2),
-                                                                    waste_shell_lbs: (parseFloat(b.input_weight_lbs) * shellPct).toFixed(2),
-                                                                    waste_loss_lbs: (parseFloat(b.input_weight_lbs) * lossPct).toFixed(2)
-                                                                });
-                                                            }}
-                                                            className="px-2 py-1 bg-teal-50 hover:bg-teal-100 border border-teal-200 text-teal-700 rounded-lg text-[11px] font-bold transition-all shadow-xs"
-                                                            title="Balance de Masas"
+                                                            onClick={() => handleOpenBalanceModal(b)}
+                                                            className="px-2 py-1 bg-teal-50 hover:bg-teal-100 border border-teal-200 text-teal-700 rounded-lg text-[11px] font-bold transition-all shadow-xs flex items-center gap-1"
+                                                            title="Editar Balance de Masas"
                                                         >
+                                                            <Scale size={12} />
                                                             Balance
                                                         </button>
                                                     )}
@@ -1608,6 +1994,31 @@ const EggProduction = () => {
                                                         >
                                                             <Flame size={12} />
                                                             Pasteurizar
+                                                        </button>
+                                                    )}
+
+                                                    {/* Cerrar / Reabrir Pasteurización */}
+                                                    {b.pasteurization_status === 'cerrado' ? (
+                                                        canManageLots && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleReopenPasteurization(b)}
+                                                                className="px-2 py-1 bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-800 rounded-lg text-[10px] font-bold transition-all shadow-xs flex items-center gap-1"
+                                                                title="Reabrir Pasteurización (Permite volver a agregar tarimas o ajustar registros)"
+                                                            >
+                                                                <Lock size={11} className="text-amber-600" />
+                                                                Reabrir Past.
+                                                            </button>
+                                                        )
+                                                    ) : (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleOpenClosePasteurization(b)}
+                                                            className="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-800 rounded-lg text-[10px] font-bold transition-all shadow-xs flex items-center gap-1"
+                                                            title="Cerrar Pasteurización y Fijar Lote Térmico Oficial"
+                                                        >
+                                                            <Lock size={11} className="text-emerald-600" />
+                                                            Cerrar Past.
                                                         </button>
                                                     )}
 
@@ -1666,6 +2077,39 @@ const EggProduction = () => {
                         </div>
 
                         <form onSubmit={handleCreateCip} className="space-y-4">
+                            <div>
+                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5 flex items-center gap-1.5">
+                                    <Calendar className="h-3.5 w-3.5 text-indigo-500" />
+                                    Fecha y Hora de Sanitización
+                                </label>
+                                <input
+                                    type="datetime-local"
+                                    value={cipForm.created_at}
+                                    onChange={(e) => setCipForm({ ...cipForm, created_at: e.target.value })}
+                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                                    required
+                                />
+                            </div>
+
+                            <div>
+                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5 flex items-center gap-1.5">
+                                    <Layers className="h-3.5 w-3.5 text-indigo-500" />
+                                    Vincular a Lote de Producción (Opcional)
+                                </label>
+                                <select
+                                    value={cipForm.batch_id}
+                                    onChange={(e) => setCipForm({ ...cipForm, batch_id: e.target.value })}
+                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                                >
+                                    <option value="">General / Pre-operacional (Sin lote vinculado)</option>
+                                    {(Array.isArray(batches) ? batches : []).map(b => (
+                                        <option key={b.id} value={b.id}>
+                                            {b.batch_code_display || b.batch_uuid} - {b.product_type} ({formatDate(b.started_at)})
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+
                             <div>
                                 <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">Equipo Sanitizado</label>
                                 <select
@@ -1761,17 +2205,22 @@ const EggProduction = () => {
                         </div>
 
                         <div className="space-y-3 overflow-y-auto max-h-[520px] pr-1">
-                            {cipLogs.length === 0 ? (
+                            {(Array.isArray(cipLogs) ? cipLogs : []).length === 0 ? (
                                 <p className="text-xs text-slate-500 text-center py-6">No hay registros de limpieza disponibles.</p>
-                            ) : cipLogs.map(log => (
-                                <div key={log.id} className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col md:flex-row justify-between gap-4">
+                            ) : (Array.isArray(cipLogs) ? cipLogs : []).map(log => (
+                                <div key={log.id} className="bg-slate-50 hover:bg-slate-100/70 transition-colors border border-slate-200 rounded-xl p-4 flex flex-col md:flex-row justify-between gap-4">
                                     <div className="space-y-1.5">
-                                        <div className="flex items-center gap-2">
+                                        <div className="flex flex-wrap items-center gap-2">
                                             <span className="text-xs font-bold text-slate-900 capitalize">{log.equipment_name}</span>
                                             <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${log.validation_status === 'completado' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'
                                                 }`}>
                                                 {log.validation_status}
                                             </span>
+                                            {log.batch_id && (
+                                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                                    Lote: {log.batch_code_display || log.batch_uuid || `#${log.batch_id}`}
+                                                </span>
+                                            )}
                                         </div>
                                         <p className="text-xs text-slate-600 font-medium">{log.notes || 'Sin anotaciones adicionales.'}</p>
                                         <div className="flex flex-wrap gap-4 text-[11px] text-slate-500">
@@ -1780,9 +2229,19 @@ const EggProduction = () => {
                                         </div>
                                     </div>
 
-                                    <div className="flex md:flex-col justify-between items-end text-right">
-                                        <span className="text-[11px] text-slate-500 font-medium">{new Date(log.created_at).toLocaleString()}</span>
-                                        <div className="flex gap-2 text-xs mt-2">
+                                    <div className="flex md:flex-col justify-between items-end text-right gap-2">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-[11px] text-slate-500 font-medium">{formatDateTime(log.created_at)}</span>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleDeleteCip(log.id)}
+                                                className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors border border-transparent hover:border-rose-100"
+                                                title="Eliminar este registro de sanitización CIP"
+                                            >
+                                                <Trash2 className="h-4 w-4" />
+                                            </button>
+                                        </div>
+                                        <div className="flex gap-2 text-xs mt-1">
                                             <div className="text-center bg-white border border-slate-200 px-2.5 py-1 rounded-lg">
                                                 <span className="text-[8px] font-bold block text-slate-400 uppercase">Temp</span>
                                                 <span className="text-xs font-bold text-slate-800">{log.temperature_c}°C</span>
@@ -1923,6 +2382,59 @@ const EggProduction = () => {
                                 )}
                             </div>
 
+                            {/* Identificadores de Lote (Solo edición con permiso especial) */}
+                            {editingBatch && (
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-indigo-50/60 border border-indigo-200 rounded-2xl p-4">
+                                    <div>
+                                        <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wide flex items-center justify-between mb-1.5">
+                                            <span>Código de Lote de Producción</span>
+                                            {canManageLots ? (
+                                                <span className="text-[10px] text-indigo-700 font-bold bg-indigo-100 px-2 py-0.5 rounded-md">Edición Habilitada</span>
+                                            ) : (
+                                                <span className="text-[10px] text-slate-500 font-medium flex items-center gap-1"><Lock size={10} /> Solo Lectura</span>
+                                            )}
+                                        </label>
+                                        <input
+                                            type="text"
+                                            disabled={!canManageLots}
+                                            value={batchForm.batch_code_display || ''}
+                                            onChange={(e) => setBatchForm({ ...batchForm, batch_code_display: e.target.value })}
+                                            className={`w-full px-3 py-2 border rounded-xl text-xs font-mono font-bold focus:outline-none ${
+                                                canManageLots
+                                                    ? 'bg-white border-indigo-300 text-slate-900 focus:ring-2 focus:ring-indigo-500/20'
+                                                    : 'bg-slate-100 border-slate-200 text-slate-500 cursor-not-allowed'
+                                            }`}
+                                            placeholder="Ej: LOTE 01-265-26"
+                                        />
+                                        <span className="text-[10px] text-slate-500 block mt-1">Identificador visible de la orden de producción.</span>
+                                    </div>
+
+                                    <div>
+                                        <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wide flex items-center justify-between mb-1.5">
+                                            <span>Lote de Pasteurización</span>
+                                            {canManageLots ? (
+                                                <span className="text-[10px] text-amber-700 font-bold bg-amber-100 px-2 py-0.5 rounded-md">Edición Habilitada</span>
+                                            ) : (
+                                                <span className="text-[10px] text-slate-500 font-medium flex items-center gap-1"><Lock size={10} /> Solo Lectura</span>
+                                            )}
+                                        </label>
+                                        <input
+                                            type="text"
+                                            disabled={!canManageLots}
+                                            value={batchForm.pasteurization_lot || ''}
+                                            onChange={(e) => setBatchForm({ ...batchForm, pasteurization_lot: e.target.value })}
+                                            className={`w-full px-3 py-2 border rounded-xl text-xs font-mono font-bold focus:outline-none ${
+                                                canManageLots
+                                                    ? 'bg-white border-amber-300 text-slate-900 focus:ring-2 focus:ring-amber-500/20'
+                                                    : 'bg-slate-100 border-slate-200 text-slate-500 cursor-not-allowed'
+                                            }`}
+                                            placeholder="Ej: PAST-084-01"
+                                        />
+                                        <span className="text-[10px] text-slate-500 block mt-1">Identificador térmico registrado en el pasteurizador.</span>
+                                    </div>
+                                </div>
+                            )}
+
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                 <div>
                                     <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">Corrida del Día</label>
@@ -1931,11 +2443,25 @@ const EggProduction = () => {
                                         min="1"
                                         max="99"
                                         value={batchForm.run_number}
-                                        onChange={(e) => setBatchForm({ ...batchForm, run_number: e.target.value })}
+                                        onChange={(e) => {
+                                            const newRun = e.target.value;
+                                            const dayInfo = getJulianDayInfo();
+                                            const runStr = String(newRun || 1).padStart(2, '0');
+                                            const autoCode = `LOTE ${runStr}-${dayInfo.dayOfYearStr}-${dayInfo.year2Digit}`;
+                                            setBatchForm(prev => ({
+                                                ...prev,
+                                                run_number: newRun,
+                                                batch_code_display: (!prev.batch_code_display || prev.batch_code_display.startsWith('LOTE'))
+                                                    ? autoCode
+                                                    : prev.batch_code_display
+                                            }));
+                                        }}
                                         className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                                         placeholder="Ej: 1"
                                     />
-                                    <span className="text-[10px] text-indigo-600 font-medium block mt-1">Lote juliano: {String(batchForm.run_number || 1).padStart(2, '0')} - [Día] - 26</span>
+                                    <span className="text-[10px] text-indigo-600 font-medium block mt-1">
+                                        Formato oficial: LOTE {String(batchForm.run_number || 1).padStart(2, '0')}-{getJulianDayInfo().dayOfYearStr}-{getJulianDayInfo().year2Digit}
+                                    </span>
                                 </div>
 
                                 <div>
@@ -1987,8 +2513,8 @@ const EggProduction = () => {
                                                         setBatchForm({ ...batchForm, presentations: updated, presentation: updated.join(', ') });
                                                     }}
                                                     className={`px-2 py-0.5 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1 border ${isSelected
-                                                            ? 'bg-indigo-50 border-indigo-300 text-indigo-700 shadow-2xs'
-                                                            : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100'
+                                                        ? 'bg-indigo-50 border-indigo-300 text-indigo-700 shadow-2xs'
+                                                        : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100'
                                                         }`}
                                                 >
                                                     {isSelected && <Check size={11} className="text-indigo-600" />}
@@ -2030,6 +2556,70 @@ const EggProduction = () => {
                                     </div>
                                 </div>
 
+                                {/* Banner de recomendación inteligente: FIFO y Grado AA para Separación */}
+                                {recommendedLot && (
+                                    <div className="p-3.5 bg-gradient-to-r from-blue-50/90 via-indigo-50/90 to-purple-50/90 rounded-xl border border-indigo-200/90 flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-2xs">
+                                        <div className="flex items-start gap-2.5">
+                                            <div className="p-2 bg-indigo-600 text-white rounded-lg shrink-0 mt-0.5 shadow-xs">
+                                                <Sparkles size={16} />
+                                            </div>
+                                            <div>
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                    <span className="text-[11px] font-black uppercase text-indigo-900 tracking-wide">
+                                                        Lote Sugerido para Corrida:
+                                                    </span>
+                                                    {isCurrentSeparation ? (
+                                                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-purple-100 text-purple-800 border border-purple-300">
+                                                            ⭐ Prioridad Grado AA (Separación)
+                                                        </span>
+                                                    ) : (
+                                                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-blue-100 text-blue-800 border border-blue-300">
+                                                            🔄 Rotación FIFO (Más Antiguo)
+                                                        </span>
+                                                    )}
+                                                    <span className={`text-[10px] font-black px-1.5 py-0.5 rounded border ${(recommendedLot.storage_location || 'abajo') === 'abajo'
+                                                            ? 'bg-blue-50 text-blue-700 border-blue-200'
+                                                            : 'bg-amber-50 text-amber-700 border-amber-200'
+                                                        }`}>
+                                                        Estiba: {(recommendedLot.storage_location || 'abajo') === 'abajo' ? '⬇ Abajo (Piso)' : '⬆ Arriba (Rack)'}
+                                                    </span>
+                                                </div>
+                                                <p className="text-xs text-slate-800 mt-0.5">
+                                                    <strong>Lote {recommendedLot.provider_lot}</strong> ({recommendedLot.provider_name || 'Proveedor'}) • {recommendedLot.egg_type} • <span className="font-semibold text-purple-900">{recommendedLot.egg_classification || 'Grado A'}</span> • Saldo: <strong>{parseFloat(recommendedLot.stock_lbs || 0).toFixed(0)} Lbs</strong> ({recommendedLot.total_boxes || 0} cjs)
+                                                </p>
+                                                <span className="text-[11px] text-slate-600 font-medium block mt-0.5">
+                                                    {recommendationReason}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleApplyRecommendedLot(recommendedLot)}
+                                            className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition-all shadow-sm flex items-center justify-center gap-1.5 shrink-0"
+                                            title="Cargar automáticamente este lote y todas sus tarimas con saldo a la producción"
+                                        >
+                                            <Check size={14} />
+                                            <span>Aplicar Lote Recomendado</span>
+                                        </button>
+                                    </div>
+                                )}
+
+                                {/* Aviso no bloqueante si en producto de separación se seleccionó un lote que no es Grado AA */}
+                                {nonAALotSelectedForSeparation && nonAALotObj && (
+                                    <div className="p-3 bg-amber-50/95 rounded-xl border border-amber-300 text-amber-900 flex items-start gap-2.5 text-xs shadow-2xs">
+                                        <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                                        <div className="space-y-0.5">
+                                            <strong className="font-bold block text-amber-950">Aviso de Calidad para Separación de Clara / Yema:</strong>
+                                            <p className="text-amber-900 leading-relaxed">
+                                                El lote seleccionado <strong>{nonAALotObj.provider_lot}</strong> tiene clasificación <u>{nonAALotObj.egg_classification || 'No Grado AA'}</u>. Para el quebraje y separación de claras y yemas se recomienda estrictamente <strong>Huevo Grado AA</strong> con membrana vitelina firme para evitar la ruptura accidental de la yema y la contaminación grasa en las claras.
+                                            </p>
+                                            <span className="text-[11px] font-semibold text-amber-800 block">
+                                                (Puede continuar con este lote si supervisión de planta autoriza el quebraje).
+                                            </span>
+                                        </div>
+                                    </div>
+                                )}
+
                                 {batchForm.raw_materials.map((rm, idx) => {
                                     const selectedLot = rawMaterials.find(m => String(m.id) === String(rm.raw_material_id));
                                     let lotTarimas = selectedLot?.tarimas_available || [];
@@ -2065,17 +2655,22 @@ const EggProduction = () => {
                                                         className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-semibold focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10"
                                                     >
                                                         <option value="">Seleccionar lote recepcionado...</option>
-                                                        {rawMaterials.map(m => {
+                                                        {rawMaterials.map((m, mIdx) => {
                                                             const isAgotado = m.is_depleted || parseFloat(m.stock_lbs || 0) <= 0.01;
                                                             const isAlreadyChosen = batchForm.raw_materials.some((r, i) => i !== idx && r.raw_material_id === String(m.id));
+                                                            const isFifoOldest = mIdx === 0;
+                                                            const isAA = (m.egg_classification || '').toLowerCase().includes('aa');
+                                                            const locTag = (m.storage_location || 'abajo') === 'abajo' ? '⬇ Abajo' : '⬆ Arriba';
                                                             return (
                                                                 <option
                                                                     key={m.id}
                                                                     value={m.id}
                                                                     disabled={isAgotado || isAlreadyChosen}
-                                                                    className={isAgotado ? 'text-slate-400 bg-slate-50' : 'text-slate-900'}
+                                                                    className={isAgotado ? 'text-slate-400 bg-slate-50' : 'text-slate-900 font-semibold'}
                                                                 >
-                                                                    {m.egg_type} - Lote: {m.provider_lot} ({m.provider_name || 'Prov.'}) | {isAgotado ? '🚫 [AGOTADO - 0 Lbs]' : `Stock: ${parseFloat(m.stock_lbs || 0).toFixed(0)} Lbs (${m.total_boxes || 0} cjs)`}
+                                                                    {isFifoOldest ? '[FIFO] ' : ''}
+                                                                    {isAA ? '[⭐ Grado AA] ' : ''}
+                                                                    [{locTag}] Lote: {m.provider_lot} - {m.egg_type} ({m.provider_name || 'Prov.'}) | {isAgotado ? '🚫 [AGOTADO - 0 Lbs]' : `Stock: ${parseFloat(m.stock_lbs || 0).toFixed(0)} Lbs (${m.total_boxes || 0} cjs)`}
                                                                 </option>
                                                             );
                                                         })}
@@ -2152,14 +2747,20 @@ const EggProduction = () => {
                                                                         disabled={isAdded || isDepleted}
                                                                         onClick={() => handleAddSpecificTarimaToRm(idx, t)}
                                                                         className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 border ${isAdded
-                                                                                ? 'bg-emerald-50 border-emerald-300 text-emerald-700 shadow-2xs'
-                                                                                : isDepleted
-                                                                                    ? 'bg-slate-100 border-slate-200 text-slate-400 opacity-60 cursor-not-allowed line-through'
-                                                                                    : 'bg-white hover:bg-indigo-50 border-slate-300 hover:border-indigo-400 text-slate-700 hover:text-indigo-700 shadow-2xs'
+                                                                            ? 'bg-emerald-50 border-emerald-300 text-emerald-700 shadow-2xs'
+                                                                            : isDepleted
+                                                                                ? 'bg-slate-100 border-slate-200 text-slate-400 opacity-60 cursor-not-allowed line-through'
+                                                                                : 'bg-white hover:bg-indigo-50 border-slate-300 hover:border-indigo-400 text-slate-700 hover:text-indigo-700 shadow-2xs'
                                                                             }`}
                                                                         title={isDepleted ? 'Tarima 100% consumida en corridas anteriores' : isAdded ? 'Tarima ya agregada' : 'Hacer clic para agregar a esta corrida'}
                                                                     >
                                                                         <span>Tarima #{t.tarima_number}</span>
+                                                                        <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${(t.storage_location || selectedLot?.storage_location || 'abajo') === 'abajo'
+                                                                                ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                                                                                : 'bg-amber-50 text-amber-700 border border-amber-200'
+                                                                            }`}>
+                                                                            {(t.storage_location || selectedLot?.storage_location || 'abajo') === 'abajo' ? '⬇ Abajo' : '⬆ Arriba'}
+                                                                        </span>
                                                                         <span className="text-[10px] font-semibold opacity-80">
                                                                             ({availBoxes} cjs • {parseFloat(availLbs).toFixed(0)} Lbs)
                                                                         </span>
@@ -2194,8 +2795,14 @@ const EggProduction = () => {
                                                                         <div key={ti} className="bg-white p-2.5 rounded-xl border border-slate-200/90 shadow-2xs space-y-1.5">
                                                                             <div className="flex items-center justify-between gap-2">
                                                                                 <div className="flex items-center gap-2 flex-wrap">
-                                                                                    <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-md font-bold text-xs">
-                                                                                        Tarima #{t.tarima_number}
+                                                                                    <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-md font-bold text-xs flex items-center gap-1.5">
+                                                                                        <span>Tarima #{t.tarima_number}</span>
+                                                                                        <span className={`text-[9px] font-black px-1 py-0.2 rounded ${(t.storage_location || selectedLot?.storage_location || 'abajo') === 'abajo'
+                                                                                                ? 'bg-blue-100 text-blue-800'
+                                                                                                : 'bg-amber-100 text-amber-800'
+                                                                                            }`}>
+                                                                                            {(t.storage_location || selectedLot?.storage_location || 'abajo') === 'abajo' ? '⬇ Abajo' : '⬆ Arriba'}
+                                                                                        </span>
                                                                                     </span>
                                                                                     {t.barcode && (
                                                                                         <span className="font-mono text-[10px] text-slate-500 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-200">
@@ -2292,10 +2899,10 @@ const EggProduction = () => {
                                     <div>
                                         <label className="text-xs font-bold text-teal-900 uppercase tracking-wide flex items-center gap-1.5">
                                             <Sparkles className="w-4 h-4 text-teal-600" />
-                                            <span>Incorporar Remanentes / Sobrantes Disponibles (Producciones Previas)</span>
+                                            <span>Materia prima en proceso (Producciones Previas)</span>
                                         </label>
                                         <p className="text-[11px] text-teal-700">
-                                            Sobrantes guardados (huevo en leche, mezclas previas) listos para integrarse en esta formulación.
+                                            Materia prima en proceso (huevo en leche, mezclas previas) listos para integrarse en esta formulación.
                                         </p>
                                     </div>
                                     <div className="flex items-center gap-2">
@@ -2309,13 +2916,12 @@ const EggProduction = () => {
                                                         params: nextVal ? { all: 'true' } : (editingBatch ? { include_batch_id: editingBatch.id } : {})
                                                     });
                                                     setAvailableRemanentes(res.data || []);
-                                                } catch (e) {}
+                                                } catch (e) { }
                                             }}
-                                            className={`text-[11px] px-2.5 py-1 rounded-lg border font-semibold transition-all ${
-                                                showAllRemanentes 
-                                                    ? 'bg-teal-700 text-white border-teal-700' 
+                                            className={`text-[11px] px-2.5 py-1 rounded-lg border font-semibold transition-all ${showAllRemanentes
+                                                    ? 'bg-teal-700 text-white border-teal-700'
                                                     : 'bg-white text-teal-800 border-teal-300 hover:bg-teal-100'
-                                            }`}
+                                                }`}
                                         >
                                             {showAllRemanentes ? 'Ver Solo Disponibles' : 'Ver Todos / Historial'}
                                         </button>
@@ -2343,13 +2949,12 @@ const EggProduction = () => {
                                                         const updated = isSelected ? current.filter(id => id !== rem.id) : [...current, rem.id];
                                                         setBatchForm({ ...batchForm, remanente_ids: updated });
                                                     }}
-                                                    className={`p-3 rounded-xl border transition-all flex items-start justify-between gap-2 ${
-                                                        isSelected
+                                                    className={`p-3 rounded-xl border transition-all flex items-start justify-between gap-2 ${isSelected
                                                             ? 'bg-white border-teal-500 shadow-sm ring-2 ring-teal-500/20 cursor-pointer'
                                                             : isAssigned
-                                                            ? 'bg-slate-100/80 border-slate-200 text-slate-500 cursor-default opacity-85'
-                                                            : 'bg-white/70 border-teal-200/70 hover:bg-white cursor-pointer'
-                                                    }`}
+                                                                ? 'bg-slate-100/80 border-slate-200 text-slate-500 cursor-default opacity-85'
+                                                                : 'bg-white/70 border-teal-200/70 hover:bg-white cursor-pointer'
+                                                        }`}
                                                 >
                                                     <div className="space-y-1">
                                                         <div className="flex items-center gap-2">
@@ -2751,6 +3356,37 @@ const EggProduction = () => {
                                 </div>
                             </div>
 
+                            {/* Métricas en tiempo real de Balance: Rendimiento por caja y Líquido + Envasado */}
+                            {(() => {
+                                const inpLbs = parseFloat(selectedBatchForComplete?.input_weight_lbs || 0);
+                                const bxs = selectedBatchForComplete?.total_boxes || Math.round(inpLbs / 30) || 1;
+                                const curLiquid = parseFloat(completeForm.yield_liquid_lbs || 0);
+                                const curPkg = parseFloat(selectedBatchForComplete?.packaged_weight_lbs || 0);
+                                const yieldPerBox = bxs > 0 ? (curLiquid / bxs).toFixed(1) : '0.0';
+                                const liquidPlusPackaged = curLiquid + curPkg;
+                                const totalYieldPct = inpLbs > 0 ? ((liquidPlusPackaged / inpLbs) * 100).toFixed(1) : '0.0';
+
+                                return (
+                                    <div className="grid grid-cols-3 gap-2 bg-blue-50/60 p-3 rounded-xl border border-blue-200">
+                                        <div className="text-center">
+                                            <span className="text-[10px] font-bold text-blue-700 block uppercase">Rend. / Caja</span>
+                                            <span className="text-xs font-black text-blue-900">{yieldPerBox} Lbs/Cja</span>
+                                            <span className="text-[9px] text-blue-500 block">({bxs} cajas)</span>
+                                        </div>
+                                        <div className="text-center">
+                                            <span className="text-[10px] font-bold text-blue-700 block uppercase">Líq. + Envasado</span>
+                                            <span className="text-xs font-black text-blue-900">{liquidPlusPackaged.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} Lbs</span>
+                                            <span className="text-[9px] text-blue-500 block">{curPkg > 0 ? `(${curPkg.toLocaleString()} env.)` : 'sin envasar'}</span>
+                                        </div>
+                                        <div className="text-center">
+                                            <span className="text-[10px] font-bold text-blue-700 block uppercase">% Rend. Total</span>
+                                            <span className="text-xs font-black text-blue-900">{totalYieldPct}%</span>
+                                            <span className="text-[9px] text-blue-500 block">sobre entrada</span>
+                                        </div>
+                                    </div>
+                                );
+                            })()}
+
                             <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
                                 <button
                                     type="button"
@@ -2831,9 +3467,17 @@ const EggProduction = () => {
                                         className="p-3.5 bg-white hover:bg-indigo-50 border-2 border-slate-200 hover:border-indigo-500 rounded-xl text-left transition-all group shadow-xs"
                                     >
                                         <div className="flex items-center justify-between mb-1.5">
-                                            <span className="font-bold text-xs text-indigo-700 group-hover:text-indigo-900">
-                                                Tarima #{t.tarima_number}
-                                            </span>
+                                            <div className="flex items-center gap-1.5">
+                                                <span className="font-bold text-xs text-indigo-700 group-hover:text-indigo-900">
+                                                    Tarima #{t.tarima_number}
+                                                </span>
+                                                <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${(t.storage_location || tarimaPickerModal.lot?.storage_location || 'abajo') === 'abajo'
+                                                        ? 'bg-blue-100 text-blue-800'
+                                                        : 'bg-amber-100 text-amber-800'
+                                                    }`}>
+                                                    {(t.storage_location || tarimaPickerModal.lot?.storage_location || 'abajo') === 'abajo' ? '⬇ Abajo' : '⬆ Arriba'}
+                                                </span>
+                                            </div>
                                             <span className="text-[10px] font-bold bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded">
                                                 {availBoxes} cjs
                                             </span>
@@ -2874,1141 +3518,129 @@ const EggProduction = () => {
             )}
 
             {/* MODAL VISUALIZADOR Y CONTROL DE ETAPAS DEL PROCESO */}
-            {stagesModal.isOpen && (
-                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
-                    <div className="bg-white border border-slate-200 rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] flex flex-col text-slate-900 overflow-hidden">
-                        {/* Header */}
-                        <div className="p-5 border-b border-slate-200 flex items-center justify-between bg-slate-50/80">
-                            <div className="flex items-center gap-3">
-                                <div className="p-2.5 bg-indigo-100 text-indigo-700 rounded-xl">
-                                    <Layers size={22} />
-                                </div>
-                                <div>
-                                    <h3 className="text-base font-bold text-slate-900 uppercase tracking-tight">
-                                        Visualizador y Control de Etapas de Producción
-                                    </h3>
-                                    <div className="flex items-center gap-2 mt-0.5 text-xs text-slate-500 font-medium">
-                                        <span>Lote: <b className="text-indigo-600">{stagesModal.batch?.batch_code_display || stagesModal.batch?.batch_uuid}</b></span>
-                                        <span>•</span>
-                                        <span className="capitalize">{stagesModal.batch?.product_type} ({stagesModal.batch?.presentation})</span>
-                                        <span>•</span>
-                                        <span className="font-bold text-teal-700">{parseFloat(stagesModal.batch?.input_weight_lbs || 0).toLocaleString()} Lbs Entrantes</span>
-                                    </div>
-                                </div>
-                            </div>
-                            <button
-                                type="button"
-                                onClick={() => setStagesModal({ isOpen: false, batch: null, data: null, loading: false })}
-                                className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-200 rounded-lg transition-colors"
-                            >
-                                <XCircle size={20} />
-                            </button>
-                        </div>
+            {/* MODAL BALANCE Y ETAPAS DEL LOTE */}
+            <EggBatchStagesModal
+                isOpen={stagesModal.isOpen}
+                onClose={() => setStagesModal({ isOpen: false, batch: null, data: null, loading: false })}
+                stagesModal={stagesModal}
+                canManageLots={canManageLots}
+                onClosePasteurization={(batch) => handleOpenClosePasteurization(batch)}
+                onReopenPasteurization={(batch) => handleReopenPasteurization(batch)}
+                onReopenPackaging={(batch) => handleReopenBatchPackaging(batch?.id || batch)}
+                onOpenAddTarimas={(batch) => setAddTarimasModal({
+                    isOpen: true,
+                    batch: batch,
+                    raw_materials: [
+                        { raw_material_id: '', quantity_lbs: '', boxes_count: '', tarimas: [] }
+                    ],
+                    manualTarimaInput: '',
+                    notes: '',
+                    isSubmitting: false
+                })}
+                onOpenPasteurize={(batch) => {
+                    setSelectedBatchForPasteurize(batch?.id);
+                    setIsPasteurizeModalOpen(true);
+                    setStagesModal({ isOpen: false, batch: null, data: null, loading: false });
+                }}
+                onOpenBalance={(batch) => handleOpenBalanceModal(batch)}
+                onOpenRemanente={(batch) => setRemanenteModal({
+                    isOpen: true,
+                    id: null,
+                    batch: batch,
+                    product_type: batch?.product_type || 'huevo entero',
+                    presentation: 'cubeta 30LB',
+                    weight_lbs: '',
+                    is_pasteurized: batch?.status === 'pasteurizado',
+                    destination: 'proximo_empaque',
+                    notes: '',
+                    isSubmitting: false
+                })}
+                onOpenEditRemanente={(rem) => handleOpenEditRemanente(rem)}
+                onDeleteRemanente={(remId) => handleDeleteRemanente(remId)}
+                onNavigateEmpaque={() => navigate('/industrial/empaque')}
+                onOpenWastes={(batch) => handleOpenWastesModal(batch)}
+                onOpenEditWaste={(waste) => handleOpenEditWaste(waste)}
+                handleDeleteWaste={(wasteId) => handleDeleteWaste(wasteId)}
+                onDeleteWaste={(wasteId) => handleDeleteWaste(wasteId)}
+                onExportSummary={(batchId, format) => handleExportSummary(batchId, format)}
+                onOpenQualityEvaluation={(b) => setQualityModal({ isOpen: true, batch: b })}
+            />
 
-                        {/* Content */}
-                        <div className="p-6 overflow-y-auto space-y-6 flex-1">
-                            {stagesModal.loading ? (
-                                <div className="p-12 text-center text-slate-500 text-xs font-medium animate-pulse">
-                                    Cargando flujo y balance de etapas...
-                                </div>
-                            ) : (
-                                <>
-                                    {/* 4 Etapas Stepper / Timeline */}
-                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                                        {/* ETAPA 1: QUEBRAJE */}
-                                        <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/60 relative flex flex-col justify-between">
-                                            <div>
-                                                <div className="flex items-center justify-between mb-2">
-                                                    <span className="px-2 py-0.5 bg-indigo-100 text-indigo-800 rounded-md text-[10px] font-bold uppercase">
-                                                        Etapa 1: Quebraje
-                                                    </span>
-                                                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" title="Activa / Procesada" />
-                                                </div>
-                                                <h4 className="font-bold text-xs text-slate-800">Entrada & Quebrado</h4>
-                                                <div className="mt-2 space-y-1 text-xs text-slate-600">
-                                                    <div>Total: <b className="text-slate-900">{parseFloat(stagesModal.data?.batch?.input_weight_lbs || 0).toLocaleString()} Lbs</b></div>
-                                                    <div>Materia Prima: <span className="font-medium">{stagesModal.data?.raw_materials?.length || 0} ingresos</span></div>
-                                                    <div>Tarimas: <span className="font-medium text-indigo-700">{stagesModal.data?.tarimas?.length || 0} tarimas</span></div>
-                                                </div>
-                                            </div>
-                                            <button
-                                                type="button"
-                                                onClick={() => setAddTarimasModal({
-                                                    isOpen: true,
-                                                    batch: stagesModal.batch,
-                                                    raw_materials: [
-                                                        { raw_material_id: rawMaterials[0]?.id ? String(rawMaterials[0].id) : '', quantity_lbs: '', boxes_count: '', tarimas: [] }
-                                                    ],
-                                                    manualTarimaInput: '',
-                                                    notes: '',
-                                                    isSubmitting: false
-                                                })}
-                                                className="mt-4 w-full py-1.5 px-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[11px] font-bold transition-colors shadow-xs flex items-center justify-center gap-1"
-                                            >
-                                                <Plus size={12} />
-                                                + Más Tarimas
-                                            </button>
-                                        </div>
+            {/* MODAL CONTROL DE CALIDAD FQ & MB (MARIO / LAB-004) */}
+            <EggQualityFinishedProductModal
+                open={qualityModal.isOpen}
+                onClose={() => setQualityModal({ isOpen: false, batch: null })}
+                batch={qualityModal.batch}
+                onSuccess={() => {
+                    fetchBatches();
+                    if (stagesModal.isOpen && stagesModal.batch) {
+                        handleOpenStagesModal(stagesModal.batch);
+                    }
+                }}
+            />
 
-                                        {/* ETAPA 2: PASTEURIZACIÓN & LOTE DUAL */}
-                                        <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/60 flex flex-col justify-between">
-                                            <div>
-                                                <div className="flex items-center justify-between mb-2">
-                                                    <span className="px-2 py-0.5 bg-amber-100 text-amber-800 rounded-md text-[10px] font-bold uppercase">
-                                                        Etapa 2: Pasteurización
-                                                    </span>
-                                                    <span className={`w-2.5 h-2.5 rounded-full ${stagesModal.data?.batch?.status === 'pasteurizado' || stagesModal.data?.batch?.status === 'empaquetado' ? 'bg-emerald-500' : 'bg-amber-400 animate-pulse'}`} />
-                                                </div>
-                                                <h4 className="font-bold text-xs text-slate-800">Térmico & Lote Dual</h4>
-                                                <div className="mt-2 space-y-1 text-xs text-slate-600">
-                                                    <div>Estado: <b className="capitalize text-slate-900">{stagesModal.data?.batch?.status?.replace('_', ' ')}</b></div>
-                                                    {stagesModal.data?.pasteurize_log ? (
-                                                        <>
-                                                            <div>Temp: <b>{stagesModal.data.pasteurize_log.temperature_c}°C</b></div>
-                                                            <div>Tiempo: <b>{stagesModal.data.pasteurize_log.holding_time_seconds}s</b></div>
-                                                        </>
-                                                    ) : (
-                                                        <div className="text-slate-400 italic text-[11px]">Pasteurización en curso / pendiente</div>
-                                                    )}
-                                                </div>
-                                            </div>
-                                            <div className="mt-3 space-y-2">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        setSelectedBatchForPasteurize(stagesModal.batch?.id);
-                                                        setIsPasteurizeModalOpen(true);
-                                                    }}
-                                                    className="w-full py-1.5 px-3 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1.5"
-                                                >
-                                                    <Flame size={14} />
-                                                    Proceder a Pasteurizar este Lote
-                                                </button>
-                                                <div className="bg-amber-50 border border-amber-200 p-2 rounded-lg text-[10px] text-amber-800 font-medium">
-                                                    💡 <b>Lote Dual:</b> Quebraje continuo permitido en paralelo mientras se pasteuriza este lote.
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        {/* ETAPA 3: REMANENTES & REUTILIZABLES */}
-                                        <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/60 flex flex-col justify-between">
-                                            <div>
-                                                <div className="flex items-center justify-between mb-2">
-                                                    <span className="px-2 py-0.5 bg-teal-100 text-teal-800 rounded-md text-[10px] font-bold uppercase">
-                                                        Etapa 3: Remanentes
-                                                    </span>
-                                                    <span className="w-2.5 h-2.5 rounded-full bg-teal-500" />
-                                                </div>
-                                                <h4 className="font-bold text-xs text-slate-800">Sobrantes & Reprocesos</h4>
-                                                <div className="mt-2 space-y-1 text-xs text-slate-600">
-                                                    <div>Remanentes: <b className="text-teal-700">{stagesModal.data?.remanentes?.length || 0} registrados</b></div>
-                                                    <div>Total Sobrante: <b>{stagesModal.data?.remanentes?.reduce((acc, r) => acc + parseFloat(r.weight_lbs || 0), 0).toFixed(1)} Lbs</b></div>
-                                                    <div className="text-[10px] text-slate-400">Ej: Huevo en leche, reproceso, siguiente corrida</div>
-                                                </div>
-                                            </div>
-                                            <button
-                                                type="button"
-                                                onClick={() => setRemanenteModal({
-                                                    isOpen: true,
-                                                    batch: stagesModal.batch,
-                                                    product_type: stagesModal.batch?.product_type || 'huevo entero',
-                                                    presentation: 'cubeta 30LB',
-                                                    weight_lbs: '',
-                                                    is_pasteurized: true,
-                                                    destination: 'proximo_empaque',
-                                                    notes: '',
-                                                    isSubmitting: false
-                                                })}
-                                                className="mt-4 w-full py-1.5 px-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-[11px] font-bold transition-colors shadow-xs flex items-center justify-center gap-1"
-                                            >
-                                                <Plus size={12} />
-                                                + Registrar Remanente
-                                            </button>
-                                        </div>
-
-                                        {/* ETAPA 4: ENVASADO Y BALANCE FINAL */}
-                                        <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/60 flex flex-col justify-between">
-                                            <div>
-                                                <div className="flex items-center justify-between mb-2">
-                                                    <span className="px-2 py-0.5 bg-purple-100 text-purple-800 rounded-md text-[10px] font-bold uppercase">
-                                                        Etapa 4: Envasado
-                                                    </span>
-                                                    <span className={`w-2.5 h-2.5 rounded-full ${parseFloat(stagesModal.data?.batch?.packaged_weight_lbs || 0) > 0 ? 'bg-purple-600' : 'bg-slate-300'}`} />
-                                                </div>
-                                                <h4 className="font-bold text-xs text-slate-800">Envasado & Eficiencia</h4>
-                                                <div className="mt-2 space-y-1 text-xs text-slate-600">
-                                                    <div>Rendimiento: <b>{parseFloat(stagesModal.data?.batch?.yield_liquid_lbs || 0).toLocaleString()} Lbs</b></div>
-                                                    <div>Envasado: <b className="text-purple-700">{parseFloat(stagesModal.data?.batch?.packaged_weight_lbs || 0).toLocaleString()} Lbs</b></div>
-                                                    {stagesModal.data?.batch?.packaging_efficiency_pct && (
-                                                        <div className="text-[11px] text-emerald-700 font-bold">
-                                                            Eficiencia: {stagesModal.data.batch.packaging_efficiency_pct}%
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            </div>
-                                            <button
-                                                type="button"
-                                                onClick={() => navigate('/industrial/empaque')}
-                                                className="mt-4 w-full py-1.5 px-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-[11px] font-bold transition-colors shadow-xs flex items-center justify-center gap-1"
-                                            >
-                                                Ir a Envasado
-                                                <ChevronRight size={12} />
-                                            </button>
-                                        </div>
-                                    </div>
-
-                                    {/* Detalle de Remanentes Registrados para este Lote */}
-                                    {stagesModal.data?.remanentes?.length > 0 && (
-                                        <div className="border border-slate-200 rounded-xl p-4 bg-white space-y-2">
-                                            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
-                                                <CheckCircle2 size={14} className="text-teal-600" />
-                                                Remanentes / Sobrantes Guardados para Siguiente Producción
-                                            </h4>
-                                            <div className="overflow-x-auto">
-                                                <table className="w-full text-left text-xs">
-                                                    <thead>
-                                                        <tr className="border-b border-slate-100 text-slate-500 font-bold uppercase text-[10px]">
-                                                            <th className="py-1.5">Producto</th>
-                                                            <th className="py-1.5">Presentación</th>
-                                                            <th className="py-1.5 text-right">Peso (Lbs)</th>
-                                                            <th className="py-1.5 text-center">Térmico</th>
-                                                            <th className="py-1.5">Destino</th>
-                                                            <th className="py-1.5">Notas</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody className="divide-y divide-slate-100">
-                                                        {stagesModal.data.remanentes.map(r => (
-                                                            <tr key={r.id}>
-                                                                <td className="py-2 font-bold capitalize text-slate-900">{r.product_type}</td>
-                                                                <td className="py-2 text-slate-600">{r.presentation}</td>
-                                                                <td className="py-2 text-right font-bold text-teal-700">{parseFloat(r.weight_lbs).toFixed(1)} Lbs</td>
-                                                                <td className="py-2 text-center">
-                                                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${r.is_pasteurized ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
-                                                                        {r.is_pasteurized ? 'Pasteurizado' : 'Sin Pasteurizar'}
-                                                                    </span>
-                                                                </td>
-                                                                <td className="py-2 capitalize text-slate-700">{r.destination?.replace('_', ' ')}</td>
-                                                                <td className="py-2 text-slate-500 italic text-[11px]">{r.notes || '-'}</td>
-                                                            </tr>
-                                                        ))}
-                                                    </tbody>
-                                                </table>
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {/* Resumen de Mermas de Producción */}
-                                    <div className="border border-slate-200 rounded-xl p-4 bg-white space-y-2">
-                                        <div className="flex items-center justify-between">
-                                            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
-                                                <AlertOctagon size={14} className="text-rose-600" />
-                                                Mermas y Pérdidas del Lote
-                                            </h4>
-                                            <button
-                                                type="button"
-                                                onClick={() => handleOpenWastesModal(stagesModal.batch)}
-                                                className="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg text-xs font-bold transition-colors"
-                                            >
-                                                + Registrar Merma
-                                            </button>
-                                        </div>
-                                        {stagesModal.data?.wastes?.length > 0 ? (
-                                            <div className="overflow-x-auto">
-                                                <table className="w-full text-left text-xs">
-                                                    <thead>
-                                                        <tr className="border-b border-slate-100 text-slate-500 font-bold uppercase text-[10px]">
-                                                            <th className="py-1.5">Etapa</th>
-                                                            <th className="py-1.5">Tipo Merma</th>
-                                                            <th className="py-1.5 text-right">Peso (Lbs)</th>
-                                                            <th className="py-1.5">Registrado Por</th>
-                                                            <th className="py-1.5">Notas</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody className="divide-y divide-slate-100">
-                                                        {stagesModal.data.wastes.map(w => (
-                                                            <tr key={w.id}>
-                                                                <td className="py-2 capitalize font-semibold text-slate-800">{w.stage}</td>
-                                                                <td className="py-2 capitalize text-rose-700 font-bold">{w.waste_type?.replace('_', ' ')}</td>
-                                                                <td className="py-2 text-right font-black text-slate-900">{parseFloat(w.weight_lbs).toFixed(1)} Lbs</td>
-                                                                <td className="py-2 text-slate-600">{w.operator_name || '-'}</td>
-                                                                <td className="py-2 text-slate-500 italic text-[11px]">{w.notes || '-'}</td>
-                                                            </tr>
-                                                        ))}
-                                                    </tbody>
-                                                </table>
-                                            </div>
-                                        ) : (
-                                            <p className="text-xs text-slate-400 italic">No se han registrado mermas extraordinarias para este lote.</p>
-                                        )}
-                                    </div>
-                                </>
-                            )}
-                        </div>
-
-                        {/* Footer */}
-                        <div className="p-4 border-t border-slate-200 bg-slate-50 flex items-center justify-between flex-wrap gap-2">
-                            <div className="flex items-center gap-2">
-                                <span className="text-xs font-bold text-slate-500 uppercase">Exportar Resumen:</span>
-                                <button
-                                    type="button"
-                                    onClick={() => handleExportSummary(stagesModal.batch?.id, 'pdf')}
-                                    className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-1 shadow-xs"
-                                >
-                                    <FileText size={13} />
-                                    PDF
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => handleExportSummary(stagesModal.batch?.id, 'excel')}
-                                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-1 shadow-xs"
-                                >
-                                    <FileSpreadsheet size={13} />
-                                    Excel
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => handleExportSummary(stagesModal.batch?.id, 'word')}
-                                    className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-1 shadow-xs"
-                                >
-                                    <FileCheck size={13} />
-                                    Word (.docx)
-                                </button>
-                            </div>
-                            <button
-                                type="button"
-                                onClick={() => setStagesModal({ isOpen: false, batch: null, data: null, loading: false })}
-                                className="px-5 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-xl text-xs font-bold transition-colors"
-                            >
-                                Cerrar
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            {/* MODAL CERRAR PASTEURIZACIÓN */}
+            <EggClosePasteurizationModal
+                isOpen={closePasteurizationModal.isOpen}
+                onClose={() => setClosePasteurizationModal(prev => ({ ...prev, isOpen: false, batch: null }))}
+                batch={closePasteurizationModal.batch}
+                pasteurizationLot={closePasteurizationModal.pasteurization_lot}
+                onPasteurizationLotChange={(val) => setClosePasteurizationModal(prev => ({ ...prev, pasteurization_lot: val }))}
+                notes={closePasteurizationModal.notes}
+                onNotesChange={(val) => setClosePasteurizationModal(prev => ({ ...prev, notes: val }))}
+                onSubmit={handleConfirmClosePasteurization}
+                isSubmitting={closePasteurizationModal.isSubmitting}
+            />
 
             {/* MODAL AGREGAR MÁS TARIMAS AL QUEBRAJE */}
-            {addTarimasModal.isOpen && (
-                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-[60] animate-in fade-in duration-150">
-                    <div className="bg-white border border-slate-200 rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6 text-slate-900 space-y-4">
-                        <div className="flex items-center justify-between border-b border-slate-200 pb-3">
-                            <div>
-                                <h3 className="text-base font-bold uppercase tracking-wider text-slate-900 flex items-center gap-2">
-                                    <Plus className="text-indigo-600" size={18} />
-                                    Agregar Más Tarimas al Quebraje
-                                </h3>
-                                <p className="text-xs text-slate-500 mt-0.5">
-                                    Lote Destino: <strong className="text-indigo-700 font-mono">{addTarimasModal.batch?.batch_code_display || addTarimasModal.batch?.batch_uuid}</strong> ({addTarimasModal.batch?.product_type})
-                                </p>
-                            </div>
-                            <button
-                                type="button"
-                                onClick={() => setAddTarimasModal(prev => ({ ...prev, isOpen: false }))}
-                                className="text-slate-400 hover:text-slate-700 p-1 rounded-lg"
-                            >
-                                <XCircle size={20} />
-                            </button>
-                        </div>
-
-                        <p className="text-xs text-slate-500 font-medium">
-                            Permite adicionar tarimas de materia prima a la corrida en caso de que el quebraje sea menor a lo esperado o se requiera volumen extra.
-                        </p>
-
-                        {/* Histórico de Tarimas / Materia Prima ya Quebradas en este Lote */}
-                        {addTarimasModal.batch?.raw_materials && addTarimasModal.batch.raw_materials.length > 0 && (
-                            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-2">
-                                <div className="flex items-center justify-between">
-                                    <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wide flex items-center gap-1.5">
-                                        <ClipboardList size={14} className="text-indigo-600" />
-                                        Tarimas / Lotes ya Quebrados en esta Producción
-                                    </span>
-                                    <span className="text-[11px] text-slate-500 font-semibold">
-                                        Total previo: <strong className="text-slate-900">{parseFloat(addTarimasModal.batch.input_weight_lbs || 0).toLocaleString()} Lbs</strong>
-                                    </span>
-                                </div>
-                                <div className="space-y-1.5">
-                                    {addTarimasModal.batch.raw_materials.map((rmPrev, pIdx) => (
-                                        <div key={pIdx} className="bg-white border border-slate-200/80 rounded-lg p-2.5 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
-                                            <div>
-                                                <div className="font-bold text-slate-800 flex items-center gap-1.5">
-                                                    <span>{rmPrev.egg_type || 'Huevo'}</span>
-                                                    <span className="text-slate-400 font-normal">| Lote:</span>
-                                                    <span className="font-mono text-indigo-700">{rmPrev.provider_lot || rmPrev.id}</span>
-                                                </div>
-                                                {Array.isArray(rmPrev.tarimas) && rmPrev.tarimas.length > 0 ? (
-                                                    <div className="flex flex-wrap gap-1 mt-1">
-                                                        {rmPrev.tarimas.map((t, ti) => (
-                                                            <span key={ti} className="bg-indigo-50 border border-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded text-[10px] font-semibold">
-                                                                Tarima #{t.tarima_number} ({t.boxes_count || 0} cjs • {parseFloat(t.quantity_lbs || 0).toFixed(0)} Lbs)
-                                                            </span>
-                                                        ))}
-                                                    </div>
-                                                ) : (
-                                                    <span className="text-[11px] text-slate-500">{rmPrev.boxes_count ? `${rmPrev.boxes_count} cajas` : ''}</span>
-                                                )}
-                                            </div>
-                                            <div className="text-right font-bold text-slate-900 shrink-0">
-                                                {parseFloat(rmPrev.quantity_lbs || 0).toFixed(2)} Lbs
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Barra de Herramientas: Escáner con Teléfono/Cámara & Digitación / Búsqueda Manual */}
-                        <div className="bg-gradient-to-r from-indigo-50/80 to-slate-50 p-4 rounded-xl border border-indigo-100 space-y-3">
-                            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
-                                <div className="flex items-center gap-2">
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            setScannerContext('add_tarimas');
-                                            setScannerModalOpen(true);
-                                        }}
-                                        className="px-3.5 py-2 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-sm shadow-indigo-500/20"
-                                        title="Escanear con cámara de teléfono o lector QR"
-                                    >
-                                        <Camera size={15} />
-                                        <span>Escanear Tarima (Cámara / QR)</span>
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => setTarimaSearchPickerOpen(true)}
-                                        className="px-3.5 py-2 bg-white hover:bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-2xs"
-                                        title="Abrir buscador visual de todos los lotes y tarimas disponibles"
-                                    >
-                                        <Search size={14} className="text-indigo-600" />
-                                        <span>Ver Lotes y Tarimas</span>
-                                    </button>
-                                </div>
-
-                                <div className="flex items-center gap-2 text-xs bg-white px-3 py-1.5 rounded-xl border border-slate-200 shadow-2xs self-end sm:self-auto">
-                                    <span className="text-slate-500 font-medium">Cajas: <strong className="text-indigo-700">{addTarimasModal.raw_materials.reduce((s, rm) => s + (parseInt(rm.boxes_count) || (rm.tarimas || []).reduce((ts, t) => ts + (parseInt(t.boxes_count) || 0), 0)), 0)} cjs</strong></span>
-                                    <span className="text-slate-300">|</span>
-                                    <span className="text-slate-500 font-medium">Entrada: <strong className="text-emerald-700">{addTarimasModal.raw_materials.reduce((s, rm) => s + parseFloat(rm.quantity_lbs || 0), 0).toFixed(2)} Lbs</strong></span>
-                                </div>
-                            </div>
-
-                            {/* Digitar Tarima Manualmente o Abrir Selector con Lupa */}
-                            <form onSubmit={handleManualTarimaDigitize} className="flex gap-2 items-center">
-                                <div className="relative flex-1">
-                                    <button
-                                        type="button"
-                                        onClick={() => setTarimaSearchPickerOpen(true)}
-                                        className="absolute left-2.5 top-2 h-4 w-4 text-indigo-600 hover:text-indigo-800 transition-colors"
-                                        title="Clic para buscar y seleccionar entre todos los lotes y tarimas disponibles"
-                                    >
-                                        <Search size={15} />
-                                    </button>
-                                    <input
-                                        type="text"
-                                        value={addTarimasModal.manualTarimaInput || ''}
-                                        onChange={(e) => setAddTarimasModal(prev => ({ ...prev, manualTarimaInput: e.target.value }))}
-                                        placeholder="Digitar código de barras (ej: TAR-LOTE-01) o N° de tarima, o clic en lupa..."
-                                        className="w-full pl-8 pr-3 py-1.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                                    />
-                                </div>
-                                <button
-                                    type="submit"
-                                    className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold transition-colors"
-                                >
-                                    Buscar / Digitar
-                                </button>
-                            </form>
-                        </div>
-
-                        {/* Listado de Lotes de Materia Prima y Tarimas Complementarias */}
-                        <form onSubmit={handleAddTarimasSubmit} className="space-y-4">
-                            <div className="space-y-3">
-                                {addTarimasModal.raw_materials.map((rm, idx) => {
-                                    const selectedLot = rawMaterials.find(m => String(m.id) === String(rm.raw_material_id));
-                                    let lotTarimas = selectedLot?.tarimas_available || [];
-                                    if (lotTarimas.length === 0 && selectedLot?.tarimas_json) {
-                                        try {
-                                            lotTarimas = typeof selectedLot.tarimas_json === 'string'
-                                                ? JSON.parse(selectedLot.tarimas_json || '[]')
-                                                : (selectedLot.tarimas_json || []);
-                                        } catch (e) {
-                                            lotTarimas = [];
-                                        }
-                                    }
-
-                                    return (
-                                        <div key={idx} className="bg-slate-50/70 border border-slate-200 rounded-xl p-3.5 space-y-3">
-                                            {/* Selector del lote */}
-                                            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-                                                <div className="flex-1">
-                                                    <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wide block mb-1">
-                                                        Lote de Materia Prima #{idx + 1} *
-                                                    </label>
-                                                    <select
-                                                        value={rm.raw_material_id}
-                                                        onChange={(e) => {
-                                                            const lotId = e.target.value;
-                                                            const updated = [...addTarimasModal.raw_materials];
-                                                            updated[idx].raw_material_id = lotId;
-                                                            updated[idx].tarimas = [];
-                                                            updated[idx].quantity_lbs = '';
-                                                            updated[idx].boxes_count = '';
-                                                            setAddTarimasModal(prev => ({ ...prev, raw_materials: updated }));
-                                                        }}
-                                                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-semibold focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10"
-                                                        required
-                                                    >
-                                                        <option value="">Seleccione Lote de Materia Prima en Bodega...</option>
-                                                        {rawMaterials.map(m => {
-                                                            const isAgotado = m.is_depleted || parseFloat(m.stock_lbs || 0) <= 0.01;
-                                                            const isAlreadyChosen = addTarimasModal.raw_materials.some((r, i) => i !== idx && r.raw_material_id === String(m.id));
-                                                            return (
-                                                                <option
-                                                                    key={m.id}
-                                                                    value={m.id}
-                                                                    disabled={isAgotado || isAlreadyChosen}
-                                                                    className={isAgotado ? 'text-slate-400 bg-slate-50' : 'text-slate-900'}
-                                                                >
-                                                                    {m.egg_type} - Lote: {m.provider_lot} ({m.provider_name || 'Prov.'}) | {isAgotado ? '🚫 [AGOTADO - 0 Lbs]' : `Stock: ${parseFloat(m.stock_lbs || 0).toFixed(0)} Lbs (${m.total_boxes || 0} cjs)`}
-                                                                </option>
-                                                            );
-                                                        })}
-                                                    </select>
-                                                </div>
-
-                                                <div className="flex items-end gap-2">
-                                                    <div>
-                                                        <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wide block mb-1">
-                                                            Total Lbs
-                                                        </label>
-                                                        <input
-                                                            type="number"
-                                                            value={rm.quantity_lbs}
-                                                            readOnly
-                                                            className="w-24 px-2 py-2 bg-slate-100 border border-slate-200 rounded-xl text-xs text-slate-900 font-bold text-right cursor-not-allowed"
-                                                            placeholder="0.00"
-                                                        />
-                                                    </div>
-
-                                                    {addTarimasModal.raw_materials.length > 1 && (
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => {
-                                                                setAddTarimasModal(prev => ({
-                                                                    ...prev,
-                                                                    raw_materials: prev.raw_materials.filter((_, i) => i !== idx)
-                                                                }));
-                                                            }}
-                                                            className="p-2 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-xl transition-colors mb-0.5"
-                                                            title="Eliminar este lote"
-                                                        >
-                                                            <XCircle size={18} />
-                                                        </button>
-                                                    )}
-                                                </div>
-                                            </div>
-
-                                            {/* Tarimas disponibles en el lote seleccionado */}
-                                            {selectedLot && (
-                                                <div className="bg-white border border-slate-200 rounded-xl p-3 space-y-2.5">
-                                                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-                                                        <div className="flex items-center gap-2">
-                                                            <span className="font-bold text-slate-700 text-[11px] uppercase tracking-wider flex items-center gap-1">
-                                                                <Layers size={13} className="text-indigo-600" />
-                                                                Tarimas Registradas en Recepción
-                                                            </span>
-                                                            {lotTarimas.length > 0 && (
-                                                                <span className="bg-indigo-100 text-indigo-700 text-[10px] font-bold px-2 py-0.5 rounded-full">
-                                                                    {lotTarimas.filter(t => !t.is_depleted && !(t.available_boxes <= 0 && t.available_lbs <= 0.01)).length} disponibles de {lotTarimas.length}
-                                                                </span>
-                                                            )}
-                                                        </div>
-
-                                                        {lotTarimas.some(t => !t.is_depleted && !(t.available_boxes <= 0 && t.available_lbs <= 0.01) && !(rm.tarimas || []).some(it => parseInt(it.tarima_number) === parseInt(t.tarima_number))) && (
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => handleLoadAllAvailableTarimasToAddModal(idx, lotTarimas)}
-                                                                className="px-2.5 py-1 bg-white hover:bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg text-[10px] font-bold transition-all shadow-2xs flex items-center gap-1"
-                                                            >
-                                                                <Check size={11} /> Cargar todas disponibles
-                                                            </button>
-                                                        )}
-                                                    </div>
-
-                                                    {/* Chips interactivos de tarimas */}
-                                                    {lotTarimas.length > 0 ? (
-                                                        <div className="flex flex-wrap gap-1.5 pt-1">
-                                                            {lotTarimas.map((t) => {
-                                                                const isAdded = (rm.tarimas || []).some(it => parseInt(it.tarima_number) === parseInt(t.tarima_number));
-                                                                const isDepleted = t.is_depleted || (t.available_boxes <= 0 && t.available_lbs <= 0.01);
-                                                                const availBoxes = t.available_boxes ?? t.boxes_count ?? 0;
-                                                                const availLbs = t.available_lbs ?? t.net_weight_lbs ?? t.gross_weight_lbs ?? 0;
-
-                                                                return (
-                                                                    <button
-                                                                        key={t.tarima_number}
-                                                                        type="button"
-                                                                        disabled={isAdded || isDepleted}
-                                                                        onClick={() => handleAddSpecificTarimaToAddModal(idx, t)}
-                                                                        className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 border ${isAdded
-                                                                                ? 'bg-emerald-50 border-emerald-300 text-emerald-700 shadow-2xs'
-                                                                                : isDepleted
-                                                                                    ? 'bg-slate-100 border-slate-200 text-slate-400 opacity-60 cursor-not-allowed line-through'
-                                                                                    : 'bg-white hover:bg-indigo-50 border-slate-300 hover:border-indigo-400 text-slate-700 hover:text-indigo-700 shadow-2xs'
-                                                                            }`}
-                                                                        title={isDepleted ? 'Tarima 100% consumida' : isAdded ? 'Tarima ya agregada' : 'Hacer clic para agregar'}
-                                                                    >
-                                                                        <span>Tarima #{t.tarima_number}</span>
-                                                                        <span className="text-[10px] font-semibold opacity-80">
-                                                                            ({availBoxes} cjs • {parseFloat(availLbs).toFixed(0)} Lbs)
-                                                                        </span>
-                                                                        {isAdded && <Check size={12} className="text-emerald-600" />}
-                                                                        {isDepleted && <span className="text-[9px] text-rose-500 font-bold ml-0.5">Agotada</span>}
-                                                                    </button>
-                                                                );
-                                                            })}
-                                                        </div>
-                                                    ) : (
-                                                        <p className="text-xs text-slate-400 italic py-1">
-                                                            Este lote no tiene tarimas registradas en recepción.
-                                                        </p>
-                                                    )}
-
-                                                    {/* Desglose de tarimas seleccionadas para quebrar */}
-                                                    {rm.tarimas && rm.tarimas.length > 0 && (
-                                                        <div className="space-y-2 pt-2 border-t border-slate-200">
-                                                            <div className="text-[10px] font-bold text-slate-500 uppercase px-1 flex items-center justify-between">
-                                                                <span>Tarimas Adicionales a Quebrar</span>
-                                                                <span className="text-indigo-600 font-medium lowercase">admite consumo parcial</span>
-                                                            </div>
-
-                                                            <div className="space-y-1.5">
-                                                                {rm.tarimas.map((t, ti) => {
-                                                                    const maxBoxes = t.available_boxes || t.boxes_count || 0;
-                                                                    const maxLbs = t.available_lbs || parseFloat(t.quantity_lbs) || 0;
-                                                                    const currentBoxes = parseInt(t.boxes_count) || 0;
-                                                                    const _isPartial = currentBoxes < maxBoxes;
-
-                                                                    return (
-                                                                        <div key={ti} className="bg-slate-50 p-2.5 rounded-xl border border-slate-200/90 space-y-1.5">
-                                                                            <div className="flex items-center justify-between gap-2">
-                                                                                <div className="flex items-center gap-2 flex-wrap">
-                                                                                    <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-md font-bold text-xs">
-                                                                                        Tarima #{t.tarima_number}
-                                                                                    </span>
-                                                                                    {t.barcode && (
-                                                                                        <span className="font-mono text-[10px] text-slate-500 bg-white px-1.5 py-0.5 rounded border border-slate-200">
-                                                                                            {t.barcode}
-                                                                                        </span>
-                                                                                    )}
-                                                                                    <span className="text-[11px] text-slate-500">
-                                                                                        (Disponible: <strong className="text-slate-700">{maxBoxes} cjs</strong> • <strong className="text-slate-700">{parseFloat(maxLbs).toFixed(1)} Lbs</strong>)
-                                                                                    </span>
-                                                                                </div>
-
-                                                                                <button
-                                                                                    type="button"
-                                                                                    onClick={() => handleRemoveTarimaFromAddModal(idx, ti)}
-                                                                                    className="p-1 text-slate-600 hover:text-rose-600 rounded transition-colors"
-                                                                                    title="Quitar esta tarima"
-                                                                                >
-                                                                                    <Trash2 size={14} />
-                                                                                </button>
-                                                                            </div>
-
-                                                                            <div className="grid grid-cols-12 gap-2 items-center">
-                                                                                <div className="col-span-6 flex items-center gap-1.5">
-                                                                                    <label className="text-[10px] font-bold text-slate-500 uppercase shrink-0">Cajas:</label>
-                                                                                    <input
-                                                                                        type="number"
-                                                                                        min="1"
-                                                                                        max={maxBoxes}
-                                                                                        value={t.boxes_count}
-                                                                                        onChange={(e) => handleUpdateTarimaBoxesInAddModal(idx, ti, e.target.value)}
-                                                                                        className="w-full px-2 py-1 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-800 text-center focus:border-indigo-500"
-                                                                                        placeholder="0 cjs"
-                                                                                    />
-                                                                                </div>
-
-                                                                                <div className="col-span-6 flex items-center gap-1.5">
-                                                                                    <label className="text-[10px] font-bold text-slate-500 uppercase shrink-0">Peso Lbs:</label>
-                                                                                    <input
-                                                                                        type="number"
-                                                                                        step="0.01"
-                                                                                        min="0.01"
-                                                                                        max={maxLbs}
-                                                                                        value={t.quantity_lbs}
-                                                                                        onChange={(e) => handleUpdateTarimaLbsInAddModal(idx, ti, e.target.value)}
-                                                                                        className="w-full px-2 py-1 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-800 text-right focus:border-indigo-500"
-                                                                                        placeholder="0.00 Lbs"
-                                                                                    />
-                                                                                </div>
-                                                                            </div>
-                                                                        </div>
-                                                                    );
-                                                                })}
-                                                            </div>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            )}
-                                        </div>
-                                    );
-                                })}
-
-                                <button
-                                    type="button"
-                                    onClick={() => setAddTarimasModal(prev => ({
-                                        ...prev,
-                                        raw_materials: [
-                                            ...prev.raw_materials,
-                                            { raw_material_id: '', quantity_lbs: '', boxes_count: '', tarimas: [] }
-                                        ]
-                                    }))}
-                                    className="w-full py-2.5 bg-indigo-50/80 hover:bg-indigo-100 text-indigo-700 rounded-xl text-xs font-bold transition-all border border-indigo-200/80 flex items-center justify-center gap-1.5 shadow-2xs"
-                                >
-                                    <Plus size={14} />
-                                    + Agregar Otro Lote de Materia Prima
-                                </button>
-                            </div>
-
-                            <div>
-                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1">
-                                    Motivo / Observaciones
-                                </label>
-                                <textarea
-                                    rows={2}
-                                    value={addTarimasModal.notes || ''}
-                                    onChange={(e) => setAddTarimasModal(prev => ({ ...prev, notes: e.target.value }))}
-                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                                    placeholder="Detalle por qué se agregaron estas tarimas al quebraje..."
-                                />
-                            </div>
-
-                            <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-200">
-                                <button
-                                    type="button"
-                                    onClick={() => setAddTarimasModal(prev => ({ ...prev, isOpen: false }))}
-                                    className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors"
-                                >
-                                    Cancelar
-                                </button>
-                                <button
-                                    type="submit"
-                                    disabled={addTarimasModal.isSubmitting}
-                                    className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-colors shadow-xs"
-                                >
-                                    {addTarimasModal.isSubmitting ? 'Guardando...' : 'Adicionar Tarimas al Lote'}
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            )}
+            <EggAddTarimasModal
+                isOpen={addTarimasModal.isOpen}
+                onClose={() => setAddTarimasModal(prev => ({ ...prev, isOpen: false }))}
+                addTarimasModal={addTarimasModal}
+                setAddTarimasModal={setAddTarimasModal}
+                rawMaterials={rawMaterials}
+                onOpenScanner={() => {
+                    setScannerContext('add_tarimas');
+                    setScannerModalOpen(true);
+                }}
+                onOpenTarimaSearchPicker={() => setTarimaSearchPickerOpen(true)}
+                handleManualTarimaDigitize={handleManualTarimaDigitize}
+                handleAddTarimasSubmit={handleAddTarimasSubmit}
+                handleLoadAllAvailableTarimasToAddModal={handleLoadAllAvailableTarimasToAddModal}
+                handleAddSpecificTarimaToAddModal={handleAddSpecificTarimaToAddModal}
+                handleRemoveTarimaFromAddModal={handleRemoveTarimaFromAddModal}
+                handleUpdateTarimaBoxesInAddModal={handleUpdateTarimaBoxesInAddModal}
+                handleUpdateTarimaLbsInAddModal={handleUpdateTarimaLbsInAddModal}
+            />
 
             {/* MODAL BUSCADOR DE LOTES Y TARIMAS DISPONIBLES */}
-            {tarimaSearchPickerOpen && (
-                <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
-                    <div className="bg-white border border-slate-200 rounded-2xl shadow-2xl max-w-2xl w-full max-h-[85vh] overflow-y-auto p-6 space-y-4 text-slate-900">
-                        <div className="flex items-center justify-between border-b border-slate-200 pb-3">
-                            <div>
-                                <h3 className="text-sm font-bold uppercase tracking-wider text-slate-900 flex items-center gap-2">
-                                    <Search className="text-indigo-600" size={16} />
-                                    Lotes y Tarimas Disponibles para Quebraje
-                                </h3>
-                                <p className="text-xs text-slate-500 mt-0.5">Seleccione con un clic las tarimas o lotes de materia prima que ingresarán al quebraje.</p>
-                            </div>
-                            <button
-                                type="button"
-                                onClick={() => setTarimaSearchPickerOpen(false)}
-                                className="text-slate-400 hover:text-slate-700 p-1"
-                            >
-                                <XCircle size={20} />
-                            </button>
-                        </div>
-
-                        <div className="space-y-3">
-                            {rawMaterials.filter(m => !m.is_depleted && parseFloat(m.stock_lbs || 0) > 0.01).length === 0 ? (
-                                <p className="text-xs text-slate-400 text-center py-6">No hay lotes con saldo disponible en bodega de recepción.</p>
-                            ) : rawMaterials.filter(m => !m.is_depleted && parseFloat(m.stock_lbs || 0) > 0.01).map(lot => {
-                                let lotTarimas = lot.tarimas_available || [];
-                                if (lotTarimas.length === 0 && lot.tarimas_json) {
-                                    try {
-                                        lotTarimas = typeof lot.tarimas_json === 'string' ? JSON.parse(lot.tarimas_json) : lot.tarimas_json;
-                                    } catch (e) { lotTarimas = []; }
-                                }
-                                const activeTarimas = (lotTarimas || []).filter(t => !t.is_depleted && !(t.available_boxes <= 0 && t.available_lbs <= 0.01));
-
-                                return (
-                                    <div key={lot.id} className="border border-slate-200 rounded-xl p-3.5 bg-slate-50/70 space-y-2.5">
-                                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 border-b border-slate-200/60 pb-2">
-                                            <div>
-                                                <span className="font-bold text-slate-900 text-xs">{lot.egg_type}</span>
-                                                <span className="text-slate-500 text-xs ml-1.5 font-mono">Lote: <strong>{lot.provider_lot}</strong></span>
-                                                <span className="text-slate-400 text-[11px] ml-1.5">({lot.provider_name || 'Proveedor'})</span>
-                                            </div>
-                                            <div className="flex items-center gap-2 text-xs">
-                                                <span className="bg-white border border-slate-200 px-2 py-0.5 rounded font-bold text-indigo-700">
-                                                    Stock: {parseFloat(lot.stock_lbs || 0).toFixed(0)} Lbs ({lot.total_boxes || 0} cjs)
-                                                </span>
-                                            </div>
-                                        </div>
-
-                                        {activeTarimas.length > 0 ? (
-                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                                {activeTarimas.map(t => (
-                                                    <div key={t.tarima_number} className="bg-white border border-slate-200 rounded-lg p-2.5 flex items-center justify-between gap-2 shadow-2xs">
-                                                        <div>
-                                                            <div className="text-xs font-bold text-slate-800 flex items-center gap-1">
-                                                                <Barcode size={12} className="text-indigo-500" />
-                                                                Tarima #{t.tarima_number}
-                                                            </div>
-                                                            <div className="text-[11px] text-slate-500">
-                                                                {t.available_boxes ?? t.boxes_count} cjs • <strong className="text-emerald-700">{parseFloat(t.available_lbs ?? t.net_weight_lbs ?? t.gross_weight_lbs ?? 0).toFixed(1)} Lbs</strong>
-                                                            </div>
-                                                        </div>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => {
-                                                                const updated = [...addTarimasModal.raw_materials];
-                                                                let rmIdx = updated.findIndex(r => String(r.raw_material_id) === String(lot.id));
-                                                                if (rmIdx === -1) {
-                                                                    updated.push({ raw_material_id: String(lot.id), quantity_lbs: '', boxes_count: '', tarimas: [] });
-                                                                    rmIdx = updated.length - 1;
-                                                                }
-                                                                setAddTarimasModal(prev => ({ ...prev, raw_materials: updated }));
-                                                                handleAddSpecificTarimaToAddModal(rmIdx, t);
-                                                            }}
-                                                            className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-600 hover:text-white border border-indigo-200 text-indigo-700 rounded-lg text-xs font-bold transition-all"
-                                                        >
-                                                            + Agregar
-                                                        </button>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        ) : (
-                                            <div className="flex items-center justify-between text-xs bg-white p-2.5 rounded-lg border border-slate-200">
-                                                <span className="text-slate-600">Lote completo sin desglose individual de tarimas</span>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        const updated = [...addTarimasModal.raw_materials];
-                                                        let rmIdx = updated.findIndex(r => String(r.raw_material_id) === String(lot.id));
-                                                        if (rmIdx === -1) {
-                                                            updated.push({
-                                                                raw_material_id: String(lot.id),
-                                                                quantity_lbs: String(lot.stock_lbs || ''),
-                                                                boxes_count: String(lot.total_boxes || ''),
-                                                                tarimas: []
-                                                            });
-                                                        } else {
-                                                            updated[rmIdx].quantity_lbs = String(lot.stock_lbs || '');
-                                                            updated[rmIdx].boxes_count = String(lot.total_boxes || '');
-                                                        }
-                                                        setAddTarimasModal(prev => ({ ...prev, raw_materials: updated }));
-                                                        toast.success(`Lote ${lot.provider_lot} seleccionado.`);
-                                                    }}
-                                                    className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-600 hover:text-white border border-indigo-200 text-indigo-700 rounded-lg text-xs font-bold transition-all"
-                                                >
-                                                    + Cargar Lote
-                                                </button>
-                                            </div>
-                                        )}
-                                    </div>
-                                );
-                            })}
-                        </div>
-
-                        <div className="flex justify-end pt-2 border-t border-slate-200">
-                            <button
-                                type="button"
-                                onClick={() => setTarimaSearchPickerOpen(false)}
-                                className="px-4 py-2 bg-slate-800 text-white rounded-xl text-xs font-bold hover:bg-slate-900"
-                            >
-                                Listo / Volver al Lote
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            <EggTarimaSearchModal
+                isOpen={tarimaSearchPickerOpen}
+                onClose={() => setTarimaSearchPickerOpen(false)}
+                rawMaterials={rawMaterials}
+                addTarimasModal={addTarimasModal}
+                setAddTarimasModal={setAddTarimasModal}
+                handleAddSpecificTarimaToAddModal={handleAddSpecificTarimaToAddModal}
+            />
 
             {/* MODAL REGISTRAR REMANENTE / SOBRANTE */}
-            {remanenteModal.isOpen && (
-                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-[60] animate-in fade-in duration-150">
-                    <div className="bg-white border border-slate-200 rounded-2xl shadow-2xl max-w-md w-full p-6 text-slate-900 space-y-4">
-                        <div className="flex items-center justify-between border-b border-slate-200 pb-3">
-                            <h3 className="text-sm font-bold uppercase tracking-wider text-slate-900 flex items-center gap-2">
-                                <Sparkles className="text-teal-600" size={16} />
-                                Registrar Remanente / Sobrante
-                            </h3>
-                            <button
-                                type="button"
-                                onClick={() => setRemanenteModal(prev => ({ ...prev, isOpen: false }))}
-                                className="text-slate-400 hover:text-slate-700"
-                            >
-                                <XCircle size={18} />
-                            </button>
-                        </div>
-
-                        <p className="text-xs text-slate-500 font-medium">
-                            Sobrante de producto (ej: huevo en leche, huevo entero pasteurizado o sin pasteurizar) guardado para próximo empaque, otra producción o reproceso.
-                        </p>
-
-                        <form onSubmit={handleRemanenteSubmit} className="space-y-4">
-                            <div>
-                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1">
-                                    Tipo de Producto Sobrante *
-                                </label>
-                                <select
-                                    value={remanenteModal.product_type}
-                                    onChange={(e) => setRemanenteModal(prev => ({ ...prev, product_type: e.target.value }))}
-                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500"
-                                >
-                                    <option value="huevo entero">Huevo Entero</option>
-                                    <option value="clara">Clara de Huevo</option>
-                                    <option value="yema">Yema Líquida</option>
-                                    <option value="huevo en leche">Huevo en Leche / Formulado</option>
-                                    <option value="yema azucarada">Yema Azucarada</option>
-                                    <option value="yema salada">Yema Salada</option>
-                                    <option value="reproceso">Lote a Reproceso</option>
-                                </select>
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-3">
-                                <div>
-                                    <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1">
-                                        Peso Remanente (Lbs) *
-                                    </label>
-                                    <input
-                                        type="number"
-                                        step="0.01"
-                                        value={remanenteModal.weight_lbs}
-                                        onChange={(e) => setRemanenteModal(prev => ({ ...prev, weight_lbs: e.target.value }))}
-                                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500"
-                                        placeholder="Ej: 120.00"
-                                        required
-                                    />
-                                </div>
-                                <div>
-                                    <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1">
-                                        Condición Térmica
-                                    </label>
-                                    <select
-                                        value={remanenteModal.is_pasteurized ? 'true' : 'false'}
-                                        onChange={(e) => setRemanenteModal(prev => ({ ...prev, is_pasteurized: e.target.value === 'true' }))}
-                                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:border-teal-500"
-                                    >
-                                        <option value="true">Pasteurizado</option>
-                                        <option value="false">Sin Pasteurizar (Crudo)</option>
-                                    </select>
-                                </div>
-                            </div>
-
-                            <div>
-                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1">
-                                    Destino Programado
-                                </label>
-                                <select
-                                    value={remanenteModal.destination}
-                                    onChange={(e) => setRemanenteModal(prev => ({ ...prev, destination: e.target.value }))}
-                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:border-teal-500"
-                                >
-                                    <option value="proximo_empaque">Próximo Empaque (Empacado directo)</option>
-                                    <option value="otra_produccion">Otra Producción (Mezcla futura)</option>
-                                    <option value="reproceso">Reproceso / Reutilizables</option>
-                                </select>
-                            </div>
-
-                            <div>
-                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1">
-                                    Notas y Ubicación
-                                </label>
-                                <textarea
-                                    rows={2}
-                                    value={remanenteModal.notes}
-                                    onChange={(e) => setRemanenteModal(prev => ({ ...prev, notes: e.target.value }))}
-                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:border-teal-500"
-                                    placeholder="Ej: Tanque buffer #2 a 4°C, remanente de fórmula especial..."
-                                />
-                            </div>
-
-                            <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-200">
-                                <button
-                                    type="button"
-                                    onClick={() => setRemanenteModal(prev => ({ ...prev, isOpen: false }))}
-                                    className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors"
-                                >
-                                    Cancelar
-                                </button>
-                                <button
-                                    type="submit"
-                                    disabled={remanenteModal.isSubmitting}
-                                    className="px-5 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold transition-colors shadow-xs"
-                                >
-                                    {remanenteModal.isSubmitting ? 'Guardando...' : 'Guardar Remanente'}
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            )}
+            <EggRemanenteModal
+                isOpen={remanenteModal.isOpen}
+                onClose={() => setRemanenteModal(prev => ({ ...prev, isOpen: false, id: null }))}
+                remanenteModal={remanenteModal}
+                setRemanenteModal={setRemanenteModal}
+                onSubmit={handleRemanenteSubmit}
+            />
 
             {/* MODAL REGISTRO Y GESTIÓN DE MERMAS POR LOTE */}
-            {wastesModal.isOpen && (
-                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
-                    <div className="bg-white border border-slate-200 rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col text-slate-900 overflow-hidden">
-                        <div className="p-5 border-b border-slate-200 flex items-center justify-between bg-rose-50/70">
-                            <div className="flex items-center gap-3">
-                                <div className="p-2.5 bg-rose-100 text-rose-700 rounded-xl">
-                                    <AlertOctagon size={22} />
-                                </div>
-                                <div>
-                                    <h3 className="text-base font-bold text-slate-900 uppercase tracking-tight">
-                                        Mermas y Pérdidas del Lote
-                                    </h3>
-                                    <p className="text-xs text-slate-500 font-medium">
-                                        Lote: <b>{wastesModal.batch?.batch_code_display || wastesModal.batch?.batch_uuid}</b> ({wastesModal.batch?.product_type})
-                                    </p>
-                                </div>
-                            </div>
-                            <button
-                                type="button"
-                                onClick={() => setWastesModal(prev => ({ ...prev, isOpen: false }))}
-                                className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-200 rounded-lg transition-colors"
-                            >
-                                <XCircle size={20} />
-                            </button>
-                        </div>
-
-                        <div className="p-6 overflow-y-auto space-y-6 flex-1">
-                            {/* Formulario de Nueva Merma */}
-                            <form onSubmit={handleCreateWaste} className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
-                                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800">
-                                    Registrar Nueva Merma
-                                </h4>
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                                    <div>
-                                        <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Etapa *</label>
-                                        <select
-                                            value={wastesModal.stage}
-                                            onChange={(e) => setWastesModal(prev => ({ ...prev, stage: e.target.value }))}
-                                            className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-medium focus:outline-none focus:border-rose-500"
-                                        >
-                                            <option value="quebraje">Quebraje</option>
-                                            <option value="pasteurizacion">Pasteurización</option>
-                                            <option value="envasado">Envasado / Tuberías</option>
-                                            <option value="almacen">Almacén de Frío</option>
-                                        </select>
-                                    </div>
-
-                                    <div>
-                                        <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Tipo de Merma *</label>
-                                        <select
-                                            value={wastesModal.waste_type}
-                                            onChange={(e) => setWastesModal(prev => ({ ...prev, waste_type: e.target.value }))}
-                                            className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-medium focus:outline-none focus:border-rose-500"
-                                        >
-                                            <option value="cascaron">Cáscara de Huevo</option>
-                                            <option value="merma_liquida">Merma Líquida Residual</option>
-                                            <option value="tuberias_desperdicio">Pérdida en Tuberías / Desperdicio</option>
-                                            <option value="no_conforme">Líquido No Conforme</option>
-                                            <option value="derrame">Derrame Accidental</option>
-                                            <option value="otro">Otro</option>
-                                        </select>
-                                    </div>
-
-                                    <div>
-                                        <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Peso (Lbs) *</label>
-                                        <input
-                                            type="number"
-                                            step="0.01"
-                                            value={wastesModal.weight_lbs}
-                                            onChange={(e) => setWastesModal(prev => ({ ...prev, weight_lbs: e.target.value }))}
-                                            className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-medium focus:outline-none focus:border-rose-500"
-                                            placeholder="Ej: 35.00"
-                                            required
-                                        />
-                                    </div>
-                                </div>
-
-                                <div>
-                                    <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Notas / Causa</label>
-                                    <input
-                                        type="text"
-                                        value={wastesModal.notes}
-                                        onChange={(e) => setWastesModal(prev => ({ ...prev, notes: e.target.value }))}
-                                        className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-medium focus:outline-none focus:border-rose-500"
-                                        placeholder="Detalle causa de la merma o remanente en tuberías..."
-                                    />
-                                </div>
-
-                                <div className="flex justify-end">
-                                    <button
-                                        type="submit"
-                                        disabled={wastesModal.isSubmitting}
-                                        className="px-4 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold transition-colors shadow-xs"
-                                    >
-                                        {wastesModal.isSubmitting ? 'Guardando...' : '+ Guardar Merma'}
-                                    </button>
-                                </div>
-                            </form>
-
-                            {/* Historial de Mermas */}
-                            <div className="space-y-2">
-                                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800">
-                                    Mermas Registradas ({wastesModal.wastes.length})
-                                </h4>
-                                {wastesModal.wastes.length === 0 ? (
-                                    <p className="text-xs text-slate-400 italic">No hay registros de mermas para este lote.</p>
-                                ) : (
-                                    <div className="overflow-x-auto rounded-xl border border-slate-200">
-                                        <table className="w-full text-left text-xs">
-                                            <thead>
-                                                <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px]">
-                                                    <th className="p-2.5">Etapa</th>
-                                                    <th className="p-2.5">Tipo</th>
-                                                    <th className="p-2.5 text-right">Peso (Lbs)</th>
-                                                    <th className="p-2.5">Operador</th>
-                                                    <th className="p-2.5">Notas</th>
-                                                    <th className="p-2.5 text-center">Acción</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-slate-100">
-                                                {wastesModal.wastes.map(w => (
-                                                    <tr key={w.id} className="hover:bg-slate-50">
-                                                        <td className="p-2.5 font-bold capitalize text-slate-900">{w.stage}</td>
-                                                        <td className="p-2.5 text-rose-700 font-semibold capitalize">{w.waste_type?.replace('_', ' ')}</td>
-                                                        <td className="p-2.5 text-right font-black text-slate-900">{parseFloat(w.weight_lbs).toFixed(1)} Lbs</td>
-                                                        <td className="p-2.5 text-slate-600">{w.operator_name || '-'}</td>
-                                                        <td className="p-2.5 text-slate-500 italic text-[11px]">{w.notes || '-'}</td>
-                                                        <td className="p-2.5 text-center">
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => handleDeleteWaste(w.id)}
-                                                                className="p-1 hover:bg-rose-100 text-rose-600 rounded transition-colors"
-                                                                title="Eliminar registro de merma"
-                                                            >
-                                                                <Trash2 size={13} />
-                                                            </button>
-                                                        </td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-
-                        <div className="p-4 border-t border-slate-200 bg-slate-50 flex justify-end">
-                            <button
-                                type="button"
-                                onClick={() => setWastesModal(prev => ({ ...prev, isOpen: false }))}
-                                className="px-5 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-xl text-xs font-bold transition-colors"
-                            >
-                                Cerrar
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            <EggBatchWastesModal
+                isOpen={wastesModal.isOpen}
+                onClose={() => setWastesModal(prev => ({ ...prev, isOpen: false, editingWasteId: null }))}
+                wastesModal={wastesModal}
+                setWastesModal={setWastesModal}
+                handleCreateWaste={handleCreateWaste}
+                handleDeleteWaste={handleDeleteWaste}
+            />
 
             {/* DIÁLOGO CONFIRMAR ELIMINACIÓN DE LOTE */}
             {deleteConfirmBatch && (

@@ -16,7 +16,8 @@ import {
     FileDown,
     Search,
     Check,
-    Scale
+    Scale,
+    Loader2
 } from 'lucide-react';
 import axios from 'axios';
 import { toast } from 'sonner';
@@ -291,6 +292,8 @@ export default function QuotationModal({ isOpen, onClose, onSaved, quotationId =
     // Listado de clientes para selector
     const [customers, setCustomers] = useState([]);
     const [customerSearch, setCustomerSearch] = useState('');
+    const [loadingCustomers, setLoadingCustomers] = useState(false);
+    const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
 
     // Listado de productos del catálogo del sistema
     const [catalogProducts, setCatalogProducts] = useState([]);
@@ -335,11 +338,6 @@ export default function QuotationModal({ isOpen, onClose, onSaved, quotationId =
     // Cargar datos iniciales
     useEffect(() => {
         if (!isOpen) return;
-
-        // Cargar clientes
-        axios.get('/api/customers?limit=100').then(res => {
-            setCustomers(res.data?.data || res.data || []);
-        }).catch(err => console.error('Error cargando clientes:', err));
 
         // Cargar catálogo de productos amplio (hasta 500 registros)
         axios.get('/api/products?limit=500').then(res => {
@@ -440,6 +438,39 @@ export default function QuotationModal({ isOpen, onClose, onSaved, quotationId =
             setCustomerSearch('');
         }
     }, [isOpen, quotationId]);
+
+    // Búsqueda remota de clientes con debounce (soporta catálogos masivos >25k)
+    useEffect(() => {
+        const term = customerSearch.trim();
+        if (!term || term.length < 2) {
+            setCustomers([]);
+            setLoadingCustomers(false);
+            return;
+        }
+
+        if (formData.customer_id && formData.customer_name === customerSearch) {
+            return;
+        }
+
+        setLoadingCustomers(true);
+        const timer = setTimeout(async () => {
+            try {
+                const res = await axios.get('/api/customers', {
+                    params: { search: term, limit: 12, skip_count: 1 }
+                });
+                const list = res.data?.data || res.data || [];
+                setCustomers(Array.isArray(list) ? list : []);
+                setShowCustomerDropdown(true);
+            } catch (err) {
+                console.error('Error buscando clientes:', err);
+                setCustomers([]);
+            } finally {
+                setLoadingCustomers(false);
+            }
+        }, 300);
+
+        return () => clearTimeout(timer);
+    }, [customerSearch, formData.customer_id, formData.customer_name]);
 
     // Recalcular fecha de caducidad al cambiar fecha o días de validez
     useEffect(() => {
@@ -623,6 +654,7 @@ export default function QuotationModal({ isOpen, onClose, onSaved, quotationId =
             customer_nit: cust.nit || ''
         }));
         setCustomerSearch(cust.nombre);
+        setShowCustomerDropdown(false);
     };
 
     // Guardar cotización
@@ -906,34 +938,58 @@ export default function QuotationModal({ isOpen, onClose, onSaved, quotationId =
                                         <input
                                             type="text"
                                             required
-                                            placeholder="Buscar o escribir nombre del cliente..."
+                                            placeholder="Buscar o escribir nombre del cliente (nombre, NIT, NRC)..."
                                             value={customerSearch}
                                             onChange={(e) => {
-                                                setCustomerSearch(e.target.value);
-                                                setFormData(prev => ({ ...prev, customer_name: e.target.value }));
+                                                const val = e.target.value;
+                                                setCustomerSearch(val);
+                                                setFormData(prev => ({ ...prev, customer_name: val, customer_id: '' }));
+                                                setShowCustomerDropdown(true);
                                             }}
-                                            className="w-full text-[13px] font-medium px-3 py-2 rounded-xl border border-slate-300 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none bg-white"
+                                            onFocus={() => {
+                                                if (customerSearch.trim().length >= 2 && customers.length > 0) {
+                                                    setShowCustomerDropdown(true);
+                                                }
+                                            }}
+                                            onBlur={() => {
+                                                setTimeout(() => setShowCustomerDropdown(false), 200);
+                                            }}
+                                            className="w-full text-[13px] font-medium px-3 py-2 rounded-xl border border-slate-300 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none bg-white pr-8"
                                         />
 
-                                        {/* Dropdown de clientes sugeridos */}
-                                        {customerSearch && customers.length > 0 && !customers.some(c => c.nombre.toLowerCase() === customerSearch.toLowerCase()) && (
-                                            <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-48 overflow-y-auto z-20">
-                                                {customers
-                                                    .filter(c => c.nombre.toLowerCase().includes(customerSearch.toLowerCase()))
-                                                    .slice(0, 6)
-                                                    .map(c => (
-                                                        <div
-                                                            key={c.id}
-                                                            onClick={() => handleSelectCustomer(c)}
-                                                            className="px-3 py-2 text-xs hover:bg-indigo-50 cursor-pointer border-b border-slate-100 last:border-0"
-                                                        >
-                                                            <div className="font-bold text-slate-800">{c.nombre}</div>
-                                                            <div className="text-slate-500 text-[11px] flex items-center gap-2">
-                                                                {c.telefono && <span>Tel: {c.telefono}</span>}
-                                                                {c.nrc && <span>NRC: {c.nrc}</span>}
-                                                            </div>
+                                        {loadingCustomers && (
+                                            <div className="absolute right-3 top-2.5 text-slate-400 pointer-events-none">
+                                                <Loader2 className="w-4 h-4 animate-spin text-indigo-500" />
+                                            </div>
+                                        )}
+
+                                        {/* Dropdown de clientes sugeridos remotos */}
+                                        {showCustomerDropdown && customerSearch.trim().length >= 2 && !loadingCustomers && customers.length > 0 && (
+                                            <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-56 overflow-y-auto z-30">
+                                                {customers.map(c => (
+                                                    <div
+                                                        key={c.id}
+                                                        onMouseDown={(e) => {
+                                                            e.preventDefault();
+                                                            handleSelectCustomer(c);
+                                                        }}
+                                                        className="px-3 py-2 text-xs hover:bg-indigo-50 cursor-pointer border-b border-slate-100 last:border-0 transition-colors"
+                                                    >
+                                                        <div className="font-bold text-slate-800">{c.nombre}</div>
+                                                        <div className="text-slate-500 text-[11px] flex items-center gap-3 mt-0.5">
+                                                            {c.nombre_comercial && <span className="text-indigo-600 font-medium">{c.nombre_comercial}</span>}
+                                                            {c.telefono && <span>Tel: {c.telefono}</span>}
+                                                            {c.nrc && <span>NRC: {c.nrc}</span>}
+                                                            {c.nit && <span>NIT: {c.nit}</span>}
                                                         </div>
-                                                    ))}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+
+                                        {showCustomerDropdown && customerSearch.trim().length >= 2 && !loadingCustomers && customers.length === 0 && (
+                                            <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl p-3 text-center text-xs text-slate-500 z-30">
+                                                No se encontraron clientes con esa búsqueda en el catálogo. Puedes continuar escribiendo o usar <strong className="text-indigo-600">+ Nuevo Cliente</strong>.
                                             </div>
                                         )}
                                     </div>

@@ -79,6 +79,7 @@ async function resolveEggCatalogProduct(dbConnection, companyId, productType, pr
             `SELECT m.*, 
                     p.nombre as catalog_p_nombre, 
                     p.codigo as catalog_p_codigo, 
+                    p.codigo_barra as catalog_p_barcode,
                     p.costo as catalog_p_costo,
                     p.unidad_medida as catalog_p_um
              FROM egg_product_code_mappings m
@@ -131,6 +132,7 @@ async function resolveEggCatalogProduct(dbConnection, companyId, productType, pr
                     catalog_code: firstCode,
                     catalog_codes: match.catalog_codes || match.catalog_p_codigo || '',
                     catalog_product_name: match.catalog_product_name || match.catalog_p_nombre || rawType,
+                    catalog_barcode: match.catalog_p_barcode || null,
                     unit_weight_lbs: weightLbs > 0 ? weightLbs : defaultWeightLbs,
                     unit_weight_kg: weightKg > 0 ? weightKg : parseFloat((defaultWeightLbs * 0.45359237).toFixed(4)),
                     unit_of_measure: match.unit_of_measure || 'lb',
@@ -145,7 +147,7 @@ async function resolveEggCatalogProduct(dbConnection, companyId, productType, pr
         // 2. Respaldo: Buscar directamente en products por coincidencia de nombre
         if (rawType) {
             const [prodRows] = await dbConnection.query(
-                `SELECT id, codigo, nombre, costo, unidad_medida
+                `SELECT id, codigo, codigo_barra, nombre, costo, unidad_medida
                  FROM products
                  WHERE company_id = ? 
                    AND status = 'activo'
@@ -174,6 +176,7 @@ async function resolveEggCatalogProduct(dbConnection, companyId, productType, pr
                     catalog_code: p.codigo || null,
                     catalog_codes: p.codigo || '',
                     catalog_product_name: p.nombre,
+                    catalog_barcode: p.codigo_barra || null,
                     unit_weight_lbs: defaultWeightLbs,
                     unit_weight_kg: parseFloat((defaultWeightLbs * 0.45359237).toFixed(4)),
                     unit_of_measure: p.unidad_medida || 'lb',

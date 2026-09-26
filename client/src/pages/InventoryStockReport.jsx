@@ -5,7 +5,9 @@ import {
     GitBranch, 
     Tags, 
     Calendar,
-    CheckCircle2
+    CheckCircle2,
+    Search,
+    X
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
@@ -18,6 +20,7 @@ const InventoryStockReport = () => {
     const [selectedBranch, setSelectedBranch] = useState(user?.branch_id || '');
     const [selectedDate, setSelectedDate] = useState(todayStr);
     const [selectedCategories, setSelectedCategories] = useState([]);
+    const [categorySearch, setCategorySearch] = useState('');
     const [isGenerating, setIsGenerating] = useState(false);
     const [pdfUrl, setPdfUrl] = useState(null);
 
@@ -36,6 +39,20 @@ const InventoryStockReport = () => {
         setSelectedCategories(prev => 
             prev.includes(id) ? prev.filter(c => c !== id) : [...prev, id]
         );
+    };
+
+    const filteredCategories = categories.filter(cat => 
+        cat.name?.toLowerCase().includes(categorySearch.toLowerCase().trim())
+    );
+
+    const handleSelectAllFiltered = () => {
+        const filteredIds = filteredCategories.map(c => c.id);
+        const allSelected = filteredIds.length > 0 && filteredIds.every(id => selectedCategories.includes(id));
+        if (allSelected) {
+            setSelectedCategories(prev => prev.filter(id => !filteredIds.includes(id)));
+        } else {
+            setSelectedCategories(prev => Array.from(new Set([...prev, ...filteredIds])));
+        }
     };
 
     const handleGenerateReport = async () => {
@@ -158,17 +175,62 @@ const InventoryStockReport = () => {
 
             {/* Categories Multi-select */}
             <div className="space-y-2">
-                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                    <Tags size={12} className="text-indigo-500" /> Categorías
-                </label>
-                <div className="max-h-64 overflow-y-auto pr-2 space-y-1.5 custom-scrollbar">
-                    {categories.map(cat => (
+                <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                        <Tags size={12} className="text-indigo-500" /> Categorías
+                    </label>
+                    <div className="flex items-center gap-2">
+                        {filteredCategories.length > 0 && (
+                            <button
+                                type="button"
+                                onClick={handleSelectAllFiltered}
+                                className="text-[10px] font-bold text-slate-500 hover:text-indigo-600 transition-colors cursor-pointer"
+                            >
+                                {filteredCategories.every(c => selectedCategories.includes(c.id)) ? 'Deseleccionar' : 'Seleccionar todas'}
+                            </button>
+                        )}
+                        {selectedCategories.length > 0 && (
+                            <button
+                                type="button"
+                                onClick={() => setSelectedCategories([])}
+                                className="text-[10px] font-bold text-rose-500 hover:text-rose-700 transition-colors flex items-center gap-0.5 cursor-pointer"
+                            >
+                                <X size={10} /> Limpiar ({selectedCategories.length})
+                            </button>
+                        )}
+                    </div>
+                </div>
+
+                {/* Buscador de Categorías */}
+                <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={13} />
+                    <input
+                        type="text"
+                        value={categorySearch}
+                        onChange={(e) => setCategorySearch(e.target.value)}
+                        placeholder="Buscar categoría..."
+                        className="w-full pl-8 pr-8 py-2 bg-slate-50 border border-slate-200/80 rounded-xl text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/15 focus:border-indigo-400 transition-all placeholder:text-slate-400 placeholder:font-normal"
+                    />
+                    {categorySearch && (
+                        <button
+                            type="button"
+                            onClick={() => setCategorySearch('')}
+                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+                        >
+                            <X size={12} />
+                        </button>
+                    )}
+                </div>
+
+                {/* Lista de Categorías */}
+                <div className="max-h-60 overflow-y-auto pr-1 space-y-1.5 custom-scrollbar">
+                    {filteredCategories.map(cat => (
                         <label 
                             key={cat.id}
-                            className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-all border ${
+                            className={`flex items-center gap-3 p-2.5 rounded-xl cursor-pointer transition-all border ${
                                 selectedCategories.includes(cat.id)
-                                ? 'bg-indigo-50 border-indigo-100 text-indigo-700'
-                                : 'bg-white border-slate-50 text-slate-600 hover:bg-slate-50'
+                                ? 'bg-indigo-50 border-indigo-200/70 text-indigo-700 shadow-xs'
+                                : 'bg-white border-slate-100 text-slate-600 hover:bg-slate-50'
                             }`}
                         >
                             <input 
@@ -177,21 +239,23 @@ const InventoryStockReport = () => {
                                 checked={selectedCategories.includes(cat.id)}
                                 onChange={() => handleToggleCategory(cat.id)}
                             />
-                            <div className={`w-4 h-4 rounded border flex items-center justify-center transition-all ${
+                            <div className={`w-4 h-4 rounded border flex items-center justify-center transition-all shrink-0 ${
                                 selectedCategories.includes(cat.id)
-                                ? 'bg-indigo-600 border-indigo-600'
+                                ? 'bg-indigo-600 border-indigo-600 text-white'
                                 : 'bg-white border-slate-200'
                             }`}>
-                                {selectedCategories.includes(cat.id) && <CheckCircle2 size={10} className="text-white" />}
+                                {selectedCategories.includes(cat.id) && <CheckCircle2 size={10} />}
                             </div>
-                            <span className="text-[11px] font-bold uppercase tracking-tight">{cat.name}</span>
+                            <span className="text-[11px] font-bold uppercase tracking-tight truncate flex-1">{cat.name}</span>
                         </label>
                     ))}
-                    {categories.length === 0 && (
-                        <p className="text-[10px] text-slate-400 italic py-4 text-center">No hay categorías cargadas</p>
+                    {filteredCategories.length === 0 && (
+                        <p className="text-[11px] text-slate-400 italic py-4 text-center">
+                            {categories.length === 0 ? 'No hay categorías cargadas' : `No se encontraron categorías para "${categorySearch}"`}
+                        </p>
                     )}
                 </div>
-                <p className="text-[9px] text-slate-400 mt-2 italic font-medium">Si no selecciona ninguna, se incluirán todas.</p>
+                <p className="text-[9px] text-slate-400 mt-1 italic font-medium">Si no selecciona ninguna, se incluirán todas.</p>
             </div>
         </ReportLayout>
     );

@@ -4,185 +4,193 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'sonner';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ConfirmProvider } from './context/ConfirmContext';
+import { Suspense } from 'react';
+import { lazyWithRetry } from './utils/lazyRetry';
 
 // Pages
 import Login from './pages/Login';
 import PublicDTE from './pages/PublicDTE';
-import MobileDteScanner from './pages/MobileDteScanner';
+const MobileDteScanner = lazyWithRetry(() => import('./pages/MobileDteScanner'));
 import Dashboard from './pages/Dashboard';
-import Companies from './pages/Companies';
-import CompanyModules from './pages/CompanyModules';
-import Branches from './pages/Branches';
+const Companies = lazyWithRetry(() => import('./pages/Companies'));
+const CompanyModules = lazyWithRetry(() => import('./pages/CompanyModules'));
+const Branches = lazyWithRetry(() => import('./pages/Branches'));
 import POS from './pages/POS';
-import FilproSync from './pages/FilproSync';
+const FilproSync = lazyWithRetry(() => import('./pages/FilproSync'));
 import Customers from './pages/Customers';
 import Products from './pages/Products';
-import Sellers from './pages/Sellers';
-import Users from './pages/Users';
-import Roles from './pages/Roles';
-import Providers from './pages/Providers';
-import Categories from './pages/Categories';
-import UserAccess from './pages/UserAccess';
-import SmtpConfig from './pages/SmtpConfig';
-import SystemSettings from './pages/SystemSettings';
-import ServerTerminal from './pages/ServerTerminal';
-import NotificacionesConfig from './pages/NotificacionesConfig';
-import NotificacionesLista from './pages/NotificacionesLista';
-import WhatsAppConfig from './pages/WhatsAppConfig';
-import MenuItems from './pages/MenuItems';
-import Transfers from './pages/Transfers';
-import InventoryAdjustments from './pages/InventoryAdjustments';
-import PhysicalInventory from './pages/PhysicalInventory';
-import ScanInventory from './pages/ScanInventory';
+const Sellers = lazyWithRetry(() => import('./pages/Sellers'));
+const Users = lazyWithRetry(() => import('./pages/Users'));
+const Roles = lazyWithRetry(() => import('./pages/Roles'));
+const Providers = lazyWithRetry(() => import('./pages/Providers'));
+const Categories = lazyWithRetry(() => import('./pages/Categories'));
+const UserAccess = lazyWithRetry(() => import('./pages/UserAccess'));
+const SmtpConfig = lazyWithRetry(() => import('./pages/SmtpConfig'));
+const SystemSettings = lazyWithRetry(() => import('./pages/SystemSettings'));
+const ServerTerminal = lazyWithRetry(() => import('./pages/ServerTerminal'));
+const NotificacionesConfig = lazyWithRetry(() => import('./pages/NotificacionesConfig'));
+const NotificacionesLista = lazyWithRetry(() => import('./pages/NotificacionesLista'));
+const WhatsAppConfig = lazyWithRetry(() => import('./pages/WhatsAppConfig'));
+const MenuItems = lazyWithRetry(() => import('./pages/MenuItems'));
+const Transfers = lazyWithRetry(() => import('./pages/Transfers'));
+const InventoryAdjustments = lazyWithRetry(() => import('./pages/InventoryAdjustments'));
+const PhysicalInventory = lazyWithRetry(() => import('./pages/PhysicalInventory'));
+const ScanInventory = lazyWithRetry(() => import('./pages/ScanInventory'));
 import Kardex from './pages/Kardex';
-import Purchases from './pages/Purchases';
-import PurchasePeriod from './pages/PurchasePeriod';
+const Purchases = lazyWithRetry(() => import('./pages/Purchases'));
+const PurchasePeriod = lazyWithRetry(() => import('./pages/PurchasePeriod'));
 import SalesTerminal from './pages/SalesTerminal';
-import SalesHistory from './pages/SalesHistory';
-import CustomerDiscounts from './pages/CustomerDiscounts';
-import DiscountRules from './pages/DiscountRules';
-import ChartOfAccounts from './pages/ChartOfAccounts';
-import AccountingEntries from './pages/AccountingEntries';
-import AccountingGenerate from './pages/AccountingGenerate';
-import AccountingCorrelativos from './pages/AccountingCorrelativos';
-import YearClosing from './pages/YearClosing';
-import YearOpening from './pages/YearOpening';
-import AccountingSettings from './pages/AccountingSettings';
-import LibroDiario from './pages/AccountingReports/LibroDiario';
-import LibroDiarioMayor from './pages/AccountingReports/LibroDiarioMayor';
-import LibroMayor from './pages/AccountingReports/LibroMayor';
-import BalanceComprobacion from './pages/AccountingReports/BalanceComprobacion';
-import EstadoResultados from './pages/AccountingReports/EstadoResultados';
-import BalanceGeneral from './pages/AccountingReports/BalanceGeneral';
-import AnexoBalance from './pages/AccountingReports/AnexoBalance';
-import BalanceComparativo from './pages/AccountingReports/BalanceComparativo';
-import CambiosPatrimonio from './pages/AccountingReports/CambiosPatrimonio';
-import FlujoEfectivo from './pages/AccountingReports/FlujoEfectivo';
-import AuxiliarOperaciones from './pages/AccountingReports/AuxiliarOperaciones';
-import ListadoPartidas from './pages/AccountingReports/ListadoPartidas';
-import CedulaAuditoria from './pages/AccountingReports/CedulaAuditoria';
-import Retenciones from './pages/AccountingReports/Retenciones';
-import DailySalesReport from './pages/DailySalesReport';
-import SalesByCustomerReport from './pages/SalesByCustomerReport';
-import Contingency from './pages/Contingency';
-import Eret from './pages/Eret';
-import AuditLog from './pages/AuditLog';
-import ServerMetrics from './pages/ServerMetrics';
-import ConnectedUsers from './pages/ConnectedUsers';
-import Changelog from './pages/Changelog';
-import KeyboardShortcuts from './pages/KeyboardShortcuts';
-import CashClosing from './pages/CashClosing';
-import Combos from './pages/Combos';
-import CustomerStatement from './pages/CustomerStatement';
-import AddPayment from './pages/AddPayment';
-import ProviderStatement from './pages/ProviderStatement';
-import AddProviderPayment from './pages/AddProviderPayment';
-import InventoryStockReport from './pages/InventoryStockReport';
-import InventoryMovementsReport from './pages/InventoryMovementsReport';
-import InventoryValuationReport from './pages/InventoryValuationReport';
-import InventoryTurnoverReport from './pages/InventoryTurnoverReport';
-import CustomerBalancesReport from './pages/CustomerBalancesReport';
-import CustomerStatementReport from './pages/CustomerStatementReport';
-import ProviderBalancesReport from './pages/ProviderBalancesReport';
-import FuelPrices from './pages/FuelPrices';
-import SalesByCategoryReport from './pages/SalesByCategoryReport';
-import SalesByPOSReport from './pages/SalesByPOSReport';
-import SalesDetailReport from './pages/SalesDetailReport';
-import ArqueosReport from './pages/ArqueosReport';
-import StoreProfitabilityReport from './pages/StoreProfitabilityReport';
-import SalesReport from './pages/SalesReport';
-import PendingDocumentsDetailedReport from './pages/PendingDocumentsDetailedReport';
-import ProviderPendingDocumentsDetailedReport from './pages/ProviderPendingDocumentsDetailedReport';
-import Expenses from './pages/Expenses';
-import ExpenseReport from './pages/ExpenseReport';
-import PurchaseReport from './pages/PurchaseReport';
-import PurchaseChecks from './pages/PurchaseChecks';
-import PurchaseCheckReport from './pages/PurchaseCheckReport';
-import Quedan from './pages/Quedan';
-import QuedanReport from './pages/QuedanReport';
+const SalesHistory = lazyWithRetry(() => import('./pages/SalesHistory'));
+const CustomerDiscounts = lazyWithRetry(() => import('./pages/CustomerDiscounts'));
+const DiscountRules = lazyWithRetry(() => import('./pages/DiscountRules'));
+const Promotions = lazyWithRetry(() => import('./pages/Promotions'));
+const ChartOfAccounts = lazyWithRetry(() => import('./pages/ChartOfAccounts'));
+const AccountingEntries = lazyWithRetry(() => import('./pages/AccountingEntries'));
+const AccountingGenerate = lazyWithRetry(() => import('./pages/AccountingGenerate'));
+const AccountingCorrelativos = lazyWithRetry(() => import('./pages/AccountingCorrelativos'));
+const YearClosing = lazyWithRetry(() => import('./pages/YearClosing'));
+const YearOpening = lazyWithRetry(() => import('./pages/YearOpening'));
+const AccountingSettings = lazyWithRetry(() => import('./pages/AccountingSettings'));
+const LibroDiario = lazyWithRetry(() => import('./pages/AccountingReports/LibroDiario'));
+const LibroDiarioMayor = lazyWithRetry(() => import('./pages/AccountingReports/LibroDiarioMayor'));
+const LibroMayor = lazyWithRetry(() => import('./pages/AccountingReports/LibroMayor'));
+const BalanceComprobacion = lazyWithRetry(() => import('./pages/AccountingReports/BalanceComprobacion'));
+const EstadoResultados = lazyWithRetry(() => import('./pages/AccountingReports/EstadoResultados'));
+const BalanceGeneral = lazyWithRetry(() => import('./pages/AccountingReports/BalanceGeneral'));
+const AnexoBalance = lazyWithRetry(() => import('./pages/AccountingReports/AnexoBalance'));
+const BalanceComparativo = lazyWithRetry(() => import('./pages/AccountingReports/BalanceComparativo'));
+const CambiosPatrimonio = lazyWithRetry(() => import('./pages/AccountingReports/CambiosPatrimonio'));
+const FlujoEfectivo = lazyWithRetry(() => import('./pages/AccountingReports/FlujoEfectivo'));
+const AuxiliarOperaciones = lazyWithRetry(() => import('./pages/AccountingReports/AuxiliarOperaciones'));
+const ListadoPartidas = lazyWithRetry(() => import('./pages/AccountingReports/ListadoPartidas'));
+const CedulaAuditoria = lazyWithRetry(() => import('./pages/AccountingReports/CedulaAuditoria'));
+const Retenciones = lazyWithRetry(() => import('./pages/AccountingReports/Retenciones'));
+const DailySalesReport = lazyWithRetry(() => import('./pages/DailySalesReport'));
+const SalesByCustomerReport = lazyWithRetry(() => import('./pages/SalesByCustomerReport'));
+const Contingency = lazyWithRetry(() => import('./pages/Contingency'));
+const Eret = lazyWithRetry(() => import('./pages/Eret'));
+const AuditLog = lazyWithRetry(() => import('./pages/AuditLog'));
+const ServerMetrics = lazyWithRetry(() => import('./pages/ServerMetrics'));
+const ConnectedUsers = lazyWithRetry(() => import('./pages/ConnectedUsers'));
+const Changelog = lazyWithRetry(() => import('./pages/Changelog'));
+const KeyboardShortcuts = lazyWithRetry(() => import('./pages/KeyboardShortcuts'));
+const CashClosing = lazyWithRetry(() => import('./pages/CashClosing'));
+const Combos = lazyWithRetry(() => import('./pages/Combos'));
+const CustomerStatement = lazyWithRetry(() => import('./pages/CustomerStatement'));
+const AddPayment = lazyWithRetry(() => import('./pages/AddPayment'));
+const ProviderStatement = lazyWithRetry(() => import('./pages/ProviderStatement'));
+const AddProviderPayment = lazyWithRetry(() => import('./pages/AddProviderPayment'));
+const InventoryStockReport = lazyWithRetry(() => import('./pages/InventoryStockReport'));
+const InventoryMovementsReport = lazyWithRetry(() => import('./pages/InventoryMovementsReport'));
+const InventoryValuationReport = lazyWithRetry(() => import('./pages/InventoryValuationReport'));
+const InventoryTurnoverReport = lazyWithRetry(() => import('./pages/InventoryTurnoverReport'));
+const CustomerBalancesReport = lazyWithRetry(() => import('./pages/CustomerBalancesReport'));
+const CustomerStatementReport = lazyWithRetry(() => import('./pages/CustomerStatementReport'));
+const ProviderBalancesReport = lazyWithRetry(() => import('./pages/ProviderBalancesReport'));
+const FuelPrices = lazyWithRetry(() => import('./pages/FuelPrices'));
+const SalesByCategoryReport = lazyWithRetry(() => import('./pages/SalesByCategoryReport'));
+const SalesByPOSReport = lazyWithRetry(() => import('./pages/SalesByPOSReport'));
+const SalesDetailReport = lazyWithRetry(() => import('./pages/SalesDetailReport'));
+const ArqueosReport = lazyWithRetry(() => import('./pages/ArqueosReport'));
+const StoreProfitabilityReport = lazyWithRetry(() => import('./pages/StoreProfitabilityReport'));
+const SalesReport = lazyWithRetry(() => import('./pages/SalesReport'));
+const SalesDiscountsReport = lazyWithRetry(() => import('./pages/SalesDiscountsReport'));
+const TopProductsByCategoryReport = lazyWithRetry(() => import('./pages/TopProductsByCategoryReport'));
+const PendingDocumentsDetailedReport = lazyWithRetry(() => import('./pages/PendingDocumentsDetailedReport'));
+const ProviderPendingDocumentsDetailedReport = lazyWithRetry(() => import('./pages/ProviderPendingDocumentsDetailedReport'));
+const Expenses = lazyWithRetry(() => import('./pages/Expenses'));
+const ExpenseReport = lazyWithRetry(() => import('./pages/ExpenseReport'));
+const PurchaseReport = lazyWithRetry(() => import('./pages/PurchaseReport'));
+const PurchaseChecks = lazyWithRetry(() => import('./pages/PurchaseChecks'));
+const PurchaseCheckReport = lazyWithRetry(() => import('./pages/PurchaseCheckReport'));
+const Quedan = lazyWithRetry(() => import('./pages/Quedan'));
+const QuedanReport = lazyWithRetry(() => import('./pages/QuedanReport'));
 
 // Gas Station Pages
-import GasDistributors from './pages/GasDistributors';
-import Islands from './pages/Islands';
-import Nozzles from './pages/Nozzles';
-import Tanks from './pages/Tanks';
-import GasCloseout from './pages/GasCloseout';
-import GasOrders from './pages/GasOrders';
-import GasReadingHistory from './pages/GasReadingHistory';
-import GasExpenseCategories from './pages/GasExpenseCategories';
-import GasStationConfig from './pages/GasStationConfig';
-import SalesConfig from './pages/SalesConfig';
-import ShiftDTEs from './pages/ShiftDTEs';
-import GasDespachadores from './pages/GasDespachadores';
-import GasDespachadorNozzles from './pages/GasDespachadorNozzles';
-import GasPosTypes from './pages/GasPosTypes';
-import GasAdvances from './pages/GasAdvances';
-import GasTrupput from './pages/GasTrupput';
-import ReporteVentasCombustible from './pages/ReporteVentasCombustible';
-import GasCloseoutDetailReport from './pages/GasCloseoutDetailReport';
-import FuelInventoryReport from './pages/FuelInventoryReport';
-import GalonajeVendidoReport from './pages/GalonajeVendidoReport';
-import GasRemesaDeliveries from './pages/GasRemesaDeliveries';
-import GasCouponLiquidation from './pages/GasCouponLiquidation';
-import SalesRemesaDeliveries from './pages/SalesRemesaDeliveries';
-import GasAccumulatedDailyReport from './pages/GasAccumulatedDailyReport';
-import FuelSalesSummaryReport from './pages/FuelSalesSummaryReport';
-import GasLubricantsReport from './pages/GasLubricantsReport';
-import GasComplementariasReport from './pages/GasComplementariasReport';
-import GasVentasAnalyticsReport from './pages/GasVentasAnalyticsReport';
+const GasDistributors = lazyWithRetry(() => import('./pages/GasDistributors'));
+const Islands = lazyWithRetry(() => import('./pages/Islands'));
+const Nozzles = lazyWithRetry(() => import('./pages/Nozzles'));
+const Tanks = lazyWithRetry(() => import('./pages/Tanks'));
+const GasCloseout = lazyWithRetry(() => import('./pages/GasCloseout'));
+const GasOrders = lazyWithRetry(() => import('./pages/GasOrders'));
+const GasReadingHistory = lazyWithRetry(() => import('./pages/GasReadingHistory'));
+const GasExpenseCategories = lazyWithRetry(() => import('./pages/GasExpenseCategories'));
+const GasStationConfig = lazyWithRetry(() => import('./pages/GasStationConfig'));
+const SalesConfig = lazyWithRetry(() => import('./pages/SalesConfig'));
+const ShiftDTEs = lazyWithRetry(() => import('./pages/ShiftDTEs'));
+const GasDespachadores = lazyWithRetry(() => import('./pages/GasDespachadores'));
+const GasDespachadorNozzles = lazyWithRetry(() => import('./pages/GasDespachadorNozzles'));
+const GasPosTypes = lazyWithRetry(() => import('./pages/GasPosTypes'));
+const GasAdvances = lazyWithRetry(() => import('./pages/GasAdvances'));
+const GasAdvancesReport = lazyWithRetry(() => import('./pages/GasAdvancesReport'));
+const GasTrupput = lazyWithRetry(() => import('./pages/GasTrupput'));
+const ReporteVentasCombustible = lazyWithRetry(() => import('./pages/ReporteVentasCombustible'));
+const GasCloseoutDetailReport = lazyWithRetry(() => import('./pages/GasCloseoutDetailReport'));
+const FuelInventoryReport = lazyWithRetry(() => import('./pages/FuelInventoryReport'));
+const GalonajeVendidoReport = lazyWithRetry(() => import('./pages/GalonajeVendidoReport'));
+const GasRemesaDeliveries = lazyWithRetry(() => import('./pages/GasRemesaDeliveries'));
+const GasCouponLiquidation = lazyWithRetry(() => import('./pages/GasCouponLiquidation'));
+const SalesRemesaDeliveries = lazyWithRetry(() => import('./pages/SalesRemesaDeliveries'));
+const GasAccumulatedDailyReport = lazyWithRetry(() => import('./pages/GasAccumulatedDailyReport'));
+const FuelSalesSummaryReport = lazyWithRetry(() => import('./pages/FuelSalesSummaryReport'));
+const GasLubricantsReport = lazyWithRetry(() => import('./pages/GasLubricantsReport'));
+const GasComplementariasReport = lazyWithRetry(() => import('./pages/GasComplementariasReport'));
+const GasVentasAnalyticsReport = lazyWithRetry(() => import('./pages/GasVentasAnalyticsReport'));
+const GasLubricantsComparisonReport = lazyWithRetry(() => import('./pages/GasLubricantsComparisonReport'));
 
 // Control de Pozo Pages
-import PozoServicios from './pages/PozoServicios';
-import PozoDespachos from './pages/PozoDespachos';
-import PozoCorte from './pages/PozoCorte';
-import PozoEntregasEfectivo from './pages/PozoEntregasEfectivo';
+const PozoServicios = lazyWithRetry(() => import('./pages/PozoServicios'));
+const PozoDespachos = lazyWithRetry(() => import('./pages/PozoDespachos'));
+const PozoCorte = lazyWithRetry(() => import('./pages/PozoCorte'));
+const PozoEntregasEfectivo = lazyWithRetry(() => import('./pages/PozoEntregasEfectivo'));
 
 // RRHH Pages
-import Afps from './pages/rh/Afps';
-import Cargos from './pages/rh/Cargos';
-import DescuentosProgramados from './pages/rh/DescuentosProgramados';
-import Departamentos from './pages/rh/Departamentos';
-import AfpTasas from './pages/rh/AfpTasas';
-import IsssTasas from './pages/rh/IsssTasas';
-import RentaConfig from './pages/rh/RentaConfig';
-import AguinaldoConfig from './pages/rh/AguinaldoConfig';
-import SalarioMinimo from './pages/rh/SalarioMinimo';
-import TiposContrato from './pages/rh/TiposContrato';
-import Empleados from './pages/rh/Empleados';
-import Vacaciones from './pages/rh/Vacaciones';
-import ConfigRh from './pages/rh/ConfigRh';
-import Liquidaciones from './pages/rh/Liquidaciones';
-import Honorarios from './pages/rh/Honorarios';
-import Aguinaldos from './pages/rh/Aguinaldos';
-import CuentasPlanillas from './pages/rh/CuentasPlanillas';
-import Planillas from './pages/rh/Planillas';
-import ReportesRh from './pages/rh/ReportesRh';
-import AccionesPersonal from './pages/rh/AccionesPersonal';
+const Afps = lazyWithRetry(() => import('./pages/rh/Afps'));
+const Cargos = lazyWithRetry(() => import('./pages/rh/Cargos'));
+const DescuentosProgramados = lazyWithRetry(() => import('./pages/rh/DescuentosProgramados'));
+const Departamentos = lazyWithRetry(() => import('./pages/rh/Departamentos'));
+const AfpTasas = lazyWithRetry(() => import('./pages/rh/AfpTasas'));
+const IsssTasas = lazyWithRetry(() => import('./pages/rh/IsssTasas'));
+const RentaConfig = lazyWithRetry(() => import('./pages/rh/RentaConfig'));
+const AguinaldoConfig = lazyWithRetry(() => import('./pages/rh/AguinaldoConfig'));
+const SalarioMinimo = lazyWithRetry(() => import('./pages/rh/SalarioMinimo'));
+const TiposContrato = lazyWithRetry(() => import('./pages/rh/TiposContrato'));
+const Empleados = lazyWithRetry(() => import('./pages/rh/Empleados'));
+const Vacaciones = lazyWithRetry(() => import('./pages/rh/Vacaciones'));
+const ConfigRh = lazyWithRetry(() => import('./pages/rh/ConfigRh'));
+const Liquidaciones = lazyWithRetry(() => import('./pages/rh/Liquidaciones'));
+const Honorarios = lazyWithRetry(() => import('./pages/rh/Honorarios'));
+const Aguinaldos = lazyWithRetry(() => import('./pages/rh/Aguinaldos'));
+const CuentasPlanillas = lazyWithRetry(() => import('./pages/rh/CuentasPlanillas'));
+const Planillas = lazyWithRetry(() => import('./pages/rh/Planillas'));
+const Quincena25 = lazyWithRetry(() => import('./pages/rh/Quincena25'));
+const ReportesRh = lazyWithRetry(() => import('./pages/rh/ReportesRh'));
+const AccionesPersonal = lazyWithRetry(() => import('./pages/rh/AccionesPersonal'));
 
-import VatBookPurchases from './pages/VatBooks/VatBookPurchases';
-import VatBookSalesTaxpayers from './pages/VatBooks/VatBookSalesTaxpayers';
-import VatBookSalesConsumers from './pages/VatBooks/VatBookSalesConsumers';
-import VatBookAnexosIVA from './pages/VatBooks/VatBookAnexosIVA';
-import VatBookLiquidation from './pages/VatBooks/VatBookLiquidation';
+const VatBookPurchases = lazyWithRetry(() => import('./pages/VatBooks/VatBookPurchases'));
+const VatBookSalesTaxpayers = lazyWithRetry(() => import('./pages/VatBooks/VatBookSalesTaxpayers'));
+const VatBookSalesConsumers = lazyWithRetry(() => import('./pages/VatBooks/VatBookSalesConsumers'));
+const VatBookAnexosIVA = lazyWithRetry(() => import('./pages/VatBooks/VatBookAnexosIVA'));
+const VatBookLiquidation = lazyWithRetry(() => import('./pages/VatBooks/VatBookLiquidation'));
 
 // Egg Industrial Processing Pages
-import EggDashboard from './pages/EggIndustrial/Dashboard';
-import EggReception from './pages/EggIndustrial/Reception';
-import EggProduction from './pages/EggIndustrial/Production';
-import EggPackaging from './pages/EggIndustrial/Packaging';
-import EggCostsMaintenance from './pages/EggIndustrial/CostsMaintenance';
-import EggCosteoPorLibra from './pages/EggIndustrial/CosteoPorLibra';
-import EggTraceability from './pages/EggIndustrial/Traceability';
-import EggConfig from './pages/EggIndustrial/Config';
-import EggProductionCalendar from './pages/EggIndustrial/ProductionCalendar';
-import EggDispatch from './pages/EggIndustrial/EggDispatch';
-import EggReports from './pages/EggIndustrial/Reports';
-import EggInventory from './pages/EggIndustrial/Inventory';
+const EggDashboard = lazyWithRetry(() => import('./pages/EggIndustrial/Dashboard'));
+const EggReception = lazyWithRetry(() => import('./pages/EggIndustrial/Reception'));
+const EggProduction = lazyWithRetry(() => import('./pages/EggIndustrial/Production'));
+const EggPackaging = lazyWithRetry(() => import('./pages/EggIndustrial/Packaging'));
+const EggCostsMaintenance = lazyWithRetry(() => import('./pages/EggIndustrial/CostsMaintenance'));
+const EggCosteoPorLibra = lazyWithRetry(() => import('./pages/EggIndustrial/CosteoPorLibra'));
+const EggTraceability = lazyWithRetry(() => import('./pages/EggIndustrial/Traceability'));
+const EggConfig = lazyWithRetry(() => import('./pages/EggIndustrial/Config'));
+const EggProductionCalendar = lazyWithRetry(() => import('./pages/EggIndustrial/ProductionCalendar'));
+const EggDispatch = lazyWithRetry(() => import('./pages/EggIndustrial/EggDispatch'));
+const EggReports = lazyWithRetry(() => import('./pages/EggIndustrial/Reports'));
+const EggInventory = lazyWithRetry(() => import('./pages/EggIndustrial/Inventory'));
 
 // CRM Pages
-import CustomerAgreements from './pages/CRM/CustomerAgreements';
-import CrmConfig from './pages/CRM/CrmConfig';
-import CrmQuotations from './pages/CRM/CrmQuotations';
+const CustomerAgreements = lazyWithRetry(() => import('./pages/CRM/CustomerAgreements'));
+const CrmConfig = lazyWithRetry(() => import('./pages/CRM/CrmConfig'));
+const CrmQuotations = lazyWithRetry(() => import('./pages/CRM/CrmQuotations'));
 
 import Layout from './components/layout/Layout';
 
@@ -230,8 +238,8 @@ function App() {
                 <Routes>
                     <Route path="/login" element={<Login />} />
                     <Route path="/dte" element={<PublicDTE />} />
-                    <Route path="/scan/:token" element={<ScanInventory />} />
-                    <Route path="/scan-dte/:sessionId" element={<MobileDteScanner />} />
+                    <Route path="/scan/:token" element={<Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-slate-900 text-white text-xs">Cargando...</div>}><ScanInventory /></Suspense>} />
+                    <Route path="/scan-dte/:sessionId" element={<Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-slate-900 text-white text-xs">Cargando...</div>}><MobileDteScanner /></Suspense>} />
                     
                     {/* Protected Shell */}
                     <Route element={<ProtectedRoute />}>
@@ -295,10 +303,13 @@ function App() {
                         <Route path="/ventas/reportes/detalle-facturacion" element={<SalesDetailReport />} />
                         <Route path="/ventas/reportes/arqueos" element={<ArqueosReport />} />
                         <Route path="/ventas/reportes/rentabilidad-tienda" element={<StoreProfitabilityReport />} />
+                        <Route path="/ventas/reportes/descuentos" element={<SalesDiscountsReport />} />
+                        <Route path="/ventas/reportes/top-productos-categoria" element={<TopProductsByCategoryReport />} />
                         <Route path="/ventas/combos" element={<Combos />} />
                         <Route path="/ventas/combustibles" element={<FuelPrices />} />
                         <Route path="/ventas/descuentos" element={<CustomerDiscounts />} />
                         <Route path="/ventas/reglas-descuento" element={<DiscountRules />} />
+                        <Route path="/ventas/promociones" element={<Promotions />} />
                         <Route path="/ventas/contingencia" element={<Contingency />} />
                         <Route path="/ventas/retorno" element={<Eret />} />
                         <Route path="/ventas/configuracion" element={<SalesConfig />} />
@@ -350,6 +361,8 @@ function App() {
                         <Route path="/gas-station/reporte-lubricantes-vendidos" element={<GasLubricantsReport />} />
                         <Route path="/gas-station/reporte-complementarias" element={<GasComplementariasReport />} />
                         <Route path="/gas-station/reporte-analitico-ventas" element={<GasVentasAnalyticsReport />} />
+                        <Route path="/gas-station/reporte-anticipos" element={<GasAdvancesReport />} />
+                        <Route path="/gas-station/reporte-comparativo-lubricantes" element={<GasLubricantsComparisonReport />} />
 
                         {/* Control de Pozo */}
                         <Route path="/pozo/servicios" element={<PozoServicios />} />
@@ -376,6 +389,7 @@ function App() {
                         <Route path="/rh/aguinaldos" element={<Aguinaldos />} />
                         <Route path="/rh/cuentas-planillas" element={<CuentasPlanillas />} />
                         <Route path="/rh/planillas" element={<Planillas />} />
+                        <Route path="/rh/quincena25" element={<Quincena25 />} />
                         <Route path="/rh/acciones-personal" element={<AccionesPersonal />} />
                         <Route path="/rh/reportes" element={<Navigate to="/rh/reportes/isss" replace />} />
 <Route path="/rh/reportes/:tipo" element={<ReportesRh />} />
@@ -417,6 +431,8 @@ function App() {
                         <Route path="/industrial/inventario" element={<EggInventory />} />
                         <Route path="/industrial/reportes" element={<EggReports />} />
                         <Route path="/industrial/configuracion" element={<EggConfig />} />
+                        <Route path="/egg-industrial/config" element={<Navigate to="/industrial/configuracion?tab=lot-prefixes" replace />} />
+
 
                         {/* CRM Comercial */}
                         <Route path="/crm/cotizaciones" element={<CrmQuotations />} />

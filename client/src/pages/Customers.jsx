@@ -3,12 +3,15 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import Table from '../components/ui/Table';
 import Modal from '../components/ui/Modal';
-import { Plus, Edit, Trash2, Search, Building2, Info } from 'lucide-react';
+import { Plus, Edit, Trash2, Search, Building2, Info, UserCheck, FileSpreadsheet, FileText as FilePdf, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useConfirm } from '../context/ConfirmContext';
 import { useAuth } from '../context/AuthContext';
 import SearchableSelect from '../components/ui/SearchableSelect';
 import Pagination from '../components/ui/Pagination';
+import PdfViewerModal from '../components/ui/PdfViewerModal';
+import { exportJsonToExcel } from '../utils/excelExport';
+import { validateDocumentNumber } from '../utils/svfeValidators';
 
 const Customers = () => {
     const queryClient = useQueryClient();
@@ -46,25 +49,30 @@ const Customers = () => {
     const [limit, setLimit] = useState(15);
     const [debouncedSearch, setDebouncedSearch] = useState('');
     const [selectedPais, setSelectedPais] = useState('9579');
-    const [nitValue, setNitValue] = useState('');
+    const [docNumberValue, setDocNumberValue] = useState('');
     const [docType, setDocType] = useState('DUI');
+    const [nrcValue, setNrcValue] = useState('');
 
-    const formatNIT = (value, type = 'DUI') => {
+    const formatNRC = (value) => {
+        if (!value) return '';
         const digits = value.replace(/\D/g, '');
-        let formatted = '';
-        
+        if (digits.length <= 6) return digits;
+        return `${digits.slice(0, 6)}-${digits.slice(6, 7)}`;
+    };
+
+    const formatDocumentNumber = (value, type = 'DUI') => {
+        if (!value) return '';
+        const digits = value.replace(/\D/g, '');
         if (type === 'DUI') {
-            // Formato DUI: 00000000-0
-            if (digits.length > 0) formatted += digits.substring(0, 8);
-            if (digits.length > 8) formatted += '-' + digits.substring(8, 9);
-        } else {
-            // Formato NIT: 0000-000000-000-0
-            if (digits.length > 0) formatted += digits.substring(0, 4);
-            if (digits.length > 4) formatted += '-' + digits.substring(4, 10);
-            if (digits.length > 10) formatted += '-' + digits.substring(10, 13);
-            if (digits.length > 13) formatted += '-' + digits.substring(13, 14);
+            if (digits.length <= 8) return digits;
+            return `${digits.slice(0, 8)}-${digits.slice(8, 9)}`;
+        } else if (type === 'NIT') {
+            if (digits.length <= 4) return digits;
+            if (digits.length <= 10) return `${digits.slice(0, 4)}-${digits.slice(4, 10)}`;
+            if (digits.length <= 13) return `${digits.slice(0, 4)}-${digits.slice(4, 10)}-${digits.slice(10, 13)}`;
+            return `${digits.slice(0, 4)}-${digits.slice(4, 10)}-${digits.slice(10, 13)}-${digits.slice(13, 14)}`;
         }
-        return formatted;
+        return value;
     };
 
     React.useEffect(() => {
@@ -81,6 +89,81 @@ const Customers = () => {
     });
 
     const customers = response.data || [];
+
+    // PDF Report Modal State & Excel Export
+    const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
+    const [pdfUrl, setPdfUrl] = useState(null);
+    const [isLoadingPdf, setIsLoadingPdf] = useState(false);
+    const [pdfError, setPdfError] = useState(null);
+    const [isExportingExcel, setIsExportingExcel] = useState(false);
+
+    useEffect(() => {
+        return () => {
+            if (pdfUrl) URL.revokeObjectURL(pdfUrl);
+        };
+    }, [pdfUrl]);
+
+    const handleExportExcel = async () => {
+        setIsExportingExcel(true);
+        try {
+            const { data } = await axios.get('/api/customers', {
+                params: { search: debouncedSearch || undefined, all: 'true' }
+            });
+            const list = data?.data?.length ? data.data : customers;
+            if (!list || list.length === 0) {
+                return toast.warning('No hay clientes para exportar');
+            }
+            const dataToExport = list.map(c => ({
+                'NOMBRE / RAZÓN SOCIAL': c.nombre || '---',
+                'NOMBRE COMERCIAL': c.nombre_comercial || '---',
+                'TIPO PERSONA': c.tipo_persona_nombre || c.tipo_persona || '---',
+                'DOCUMENTO': c.nit || c.numero_documento || '---',
+                'NRC': c.nrc || '---',
+                'CONDICIÓN FISCAL': c.condicion_fiscal || 'Consumidor Final',
+                'ACTIVIDAD ECONÓMICA': c.actividad_nombre || c.codigo_actividad || '---',
+                'DEPARTAMENTO': c.departamento_nombre || c.departamento || '---',
+                'MUNICIPIO': c.municipio_nombre || c.municipio || '---',
+                'DISTRITO': c.distrito_nombre || c.distrito || '---',
+                'DIRECCIÓN': c.direccion || '---',
+                'TELÉFONO': c.telefono || '---',
+                'CORREO': c.correo || '---',
+                'CRÉDITO': c.es_credito ? `SÍ (${c.dias_credito || 0} DÍAS)` : 'NO',
+                'EXENTO IVA': c.exento_iva ? 'SÍ' : 'NO'
+            }));
+            exportJsonToExcel(dataToExport, `Catalogo_Clientes_${new Date().toISOString().split('T')[0]}`, 'CLIENTES');
+        } catch (err) {
+            console.error('Error al exportar clientes a Excel:', err);
+            toast.error('Error al exportar clientes a Excel');
+        } finally {
+            setIsExportingExcel(false);
+        }
+    };
+
+    const handleOpenPdfModal = async () => {
+        setIsPdfModalOpen(true);
+        setIsLoadingPdf(true);
+        setPdfError(null);
+        try {
+            const res = await axios.get('/api/customers/reports/pdf', {
+                params: { search: debouncedSearch?.trim() ? debouncedSearch.trim() : undefined },
+                responseType: 'blob'
+            });
+            if (res.data.type !== 'application/pdf') {
+                const text = await res.data.text();
+                let errorMsg = 'Error al generar el catálogo en formato PDF';
+                try { errorMsg = JSON.parse(text).message || errorMsg; } catch {}
+                throw new Error(errorMsg);
+            }
+            if (pdfUrl) URL.revokeObjectURL(pdfUrl);
+            const url = URL.createObjectURL(res.data);
+            setPdfUrl(url);
+        } catch (err) {
+            console.error('Error fetching customers PDF:', err);
+            setPdfError(err.message || 'Error al generar el catálogo en PDF');
+        } finally {
+            setIsLoadingPdf(false);
+        }
+    };
 
     const { data: departments = [] } = useQuery({
         queryKey: ['catalogs', 'departments'],
@@ -316,10 +399,17 @@ const Customers = () => {
         if (ok) deleteMutation.mutate(id);
     };
 
+    const isForeign = docType === 'Pasaporte' || docType === 'Carnet Resident' || docType === 'Otro' || condicionFiscal === 'extranjero';
+    const isAddressRequired = (condicionFiscal === 'contribuyente' || condicionFiscal === 'gran contribuyente' || !!nrcValue) && !isForeign;
+
     const handleSubmit = (e) => {
         e.preventDefault();
         const formData = new FormData(e.target);
         const data = Object.fromEntries(formData);
+
+        const isForeignCust = docType === 'Pasaporte' || docType === 'Carnet Resident' || docType === 'Otro' || condicionFiscal === 'extranjero';
+        const effectiveDocType = isForeignCust && (docType === 'NIT' || docType === 'DUI') ? 'Otro' : docType;
+
         data.exento_iva = formData.get('exento_iva') === 'on';
         data.aplica_fovial = formData.get('aplica_fovial') === 'on';
         data.aplica_cotrans = formData.get('aplica_cotrans') === 'on';
@@ -327,13 +417,50 @@ const Customers = () => {
         data.es_anticipado = formData.get('es_anticipado') === 'on';
         data.es_trupput = formData.get('es_trupput') === 'on';
         data.dias_credito = data.es_credito ? parseInt(diasCredito) || 15 : 15;
+        data.codigo_actividad = selectedActivity || null;
+        data.tipo_documento = effectiveDocType;
+        data.condicion_fiscal = isForeignCust ? 'extranjero' : condicionFiscal;
 
-        const nitRegex = /^\d{4}-\d{6}-\d{3}-\d{1}$/;
-        const duiRegex = /^\d{8}-\d{1}$/;
-        
-        if (data.nit && !nitRegex.test(data.nit) && !duiRegex.test(data.nit)) {
-            toast.error('Formato de NIT o DUI inválido');
+        const rawDoc = (docNumberValue || '').trim();
+        data.numero_documento = rawDoc || null;
+
+        if (isForeignCust) {
+            data.nit = null; // No aplica NIT salvadoreño
+            data.nrc = null;
+            data.departamento = (data.departamento || selectedDept || '00').trim();
+            data.distrito = (data.distrito || selectedDistrito || '00').trim();
+            data.municipio = (data.municipio || selectedMun || '00').trim();
+        } else {
+            // Homologación automática DUI = NIT
+            data.nit = rawDoc || null;
+            data.nrc = (nrcValue || data.nrc || '').trim() || null;
+
+            // Normalización de condición fiscal: sin NRC no puede ser contribuyente de IVA (es consumidor final / 'otro')
+            if (!data.nrc && data.condicion_fiscal === 'contribuyente') {
+                data.condicion_fiscal = 'otro';
+            } else if (data.nrc && data.condicion_fiscal === 'otro') {
+                data.condicion_fiscal = 'contribuyente';
+            }
+        }
+
+        // Inferencia automática de tipo de persona (2: Jurídica si tiene NIT o NRC, 1: Natural)
+        data.tipo_persona = isForeignCust
+            ? (selectedCustomer?.tipo_persona || '1')
+            : ((docType === 'NIT' || data.nrc) ? '2' : (selectedCustomer?.tipo_persona || '1'));
+
+        // País
+        data.pais = isForeignCust ? (data.pais || selectedPais || null) : (selectedCustomer?.pais || '9579');
+        if (isForeignCust && (!data.pais || data.pais === '9579')) {
+            toast.error('Debe seleccionar el país de origen para un cliente extranjero');
             return;
+        }
+
+        if (data.numero_documento) {
+            const docCheck = validateDocumentNumber(data.numero_documento, effectiveDocType);
+            if (!docCheck.isValid) {
+                toast.error(`Documento no válido: ${docCheck.error}`);
+                return;
+            }
         }
 
         const correoTrimmed = (data.correo || '').trim();
@@ -348,10 +475,17 @@ const Customers = () => {
             data.correo = null;
         }
 
-        const distritoSel = distritos.find(d => d.code === data.distrito);
-        if (distritoSel && data.municipio && data.municipio !== distritoSel.muni_code) {
-            toast.error('El municipio seleccionado no corresponde al distrito');
-            return;
+        data.departamento = data.departamento || null;
+        data.municipio = data.municipio || null;
+        data.distrito = data.distrito || null;
+        data.direccion = (data.direccion && String(data.direccion).trim()) ? String(data.direccion).trim() : null;
+
+        if (data.distrito) {
+            const distritoSel = distritos.find(d => d.code === data.distrito);
+            if (distritoSel && data.municipio && data.municipio !== distritoSel.muni_code) {
+                toast.error('El municipio seleccionado no corresponde al distrito');
+                return;
+            }
         }
 
         mutation.mutate(data);
@@ -363,20 +497,29 @@ const Customers = () => {
         setSelectedMun(customer.municipio);
         setSelectedDistrito(customer.distrito);
         setSelectedActivity(customer.codigo_actividad);
-        setCondicionFiscal(customer.condicion_fiscal || 'contribuyente');
+        setCondicionFiscal(customer.condicion_fiscal || (customer.nrc ? 'contribuyente' : 'otro'));
         setExentoIva(customer.exento_iva || false);
         setEsCredito(customer.es_credito || false);
         setDiasCredito(customer.dias_credito != null ? String(customer.dias_credito) : '15');
         setEsAnticipado(customer.es_anticipado || false);
         setEsTrupput(customer.es_trupput || false);
-        setDocType(customer.tipo_documento || 'DUI');
-        setNitValue(customer.nit || '');
+
+        // Carga transparente de documento histórico (si solo tenía nit, lo carga en el campo único)
+        const rawDoc = customer.numero_documento || customer.nit || '';
+        const cleanDigits = rawDoc.replace(/\D/g, '');
+        let inferredType = customer.tipo_documento || 'DUI';
+        if (!customer.tipo_documento && customer.nit) {
+            inferredType = cleanDigits.length === 14 ? 'NIT' : 'DUI';
+        }
+        setDocType(inferredType);
+        setDocNumberValue(formatDocumentNumber(rawDoc, inferredType));
+        setNrcValue(formatNRC(customer.nrc || ''));
         setSelectedPais(customer.pais || '9579');
         setIsModalOpen(true);
     };
 
-    const fieldCls = "w-full px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-sm";
-    const labelCls = "block text-xs font-semibold text-slate-500 mb-1";
+    const fieldCls = "w-full px-3 py-2 bg-slate-50/50 border border-slate-200 rounded-xl outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-[13px] font-medium text-slate-800";
+    const labelCls = "block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5";
 
     return (
         <div className="space-y-3">
@@ -392,14 +535,15 @@ const Customers = () => {
                         setSelectedMun('');
                         setSelectedDistrito('');
                         setSelectedActivity('');
-                        setCondicionFiscal('contribuyente');
+                        setCondicionFiscal('otro');
                         setExentoIva(false);
                         setEsCredito(false);
                         setDiasCredito('15');
                         setEsAnticipado(false);
                         setEsTrupput(false);
                         setDocType('DUI');
-                        setNitValue('');
+                        setDocNumberValue('');
+                        setNrcValue('');
                         setSelectedPais('9579');
                         setIsModalOpen(true); 
                     }} 
@@ -410,15 +554,36 @@ const Customers = () => {
                 </button>
             </div>
 
-            <div className="relative max-w-sm">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
-                <input 
-                    type="text" 
-                    placeholder="Buscar..." 
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full pl-9 pr-3 py-1.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-400 transition-all text-xs font-medium shadow-sm"
-                />
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="relative flex-1 max-w-sm">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
+                    <input 
+                        type="text" 
+                        placeholder="Buscar por nombre, documento o NRC..." 
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="w-full pl-9 pr-3 py-1.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-400 transition-all text-xs font-medium shadow-sm"
+                    />
+                </div>
+                <div className="flex items-center gap-2">
+                    <button 
+                        type="button"
+                        onClick={handleExportExcel}
+                        disabled={isExportingExcel}
+                        className="h-8 px-3 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-xl text-[9px] font-black uppercase tracking-widest flex items-center gap-1.5 hover:bg-emerald-100 transition-all shadow-sm active:scale-95 disabled:opacity-50"
+                        title="Exportar listado a Excel (.xlsx)"
+                    >
+                        {isExportingExcel ? <Loader2 size={14} className="animate-spin" /> : <FileSpreadsheet size={14} />} EXCEL
+                    </button>
+                    <button 
+                        type="button"
+                        onClick={handleOpenPdfModal}
+                        className="h-8 px-3 bg-rose-50 text-rose-700 border border-rose-100 rounded-xl text-[9px] font-black uppercase tracking-widest flex items-center gap-1.5 hover:bg-rose-100 transition-all shadow-sm active:scale-95"
+                        title="Ver catálogo de clientes en PDF"
+                    >
+                        <FilePdf size={14} /> PDF
+                    </button>
+                </div>
             </div>
 
             {canBatchDelete && selectedIds.size > 0 && (
@@ -497,15 +662,23 @@ const Customers = () => {
                             </td>
                             <td className="px-3 py-1">
                                 <span className={`px-1.5 py-0.5 text-[9px] font-bold rounded-full uppercase ${
-                                    c.condicion_fiscal === 'gran contribuyente' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'
+                                    c.condicion_fiscal === 'gran contribuyente' ? 'bg-amber-100 text-amber-700' :
+                                    c.condicion_fiscal === 'otro' ? 'bg-slate-100 text-slate-500' :
+                                    'bg-indigo-50 text-indigo-700'
                                 }`}>
-                                    {c.condicion_fiscal}
+                                    {c.condicion_fiscal === 'otro' ? 'Consumidor Final' : (c.condicion_fiscal || 'Consumidor Final')}
                                 </span>
-                                {c.actividad_nombre && (
-                                    <div className="text-[9px] text-indigo-600 font-bold max-w-[150px] truncate">
-                                        {c.actividad_nombre}
-                                    </div>
-                                )}
+                                <div className="mt-1">
+                                    {(c.es_credito === 1 || c.es_credito === true || c.es_credito === '1') ? (
+                                        <span className="inline-flex items-center px-1.5 py-0.5 text-[9px] font-bold rounded bg-amber-50 text-amber-700 border border-amber-200/80 uppercase tracking-tight">
+                                            Crédito: {c.dias_credito || 0} {Number(c.dias_credito) === 1 ? 'día' : 'días'}
+                                        </span>
+                                    ) : (
+                                        <span className="inline-flex items-center px-1.5 py-0.5 text-[9px] font-semibold rounded bg-slate-100 text-slate-500 uppercase tracking-tight">
+                                            Contado
+                                        </span>
+                                    )}
+                                </div>
                             </td>
                             <td className="px-3 py-1 flex gap-1">
                                 <button onClick={() => handleEdit(c)} className="p-1 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Edit size={15}/></button>
@@ -521,11 +694,24 @@ const Customers = () => {
                                     <h4 className="text-sm font-bold text-slate-900 truncate">{c.nombre}</h4>
                                     {c.nombre_comercial && <p className="text-xs text-slate-500 truncate">{c.nombre_comercial}</p>}
                                 </div>
-                                <span className={`px-2 py-0.5 text-[10px] font-bold rounded-full uppercase shrink-0 ${
-                                    c.condicion_fiscal === 'gran contribuyente' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'
-                                }`}>
-                                    {c.condicion_fiscal}
-                                </span>
+                                <div className="flex flex-col items-end gap-1 shrink-0">
+                                    <span className={`px-2 py-0.5 text-[10px] font-bold rounded-full uppercase shrink-0 ${
+                                        c.condicion_fiscal === 'gran contribuyente' ? 'bg-amber-100 text-amber-700' :
+                                        c.condicion_fiscal === 'otro' ? 'bg-slate-100 text-slate-500' :
+                                        'bg-indigo-50 text-indigo-700'
+                                    }`}>
+                                        {c.condicion_fiscal === 'otro' ? 'Consumidor Final' : (c.condicion_fiscal || 'Consumidor Final')}
+                                    </span>
+                                    {(c.es_credito === 1 || c.es_credito === true || c.es_credito === '1') ? (
+                                        <span className="px-1.5 py-0.5 text-[9px] font-bold rounded bg-amber-50 text-amber-700 border border-amber-200/80 uppercase">
+                                            Crédito {c.dias_credito || 0}d
+                                        </span>
+                                    ) : (
+                                        <span className="px-1.5 py-0.5 text-[9px] font-semibold rounded bg-slate-100 text-slate-500 uppercase">
+                                            Contado
+                                        </span>
+                                    )}
+                                </div>
                             </div>
 
                             <div className="grid grid-cols-2 gap-2 text-xs pt-1 border-t border-slate-100">
@@ -578,190 +764,324 @@ const Customers = () => {
             <Modal 
                 isOpen={isModalOpen} 
                 onClose={() => setIsModalOpen(false)} 
-                title={selectedCustomer ? 'Editar Cliente' : 'Nuevo Cliente'}
-                maxWidth="max-w-lg"
-            >
-                <form onSubmit={handleSubmit} className="space-y-4">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                            <label className={labelCls}>Tipo de Persona</label>
-                            <select name="tipo_persona" defaultValue={selectedCustomer?.tipo_persona || '1'} className={fieldCls} required>
-                                {personTypes.map(t => <option key={t.code} value={t.code}>{t.description}</option>)}
-                            </select>
+                title={
+                    <div className="flex items-center gap-2.5">
+                        <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl">
+                            <UserCheck size={20} />
                         </div>
                         <div>
-                            <label className={labelCls}>País</label>
-                            <select name="pais" value={selectedPais} onChange={(e) => setSelectedPais(e.target.value)} className={fieldCls} required>
-                                {countries.map(t => <option key={t.code} value={t.code}>{t.description}</option>)}
-                            </select>
+                            <h3 className="text-base font-bold text-slate-900">
+                                {selectedCustomer ? 'Editar Cliente' : 'Nuevo Cliente'}
+                            </h3>
+                            <p className="text-xs text-slate-500">
+                                {selectedCustomer ? 'Actualizar información fiscal y comercial' : 'Registro de nuevo cliente o contribuyente'}
+                            </p>
                         </div>
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                }
+                maxWidth="max-w-2xl"
+            >
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                        <div className="sm:col-span-2">
+                            <label className={labelCls}>
+                                Nombre / Razón Social <span className="text-rose-500">*</span>
+                            </label>
+                            <input 
+                                name="nombre" 
+                                defaultValue={selectedCustomer?.nombre} 
+                                required 
+                                placeholder="Ej: Comercializadora San Salvador S.A. de C.V."
+                                className={fieldCls} 
+                            />
+                        </div>
+
                         <div>
-                            <label className={labelCls}>Tipo Documento</label>
+                            <label className={labelCls}>Nombre Comercial</label>
+                            <input 
+                                name="nombre_comercial" 
+                                defaultValue={selectedCustomer?.nombre_comercial} 
+                                placeholder="Ej: Supertienda Central"
+                                className={fieldCls} 
+                            />
+                        </div>
+
+                        <div>
+                            <label className={labelCls}>Tipo de Documento</label>
                             <select 
                                 name="tipo_documento" 
                                 value={docType} 
-                                onChange={(e) => setDocType(e.target.value)}
+                                onChange={(e) => {
+                                    const nextType = e.target.value;
+                                    setDocType(nextType);
+                                    setDocNumberValue(formatDocumentNumber(docNumberValue, nextType));
+                                }}
                                 className={fieldCls}
                             >
-                                <option value="DUI">DUI</option>
-                                <option value="NIT">NIT</option>
+                                <option value="DUI">DUI (Consumidor Final)</option>
+                                <option value="NIT">NIT (Contribuyente / Empresa)</option>
                                 <option value="Pasaporte">Pasaporte</option>
-                                <option value="Carnet Resident">Carnet Residente</option>
+                                <option value="Carnet Resident">Carnet de Residente</option>
+                                <option value="Otro">Otro Documento</option>
                             </select>
                         </div>
+
                         <div>
-                            <label className={labelCls}>Número Documento</label>
-                            <input name="numero_documento" defaultValue={selectedCustomer?.numero_documento} placeholder="00000000-0" className={fieldCls} />
-                        </div>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                            <label className={labelCls}>NIT</label>
+                            <label className={labelCls}>Número de Documento (DUI / NIT)</label>
                             <input 
-                                name="nit" 
-                                value={nitValue} 
-                                onChange={(e) => setNitValue(formatNIT(e.target.value, docType))}
-                                placeholder={docType === 'DUI' ? "00000000-0" : "0000-000000-000-0"} 
-                                className={fieldCls} 
-                                maxLength={docType === 'DUI' ? 10 : 17}
+                                name="numero_documento" 
+                                value={docNumberValue} 
+                                onChange={(e) => setDocNumberValue(formatDocumentNumber(e.target.value, docType))}
+                                placeholder={docType === 'DUI' ? "00000000-0" : docType === 'NIT' ? "0000-000000-000-0" : "Número de documento"} 
+                                className={`${fieldCls} font-mono`} 
+                                maxLength={docType === 'DUI' ? 10 : docType === 'NIT' ? 17 : 25}
+                            />
+                            <p className="text-[10px] text-slate-400 mt-1 font-medium">
+                                {docType === 'DUI' 
+                                    ? 'Persona Natural: DUI homologado (9 dígitos).' 
+                                    : docType === 'NIT' 
+                                    ? 'Empresas / Sociedades (S.A. de C.V.): NIT institucional (14 dígitos).' 
+                                    : 'Número de documento de identificación extranjera.'}
+                            </p>
+                        </div>
+
+                        <div>
+                            <label className={labelCls}>NRC (Registro de Contribuyente)</label>
+                            <input 
+                                name="nrc" 
+                                value={nrcValue} 
+                                onChange={(e) => {
+                                    const formatted = formatNRC(e.target.value);
+                                    setNrcValue(formatted);
+                                    const clean = formatted.replace(/\D/g, '');
+                                    if (clean.length > 0) {
+                                        if (condicionFiscal === 'otro') {
+                                            setCondicionFiscal('contribuyente');
+                                        }
+                                    } else {
+                                        if (condicionFiscal === 'contribuyente') {
+                                            setCondicionFiscal('otro');
+                                        }
+                                    }
+                                }}
+                                placeholder="000000-0" 
+                                className={`${fieldCls} font-mono`} 
                             />
                         </div>
+
+                        {isForeign && (
+                            <div className="sm:col-span-2">
+                                <label className={labelCls}>País de Origen</label>
+                                <select 
+                                    name="pais" 
+                                    value={selectedPais} 
+                                    onChange={(e) => setSelectedPais(e.target.value)} 
+                                    className={fieldCls} 
+                                    required
+                                >
+                                    {countries.map(t => <option key={t.code} value={t.code}>{t.description}</option>)}
+                                </select>
+                            </div>
+                        )}
+
                         <div>
-                            <label className={labelCls}>NRC</label>
-                            <input name="nrc" defaultValue={selectedCustomer?.nrc} placeholder="000000-0" className={fieldCls} />
-                        </div>
-                    </div>
-                    <div>
-                        <label className={labelCls}>Nombre / Razón Social</label>
-                        <input name="nombre" defaultValue={selectedCustomer?.nombre} required className={fieldCls} />
-                    </div>
-                    <div>
-                        <label className={labelCls}>Nombre Comercial</label>
-                        <input name="nombre_comercial" defaultValue={selectedCustomer?.nombre_comercial} className={fieldCls} />
-                    </div>
-                    <div >
-                            <label className={labelCls}>Actividad Económica</label>
+                            <label className={labelCls}>Actividad Económica (Giro - CAT-019)</label>
                             <SearchableSelect 
                                 name="codigo_actividad" 
                                 options={activities} 
                                 value={selectedActivity} 
                                 onChange={(e) => setSelectedActivity(e.target.value)}
-                                placeholder="Seleccionar actividad"
+                                placeholder="Seleccionar actividad económica"
                             />
                         </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+
                         <div>
                             <label className={labelCls}>Condición Fiscal</label>
-                            <select name="condicion_fiscal" value={condicionFiscal} onChange={(e) => {
-                                const val = e.target.value;
-                                setCondicionFiscal(val);
-                                if (val === 'exento IVA') setExentoIva(true);
-                            }} className={fieldCls}>
+                            <select 
+                                name="condicion_fiscal" 
+                                value={condicionFiscal} 
+                                onChange={(e) => {
+                                    const val = e.target.value;
+                                    setCondicionFiscal(val);
+                                    if (val === 'exento IVA') setExentoIva(true);
+                                }} 
+                                className={fieldCls}
+                            >
                                 <option value="contribuyente">Contribuyente</option>
                                 <option value="gran contribuyente">Gran Contribuyente</option>
                                 <option value="exento IVA">Exento IVA</option>
                                 <option value="extranjero">Extranjero</option>
-                                <option value="otro">Otro</option>
+                                <option value="otro">Otro (Consumidor Final)</option>
                             </select>
                         </div>
 
+                        <div>
+                            <label className={labelCls}>Teléfono</label>
+                            <input 
+                                name="telefono" 
+                                defaultValue={selectedCustomer?.telefono} 
+                                placeholder="2200-0000" 
+                                className={fieldCls} 
+                            />
+                        </div>
+
+                        <div>
+                            <label className={labelCls}>Correo Electrónico</label>
+                            <input 
+                                name="correo" 
+                                type="email" 
+                                defaultValue={selectedCustomer?.correo} 
+                                placeholder="cliente@ejemplo.com" 
+                                className={fieldCls} 
+                            />
+                        </div>
                     </div>
-                    <div className="w-full flex items-start gap-2 bg-slate-50 border border-slate-200 rounded-lg p-2.5">
+
+                    <div className="w-full flex items-start gap-2 bg-slate-50 border border-slate-200 rounded-xl p-2.5">
                         <Info size={14} className="text-slate-400 shrink-0 mt-0.5" />
                         <div className="text-[10px] text-slate-500 leading-relaxed">
                             <p><span className="font-bold text-slate-600">Percepción</span> = tú eres el agente de percepción (GC cobrándole a uno pequeño).</p>
                             <p><span className="font-bold text-slate-600">Retención</span> = el cliente es el agente (GC grande reteniéndote a ti).</p>
                         </div>
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                         <div>
-                            <label className={labelCls}>Teléfono</label>
-                            <input name="telefono" defaultValue={selectedCustomer?.telefono} placeholder="2200-0000" className={fieldCls} />
-                        </div>
-                        <div>
-                            <label className={labelCls}>Correo Electrónico</label>
-                            <input name="correo" type="email" defaultValue={selectedCustomer?.correo} placeholder="cliente@ejemplo.com" className={fieldCls} />
-                        </div>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                            <label className={labelCls}>Departamento</label>
-                            <select name="departamento" className={fieldCls} value={selectedDept} onChange={(e) => { setSelectedDept(e.target.value); setSelectedMun(''); setSelectedDistrito(''); }} required>
+                            <label className={labelCls}>
+                                Departamento {isAddressRequired && <span className="text-rose-500">*</span>}
+                            </label>
+                            <select 
+                                name="departamento" 
+                                className={fieldCls} 
+                                value={selectedDept} 
+                                onChange={(e) => { setSelectedDept(e.target.value); setSelectedMun(''); setSelectedDistrito(''); }} 
+                                required={isAddressRequired}
+                            >
                                 <option value="">Seleccionar</option>
                                 {departments?.map(d => <option key={d.code} value={d.code}>{d.description}</option>)}
                             </select>
                         </div>
                         <div>
-                            <label className={labelCls}>Distrito</label>
-                            <select name="distrito" value={selectedDistrito} onChange={(e) => { const sel = distritos.find(d => d.code === e.target.value); setSelectedDistrito(e.target.value); setSelectedMun(sel?.muni_code || ''); }} className={fieldCls} required>
+                            <label className={labelCls}>
+                                Distrito {isAddressRequired && <span className="text-rose-500">*</span>}
+                            </label>
+                            <select 
+                                name="distrito" 
+                                value={selectedDistrito} 
+                                onChange={(e) => { const sel = distritos.find(d => d.code === e.target.value); setSelectedDistrito(e.target.value); setSelectedMun(sel?.muni_code || ''); }} 
+                                className={fieldCls} 
+                                required={isAddressRequired}
+                            >
                                 <option value="">Seleccionar</option>
                                 {distritos?.map(d => <option key={d.code} value={d.code}>{d.description}</option>)}
                             </select>
                         </div>
                         <div>
-                            <label className={labelCls}>Municipio</label>
-                            <select name="municipio" value={selectedMun} onChange={(e) => setSelectedMun(e.target.value)} className={fieldCls} required>
+                            <label className={labelCls}>
+                                Municipio {isAddressRequired && <span className="text-rose-500">*</span>}
+                            </label>
+                            <select 
+                                name="municipio" 
+                                value={selectedMun} 
+                                onChange={(e) => setSelectedMun(e.target.value)} 
+                                className={fieldCls} 
+                                required={isAddressRequired}
+                            >
                                 <option value="">Seleccionar</option>
                                 {municipalities?.map(m => <option key={m.code} value={m.code}>{m.description}</option>)}
                             </select>
                         </div>
                     </div>
+
                     <div>
-                        <label className={labelCls}>Dirección Exacta</label>
-                        <textarea name="direccion" defaultValue={selectedCustomer?.direccion} required placeholder="Dirección completa..." className={`${fieldCls} h-16 resize-none`} />
+                        <label className={labelCls}>
+                            Dirección Exacta {isAddressRequired && <span className="text-rose-500">*</span>}
+                        </label>
+                        <textarea 
+                            name="direccion" 
+                            defaultValue={selectedCustomer?.direccion} 
+                            required={isAddressRequired} 
+                            placeholder={isAddressRequired ? "Dirección completa..." : "Dirección completa (opcional)..."} 
+                            className={`${fieldCls} h-14 resize-none`} 
+                        />
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        {[
-                            { id: 'exento_iva', label: 'Exento de IVA', checked: exentoIva, onChange: (e) => setExentoIva(e.target.checked) },
-                            { id: 'aplica_fovial', label: 'Aplica FOVIAL', default: true },
-                            { id: 'aplica_cotrans', label: 'Aplica COTRANS', default: true }
-                        ].map(tax => (
-                            <label key={tax.id} className="flex items-center gap-2 p-2 bg-slate-50 rounded-lg border border-slate-100 cursor-pointer hover:border-indigo-200 transition-all text-xs font-semibold text-slate-600">
+
+                    {/* Opciones Comerciales y Tributarias Compactas */}
+                    <div className="p-3 bg-slate-50/70 border border-slate-200/80 rounded-xl space-y-2.5">
+                        <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider shrink-0">Tributario:</span>
+                            {[
+                                { id: 'exento_iva', label: 'Exento IVA', checked: exentoIva, onChange: (e) => setExentoIva(e.target.checked) },
+                                { id: 'aplica_fovial', label: 'Aplica FOVIAL', default: true },
+                                { id: 'aplica_cotrans', label: 'Aplica COTRANS', default: true }
+                            ].map(tax => (
+                                <label key={tax.id} className="inline-flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-slate-700 hover:text-indigo-600 transition-colors select-none">
+                                    <input 
+                                        type="checkbox" 
+                                        name={tax.id} 
+                                        {...(tax.checked !== undefined 
+                                            ? { checked: tax.checked, onChange: tax.onChange } 
+                                            : { defaultChecked: selectedCustomer ? (selectedCustomer[tax.id] != null ? Boolean(selectedCustomer[tax.id]) : tax.default) : tax.default }
+                                        )}
+                                        className="accent-indigo-600 rounded w-4 h-4 cursor-pointer" 
+                                    />
+                                    {tax.label}
+                                </label>
+                            ))}
+                        </div>
+
+                        <div className="pt-2 border-t border-slate-200/60 flex flex-wrap items-center gap-x-5 gap-y-2">
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider shrink-0">Comercial:</span>
+                            <label className="inline-flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-slate-700 hover:text-indigo-600 transition-colors select-none">
                                 <input 
                                     type="checkbox" 
-                                    name={tax.id} 
-                                    {...(tax.checked !== undefined 
-                                        ? { checked: tax.checked, onChange: tax.onChange } 
-                                        : { defaultChecked: selectedCustomer ? selectedCustomer[tax.id] : tax.default }
-                                    )}
-                                    className="accent-indigo-600 w-4 h-4" 
+                                    name="es_credito" 
+                                    checked={esCredito} 
+                                    onChange={e => setEsCredito(e.target.checked)} 
+                                    className="accent-indigo-600 rounded w-4 h-4 cursor-pointer" 
                                 />
-                                {tax.label}
+                                Crédito (CxC)
                             </label>
-                        ))}
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-4 pt-4 border-t border-slate-200">
-                        <label className="flex items-center gap-2 p-2 bg-slate-50 rounded-lg border border-slate-100 cursor-pointer hover:border-indigo-200 transition-all text-[11px] font-semibold text-slate-600">
-                            <input type="checkbox" name="es_credito" checked={esCredito} onChange={e => setEsCredito(e.target.checked)} className="accent-indigo-600 w-4 h-4" />
-                            Cliente Crédito (CxC)
-                        </label>
-                        {esCredito && (
-                            <div className="flex items-center gap-2 p-2 bg-slate-50 rounded-lg border border-indigo-100">
-                                <label className="text-[11px] font-semibold text-slate-600 whitespace-nowrap">Días de Crédito</label>
-                                <input
-                                    type="number"
-                                    min="1"
-                                    value={diasCredito}
-                                    onChange={(e) => setDiasCredito(e.target.value)}
-                                    className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-sm font-semibold"
+                            {esCredito && (
+                                <div className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-white border border-indigo-200 rounded-lg shadow-sm">
+                                    <span className="text-[10px] font-bold text-indigo-700 uppercase">Días:</span>
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        value={diasCredito}
+                                        onChange={(e) => setDiasCredito(e.target.value)}
+                                        className="w-14 px-1 py-0.5 text-center text-xs font-bold text-slate-800 bg-slate-50 border border-slate-200 rounded outline-none focus:ring-1 focus:ring-indigo-500"
+                                    />
+                                </div>
+                            )}
+
+                            <label className="inline-flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-slate-700 hover:text-indigo-600 transition-colors select-none">
+                                <input 
+                                    type="checkbox" 
+                                    name="es_anticipado" 
+                                    checked={esAnticipado} 
+                                    onChange={e => setEsAnticipado(e.target.checked)} 
+                                    className="accent-indigo-600 rounded w-4 h-4 cursor-pointer" 
                                 />
-                            </div>
-                        )}
-                        <label className="flex items-center gap-2 p-2 bg-slate-50 rounded-lg border border-slate-100 cursor-pointer hover:border-indigo-200 transition-all text-[11px] font-semibold text-slate-600">
-                            <input type="checkbox" name="es_anticipado" checked={esAnticipado} onChange={e => setEsAnticipado(e.target.checked)} className="accent-indigo-600 w-4 h-4" />
-                            Cliente Anticipado (Gasolinera)
-                        </label>
-                        <label className="flex items-center gap-2 p-2 bg-slate-50 rounded-lg border border-slate-100 cursor-pointer hover:border-indigo-200 transition-all text-[11px] font-semibold text-slate-600">
-                            <input type="checkbox" name="es_trupput" checked={esTrupput} onChange={e => setEsTrupput(e.target.checked)} className="accent-indigo-600 w-4 h-4" />
-                            Cliente Trupput (Gasolinera)
-                        </label>
+                                Anticipado
+                            </label>
+
+                            <label className="inline-flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-slate-700 hover:text-indigo-600 transition-colors select-none">
+                                <input 
+                                    type="checkbox" 
+                                    name="es_trupput" 
+                                    checked={esTrupput} 
+                                    onChange={e => setEsTrupput(e.target.checked)} 
+                                    className="accent-indigo-600 rounded w-4 h-4 cursor-pointer" 
+                                />
+                                Trupput
+                            </label>
+                        </div>
                     </div>
-                    <div className="flex justify-end gap-3 pt-2 border-t border-slate-100">
-                        <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-slate-500 font-semibold hover:text-slate-700 transition-colors text-sm">Cancelar</button>
-                        <button type="submit" className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-lg font-bold transition-all text-sm active:scale-95">
-                            {selectedCustomer ? 'Actualizar' : 'Registrar'}
+                    <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">
+                        <button type="button" onClick={() => setIsModalOpen(false)} className="px-5 py-2.5 text-slate-500 font-semibold hover:text-slate-700 transition-colors text-xs">Cancelar</button>
+                        <button type="submit" className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-xl font-bold transition-all text-xs shadow-md shadow-indigo-600/20 active:scale-95">
+                            {selectedCustomer ? 'Actualizar Cliente' : 'Registrar Cliente'}
                         </button>
                     </div>
                 </form>
@@ -901,6 +1221,22 @@ const Customers = () => {
                     </div>
                 </div>
             </Modal>
+
+            {/* Modal de Visualización Interactiva de Catálogo PDF */}
+            <PdfViewerModal
+                isOpen={isPdfModalOpen}
+                onClose={() => setIsPdfModalOpen(false)}
+                title="Catálogo de Clientes"
+                subtitle={debouncedSearch ? `Filtro de búsqueda: "${debouncedSearch}"` : 'Directorio general de clientes'}
+                badge="Formato Oficial"
+                pdfUrl={pdfUrl}
+                isLoading={isLoadingPdf}
+                loadingText="Generando catálogo de clientes en formato oficial..."
+                error={pdfError}
+                onRetry={handleOpenPdfModal}
+                fileName={`Catalogo_Clientes_${new Date().toISOString().split('T')[0]}.pdf`}
+                footerNote="Formato oficial del sistema • Presentación Carta Horizontal"
+            />
         </div>
     );
 };

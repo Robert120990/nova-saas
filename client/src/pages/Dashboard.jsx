@@ -125,7 +125,7 @@ export default function Dashboard() {
                             </div>
                             <div>
                                 <p className="text-indigo-200 text-[11px] font-bold uppercase tracking-widest">Sistema</p>
-                                <h1 className="text-2xl font-black text-white tracking-tight">{user?.company_name || 'Nova SaaS'}</h1>
+                                <h1 className="text-2xl font-black text-white tracking-tight">{user?.company_name || 'Sipe Web SaaS'}</h1>
                             </div>
                         </div>
                     </div>

@@ -1263,44 +1263,47 @@ async function generatePasivosLaboralesPdf(reportData) {
 
     const colX = {
         num: 30,
-        codigo: 54,
-        nombre: 100,
-        ingreso: 245,
-        antiguedad: 300,
-        sueldoBase: 368,
-        salarioDiario: 432,
-        provIndem: 486,
-        provVac: 558,
-        provAguin: 626,
+        codigo: 52,
+        nombre: 94,
+        ingreso: 226,
+        antiguedad: 278,
+        sueldoBase: 338,
+        salarioDiario: 394,
+        provIndem: 444,
+        provVac: 508,
+        provAguin: 570,
+        provQ25: 632,
         totalPasivo: 694
     };
     const colW = {
-        num: 22,
-        codigo: 44,
-        nombre: 142,
-        ingreso: 52,
-        antiguedad: 65,
-        sueldoBase: 60,
-        salarioDiario: 50,
-        provIndem: 68,
-        provVac: 64,
-        provAguin: 64,
+        num: 20,
+        codigo: 40,
+        nombre: 130,
+        ingreso: 50,
+        antiguedad: 58,
+        sueldoBase: 54,
+        salarioDiario: 48,
+        provIndem: 62,
+        provVac: 60,
+        provAguin: 60,
+        provQ25: 60,
         totalPasivo: 68
     };
 
     const renderTableHeader = (y) => {
         doc.rect(30, y, 732, 14).fill('#f1f5f9');
-        doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#0f172a');
+        doc.fontSize(6.2).font('Helvetica-Bold').fillColor('#0f172a');
         doc.text('N°', colX.num, y + 3, { width: colW.num, align: 'center' });
         doc.text('CÓDIGO', colX.codigo, y + 3, { width: colW.codigo });
         doc.text('NOMBRE DEL EMPLEADO', colX.nombre, y + 3, { width: colW.nombre });
         doc.text('F. INGRESO', colX.ingreso, y + 3, { width: colW.ingreso, align: 'center' });
         doc.text('ANTIGÜEDAD', colX.antiguedad, y + 3, { width: colW.antiguedad, align: 'center' });
-        doc.text('SUELDO BASE', colX.sueldoBase, y + 3, { width: colW.sueldoBase - 2, align: 'right' });
+        doc.text('SUELDO B.', colX.sueldoBase, y + 3, { width: colW.sueldoBase - 2, align: 'right' });
         doc.text('SAL. DIARIO', colX.salarioDiario, y + 3, { width: colW.salarioDiario - 2, align: 'right' });
         doc.text('INDEMNIZACIÓN', colX.provIndem, y + 3, { width: colW.provIndem - 2, align: 'right' });
         doc.text('VACACIÓN PROP.', colX.provVac, y + 3, { width: colW.provVac - 2, align: 'right' });
-        doc.text('AGUINALDO PROP.', colX.provAguin, y + 3, { width: colW.provAguin - 2, align: 'right' });
+        doc.text('AGUINALDO P.', colX.provAguin, y + 3, { width: colW.provAguin - 2, align: 'right' });
+        doc.text('QUINCENA 25', colX.provQ25, y + 3, { width: colW.provQ25 - 2, align: 'right' });
         doc.text('PASIVO TOTAL', colX.totalPasivo, y + 3, { width: colW.totalPasivo - 2, align: 'right' });
         doc.strokeColor('#cbd5e1').lineWidth(0.5).moveTo(30, y + 14).lineTo(762, y + 14).stroke();
         return y + 15;
@@ -1320,7 +1323,7 @@ async function generatePasivosLaboralesPdf(reportData) {
             doc.rect(30, currentY - 1, 732, 12).fill('#f8fafc');
         }
 
-        doc.fontSize(6.8).font('Helvetica').fillColor('#1e293b');
+        doc.fontSize(6.5).font('Helvetica').fillColor('#1e293b');
         doc.text(String(index + 1), colX.num, currentY, { width: colW.num, align: 'center' });
         doc.text(item.codigo || '', colX.codigo, currentY, { width: colW.codigo });
         doc.text(reportPdfHelper.fitText(doc, item.nombre || '', colW.nombre), colX.nombre, currentY, { lineBreak: false });
@@ -1331,6 +1334,7 @@ async function generatePasivosLaboralesPdf(reportData) {
         doc.text(reportPdfHelper.fmt(item.pasivo_indemnizacion), colX.provIndem, currentY, { width: colW.provIndem - 2, align: 'right' });
         doc.text(reportPdfHelper.fmt(item.pasivo_vacacion), colX.provVac, currentY, { width: colW.provVac - 2, align: 'right' });
         doc.text(reportPdfHelper.fmt(item.pasivo_aguinaldo), colX.provAguin, currentY, { width: colW.provAguin - 2, align: 'right' });
+        doc.text(reportPdfHelper.fmt(item.pasivo_quincena25 || 0), colX.provQ25, currentY, { width: colW.provQ25 - 2, align: 'right' });
         doc.font('Helvetica-Bold').text(reportPdfHelper.fmt(item.pasivo_total), colX.totalPasivo, currentY, { width: colW.totalPasivo - 2, align: 'right' });
         doc.font('Helvetica');
 
@@ -1346,11 +1350,12 @@ async function generatePasivosLaboralesPdf(reportData) {
     doc.strokeColor('#cbd5e1').lineWidth(0.8).moveTo(30, currentY).lineTo(762, currentY).stroke();
     currentY += 3;
     doc.rect(30, currentY - 2, 732, 14).fill('#f1f5f9');
-    doc.fontSize(7).font('Helvetica-Bold').fillColor('#0f172a');
-    doc.text(`TOTALES (${totals.total_empleados || items.length} EMPLEADOS):`, colX.codigo, currentY + 2, { width: 300 });
+    doc.fontSize(6.8).font('Helvetica-Bold').fillColor('#0f172a');
+    doc.text(`TOTALES (${totals.total_empleados || items.length} EMPLEADOS):`, colX.codigo, currentY + 2, { width: 280 });
     doc.text(reportPdfHelper.fmt(totals.total_indemnizacion), colX.provIndem, currentY + 2, { width: colW.provIndem - 2, align: 'right' });
     doc.text(reportPdfHelper.fmt(totals.total_vacacion), colX.provVac, currentY + 2, { width: colW.provVac - 2, align: 'right' });
     doc.text(reportPdfHelper.fmt(totals.total_aguinaldo), colX.provAguin, currentY + 2, { width: colW.provAguin - 2, align: 'right' });
+    doc.text(reportPdfHelper.fmt(totals.total_quincena25 || 0), colX.provQ25, currentY + 2, { width: colW.provQ25 - 2, align: 'right' });
     doc.text(reportPdfHelper.fmt(totals.total_pasivo), colX.totalPasivo, currentY + 2, { width: colW.totalPasivo - 2, align: 'right' });
     doc.strokeColor('#94a3b8').lineWidth(0.5).moveTo(30, currentY + 14).lineTo(762, currentY + 14).stroke();
 

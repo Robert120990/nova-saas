@@ -32,18 +32,11 @@ import Modal from '../components/ui/Modal';
 import { useAuth } from '../context/AuthContext';
 import { useConfirm } from '../context/ConfirmContext';
 import Money from '../components/ui/Money';
-import { getTodayString } from '../utils/dateUtils';
+import { getTodayString, formatDate } from '../utils/dateUtils';
+import { unwrapList } from '../utils/apiUtils';
 
 const today = () => getTodayString();
-const formatDate = (dateStr) => {
-    if (!dateStr) return '—';
-    try {
-        const [year, month, day] = dateStr.split('T')[0].split('-');
-        return `${day}/${month}/${year}`;
-    } catch (e) {
-        return dateStr;
-    }
-};
+
 
 const PurchaseChecks = () => {
     const { user } = useAuth();
@@ -108,7 +101,7 @@ const PurchaseChecks = () => {
 
     const { data: branches = [] } = useQuery({
         queryKey: ['branches', user?.company_id],
-        queryFn: async () => (await axios.get('/api/branches')).data
+        queryFn: async () => unwrapList(await axios.get('/api/branches'))
     });
 
     const { data: editData } = useQuery({
@@ -237,7 +230,7 @@ const PurchaseChecks = () => {
         queryKey: ['providers-modal-fallback', user?.company_id],
         queryFn: async () => {
             const res = await axios.get('/api/providers', { params: { limit: 2000 } });
-            return res.data?.data || [];
+            return unwrapList(res);
         },
         enabled: showProvidersModal,
     });

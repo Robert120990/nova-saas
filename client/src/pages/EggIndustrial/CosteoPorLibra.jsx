@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { toast } from 'sonner';
 import {
@@ -14,32 +13,41 @@ import {
     Package,
     Flame,
     Droplets,
-    Plus,
-    X,
     Sparkles,
     BarChart3,
     Factory,
     Scale,
     ShoppingCart,
-    Edit2,
-    Trash2,
     ArrowDownRight,
     Split,
-    Handshake,
     Calendar,
-    Clock,
-    AlertTriangle,
     CheckCircle2,
-    FileText,
     ChevronDown,
-    ChevronUp
+    ChevronUp,
+    Award,
+    Target
 } from 'lucide-react';
 import Money from '../../components/ui/Money';
+import EggCommissionsSimulator from '../../components/egg/EggCommissionsSimulator';
+import EggSellerGoalsManager from '../../components/egg/EggSellerGoalsManager';
+import {
+    EggAgreementModal,
+    EggAgreementHistoryModal,
+    EggCipModal,
+    EggPackagingMaterialModal,
+    EggPlantConfigModal,
+    EggSaveScenarioModal,
+    EggCosteoSimulatorTab,
+    EggCosteoClientsTab,
+    EggCosteoCatalogTab,
+    EggCosteoHistoryTab
+} from '../../components/egg/costeo';
+
 
 export default function EggCosteoPorLibra() {
-    const navigate = useNavigate();
     // Tab actual
-    const [activeTab, setActiveTab] = useState('calculator'); // 'calculator', 'simulator', 'clients', 'catalog', 'history'
+    const [activeTab, setActiveTab] = useState('calculator'); // 'calculator', 'simulator', 'commissions', 'clients', 'catalog', 'history'
+    const [commissionsSubTab, setCommissionsSubTab] = useState('manager'); // 'manager' | 'simulator'
 
     // Rango de fechas global para monitoreo operacional y acuerdos
     const [dateRange, setDateRange] = useState(() => {
@@ -77,7 +85,6 @@ export default function EggCosteoPorLibra() {
     const [showCustomSolids, setShowCustomSolids] = useState(false);
     // Control de acordeón / desplegable para matrices de presentación
     const [showPresentationsMatrixCalc, setShowPresentationsMatrixCalc] = useState(false);
-    const [showPresentationsMatrixSim, setShowPresentationsMatrixSim] = useState(false);
 
     // Resultados calculados
     const [calculationResult, setCalculationResult] = useState(null);
@@ -881,6 +888,7 @@ export default function EggCosteoPorLibra() {
                 {[
                     { id: 'calculator', label: 'Calculadora de Costeo', icon: Calculator },
                     { id: 'simulator', label: 'Simulador de Margen Libre', icon: TrendingUp },
+                    { id: 'commissions', label: 'Metas & Comisiones ($1K)', icon: Award },
                     { id: 'clients', label: 'Acuerdos con Clientes', icon: Users, badge: agreements.length },
                     { id: 'catalog', label: 'Insumos, Empaques y CIP', icon: Settings2 },
                     { id: 'history', label: 'Escenarios Guardados', icon: History, badge: scenarios.length }
@@ -1844,1739 +1852,169 @@ export default function EggCosteoPorLibra() {
             )}
 
             {/* TAB 2: SIMULADOR COMERCIAL & MATRIZ DE RENTABILIDAD */}
+
+            {/* TAB 2: SIMULADOR COMERCIAL & MATRIZ DE RENTABILIDAD */}
             {activeTab === 'simulator' && (
-                <div className="space-y-6">
-                    {/* Simulador Rápido con Precio Libre */}
-                    <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4 pb-4 border-b border-slate-200">
-                            <div>
-                                <h2 className="text-sm font-bold uppercase tracking-wider text-slate-900 flex items-center gap-2">
-                                    <TrendingUp className="w-4 h-4 text-emerald-600" />
-                                    <span>Simulador de Margen y Precios de Venta</span>
-                                </h2>
-                                <p className="text-xs text-slate-500 font-medium mt-0.5">
-                                    Proyecta el margen bruto y ganancia total para cualquier precio ofertado a clientes.
-                                </p>
-                            </div>
-                            <div className="flex items-center gap-3">
-                                <label className="text-xs font-bold text-slate-700">Precio Objetivo a Simular:</label>
-                                <div className="w-36">
-                                    <input
-                                        type="number"
-                                        step="0.01"
-                                        min="0"
-                                        placeholder="1.25"
-                                        value={calcParams.target_sale_price_per_lb}
-                                        onChange={(e) => handleParamChange('target_sale_price_per_lb', e.target.value)}
-                                        className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-sm font-bold text-slate-800 shadow-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                                    />
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Cards de Métricas del Simulador */}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-                            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
-                                <span className="text-[10px] font-bold text-slate-500 uppercase">Costo Unitario Base</span>
-                                <div className="text-xl font-black text-slate-900 mt-1">
-                                    <Money value={calculationResult?.breakdown?.total_cost_per_lb || 0} />
-                                    <span className="text-xs font-medium text-slate-500"> /lb</span>
-                                </div>
-                                <span className="text-[10px] text-slate-500">Costo total por libra</span>
-                            </div>
-
-                            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
-                                <span className="text-[10px] font-bold text-slate-500 uppercase">Margen Bruto ($/lb)</span>
-                                <div className={`text-xl font-black mt-1 ${(calculationResult?.target_simulation?.margin_per_lb || 0) >= 0 ? 'text-emerald-600' : 'text-rose-600'
-                                    }`}>
-                                    <Money value={calculationResult?.target_simulation?.margin_per_lb || 0} />
-                                    <span className="text-xs font-medium text-slate-500"> /lb</span>
-                                </div>
-                                <span className="text-[10px] text-slate-500">Ganancia neta por libra</span>
-                            </div>
-
-                            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
-                                <span className="text-[10px] font-bold text-slate-500 uppercase">Margen Porcentual (%)</span>
-                                <div className="text-xl font-black mt-1 flex items-center gap-2">
-                                    <span className={
-                                        (calculationResult?.target_simulation?.margin_pct || 0) >= 20
-                                            ? 'text-emerald-600'
-                                            : (calculationResult?.target_simulation?.margin_pct || 0) >= 10
-                                                ? 'text-amber-600'
-                                                : 'text-rose-600'
-                                    }>
-                                        {calculationResult?.target_simulation?.margin_pct?.toFixed(1) || 0}%
-                                    </span>
-                                </div>
-                                <span className="text-[10px] text-slate-500">Rentabilidad sobre venta</span>
-                            </div>
-
-                            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
-                                <span className="text-[10px] font-bold text-slate-500 uppercase">Ganancia Lote Completo</span>
-                                <div className="text-xl font-black text-indigo-700 mt-1">
-                                    <Money value={(calculationResult?.target_simulation?.margin_per_lb || 0) * (parseFloat(calcParams.batch_size_lbs) || 0)} />
-                                </div>
-                                <span className="text-[10px] text-slate-500">Para {(parseFloat(calcParams.batch_size_lbs) || 0).toLocaleString()} Lbs</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Grid en 2 Columnas: Izquierda = Matriz Escalonada de Margen | Derecha = Simulación Multiformato por Presentación */}
-                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-                        {/* Columna Izquierda: Matriz de Precios Sugeridos por Margen */}
-                        <div className="lg:col-span-5 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-                            <div className="pb-3 border-b border-slate-100">
-                                <h3 className="text-sm font-bold uppercase tracking-wider text-slate-900 flex items-center gap-2">
-                                    <TrendingUp className="w-4 h-4 text-indigo-600" />
-                                    <span>Escala de Precios por Margen</span>
-                                </h3>
-                                <p className="text-xs text-slate-500 font-medium mt-0.5">
-                                    Presentación activa: <strong className="text-indigo-700 font-bold">{calcParams.presentation}</strong>
-                                </p>
-                            </div>
-                            <div className="overflow-x-auto rounded-xl border border-slate-200">
-                                <table className="w-full text-left text-xs border-collapse">
-                                    <thead>
-                                        <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px]">
-                                            <th className="py-3 px-3">Margen</th>
-                                            <th className="py-3 px-3 text-right">Precio / Lb</th>
-                                            <th className="py-3 px-3 text-right">Precio / Envase</th>
-                                            <th className="py-3 px-3 text-right">Utilidad Lote</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-100 font-semibold text-slate-800">
-                                        {(calculationResult?.target_simulation?.margin_matrix || []).map((row, idx) => (
-                                            <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
-                                                <td className="py-3 px-3">
-                                                    <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold inline-block ${row.margin_target_pct >= 25
-                                                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                                            : row.margin_target_pct >= 15
-                                                                ? 'bg-indigo-50 text-indigo-700 border border-indigo-200'
-                                                                : 'bg-amber-50 text-amber-700 border border-amber-200'
-                                                        }`}>
-                                                        {row.margin_target_pct}%
-                                                    </span>
-                                                </td>
-                                                <td className="py-3 px-3 text-right font-black text-slate-900">
-                                                    <Money value={row.suggested_price_per_lb} />
-                                                </td>
-                                                <td className="py-3 px-3 text-right font-medium text-slate-700">
-                                                    <Money value={row.suggested_price_per_presentation} />
-                                                </td>
-                                                <td className="py-3 px-3 text-right font-black text-indigo-700">
-                                                    <Money value={row.batch_gain} />
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-
-                        {/* Columna Derecha: Simulación Multiformato por Presentación (Desplegable para evitar saturación) */}
-                        <div className="lg:col-span-7 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden transition-all">
-                            <div
-                                onClick={() => setShowPresentationsMatrixSim(prev => !prev)}
-                                className="p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 cursor-pointer hover:bg-slate-50/70 transition-colors select-none"
-                            >
-                                <div className="flex items-start sm:items-center gap-3">
-                                    <div className="p-2 bg-emerald-50 text-emerald-600 rounded-xl border border-emerald-100 flex-shrink-0">
-                                        <Package className="w-5 h-5" />
-                                    </div>
-                                    <div>
-                                        <div className="flex items-center gap-2 flex-wrap">
-                                            <h3 className="text-sm font-bold uppercase tracking-wider text-slate-900">
-                                                Simulación por Presentación y Empaque
-                                            </h3>
-                                            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
-                                                Multiformato
-                                            </span>
-                                        </div>
-                                        <p className="text-xs text-slate-500 font-medium mt-0.5">
-                                            {showPresentationsMatrixSim
-                                                ? `Impacto del precio simulado de ${(parseFloat(calcParams.target_sale_price_per_lb) || 0).toFixed(2)}/lb en cada formato. Haz clic para ocultar.`
-                                                : 'Márgenes y utilidades por formato al precio simulado. Haz clic para desplegar.'
-                                            }
-                                        </p>
-                                    </div>
-                                </div>
-
-                                <div className="flex items-center gap-2.5 self-end sm:self-center">
-                                    <button
-                                        type="button"
-                                        className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors shadow-sm"
-                                    >
-                                        <span>{showPresentationsMatrixSim ? 'Ocultar' : 'Desplegar'}</span>
-                                        {showPresentationsMatrixSim ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                                    </button>
-                                </div>
-                            </div>
-
-                            {showPresentationsMatrixSim && (
-                                <div className="p-6 pt-0 space-y-4 border-t border-slate-100">
-                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-3">
-                                        <p className="text-xs text-slate-500 font-medium">
-                                            Impacto del precio simulado de <strong className="text-slate-900 font-bold"><Money value={parseFloat(calcParams.target_sale_price_per_lb) || 0} /> /lb</strong> en cada formato:
-                                        </p>
-                                        <span className="text-[11px] font-bold text-slate-600 bg-slate-100 border border-slate-200 px-2.5 py-1 rounded-lg self-start sm:self-auto">
-                                            Lote: {(parseFloat(calcParams.batch_size_lbs) || 0).toLocaleString()} Lbs
-                                        </span>
-                                    </div>
-
-                                    <div className="overflow-x-auto rounded-xl border border-slate-200">
-                                        <table className="w-full text-left text-xs border-collapse min-w-[700px]">
-                                            <thead>
-                                                <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px]">
-                                                    <th className="py-3 px-3.5">Presentación</th>
-                                                    <th className="py-3 px-3 text-right">Costo / Envase</th>
-                                                    <th className="py-3 px-3 text-right">Precio Venta</th>
-                                                    <th className="py-3 px-3 text-right">Margen / Envase</th>
-                                                    <th className="py-3 px-3 text-center">Margen %</th>
-                                                    <th className="py-3 px-3.5 text-right">Utilidad Lote</th>
-                                                    <th className="py-3 px-3 text-right">Precio Sug. 20%</th>
-                                                    <th className="py-3 px-3 text-center">Acción</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-slate-100 font-semibold text-slate-800">
-                                                {(calculationResult?.presentations_comparison || []).map((row, idx) => {
-                                                    const isSelected = row.is_current || (calcParams.presentation || '').toLowerCase().includes(row.lbs.toString());
-                                                    const hasSimPrice = (parseFloat(calcParams.target_sale_price_per_lb) || 0) > 0;
-                                                    const marginPct = row.simulation?.margin_pct || 0;
-                                                    const marginPerUnit = row.simulation?.gain_per_unit || 0;
-                                                    const totalBatchGain = row.simulation?.total_batch_gain || 0;
-
-                                                    return (
-                                                        <tr key={idx} className={`transition-colors ${isSelected ? 'bg-indigo-50/70 border-l-4 border-indigo-600' : 'hover:bg-slate-50/80'}`}>
-                                                            <td className="py-3 px-3.5">
-                                                                <div className="flex items-center gap-2">
-                                                                    <div className={`p-1.5 rounded-lg ${isSelected ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'}`}>
-                                                                        <Package className="w-3.5 h-3.5" />
-                                                                    </div>
-                                                                    <div>
-                                                                        <div className="font-bold text-slate-900 flex items-center gap-1.5">
-                                                                            <span>{row.short_name}</span>
-                                                                            {isSelected && (
-                                                                                <span className="text-[9px] font-black uppercase bg-indigo-600 text-white px-1.5 py-0.2 rounded tracking-wider">
-                                                                                    Activo
-                                                                                </span>
-                                                                            )}
-                                                                        </div>
-                                                                        <span className="text-[10px] text-slate-400 font-medium">
-                                                                            Empaque: <Money value={row.packaging_cost_lb} />/lb
-                                                                        </span>
-                                                                    </div>
-                                                                </div>
-                                                            </td>
-                                                            <td className="py-3 px-3 text-right">
-                                                                <div className="font-bold text-slate-900"><Money value={row.total_cost_per_unit} /></div>
-                                                                <span className="text-[9px] text-slate-400 font-normal">(<Money value={row.total_cost_per_lb} />/lb)</span>
-                                                            </td>
-                                                            <td className="py-3 px-3 text-right font-black text-slate-900">
-                                                                {hasSimPrice ? (
-                                                                    <Money value={row.simulation?.sale_price_unit || 0} />
-                                                                ) : (
-                                                                    <span className="text-slate-400 text-[11px] font-normal italic">Sin precio</span>
-                                                                )}
-                                                            </td>
-                                                            <td className="py-3 px-3 text-right">
-                                                                {hasSimPrice ? (
-                                                                    <span className={`font-black ${marginPerUnit >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                                                                        {marginPerUnit >= 0 ? '+' : ''}<Money value={marginPerUnit} />
-                                                                    </span>
-                                                                ) : (
-                                                                    <span className="text-slate-400 font-normal">-</span>
-                                                                )}
-                                                            </td>
-                                                            <td className="py-3 px-3 text-center">
-                                                                {hasSimPrice ? (
-                                                                    <span className={`px-2 py-0.5 rounded-full text-[11px] font-black inline-block ${marginPct >= 20
-                                                                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                                                            : marginPct >= 10
-                                                                                ? 'bg-amber-50 text-amber-700 border border-amber-200'
-                                                                                : 'bg-rose-50 text-rose-700 border border-rose-200'
-                                                                        }`}>
-                                                                        {marginPct.toFixed(1)}%
-                                                                    </span>
-                                                                ) : (
-                                                                    <span className="text-slate-400 font-normal">-</span>
-                                                                )}
-                                                            </td>
-                                                            <td className="py-3 px-3.5 text-right font-black text-indigo-900">
-                                                                {hasSimPrice ? (
-                                                                    <span className={totalBatchGain >= 0 ? 'text-indigo-900' : 'text-rose-600'}>
-                                                                        <Money value={totalBatchGain} />
-                                                                    </span>
-                                                                ) : (
-                                                                    <span className="text-slate-400 font-normal">-</span>
-                                                                )}
-                                                            </td>
-                                                            <td className="py-3 px-3 text-right">
-                                                                <span className="font-bold text-emerald-700">
-                                                                    <Money value={row.suggested_prices?.margin_20?.price_unit || 0} />
-                                                                </span>
-                                                                <span className="text-[9px] text-slate-400 block font-normal">
-                                                                    (<Money value={row.suggested_prices?.margin_20?.price_lb || 0} />/lb)
-                                                                </span>
-                                                            </td>
-                                                            <td className="py-3 px-3 text-center">
-                                                                {isSelected ? (
-                                                                    <span className="inline-flex items-center gap-1 text-[10px] font-black text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg">
-                                                                        <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                                                                        <span>Seleccionado</span>
-                                                                    </span>
-                                                                ) : (
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={() => handleParamChange('presentation', row.id)}
-                                                                        className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 bg-white hover:bg-indigo-50 border border-indigo-200 hover:border-indigo-300 px-2.5 py-1 rounded-lg shadow-sm transition-all"
-                                                                    >
-                                                                        Seleccionar
-                                                                    </button>
-                                                                )}
-                                                            </td>
-                                                        </tr>
-                                                    );
-                                                })}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </div>
+                <EggCosteoSimulatorTab
+                    calcParams={calcParams}
+                    calculationResult={calculationResult}
+                    handleParamChange={handleParamChange}
+                />
             )}
 
             {/* TAB 3: ACUERDOS CON CLIENTES & SEMÁFORO */}
             {activeTab === 'clients' && (
-                <div className="space-y-4">
-                    <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                        <div>
-                            <h2 className="text-sm font-bold uppercase tracking-wider text-slate-900 flex items-center gap-2">
-                                <Users className="w-4 h-4 text-indigo-600" />
-                                <span>Acuerdos Comerciales & Semáforo de Margen por Cliente</span>
-                            </h2>
-                            <p className="text-xs text-slate-500 font-medium mt-0.5">
-                                Compara precios pactados contra el costo actual de absorción para evaluar la rentabilidad y vigencia de cada contrato.
-                            </p>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2">
-                            <button
-                                type="button"
-                                onClick={() => navigate('/crm/acuerdos')}
-                                className="px-3.5 py-2 bg-slate-100 hover:bg-indigo-50 hover:text-indigo-700 text-slate-700 rounded-xl text-xs font-bold flex items-center gap-2 border border-slate-200 transition-all"
-                            >
-                                <Handshake className="w-4 h-4 text-indigo-600" />
-                                <span>Módulo CRM Acuerdos</span>
-                            </button>
-                            <button
-                                onClick={() => setAgreementModal({ open: true, data: {} })}
-                                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-sm transition-all"
-                            >
-                                <Plus className="w-4 h-4" />
-                                <span>Nuevo Acuerdo de Precio</span>
-                            </button>
-                        </div>
-                    </div>
-
-                    {/* Filtros de Vigencia */}
-                    <div className="flex flex-wrap items-center gap-1.5 bg-white p-2.5 rounded-xl border border-slate-200 text-xs shadow-sm">
-                        <span className="text-[11px] font-bold text-slate-500 uppercase mr-1">Filtrar por Vigencia:</span>
-                        {[
-                            { id: 'todos', label: 'Todos los Acuerdos' },
-                            { id: 'vigente', label: 'Vigentes' },
-                            { id: 'por_vencer', label: 'Por Vencer (≤30 días)' },
-                            { id: 'vencido', label: 'Vencidos' },
-                            { id: 'programado', label: 'Programados' }
-                        ].map(f => (
-                            <button
-                                key={f.id}
-                                type="button"
-                                onClick={() => setValidityFilter(f.id)}
-                                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${validityFilter === f.id
-                                        ? 'bg-indigo-600 text-white shadow-sm'
-                                        : 'text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200/70'
-                                    }`}
-                            >
-                                {f.label}
-                            </button>
-                        ))}
-                    </div>
-
-                    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-left text-xs border-collapse">
-                                <thead>
-                                    <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px]">
-                                        <th className="py-3 px-4">Cliente</th>
-                                        <th className="py-3 px-3">Producto / Presentación</th>
-                                        <th className="py-3 px-3">Vigencia del Acuerdo</th>
-                                        <th className="py-3 px-3 text-right">Precio Pactado</th>
-                                        <th className="py-3 px-3 text-right">Costo + Flete</th>
-                                        <th className="py-3 px-3 text-right">Margen $/Lb</th>
-                                        <th className="py-3 px-3 text-center">Semáforo</th>
-                                        <th className="py-3 px-3 text-right">Volumen Mes</th>
-                                        <th className="py-3 px-3 text-right">Utilidad Bruta</th>
-                                        <th className="py-3 px-4 text-center">Acciones</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-100 font-semibold text-slate-800">
-                                    {(calculationResult?.clients_comparison || [])
-                                        .filter(client => {
-                                            if (validityFilter === 'todos') return true;
-                                            return client.validity_status === validityFilter;
-                                        })
-                                        .map((client) => {
-                                            const badgeClass =
-                                                client.status === 'green'
-                                                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                                    : client.status === 'yellow'
-                                                        ? 'bg-amber-50 text-amber-700 border border-amber-200'
-                                                        : 'bg-rose-50 text-rose-700 border border-rose-200';
-
-                                            return (
-                                                <tr key={client.id} className="hover:bg-slate-50/80 transition-colors">
-                                                    <td className="py-3 px-4 font-bold text-slate-900">
-                                                        {client.customer_name}
-                                                    </td>
-                                                    <td className="py-3 px-3">
-                                                        <span className="block text-slate-800">{client.product_type}</span>
-                                                        <span className="text-[10px] text-slate-500">{client.presentation}</span>
-                                                    </td>
-                                                    <td className="py-3 px-3">
-                                                        <div className="space-y-1">
-                                                            {client.validity_status === 'vigente' && (
-                                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                                                    <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                                                                    Vigente
-                                                                </span>
-                                                            )}
-                                                            {client.validity_status === 'por_vencer' && (
-                                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
-                                                                    <Clock className="w-3 h-3 text-amber-600" />
-                                                                    Vence en {client.days_remaining}d
-                                                                </span>
-                                                            )}
-                                                            {client.validity_status === 'vencido' && (
-                                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
-                                                                    <AlertTriangle className="w-3 h-3 text-rose-600" />
-                                                                    Vencido
-                                                                </span>
-                                                            )}
-                                                            {client.validity_status === 'programado' && (
-                                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
-                                                                    <Calendar className="w-3 h-3 text-indigo-600" />
-                                                                    Programado
-                                                                </span>
-                                                            )}
-                                                            {!client.validity_status && (
-                                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
-                                                                    Indefinido
-                                                                </span>
-                                                            )}
-                                                            <div className="text-[10px] text-slate-400 font-mono">
-                                                                {client.valid_from ? new Date(client.valid_from).toLocaleDateString() : 'Sin inicio'}
-                                                                {' → '}
-                                                                {client.valid_to ? new Date(client.valid_to).toLocaleDateString() : 'Permanente'}
-                                                            </div>
-                                                        </div>
-                                                    </td>
-                                                    <td className="py-3 px-3 text-right font-black text-slate-900">
-                                                        <Money value={client.agreed_price} />
-                                                    </td>
-                                                    <td className="py-3 px-3 text-right text-slate-600 font-medium">
-                                                        <Money value={client.effective_cost} />
-                                                    </td>
-                                                    <td className="py-3 px-3 text-right font-bold text-emerald-600">
-                                                        <Money value={client.margin_per_lb} />
-                                                    </td>
-                                                    <td className="py-3 px-3 text-center">
-                                                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${badgeClass}`}>
-                                                            {client.margin_pct ? client.margin_pct.toFixed(1) : 0}%
-                                                        </span>
-                                                    </td>
-                                                    <td className="py-3 px-3 text-right text-slate-600 font-medium">
-                                                        {(client.monthly_volume_lbs || 0).toLocaleString()} Lbs
-                                                    </td>
-                                                    <td className="py-3 px-3 text-right font-black text-indigo-700">
-                                                        <Money value={client.monthly_profit} />
-                                                    </td>
-                                                    <td className="py-3 px-4 text-center">
-                                                        <div className="flex items-center justify-center gap-1.5">
-                                                            <button
-                                                                onClick={() => handleOpenAgreementHistory(client)}
-                                                                className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors font-bold"
-                                                                title="Ver Historial de Precios y Revisiones"
-                                                            >
-                                                                <History className="w-3.5 h-3.5" />
-                                                            </button>
-                                                            <button
-                                                                onClick={() => setAgreementModal({ open: true, data: client })}
-                                                                className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors font-bold"
-                                                                title="Editar Acuerdo"
-                                                            >
-                                                                <Edit2 className="w-3.5 h-3.5" />
-                                                            </button>
-                                                            <button
-                                                                onClick={() => handleDeleteAgreement(client.id)}
-                                                                className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors font-bold"
-                                                                title="Eliminar Acuerdo"
-                                                            >
-                                                                <Trash2 className="w-3.5 h-3.5" />
-                                                            </button>
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            );
-                                        })}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
+                <EggCosteoClientsTab
+                    calculationResult={calculationResult}
+                    validityFilter={validityFilter}
+                    setValidityFilter={setValidityFilter}
+                    setAgreementModal={setAgreementModal}
+                    handleOpenAgreementHistory={handleOpenAgreementHistory}
+                    handleDeleteAgreement={handleDeleteAgreement}
+                />
             )}
 
             {/* TAB 4: INSUMOS, EMPAQUES Y CIP (CON BOTONES Y MODALES PARA AGREGAR) */}
             {activeTab === 'catalog' && (
-                <div className="space-y-6">
-                    {/* Parámetros de Caldera, Vapor & GIF */}
-                    <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-3 border-b border-slate-200">
-                            <div>
-                                <h3 className="text-sm font-bold uppercase tracking-wider text-slate-900 flex items-center gap-2">
-                                    <Flame className="w-4 h-4 text-amber-600" />
-                                    <span>Parámetros de Caldera, Vapor & Gastos Indirectos (GIF)</span>
-                                </h3>
-                                <p className="text-xs text-slate-500 font-medium mt-0.5">
-                                    Constantes energéticas y prorrateos de planta para absorción por lote.
-                                </p>
-                            </div>
-                            <button
-                                onClick={() => setConfigModal({ open: true, data: { ...configs } })}
-                                className="px-4 py-2 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 rounded-xl text-xs font-bold flex items-center gap-2 transition-all self-start sm:self-auto"
-                            >
-                                <Settings2 className="w-3.5 h-3.5" />
-                                <span>Editar Parámetros de Planta</span>
-                            </button>
-                        </div>
-
-                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 text-xs">
-                            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-                                <span className="text-[10px] text-slate-500 uppercase font-bold block">Diesel Caldera</span>
-                                <span className="text-sm font-black text-slate-900 mt-1 block">
-                                    {configs.boiler_diesel_gal_batch || 20.84} gal
-                                </span>
-                                <span className="text-[10px] text-slate-400">@ ${configs.boiler_diesel_price_gal || 4.14}/gal</span>
-                            </div>
-                            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-                                <span className="text-[10px] text-slate-500 uppercase font-bold block">Electricidad</span>
-                                <span className="text-sm font-black text-slate-900 mt-1 block">
-                                    ${configs.boiler_kwh_cost_batch || 386.00}
-                                </span>
-                                <span className="text-[10px] text-slate-400">Por batch</span>
-                            </div>
-                            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-                                <span className="text-[10px] text-slate-500 uppercase font-bold block">Agua Caldera</span>
-                                <span className="text-sm font-black text-slate-900 mt-1 block">
-                                    ${configs.boiler_water_cost_batch || 17.34}
-                                </span>
-                                <span className="text-[10px] text-slate-400">Por batch</span>
-                            </div>
-                            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-                                <span className="text-[10px] text-slate-500 uppercase font-bold block">Mano de Obra</span>
-                                <span className="text-sm font-black text-slate-900 mt-1 block">
-                                    ${configs.mod_cost_per_lb || 0.0500}
-                                </span>
-                                <span className="text-[10px] text-slate-400">Por libra</span>
-                            </div>
-                            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-                                <span className="text-[10px] text-slate-500 uppercase font-bold block">GIF Mensual</span>
-                                <span className="text-sm font-black text-slate-900 mt-1 block">
-                                    ${(configs.monthly_gif_total || 24537.00).toLocaleString()}
-                                </span>
-                                <span className="text-[10px] text-slate-400">Total fijo</span>
-                            </div>
-                            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-                                <span className="text-[10px] text-slate-500 uppercase font-bold block">Volumen Base</span>
-                                <span className="text-sm font-black text-slate-900 mt-1 block">
-                                    {(configs.monthly_projected_lbs || 100000).toLocaleString()}
-                                </span>
-                                <span className="text-[10px] text-slate-400">Libras / mes</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Banner de Vinculación con Compras y Facturas Ingresadas */}
-                    <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                        <div className="flex items-center gap-3.5">
-                            <div className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl border border-indigo-100 shadow-inner flex-shrink-0">
-                                <ShoppingCart className="w-6 h-6" />
-                            </div>
-                            <div>
-                                <h4 className="text-sm font-bold uppercase tracking-wider text-slate-900 flex items-center gap-2 flex-wrap">
-                                    <span>Vinculación con Módulo de Compras & Facturación</span>
-                                    <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
-                                        En Tiempo Real
-                                    </span>
-                                </h4>
-                                <p className="text-xs text-slate-500 font-medium mt-0.5">
-                                    Los empaques y químicos CIP están vinculados a los productos del inventario y leen automáticamente el costo unitario de las facturas de compras ingresadas.
-                                </p>
-                            </div>
-                        </div>
-                        <button
-                            type="button"
-                            onClick={handleSyncPurchases}
-                            disabled={syncingPurchases}
-                            className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-sm transition-all self-start sm:self-auto flex-shrink-0"
-                        >
-                            <RefreshCcw className={`w-4 h-4 ${syncingPurchases ? 'animate-spin' : ''}`} />
-                            <span>{syncingPurchases ? 'Sincronizando...' : 'Sincronizar Costos con Compras'}</span>
-                        </button>
-                    </div>
-
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-                        {/* Químicos CIP */}
-                        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-                            <div className="flex items-center justify-between pb-3 border-b border-slate-200">
-                                <div>
-                                    <h3 className="text-sm font-bold uppercase tracking-wider text-slate-900 flex items-center gap-2">
-                                        <Droplets className="w-4 h-4 text-cyan-600" />
-                                        <span>Químicos CIP & Sanitización</span>
-                                    </h3>
-                                    <span className="text-xs text-slate-500 font-medium">Por ciclo de pasteurizador</span>
-                                </div>
-                                <button
-                                    onClick={() => setCipModal({ open: true, data: { status: 'activo' } })}
-                                    className="px-3.5 py-1.5 bg-cyan-600 hover:bg-cyan-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all"
-                                >
-                                    <Plus className="w-3.5 h-3.5" />
-                                    <span>Agregar Químico</span>
-                                </button>
-                            </div>
-
-                            <div className="overflow-x-auto rounded-xl border border-slate-200">
-                                <table className="w-full text-left text-xs border-collapse min-w-[550px]">
-                                    <thead>
-                                        <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px]">
-                                            <th className="py-2.5 px-3">Químico & Compra</th>
-                                            <th className="py-2.5 px-3">Presentación</th>
-                                            <th className="py-2.5 px-3 text-right">Costo Pres.</th>
-                                            <th className="py-2.5 px-3 text-right">Dosis Batch</th>
-                                            <th className="py-2.5 px-3 text-right">Costo/Ciclo</th>
-                                            <th className="py-2.5 px-3 text-center">Acciones</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-100 font-semibold text-slate-800">
-                                        {cipItems.map((cip) => {
-                                            const unitPrice = parseFloat(cip.presentation_cost) / (parseFloat(cip.presentation_qty) || 1);
-                                            const cycleCost = unitPrice * (parseFloat(cip.dose_per_batch) || 0);
-                                            return (
-                                                <tr key={cip.id} className="hover:bg-slate-50/80 transition-colors">
-                                                    <td className="py-2.5 px-3">
-                                                        <div className="font-bold text-slate-900">{cip.item_name}</div>
-                                                        {cip.latest_invoice_number ? (
-                                                            <div className="mt-1 text-[10px] text-slate-500 flex items-center gap-1 flex-wrap">
-                                                                <span className="inline-flex items-center gap-0.5 font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-1.5 py-0.2 rounded">
-                                                                    <FileText className="w-3 h-3 text-indigo-600" />
-                                                                    <span>Fac. #{cip.latest_invoice_number}</span>
-                                                                </span>
-                                                                <span>Compra: <strong className="text-emerald-700 font-bold">${parseFloat(cip.latest_purchase_cost).toFixed(2)}</strong>/ud</span>
-                                                                {cip.latest_purchase_date && <span>({new Date(cip.latest_purchase_date).toLocaleDateString()})</span>}
-                                                                {cip.latest_provider_name && <span className="text-slate-400">({cip.latest_provider_name})</span>}
-                                                                {Math.abs(parseFloat(cip.presentation_cost) - (parseFloat(cip.latest_purchase_cost) * (parseFloat(cip.presentation_qty) || 1))) > 0.01 && (
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={() => handleQuickApplyCipCost(cip.id, cip.latest_purchase_cost)}
-                                                                        className="text-[9px] font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 border border-indigo-200 px-1.5 py-0.2 rounded"
-                                                                        title="Actualizar costo de presentación con base en la factura"
-                                                                    >
-                                                                        Aplicar Factura
-                                                                    </button>
-                                                                )}
-                                                            </div>
-                                                        ) : cip.product_id ? (
-                                                            <span className="mt-0.5 inline-block text-[10px] text-slate-400 font-normal">
-                                                                Vinculado a {cip.product_code || 'Inventario'} (Sin compras aún)
-                                                            </span>
-                                                        ) : (
-                                                            <span className="mt-0.5 inline-block text-[10px] text-amber-600 font-normal italic">
-                                                                Sin vincular a producto
-                                                            </span>
-                                                        )}
-                                                    </td>
-                                                    <td className="py-2.5 px-3 text-slate-600">{cip.presentation_qty} {cip.presentation_unit}</td>
-                                                    <td className="py-2.5 px-3 text-right font-semibold text-slate-900">
-                                                        <Money value={cip.presentation_cost} />
-                                                    </td>
-                                                    <td className="py-2.5 px-3 text-right text-slate-600 font-medium">
-                                                        {cip.dose_per_batch} {cip.dose_unit}
-                                                    </td>
-                                                    <td className="py-2.5 px-3 text-right font-black text-cyan-700">
-                                                        <Money value={cycleCost} />
-                                                    </td>
-                                                    <td className="py-2.5 px-3 text-center">
-                                                        <div className="flex items-center justify-center gap-1">
-                                                            <button
-                                                                onClick={() => setCipModal({ open: true, data: cip })}
-                                                                className="p-1 text-slate-500 hover:text-indigo-600 rounded"
-                                                            >
-                                                                <Edit2 className="w-3.5 h-3.5" />
-                                                            </button>
-                                                            <button
-                                                                onClick={() => handleDeleteCipItem(cip.id)}
-                                                                className="p-1 text-slate-500 hover:text-rose-600 rounded"
-                                                            >
-                                                                <Trash2 className="w-3.5 h-3.5" />
-                                                            </button>
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            );
-                                        })}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-
-                        {/* Empaques */}
-                        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-                            <div className="flex items-center justify-between pb-3 border-b border-slate-200">
-                                <div>
-                                    <h3 className="text-sm font-bold uppercase tracking-wider text-slate-900 flex items-center gap-2">
-                                        <Package className="w-4 h-4 text-emerald-600" />
-                                        <span>Catálogo de Materiales & Empaques</span>
-                                    </h3>
-                                    <span className="text-xs text-slate-500 font-medium">Cubetas, tapaderas, liners y etiquetas</span>
-                                </div>
-                                <button
-                                    onClick={() => setPackagingModal({ open: true, data: { category: 'recipiente' } })}
-                                    className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all"
-                                >
-                                    <Plus className="w-3.5 h-3.5" />
-                                    <span>Agregar Empaque</span>
-                                </button>
-                            </div>
-
-                            <div className="overflow-x-auto rounded-xl border border-slate-200">
-                                <table className="w-full text-left text-xs border-collapse min-w-[550px]">
-                                    <thead>
-                                        <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px]">
-                                            <th className="py-2.5 px-3">Código</th>
-                                            <th className="py-2.5 px-3">Descripción & Compra</th>
-                                            <th className="py-2.5 px-3">Categoría</th>
-                                            <th className="py-2.5 px-3 text-right">Costo Unit.</th>
-                                            <th className="py-2.5 px-3 text-center">Acciones</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-100 font-semibold text-slate-800">
-                                        {packagingItems.map((p) => (
-                                            <tr key={p.id} className="hover:bg-slate-50/80 transition-colors">
-                                                <td className="py-2.5 px-3 font-mono font-bold text-indigo-700">{p.item_code}</td>
-                                                <td className="py-2.5 px-3">
-                                                    <div className="font-medium text-slate-900">{p.item_name}</div>
-                                                    {p.latest_invoice_number ? (
-                                                        <div className="mt-1 text-[10px] text-slate-500 flex items-center gap-1 flex-wrap">
-                                                            <span className="inline-flex items-center gap-0.5 font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-1.5 py-0.2 rounded">
-                                                                <FileText className="w-3 h-3 text-indigo-600" />
-                                                                <span>Fac. #{p.latest_invoice_number}</span>
-                                                            </span>
-                                                            <span>Compra: <strong className="text-emerald-700 font-bold">${parseFloat(p.latest_purchase_cost).toFixed(4)}</strong></span>
-                                                            {p.latest_purchase_date && <span>({new Date(p.latest_purchase_date).toLocaleDateString()})</span>}
-                                                            {p.latest_provider_name && <span className="text-slate-400">({p.latest_provider_name})</span>}
-                                                            {Math.abs(parseFloat(p.unit_cost) - parseFloat(p.latest_purchase_cost)) > 0.0001 && (
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => handleQuickApplyPackagingCost(p.id, p.latest_purchase_cost)}
-                                                                    className="text-[9px] font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 border border-indigo-200 px-1.5 py-0.2 rounded"
-                                                                    title="Actualizar costo de empaque al valor de la factura"
-                                                                >
-                                                                    Aplicar Factura
-                                                                </button>
-                                                            )}
-                                                        </div>
-                                                    ) : p.product_id ? (
-                                                        <span className="mt-0.5 inline-block text-[10px] text-slate-400 font-normal">
-                                                            Vinculado a {p.product_code || 'Inventario'} (Sin compras aún)
-                                                        </span>
-                                                    ) : (
-                                                        <span className="mt-0.5 inline-block text-[10px] text-amber-600 font-normal italic">
-                                                            Sin vincular a producto
-                                                        </span>
-                                                    )}
-                                                </td>
-                                                <td className="py-2.5 px-3">
-                                                    <span className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-[10px] font-bold uppercase">
-                                                        {p.category}
-                                                    </span>
-                                                </td>
-                                                <td className="py-2.5 px-3 text-right font-black text-slate-900">
-                                                    <Money value={p.unit_cost} />
-                                                </td>
-                                                <td className="py-2.5 px-3 text-center">
-                                                    <div className="flex items-center justify-center gap-1">
-                                                        <button
-                                                            onClick={() => setPackagingModal({ open: true, data: p })}
-                                                            className="p-1 text-slate-500 hover:text-indigo-600 rounded"
-                                                        >
-                                                            <Edit2 className="w-3.5 h-3.5" />
-                                                        </button>
-                                                        <button
-                                                            onClick={() => handleDeletePackagingItem(p.id)}
-                                                            className="p-1 text-slate-500 hover:text-rose-600 rounded"
-                                                        >
-                                                            <Trash2 className="w-3.5 h-3.5" />
-                                                        </button>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                <EggCosteoCatalogTab
+                    configs={configs}
+                    setConfigModal={setConfigModal}
+                    handleSyncPurchases={handleSyncPurchases}
+                    syncingPurchases={syncingPurchases}
+                    cipItems={cipItems}
+                    setCipModal={setCipModal}
+                    handleQuickApplyCipCost={handleQuickApplyCipCost}
+                    handleDeleteCipItem={handleDeleteCipItem}
+                    packagingItems={packagingItems}
+                    setPackagingModal={setPackagingModal}
+                    handleQuickApplyPackagingCost={handleQuickApplyPackagingCost}
+                    handleDeletePackagingItem={handleDeletePackagingItem}
+                />
             )}
 
             {/* TAB 5: HISTÓRICO Y ESCENARIOS */}
             {activeTab === 'history' && (
-                <div className="space-y-4">
-                    <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-                        <div>
-                            <h3 className="text-sm font-bold uppercase tracking-wider text-slate-900 flex items-center gap-2">
-                                <History className="w-4 h-4 text-indigo-600" />
-                                <span>Historial Operacional, Escenarios y Auditoría de Precios</span>
-                            </h3>
-                            <p className="text-xs text-slate-500 font-medium mt-0.5">
-                                Analiza el rendimiento real acumulado de planta, compara escenarios guardados o audita las revisiones de acuerdos de clientes.
-                            </p>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-1.5 bg-slate-100 p-1.5 rounded-xl border border-slate-200 text-xs">
-                            <button
-                                type="button"
-                                onClick={() => setHistorySubTab('real_production')}
-                                className={`px-3 py-1.5 rounded-lg font-bold transition-all ${historySubTab === 'real_production'
-                                        ? 'bg-white text-indigo-700 shadow-sm'
-                                        : 'text-slate-600 hover:text-slate-900'
-                                    }`}
-                            >
-                                Producción Real & Costo/Lb
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setHistorySubTab('scenarios')}
-                                className={`px-3 py-1.5 rounded-lg font-bold transition-all ${historySubTab === 'scenarios'
-                                        ? 'bg-white text-indigo-700 shadow-sm'
-                                        : 'text-slate-600 hover:text-slate-900'
-                                    }`}
-                            >
-                                Escenarios Simulados ({scenarios.length})
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    setHistorySubTab('agreements_history');
-                                    loadGlobalAgreementHistory();
-                                }}
-                                className={`px-3 py-1.5 rounded-lg font-bold transition-all ${historySubTab === 'agreements_history'
-                                        ? 'bg-white text-indigo-700 shadow-sm'
-                                        : 'text-slate-600 hover:text-slate-900'
-                                    }`}
-                            >
-                                Historial de Tarifas Clientes
-                            </button>
-                        </div>
-                    </div>
-
-                    {/* SUB-VISTA 1: HISTÓRICO REAL DE PRODUCCIÓN Y COSTOS */}
-                    {historySubTab === 'real_production' && (
-                        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden space-y-4 p-6">
-                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
-                                <div>
-                                    <h4 className="text-xs font-bold uppercase text-slate-800 tracking-wider">
-                                        Rendimiento y Costo Real de Planta por Período
-                                    </h4>
-                                    <span className="text-[11px] text-slate-500">
-                                        Consolidado mensual de lotes procesados, rendimientos líquidos y costo promedio por libra.
-                                    </span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    {loadingHistory && <RefreshCcw className="w-3.5 h-3.5 animate-spin text-indigo-600" />}
-                                    <span className="text-[11px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-3 py-1 rounded-xl">
-                                        {costingHistoryList.length} períodos registrados
-                                    </span>
-                                </div>
-                            </div>
-
-                            {costingHistoryList.length === 0 ? (
-                                <div className="text-center py-12 text-slate-400">
-                                    <Factory className="w-10 h-10 mx-auto mb-2 text-slate-300 stroke-[1.5]" />
-                                    <p className="text-xs font-medium">No hay lotes con costos calculados en el rango de fechas seleccionado.</p>
-                                    <button
-                                        onClick={() => handlePresetChange('all')}
-                                        className="mt-3 px-3 py-1.5 bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 rounded-lg text-xs font-bold transition-all"
-                                    >
-                                        Ver Todo el Histórico
-                                    </button>
-                                </div>
-                            ) : (
-                                <div className="overflow-x-auto rounded-xl border border-slate-200">
-                                    <table className="w-full text-left text-xs border-collapse">
-                                        <thead>
-                                            <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px]">
-                                                <th className="py-3 px-4">Período</th>
-                                                <th className="py-3 px-3">Producto</th>
-                                                <th className="py-3 px-3 text-right">Lotes</th>
-                                                <th className="py-3 px-3 text-right">Entrada MP (Lbs)</th>
-                                                <th className="py-3 px-3 text-right">Líquido Obtenido</th>
-                                                <th className="py-3 px-3 text-center">Rendimiento Real</th>
-                                                <th className="py-3 px-3 text-right">Costo Total</th>
-                                                <th className="py-3 px-4 text-right font-black">Costo Promedio / Lb</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-slate-100 font-semibold text-slate-800">
-                                            {costingHistoryList.map((row, idx) => {
-                                                const yieldPct = row.total_input_lbs > 0
-                                                    ? ((row.total_yield_lbs / row.total_input_lbs) * 100).toFixed(1)
-                                                    : '0.0';
-                                                return (
-                                                    <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
-                                                        <td className="py-3 px-4 font-mono font-bold text-slate-900">
-                                                            {row.period}
-                                                        </td>
-                                                        <td className="py-3 px-3 text-slate-800">
-                                                            {row.product_type}
-                                                        </td>
-                                                        <td className="py-3 px-3 text-right text-slate-600">
-                                                            {row.batches_count}
-                                                        </td>
-                                                        <td className="py-3 px-3 text-right text-slate-600">
-                                                            {parseFloat(row.total_input_lbs || 0).toLocaleString()} lbs
-                                                        </td>
-                                                        <td className="py-3 px-3 text-right text-slate-900 font-bold">
-                                                            {parseFloat(row.total_yield_lbs || 0).toLocaleString()} lbs
-                                                        </td>
-                                                        <td className="py-3 px-3 text-center">
-                                                            <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                                                {yieldPct}%
-                                                            </span>
-                                                        </td>
-                                                        <td className="py-3 px-3 text-right text-slate-700">
-                                                            <Money value={row.total_cost} />
-                                                        </td>
-                                                        <td className="py-3 px-4 text-right font-black text-indigo-700">
-                                                            <Money value={row.avg_cost_per_lb} />
-                                                        </td>
-                                                    </tr>
-                                                );
-                                            })}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            )}
-                        </div>
-                    )}
-
-                    {/* SUB-VISTA 2: ESCENARIOS GUARDADOS */}
-                    {historySubTab === 'scenarios' && (
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                            {scenarios.map((scen) => (
-                                <div key={scen.id} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
-                                    <div className="flex items-start justify-between gap-2">
-                                        <h4 className="text-sm font-bold text-slate-900">{scen.scenario_name}</h4>
-                                        <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md font-semibold shrink-0">
-                                            {new Date(scen.created_at).toLocaleDateString()}
-                                        </span>
-                                    </div>
-                                    <div className="text-xs text-slate-600 space-y-1">
-                                        <div>Producto: <strong className="text-slate-900">{scen.product_type}</strong></div>
-                                        <div>Presentación: <strong className="text-slate-900">{scen.presentation}</strong></div>
-                                        <div>Lote: <strong className="text-slate-900">{scen.batch_size_lbs?.toLocaleString()} Lbs</strong></div>
-                                    </div>
-                                    <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
-                                        <div>
-                                            <span className="text-[10px] text-slate-500 block">Costo / Lb</span>
-                                            <strong className="text-slate-900 font-black">
-                                                <Money value={scen.calculated_cost_per_lb} />
-                                            </strong>
-                                        </div>
-                                        <div className="text-right">
-                                            <span className="text-[10px] text-slate-500 block">Precio Sug. / Lb</span>
-                                            <strong className="text-emerald-600 font-black">
-                                                <Money value={scen.target_sale_price_per_lb} />
-                                            </strong>
-                                        </div>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-
-                    {/* SUB-VISTA 3: AUDITORÍA GLOBAL DE TARIFAS DE CLIENTES */}
-                    {historySubTab === 'agreements_history' && (
-                        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden p-6 space-y-4">
-                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
-                                <div>
-                                    <h4 className="text-xs font-bold uppercase text-slate-800 tracking-wider">
-                                        Auditoría Cronológica de Precios Pactados con Clientes
-                                    </h4>
-                                    <span className="text-[11px] text-slate-500">
-                                        Registro histórico de cada cambio de tarifa, vigencia estipulada y motivo de ajuste.
-                                    </span>
-                                </div>
-                                <button
-                                    onClick={loadGlobalAgreementHistory}
-                                    disabled={loadingGlobalHistory}
-                                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all"
-                                >
-                                    <RefreshCcw className={`w-3.5 h-3.5 ${loadingGlobalHistory ? 'animate-spin' : ''}`} />
-                                    <span>Actualizar Historial</span>
-                                </button>
-                            </div>
-
-                            {globalAgreementHistory.length === 0 ? (
-                                <div className="text-center py-12 text-slate-400">
-                                    <Clock className="w-10 h-10 mx-auto mb-2 text-slate-300 stroke-[1.5]" />
-                                    <p className="text-xs font-medium">Aún no hay cambios o revisiones de tarifas archivadas en el historial.</p>
-                                </div>
-                            ) : (
-                                <div className="overflow-x-auto rounded-xl border border-slate-200">
-                                    <table className="w-full text-left text-xs border-collapse">
-                                        <thead>
-                                            <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px]">
-                                                <th className="py-3 px-4">Fecha de Ajuste</th>
-                                                <th className="py-3 px-3">Cliente</th>
-                                                <th className="py-3 px-3">Producto / Pres.</th>
-                                                <th className="py-3 px-3 text-right">Tarifa Anterior</th>
-                                                <th className="py-3 px-3 text-right">Nueva Tarifa</th>
-                                                <th className="py-3 px-3">Vigencia Pactada</th>
-                                                <th className="py-3 px-3">Motivo del Ajuste</th>
-                                                <th className="py-3 px-4">Auditor / Usuario</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-slate-100 font-semibold text-slate-800">
-                                            {globalAgreementHistory.map((h) => (
-                                                <tr key={h.id} className="hover:bg-slate-50/80 transition-colors">
-                                                    <td className="py-3 px-4 font-mono text-slate-600">
-                                                        {new Date(h.created_at).toLocaleString()}
-                                                    </td>
-                                                    <td className="py-3 px-3 font-bold text-slate-900">
-                                                        {h.customer_name}
-                                                    </td>
-                                                    <td className="py-3 px-3">
-                                                        <span className="block text-slate-800">{h.product_type}</span>
-                                                        <span className="text-[10px] text-slate-500">{h.presentation}</span>
-                                                    </td>
-                                                    <td className="py-3 px-3 text-right text-slate-400 font-mono line-through">
-                                                        {h.previous_price_per_lb ? <Money value={h.previous_price_per_lb} /> : '-'}
-                                                    </td>
-                                                    <td className="py-3 px-3 text-right font-black text-emerald-600">
-                                                        <Money value={h.agreed_price_per_lb} />
-                                                    </td>
-                                                    <td className="py-3 px-3 text-slate-600 font-mono text-[11px]">
-                                                        {h.valid_from ? new Date(h.valid_from).toLocaleDateString() : 'Sin inicio'}
-                                                        {' → '}
-                                                        {h.valid_to ? new Date(h.valid_to).toLocaleDateString() : 'Permanente'}
-                                                    </td>
-                                                    <td className="py-3 px-3 text-slate-700 italic max-w-xs truncate" title={h.change_reason}>
-                                                        {h.change_reason || 'Sin motivo especificado'}
-                                                    </td>
-                                                    <td className="py-3 px-4 text-slate-600 font-medium">
-                                                        {h.changed_by || 'Sistema'}
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            )}
-                        </div>
-                    )}
-                </div>
+                <EggCosteoHistoryTab
+                    historySubTab={historySubTab}
+                    setHistorySubTab={setHistorySubTab}
+                    costingHistoryList={costingHistoryList}
+                    loadingHistory={loadingHistory}
+                    handlePresetChange={handlePresetChange}
+                    scenarios={scenarios}
+                    globalAgreementHistory={globalAgreementHistory}
+                    loadingGlobalHistory={loadingGlobalHistory}
+                    loadGlobalAgreementHistory={loadGlobalAgreementHistory}
+                />
             )}
 
-            {/* MODAL: NUEVO / EDITAR ACUERDO DE PRECIO CON CLIENTE */}
-            {agreementModal.open && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-                    <form onSubmit={handleSaveAgreement} className="bg-white rounded-2xl max-w-lg w-full p-6 border border-slate-200 shadow-2xl space-y-4 text-xs">
-                        <div className="flex items-center justify-between border-b border-slate-200 pb-3">
-                            <h3 className="text-base font-bold text-slate-900 uppercase">
-                                {agreementModal.data?.id ? 'Editar Acuerdo de Precios con Cliente' : 'Nuevo Acuerdo de Precios con Cliente'}
-                            </h3>
-                            <button
-                                type="button"
-                                onClick={() => setAgreementModal({ open: false, data: null })}
-                                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
-                            >
-                                <X className="w-5 h-5" />
-                            </button>
-                        </div>
-
-                        <div className="space-y-3.5">
+            {activeTab === 'commissions' && (
+                <div className="space-y-6">
+                    {/* Sub-navegación interna */}
+                    <div className="bg-white p-3 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div className="flex items-center gap-2.5">
+                            <div className="p-2 bg-indigo-50 text-indigo-700 rounded-xl border border-indigo-100">
+                                <Award className="w-5 h-5" />
+                            </div>
                             <div>
-                                <label className="text-[11px] font-bold text-slate-600 uppercase block mb-1.5">
-                                    Nombre del Cliente o Empresa
-                                </label>
-                                <input
-                                    type="text"
-                                    required
-                                    placeholder="Ej: PriceSmart El Salvador / Pastelería Lorena"
-                                    value={agreementModal.data?.customer_name || ''}
-                                    onChange={(e) => setAgreementModal({ ...agreementModal, data: { ...agreementModal.data, customer_name: e.target.value } })}
-                                    className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2 text-xs font-semibold text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 shadow-sm"
-                                />
-                            </div>
-
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                <div>
-                                    <label className="text-[11px] font-bold text-slate-600 uppercase block mb-1.5">
-                                        Producto
-                                    </label>
-                                    <select
-                                        value={agreementModal.data?.product_type || 'Huevo Entero Pasteurizado'}
-                                        onChange={(e) => setAgreementModal({ ...agreementModal, data: { ...agreementModal.data, product_type: e.target.value } })}
-                                        className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 shadow-sm"
-                                    >
-                                        <option value="Huevo Entero Pasteurizado">Huevo Entero Pasteurizado</option>
-                                        <option value="Huevo Entero Plus">Huevo Entero Plus</option>
-                                        <option value="Clara de Huevo Pasteurizada">Clara Pasteurizada</option>
-                                        <option value="Yema Azucarada">Yema Azucarada</option>
-                                        <option value="Yema Salada">Yema Salada</option>
-                                        <option value="Huevo con Leche">Huevo Entero con Leche</option>
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="text-[11px] font-bold text-slate-600 uppercase block mb-1.5">
-                                        Presentación
-                                    </label>
-                                    <select
-                                        value={agreementModal.data?.presentation || 'cubeta 30LB'}
-                                        onChange={(e) => setAgreementModal({ ...agreementModal, data: { ...agreementModal.data, presentation: e.target.value } })}
-                                        className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 shadow-sm"
-                                    >
-                                        <option value="cubeta 30LB">Cubeta 30 LBS</option>
-                                        <option value="cubeta 32LB">Cubeta 32 LBS</option>
-                                        <option value="galón 8LB">Galón 8 LBS</option>
-                                        <option value="medio galón 4LB">Medio Galón 4 LBS</option>
-                                        <option value="litro 2LB">Litro 2 LBS</option>
-                                    </select>
-                                </div>
-                            </div>
-
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                <div>
-                                    <label className="text-[11px] font-bold text-slate-600 uppercase block mb-1.5">
-                                        Precio Pactado ($/Lb)
-                                    </label>
-                                    <input
-                                        type="number"
-                                        step="0.0001"
-                                        required
-                                        placeholder="1.20"
-                                        value={agreementModal.data?.agreed_price_per_lb || ''}
-                                        onChange={(e) => setAgreementModal({ ...agreementModal, data: { ...agreementModal.data, agreed_price_per_lb: parseFloat(e.target.value) || 0 } })}
-                                        className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 shadow-sm"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="text-[11px] font-bold text-slate-600 uppercase block mb-1.5">
-                                        Volumen Mes (Lbs)
-                                    </label>
-                                    <input
-                                        type="number"
-                                        placeholder="10000"
-                                        value={agreementModal.data?.monthly_volume_lbs || ''}
-                                        onChange={(e) => setAgreementModal({ ...agreementModal, data: { ...agreementModal.data, monthly_volume_lbs: parseFloat(e.target.value) || 0 } })}
-                                        className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 shadow-sm"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="text-[11px] font-bold text-slate-600 uppercase block mb-1.5">
-                                        Margen Obj (%)
-                                    </label>
-                                    <input
-                                        type="number"
-                                        step="0.5"
-                                        placeholder="20"
-                                        value={agreementModal.data?.target_margin_pct || ''}
-                                        onChange={(e) => setAgreementModal({ ...agreementModal, data: { ...agreementModal.data, target_margin_pct: parseFloat(e.target.value) || 20 } })}
-                                        className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 shadow-sm"
-                                    />
-                                </div>
-                            </div>
-
-                            {/* RANGO DE VIGENCIA DE LA TARIFA */}
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-slate-50 border border-slate-200 rounded-xl">
-                                <div>
-                                    <label className="text-[11px] font-bold text-slate-600 uppercase block mb-1">
-                                        Vigente Desde (Inicio)
-                                    </label>
-                                    <input
-                                        type="date"
-                                        value={agreementModal.data?.valid_from ? agreementModal.data.valid_from.split('T')[0] : ''}
-                                        onChange={(e) => setAgreementModal({ ...agreementModal, data: { ...agreementModal.data, valid_from: e.target.value } })}
-                                        className="w-full bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-xs font-semibold text-slate-800"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="text-[11px] font-bold text-slate-600 uppercase block mb-1">
-                                        Vigente Hasta (Vencimiento)
-                                    </label>
-                                    <input
-                                        type="date"
-                                        value={agreementModal.data?.valid_to ? agreementModal.data.valid_to.split('T')[0] : ''}
-                                        onChange={(e) => setAgreementModal({ ...agreementModal, data: { ...agreementModal.data, valid_to: e.target.value } })}
-                                        className="w-full bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-xs font-semibold text-slate-800"
-                                    />
-                                </div>
-                                <span className="sm:col-span-2 text-[10px] text-slate-400 font-medium">
-                                    Opcional: Si se deja en blanco, la tarifa se considera permanente sin expiración automática.
-                                </span>
-                            </div>
-
-                            {/* MOTIVO DEL CAMBIO / AJUSTE (AUDITORÍA) */}
-                            <div>
-                                <label className="text-[11px] font-bold text-slate-600 uppercase block mb-1.5">
-                                    Motivo de Ajuste / Revisión de Tarifa
-                                </label>
-                                <input
-                                    type="text"
-                                    placeholder="Ej: Negociación semestral, incremento por alza en costo de huevo..."
-                                    value={agreementModal.data?.change_reason || ''}
-                                    onChange={(e) => setAgreementModal({ ...agreementModal, data: { ...agreementModal.data, change_reason: e.target.value } })}
-                                    className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2 text-xs font-semibold text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 shadow-sm"
-                                />
-                            </div>
-
-                            <div>
-                                <label className="text-[11px] font-bold text-slate-600 uppercase block mb-1.5">
-                                    Notas y Condiciones Especiales
-                                </label>
-                                <textarea
-                                    rows="2"
-                                    placeholder="Condición de pago, frecuencia de entrega, flete incluido..."
-                                    value={agreementModal.data?.notes || ''}
-                                    onChange={(e) => setAgreementModal({ ...agreementModal, data: { ...agreementModal.data, notes: e.target.value } })}
-                                    className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2 text-xs font-semibold text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 shadow-sm"
-                                />
-                            </div>
-                        </div>
-
-                        <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-200">
-                            <button
-                                type="button"
-                                onClick={() => setAgreementModal({ open: false, data: null })}
-                                className="px-4 py-2 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-all"
-                            >
-                                Cancelar
-                            </button>
-                            <button
-                                type="submit"
-                                className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-md shadow-indigo-600/20 transition-all"
-                            >
-                                Guardar Acuerdo
-                            </button>
-                        </div>
-                    </form>
-                </div>
-            )}
-
-            {/* MODAL: HISTORIAL DE PRECIOS Y REVISIONES DE ACUERDO */}
-            {agreementHistoryModal.open && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-                    <div className="bg-white rounded-2xl max-w-2xl w-full p-6 border border-slate-200 shadow-2xl space-y-4 text-xs">
-                        <div className="flex items-center justify-between border-b border-slate-200 pb-3">
-                            <div>
-                                <div className="flex items-center gap-2 text-indigo-600 text-[10px] font-bold uppercase tracking-wider mb-0.5">
-                                    <Clock className="w-3.5 h-3.5" />
-                                    <span>Línea de Tiempo • Auditoría de Precios</span>
-                                </div>
-                                <h3 className="text-base font-bold text-slate-900">
-                                    Historial de Tarifas: {agreementHistoryModal.agreement?.customer_name}
+                                <h3 className="text-sm font-bold text-slate-900">
+                                    Metas Comerciales, Comisiones y Planilla
                                 </h3>
-                                <p className="text-[11px] text-slate-500">
-                                    {agreementHistoryModal.agreement?.product_type} ({agreementHistoryModal.agreement?.presentation})
+                                <p className="text-xs text-slate-500">
+                                    Control de vendedores por empleado, metas de volumen y tope reglamentario de $1,000
                                 </p>
                             </div>
-                            <button
-                                type="button"
-                                onClick={() => setAgreementHistoryModal({ open: false, agreement: null, history: [], loading: false })}
-                                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
-                            >
-                                <X className="w-5 h-5" />
-                            </button>
                         </div>
 
-                        {agreementHistoryModal.loading ? (
-                            <div className="py-12 text-center text-slate-400">
-                                <RefreshCcw className="w-8 h-8 animate-spin mx-auto mb-2 text-indigo-500" />
-                                <span>Cargando historial de revisiones...</span>
-                            </div>
-                        ) : agreementHistoryModal.history.length === 0 ? (
-                            <div className="py-12 text-center text-slate-400">
-                                <FileText className="w-8 h-8 mx-auto mb-2 text-slate-300" />
-                                <span>No hay revisiones previas archivadas para este cliente todavía.</span>
-                            </div>
-                        ) : (
-                            <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
-                                {agreementHistoryModal.history.map((item, index) => (
-                                    <div key={item.id || index} className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2 relative">
-                                        <div className="flex items-center justify-between gap-2">
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-sm font-black text-slate-900">
-                                                    <Money value={item.agreed_price_per_lb} /> / Lb
-                                                </span>
-                                                {item.previous_price_per_lb && (
-                                                    <span className="text-[11px] text-slate-400 font-medium line-through">
-                                                        anterior: <Money value={item.previous_price_per_lb} />
-                                                    </span>
-                                                )}
-                                            </div>
-                                            <span className="text-[10px] font-mono text-slate-500 bg-white px-2 py-0.5 rounded border border-slate-200">
-                                                {new Date(item.created_at).toLocaleString()}
-                                            </span>
-                                        </div>
-
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-slate-600">
-                                            <div>
-                                                <span className="font-bold text-slate-500">Vigencia: </span>
-                                                <span className="font-mono">
-                                                    {item.valid_from ? new Date(item.valid_from).toLocaleDateString() : 'Sin inicio'}
-                                                    {' → '}
-                                                    {item.valid_to ? new Date(item.valid_to).toLocaleDateString() : 'Permanente'}
-                                                </span>
-                                            </div>
-                                            <div>
-                                                <span className="font-bold text-slate-500">Registrado por: </span>
-                                                <span>{item.changed_by || 'Sistema'}</span>
-                                            </div>
-                                        </div>
-
-                                        {item.change_reason && (
-                                            <div className="text-[11px] text-slate-700 bg-white p-2 rounded-lg border border-slate-100 italic">
-                                                "{item.change_reason}"
-                                            </div>
-                                        )}
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-
-                        <div className="flex justify-end pt-3 border-t border-slate-200">
+                        <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200">
                             <button
                                 type="button"
-                                onClick={() => setAgreementHistoryModal({ open: false, agreement: null, history: [], loading: false })}
-                                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all"
+                                onClick={() => setCommissionsSubTab('manager')}
+                                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all ${
+                                    commissionsSubTab === 'manager'
+                                        ? 'bg-white text-indigo-700 shadow-sm border border-slate-200'
+                                        : 'text-slate-600 hover:text-slate-900'
+                                }`}
                             >
-                                Cerrar
+                                <Target className="w-3.5 h-3.5" />
+                                <span>Gestión & Planilla</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setCommissionsSubTab('simulator')}
+                                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all ${
+                                    commissionsSubTab === 'simulator'
+                                        ? 'bg-white text-indigo-700 shadow-sm border border-slate-200'
+                                        : 'text-slate-600 hover:text-slate-900'
+                                }`}
+                            >
+                                <TrendingUp className="w-3.5 h-3.5" />
+                                <span>Simulador & Sensibilidad ($1K)</span>
                             </button>
                         </div>
                     </div>
+
+                    {/* Sub-vista activa */}
+                    {commissionsSubTab === 'manager' ? (
+                        <EggSellerGoalsManager />
+                    ) : (
+                        <EggCommissionsSimulator />
+                    )}
                 </div>
             )}
 
-            {/* MODAL: AGREGAR / EDITAR QUÍMICO CIP */}
-            {cipModal.open && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-                    <form onSubmit={handleSaveCipItem} className="bg-white rounded-2xl max-w-md w-full p-6 border border-slate-200 shadow-2xl space-y-4 text-xs">
-                        <div className="flex items-center justify-between border-b border-slate-200 pb-3">
-                            <h3 className="text-base font-bold text-slate-900 uppercase">
-                                {cipModal.data?.id ? 'Editar Químico CIP' : 'Nuevo Químico de Lavado CIP'}
-                            </h3>
-                            <button
-                                type="button"
-                                onClick={() => setCipModal({ open: false, data: null })}
-                                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
-                            >
-                                <X className="w-5 h-5" />
-                            </button>
-                        </div>
 
-                        <div className="space-y-3">
-                            <div>
-                                <label className="text-[11px] font-bold text-slate-600 uppercase block mb-1">
-                                    Vincular con Producto del Inventario / Compras
-                                </label>
-                                <select
-                                    value={cipModal.data?.product_id || ''}
-                                    onChange={(e) => handleSelectProductForCip(e.target.value)}
-                                    className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2 text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-cyan-500/20 shadow-sm"
-                                >
-                                    <option value="">-- Sin Vincular / Ingreso Manual --</option>
-                                    {productsLookup.map(prod => (
-                                        <option key={prod.id} value={prod.id}>
-                                            [{prod.codigo}] {prod.nombre} {prod.latest_purchase_cost ? `(Fac #${prod.latest_invoice_number}: ${parseFloat(prod.latest_purchase_cost).toFixed(2)})` : `(Costo: ${parseFloat(prod.costo || 0).toFixed(2)})`}
-                                        </option>
-                                    ))}
-                                </select>
-                                {cipModal.data?.product_id && (
-                                    <div className="mt-1.5 p-2 rounded-lg bg-cyan-50 border border-cyan-200 text-[11px] text-cyan-950">
-                                        {(() => {
-                                            const prod = productsLookup.find(p => p.id === parseInt(cipModal.data?.product_id));
-                                            if (!prod) return null;
-                                            return prod.latest_invoice_number ? (
-                                                <div>
-                                                    <span className="font-bold">Factura de Compra Reciente:</span> #{prod.latest_invoice_number} ({prod.latest_purchase_date ? new Date(prod.latest_purchase_date).toLocaleDateString() : 'S/F'}) a <strong className="text-emerald-700 font-bold">${parseFloat(prod.latest_purchase_cost).toFixed(2)}</strong> / ud {prod.latest_provider_name ? `(${prod.latest_provider_name})` : ''}
-                                                </div>
-                                            ) : (
-                                                <span className="text-slate-600 italic">Producto sin facturas ingresadas aún (Costo catálogo: ${parseFloat(prod.costo || 0).toFixed(2)})</span>
-                                            );
-                                        })()}
-                                    </div>
-                                )}
-                            </div>
+            {/* MODALES MODULARES DE COSTEO */}
+            <EggAgreementModal
+                open={agreementModal.open}
+                data={agreementModal.data}
+                onClose={() => setAgreementModal({ open: false, data: null })}
+                onSave={handleSaveAgreement}
+                setAgreementModal={setAgreementModal}
+            />
 
-                            <div>
-                                <label className="text-[11px] font-bold text-slate-600 uppercase block mb-1">Nombre del Químico</label>
-                                <input
-                                    type="text"
-                                    required
-                                    placeholder="Ej: Soda Cáustica / Ácido Nítrico"
-                                    value={cipModal.data?.item_name || ''}
-                                    onChange={(e) => setCipModal({ ...cipModal, data: { ...cipModal.data, item_name: e.target.value } })}
-                                    className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2 text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-indigo-500/20"
-                                />
-                            </div>
+            <EggAgreementHistoryModal
+                open={agreementHistoryModal.open}
+                agreement={agreementHistoryModal.agreement}
+                history={agreementHistoryModal.history}
+                loading={agreementHistoryModal.loading}
+                onClose={() => setAgreementHistoryModal({ open: false, agreement: null, history: [], loading: false })}
+            />
 
-                            <div className="grid grid-cols-2 gap-3">
-                                <div>
-                                    <label className="text-[11px] font-bold text-slate-600 uppercase block mb-1">Cant. Presentación</label>
-                                    <input
-                                        type="number"
-                                        step="0.01"
-                                        required
-                                        placeholder="250"
-                                        value={cipModal.data?.presentation_qty || ''}
-                                        onChange={(e) => setCipModal({ ...cipModal, data: { ...cipModal.data, presentation_qty: parseFloat(e.target.value) || 0 } })}
-                                        className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2 text-xs font-semibold text-slate-800"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="text-[11px] font-bold text-slate-600 uppercase block mb-1">Unidad Presentación</label>
-                                    <input
-                                        type="text"
-                                        placeholder="kg, gal, L"
-                                        value={cipModal.data?.presentation_unit || 'kg'}
-                                        onChange={(e) => setCipModal({ ...cipModal, data: { ...cipModal.data, presentation_unit: e.target.value } })}
-                                        className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2 text-xs font-semibold text-slate-800"
-                                    />
-                                </div>
-                            </div>
+            <EggCipModal
+                open={cipModal.open}
+                data={cipModal.data}
+                productsLookup={productsLookup}
+                onClose={() => setCipModal({ open: false, data: null })}
+                onSave={handleSaveCipItem}
+                setCipModal={setCipModal}
+                onSelectProduct={handleSelectProductForCip}
+            />
 
-                            <div className="grid grid-cols-2 gap-3">
-                                <div>
-                                    <label className="text-[11px] font-bold text-slate-600 uppercase block mb-1">Costo Presentación ($)</label>
-                                    <input
-                                        type="number"
-                                        step="0.01"
-                                        required
-                                        placeholder="262.50"
-                                        value={cipModal.data?.presentation_cost || ''}
-                                        onChange={(e) => setCipModal({ ...cipModal, data: { ...cipModal.data, presentation_cost: parseFloat(e.target.value) || 0 } })}
-                                        className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2 text-xs font-semibold text-slate-800"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="text-[11px] font-bold text-slate-600 uppercase block mb-1">Dosis por Batch</label>
-                                    <input
-                                        type="number"
-                                        step="0.01"
-                                        required
-                                        placeholder="15"
-                                        value={cipModal.data?.dose_per_batch || ''}
-                                        onChange={(e) => setCipModal({ ...cipModal, data: { ...cipModal.data, dose_per_batch: parseFloat(e.target.value) || 0 } })}
-                                        className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2 text-xs font-semibold text-slate-800"
-                                    />
-                                </div>
-                            </div>
-                        </div>
+            <EggPackagingMaterialModal
+                open={packagingModal.open}
+                data={packagingModal.data}
+                productsLookup={productsLookup}
+                onClose={() => setPackagingModal({ open: false, data: null })}
+                onSave={handleSavePackagingItem}
+                setPackagingModal={setPackagingModal}
+                onSelectProduct={handleSelectProductForPackaging}
+            />
 
-                        <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-200">
-                            <button
-                                type="button"
-                                onClick={() => setCipModal({ open: false, data: null })}
-                                className="px-4 py-2 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl"
-                            >
-                                Cancelar
-                            </button>
-                            <button
-                                type="submit"
-                                className="px-5 py-2 bg-cyan-600 hover:bg-cyan-700 text-white rounded-xl text-xs font-bold shadow-md shadow-cyan-600/20"
-                            >
-                                Guardar Químico
-                            </button>
-                        </div>
-                    </form>
-                </div>
-            )}
+            <EggPlantConfigModal
+                open={configModal.open}
+                data={configModal.data}
+                onClose={() => setConfigModal({ open: false, data: null })}
+                onSave={handleSaveConfigs}
+                setConfigModal={setConfigModal}
+            />
 
-            {/* MODAL: AGREGAR / EDITAR EMPAQUE */}
-            {packagingModal.open && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-                    <form onSubmit={handleSavePackagingItem} className="bg-white rounded-2xl max-w-md w-full p-6 border border-slate-200 shadow-2xl space-y-4 text-xs">
-                        <div className="flex items-center justify-between border-b border-slate-200 pb-3">
-                            <h3 className="text-base font-bold text-slate-900 uppercase">
-                                {packagingModal.data?.id ? 'Editar Empaque' : 'Nuevo Material / Empaque'}
-                            </h3>
-                            <button
-                                type="button"
-                                onClick={() => setPackagingModal({ open: false, data: null })}
-                                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
-                            >
-                                <X className="w-5 h-5" />
-                            </button>
-                        </div>
-
-                        <div className="space-y-3">
-                            <div>
-                                <label className="text-[11px] font-bold text-slate-600 uppercase block mb-1">
-                                    Vincular con Producto del Inventario / Compras
-                                </label>
-                                <select
-                                    value={packagingModal.data?.product_id || ''}
-                                    onChange={(e) => handleSelectProductForPackaging(e.target.value)}
-                                    className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2 text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-emerald-500/20 shadow-sm"
-                                >
-                                    <option value="">-- Sin Vincular / Ingreso Manual --</option>
-                                    {productsLookup.map(prod => (
-                                        <option key={prod.id} value={prod.id}>
-                                            [{prod.codigo}] {prod.nombre} {prod.latest_purchase_cost ? `(Fac #${prod.latest_invoice_number}: ${parseFloat(prod.latest_purchase_cost).toFixed(4)})` : `(Costo: ${parseFloat(prod.costo || 0).toFixed(4)})`}
-                                        </option>
-                                    ))}
-                                </select>
-                                {packagingModal.data?.product_id && (
-                                    <div className="mt-1.5 p-2 rounded-lg bg-emerald-50 border border-emerald-200 text-[11px] text-emerald-950">
-                                        {(() => {
-                                            const prod = productsLookup.find(p => p.id === parseInt(packagingModal.data?.product_id));
-                                            if (!prod) return null;
-                                            return prod.latest_invoice_number ? (
-                                                <div>
-                                                    <span className="font-bold">Factura de Compra Reciente:</span> #{prod.latest_invoice_number} ({prod.latest_purchase_date ? new Date(prod.latest_purchase_date).toLocaleDateString() : 'S/F'}) a <strong className="text-emerald-700 font-bold">${parseFloat(prod.latest_purchase_cost).toFixed(4)}</strong> / ud {prod.latest_provider_name ? `(${prod.latest_provider_name})` : ''}
-                                                </div>
-                                            ) : (
-                                                <span className="text-slate-600 italic">Producto sin facturas ingresadas aún (Costo catálogo: ${parseFloat(prod.costo || 0).toFixed(4)})</span>
-                                            );
-                                        })()}
-                                    </div>
-                                )}
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-3">
-                                <div>
-                                    <label className="text-[11px] font-bold text-slate-600 uppercase block mb-1">Código del Item</label>
-                                    <input
-                                        type="text"
-                                        required
-                                        placeholder="CUBETA-30LB"
-                                        value={packagingModal.data?.item_code || ''}
-                                        onChange={(e) => setPackagingModal({ ...packagingModal, data: { ...packagingModal.data, item_code: e.target.value } })}
-                                        className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2 text-xs font-semibold text-slate-800 uppercase"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="text-[11px] font-bold text-slate-600 uppercase block mb-1">Categoría</label>
-                                    <select
-                                        value={packagingModal.data?.category || 'recipiente'}
-                                        onChange={(e) => setPackagingModal({ ...packagingModal, data: { ...packagingModal.data, category: e.target.value } })}
-                                        className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2 text-xs font-semibold text-slate-800"
-                                    >
-                                        <option value="recipiente">Recipiente</option>
-                                        <option value="tapadera">Tapadera</option>
-                                        <option value="liner">Liner / Bolsa</option>
-                                        <option value="etiqueta">Etiqueta</option>
-                                        <option value="cinta">Cinta / Precinto</option>
-                                        <option value="otro">Otro</option>
-                                    </select>
-                                </div>
-                            </div>
-
-                            <div>
-                                <label className="text-[11px] font-bold text-slate-600 uppercase block mb-1">Descripción / Nombre</label>
-                                <input
-                                    type="text"
-                                    required
-                                    placeholder="Cubeta Plástica Blanca 30 LBS Grado Alimenticio"
-                                    value={packagingModal.data?.item_name || ''}
-                                    onChange={(e) => setPackagingModal({ ...packagingModal, data: { ...packagingModal.data, item_name: e.target.value } })}
-                                    className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2 text-xs font-semibold text-slate-800"
-                                />
-                            </div>
-
-                            <div>
-                                <label className="text-[11px] font-bold text-slate-600 uppercase block mb-1">Costo Unitario ($)</label>
-                                <input
-                                    type="number"
-                                    step="0.0001"
-                                    required
-                                    placeholder="2.40"
-                                    value={packagingModal.data?.unit_cost || ''}
-                                    onChange={(e) => setPackagingModal({ ...packagingModal, data: { ...packagingModal.data, unit_cost: parseFloat(e.target.value) || 0 } })}
-                                    className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2 text-xs font-semibold text-slate-800"
-                                />
-                            </div>
-                        </div>
-
-                        <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-200">
-                            <button
-                                type="button"
-                                onClick={() => setPackagingModal({ open: false, data: null })}
-                                className="px-4 py-2 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl"
-                            >
-                                Cancelar
-                            </button>
-                            <button
-                                type="submit"
-                                className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-600/20"
-                            >
-                                Guardar Empaque
-                            </button>
-                        </div>
-                    </form>
-                </div>
-            )}
-
-            {/* MODAL: EDITAR PARÁMETROS DE CALDERA Y GIF */}
-            {configModal.open && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-                    <form onSubmit={handleSaveConfigs} className="bg-white rounded-2xl max-w-lg w-full p-6 border border-slate-200 shadow-2xl space-y-4 text-xs">
-                        <div className="flex items-center justify-between border-b border-slate-200 pb-3">
-                            <h3 className="text-base font-bold text-slate-900 uppercase">
-                                Parámetros de Caldera, Vapor y GIF de Planta
-                            </h3>
-                            <button
-                                type="button"
-                                onClick={() => setConfigModal({ open: false, data: null })}
-                                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
-                            >
-                                <X className="w-5 h-5" />
-                            </button>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-3">
-                            <div>
-                                <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">Diesel Gal / Batch</label>
-                                <input
-                                    type="number"
-                                    step="0.01"
-                                    value={configModal.data?.boiler_diesel_gal_batch || 20.84}
-                                    onChange={(e) => setConfigModal({ ...configModal, data: { ...configModal.data, boiler_diesel_gal_batch: parseFloat(e.target.value) || 0 } })}
-                                    className="w-full bg-white border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-semibold text-slate-800"
-                                />
-                            </div>
-                            <div>
-                                <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">Precio Diesel ($/Gal)</label>
-                                <input
-                                    type="number"
-                                    step="0.01"
-                                    value={configModal.data?.boiler_diesel_price_gal || 4.14}
-                                    onChange={(e) => setConfigModal({ ...configModal, data: { ...configModal.data, boiler_diesel_price_gal: parseFloat(e.target.value) || 0 } })}
-                                    className="w-full bg-white border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-semibold text-slate-800"
-                                />
-                            </div>
-                            <div>
-                                <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">Electricidad ($/Batch)</label>
-                                <input
-                                    type="number"
-                                    step="1"
-                                    value={configModal.data?.boiler_kwh_cost_batch || 386}
-                                    onChange={(e) => setConfigModal({ ...configModal, data: { ...configModal.data, boiler_kwh_cost_batch: parseFloat(e.target.value) || 0 } })}
-                                    className="w-full bg-white border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-semibold text-slate-800"
-                                />
-                            </div>
-                            <div>
-                                <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">Agua Caldera ($/Batch)</label>
-                                <input
-                                    type="number"
-                                    step="0.01"
-                                    value={configModal.data?.boiler_water_cost_batch || 17.34}
-                                    onChange={(e) => setConfigModal({ ...configModal, data: { ...configModal.data, boiler_water_cost_batch: parseFloat(e.target.value) || 0 } })}
-                                    className="w-full bg-white border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-semibold text-slate-800"
-                                />
-                            </div>
-                            <div>
-                                <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">Mano de Obra MOD ($/Lb)</label>
-                                <input
-                                    type="number"
-                                    step="0.001"
-                                    value={configModal.data?.mod_cost_per_lb || 0.05}
-                                    onChange={(e) => setConfigModal({ ...configModal, data: { ...configModal.data, mod_cost_per_lb: parseFloat(e.target.value) || 0 } })}
-                                    className="w-full bg-white border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-semibold text-slate-800"
-                                />
-                            </div>
-                            <div>
-                                <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">GIF Mensual Total ($)</label>
-                                <input
-                                    type="number"
-                                    step="1"
-                                    value={configModal.data?.monthly_gif_total || 24537}
-                                    onChange={(e) => setConfigModal({ ...configModal, data: { ...configModal.data, monthly_gif_total: parseFloat(e.target.value) || 0 } })}
-                                    className="w-full bg-white border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-semibold text-slate-800"
-                                />
-                            </div>
-                        </div>
-
-                        <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-200">
-                            <button
-                                type="button"
-                                onClick={() => setConfigModal({ open: false, data: null })}
-                                className="px-4 py-2 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl"
-                            >
-                                Cancelar
-                            </button>
-                            <button
-                                type="submit"
-                                className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-md shadow-indigo-600/20"
-                            >
-                                Guardar Parámetros
-                            </button>
-                        </div>
-                    </form>
-                </div>
-            )}
-
-            {/* MODAL: GUARDAR ESCENARIO */}
-            {saveScenarioModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-                    <div className="bg-white rounded-2xl max-w-md w-full p-6 border border-slate-200 shadow-2xl space-y-4 text-xs">
-                        <div className="flex items-center justify-between border-b border-slate-200 pb-3">
-                            <h3 className="text-base font-bold text-slate-900 uppercase">Guardar Escenario de Costeo</h3>
-                            <button
-                                onClick={() => setSaveScenarioModal(false)}
-                                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
-                            >
-                                <X className="w-5 h-5" />
-                            </button>
-                        </div>
-                        <div>
-                            <label className="text-[11px] font-bold text-slate-600 uppercase block mb-1.5">
-                                Nombre del Escenario
-                            </label>
-                            <input
-                                type="text"
-                                placeholder="Ej: Costeo Base Septiembre 2026 - HE Plus"
-                                value={scenarioNameInput}
-                                onChange={(e) => setScenarioNameInput(e.target.value)}
-                                className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 shadow-sm"
-                            />
-                        </div>
-                        <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-200">
-                            <button
-                                onClick={() => setSaveScenarioModal(false)}
-                                className="px-4 py-2 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-all"
-                            >
-                                Cancelar
-                            </button>
-                            <button
-                                onClick={handleSaveScenario}
-                                className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-md shadow-indigo-600/20 transition-all"
-                            >
-                                Confirmar Guardado
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            <EggSaveScenarioModal
+                open={saveScenarioModal}
+                scenarioName={scenarioNameInput}
+                setScenarioName={setScenarioNameInput}
+                onClose={() => setSaveScenarioModal(false)}
+                onSave={handleSaveScenario}
+            />
         </div>
     );
 }

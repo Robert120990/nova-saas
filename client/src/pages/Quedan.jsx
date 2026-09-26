@@ -14,18 +14,10 @@ import { useConfirm } from '../context/ConfirmContext';
 import Money from '../components/ui/Money';
 import { useDirtyTracker } from '../hooks/useDirtyTracker';
 import ProviderModal from '../components/providers/ProviderModal';
-import { getTodayString } from '../utils/dateUtils';
+import { getTodayString, formatDate } from '../utils/dateUtils';
 
 const today = () => getTodayString();
-const formatDate = (dateStr) => {
-    if (!dateStr) return '—';
-    try {
-        const [year, month, day] = dateStr.split('T')[0].split('-');
-        return `${day}/${month}/${year}`;
-    } catch (e) {
-        return dateStr;
-    }
-};
+
 
 const Quedan = () => {
     const { user } = useAuth();

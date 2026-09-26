@@ -2,7 +2,7 @@ const pool = require('../config/db');
 
 class FilproIngestionService {
     /**
-     * Ingest a single DTE into Nova SaaS
+     * Ingest a single DTE into Sipe Web SaaS
      * @param {Object} params
      * @param {number} params.companyId
      * @param {number} params.branchId
@@ -369,7 +369,7 @@ class FilproIngestionService {
     }
 
     /**
-     * Revert / Delete an ingested DTE and its corresponding sale from Nova SaaS
+     * Revert / Delete an ingested DTE and its corresponding sale from Sipe Web SaaS
      * @param {Object} params
      * @param {number} params.companyId
      * @param {string} [params.uuid]
@@ -485,7 +485,7 @@ class FilproIngestionService {
                 success: true,
                 saleId: targetSaleId,
                 uuid: targetUuid,
-                message: `Venta ${targetSaleId ? `#${targetSaleId}` : ''} revertida y eliminada correctamente de Nova SaaS`
+                message: `Venta ${targetSaleId ? `#${targetSaleId}` : ''} revertida y eliminada correctamente de Sipe Web SaaS`
             };
         } catch (error) {
             await connection.rollback();

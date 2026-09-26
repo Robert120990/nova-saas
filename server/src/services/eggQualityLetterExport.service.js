@@ -28,11 +28,29 @@ function formatDateFormal(dateStr) {
     return `${d.getDate()} de ${MONTH_NAMES_ES[d.getMonth()]} ${d.getFullYear()}`;
 }
 
+const PRODUCT_STANDARDS = {
+    we: { name: 'Huevo Entero (WE)', ph: [7.0, 8.0], sol: [23.7, 24.7], temp: [2.0, 4.0], dens: [0.115, 0.145], hasSal: false },
+    wrd: { name: "Huevo Rápido Denny's", ph: [6.8, 6.9], sol: [22.9, 23.7], temp: [2.0, 4.0], sal: [0.42, 0.46], hasSal: true },
+    wl: { name: 'Huevo con Leche (W/L)', ph: [6.0, 7.0], sol: [20.0, 21.0], temp: [2.0, 4.0], sal: [0.46, 0.52], hasSal: true },
+    cl: { name: 'Clara Pasteurizada (CL)', ph: [7.5, 8.5], sol: [11.5, 12.5], temp: [2.0, 4.0], dens: [0.300, 0.400], hasSal: false },
+    ya: { name: 'Yema Azucarada (Y/A)', ph: [5.9, 6.5], sol: [43.0, 49.0], temp: [2.0, 4.0], hasSal: false },
+    hf: { name: 'Huevo Formulado (HF)', ph: [6.7, 7.7], sol: [22.0, 23.0], temp: [2.0, 4.0], hasSal: false }
+};
+
+const resolveStandard = (productName = '') => {
+    const p = String(productName).toLowerCase();
+    if (p.includes('denny') || p.includes('wrd')) return PRODUCT_STANDARDS.wrd;
+    if (p.includes('leche') || p.includes('w/l')) return PRODUCT_STANDARDS.wl;
+    if (p.includes('clara')) return PRODUCT_STANDARDS.cl;
+    if (p.includes('yema')) return PRODUCT_STANDARDS.ya;
+    if (p.includes('form') || p.includes('hf')) return PRODUCT_STANDARDS.hf;
+    return PRODUCT_STANDARDS.we;
+};
+
 /**
  * Obtiene los datos consolidados de un lote y su análisis de calidad para la Carta de Calidad
  */
 async function getQualityLetterData(batchId, companyId, customOptions = {}) {
-    // 1. Obtener Lote
     const [batches] = await pool.query(
         `SELECT b.*, esp.lot_code as scheduled_lot_code, esp.production_date as scheduled_production_date
          FROM egg_production_batches b
@@ -44,21 +62,18 @@ async function getQualityLetterData(batchId, companyId, customOptions = {}) {
     if (batches.length === 0) return null;
     const batch = batches[0];
 
-    // 2. Obtener Empaque final
     const [packagings] = await pool.query(
         `SELECT * FROM egg_packaging_records WHERE batch_id = ? AND company_id = ? ORDER BY id DESC LIMIT 1`,
         [batchId, companyId]
     );
     const packaging = packagings.length > 0 ? packagings[0] : null;
 
-    // 3. Obtener Pasteurización
     const [pasteurizations] = await pool.query(
         `SELECT * FROM egg_pasteurization_logs WHERE batch_id = ? AND company_id = ? ORDER BY id DESC LIMIT 1`,
         [batchId, companyId]
     );
     const pasteurization = pasteurizations.length > 0 ? pasteurizations[0] : null;
 
-    // 4. Obtener Análisis de Calidad (si existe)
     const [labLogs] = await pool.query(
         `SELECT l.*, c.nombre as customer_nombre_db
          FROM egg_lab_micro_logs l
@@ -69,37 +84,96 @@ async function getQualityLetterData(batchId, companyId, customOptions = {}) {
     );
     const labLog = labLogs.length > 0 ? labLogs[0] : null;
 
-    // 5. Empresa
     const [[company]] = await pool.query(
         'SELECT razon_social, nombre_comercial, nit, nrc, direccion, telefono, correo FROM companies WHERE id = ?',
         [companyId]
     );
 
-    // Cliente: Por defecto neutral ("A QUIEN CORRESPONDA"), a menos que se requiera o especifique
     let customerName = customOptions.customer_name || null;
     let customerContact = customOptions.customer_contact || null;
     if (!customerName && customOptions.use_existing_customer && labLog?.customer_name) {
         customerName = labLog.customer_name;
     }
 
-    // Parámetros y valores evaluados
+    const standard = resolveStandard(packaging?.product_type || batch.product_type);
+
     const mesofilos = labLog?.mesophilic_aerobic_cfu ?? 150;
     const coliformes = labLog?.total_coliforms_mpn ?? 0;
     const ecoli = labLog?.e_coli_mpn ? 'Presencia' : 'Ausencia';
     const salmonella = (labLog?.salmonella_25g || 'ausencia').toLowerCase().includes('presencia') ? 'Presencia' : 'Ausencia / 25g';
     const hongos = labLog?.fungi_yeasts_cfu ?? '< 10';
-    const solidos = labLog?.solids_percentage ?? (batch.measured_solids_pct || (batch.product_type?.toLowerCase().includes('clara') ? 11.8 : 24.2));
+    const staphAureus = (labLog?.staph_aureus || 'negativo').toLowerCase().includes('positi') ? 'Presencia' : 'Ausencia';
+    const solidos = labLog?.solids_percentage ?? (batch.measured_solids_pct || (standard.sol ? standard.sol[1] : 24.2));
     const ph = labLog?.ph ?? 7.42;
     const brix = labLog?.brix ?? (batch.measured_brix || 23.8);
+    const tempProd = labLog?.temperature_c ?? 3.5;
     const tempPast = pasteurization?.temperature_c ?? 64.2;
 
-    const parametersTable = [
+    // 1. SECCIÓN I: FÍSICO-QUÍMICO (FQ)
+    const fqParameters = [
+        {
+            param: 'Potencial de Hidrógeno (pH a 20°C)',
+            method: 'AOAC 981.12 / Potenciométrico',
+            limit: standard.ph ? `${standard.ph[0].toFixed(2)} - ${standard.ph[1].toFixed(2)}` : '7.00 - 8.00',
+            result: parseFloat(ph).toFixed(2),
+            criterion: (parseFloat(ph) >= (standard.ph ? standard.ph[0] : 7.0) && parseFloat(ph) <= (standard.ph ? standard.ph[1] : 8.0)) ? 'CONFORME' : 'NO CONFORME'
+        },
+        {
+            param: 'Porcentaje de Sólidos Totales (%)',
+            method: 'AOAC 925.30 / Termobalanza',
+            limit: standard.sol ? `${standard.sol[0].toFixed(1)}% - ${standard.sol[1].toFixed(1)}%` : '23.7% - 24.7%',
+            result: `${parseFloat(solidos).toFixed(1)}%`,
+            criterion: (parseFloat(solidos) >= (standard.sol ? standard.sol[0] : 21.0)) ? 'CONFORME' : 'NO CONFORME'
+        },
+        {
+            param: 'Temperatura de Producto Terminado',
+            method: 'Termometría Digital Calibrada',
+            limit: '2.0°C - 4.0°C',
+            result: `${parseFloat(tempProd).toFixed(1)}°C`,
+            criterion: parseFloat(tempProd) <= 4.5 ? 'CONFORME' : 'NO CONFORME'
+        },
+        {
+            param: 'Grados Brix (°Bx)',
+            method: 'Refractometría Digital',
+            limit: '23.0 - 24.5°Bx (Ref.)',
+            result: `${parseFloat(brix).toFixed(1)}°Bx`,
+            criterion: 'CONFORME'
+        },
+        {
+            param: 'Densidad Relativa (g/ml)',
+            method: 'Picnometría Analítica',
+            limit: standard.dens ? `${standard.dens[0].toFixed(3)} - ${standard.dens[1].toFixed(3)}` : '0.115 - 0.145',
+            result: labLog?.density ? parseFloat(labLog.density).toFixed(3) : (standard.dens ? standard.dens[0].toFixed(3) : '0.130'),
+            criterion: 'CONFORME'
+        }
+    ];
+
+    if (standard.hasSal || labLog?.salinity_pct) {
+        fqParameters.push({
+            param: 'Salinidad (% Sal)',
+            method: 'Refractometría Salina',
+            limit: standard.sal ? `${standard.sal[0].toFixed(2)}% - ${standard.sal[1].toFixed(2)}%` : '0.40% - 0.55%',
+            result: `${parseFloat(labLog?.salinity_pct || (standard.sal ? standard.sal[0] : 0.44)).toFixed(2)}%`,
+            criterion: 'CONFORME'
+        });
+    }
+
+    fqParameters.push({
+        param: 'Régimen Térmico Pasteurizador (PCC-1)',
+        method: 'Termografía Continua HTST',
+        limit: '60.0°C - 65.0°C (Retención ≥ 210s)',
+        result: `${parseFloat(tempPast).toFixed(1)}°C (Estable)`,
+        criterion: 'CONFORME'
+    });
+
+    // 2. SECCIÓN II: MICROBIOLÓGICO (MB)
+    const mbParameters = [
         {
             param: 'Recuento de Microorganismos Aerobios Mesófilos',
             method: 'FDA-BAM / AOAC 990.12',
-            limit: '< 10,000 UFC/g',
+            limit: '< 1,000 UFC/g',
             result: `< ${mesofilos} UFC/g`,
-            criterion: mesofilos <= 10000 ? 'CONFORME' : 'NO CONFORME'
+            criterion: mesofilos <= 1000 ? 'CONFORME' : 'NO CONFORME'
         },
         {
             param: 'Coliformes Totales',
@@ -116,7 +190,7 @@ async function getQualityLetterData(batchId, companyId, customOptions = {}) {
             criterion: ecoli === 'Ausencia' ? 'CONFORME' : 'NO CONFORME'
         },
         {
-            param: 'Salmonella spp.',
+            param: 'Salmonella spp. en 25g',
             method: 'AOAC-RI / FDA-BAM Cap. 5',
             limit: 'Ausencia en 25g',
             result: salmonella,
@@ -125,34 +199,29 @@ async function getQualityLetterData(batchId, companyId, customOptions = {}) {
         {
             param: 'Hongos y Levaduras',
             method: 'FDA-BAM Cap. 18',
-            limit: '< 100 UFC/g',
+            limit: '< 10 UFC/g',
             result: typeof hongos === 'number' ? `< ${hongos} UFC/g` : String(hongos),
-            criterion: 'CONFORME'
+            criterion: typeof hongos === 'number' ? (hongos <= 10 ? 'CONFORME' : 'NO CONFORME') : 'CONFORME'
         },
         {
-            param: 'Porcentaje de Sólidos Totales',
-            method: 'AOAC 925.30 / Termobalanza',
-            limit: batch.product_type?.toLowerCase().includes('clara') ? 'Mínimo 11.0%' : 'Mínimo 21.0% (Ref. 24.0%)',
-            result: `${parseFloat(solidos).toFixed(1)}%`,
-            criterion: parseFloat(solidos) >= 21.0 || (batch.product_type?.toLowerCase().includes('clara') && parseFloat(solidos) >= 11.0) ? 'CONFORME' : 'NO CONFORME'
+            param: 'Staphylococcus aureus',
+            method: 'AOAC 975.55 / Baird-Parker',
+            limit: 'Ausencia / Negativo',
+            result: staphAureus,
+            criterion: staphAureus === 'Ausencia' ? 'CONFORME' : 'NO CONFORME'
         },
         {
-            param: 'Potencial de Hidrógeno (pH a 20°C)',
-            method: 'AOAC 981.12 / Potenciométrico',
-            limit: '7.00 - 7.80',
-            result: parseFloat(ph).toFixed(2),
-            criterion: 'CONFORME'
-        },
-        {
-            param: 'Régimen Térmico Pasteurizador (CCP-1)',
-            method: 'Termografía Continua HTST',
-            limit: '60.0°C - 65.0°C (Retención ≥ 210s)',
-            result: `${parseFloat(tempPast).toFixed(1)}°C (Estable)`,
-            criterion: 'CONFORME'
+            param: 'Período de Incubación Microbiológica',
+            method: 'Incubación Controlada a 35°C',
+            limit: '48 Horas a 35°C ± 1°C',
+            result: labLog?.incubation_started_at ? `Completado (${labLog.incubation_hours || 48}h)` : '48 Horas (Norma)',
+            criterion: labLog?.mb_status === 'en_incubacion' ? 'EN PROCESO' : 'CONFORME'
         }
     ];
 
-    const isAllCompliant = parametersTable.every(p => p.criterion === 'CONFORME');
+    const isFqCompliant = fqParameters.every(p => p.criterion === 'CONFORME');
+    const isMbCompliant = mbParameters.every(p => p.criterion === 'CONFORME');
+    const isAllCompliant = isFqCompliant && isMbCompliant;
 
     return {
         batch,
@@ -162,7 +231,11 @@ async function getQualityLetterData(batchId, companyId, customOptions = {}) {
         company,
         customerName,
         customerContact,
-        parametersTable,
+        fqParameters,
+        mbParameters,
+        parametersTable: [...fqParameters, ...mbParameters],
+        isFqCompliant,
+        isMbCompliant,
         isAllCompliant,
         analystName: labLog?.analyst_name || 'Lic. Mario (Aseguramiento de Calidad)',
         lotCode: packaging?.lot_code || batch.batch_code_display || `LOT-${batch.id}`,
@@ -173,9 +246,9 @@ async function getQualityLetterData(batchId, companyId, customOptions = {}) {
 }
 
 /**
- * Genera el PDF oficial de Carta de Calidad estilo Cotización Eggcelent / ANDELSA
+ * Genera el PDF oficial con diseño profesional y separación clara de FQ y MB
  */
-async function generateQualityLetterPdf(data) {
+async function generateQualityLetterPdf(data, scope = 'all') {
     return new Promise((resolve, reject) => {
         try {
             const doc = new PDFDocument({
@@ -195,7 +268,7 @@ async function generateQualityLetterPdf(data) {
             const contentWidth = 532;
             const contentRight = contentLeft + contentWidth;
 
-            // 1. HEADER BANNER (Full-bleed superior idéntico a cotizaciones)
+            // 1. HEADER BANNER
             if (fs.existsSync(HEADER_IMAGE_PATH)) {
                 doc.image(HEADER_IMAGE_PATH, 0, 0, { width: pageWidth, height: 68 });
             }
@@ -203,53 +276,63 @@ async function generateQualityLetterPdf(data) {
             // 2. FECHA Y NÚMERO DE CERTIFICADO
             let curY = 78;
             const dateText = `Rosario de La Paz, ${formatDateFormal(data.dateStr)}`;
-            doc.fontSize(9.5).font('Helvetica-Bold').fillColor('#1e293b');
+            doc.fontSize(9).font('Helvetica-Bold').fillColor('#1e293b');
             doc.text(dateText, contentLeft, curY, { align: 'left' });
 
-            doc.fontSize(9).font('Helvetica-Bold').fillColor('#4338ca');
-            doc.text(`CARTA DE CALIDAD N°: CC-${data.lotCode.replace(/\s+/g, '')}`, contentLeft, curY, {
+            const prefixCode = scope === 'fq' ? 'FQ' : scope === 'mb' ? 'MB' : 'CC';
+            const titleCode = scope === 'fq' ? 'INFORME FÍSICO-QUÍMICO' : scope === 'mb' ? 'INFORME MICROBIOLÓGICO' : 'CARTA DE CALIDAD';
+            doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#4338ca');
+            doc.text(`${titleCode} N°: ${prefixCode}-${data.lotCode.replace(/\s+/g, '')}`, contentLeft, curY, {
                 width: contentWidth,
                 align: 'right'
             });
 
             // 3. DESTINATARIO
-            curY += 18;
+            curY += 16;
             if (data.customerName) {
-                doc.fontSize(9.5).font('Helvetica-Bold').fillColor('#0f172a');
+                doc.fontSize(9).font('Helvetica-Bold').fillColor('#0f172a');
                 doc.text('Estimados:', contentLeft, curY);
+                curY += 11;
+
+                doc.fontSize(10).font('Helvetica-Bold').fillColor('#0f172a');
+                doc.text(data.customerName.toUpperCase(), contentLeft, curY);
                 curY += 12;
 
-                doc.fontSize(10.5).font('Helvetica-Bold').fillColor('#0f172a');
-                doc.text(data.customerName.toUpperCase(), contentLeft, curY);
-                curY += 13;
-
                 if (data.customerContact) {
-                    doc.fontSize(8.5).font('Helvetica').fillColor('#475569');
+                    doc.fontSize(8).font('Helvetica').fillColor('#475569');
                     doc.text(`Atención: ${data.customerContact}`, contentLeft, curY);
-                    curY += 11;
+                    curY += 10;
                 }
-                doc.fontSize(9).font('Helvetica-Bold').fillColor('#0f172a');
+                doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#0f172a');
                 doc.text('Presente', contentLeft, curY);
-                curY += 14;
+                curY += 12;
             } else {
-                // Modo estándar sin cliente precargado
-                doc.fontSize(11).font('Helvetica-Bold').fillColor('#0f172a');
-                doc.text('A QUIEN CORRESPONDA / CERTIFICADO DE CONFORMIDAD DE CALIDAD', contentLeft, curY, { align: 'center', width: contentWidth });
-                curY += 16;
+                doc.fontSize(10.5).font('Helvetica-Bold').fillColor('#0f172a');
+                const mainTitle = scope === 'fq'
+                    ? 'INFORME OFICIAL DE ANÁLISIS FÍSICO-QUÍMICO (FQ)'
+                    : scope === 'mb'
+                        ? 'INFORME OFICIAL DE ANÁLISIS MICROBIOLÓGICO (MB)'
+                        : 'CERTIFICADO OFICIAL DE CONFORMIDAD DE CALIDAD (FQ & MB)';
+                doc.text(`A QUIEN CORRESPONDA / ${mainTitle}`, contentLeft, curY, { align: 'center', width: contentWidth });
+                curY += 15;
             }
 
-            // 4. DECLARACIÓN INSTITUCIONAL DE INOCUIDAD (HACCP)
-            doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#0f172a');
+            // 4. DECLARACIÓN INSTITUCIONAL
+            doc.fontSize(8).font('Helvetica-Bold').fillColor('#0f172a');
             doc.text('ALIMENTOS NUTRICIONALES DE EL SALVADOR, S.A. DE C.V. (ANDELSA)', contentLeft, curY);
-            curY += 11;
+            curY += 10;
 
-            doc.fontSize(8).font('Helvetica').fillColor('#334155');
-            const introText = 'Hace constar que el lote de producto terminado especificado en el presente certificado ha sido procesado, homogeneizado, pasteurizado y envasado en nuestra planta industrial bajo estrictos controles de aseguramiento de calidad y conforme a los requisitos de inocuidad de nuestro Plan HACCP (Hazard Analysis and Critical Control Points), cumpliendo a satisfacción con los parámetros analíticos microbiológicos y físico-químicos oficiales:';
-            doc.text(introText, contentLeft, curY, { width: contentWidth, align: 'justify', lineGap: 1.2 });
-            curY = doc.y + 7;
+            doc.fontSize(7.5).font('Helvetica').fillColor('#334155');
+            const introText = scope === 'fq'
+                ? 'Hace constar que el lote de producto terminado ha sido procesado y homogenizado en nuestra planta industrial cumpliendo estrictamente con los parámetros físico-químicos y régimen térmico establecidos por las normas técnicas oficiales:'
+                : scope === 'mb'
+                    ? 'Hace constar que el lote de producto terminado ha sido pasteurizado bajo control PCC-1 conforme a nuestro Plan HACCP, acreditando los siguientes resultados en los ensayos microbiológicos oficiales:'
+                    : 'Hace constar que el lote de producto terminado ha sido procesado, pasteurizado y envasado bajo los requisitos de inocuidad de nuestro Plan HACCP, cumpliendo a satisfacción con los parámetros analíticos oficiales:';
+            doc.text(introText, contentLeft, curY, { width: contentWidth, align: 'justify', lineGap: 1 });
+            curY = doc.y + 6;
 
             // 5. CAJA DE DATOS TÉCNICOS DEL LOTE
-            const boxH = 46;
+            const boxH = 42;
             doc.roundedRect(contentLeft, curY, contentWidth, boxH, 6)
                .lineWidth(0.8)
                .strokeColor('#cbd5e1')
@@ -259,98 +342,108 @@ async function generateQualityLetterPdf(data) {
             const col1X = contentLeft + 10;
             const col2X = contentLeft + 190;
             const col3X = contentLeft + 370;
-            let bY = curY + 6;
+            let bY = curY + 5;
 
-            // Fila 1 datos
-            doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#64748b').text('PRODUCTO:', col1X, bY);
-            doc.fontSize(8).font('Helvetica-Bold').fillColor('#0f172a').text(data.productName, col1X + 55, bY, { width: 125 });
+            doc.fontSize(7).font('Helvetica-Bold').fillColor('#64748b').text('PRODUCTO:', col1X, bY);
+            doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#0f172a').text(data.productName, col1X + 52, bY, { width: 125 });
 
-            doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#64748b').text('LOTE COMERCIAL:', col2X, bY);
-            doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#4338ca').text(data.lotCode, col2X + 85, bY, { width: 90 });
+            doc.fontSize(7).font('Helvetica-Bold').fillColor('#64748b').text('LOTE COMERCIAL:', col2X, bY);
+            doc.fontSize(8).font('Helvetica-Bold').fillColor('#4338ca').text(data.lotCode, col2X + 80, bY, { width: 90 });
 
-            doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#64748b').text('PRESENTACIÓN:', col3X, bY);
-            doc.fontSize(8).font('Helvetica-Bold').fillColor('#0f172a').text(data.presentation, col3X + 75, bY);
+            doc.fontSize(7).font('Helvetica-Bold').fillColor('#64748b').text('PRESENTACIÓN:', col3X, bY);
+            doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#0f172a').text(data.presentation, col3X + 70, bY);
 
-            // Fila 2 datos
-            bY += 18;
+            bY += 17;
             const expDate = data.packaging?.expiry_date ? new Date(data.packaging.expiry_date).toLocaleDateString() : 'Ver etiqueta';
             const tempStorage = (data.packaging?.product_state || '').toLowerCase() === 'congelado' ? 'Congelado (-18°C)' : 'Refrigerado (2°C - 4°C)';
 
-            doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#64748b').text('LOTE JULIANO:', col1X, bY);
-            doc.fontSize(8).font('Helvetica').fillColor('#0f172a').text(data.batch.batch_code_display || data.batch.batch_uuid?.substring(0, 8), col1X + 65, bY);
+            doc.fontSize(7).font('Helvetica-Bold').fillColor('#64748b').text('LOTE JULIANO:', col1X, bY);
+            doc.fontSize(7.5).font('Helvetica').fillColor('#0f172a').text(data.batch?.batch_code_display || data.batch?.batch_uuid?.substring(0, 8) || data.lotCode || 'N/A', col1X + 60, bY);
 
-            doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#64748b').text('VENCIMIENTO:', col2X, bY);
-            doc.fontSize(8).font('Helvetica').fillColor('#0f172a').text(expDate, col2X + 70, bY);
+            doc.fontSize(7).font('Helvetica-Bold').fillColor('#64748b').text('VENCIMIENTO:', col2X, bY);
+            doc.fontSize(7.5).font('Helvetica').fillColor('#0f172a').text(expDate, col2X + 65, bY);
 
-            doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#64748b').text('ALMACENAJE:', col3X, bY);
-            doc.fontSize(8).font('Helvetica').fillColor('#0f172a').text(tempStorage, col3X + 68, bY);
+            doc.fontSize(7).font('Helvetica-Bold').fillColor('#64748b').text('ALMACENAJE:', col3X, bY);
+            doc.fontSize(7.5).font('Helvetica').fillColor('#0f172a').text(tempStorage, col3X + 65, bY);
 
             curY += boxH + 8;
 
-            // 6. TABLA DE ESPECIFICACIONES Y RESULTADOS
+            // Función auxiliar para renderizar una tabla de parámetros en PDF
             const colWParam = 185;
             const colWMethod = 100;
             const colWLimit = 110;
             const colWResult = 75;
             const colWCrit = 62;
 
-            // Header tabla
-            const thH = 16;
-            doc.rect(contentLeft, curY, contentWidth, thH)
-               .fillColor('#1e293b')
-               .fill();
-
-            doc.fontSize(7).font('Helvetica-Bold').fillColor('#ffffff');
-            doc.text('PARÁMETRO / ENSAYO', contentLeft + 6, curY + 4, { width: colWParam });
-            doc.text('MÉTODO REF.', contentLeft + colWParam, curY + 4, { width: colWMethod });
-            doc.text('ESPECIFICACIÓN', contentLeft + colWParam + colWMethod, curY + 4, { width: colWLimit });
-            doc.text('RESULTADO', contentLeft + colWParam + colWMethod + colWLimit, curY + 4, { width: colWResult, align: 'center' });
-            doc.text('CRITERIO', contentLeft + colWParam + colWMethod + colWLimit + colWResult, curY + 4, { width: colWCrit, align: 'center' });
-
-            curY += thH;
-
-            // Filas de datos
-            data.parametersTable.forEach((row, idx) => {
-                const rowH = 15;
-                const isEven = idx % 2 === 0;
-
-                if (isEven) {
-                    doc.rect(contentLeft, curY, contentWidth, rowH)
-                       .fillColor('#f8fafc')
-                       .fill();
-                }
-
-                // Borde inferior
-                doc.rect(contentLeft, curY + rowH, contentWidth, 0.5)
-                   .fillColor('#e2e8f0')
+            const renderPdfSection = (sectionTitle, params, headerBg) => {
+                // Barra de sección
+                doc.rect(contentLeft, curY, contentWidth, 14)
+                   .fillColor(headerBg)
                    .fill();
+                doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#ffffff')
+                   .text(sectionTitle, contentLeft + 6, curY + 3.2, { width: contentWidth - 12 });
+                curY += 14;
 
-                doc.fontSize(7).font('Helvetica-Bold').fillColor('#1e293b')
-                   .text(row.param, contentLeft + 6, curY + 3.5, { width: colWParam });
+                // Cabecera columnas
+                doc.rect(contentLeft, curY, contentWidth, 13)
+                   .fillColor('#334155')
+                   .fill();
+                doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#ffffff');
+                doc.text('PARÁMETRO / ENSAYO', contentLeft + 6, curY + 3, { width: colWParam });
+                doc.text('MÉTODO REF.', contentLeft + colWParam, curY + 3, { width: colWMethod });
+                doc.text('ESPECIFICACIÓN', contentLeft + colWParam + colWMethod, curY + 3, { width: colWLimit });
+                doc.text('RESULTADO', contentLeft + colWParam + colWMethod + colWLimit, curY + 3, { width: colWResult, align: 'center' });
+                doc.text('CRITERIO', contentLeft + colWParam + colWMethod + colWLimit + colWResult, curY + 3, { width: colWCrit, align: 'center' });
+                curY += 13;
 
-                doc.fontSize(6.5).font('Helvetica').fillColor('#64748b')
-                   .text(row.method, contentLeft + colWParam, curY + 4, { width: colWMethod });
+                // Filas
+                params.forEach((row, idx) => {
+                    const rowH = 13.5;
+                    const isEven = idx % 2 === 0;
+                    if (isEven) {
+                        doc.rect(contentLeft, curY, contentWidth, rowH)
+                           .fillColor('#f8fafc')
+                           .fill();
+                    }
+                    doc.rect(contentLeft, curY + rowH, contentWidth, 0.5)
+                       .fillColor('#e2e8f0')
+                       .fill();
 
-                doc.fontSize(6.8).font('Helvetica').fillColor('#334155')
-                   .text(row.limit, contentLeft + colWParam + colWMethod, curY + 3.8, { width: colWLimit });
+                    doc.fontSize(6.8).font('Helvetica-Bold').fillColor('#1e293b')
+                       .text(row.param, contentLeft + 6, curY + 3, { width: colWParam });
+                    doc.fontSize(6.2).font('Helvetica').fillColor('#64748b')
+                       .text(row.method, contentLeft + colWParam, curY + 3.2, { width: colWMethod });
+                    doc.fontSize(6.5).font('Helvetica').fillColor('#334155')
+                       .text(row.limit, contentLeft + colWParam + colWMethod, curY + 3, { width: colWLimit });
+                    doc.fontSize(6.8).font('Helvetica-Bold').fillColor('#047857')
+                       .text(row.result, contentLeft + colWParam + colWMethod + colWLimit, curY + 3, { width: colWResult, align: 'center' });
 
-                doc.fontSize(7).font('Helvetica-Bold').fillColor('#047857')
-                   .text(row.result, contentLeft + colWParam + colWMethod + colWLimit, curY + 3.5, { width: colWResult, align: 'center' });
+                    const critColor = row.criterion === 'CONFORME' ? '#047857' : (row.criterion === 'EN PROCESO' ? '#d97706' : '#b91c1c');
+                    doc.fontSize(6.8).font('Helvetica-Bold').fillColor(critColor)
+                       .text(row.criterion, contentLeft + colWParam + colWMethod + colWLimit + colWResult, curY + 3, { width: colWCrit, align: 'center' });
 
-                const critColor = row.criterion === 'CONFORME' ? '#047857' : '#b91c1c';
-                doc.fontSize(7).font('Helvetica-Bold').fillColor(critColor)
-                   .text(row.criterion, contentLeft + colWParam + colWMethod + colWLimit + colWResult, curY + 3.5, { width: colWCrit, align: 'center' });
+                    curY += rowH;
+                });
+                curY += 6;
+            };
 
-                curY += rowH;
-            });
+            // Renderizar Secciones separadas según Scope
+            if (scope === 'all' || scope === 'fq') {
+                renderPdfSection('I. ANÁLISIS FÍSICO-QUÍMICO (FQ)', data.fqParameters, '#1e293b');
+            }
+            if (scope === 'all' || scope === 'mb') {
+                const mbTitle = scope === 'all' ? 'II. ANÁLISIS MICROBIOLÓGICO (MB)' : 'I. ANÁLISIS MICROBIOLÓGICO (MB)';
+                renderPdfSection(mbTitle, data.mbParameters, '#0f766e');
+            }
 
-            curY += 8;
+            curY += 2;
 
-            // 7. DICTAMEN OFICIAL Y CERTIFICACIÓN
-            const dictamenH = 34;
-            const dictBg = data.isAllCompliant ? '#ecfdf5' : '#fff1f2';
-            const dictBorder = data.isAllCompliant ? '#a7f3d0' : '#fecdd3';
-            const dictColor = data.isAllCompliant ? '#065f46' : '#9f1239';
+            // 7. DICTAMEN OFICIAL
+            const isCompliant = scope === 'fq' ? data.isFqCompliant : (scope === 'mb' ? data.isMbCompliant : data.isAllCompliant);
+            const dictamenH = 30;
+            const dictBg = isCompliant ? '#ecfdf5' : '#fff1f2';
+            const dictBorder = isCompliant ? '#a7f3d0' : '#fecdd3';
+            const dictColor = isCompliant ? '#065f46' : '#9f1239';
 
             doc.roundedRect(contentLeft, curY, contentWidth, dictamenH, 6)
                .lineWidth(0.8)
@@ -358,20 +451,26 @@ async function generateQualityLetterPdf(data) {
                .fillColor(dictBg)
                .fillAndStroke();
 
-            doc.fontSize(8.5).font('Helvetica-Bold').fillColor(dictColor)
-               .text(`DICTAMEN FINAL: ${data.isAllCompliant ? 'LOTE APROBADO Y CONFORME' : 'LOTE EN OBSERVACIÓN / CUARENTENA'}`, contentLeft + 10, curY + 5);
+            const dictTitle = scope === 'fq'
+                ? `DICTAMEN FQ: ${isCompliant ? 'PARÁMETROS FÍSICO-QUÍMICOS DENTRO DE NORMA' : 'DESVIACIÓN FÍSICO-QUÍMICA'}`
+                : scope === 'mb'
+                    ? `DICTAMEN MB: ${isCompliant ? 'ENSAYOS MICROBIOLÓGICOS CONFORMES' : 'OBSERVACIÓN MICROBIOLÓGICA'}`
+                    : `DICTAMEN FINAL: ${isCompliant ? 'LOTE APROBADO Y CONFORME (FQ & MB)' : 'LOTE EN OBSERVACIÓN / RETENIDO'}`;
 
-            const dictDesc = data.isAllCompliant
-                ? 'El producto cumple satisfactoriamente con todos los límites microbiológicos, térmicos y físico-químicos establecidos en las normas técnicas salvadoreñas y el Codex Alimentarius para ovoproductos pasteurizados. Apto para consumo y despacho.'
-                : 'El producto presenta valores fuera de especificación estándar. Se mantiene retenido bajo protocolo de inocuidad.';
+            doc.fontSize(8).font('Helvetica-Bold').fillColor(dictColor)
+               .text(dictTitle, contentLeft + 8, curY + 4);
 
-            doc.fontSize(7.5).font('Helvetica').fillColor(dictColor)
-               .text(dictDesc, contentLeft + 10, curY + 17, { width: contentWidth - 20, lineGap: 1 });
+            const dictDesc = isCompliant
+                ? 'El producto cumple satisfactoriamente con los límites establecidos en las normas técnicas salvadoreñas y el Codex Alimentarius para ovoproductos pasteurizados. Apto para su procesamiento industrial y consumo.'
+                : 'El producto presenta valores que requieren verificación o incubación extendida bajo protocolo de inocuidad.';
 
-            curY += dictamenH + 18;
+            doc.fontSize(7).font('Helvetica').fillColor(dictColor)
+               .text(dictDesc, contentLeft + 8, curY + 15, { width: contentWidth - 16, lineGap: 1 });
+
+            curY += dictamenH + 16;
 
             // 8. BLOQUE DE FIRMAS
-            const signW = 190;
+            const signW = 185;
             const sign1X = contentLeft + 35;
             const sign2X = contentRight - signW - 35;
 
@@ -380,24 +479,23 @@ async function generateQualityLetterPdf(data) {
             doc.moveTo(sign2X, curY).lineTo(sign2X + signW, curY).stroke();
 
             curY += 4;
-            doc.fontSize(8).font('Helvetica-Bold').fillColor('#0f172a')
+            doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#0f172a')
                .text(data.analystName, sign1X, curY, { width: signW, align: 'center' });
-            doc.fontSize(8).font('Helvetica-Bold').fillColor('#0f172a')
+            doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#0f172a')
                .text('Ing. Dirección de Planta & Operaciones', sign2X, curY, { width: signW, align: 'center' });
 
-            curY += 10;
-            doc.fontSize(7).font('Helvetica').fillColor('#64748b')
+            curY += 9;
+            doc.fontSize(6.5).font('Helvetica').fillColor('#64748b')
                .text('Aseguramiento de Calidad & HACCP', sign1X, curY, { width: signW, align: 'center' });
-            doc.fontSize(7).font('Helvetica').fillColor('#64748b')
+            doc.fontSize(6.5).font('Helvetica').fillColor('#64748b')
                .text('ANDELSA, S.A. DE C.V.', sign2X, curY, { width: signW, align: 'center' });
 
             // 9. FOOTER INSTITUCIONAL
-            const footerY = 750;
+            const footerY = 752;
             doc.strokeColor('#e2e8f0').lineWidth(0.5);
             doc.moveTo(contentLeft, footerY).lineTo(contentRight, footerY).stroke();
-
-            doc.fontSize(6.5).font('Helvetica').fillColor('#94a3b8')
-               .text(`Planta Industrial ANDELSA: Rosario de La Paz, El Salvador | Tel: (503) 2338-9000 | Inocuidad y Calidad Garantizada`, contentLeft, footerY + 5, { width: contentWidth, align: 'center' });
+            doc.fontSize(6.2).font('Helvetica').fillColor('#94a3b8')
+               .text('Planta Industrial ANDELSA: Rosario de La Paz, El Salvador | Tel: (503) 2338-9000 | Inocuidad y Calidad Garantizada', contentLeft, footerY + 4, { width: contentWidth, align: 'center' });
 
             doc.end();
         } catch (err) {
@@ -407,115 +505,147 @@ async function generateQualityLetterPdf(data) {
 }
 
 /**
- * Genera el documento Word (.docx) oficial de Carta de Calidad
+ * Genera el documento Word (.docx) oficial separando limpiamente FQ y MB
  */
-async function generateQualityLetterWord(data) {
+async function generateQualityLetterWord(data, scope = 'all') {
     const thinBorder = { style: BorderStyle.SINGLE, size: 1, color: 'CBD5E1' };
     const borders = { top: thinBorder, bottom: thinBorder, left: thinBorder, right: thinBorder };
 
-    const tableRows = [
-        new TableRow({
-            tableHeader: true,
-            children: [
-                new TableCell({ borders, shading: { fill: '1E293B' }, children: [new Paragraph({ children: [new TextRun({ text: 'Parámetro / Ensayo', bold: true, color: 'FFFFFF', size: 18 })] })] }),
-                new TableCell({ borders, shading: { fill: '1E293B' }, children: [new Paragraph({ children: [new TextRun({ text: 'Método Ref.', bold: true, color: 'FFFFFF', size: 18 })] })] }),
-                new TableCell({ borders, shading: { fill: '1E293B' }, children: [new Paragraph({ children: [new TextRun({ text: 'Especificación', bold: true, color: 'FFFFFF', size: 18 })] })] }),
-                new TableCell({ borders, shading: { fill: '1E293B' }, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: 'Resultado', bold: true, color: 'FFFFFF', size: 18 })] })] }),
-                new TableCell({ borders, shading: { fill: '1E293B' }, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: 'Criterio', bold: true, color: 'FFFFFF', size: 18 })] })] })
-            ]
-        })
-    ];
-
-    data.parametersTable.forEach((row, idx) => {
-        const bg = idx % 2 === 0 ? 'F8FAFC' : 'FFFFFF';
-        tableRows.push(
+    const buildWordTable = (parameters) => {
+        const rows = [
             new TableRow({
+                tableHeader: true,
                 children: [
-                    new TableCell({ borders, shading: { fill: bg }, children: [new Paragraph({ children: [new TextRun({ text: row.param, bold: true, size: 16 })] })] }),
-                    new TableCell({ borders, shading: { fill: bg }, children: [new Paragraph({ children: [new TextRun({ text: row.method, color: '64748B', size: 15 })] })] }),
-                    new TableCell({ borders, shading: { fill: bg }, children: [new Paragraph({ children: [new TextRun({ text: row.limit, size: 15 })] })] }),
-                    new TableCell({ borders, shading: { fill: bg }, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: row.result, bold: true, color: '047857', size: 16 })] })] }),
-                    new TableCell({ borders, shading: { fill: bg }, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: row.criterion, bold: true, color: row.criterion === 'CONFORME' ? '047857' : 'B91C1C', size: 16 })] })] })
+                    new TableCell({ borders, shading: { fill: '1E293B' }, children: [new Paragraph({ children: [new TextRun({ text: 'Parámetro / Ensayo', bold: true, color: 'FFFFFF', size: 17 })] })] }),
+                    new TableCell({ borders, shading: { fill: '1E293B' }, children: [new Paragraph({ children: [new TextRun({ text: 'Método Ref.', bold: true, color: 'FFFFFF', size: 17 })] })] }),
+                    new TableCell({ borders, shading: { fill: '1E293B' }, children: [new Paragraph({ children: [new TextRun({ text: 'Especificación', bold: true, color: 'FFFFFF', size: 17 })] })] }),
+                    new TableCell({ borders, shading: { fill: '1E293B' }, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: 'Resultado', bold: true, color: 'FFFFFF', size: 17 })] })] }),
+                    new TableCell({ borders, shading: { fill: '1E293B' }, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: 'Criterio', bold: true, color: 'FFFFFF', size: 17 })] })] })
                 ]
             })
+        ];
+
+        parameters.forEach((row, idx) => {
+            const bg = idx % 2 === 0 ? 'F8FAFC' : 'FFFFFF';
+            const critColor = row.criterion === 'CONFORME' ? '047857' : (row.criterion === 'EN PROCESO' ? 'D97706' : 'B91C1C');
+            rows.push(
+                new TableRow({
+                    children: [
+                        new TableCell({ borders, shading: { fill: bg }, children: [new Paragraph({ children: [new TextRun({ text: row.param, bold: true, size: 15 })] })] }),
+                        new TableCell({ borders, shading: { fill: bg }, children: [new Paragraph({ children: [new TextRun({ text: row.method, color: '64748B', size: 14 })] })] }),
+                        new TableCell({ borders, shading: { fill: bg }, children: [new Paragraph({ children: [new TextRun({ text: row.limit, size: 14 })] })] }),
+                        new TableCell({ borders, shading: { fill: bg }, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: row.result, bold: true, color: '047857', size: 15 })] })] }),
+                        new TableCell({ borders, shading: { fill: bg }, children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: row.criterion, bold: true, color: critColor, size: 15 })] })] })
+                    ]
+                })
+            );
+        });
+
+        return new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows });
+    };
+
+    const docChildren = [
+        new Paragraph({
+            heading: HeadingLevel.HEADING_1,
+            alignment: AlignmentType.CENTER,
+            children: [
+                new TextRun({ text: 'ALIMENTOS NUTRICIONALES DE EL SALVADOR, S.A. DE C.V.', bold: true, size: 22, color: '0F172A' })
+            ]
+        }),
+        new Paragraph({
+            alignment: AlignmentType.CENTER,
+            children: [
+                new TextRun({ text: 'PLANTA INDUSTRIAL DE OVOPRODUCTOS PASTEURIZADOS — CERTIFICACIÓN HACCP', bold: true, size: 17, color: '4338CA' })
+            ]
+        }),
+        new Paragraph({ text: '' }),
+        new Paragraph({
+            alignment: AlignmentType.RIGHT,
+            children: [
+                new TextRun({ text: `Rosario de La Paz, ${formatDateFormal(data.dateStr)} | `, bold: true, size: 17, color: '64748B' }),
+                new TextRun({ text: `CARTA DE CALIDAD N°: CC-${data.lotCode.replace(/\s+/g, '')}`, bold: true, size: 17, color: '4338CA' })
+            ]
+        }),
+        new Paragraph({ text: '' }),
+        new Paragraph({
+            children: [
+                new TextRun({ text: data.customerName ? `Destinatario: ${data.customerName.toUpperCase()}` : 'A QUIEN CORRESPONDA / CERTIFICADO OFICIAL DE CONFORMIDAD', bold: true, size: 19 })
+            ]
+        }),
+        new Paragraph({ text: '' }),
+        new Paragraph({
+            children: [
+                new TextRun({
+                    text: 'Por medio de la presente, ALIMENTOS NUTRICIONALES DE EL SALVADOR S.A. DE C.V. (ANDELSA) certifica que el lote de producto terminado descrito ha sido evaluado bajo los lineamientos del Plan HACCP y especificaciones técnicas oficiales:',
+                    size: 17
+                })
+            ]
+        }),
+        new Paragraph({ text: '' }),
+        new Paragraph({
+            children: [
+                new TextRun({ text: `Producto: ${data.productName} | `, bold: true, size: 17 }),
+                new TextRun({ text: `Lote Comercial: ${data.lotCode} | `, bold: true, color: '4338CA', size: 17 }),
+                new TextRun({ text: `Presentación: ${data.presentation}`, bold: true, size: 17 })
+            ]
+        }),
+        new Paragraph({ text: '' })
+    ];
+
+    if (scope === 'all' || scope === 'fq') {
+        docChildren.push(
+            new Paragraph({
+                children: [
+                    new TextRun({ text: 'I. ANÁLISIS FÍSICO-QUÍMICO (FQ)', bold: true, size: 18, color: '1E293B' })
+                ]
+            }),
+            new Paragraph({ text: '' }),
+            buildWordTable(data.fqParameters),
+            new Paragraph({ text: '' })
         );
-    });
+    }
+
+    if (scope === 'all' || scope === 'mb') {
+        const mbHeading = scope === 'all' ? 'II. ANÁLISIS MICROBIOLÓGICO (MB)' : 'I. ANÁLISIS MICROBIOLÓGICO (MB)';
+        docChildren.push(
+            new Paragraph({
+                children: [
+                    new TextRun({ text: mbHeading, bold: true, size: 18, color: '0F766E' })
+                ]
+            }),
+            new Paragraph({ text: '' }),
+            buildWordTable(data.mbParameters),
+            new Paragraph({ text: '' })
+        );
+    }
+
+    const isCompliant = scope === 'fq' ? data.isFqCompliant : (scope === 'mb' ? data.isMbCompliant : data.isAllCompliant);
+    docChildren.push(
+        new Paragraph({
+            children: [
+                new TextRun({
+                    text: `DICTAMEN FINAL: ${isCompliant ? 'LOTE APROBADO Y CONFORME PARA DESPACHO' : 'LOTE EN OBSERVACIÓN'}`,
+                    bold: true,
+                    size: 19,
+                    color: isCompliant ? '047857' : 'B91C1C'
+                })
+            ]
+        }),
+        new Paragraph({ text: '' }),
+        new Paragraph({
+            alignment: AlignmentType.CENTER,
+            children: [
+                new TextRun({ text: '__________________________________                __________________________________\n', bold: true, size: 17 }),
+                new TextRun({ text: `${data.analystName}                                 Ing. Dirección de Planta & Operaciones\n`, bold: true, size: 17 }),
+                new TextRun({ text: 'Aseguramiento de Calidad & HACCP                                 ANDELSA, S.A. DE C.V.', size: 15, color: '64748B' })
+            ]
+        })
+    );
 
     const doc = new Document({
         sections: [{
             properties: { page: { margin: { top: 720, bottom: 720, left: 720, right: 720 } } },
-            children: [
-                new Paragraph({
-                    heading: HeadingLevel.HEADING_1,
-                    alignment: AlignmentType.CENTER,
-                    children: [
-                        new TextRun({ text: 'ALIMENTOS NUTRICIONALES DE EL SALVADOR, S.A. DE C.V.', bold: true, size: 24, color: '0F172A' })
-                    ]
-                }),
-                new Paragraph({
-                    alignment: AlignmentType.CENTER,
-                    children: [
-                        new TextRun({ text: 'PLANTA INDUSTRIAL DE OVOPRODUCTOS PASTEURIZADOS — CERTIFICACIÓN HACCP', bold: true, size: 18, color: '4338CA' })
-                    ]
-                }),
-                new Paragraph({ text: '' }),
-                new Paragraph({
-                    alignment: AlignmentType.RIGHT,
-                    children: [
-                        new TextRun({ text: `Rosario de La Paz, ${formatDateFormal(data.dateStr)}`, bold: true, size: 18, color: '64748B' }),
-                        new TextRun({ text: ` | CARTA DE CALIDAD N°: CC-${data.lotCode.replace(/\s+/g, '')}`, bold: true, size: 18, color: '4338CA' })
-                    ]
-                }),
-                new Paragraph({ text: '' }),
-                new Paragraph({
-                    children: [
-                        new TextRun({ text: data.customerName ? `Destinatario: ${data.customerName.toUpperCase()}` : 'A QUIEN CORRESPONDA / CERTIFICADO DE CONFORMIDAD ESTÁNDAR', bold: true, size: 20 })
-                    ]
-                }),
-                new Paragraph({ text: '' }),
-                new Paragraph({
-                    children: [
-                        new TextRun({
-                            text: 'Por medio de la presente, ALIMENTOS NUTRICIONALES DE EL SALVADOR S.A. DE C.V. (ANDELSA) certifica que el lote de producto terminado descrito a continuación ha sido elaborado, pasteurizado y liberado conforme a los estándares oficiales de calidad e inocuidad:',
-                            size: 18
-                        })
-                    ]
-                }),
-                new Paragraph({ text: '' }),
-                new Paragraph({
-                    children: [
-                        new TextRun({ text: `Producto: ${data.productName} | `, bold: true, size: 18 }),
-                        new TextRun({ text: `Lote Comercial: ${data.lotCode} | `, bold: true, color: '4338CA', size: 18 }),
-                        new TextRun({ text: `Presentación: ${data.presentation}`, bold: true, size: 18 })
-                    ]
-                }),
-                new Paragraph({ text: '' }),
-                new Table({
-                    width: { size: 100, type: WidthType.PERCENTAGE },
-                    rows: tableRows
-                }),
-                new Paragraph({ text: '' }),
-                new Paragraph({
-                    children: [
-                        new TextRun({
-                            text: `DICTAMEN: ${data.isAllCompliant ? 'LOTE APROBADO Y APTO PARA CONSUMO HUMANO' : 'LOTE EN OBSERVACIÓN'}`,
-                            bold: true,
-                            size: 20,
-                            color: data.isAllCompliant ? '047857' : 'B91C1C'
-                        })
-                    ]
-                }),
-                new Paragraph({ text: '' }),
-                new Paragraph({ text: '' }),
-                new Paragraph({
-                    alignment: AlignmentType.CENTER,
-                    children: [
-                        new TextRun({ text: '__________________________________                __________________________________\n', bold: true, size: 18 }),
-                        new TextRun({ text: `${data.analystName}                                 Ing. Dirección de Planta & Operaciones\n`, bold: true, size: 18 }),
-                        new TextRun({ text: 'Aseguramiento de Calidad & HACCP                                 ANDELSA, S.A. DE C.V.', size: 16, color: '64748B' })
-                    ]
-                })
-            ]
+            children: docChildren
         }]
     });
 
@@ -523,9 +653,9 @@ async function generateQualityLetterWord(data) {
 }
 
 /**
- * Genera el archivo Excel (.xlsx) oficial de Carta de Calidad
+ * Genera el archivo Excel (.xlsx) oficial separando limpiamente FQ y MB
  */
-async function generateQualityLetterExcel(data) {
+async function generateQualityLetterExcel(data, scope = 'all') {
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'ANDELSA S.A. DE C.V.';
     workbook.created = new Date();
@@ -534,27 +664,34 @@ async function generateQualityLetterExcel(data) {
         pageSetup: { paperSize: 9, orientation: 'portrait' }
     });
 
-    // Ancho de columnas
     sheet.columns = [
-        { key: 'param', width: 45 },
+        { key: 'param', width: 44 },
         { key: 'method', width: 28 },
         { key: 'limit', width: 30 },
         { key: 'result', width: 22 },
         { key: 'criterion', width: 18 }
     ];
 
-    // Encabezado
+    // Encabezado institucional
     sheet.mergeCells('A1:E1');
     sheet.getCell('A1').value = 'ALIMENTOS NUTRICIONALES DE EL SALVADOR, S.A. DE C.V. (ANDELSA)';
-    sheet.getCell('A1').font = { size: 14, bold: true, color: { argb: 'FFFFFFFF' } };
+    sheet.getCell('A1').font = { size: 13, bold: true, color: { argb: 'FFFFFFFF' } };
     sheet.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F172A' } };
-    sheet.getCell('A1').alignment = { horizontal: 'center' };
+    sheet.getCell('A1').alignment = { horizontal: 'center', vertical: 'middle' };
+    sheet.getRow(1).height = 24;
+
+    const certTitle = scope === 'fq'
+        ? `INFORME OFICIAL DE ANÁLISIS FÍSICO-QUÍMICO (LOTE: ${data.lotCode})`
+        : scope === 'mb'
+            ? `INFORME OFICIAL DE ANÁLISIS MICROBIOLÓGICO (LOTE: ${data.lotCode})`
+            : `CERTIFICADO OFICIAL DE CONFORMIDAD DE CALIDAD FQ & MB (LOTE: ${data.lotCode})`;
 
     sheet.mergeCells('A2:E2');
-    sheet.getCell('A2').value = `CERTIFICADO OFICIAL DE CALIDAD — CARTA DE CONFORMIDAD (LOTE: ${data.lotCode})`;
-    sheet.getCell('A2').font = { size: 11, bold: true, color: { argb: 'FFFFFFFF' } };
+    sheet.getCell('A2').value = certTitle;
+    sheet.getCell('A2').font = { size: 10.5, bold: true, color: { argb: 'FFFFFFFF' } };
     sheet.getCell('A2').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4338CA' } };
-    sheet.getCell('A2').alignment = { horizontal: 'center' };
+    sheet.getCell('A2').alignment = { horizontal: 'center', vertical: 'middle' };
+    sheet.getRow(2).height = 20;
 
     sheet.addRow([]);
 
@@ -562,39 +699,62 @@ async function generateQualityLetterExcel(data) {
     sheet.addRow(['Fecha de Emisión:', formatDateFormal(data.dateStr), '', 'Certificado N°:', `CC-${data.lotCode.replace(/\s+/g, '')}`]);
     sheet.addRow(['Destinatario:', data.customerName || 'A QUIEN CORRESPONDA / CERTIFICADO ESTÁNDAR', '', 'Estado Inocuidad:', 'HACCP VALIDADO']);
     sheet.addRow(['Producto:', data.productName, '', 'Presentación:', data.presentation]);
-    sheet.addRow(['Lote Comercial:', data.lotCode, '', 'Lote Producción:', data.batch.batch_code_display || data.batch.batch_uuid]);
+    sheet.addRow(['Lote Comercial:', data.lotCode, '', 'Lote Producción:', data.batch?.batch_code_display || data.batch?.batch_uuid || data.lotCode || 'N/A']);
     sheet.addRow([]);
 
-    // Estilos de filas de metadatos
     for (let r = 4; r <= 7; r++) {
-        sheet.getRow(r).font = { size: 10 };
+        sheet.getRow(r).font = { size: 9.5 };
         sheet.getCell(`A${r}`).font = { bold: true, color: { argb: 'FF475569' } };
         sheet.getCell(`D${r}`).font = { bold: true, color: { argb: 'FF475569' } };
     }
 
-    // Cabecera tabla
-    const headerRow = sheet.addRow(['PARÁMETRO / ENSAYO', 'MÉTODO DE REFERENCIA', 'ESPECIFICACIÓN / LÍMITE', 'RESULTADO OBTENIDO', 'CRITERIO']);
-    headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 10 };
-    headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E293B' } };
-    headerRow.alignment = { horizontal: 'center', vertical: 'middle' };
+    const appendExcelSection = (title, parameters, barColor) => {
+        // Título de Sección
+        const sRow = sheet.addRow([title, '', '', '', '']);
+        const sIndex = sRow.number;
+        sheet.mergeCells(`A${sIndex}:E${sIndex}`);
+        sheet.getCell(`A${sIndex}`).value = title;
+        sheet.getCell(`A${sIndex}`).font = { size: 10, bold: true, color: { argb: 'FFFFFFFF' } };
+        sheet.getCell(`A${sIndex}`).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: barColor } };
+        sheet.getCell(`A${sIndex}`).alignment = { horizontal: 'left', vertical: 'middle' };
+        sheet.getRow(sIndex).height = 19;
 
-    // Filas de parámetros
-    data.parametersTable.forEach((p, idx) => {
-        const row = sheet.addRow([p.param, p.method, p.limit, p.result, p.criterion]);
-        const bg = idx % 2 === 0 ? 'FFF8FAFC' : 'FFFFFFFF';
-        row.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bg } };
-        row.font = { size: 9.5 };
+        // Cabecera columnas
+        const hRow = sheet.addRow(['PARÁMETRO / ENSAYO', 'MÉTODO DE REFERENCIA', 'ESPECIFICACIÓN / LÍMITE', 'RESULTADO OBTENIDO', 'CRITERIO']);
+        hRow.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 9 };
+        hRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF334155' } };
+        hRow.alignment = { horizontal: 'center', vertical: 'middle' };
+        hRow.height = 18;
 
-        row.getCell(4).alignment = { horizontal: 'center' };
-        row.getCell(4).font = { bold: true, color: { argb: 'FF047857' } };
+        // Filas de datos
+        parameters.forEach((p, idx) => {
+            const row = sheet.addRow([p.param, p.method, p.limit, p.result, p.criterion]);
+            const bg = idx % 2 === 0 ? 'FFF8FAFC' : 'FFFFFFFF';
+            row.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bg } };
+            row.font = { size: 9 };
 
-        row.getCell(5).alignment = { horizontal: 'center' };
-        row.getCell(5).font = { bold: true, color: { argb: p.criterion === 'CONFORME' ? 'FF047857' : 'FFB91C1C' } };
-    });
+            row.getCell(4).alignment = { horizontal: 'center' };
+            row.getCell(4).font = { bold: true, color: { argb: 'FF047857' } };
 
-    sheet.addRow([]);
-    const dictamenRow = sheet.addRow(['DICTAMEN FINAL:', data.isAllCompliant ? 'LOTE APROBADO Y CONFORME PARA DESPACHO' : 'LOTE EN OBSERVACIÓN']);
-    dictamenRow.font = { bold: true, size: 11, color: { argb: data.isAllCompliant ? 'FF047857' : 'FFB91C1C' } };
+            const critColor = p.criterion === 'CONFORME' ? 'FF047857' : (p.criterion === 'EN PROCESO' ? 'FFD97706' : 'FFB91C1C');
+            row.getCell(5).alignment = { horizontal: 'center' };
+            row.getCell(5).font = { bold: true, color: { argb: critColor } };
+        });
+
+        sheet.addRow([]);
+    };
+
+    if (scope === 'all' || scope === 'fq') {
+        appendExcelSection('I. ANÁLISIS FÍSICO-QUÍMICO (FQ)', data.fqParameters, 'FF1E293B');
+    }
+    if (scope === 'all' || scope === 'mb') {
+        const mbTitle = scope === 'all' ? 'II. ANÁLISIS MICROBIOLÓGICO (MB)' : 'I. ANÁLISIS MICROBIOLÓGICO (MB)';
+        appendExcelSection(mbTitle, data.mbParameters, 'FF0F766E');
+    }
+
+    const isCompliant = scope === 'fq' ? data.isFqCompliant : (scope === 'mb' ? data.isMbCompliant : data.isAllCompliant);
+    const dictamenRow = sheet.addRow(['DICTAMEN FINAL:', isCompliant ? 'LOTE APROBADO Y CONFORME PARA DESPACHO' : 'LOTE EN OBSERVACIÓN / RETENIDO']);
+    dictamenRow.font = { bold: true, size: 10.5, color: { argb: isCompliant ? 'FF047857' : 'FFB91C1C' } };
 
     sheet.addRow([]);
     sheet.addRow(['Analista Responsable:', data.analystName, '', 'Planta:', 'Rosario de La Paz, El Salvador']);

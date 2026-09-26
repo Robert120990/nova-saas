@@ -5,7 +5,7 @@ import Table from '../../components/ui/Table';
 import Pagination from '../../components/ui/Pagination';
 import { useConfirm } from '../../context/ConfirmContext';
 import { toast } from 'sonner';
-import { Plus, Edit, Search, Users, Loader2, User, CheckCircle, Zap, Trash2, Lock, ArrowLeft, FileText, ReceiptText, RefreshCw, UserX, UserPlus, AlertCircle } from 'lucide-react';
+import { Plus, Edit, Search, Users, Loader2, User, CheckCircle, Zap, Trash2, Lock, ArrowLeft, FileText, ReceiptText, RefreshCw, UserX, UserPlus, AlertCircle, Award } from 'lucide-react';
 import { useDirtyTracker } from '../../hooks/useDirtyTracker';
 import EmployeeSearchModal from '../../components/rh/EmployeeSearchModal';
 import PlanillaReportModal from '../../components/rh/PlanillaReportModal';
@@ -547,6 +547,41 @@ const Planillas = () => {
                 periodo_mes: periodoMes,
                 quincena
             });
+        }
+    };
+
+    const [syncingHuevo, setSyncingHuevo] = useState(false);
+    const handleSincronizarComisionesHuevo = async () => {
+        const ok = await confirm({
+            title: '¿Sincronizar Comisiones de Huevo Industrial?',
+            message: `Se liquidarán e importarán las comisiones por ventas de huevo industrial del período ${months.find(m => m.value === periodoMes)?.label} ${periodoAnio} (${quincena === 'primera' ? '1ra Quincena' : '2da Quincena'}) hacia la cuenta 07 (Comisiones) de los empleados vinculados, respetando estrictamente el tope de $1,000. ¿Desea proceder?`,
+            confirmLabel: 'Sí, sincronizar comisiones',
+            variant: 'primary'
+        });
+        if (!ok) return;
+
+        try {
+            setSyncingHuevo(true);
+            const res = await axios.post('/api/rh/planillas/sincronizar-comisiones-huevo', {
+                periodo_anio: periodoAnio,
+                periodo_mes: periodoMes,
+                quincena
+            });
+            if (res.data?.success) {
+                toast.success(res.data.message || 'Comisiones de huevo industrial sincronizadas');
+                queryClient.invalidateQueries({ queryKey: ['rh-planillas-grupos'] });
+                queryClient.invalidateQueries({ queryKey: ['rh-planillas-abiertas'] });
+                if (empleadoId) {
+                    delete cacheRef.current[empleadoId];
+                    loadEmpleado(empleadoId);
+                }
+            } else {
+                toast.info(res.data?.message || 'Sin comisiones para sincronizar');
+            }
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Error al sincronizar comisiones de huevo');
+        } finally {
+            setSyncingHuevo(false);
         }
     };
 
@@ -1252,6 +1287,16 @@ const Planillas = () => {
                                                 <RefreshCw size={12} className={sincronizarMutation.isPending ? 'animate-spin' : ''} />
                                                 <span>{sincronizarMutation.isPending ? 'Sincronizando...' : 'Sincronizar'}</span>
                                             </button>
+                                            <button
+                                                type="button"
+                                                onClick={handleSincronizarComisionesHuevo}
+                                                disabled={syncingHuevo}
+                                                className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200/80 rounded-lg text-[11px] font-bold transition-all shadow-sm active:scale-95 disabled:opacity-50"
+                                                title="Importar y liquidar comisiones por ventas de huevo industrial con tope reglamentario de $1,000"
+                                            >
+                                                <Award size={12} className={syncingHuevo ? 'animate-spin text-amber-600' : 'text-amber-600'} />
+                                                <span>{syncingHuevo ? 'Sincronizando Huevo...' : 'Comisiones Huevo ($1K)'}</span>
+                                            </button>
                                         </div>
                                         <button
                                             type="button"
@@ -1479,7 +1524,14 @@ const Planillas = () => {
                                                 <tr key={i} className={`hover:bg-slate-50/70 transition-colors ${d.operacion === 'sumar' ? '' : 'bg-red-50/15'}`}>
                                                     <td className="px-3 py-1 font-bold font-mono text-slate-700">{d.codigo}</td>
                                                     <td className="px-3 py-1 text-slate-700 font-medium text-xs">
-                                                        <div>{d.descripcion}</div>
+                                                        <div className="flex items-center gap-1.5">
+                                                            <span>{d.descripcion}</span>
+                                                            {(d.codigo === '07' || (d.descripcion || '').toUpperCase().includes('COMISION')) && parseFloat(d.valor_ingresado || d.cantidad || 0) > 0 && (
+                                                                <span className="px-1.5 py-0.5 bg-amber-50 text-amber-700 border border-amber-200/80 rounded text-[9px] font-bold tracking-tight" title="Tope reglamentario máximo: $1,000.00">
+                                                                    Tope $1K
+                                                                </span>
+                                                            )}
+                                                        </div>
                                                         {d.tipo_valor === 'horas' && empleadoData?.sueldo_base && (
                                                             <div className="text-[10px] text-slate-400 font-normal">
                                                                 Tarifa: ${(calcularTarifaDetalle(d, empleadoData.sueldo_base)).toFixed(2)}/hr

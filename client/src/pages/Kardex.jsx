@@ -1,3 +1,4 @@
+import { formatDate, formatTime } from '../utils/dateUtils';
 import React, { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
@@ -13,37 +14,20 @@ import {
     DollarSign,
     Barcode,
     X,
-    Maximize2
+    Eye
 } from 'lucide-react';
 import { toast } from 'sonner';
 import Table from '../components/ui/Table';
 import Pagination from '../components/ui/Pagination';
+import ProductSearchModal from '../components/products/ProductSearchModal';
 import { useAuth } from '../context/AuthContext';
 import Money from '../components/ui/Money';
 import PdfViewerModal from '../components/ui/PdfViewerModal';
+import KardexOriginModal from '../components/inventory/KardexOriginModal';
+import { exportJsonToExcel } from '../utils/excelExport';
 
 const Kardex = () => {
     const { user } = useAuth();
-
-    const formatDate = (dateString) => {
-        if (!dateString) return '---';
-        const date = new Date(dateString);
-        return new Intl.DateTimeFormat('es-SV', {
-            day: '2-digit',
-            month: '2-digit',
-            year: 'numeric'
-        }).format(date);
-    };
-
-    const formatTime = (dateString) => {
-        if (!dateString) return '';
-        const date = new Date(dateString);
-        return new Intl.DateTimeFormat('es-SV', {
-            hour: '2-digit',
-            minute: '2-digit',
-            hour12: false
-        }).format(date);
-    };
 
     const [branchId, setBranchId] = useState(user?.branch_id ? String(user.branch_id) : '');
     const [productId, setProductId] = useState('');
@@ -52,9 +36,6 @@ const Kardex = () => {
     const [currentPage, setCurrentPage] = useState(1);
     const [isProductModalOpen, setIsProductModalOpen] = useState(false);
     const [quickBarcode, setQuickBarcode] = useState('');
-    const [productSearchModal, setProductSearchModal] = useState('');
-    const [debouncedModalSearch, setDebouncedModalSearch] = useState('');
-    const [modalPage, setModalPage] = useState(1);
     const itemsPerPage = 15;
 
     // PDF Viewer States
@@ -62,6 +43,16 @@ const Kardex = () => {
     const [pdfUrl, setPdfUrl] = useState(null);
     const [isLoadingPdf, setIsLoadingPdf] = useState(false);
     const [pdfError, setPdfError] = useState(null);
+
+    // Origin Detail Modal States
+    const [selectedMovement, setSelectedMovement] = useState(null);
+    const [isOriginModalOpen, setIsOriginModalOpen] = useState(false);
+
+    const handleRowDoubleClick = (mov) => {
+        if (!mov?.id) return;
+        setSelectedMovement(mov);
+        setIsOriginModalOpen(true);
+    };
 
     useEffect(() => {
         return () => {
@@ -74,20 +65,6 @@ const Kardex = () => {
         queryKey: ['branches'],
         queryFn: async () => (await axios.get('/api/branches')).data
     });
-
-    const { data: modalProductsData = { data: [], total: 0, totalPages: 0 }, isLoading: isLoadingModalProducts } = useQuery({
-        queryKey: ['kardex-products', debouncedModalSearch, branchId, modalPage],
-        queryFn: async () => (await axios.get('/api/products', {
-            params: { search: debouncedModalSearch || undefined, branch_id: branchId || undefined, limit: 20, page: modalPage }
-        })).data,
-        enabled: isProductModalOpen
-    });
-    const modalProducts = modalProductsData.data.filter(p => p.status === 'activo');
-
-    React.useEffect(() => {
-        const timer = setTimeout(() => { setDebouncedModalSearch(productSearchModal); setModalPage(1); }, 500);
-        return () => clearTimeout(timer);
-    }, [productSearchModal]);
 
     const { data: movements = [], isLoading } = useQuery({
         queryKey: ['kardex', branchId, productId],
@@ -124,7 +101,7 @@ const Kardex = () => {
                 const { data } = await axios.get(`/api/products/lookup/${encodeURIComponent(code)}`, { params: { branch_id: branchId } });
                 setProductId(data.id);
                 setSelectedProduct(data);
-                setQuickBarcode('');
+                setQuickBarcode(data.codigo || code);
             } catch {
                 toast.error('Producto no encontrado');
             }
@@ -137,6 +114,7 @@ const Kardex = () => {
             if (!selectedProduct.branches.includes(parseInt(branchId))) {
                 setProductId('');
                 setSelectedProduct(null);
+                setQuickBarcode('');
             }
         }
     }, [branchId, selectedProduct, productId]);
@@ -208,7 +186,13 @@ const Kardex = () => {
     };
 
     const exportToExcel = async () => {
-        if (!productId || !branchId || movements.length === 0) return;
+        if (!productId || !branchId) {
+            return toast.warning('Seleccione un producto y sucursal para consultar el Kárdex');
+        }
+        if (!movements || movements.length === 0) {
+            return toast.warning('No hay movimientos registrados para exportar');
+        }
+
         try {
             const params = {
                 product_id: productId,
@@ -235,8 +219,21 @@ const Kardex = () => {
             URL.revokeObjectURL(url);
             toast.success('Reporte de Kárdex exportado a Excel correctamente');
         } catch (err) {
-            console.error('Error exporting Kardex to Excel:', err);
-            toast.error('Error al exportar a Excel');
+            console.error('Error exporting Kardex to Excel via backend, falling back to local export:', err);
+            try {
+                const rows = movements.map(m => ({
+                    'Fecha y Hora': new Date(m.created_at).toLocaleString(),
+                    'Tipo': m.tipo_movimiento,
+                    'Documento': m.tipo_documento || 'Movimiento',
+                    'No. Doc': m.documento_id || '',
+                    'Cantidad': m.cantidad,
+                    'Precio Venta': m.current_price || 0,
+                    'Saldo': m.saldo_resultante || m.balance || 0
+                }));
+                exportJsonToExcel(rows, `Kardex_${selectedProduct?.codigo || 'Producto'}`);
+            } catch {
+                toast.error('Error al exportar el Kárdex a Excel');
+            }
         }
     };
 
@@ -295,7 +292,7 @@ const Kardex = () => {
                             </label>
                             {selectedProduct && (
                                 <button
-                                    onClick={() => { setProductId(''); setSelectedProduct(null); }}
+                                    onClick={() => { setProductId(''); setSelectedProduct(null); setQuickBarcode(''); }}
                                     className="text-[10px] text-slate-400 hover:text-rose-600 font-bold transition-colors flex items-center gap-1 cursor-pointer"
                                 >
                                     <X size={11} /> Limpiar selección
@@ -310,6 +307,7 @@ const Kardex = () => {
                                     value={quickBarcode}
                                     onChange={(e) => setQuickBarcode(e.target.value.toUpperCase())}
                                     onKeyDown={handleBarcodeSubmit}
+                                    onFocus={(e) => e.target.select()}
                                     placeholder="ESCANEAR..."
                                     className="w-full pl-8 pr-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/15 focus:border-indigo-400 font-mono text-[11px] font-bold transition-all h-[36px]"
                                 />
@@ -338,79 +336,18 @@ const Kardex = () => {
             </div>
 
             {/* Product Selection Modal */}
-            {isProductModalOpen && (
-                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-                    <div className="bg-white rounded-[2.5rem] w-full max-w-3xl max-h-[85vh] overflow-hidden shadow-2xl flex flex-col">
-                        <div className="p-8 border-b bg-slate-50/30 flex justify-between items-center">
-                            <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight">Seleccionar Producto</h3>
-                            <button onClick={() => setIsProductModalOpen(false)} className="p-2 hover:bg-slate-100 rounded-xl transition-all cursor-pointer"><X size={20} /></button>
-                        </div>
-                        <div className="p-6">
-                            <div className="relative">
-                                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                                <input 
-                                    autoFocus
-                                    type="text"
-                                    placeholder="Buscar por nombre o código..."
-                                    value={productSearchModal}
-                                    onChange={(e) => setProductSearchModal(e.target.value)}
-                                    className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-500/5 font-bold transition-all"
-                                />
-                            </div>
-                        </div>
-                        <div className="flex-1 overflow-y-auto p-6 pt-0 space-y-2 custom-scrollbar">
-                            {isLoadingModalProducts ? (
-                                <div className="py-16 text-center text-slate-400 text-sm font-medium">Cargando productos...</div>
-                            ) : modalProducts.length === 0 ? (
-                                <div className="py-16 text-center text-slate-400 text-sm font-medium">No se encontraron productos para esta selección</div>
-                            ) : modalProducts.map(p => (
-                                    <button 
-                                        key={p.id} 
-                                        onClick={() => {
-                                            setProductId(p.id);
-                                            setSelectedProduct(p);
-                                            setIsProductModalOpen(false);
-                                            setProductSearchModal('');
-                                            setModalPage(1);
-                                        }} 
-                                        className="w-full flex items-center justify-between p-4 rounded-2xl border border-slate-50 hover:border-indigo-200 hover:bg-indigo-50/50 transition-all group text-left cursor-pointer"
-                                    >
-                                        <div className="flex items-center gap-4 min-w-0">
-                                            <div className="p-2.5 bg-white rounded-xl shadow-sm border border-slate-100 group-hover:text-indigo-600 transition-colors">
-                                                <Box size={20} />
-                                            </div>
-                                            <div className="truncate">
-                                                <p className="font-black text-slate-900 uppercase text-sm leading-tight truncate">{p.nombre}</p>
-                                                <p className="text-[10px] font-mono font-bold text-indigo-400 tracking-wider mt-0.5">{p.codigo}</p>
-                                            </div>
-                                        </div>
-                                        <div className="flex items-center gap-4 text-right shrink-0">
-                                            <div className="flex flex-col items-end">
-                                                <span className="text-[9px] font-black text-slate-400 uppercase">Precio</span>
-                                                <span className="text-sm font-black text-slate-900"><Money value={p.precio_unitario} /></span>
-                                            </div>
-                                            <div className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg group-hover:bg-indigo-600 group-hover:text-white transition-all shadow-sm">
-                                                <Maximize2 size={16} />
-                                            </div>
-                                        </div>
-                                    </button>
-                                ))}
-                        </div>
-                        {modalProductsData.totalPages > 1 && (
-                            <div className="border-t border-slate-100 p-4">
-                                <Pagination 
-                                    currentPage={modalPage}
-                                    totalPages={modalProductsData.totalPages}
-                                    totalItems={modalProductsData.total}
-                                    onPageChange={setModalPage}
-                                    itemsOnPage={modalProducts.length}
-                                    isLoading={isLoadingModalProducts}
-                                />
-                            </div>
-                        )}
-                    </div>
-                </div>
-            )}
+            <ProductSearchModal
+                isOpen={isProductModalOpen}
+                onClose={() => setIsProductModalOpen(false)}
+                onSelectProduct={(p) => {
+                    setProductId(p.id);
+                    setSelectedProduct(p);
+                    setQuickBarcode(p.codigo || '');
+                    setIsProductModalOpen(false);
+                }}
+                branchId={branchId}
+                mode="kardex"
+            />
 
             {/* Tarjetas de Resumen Compactas */}
             {productId && branchId && (
@@ -487,8 +424,13 @@ const Kardex = () => {
                                 className="w-full pl-8 pr-3 py-1 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/15 focus:border-indigo-400 transition-all text-xs font-semibold h-[30px]"
                             />
                         </div>
-                        <div className="text-[11px] font-bold text-slate-400">
-                            {filteredMovements.length} {filteredMovements.length === 1 ? 'movimiento' : 'movimientos'}
+                        <div className="flex items-center gap-2">
+                            <span className="hidden md:inline-flex items-center gap-1 text-[10px] font-bold text-indigo-600 bg-indigo-50/80 border border-indigo-100 px-2 py-0.5 rounded-lg">
+                                💡 Doble clic en una fila para ver su origen
+                            </span>
+                            <div className="text-[11px] font-bold text-slate-400">
+                                {filteredMovements.length} {filteredMovements.length === 1 ? 'movimiento' : 'movimientos'}
+                            </div>
                         </div>
                     </div>
                 )}
@@ -506,7 +448,12 @@ const Kardex = () => {
                             }, 0);
 
                         return (
-                            <tr key={mov.id} className="hover:bg-indigo-50/20 transition-colors border-b border-slate-100 last:border-0 text-xs">
+                            <tr 
+                                key={mov.id} 
+                                onDoubleClick={() => handleRowDoubleClick(mov)}
+                                className="hover:bg-indigo-50/40 cursor-pointer select-none transition-colors border-b border-slate-100 last:border-0 text-xs group"
+                                title="Doble clic para ver el comprobante o detalle de origen"
+                            >
                                 <td className="px-3.5 py-1.5 whitespace-nowrap">
                                     <div className="flex items-center gap-1.5">
                                         <Calendar size={12} className="text-slate-400 shrink-0" />
@@ -527,8 +474,27 @@ const Kardex = () => {
                                     </span>
                                 </td>
                                 <td className="px-3.5 py-1.5 leading-tight">
-                                    <div className="font-bold text-slate-800 text-xs truncate max-w-[200px]">{mov.tipo_documento || 'Movimiento'}</div>
-                                    <div className="text-[10px] text-slate-400 font-mono">Doc #{mov.documento_id}</div>
+                                    <div className="flex items-center justify-between gap-1.5">
+                                        <div className="min-w-0">
+                                            <div className="font-bold text-slate-800 text-xs truncate max-w-[170px] sm:max-w-[200px]">
+                                                {mov.tipo_documento || 'Movimiento'}
+                                            </div>
+                                            <div className="text-[10px] text-slate-400 font-mono">
+                                                Doc #{mov.documento_id || 'S/N'}
+                                            </div>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleRowDoubleClick(mov);
+                                            }}
+                                            className="opacity-0 group-hover:opacity-100 focus:opacity-100 p-1 hover:bg-indigo-100 text-indigo-600 rounded-lg transition-opacity shrink-0 cursor-pointer"
+                                            title="Ver comprobante de origen"
+                                        >
+                                            <Eye size={13} />
+                                        </button>
+                                    </div>
                                 </td>
                                 <td className="px-3.5 py-1.5 text-right font-black text-xs">
                                     <span className={mov.tipo_movimiento === 'ENTRADA' ? 'text-emerald-600' : 'text-rose-600'}>
@@ -593,6 +559,17 @@ const Kardex = () => {
                 onRetry={handleOpenPdfModal}
                 fileName={`Kardex_${selectedProduct?.codigo || selectedProduct?.nombre || 'Producto'}.pdf`}
                 footerNote="Formato contable estándar oficial • Presentación Carta sin firmas"
+            />
+
+            {/* Modal de Detalle de Origen del Registro (Doble Clic) */}
+            <KardexOriginModal
+                movementId={selectedMovement?.id}
+                movement={selectedMovement}
+                isOpen={isOriginModalOpen}
+                onClose={() => {
+                    setIsOriginModalOpen(false);
+                    setSelectedMovement(null);
+                }}
             />
         </div>
     );

@@ -176,13 +176,13 @@ const Products = () => {
             precio_unitario: parseFloat(branchPrices[branchId]) || 0
         }));
 
-        data.tipo_operacion = parseInt(data.tipo_operacion);
-        data.tipo_combustible = parseInt(data.tipo_combustible);
+        data.tipo_operacion = isNaN(parseInt(data.tipo_operacion)) ? 1 : parseInt(data.tipo_operacion);
+        data.tipo_combustible = isNaN(parseInt(data.tipo_combustible)) ? 0 : parseInt(data.tipo_combustible);
 
-        data.afecta_inventario = parseInt(data.afecta_inventario) === 1;
-        data.costo = parseFloat(data.costo);
-        data.stock_minimo = parseFloat(data.stock_minimo);
-        data.permitir_existencia_negativa = parseInt(data.permitir_existencia_negativa) === 1;
+        data.afecta_inventario = parseInt(data.afecta_inventario) === 1 ? 1 : 0;
+        data.costo = isNaN(parseFloat(data.costo)) ? 0 : parseFloat(data.costo);
+        data.stock_minimo = isNaN(parseFloat(data.stock_minimo)) ? 0 : parseFloat(data.stock_minimo);
+        data.permitir_existencia_negativa = parseInt(data.permitir_existencia_negativa) === 1 ? 1 : 0;
 
         // Convert empty strings to null for foreign key fields
         if (data.category_id === '' || data.category_id === 'null') data.category_id = null;

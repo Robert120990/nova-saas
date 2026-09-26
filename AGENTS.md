@@ -8,7 +8,7 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 
 ## Project Overview
 
-This is a multi-tenant SaaS system for Salvadoran businesses with DTE (Documentos Tributarios Electrónicos / Electronic Tax Document) integration. It consists of three main components:
+This is Sipe Web SaaS, a multi-tenant SaaS system for Salvadoran businesses with DTE (Documentos Tributarios Electrónicos / Electronic Tax Document) integration. It consists of three main components:
 
 - **Main Server** (`server/`) - Express.js backend on port 4000
 - **Client** (`client/`) - React frontend with Vite on port 3000
@@ -65,6 +65,12 @@ Key directories:
 
 Multi-tenancy: Uses `x-company-id` header for tenant isolation via `tenantMiddleware`.
 
+### Multi-tenancy & User Assignment Model — ARQUITECTURA OFICIAL
+- **Usuarios Globales**: Los usuarios (`users`) son identidades globales a nivel de plataforma y NO están subordinados rígidamente a una única empresa.
+- **Asignación Administrativa y Delegación RBAC**: Un `SuperAdmin` o cualquier rol al que se le haya delegado el permiso correspondiente (`manage_users` / `manage_user_access`) es quien asigna y autoriza a qué empresas y sucursales puede acceder cada usuario mediante la tabla puente `usuario_empresa` (`has_access = 1`, `role_id`) y `usuario_sucursal`. No está restringido a nombres de roles fijos.
+- **Visibilidad Global en Gestión de Accesos**: En la pantalla de Asignación de Accesos (`UserAccess.jsx`), los usuarios se consultan y exponen globalmente (`/api/all-users`, `/api/users/access-summary`) sin filtro de empresa previa, ya que esto es indispensable por diseño para que los usuarios con permiso delegado puedan vincular a cualquier usuario con cualquier empresa del sistema.
+- **Aislamiento Operativo**: Una vez autenticado y posicionado dentro del contexto de una empresa (`x-company-id`), `tenantMiddleware` valida el acceso multi-tenant asegurando que los usuarios no-SuperAdmin tengan asignación activa (`has_access = 1`) en `usuario_empresa` para esa empresa específica.
+
 ### Client (`client/`)
 React 18 with Vite, Tailwind CSS, TanStack Query, React Router v7, and Sonner for toasts.
 
@@ -101,6 +107,65 @@ MySQL migrations versioned as `migration_vN_<description>.{sql|js}` with one `ru
 - Frontend: Use `<Table />` with loading state, `<Pagination />`, search with 500ms debounce
 - TanStack Query: `queryKey: ['resource', search, page]`
 
+### Manejo Defensivo de Catálogos y Listas en Frontend — OBLIGATORIO
+Para evitar errores de tiempo de ejecución como `X.map is not a function`:
+- Las respuestas del backend pueden venir como arreglos directos `[...]` o envueltas en `{ data: [...], pagination: {...} }`.
+- Al consultar cualquier lista o catálogo en `client/`, se DEBE usar obligatoriamente el helper `unwrapList` de `utils/apiUtils.js`:
+  ```javascript
+  import { unwrapList } from '../utils/apiUtils';
+  // En useQuery:
+  queryFn: async () => unwrapList(await axios.get('/api/endpoint'))
+  ```
+- En el renderizado JSX, blindar siempre defensivamente cualquier iteración:
+  `{(Array.isArray(items) ? items : []).map(...)}`
+
+### Modularización Obligatoria de Modales en Frontend (Zero Inline Modals) — OBLIGATORIO
+Queda estrictamente prohibido incrustar la estructura JSX y lógica interna de modales directamente dentro de las pantallas en `client/src/pages/`:
+- **Componente Separado**: Todo modal que contenga formularios, tablas, escáneres, subida de archivos o flujos interactivos DEBE crearse en su propio archivo independiente dentro de `client/src/components/<modulo>/`.
+- **Nomenclatura**: Debe nombrarse en CamelCase finalizando obligatoriamente con el sufijo `Modal.jsx` (ej. `GasReadingsModal.jsx`, `EggAgreementModal.jsx`, `SaleDetailModal.jsx`).
+- **Contrato de Props Estándar**: Cada modal debe ser un componente controlado que reciba como mínimo:
+  - `open` (o `isOpen`): booleano de visibilidad con retorno temprano `if (!open) return null;` (o render condicional en el padre).
+  - `onClose`: función callback para cerrarlo y resetear su estado.
+  - `onSave` / `onSubmit` / `onSuccess`: callback de confirmación o guardado.
+- **Barrel Exports**: Si el módulo contiene múltiples componentes o modales, se debe mantener un archivo `index.js` en `client/src/components/<modulo>/` para centralizar y limpiar las importaciones en las páginas.
+
+### Modularización Obligatoria de Pantallas en Frontend (Component-Driven Architecture, Máx. 350 Líneas) — OBLIGATORIO
+Toda nueva pantalla en `client/src/pages/<PageName>.jsx` (y cualquier refactorización de pantallas existentes) DEBE ser modular y NO debe exceder las **350 líneas de código**.
+La modularización en componentes separados dentro de `client/src/components/<modulo>/` es obligatoria cuando se cumpla CUALQUIERA de las siguientes condiciones:
+1. **Pantallas con Pestañas (Tabs o Vistas Conmutables)**:
+   - Si la pantalla contiene 2 o más pestañas o sub-vistas (ej. *Listado*, *Historial*, *Resumen*, *Configuración*), queda estrictamente prohibido incrustar la lógica y JSX de las pestañas en la página principal.
+   - Cada pestaña DEBE residir en su propio componente bajo `client/src/components/<modulo>/tabs/<TabName>.jsx`.
+   - La página en `pages/` actúa únicamente como orquestador del estado del tab activo y renderizado condicional.
+2. **Umbral de Extensión (> 350 Líneas)**:
+   - Si el archivo de la página supera las 350 líneas, sus secciones visuales (filtros avanzados, resúmenes/KPIs, barras de herramientas, formularios) deben extraerse a subcomponentes independientes en `client/src/components/<modulo>/` (ej. `<ModuloFiltersBar />`, `<ModuloSummaryCards />`, etc.).
+3. **Flujos Transaccionales y Maestro-Detalle (Header-Detail)**:
+   - Pantallas operativas (facturación, compras, recepción, caja, despachos, órdenes) deben estructurarse obligatoriamente en subcomponentes:
+     - Cabecera de metadatos: `<ModuloHeader />`
+     - Grilla/Tabla editable de partidas: `<ModuloItemsTable />`
+     - Barra lateral de totales y liquidación: `<ModuloTotalsSidebar />`
+     - Barra de atajos o acciones: `<ModuloActionBar />`
+4. **Barrel Exports**:
+   - Toda carpeta `client/src/components/<modulo>/` debe mantener un archivo `index.js` que centralice y exponga limpiamente todos los subcomponentes y modales.
+
+### Modularización Obligatoria en Backend (Controllers y Services Desacoplados, Máx. 350 Líneas) — OBLIGATORIO
+Todo nuevo controlador en `server/src/controllers/` o `dte-api/src/controllers/` (y refactorizaciones) DEBE respetar el principio de responsabilidad única y NO debe exceder las **350 líneas de código**.
+La división en submódulos especializados es obligatoria si se cumple CUALQUIERA de las siguientes condiciones:
+1. **Umbral de Extensión (> 350 Líneas)**:
+   - Si un controlador supera las 350 líneas, DEBE dividirse en una subcarpeta dedicada `src/controllers/<modulo>/` agrupando por dominio (ej: `<modulo>Core.controller.js`, `<modulo>Reports.controller.js`, `<modulo>Audits.controller.js`).
+2. **Múltiples Responsabilidades en un Solo Módulo**:
+   - Si un módulo agrupa operaciones CRUD básicas junto con analítica avanzada, liquidaciones complejas o generación de reportes en PDF/Excel, cada dominio debe desacoplarse en su propio subcontrolador.
+3. **Patrón Fachada / Barrel Export Obligatorio**:
+   - Todo controlador modularizado DEBE mantener o crear el archivo raíz `src/controllers/<modulo>.controller.js` como una fachada limpia que reexporte todas las funciones de los subcontroladores (`module.exports = { ...moduloCore, ...moduloReports }`). Esto garantiza compatibilidad absoluta con `routes/api.routes.js` sin alterar las rutas existentes.
+4. **Desacoplamiento de Lógica Pesada a Servicios (`services/`)**:
+   - Cálculos matemáticos o financieros (algoritmos FIFO, depreciaciones, deducciones de nómina), transformaciones masivas de datos y generadores de documentos deben residir exclusivamente en `src/services/<modulo>.service.js`, manteniendo los controladores ligeros y enfocados en validar entradas y responder solicitudes HTTP.
+
+### Formateo Unificado de Fechas en Frontend (dateUtils) — OBLIGATORIO
+Toda modificación o nueva pantalla, componente o modal en `client/` DEBE utilizar obligatoriamente los formateadores centralizados de `client/src/utils/dateUtils.js`:
+- `formatDate(date, options)`: para fechas convencionales (`DD/MM/YYYY`).
+- `formatDateTime(date)`: para timestamps con fecha y hora (`DD/MM/YYYY HH:mm`).
+- `formatTime(date)`: para horas exclusivas (`HH:mm` o `HH:mm:ss`).
+Queda estrictamente prohibido redefinir funciones locales `const formatDate = ...` o realizar manipulaciones manuales ad-hoc de strings para fechas. Esto garantiza coherencia de zona horaria y localización salvadoreña (`es-SV`) en toda la plataforma.
+
 ### DTE Integration (per .opencode/skills/dte/DTE_API_RULES.md)
 - Main server calls DTE API endpoints with JWT auth and `x-company-id` header
 - DTE API URL: `http://localhost:5000/api`
@@ -129,6 +194,7 @@ TODO nuevo reporte en PDF debe implementar el estándar contable unificado usand
 - Paginación y Cierre: Salto defensivo (`doc.y > 510` en landscape o `> 700` en portrait), `reportPdfHelper.renderClosingFooter` ("Número de {Entidad} Impresas : N", "FIN DEL REPORTE.") y paginación dinámica centrada con `reportPdfHelper.renderPageNumbers(doc)`.
 - **SIN FIRMAS**: Los reportes operacionales (ventas, inventario, compras, gastos, cxc, cxp, arqueos, rentabilidad) **NO llevan firmas** bajo ninguna circunstancia. Las firmas quedan reservadas para balances/estados contables.
 - Exportación Excel: Todo endpoint debe soportar `?format=excel` antes de la generación PDF usando `excelService.createExcelBuffer` y `excelService.sendExcelResponse`.
+- **Generación No Bloqueante en Backend (Worker Threads Pool) — OBLIGATORIO**: Toda exportación a Excel y generación pesada de reportes DEBE realizarse a través de `excelService.createExcelBuffer` o `reportWorkerPool.service.js`. Queda estrictamente prohibido instanciar o manipular directamente `ExcelJS` dentro de controladores o rutas; todo cómputo intensivo de CPU debe delegarse al pool de Worker Threads para mantener el Event Loop del servidor 100% receptivo y no bloquear peticiones concurrentes como ventas o DTEs.
 - Frontend: Usar `<ReportLayout>` (`client/src/components/ui/ReportLayout.jsx`) con `onExportExcel`. `<ReportLayout>` integra obligatoriamente el botón "Expandir" en la cabecera/título y el visor `<PdfViewerModal>` estilo planillas (`max-w-6xl h-[92vh]`), garantizando que todo reporte convencional cuente con vista modal interactiva sin código repetitivo.
 
 ### Claves de Permiso Únicas en el Menú y Roles (menu_items & permission_key) — OBLIGATORIO

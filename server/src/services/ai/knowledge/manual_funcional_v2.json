@@ -1,0 +1,65 @@
+[
+  {
+    "id": "mf2-invalidacion-plazos",
+    "capitulo": "VII. Evento de Invalidación",
+    "seccion": "Plazos para transmitir el evento de invalidación",
+    "documento": "Manual Funcional del Sistema de Transmisión V 2.0",
+    "pagina": 10,
+    "tags": ["invalidacion", "invalidar", "anular", "plazo", "plazos", "dias", "tiempo", "credito fiscal", "factura", "retencion", "remision", "ccf", "fe"],
+    "contenido": "Plazos para transmitir el evento de invalidación en relación a la Fecha de Transmisión del DTE:\n1. Para Comprobante de Crédito Fiscal Electrónico (CCFE - 03), Nota de Crédito (NCE - 05), Nota de Débito (NDE - 06), Comprobante de Retención (CRE - 07), Comprobante de Liquidación (CLE - 08), Documento Contable de Liquidación (DCLE - 09), Nota de Remisión (NRE - 04), Comprobante de Donación (CDE - 15), Evento de Retorno y Operaciones Especiales: Podrá realizarse dentro de un plazo máximo de hasta el DÉCIMO (10°) DÍA HÁBIL DEL MES SIGUIENTE al período tributario en que el documento a invalidar obtuvo el Sello de Recepción (hasta las 23:59:59 de dicho día).\nEjemplo oficial MH: Si el CCF obtuvo sello de recepción el 19 de marzo de 2026, el emisor tendrá hasta las 23:59:59 del décimo día hábil del mes siguiente (20 de abril de 2026) para enviar el evento de invalidación.\n2. Para Factura Electrónica (FE - 01), Factura de Exportación (FEXE - 11) y Factura Sujeto Excluido (FSEE - 14): Podrá realizarse dentro del plazo de hasta TRES (3) MESES contados a partir del otorgamiento del Sello de Recepción del documento (hasta las 23:59:59).\nEjemplo oficial MH: Si la Factura obtuvo el Sello de Recepción el 11-11-2025 a las 7:30 a.m., el emisor tendrá hasta el 11-02-2026 a las 23:59:59 para enviar el evento de invalidación."
+  },
+  {
+    "id": "mf2-invalidacion-fecha-evento",
+    "capitulo": "VII. Evento de Invalidación",
+    "seccion": "Plazos para generar el evento en relación a la Fecha de Generación",
+    "documento": "Manual Funcional del Sistema de Transmisión V 2.0",
+    "pagina": 11,
+    "tags": ["invalidacion", "fecha del evento", "fecanula", "fecha generacion", "ccf", "factura"],
+    "contenido": "Fecha a ingresar en el campo 'Fecha del Evento' (fecAnula) en la estructura del Evento de Invalidación:\n- Para CCFE, NCE, NDE, NRE, CRE, CLE, DCLE, CDE: Debe ingresar la MISMA FECHA detallada en el campo 'Fecha de Generación' del DTE a invalidar. Si el DTE contiene fecha de generación 29-03-2026 y fue transmitido el 04-04-2026, en campo Fecha del Evento debe ingresar 29-03-2026.\n- Para Factura (FE), Factura de Exportación (FEXE) y Factura Sujeto Excluido (FSEE): Podrá ingresar 'Fecha del Evento' con un máximo de 3 meses posteriores a la 'Fecha de Generación' detallada en el DTE al que aplique el evento."
+  },
+  {
+    "id": "mf2-invalidacion-motivos-cat024",
+    "capitulo": "VII. Evento de Invalidación",
+    "seccion": "Condiciones especiales y Uso del campo Tipo de Invalidación (CAT-024)",
+    "documento": "Manual Funcional del Sistema de Transmisión V 2.0",
+    "pagina": 12,
+    "tags": ["invalidacion", "motivo", "cat-024", "rescindir", "error", "reemplazo", "codigogeneracionr"],
+    "contenido": "Uso del campo Tipo de Invalidación según catálogo CAT-024:\n- Código 01: Error en la Información del Documento Tributario Electrónico a invalidar.\n- Código 02: Rescindir de la operación realizada (anulación total o devolución).\n- Código 03: Otro (incluye cambio de bienes o servicios).\n\nRegla de Reemplazo (Código Generación R):\n- Si el tipo es 1 o 3: Se REQUIERE que antes de transmitir el Evento de Invalidación, previamente se genere, transmita y obtenga Sello de Recepción el documento que reemplazará al invalidado. El UUID del nuevo documento debe colocarse en 'codigoGeneracionR'. (Excepción: no aplica para Nota de Crédito, Comprobante de Liquidación ni Evento de Retorno).\n- Si el tipo es 2 (Rescisión total): Debe ingresarse únicamente el código de generación a invalidar y en 'codigoGeneracionR' debe colocarse la palabra 'null'."
+  },
+  {
+    "id": "mf2-invalidacion-ccf-vencido-nc",
+    "capitulo": "VII. Evento de Invalidación",
+    "seccion": "Reglas para Crédito Fiscal Vencido y Documentos Relacionados",
+    "documento": "Manual Funcional del Sistema de Transmisión V 2.0",
+    "pagina": 12,
+    "tags": ["invalidacion", "ccf vencido", "nota de credito", "extemporaneo", "plazo vencido", "anular ccf"],
+    "contenido": "Extemporaneidad y Regla de Nota de Crédito (DTE-05):\n- No se otorgará Sello de Recepción al Evento de Invalidación transmitido fuera de los plazos establecidos, por lo que el DTE aún conservará su validez original.\n- Si vence el plazo del décimo día hábil del mes siguiente para un Comprobante de Crédito Fiscal (03), Hacienda rechaza el evento de invalidación. La anulación, rescisión o ajuste de la operación debe realizarse de forma obligatoria mediante la emisión de una NOTA DE CRÉDITO ELECTRÓNICA (DTE-05) referenciando el CCF original en la sección de documentos relacionados.\n- Documentos asociados: Cuando el CCFE esté relacionado a una Nota de Crédito o Débito con estado validado, no se puede aplicar evento de invalidación directamente al CCFE (primero debe invalidarse la Nota de Crédito o Débito)."
+  },
+  {
+    "id": "mf2-contingencia-generalidades",
+    "capitulo": "VIII. Evento de Contingencia",
+    "seccion": "Generalidades y Proceso para emitir en Contingencia",
+    "documento": "Manual Funcional del Sistema de Transmisión V 2.0",
+    "pagina": 17,
+    "tags": ["contingencia", "fuera de linea", "falla", "sin internet", "diferido", "cat-005"],
+    "contenido": "Evento de Contingencia (DTE-17):\n- Concepto: Caso fortuito o fuerza mayor que le impide al emisor transmitir de forma inmediata los DTE a Hacienda. El contribuyente opera con su sistema fuera de línea en modelo diferido.\n- Parámetros del DTE en contingencia:\n  * Modelo de Facturación: 2 (Modelo de Facturación Diferido)\n  * Tipo de Transmisión: 2 (Transmisión por Contingencia)\n  * Tipo de Contingencia (CAT-005):\n    1: No disponibilidad de sistema del MH\n    2: Falla en suministro de energía eléctrica del emisor\n    3: Falla en servicio de internet del proveedor del emisor\n    4: Falla en conexiones del sistema del emisor\n    5: Otro motivo (debe justificarse en motivoContingencia)\n- Documentos autorizados para emitirse en contingencia: Factura (01), CCF (03), Remisión (04), Nota de Crédito (05), Nota de Débito (06), Retención (07), Exportación (11), Sujeto Excluido (14) y Retorno."
+  },
+  {
+    "id": "mf2-contingencia-plazos",
+    "capitulo": "VIII. Evento de Contingencia",
+    "seccion": "Plazos legales para transmitir el Evento de Contingencia",
+    "documento": "Manual Funcional del Sistema de Transmisión V 2.0",
+    "pagina": 18,
+    "tags": ["contingencia", "plazo contingencia", "24 horas", "limite documentos", "rechazo contingencia"],
+    "contenido": "Plazos y Capacidad del Evento de Contingencia:\n- Plazo para transmitir el Evento de Contingencia: El emisor tiene un plazo máximo de HASTA 24 HORAS para transmitir el evento, contadas a partir del CESE de la situación de fuerza mayor (restablecimiento del servicio o conectividad).\n- Capacidad por evento: En un solo evento de contingencia se pueden informar desde 1 hasta un máximo de 1,000 documentos transitorios generados durante el corte.\n- Subsanación de rechazos: Si el evento de contingencia es rechazado por estructura por Hacienda, el emisor dispone de un plazo máximo de 24 HORAS tras el rechazo para corregirlo y volver a transmitirlo.\n- Envío posterior de DTEs: Una vez obtenido el Sello de Recepción del evento de contingencia, el emisor debe transmitir a Hacienda todos los DTEs transitorios informados para que obtengan su respectivo Sello de Recepción definitivo."
+  },
+  {
+    "id": "mf2-redondeos-holguras",
+    "capitulo": "XXI. Redondeos y Holguras",
+    "seccion": "Reglas oficiales de cálculo, decimales y tolerancia",
+    "documento": "Manual Funcional del Sistema de Transmisión V 2.0",
+    "pagina": 52,
+    "tags": ["redondeo", "decimales", "holgura", "calculo", "iva", "centavos", "tolerancia"],
+    "contenido": "Reglas oficiales de redondeo y holguras de Hacienda:\n- Moneda: Todas las cifras monetarias deben expresarse en Dólares de los Estados Unidos de América (USD) con 2 decimales en los totales.\n- Precios unitarios: Pueden tener hasta 4 decimales para mayor precisión en ítems de bajo costo unitario (ej. combustible o tornillería).\n- Método de redondeo: Redondeo aritmético estándar al centavo más cercano (half-up, >= 0.005 sube al centavo superior).\n- Holgura de tolerancia en validación MH: Hacienda permite una holgura o tolerancia máxima de +/- $0.02 (dos centavos de dólar) en las sumatorias y cálculos de IVA para mitigar diferencias por redondeo acumulado entre ítems."
+  }
+]

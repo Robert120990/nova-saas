@@ -1,5 +1,6 @@
+import { formatDate } from '../../utils/dateUtils';
+import { unwrapList } from '../../utils/apiUtils';
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { toast } from 'sonner';
 import axios from 'axios';
@@ -25,19 +26,22 @@ import {
     History,
     Printer,
     Eye,
-    Download,
+    EyeOff,
     ShieldCheck,
-    Award,
     Trash2,
-    Lock,
     FlaskConical,
-    ClipboardList,
-    Check,
     Loader2,
-    ChevronDown
+    ChevronDown,
+    Scale,
+    Layers,
+    Check,
+    Clock
 } from 'lucide-react';
+import EggReceptionDetailModal from '../../components/egg/EggReceptionDetailModal';
+import EggQualityEvaluationModal from '../../components/egg/EggQualityEvaluationModal';
 import TarimaLabelModal from '../../components/egg/TarimaLabelModal';
 import PdfViewerModal from '../../components/ui/PdfViewerModal';
+import ProviderLotConfigModal from '../../components/egg/ProviderLotConfigModal';
 
 const EggReception = () => {
     const { user } = useAuth();
@@ -48,6 +52,11 @@ const EggReception = () => {
     const [providers, setProviders] = useState([]);
     const [providerLotConfigs, setProviderLotConfigs] = useState([]);
     const [providerLotIntel, setProviderLotIntel] = useState(null);
+    const [lotConfigModalData, setLotConfigModalData] = useState({
+        isOpen: false,
+        config: null,
+        initialProviderId: ''
+    });
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [viewingReception, setViewingReception] = useState(null);
@@ -55,8 +64,18 @@ const EggReception = () => {
     const todayStr = new Date().toISOString().split('T')[0];
 
     const [useTarimas, setUseTarimas] = useState(false);
+    const [globalHasCaja, setGlobalHasCaja] = useState(true);
+    const [showDetailedTares, setShowDetailedTares] = useState(false);
+    const [bulkAddCount, setBulkAddCount] = useState(10);
+    const [receptionTareTarima, setReceptionTareTarima] = useState(0);
+    const [receptionTareSep, setReceptionTareSep] = useState(48);
+    const [receptionTareCaja, setReceptionTareCaja] = useState(30);
+    const [receptionBaseBoxes, setReceptionBaseBoxes] = useState(24);
+    const [globalStorageLocation, setGlobalStorageLocation] = useState('abajo');
+    const [lastDraftSavedAt, setLastDraftSavedAt] = useState(null);
+    const [hasRestoredDraft, setHasRestoredDraft] = useState(false);
     const [tarimas, setTarimas] = useState([
-        { id: 1, tarima_number: 1, gross_weight_lbs: '', tare_weight_lbs: 60, net_weight_lbs: 0, boxes_count: 24 }
+        { id: 1, tarima_number: 1, gross_weight_lbs: '', tare_weight_lbs: 78, net_weight_lbs: 0, boxes_count: 24, has_caja: true, tare_pallet_lbs: 0, tare_separador_lbs: 48, tare_caja_lbs: 30, storage_location: 'abajo' }
     ]);
 
     // Form state
@@ -69,6 +88,7 @@ const EggReception = () => {
         fecha: todayStr,
         weight_lbs: '',
         total_boxes: 0,
+        storage_location: 'abajo',
         temperature_c: '',
         truck_temperature_c: '',
         truck_plate: '',
@@ -92,6 +112,86 @@ const EggReception = () => {
         allTarimas: [],
         receptionData: {}
     });
+
+    const DRAFT_STORAGE_KEY = `egg_reception_draft_${companyId}`;
+
+    // Efecto de autoguardado dinámico resiliente en localStorage (protección contra cierres accidentales)
+    useEffect(() => {
+        if (!isCreateModalOpen || editingId) return;
+
+        // Comprobar si hay contenido significativo ingresado por el usuario
+        const hasData = Boolean(
+            formData.provider_id ||
+            formData.provider_lot?.trim() ||
+            formData.weight_lbs ||
+            tarimas.some(t => t.gross_weight_lbs !== '' && parseFloat(t.gross_weight_lbs) > 0)
+        );
+
+        if (!hasData) return;
+
+        const timer = setTimeout(() => {
+            try {
+                const nowTime = new Date().toLocaleTimeString('es-SV', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                const draftPayload = {
+                    formData,
+                    tarimas,
+                    useTarimas,
+                    globalHasCaja,
+                    globalStorageLocation,
+                    receptionTareTarima,
+                    receptionTareSep,
+                    receptionTareCaja,
+                    receptionBaseBoxes,
+                    savedAt: nowTime
+                };
+                localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draftPayload));
+                setLastDraftSavedAt(nowTime);
+            } catch (err) {
+                console.warn('Error guardando borrador dinámico en localStorage:', err);
+            }
+        }, 400);
+
+        return () => clearTimeout(timer);
+    }, [
+        isCreateModalOpen, editingId, formData, tarimas, useTarimas,
+        globalHasCaja, globalStorageLocation, receptionTareTarima,
+        receptionTareSep, receptionTareCaja, receptionBaseBoxes, DRAFT_STORAGE_KEY
+    ]);
+
+    const checkForDraft = () => {
+        try {
+            const raw = localStorage.getItem(DRAFT_STORAGE_KEY);
+            if (!raw) return false;
+            const draft = JSON.parse(raw);
+            if (!draft || !draft.tarimas || !Array.isArray(draft.tarimas)) return false;
+
+            if (draft.formData) setFormData(prev => ({ ...prev, ...draft.formData }));
+            if (draft.tarimas && draft.tarimas.length > 0) setTarimas(draft.tarimas);
+            if (draft.useTarimas !== undefined) setUseTarimas(draft.useTarimas);
+            if (draft.globalHasCaja !== undefined) setGlobalHasCaja(draft.globalHasCaja);
+            if (draft.globalStorageLocation) setGlobalStorageLocation(draft.globalStorageLocation);
+            if (draft.receptionTareTarima !== undefined) setReceptionTareTarima(draft.receptionTareTarima);
+            if (draft.receptionTareSep !== undefined) setReceptionTareSep(draft.receptionTareSep);
+            if (draft.receptionTareCaja !== undefined) setReceptionTareCaja(draft.receptionTareCaja);
+            if (draft.receptionBaseBoxes !== undefined) setReceptionBaseBoxes(draft.receptionBaseBoxes);
+            setLastDraftSavedAt(draft.savedAt || 'reciente');
+            setHasRestoredDraft(true);
+            return true;
+        } catch (e) {
+            console.warn('Error restaurando borrador de recepción:', e);
+            return false;
+        }
+    };
+
+    const discardDraft = () => {
+        try {
+            localStorage.removeItem(DRAFT_STORAGE_KEY);
+        } catch (e) { }
+        setHasRestoredDraft(false);
+        setLastDraftSavedAt(null);
+        resetForm();
+        toast.info('Borrador descartado. Formulario reiniciado a valores iniciales.');
+    };
 
     // Roles y Permisos (Página 3 del documento adjunto)
     const userPermissions = Array.isArray(user?.permissions)
@@ -753,17 +853,183 @@ const EggReception = () => {
         });
     };
 
+    // Helpers para cálculo y tasas de tara según configuración de proveedor y ajustes de lote
+    const getProviderTareRates = () => {
+        const provConfig = providerLotIntel?.config || providerLotConfigs.find(c => String(c.provider_id) === String(formData.provider_id));
+        const baseB = parseInt(receptionBaseBoxes || provConfig?.base_boxes_per_tarima) || 24;
+        const sepTare = parseFloat(receptionTareSep !== undefined ? receptionTareSep : (provConfig?.tare_separador_lbs || 48));
+        const boxTare = parseFloat(receptionTareCaja !== undefined ? receptionTareCaja : (provConfig?.tare_caja_lbs || 30));
+        const defaultHasCaja = provConfig?.default_has_caja !== undefined ? Boolean(provConfig.default_has_caja) : true;
+        return {
+            baseB,
+            sepTare,
+            boxTare,
+            rateSep: baseB > 0 ? (sepTare / baseB) : 2.0,
+            rateBox: baseB > 0 ? (boxTare / baseB) : 1.25,
+            defaultHasCaja,
+            providerName: provConfig?.provider_name || providerLotIntel?.provider?.nombre || ''
+        };
+    };
+
+    const calculateTarimaTare = (boxes, hasCaja = globalHasCaja, palletTare = 0, customRates = null) => {
+        let baseB = receptionBaseBoxes || 24;
+        let sepTare = receptionTareSep || 48;
+        let boxTare = receptionTareCaja || 30;
+
+        if (customRates) {
+            if (customRates.baseB !== undefined) baseB = parseInt(customRates.baseB) || 24;
+            if (customRates.tareSep !== undefined) sepTare = parseFloat(customRates.tareSep) || 0;
+            if (customRates.tareCaja !== undefined) boxTare = parseFloat(customRates.tareCaja) || 0;
+        }
+
+        const rateSep = baseB > 0 ? (sepTare / baseB) : 2.0;
+        const rateBox = baseB > 0 ? (boxTare / baseB) : 1.25;
+        const b = parseInt(boxes) || 0;
+        const sepPart = Math.round(b * rateSep * 100) / 100;
+        const boxPart = hasCaja ? Math.round(b * rateBox * 100) / 100 : 0;
+        const pTare = parseFloat(palletTare) || 0;
+        const total = Math.round((pTare + sepPart + boxPart) * 100) / 100;
+
+        return {
+            totalTare: total,
+            tarimaTare: pTare,
+            sepPart,
+            boxPart,
+            rateSep,
+            rateBox
+        };
+    };
+
+    const _handleUpdateReceptionTare = (field, value) => {
+        const val = parseFloat(value) || 0;
+        let newSep = receptionTareSep;
+        let newCaja = receptionTareCaja;
+
+        if (field === 'separador') {
+            newSep = val;
+            setReceptionTareSep(val);
+        } else if (field === 'caja') {
+            newCaja = val;
+            setReceptionTareCaja(val);
+        }
+
+        const rates = {
+            baseB: receptionBaseBoxes,
+            tareSep: newSep,
+            tareCaja: newCaja
+        };
+
+        const updated = tarimas.map(t => {
+            const hasC = t.has_caja !== undefined ? t.has_caja : globalHasCaja;
+            const b = parseInt(t.boxes_count) || 24;
+            const pTare = parseFloat(t.tare_pallet_lbs) || 0;
+            const calc = calculateTarimaTare(b, hasC, pTare, rates);
+            const gross = parseFloat(t.gross_weight_lbs) || 0;
+            return {
+                ...t,
+                tare_weight_lbs: calc.totalTare,
+                tare_pallet_lbs: t.tare_pallet_lbs !== undefined ? t.tare_pallet_lbs : '',
+                tare_separador_lbs: calc.sepPart,
+                tare_caja_lbs: calc.boxPart,
+                net_weight_lbs: gross > 0 ? Math.max(0, Math.round((gross - calc.totalTare) * 100) / 100) : 0
+            };
+        });
+        setTarimas(updated);
+        recalcTarimasTotals(updated);
+    };
+
     // Helpers para tarimas
-    const addTarima = () => {
+    const addTarima = (boxes = 24, hasCaja = globalHasCaja, loc = globalStorageLocation) => {
         const nextNum = tarimas.length + 1;
-        setTarimas([...tarimas, {
-            id: Date.now(),
+        const calc = calculateTarimaTare(boxes, hasCaja, 0);
+        const updated = [...tarimas, {
+            id: Date.now() + Math.random(),
             tarima_number: nextNum,
             gross_weight_lbs: '',
-            tare_weight_lbs: 60,
+            tare_pallet_lbs: '',
+            tare_weight_lbs: calc.totalTare,
+            tare_separador_lbs: calc.sepPart,
+            tare_caja_lbs: calc.boxPart,
             net_weight_lbs: 0,
-            boxes_count: 24
-        }]);
+            boxes_count: boxes,
+            has_caja: hasCaja,
+            storage_location: loc
+        }];
+        setTarimas(updated);
+        recalcTarimasTotals(updated);
+    };
+
+    const addMultipleTarimas = (count, boxes = 24, hasCaja = globalHasCaja, loc = globalStorageLocation) => {
+        const n = parseInt(count);
+        if (!n || n <= 0) {
+            toast.error('Ingrese una cantidad válida de tarimas a agregar.');
+            return;
+        }
+        if (n > 200) {
+            toast.error('El límite máximo por lote es de 200 tarimas.');
+            return;
+        }
+
+        const startNum = tarimas.length + 1;
+        const calc = calculateTarimaTare(boxes, hasCaja, 0);
+        const newRows = [];
+        for (let i = 0; i < n; i++) {
+            newRows.push({
+                id: Date.now() + i + Math.random(),
+                tarima_number: startNum + i,
+                gross_weight_lbs: '',
+                tare_pallet_lbs: '',
+                tare_weight_lbs: calc.totalTare,
+                tare_separador_lbs: calc.sepPart,
+                tare_caja_lbs: calc.boxPart,
+                net_weight_lbs: 0,
+                boxes_count: boxes,
+                has_caja: hasCaja,
+                storage_location: loc
+            });
+        }
+        const updated = [...tarimas, ...newRows];
+        setTarimas(updated);
+        recalcTarimasTotals(updated);
+        toast.success(`Se agregaron ${n} tarimas (#${startNum} a #${startNum + n - 1}) con éxito.`);
+    };
+
+    const applyStorageLocationToAll = (newLoc) => {
+        setGlobalStorageLocation(newLoc);
+        const updated = tarimas.map(t => ({
+            ...t,
+            storage_location: newLoc
+        }));
+        setTarimas(updated);
+        toast.info(newLoc === 'abajo' 
+            ? 'Ubicación Abajo (Piso) aplicada a todas las tarimas.' 
+            : 'Ubicación Arriba (Rack) aplicada a todas las tarimas.'
+        );
+    };
+
+    const applyEmpaqueModeToAll = (newHasCaja) => {
+        setGlobalHasCaja(newHasCaja);
+        const updated = tarimas.map(t => {
+            const b = parseInt(t.boxes_count) || 24;
+            const pTare = parseFloat(t.tare_pallet_lbs) || 0;
+            const calc = calculateTarimaTare(b, newHasCaja, pTare);
+            const gross = parseFloat(t.gross_weight_lbs) || 0;
+            return {
+                ...t,
+                has_caja: newHasCaja,
+                tare_pallet_lbs: t.tare_pallet_lbs !== undefined ? t.tare_pallet_lbs : '',
+                tare_weight_lbs: calc.totalTare,
+                tare_separador_lbs: calc.sepPart,
+                tare_caja_lbs: calc.boxPart,
+                net_weight_lbs: gross > 0 ? Math.max(0, Math.round((gross - calc.totalTare) * 100) / 100) : 0
+            };
+        });
+        setTarimas(updated);
+        recalcTarimasTotals(updated);
+        toast.info(newHasCaja 
+            ? 'Empaque con cajas aplicado a todas las tarimas (descuenta separador, caja y tara de pallet).' 
+            : 'Empaque a granel aplicado a todas las tarimas (descuenta separador y tara de pallet).'
+        );
     };
 
     const removeTarima = (index) => {
@@ -777,11 +1043,49 @@ const EggReception = () => {
 
     const updateTarima = (index, field, value) => {
         const updated = [...tarimas];
-        updated[index][field] = value;
-        
+        updated[index] = { ...updated[index], [field]: value };
+
+        const b = parseInt(field === 'boxes_count' ? value : updated[index].boxes_count) || 0;
+        const hasC = field === 'has_caja' ? value : (updated[index].has_caja !== undefined ? updated[index].has_caja : globalHasCaja);
+        const rates = getProviderTareRates();
+
+        let pTare = parseFloat(field === 'tare_pallet_lbs' ? value : updated[index].tare_pallet_lbs) || 0;
+        let sTare = parseFloat(field === 'tare_separador_lbs' ? value : updated[index].tare_separador_lbs);
+        let cTare = parseFloat(field === 'tare_caja_lbs' ? value : updated[index].tare_caja_lbs);
+
+        if (field === 'boxes_count') {
+            sTare = Math.round(b * rates.rateSep * 100) / 100;
+            cTare = hasC ? Math.round(b * rates.rateBox * 100) / 100 : 0;
+            updated[index].tare_separador_lbs = sTare;
+            updated[index].tare_caja_lbs = cTare;
+        } else if (field === 'has_caja') {
+            cTare = value ? Math.round(b * rates.rateBox * 100) / 100 : 0;
+            updated[index].tare_caja_lbs = cTare;
+        } else if (field === 'tare_pallet_lbs') {
+            updated[index].tare_pallet_lbs = value;
+            pTare = parseFloat(value) || 0;
+        } else if (field === 'tare_separador_lbs') {
+            updated[index].tare_separador_lbs = value;
+            sTare = parseFloat(value) || 0;
+        } else if (field === 'tare_caja_lbs') {
+            updated[index].tare_caja_lbs = value;
+            cTare = parseFloat(value) || 0;
+        }
+
+        if (isNaN(sTare)) sTare = Math.round(b * rates.rateSep * 100) / 100;
+        if (isNaN(cTare)) cTare = hasC ? Math.round(b * rates.rateBox * 100) / 100 : 0;
+
+        let totalTare = 0;
+        if (field === 'tare_weight_lbs') {
+            totalTare = parseFloat(value) || 0;
+            updated[index].tare_weight_lbs = value;
+        } else {
+            totalTare = Math.round((pTare + sTare + cTare) * 100) / 100;
+            updated[index].tare_weight_lbs = totalTare;
+        }
+
         const gross = parseFloat(updated[index].gross_weight_lbs) || 0;
-        const tare = parseFloat(updated[index].tare_weight_lbs) || 0;
-        updated[index].net_weight_lbs = Math.max(0, gross - tare);
+        updated[index].net_weight_lbs = gross > 0 ? Math.max(0, Math.round((gross - totalTare) * 100) / 100) : 0;
 
         setTarimas(updated);
         recalcTarimasTotals(updated);
@@ -806,6 +1110,19 @@ const EggReception = () => {
         try {
             const res = await axios.get(`/api/egg-industrial/providers/${providerId}/lot-intelligence`);
             setProviderLotIntel(res.data);
+            const provConfig = res.data?.config;
+            const provTareTarima = parseFloat(provConfig?.tare_tarima_lbs !== undefined ? provConfig.tare_tarima_lbs : 0);
+            const provTareSep = parseFloat(provConfig?.tare_separador_lbs !== undefined ? provConfig.tare_separador_lbs : 48);
+            const provTareCaja = parseFloat(provConfig?.tare_caja_lbs !== undefined ? provConfig.tare_caja_lbs : 30);
+            const provBaseBoxes = parseInt(provConfig?.base_boxes_per_tarima) || 24;
+            const provHasCaja = provConfig?.default_has_caja !== undefined ? Boolean(provConfig.default_has_caja) : true;
+
+            setReceptionTareTarima(provTareTarima);
+            setReceptionTareSep(provTareSep);
+            setReceptionTareCaja(provTareCaja);
+            setReceptionBaseBoxes(provBaseBoxes);
+            setGlobalHasCaja(provHasCaja);
+
             if (res.data?.suggested_lot) {
                 setFormData(prev => ({
                     ...prev,
@@ -813,8 +1130,82 @@ const EggReception = () => {
                     provider_lot: res.data.suggested_lot
                 }));
             }
+
+            const rates = {
+                baseB: provBaseBoxes,
+                tareSep: provTareSep,
+                tareCaja: provTareCaja
+            };
+
+            // Actualizar taras en curso según parámetros de tara del nuevo proveedor
+            setTarimas(prev => {
+                const updated = prev.map(t => {
+                    const hasC = t.has_caja !== undefined ? t.has_caja : provHasCaja;
+                    const b = parseInt(t.boxes_count) || 24;
+                    const pTare = parseFloat(t.tare_pallet_lbs) || 0;
+                    const calc = calculateTarimaTare(b, hasC, pTare, rates);
+                    const gross = parseFloat(t.gross_weight_lbs) || 0;
+                    return {
+                        ...t,
+                        has_caja: hasC,
+                        tare_pallet_lbs: t.tare_pallet_lbs !== undefined ? t.tare_pallet_lbs : '',
+                        tare_weight_lbs: calc.totalTare,
+                        tare_separador_lbs: calc.sepPart,
+                        tare_caja_lbs: calc.boxPart,
+                        net_weight_lbs: gross > 0 ? Math.max(0, Math.round((gross - calc.totalTare) * 100) / 100) : 0
+                    };
+                });
+                recalcTarimasTotals(updated);
+                return updated;
+            });
         } catch (e) {
             console.error('Error fetching provider lot intelligence:', e);
+        }
+    };
+
+    const loadProvidersOptions = async (search, page) => {
+        const { data } = await axios.get('/api/providers', {
+            params: { search: search || undefined, page, limit: 50 }
+        });
+        return data;
+    };
+
+    const handleOpenLotConfig = (specificProviderId = null) => {
+        const targetId = specificProviderId || formData.provider_id;
+        const existingConfig = providerLotConfigs.find(c => String(c.provider_id) === String(targetId));
+        if (existingConfig) {
+            setLotConfigModalData({
+                isOpen: true,
+                config: existingConfig,
+                initialProviderId: targetId
+            });
+        } else {
+            setLotConfigModalData({
+                isOpen: true,
+                config: null,
+                initialProviderId: targetId || ''
+            });
+        }
+    };
+
+    const handleLotConfigSaved = async (savedPayload) => {
+        try {
+            const lotCfgRes = await axios.get('/api/egg-industrial/provider-lot-configs');
+            setProviderLotConfigs(unwrapList(lotCfgRes));
+
+            const targetProvId = savedPayload?.provider_id || formData.provider_id;
+            if (targetProvId) {
+                if (String(formData.provider_id) !== String(targetProvId)) {
+                    setFormData(prev => ({
+                        ...prev,
+                        provider_id: targetProvId,
+                        provider_name: savedPayload.provider_name || prev.provider_name
+                    }));
+                }
+                await handleProviderSelect(targetProvId);
+            }
+        } catch (err) {
+            console.error('Error refreshing provider lot configs:', err);
         }
     };
 
@@ -824,12 +1215,12 @@ const EggReception = () => {
         try {
             const [rmRes, provRes, lotCfgRes] = await Promise.all([
                 axios.get('/api/egg-industrial/raw-materials'),
-                axios.get('/api/providers'),
+                axios.get('/api/providers', { params: { limit: 2000 } }),
                 axios.get('/api/egg-industrial/provider-lot-configs')
             ]);
-            setRawMaterials(rmRes.data);
-            setProviders(Array.isArray(provRes.data) ? provRes.data : (provRes.data?.data || []));
-            setProviderLotConfigs(Array.isArray(lotCfgRes.data) ? lotCfgRes.data : []);
+            setRawMaterials(unwrapList(rmRes));
+            setProviders(unwrapList(provRes));
+            setProviderLotConfigs(unwrapList(lotCfgRes));
         } catch (error) {
             console.error('Error fetching egg reception data:', error);
             toast.error('Error al cargar la información de recepción.');
@@ -873,8 +1264,14 @@ const EggReception = () => {
                 ? formData.certificate_urls.split(',').map(url => url.trim())
                 : [];
 
+            const cleanTarimas = useTarimas ? tarimas.map(t => ({
+                ...t,
+                storage_location: t.storage_location || globalStorageLocation || 'abajo'
+            })) : null;
+
             const payload = {
                 ...formData,
+                storage_location: globalStorageLocation || formData.storage_location || 'abajo',
                 provider_lot: formData.provider_lot.trim().toUpperCase(),
                 weight_lbs: parsedWeight,
                 total_boxes: formData.total_boxes || 0,
@@ -882,7 +1279,7 @@ const EggReception = () => {
                 truck_temperature_c: formData.truck_temperature_c ? parseFloat(formData.truck_temperature_c) : null,
                 truck_plate: formData.truck_plate || null,
                 driver_name: formData.driver_name || null,
-                tarimas_json: useTarimas ? tarimas : null,
+                tarimas_json: cleanTarimas,
                 certificate_urls: urlsArray
             };
 
@@ -893,6 +1290,12 @@ const EggReception = () => {
                 await axios.post('/api/egg-industrial/raw-materials', payload);
                 toast.success('Recepción de materia prima registrada con éxito.');
             }
+
+            try {
+                localStorage.removeItem(DRAFT_STORAGE_KEY);
+            } catch (e) { }
+            setLastDraftSavedAt(null);
+            setHasRestoredDraft(false);
 
             resetForm();
             fetchData();
@@ -909,9 +1312,18 @@ const EggReception = () => {
         setIsCreateModalOpen(false);
         setUseTarimas(false);
         setProviderLotIntel(null);
-        setTarimas([{ id: 1, tarima_number: 1, gross_weight_lbs: '', tare_weight_lbs: 60, net_weight_lbs: 0, boxes_count: 24 }]);
+        setGlobalHasCaja(true);
+        setGlobalStorageLocation('abajo');
+        setBulkAddCount(10);
+        setReceptionTareTarima(0);
+        setReceptionTareSep(48);
+        setReceptionTareCaja(30);
+        setReceptionBaseBoxes(24);
+        setHasRestoredDraft(false);
+        setTarimas([{ id: 1, tarima_number: 1, gross_weight_lbs: '', tare_weight_lbs: 78, net_weight_lbs: 0, boxes_count: 24, has_caja: true, tare_pallet_lbs: 0, tare_separador_lbs: 48, tare_caja_lbs: 30, storage_location: 'abajo' }]);
         setFormData({
             provider_id: '',
+            provider_name: '',
             egg_type: 'huevo cáscara',
             egg_color: 'blanco',
             egg_size: 'L',
@@ -919,6 +1331,7 @@ const EggReception = () => {
             fecha: new Date().toISOString().split('T')[0],
             weight_lbs: '',
             total_boxes: 0,
+            storage_location: 'abajo',
             temperature_c: '',
             truck_temperature_c: '',
             truck_plate: '',
@@ -928,6 +1341,17 @@ const EggReception = () => {
             operator_name: user?.nombre || '',
             status: 'aprobado'
         });
+    };
+
+    const handleOpenNewReception = () => {
+        setEditingId(null);
+        const restored = checkForDraft();
+        if (restored) {
+            toast.info('Se ha restaurado el borrador guardado automáticamente.', { duration: 4000 });
+        } else {
+            resetForm();
+        }
+        setIsCreateModalOpen(true);
     };
 
     const handleEdit = (rm) => {
@@ -943,9 +1367,19 @@ const EggReception = () => {
                 : (rm.tarimas_json || []);
         } catch (e) { parsedTarimas = []; }
 
+        const provCfg = providerLotConfigs.find(c => String(c.provider_id) === String(rm.provider_id));
+        setReceptionTareTarima(provCfg?.tare_tarima_lbs !== undefined ? parseFloat(provCfg.tare_tarima_lbs) : 0);
+        setReceptionTareSep(provCfg?.tare_separador_lbs !== undefined ? parseFloat(provCfg.tare_separador_lbs) : 48);
+        setReceptionTareCaja(provCfg?.tare_caja_lbs !== undefined ? parseFloat(provCfg.tare_caja_lbs) : 30);
+        setReceptionBaseBoxes(parseInt(provCfg?.base_boxes_per_tarima) || 24);
+
+        const mainLoc = rm.storage_location || 'abajo';
+        setGlobalStorageLocation(mainLoc);
+
         setEditingId(rm.id);
         setFormData({
             provider_id: String(rm.provider_id || ''),
+            provider_name: rm.provider_name || '',
             egg_type: rm.egg_type || 'huevo cáscara',
             egg_color: rm.egg_color || 'blanco',
             egg_size: rm.egg_size || 'L',
@@ -953,6 +1387,7 @@ const EggReception = () => {
             fecha: rm.fecha ? rm.fecha.split('T')[0] : (rm.created_at ? rm.created_at.split('T')[0] : todayStr),
             weight_lbs: String(rm.weight_lbs || ''),
             total_boxes: rm.total_boxes || 0,
+            storage_location: mainLoc,
             temperature_c: rm.temperature_c !== null && rm.temperature_c !== undefined ? String(rm.temperature_c) : '',
             truck_temperature_c: rm.truck_temperature_c !== null && rm.truck_temperature_c !== undefined ? String(rm.truck_temperature_c) : '',
             truck_plate: rm.truck_plate || '',
@@ -964,11 +1399,19 @@ const EggReception = () => {
         });
 
         if (Array.isArray(parsedTarimas) && parsedTarimas.length > 0) {
-            setTarimas(parsedTarimas);
+            const normalized = parsedTarimas.map((t, idx) => ({
+                ...t,
+                tarima_number: t.tarima_number || (idx + 1),
+                has_caja: t.has_caja !== undefined ? Boolean(t.has_caja) : true,
+                storage_location: t.storage_location || mainLoc
+            }));
+            setTarimas(normalized);
+            setGlobalHasCaja(normalized[0]?.has_caja !== undefined ? normalized[0].has_caja : true);
+            setGlobalStorageLocation(normalized[0]?.storage_location || mainLoc);
             setUseTarimas(true);
         } else {
             setUseTarimas(false);
-            setTarimas([{ id: 1, tarima_number: 1, gross_weight_lbs: rm.weight_lbs || '', tare_weight_lbs: 0, net_weight_lbs: rm.weight_lbs || 0, boxes_count: rm.total_boxes || 24 }]);
+            setTarimas([{ id: 1, tarima_number: 1, gross_weight_lbs: rm.weight_lbs || '', tare_weight_lbs: 0, net_weight_lbs: rm.weight_lbs || 0, boxes_count: rm.total_boxes || 24, has_caja: true, tare_pallet_lbs: 0, tare_separador_lbs: 0, tare_caja_lbs: 0, storage_location: mainLoc }]);
         }
 
         setIsCreateModalOpen(true);
@@ -1059,9 +1502,11 @@ const EggReception = () => {
             const tarimaRows = parsedTarimas.map((t, idx) => {
                 const tNum = t.tarima_number || (idx + 1);
                 const code = `TAR-${(rm.provider_lot || 'LOT').toUpperCase()}-${String(tNum).padStart(2, '0')}`;
+                const tLoc = (t.storage_location || rm.storage_location || 'abajo') === 'arriba' ? 'ARRIBA' : 'ABAJO';
                 return [
                     `Tarima #${tNum}`,
                     code,
+                    tLoc,
                     `${t.boxes_count || 0} cajas`,
                     `${parseFloat(t.gross_weight_lbs || 0).toLocaleString()} Lbs`,
                     `${parseFloat(t.tare_weight_lbs || 0).toLocaleString()} Lbs`,
@@ -1074,13 +1519,14 @@ const EggReception = () => {
                 theme: 'striped',
                 headStyles: { fillColor: [15, 23, 42], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
                 bodyStyles: { fontSize: 7.5, textColor: [30, 41, 59], cellPadding: 2 },
-                head: [['# Tarima', 'Código Identificador', 'Cajas', 'Peso Bruto', 'Tara', 'Peso Neto']],
+                head: [['# Tarima', 'Código Identificador', 'Ubicación', 'Cajas', 'Peso Bruto', 'Tara', 'Peso Neto']],
                 body: tarimaRows.length > 0 ? tarimaRows : [
-                    ['Tarima #1 (Global)', `TAR-${(rm.provider_lot || 'LOT').toUpperCase()}-01`, `${rm.total_boxes || 0} cajas`, `${parseFloat(rm.weight_lbs || 0).toLocaleString()} Lbs`, '0.00 Lbs', `${parseFloat(rm.weight_lbs || 0).toLocaleString()} Lbs`]
+                    ['Tarima #1 (Global)', `TAR-${(rm.provider_lot || 'LOT').toUpperCase()}-01`, (rm.storage_location || 'abajo') === 'arriba' ? 'ARRIBA' : 'ABAJO', `${rm.total_boxes || 0} cajas`, `${parseFloat(rm.weight_lbs || 0).toLocaleString()} Lbs`, '0.00 Lbs', `${parseFloat(rm.weight_lbs || 0).toLocaleString()} Lbs`]
                 ],
                 foot: [[
                     'TOTALES CONSOLIDADOS',
                     `${tarimaRows.length || 1} Tarimas`,
+                    '-',
                     `${rm.total_boxes || 0} cajas`,
                     '-',
                     '-',
@@ -1149,16 +1595,6 @@ const EggReception = () => {
         }
     };
 
-    const formatDate = (dateStr) => {
-        if (!dateStr) return 'N/A';
-        const d = new Date(dateStr);
-        if (isNaN(d.getTime())) return 'N/A';
-        const day = String(d.getDate()).padStart(2, '0');
-        const month = String(d.getMonth() + 1).padStart(2, '0');
-        const year = d.getFullYear();
-        return `${day}/${month}/${year}`;
-    };
-
     // Filter raw materials based on search
     const filteredMaterials = rawMaterials.filter(rm => 
         rm.provider_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -1169,6 +1605,8 @@ const EggReception = () => {
     // Helpers to style status badge
     const getStatusBadge = (status) => {
         switch (status) {
+            case 'pendiente_aprobacion':
+                return 'bg-amber-50 text-amber-800 border border-amber-300';
             case 'aprobado':
                 return 'bg-emerald-50 text-emerald-700 border border-emerald-200';
             case 'cuarentena':
@@ -1184,6 +1622,8 @@ const EggReception = () => {
 
     const getStatusIcon = (status) => {
         switch (status) {
+            case 'pendiente_aprobacion':
+                return <Clock className="h-3.5 w-3.5 text-amber-600" />;
             case 'aprobado':
                 return <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />;
             case 'cuarentena':
@@ -1194,6 +1634,36 @@ const EggReception = () => {
                 return <Ban className="h-3.5 w-3.5 text-slate-500" />;
             default:
                 return null;
+        }
+    };
+
+    const getStatusLabel = (status) => {
+        switch (status) {
+            case 'pendiente_aprobacion':
+                return 'Pendiente Aprobación';
+            case 'aprobado':
+                return 'Aprobado';
+            case 'cuarentena':
+                return 'Cuarentena';
+            case 'rechazado':
+                return 'Rechazado';
+            case 'anulado':
+                return 'Anulado';
+            default:
+                return status || 'N/A';
+        }
+    };
+
+    const handleQuickApprove = async (rm) => {
+        try {
+            await axios.put(`/api/egg-industrial/raw-materials/${rm.id}/approve`, {
+                notes: 'Aprobación directa de lote para producción'
+            });
+            toast.success(`Lote ${rm.provider_lot || '#' + rm.id} aprobado con éxito para uso en producción.`);
+            fetchData();
+        } catch (error) {
+            console.error('Error al aprobar lote de materia prima:', error);
+            toast.error(error.response?.data?.message || 'Error al aprobar el lote.');
         }
     };
 
@@ -1212,7 +1682,7 @@ const EggReception = () => {
                 </div>
                 
                 <button 
-                    onClick={() => setIsCreateModalOpen(true)}
+                    onClick={handleOpenNewReception}
                     className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-2"
                 >
                     <Plus size={16} />
@@ -1246,50 +1716,102 @@ const EggReception = () => {
                             </span>
                             <div className="flex items-center gap-2">
                                 <span className="text-[10px] text-slate-500 font-medium">Autocompleta proveedor y correlativo</span>
-                                <Link
-                                    to="/egg-industrial/config"
-                                    className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 underline"
+                                <button
+                                    type="button"
+                                    onClick={() => handleOpenLotConfig()}
+                                    className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 underline cursor-pointer bg-transparent border-0 p-0"
+                                    title="Parametrizar prefijo de lote y taras por proveedor"
                                 >
                                     <Settings size={11} />
                                     Parametrizar
-                                </Link>
+                                </button>
                             </div>
                         </div>
                         <div className="flex flex-wrap gap-2">
                             {providerLotConfigs.length > 0 ? (
                                 providerLotConfigs.map((cfg) => (
-                                    <button
+                                    <div
                                         key={cfg.id}
-                                        type="button"
-                                        onClick={() => handleProviderSelect(cfg.provider_id)}
-                                        className={`px-3 py-1.5 border rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-xs ${
+                                        className={`inline-flex items-center rounded-xl border shadow-xs transition-all ${
                                             String(formData.provider_id) === String(cfg.provider_id)
                                                 ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
                                                 : 'bg-white hover:bg-slate-100 text-slate-800 border-slate-200'
                                         }`}
                                     >
-                                        <span>📦 {cfg.provider_name}</span>
-                                        <span className={`text-[9px] px-1.5 py-0.5 rounded font-black ${
-                                            String(formData.provider_id) === String(cfg.provider_id)
-                                                ? 'bg-indigo-700 text-white'
-                                                : 'bg-indigo-50 border border-indigo-100 text-indigo-700'
-                                        }`}>
-                                            {cfg.lot_prefix}
-                                        </span>
-                                    </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleProviderSelect(cfg.provider_id)}
+                                            className="px-3 py-1.5 text-xs font-bold flex items-center gap-1.5 cursor-pointer bg-transparent border-0 text-inherit"
+                                        >
+                                            <span>📦 {cfg.provider_name}</span>
+                                            <span className={`text-[9px] px-1.5 py-0.5 rounded font-black ${
+                                                String(formData.provider_id) === String(cfg.provider_id)
+                                                    ? 'bg-indigo-700 text-white'
+                                                    : 'bg-indigo-50 border border-indigo-100 text-indigo-700'
+                                            }`}>
+                                                {cfg.lot_prefix}
+                                            </span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleOpenLotConfig(cfg.provider_id);
+                                            }}
+                                            title={`Editar parametrización de ${cfg.provider_name}`}
+                                            className={`pr-2.5 pl-1 py-1.5 cursor-pointer transition-opacity bg-transparent border-0 ${
+                                                String(formData.provider_id) === String(cfg.provider_id)
+                                                    ? 'text-indigo-200 hover:text-white'
+                                                    : 'text-slate-400 hover:text-indigo-600'
+                                            }`}
+                                        >
+                                            <Settings size={12} />
+                                        </button>
+                                    </div>
                                 ))
                             ) : (
                                 <div className="text-[11px] text-slate-500 italic flex items-center gap-2">
                                     <span>No hay proveedores con prefijo parametrizado aún.</span>
-                                    <Link to="/egg-industrial/config" className="text-indigo-600 font-bold underline">
+                                    <button
+                                        type="button"
+                                        onClick={() => handleOpenLotConfig()}
+                                        className="text-indigo-600 font-bold underline cursor-pointer bg-transparent border-0 p-0"
+                                    >
                                         Parametrizar en Configuración de Planta
-                                    </Link>
+                                    </button>
                                 </div>
                             )}
                         </div>
                     </div>
                     
                     <form onSubmit={handleSubmit} className="space-y-6">
+                        {/* Banner de Borrador Dinámico Restaurado */}
+                        {hasRestoredDraft && (
+                            <div className="p-3.5 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-300 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-amber-900 shadow-2xs">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2 bg-amber-200 text-amber-900 rounded-lg shrink-0">
+                                        <AlertTriangle size={18} />
+                                    </div>
+                                    <div>
+                                        <p className="font-extrabold text-amber-950 text-xs">
+                                            Borrador de Pesaje Restaurado ({lastDraftSavedAt})
+                                        </p>
+                                        <p className="text-[11px] text-amber-800">
+                                            Se restauraron automáticamente {tarimas.length} tarimas y datos ingresados de la sesión previa para proteger tu trabajo contra cierres accidentales.
+                                        </p>
+                                    </div>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={discardDraft}
+                                    className="px-3 py-1.5 bg-white hover:bg-rose-50 text-rose-700 border border-rose-300 rounded-lg text-xs font-bold transition-all shadow-2xs cursor-pointer self-start sm:self-auto shrink-0"
+                                    title="Descartar el borrador y volver al formulario vacío"
+                                >
+                                    Descartar Borrador
+                                </button>
+                            </div>
+                        )}
+
                         {/* Datos del Transporte (LOG-004) */}
                         <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
                             <h3 className="text-xs font-bold text-indigo-700 uppercase tracking-wide flex items-center gap-2">
@@ -1341,13 +1863,25 @@ const EggReception = () => {
                                 <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide">Proveedor de Origen *</label>
                                 <SearchableSelect
                                     options={providers}
+                                    loadOptions={loadProvidersOptions}
                                     value={formData.provider_id}
-                                    onChange={(e) => handleProviderSelect(e.target.value)}
+                                    onChange={(e, opt) => {
+                                        handleProviderSelect(e.target.value);
+                                        if (opt) {
+                                            setFormData(prev => ({
+                                                ...prev,
+                                                provider_id: e.target.value,
+                                                provider_name: opt.nombre || opt.label || prev.provider_name
+                                            }));
+                                        }
+                                    }}
                                     valueKey="id"
                                     labelKey="nombre"
                                     placeholder="Buscar proveedor..."
                                     codeKey="nrc"
                                     codeLabel="NRC"
+                                    selectedLabel={formData.provider_name}
+                                    dropdownWidth={460}
                                 />
                             </div>
 
@@ -1530,7 +2064,7 @@ const EggReception = () => {
                             </div>
 
                             {!useTarimas ? (
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                     <div className="space-y-1">
                                         <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide">Total Cajas de Huevo</label>
                                         <input
@@ -1552,97 +2086,330 @@ const EggReception = () => {
                                             step="0.01"
                                         />
                                     </div>
+                                    <div className="space-y-1">
+                                        <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide">Ubicación de Almacenamiento</label>
+                                        <select
+                                            value={formData.storage_location || 'abajo'}
+                                            onChange={(e) => setFormData({ ...formData, storage_location: e.target.value })}
+                                            className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 shadow-xs"
+                                        >
+                                            <option value="abajo">⬇ Abajo (Nivel 1 / Piso)</option>
+                                            <option value="arriba">⬆ Arriba (Nivel 2 / Rack Superior)</option>
+                                        </select>
+                                    </div>
                                 </div>
                             ) : (
                                 <div className="space-y-3">
+                                    {/* Espacio Interactivo de Edición de las 3 Taras: Tarima (Pallet), Cartón (Separador) y Caja (Jaba) */}
+                                    {/* Cabecera compacta de control de empaque y aviso de taras */}
+                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-gradient-to-r from-slate-50 to-indigo-50/40 border border-slate-200 rounded-xl shadow-2xs">
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                            <div className="p-1.5 bg-indigo-600 text-white rounded-lg shadow-xs">
+                                                <Scale size={16} />
+                                            </div>
+                                            <div>
+                                                <div className="flex items-center gap-2">
+                                                    <h4 className="text-xs font-black text-slate-900 uppercase tracking-wide">
+                                                        Registro de Tarimas en Báscula
+                                                    </h4>
+                                                    {lastDraftSavedAt && (
+                                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-full text-[10px] font-bold shadow-2xs" title="Taras y pesajes guardados dinámicamente en borrador local">
+                                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                                                            Autoguardado {lastDraftSavedAt}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <p className="text-[10px] text-slate-500 font-medium">
+                                                    Base proveedor: <span className="font-bold text-slate-700">{receptionBaseBoxes} Cajas</span> • Las taras y ubicaciones se calculan y editan directamente en la tabla de abajo.
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        {/* Switch rápido de modo de empaque, ubicación masiva y visibilidad de desglose de taras */}
+                                        <div className="flex flex-wrap items-center gap-2.5 self-start sm:self-auto">
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowDetailedTares(!showDetailedTares)}
+                                                className={`px-2.5 py-1 rounded-md text-[11px] font-bold border transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs ${
+                                                    showDetailedTares
+                                                        ? 'bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100'
+                                                        : 'bg-white border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                                                }`}
+                                                title={showDetailedTares ? 'Ocultar columnas de Tara Cartón y Tara Caja' : 'Mostrar columnas de Tara Cartón y Tara Caja'}
+                                            >
+                                                {showDetailedTares ? <EyeOff size={13} /> : <Eye size={13} />}
+                                                <span>{showDetailedTares ? 'Ocultar Tara Cartón / Caja' : 'Ver Tara Cartón / Caja'}</span>
+                                            </button>
+
+                                            <div className="flex items-center gap-1.5">
+                                                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Ubicación:</span>
+                                                <div className="inline-flex rounded-lg border border-slate-200 p-0.5 bg-white shadow-2xs">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => applyStorageLocationToAll('abajo')}
+                                                        className={`px-2 py-1 rounded-md text-[10px] font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                                                            globalStorageLocation === 'abajo'
+                                                                ? 'bg-blue-600 text-white shadow-xs'
+                                                                : 'text-slate-600 hover:text-slate-900'
+                                                        }`}
+                                                        title="Aplica ubicación Abajo (Piso) a todas las tarimas"
+                                                    >
+                                                        ⬇ Abajo (Piso)
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => applyStorageLocationToAll('arriba')}
+                                                        className={`px-2 py-1 rounded-md text-[10px] font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                                                            globalStorageLocation === 'arriba'
+                                                                ? 'bg-amber-600 text-white shadow-xs'
+                                                                : 'text-slate-600 hover:text-slate-900'
+                                                        }`}
+                                                        title="Aplica ubicación Arriba (Rack) a todas las tarimas"
+                                                    >
+                                                        ⬆ Arriba (Rack)
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            <div className="flex items-center gap-1.5">
+                                                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Empaque:</span>
+                                                <div className="inline-flex rounded-lg border border-slate-200 p-0.5 bg-white shadow-2xs">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => applyEmpaqueModeToAll(true)}
+                                                        className={`px-2 py-1 rounded-md text-[10px] font-bold transition-all cursor-pointer ${
+                                                            globalHasCaja
+                                                                ? 'bg-indigo-600 text-white shadow-xs'
+                                                                : 'text-slate-600 hover:text-slate-900'
+                                                        }`}
+                                                        title="Aplica modo Con Caja a todas las tarimas"
+                                                    >
+                                                        Con Cajas
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => applyEmpaqueModeToAll(false)}
+                                                        className={`px-2 py-1 rounded-md text-[10px] font-bold transition-all cursor-pointer ${
+                                                            !globalHasCaja
+                                                                ? 'bg-amber-600 text-white shadow-xs'
+                                                                : 'text-slate-600 hover:text-slate-900'
+                                                        }`}
+                                                        title="Aplica modo A Granel (sin cajas) a todas las tarimas"
+                                                    >
+                                                        A Granel
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
                                     <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
                                         <table className="w-full text-left text-xs">
                                             <thead className="bg-slate-50 text-slate-600 text-[10px] uppercase font-bold border-b border-slate-200">
                                                 <tr>
-                                                    <th className="p-2 text-center w-12">#</th>
-                                                    <th className="p-2 w-28">Cajas</th>
-                                                    <th className="p-2">Peso Bruto (lb)</th>
-                                                    <th className="p-2">Tara (lb)</th>
-                                                    <th className="p-2 text-right">Peso Neto (lb)</th>
+                                                    <th className="p-2 text-center w-10">#</th>
+                                                    <th className="p-2 w-20 text-center">Empaque</th>
+                                                    <th className="p-2 w-20 text-center">Ubicación</th>
+                                                    <th className="p-2 w-16 text-center">Cajas</th>
+                                                    <th className="p-2 w-24 text-right">Peso Bruto (lb)</th>
+                                                    <th className="p-2 w-24 text-right">Tara Tarima (lb)</th>
+                                                    {showDetailedTares && (
+                                                        <>
+                                                            <th className="p-2 w-24 text-right bg-indigo-50/50 text-indigo-900">Tara Cartón (lb)</th>
+                                                            <th className="p-2 w-24 text-right bg-indigo-50/50 text-indigo-900">Tara Caja (lb)</th>
+                                                        </>
+                                                    )}
+                                                    <th className="p-2 w-28 text-right">
+                                                        <div className="flex items-center justify-end gap-1">
+                                                            <span>Tara Total (lb)</span>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setShowDetailedTares(!showDetailedTares)}
+                                                                className="text-slate-400 hover:text-indigo-600 transition-colors p-0.5 cursor-pointer"
+                                                                title={showDetailedTares ? "Ocultar columnas de cartón y caja" : "Mostrar columnas de cartón y caja"}
+                                                            >
+                                                                {showDetailedTares ? <EyeOff size={12} /> : <Eye size={12} />}
+                                                            </button>
+                                                        </div>
+                                                    </th>
+                                                    <th className="p-2 text-right w-24">Peso Neto (lb)</th>
                                                     <th className="p-2 w-16 text-center">Acciones</th>
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-slate-100 font-semibold text-slate-800">
-                                                {tarimas.map((t, idx) => (
-                                                    <tr key={t.id || idx} className="hover:bg-slate-50">
-                                                        <td className="p-2 text-center text-slate-500 text-xs font-bold">{t.tarima_number}</td>
-                                                        <td className="p-2">
-                                                            <input
-                                                                type="number"
-                                                                value={t.boxes_count}
-                                                                onChange={(e) => updateTarima(idx, 'boxes_count', e.target.value)}
-                                                                className="w-full px-2 py-1 bg-white border border-slate-300 rounded-lg text-xs text-slate-800 font-bold text-center"
-                                                            />
-                                                        </td>
-                                                        <td className="p-2">
-                                                            <input
-                                                                type="number"
-                                                                step="0.1"
-                                                                placeholder="0.0"
-                                                                value={t.gross_weight_lbs}
-                                                                onChange={(e) => updateTarima(idx, 'gross_weight_lbs', e.target.value)}
-                                                                className="w-full px-2 py-1 bg-white border border-slate-300 rounded-lg text-xs text-slate-800 font-bold"
-                                                            />
-                                                        </td>
-                                                        <td className="p-2">
-                                                            <input
-                                                                type="number"
-                                                                step="0.1"
-                                                                value={t.tare_weight_lbs}
-                                                                onChange={(e) => updateTarima(idx, 'tare_weight_lbs', e.target.value)}
-                                                                className="w-full px-2 py-1 bg-white border border-slate-300 rounded-lg text-xs text-slate-600"
-                                                            />
-                                                        </td>
-                                                        <td className="p-2 text-right font-black text-emerald-700 text-xs">
-                                                            {parseFloat(t.net_weight_lbs || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} lb
-                                                        </td>
-                                                        <td className="p-2 text-center">
-                                                            <div className="flex items-center justify-center gap-1">
+                                                {tarimas.map((t, idx) => {
+                                                    const hasC = t.has_caja !== undefined ? t.has_caja : globalHasCaja;
+
+                                                    return (
+                                                        <tr key={t.id || idx} className="hover:bg-slate-50">
+                                                            <td className="p-2 text-center text-slate-500 text-xs font-bold">{t.tarima_number}</td>
+                                                            <td className="p-2 text-center">
                                                                 <button
                                                                     type="button"
-                                                                    onClick={() => handleOpenPrintTarima(t, tarimas)}
-                                                                    className="p-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg border border-indigo-200 transition-colors shadow-xs"
-                                                                    title={`Imprimir Ficha / Etiqueta de Tarima #${t.tarima_number}`}
+                                                                    onClick={() => updateTarima(idx, 'has_caja', !hasC)}
+                                                                    className={`px-2 py-0.5 rounded-md text-[10px] font-bold border transition-colors ${
+                                                                        hasC
+                                                                            ? 'bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100'
+                                                                            : 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100'
+                                                                    }`}
+                                                                    title="Clic para alternar entre Con Caja y A Granel"
                                                                 >
-                                                                    <Printer size={14} />
+                                                                    {hasC ? 'Con Caja' : 'A Granel'}
                                                                 </button>
-                                                                {tarimas.length > 1 && (
+                                                            </td>
+                                                            <td className="p-2 text-center">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => updateTarima(idx, 'storage_location', (t.storage_location || 'abajo') === 'abajo' ? 'arriba' : 'abajo')}
+                                                                    className={`px-2 py-0.5 rounded-md text-[10px] font-bold border transition-colors cursor-pointer inline-flex items-center gap-1 shadow-2xs ${
+                                                                        (t.storage_location || 'abajo') === 'abajo'
+                                                                            ? 'bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100'
+                                                                            : 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100'
+                                                                    }`}
+                                                                    title="Clic para alternar entre Abajo (Piso) y Arriba (Rack)"
+                                                                >
+                                                                    {(t.storage_location || 'abajo') === 'abajo' ? '⬇ Abajo' : '⬆ Arriba'}
+                                                                </button>
+                                                            </td>
+                                                            <td className="p-2">
+                                                                <input
+                                                                    type="number"
+                                                                    value={t.boxes_count}
+                                                                    onChange={(e) => updateTarima(idx, 'boxes_count', e.target.value)}
+                                                                    className="w-full px-1.5 py-1 bg-white border border-slate-300 rounded-lg text-xs text-slate-800 font-bold text-center focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+                                                                />
+                                                            </td>
+                                                            <td className="p-2">
+                                                                <input
+                                                                    type="number"
+                                                                    step="0.1"
+                                                                    placeholder="0.0"
+                                                                    value={t.gross_weight_lbs}
+                                                                    onChange={(e) => updateTarima(idx, 'gross_weight_lbs', e.target.value)}
+                                                                    className="w-full px-2 py-1 bg-white border border-slate-300 rounded-lg text-xs text-slate-800 font-bold text-right focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+                                                                />
+                                                            </td>
+                                                            <td className="p-2">
+                                                                <input
+                                                                    type="number"
+                                                                    step="0.1"
+                                                                    min="0"
+                                                                    placeholder="0.0"
+                                                                    value={t.tare_pallet_lbs !== undefined ? t.tare_pallet_lbs : ''}
+                                                                    onChange={(e) => updateTarima(idx, 'tare_pallet_lbs', e.target.value)}
+                                                                    className="w-full px-2 py-1 bg-white border border-slate-300 rounded-lg text-xs text-slate-800 font-bold text-right focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+                                                                    title="Tara física del pallet/tarima en báscula"
+                                                                />
+                                                            </td>
+                                                            {showDetailedTares && (
+                                                                <>
+                                                                    <td className="p-2 bg-indigo-50/20">
+                                                                        <input
+                                                                            type="number"
+                                                                            step="0.1"
+                                                                            min="0"
+                                                                            placeholder="0.0"
+                                                                            value={t.tare_separador_lbs !== undefined ? t.tare_separador_lbs : ''}
+                                                                            onChange={(e) => updateTarima(idx, 'tare_separador_lbs', e.target.value)}
+                                                                            className="w-full px-2 py-1 bg-white border border-indigo-200 rounded-lg text-xs text-slate-800 font-bold text-right focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+                                                                            title="Tara de separadores de cartón"
+                                                                        />
+                                                                    </td>
+                                                                    <td className="p-2 bg-indigo-50/20">
+                                                                        <input
+                                                                            type="number"
+                                                                            step="0.1"
+                                                                            min="0"
+                                                                            placeholder="0.0"
+                                                                            value={t.tare_caja_lbs !== undefined ? t.tare_caja_lbs : ''}
+                                                                            onChange={(e) => updateTarima(idx, 'tare_caja_lbs', e.target.value)}
+                                                                            className="w-full px-2 py-1 bg-white border border-indigo-200 rounded-lg text-xs text-slate-800 font-bold text-right focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+                                                                            title="Tara de cajas o jabas plásticas"
+                                                                        />
+                                                                    </td>
+                                                                </>
+                                                            )}
+                                                            <td className="p-2">
+                                                                <input
+                                                                    type="number"
+                                                                    step="0.01"
+                                                                    value={t.tare_weight_lbs}
+                                                                    onChange={(e) => updateTarima(idx, 'tare_weight_lbs', e.target.value)}
+                                                                    className="w-full px-2 py-1 bg-indigo-50/50 border border-indigo-200 rounded-lg text-xs text-indigo-900 font-black text-right focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+                                                                    title={`Tara Total: ${t.tare_weight_lbs} lb (Pallet: ${t.tare_pallet_lbs || 0} lb + Cartón: ${t.tare_separador_lbs || 0} lb + Caja: ${t.tare_caja_lbs || 0} lb)`}
+                                                                />
+                                                            </td>
+                                                            <td className="p-2 text-right font-black text-emerald-700 text-xs">
+                                                                {parseFloat(t.net_weight_lbs || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} lb
+                                                            </td>
+                                                            <td className="p-2 text-center">
+                                                                <div className="flex items-center justify-center gap-1">
                                                                     <button
                                                                         type="button"
-                                                                        onClick={() => removeTarima(idx)}
-                                                                        className="p-1 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition-colors"
-                                                                        title="Eliminar Tarima"
+                                                                        onClick={() => handleOpenPrintTarima(t, tarimas)}
+                                                                        className="p-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg border border-indigo-200 transition-colors shadow-xs"
+                                                                        title={`Imprimir Ficha / Etiqueta de Tarima #${t.tarima_number}`}
                                                                     >
-                                                                        <XCircle size={15} />
+                                                                        <Printer size={14} />
                                                                     </button>
-                                                                )}
-                                                            </div>
-                                                        </td>
-                                                    </tr>
-                                                ))}
+                                                                    {tarimas.length > 1 && (
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => removeTarima(idx)}
+                                                                            className="p-1 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition-colors"
+                                                                            title="Eliminar Tarima"
+                                                                        >
+                                                                            <XCircle size={15} />
+                                                                        </button>
+                                                                    )}
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
                                             </tbody>
                                         </table>
                                     </div>
 
-                                    <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
-                                        <div className="flex items-center gap-2">
+                                    <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 pt-2">
+                                        <div className="flex flex-wrap items-center gap-2">
                                             <button
                                                 type="button"
-                                                onClick={addTarima}
+                                                onClick={() => addTarima(24, globalHasCaja)}
                                                 className="px-3 py-1.5 bg-white hover:bg-slate-100 text-indigo-700 rounded-xl text-xs font-bold border border-slate-200 flex items-center gap-1.5 shadow-xs transition-all"
                                             >
                                                 <Plus size={14} />
                                                 Agregar Tarima #{tarimas.length + 1}
                                             </button>
+
+                                            {/* Control de adición de múltiples tarimas */}
+                                            <div className="inline-flex items-center gap-1.5 bg-white p-1 rounded-xl border border-slate-200 shadow-xs">
+                                                <span className="text-[11px] font-bold text-slate-500 pl-1.5">Lote:</span>
+                                                <input
+                                                    type="number"
+                                                    min="1"
+                                                    max="100"
+                                                    value={bulkAddCount}
+                                                    onChange={(e) => setBulkAddCount(Math.max(1, parseInt(e.target.value) || 1))}
+                                                    className="w-14 px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-center text-slate-800 focus:bg-white"
+                                                    placeholder="10"
+                                                    title="Cantidad de tarimas a generar en bloque"
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={() => addMultipleTarimas(bulkAddCount, 24, globalHasCaja)}
+                                                    className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-xs font-bold border border-indigo-200 flex items-center gap-1 transition-all"
+                                                    title={`Agregar ${bulkAddCount} tarimas de 24 cajas de un solo`}
+                                                >
+                                                    <Layers size={13} />
+                                                    + Agregar {bulkAddCount} Tarimas
+                                                </button>
+                                            </div>
+
                                             <button
                                                 type="button"
                                                 onClick={() => handleOpenPrintTarima(tarimas[0], tarimas)}
-                                                className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl text-xs font-bold border border-indigo-200 flex items-center gap-1.5 shadow-xs transition-all"
+                                                className="px-3 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-xl text-xs font-bold border border-slate-200 flex items-center gap-1.5 shadow-xs transition-all"
                                                 title="Imprimir etiquetas de todas las tarimas registradas"
                                             >
                                                 <Printer size={14} />
@@ -1668,9 +2435,10 @@ const EggReception = () => {
                                     onChange={(e) => setFormData({ ...formData, status: e.target.value })}
                                     className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 shadow-xs"
                                 >
-                                    <option value="aprobado">Aprobado para Producción</option>
-                                    <option value="cuarentena">En Cuarentena</option>
-                                    <option value="rechazado">Rechazado (No Apto)</option>
+                                    <option value="pendiente_aprobacion">⏳ Pendiente de Aprobación (Por defecto)</option>
+                                    <option value="aprobado">✅ Aprobado para Producción</option>
+                                    <option value="cuarentena">⚠️ En Cuarentena</option>
+                                    <option value="rechazado">❌ Rechazado (No Apto)</option>
                                 </select>
                             </div>
 
@@ -1836,7 +2604,7 @@ const EggReception = () => {
                                                     <div className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-tight">
                                                         <span className={`flex items-center gap-1 px-2 py-0.5 rounded-full font-bold ${getStatusBadge(rm.status)}`}>
                                                             {getStatusIcon(rm.status)}
-                                                            {rm.status}
+                                                            {getStatusLabel(rm.status)}
                                                         </span>
                                                     </div>
                                                 </td>
@@ -2071,6 +2839,18 @@ const EggReception = () => {
                                                             )}
                                                         </div>
 
+                                                        {/* Botón Rápido de Aprobación para Producción */}
+                                                        {['pendiente_aprobacion', 'cuarentena'].includes(rm.status) && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleQuickApprove(rm)}
+                                                                className="p-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg border border-emerald-300 transition-colors shadow-xs"
+                                                                title="Aprobar Lote para Producción"
+                                                            >
+                                                                <Check size={13} />
+                                                            </button>
+                                                        )}
+
                                                         {/* 3. Editar Recepción */}
                                                         {rm.status !== 'anulado' && (
                                                             <button
@@ -2120,308 +2900,22 @@ const EggReception = () => {
                 </div>
 
             {/* Modal de Detalle de Recepción e Impresión Individual de Tarimas */}
-            {viewingReception && (() => {
-                let parsedTarimas = [];
-                try {
-                    parsedTarimas = typeof viewingReception.tarimas_json === 'string'
-                        ? JSON.parse(viewingReception.tarimas_json || '[]')
-                        : (viewingReception.tarimas_json || []);
-                } catch (e) {
-                    parsedTarimas = [];
-                }
-                if (!Array.isArray(parsedTarimas) || parsedTarimas.length === 0) {
-                    parsedTarimas = [{
-                        tarima_number: 1,
-                        boxes_count: viewingReception.total_boxes || 0,
-                        gross_weight_lbs: viewingReception.weight_lbs || 0,
-                        tare_weight_lbs: 0,
-                        net_weight_lbs: viewingReception.weight_lbs || 0
-                    }];
-                }
-                const recData = {
-                    reception_id: viewingReception.id,
-                    provider_name: viewingReception.provider_name,
-                    provider_lot: viewingReception.provider_lot,
-                    fecha: viewingReception.fecha || viewingReception.created_at,
-                    egg_type: viewingReception.egg_type,
-                    egg_color: viewingReception.egg_color,
-                    egg_size: viewingReception.egg_size,
-                    temperature_c: viewingReception.temperature_c,
-                    truck_temperature_c: viewingReception.truck_temperature_c,
-                    truck_plate: viewingReception.truck_plate,
-                    driver_name: viewingReception.driver_name,
-                    operator_name: viewingReception.operator_name,
-                    company_name: user?.company_name || 'ANDELSA, S.A. DE C.V.'
-                };
-
-                return (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
-                        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-2xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto space-y-5 text-slate-900">
-                            {/* Modal Header */}
-                            <div className="flex items-center justify-between border-b border-slate-200 pb-4">
-                                <div className="flex items-center gap-3">
-                                    <div className="p-2.5 bg-indigo-50 rounded-xl border border-indigo-100 text-indigo-600">
-                                        <Boxes className="h-6 w-6" />
-                                    </div>
-                                    <div>
-                                        <div className="flex items-center gap-2">
-                                            <h2 className="text-base font-bold text-slate-900 tracking-tight">
-                                                Recepción #{viewingReception.id} - Lote: {viewingReception.provider_lot}
-                                            </h2>
-                                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-tight flex items-center gap-1 ${getStatusBadge(viewingReception.status)}`}>
-                                                {getStatusIcon(viewingReception.status)}
-                                                {viewingReception.status}
-                                            </span>
-                                        </div>
-                                        <p className="text-xs text-slate-500 font-medium">
-                                            Proveedor: <strong className="text-slate-700">{viewingReception.provider_name}</strong> | Fecha: {formatDate(viewingReception.fecha || viewingReception.created_at)}
-                                        </p>
-                                    </div>
-                                </div>
-                                <button
-                                    type="button"
-                                    onClick={() => setViewingReception(null)}
-                                    className="text-slate-400 hover:text-slate-700 p-1.5 rounded-xl hover:bg-slate-100 transition-colors"
-                                >
-                                    <XCircle size={20} />
-                                </button>
-                            </div>
-
-                            {/* Cards de Resumen */}
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                                <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-1 text-xs">
-                                    <span className="text-[10px] font-bold text-indigo-700 uppercase tracking-wide flex items-center gap-1">
-                                        <Boxes size={12} /> Datos de Producto
-                                    </span>
-                                    <div className="text-slate-700 space-y-0.5 pt-1">
-                                        <p><span className="text-slate-400 font-medium">Tipo:</span> <strong className="capitalize">{viewingReception.egg_type}</strong></p>
-                                        {viewingReception.egg_type === 'huevo cáscara' && (
-                                            <p><span className="text-slate-400 font-medium">Color / Talla:</span> <strong>{viewingReception.egg_color} / {viewingReception.egg_size}</strong></p>
-                                        )}
-                                        <p><span className="text-slate-400 font-medium">Temp. Huevo:</span> <strong>{viewingReception.temperature_c ? `${viewingReception.temperature_c}°C` : 'N/R'}</strong></p>
-                                        <p><span className="text-slate-400 font-medium">Inspector:</span> <strong>{viewingReception.operator_name || 'N/A'}</strong></p>
-                                    </div>
-                                </div>
-
-                                <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-1 text-xs">
-                                    <span className="text-[10px] font-bold text-sky-700 uppercase tracking-wide flex items-center gap-1">
-                                        <Truck size={12} /> Transporte & Cadena de Frío
-                                    </span>
-                                    <div className="text-slate-700 space-y-0.5 pt-1">
-                                        <p><span className="text-slate-400 font-medium">Placa:</span> <strong>{viewingReception.truck_plate || 'Sin transporte'}</strong></p>
-                                        <p><span className="text-slate-400 font-medium">Motorista:</span> <strong>{viewingReception.driver_name || 'N/A'}</strong></p>
-                                        <p><span className="text-slate-400 font-medium">Termoking:</span> <strong>{viewingReception.truck_temperature_c ? `${viewingReception.truck_temperature_c}°C` : 'N/R'}</strong></p>
-                                        <p><span className="text-slate-400 font-medium">Ingreso:</span> <strong>{formatDate(viewingReception.fecha || viewingReception.created_at)}</strong></p>
-                                    </div>
-                                </div>
-
-                                <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-1 text-xs">
-                                    <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wide flex items-center gap-1">
-                                        <FileText size={12} /> Balance de Peso & Stock
-                                    </span>
-                                    <div className="text-slate-700 space-y-0.5 pt-1">
-                                        <p><span className="text-slate-400 font-medium">Total Cajas:</span> <strong className="text-indigo-700">{viewingReception.total_boxes || 0} cjs</strong></p>
-                                        <p><span className="text-slate-400 font-medium">Peso Neto Inicial:</span> <strong className="text-slate-900">{parseFloat(viewingReception.weight_lbs || 0).toLocaleString()} Lbs</strong></p>
-                                        <p><span className="text-slate-400 font-medium">Stock Remanente:</span> <strong className="text-emerald-700">{parseFloat(viewingReception.stock_lbs || 0).toLocaleString()} Lbs</strong></p>
-                                        <p><span className="text-slate-400 font-medium">Tarimas Pesadas:</span> <strong>{parsedTarimas.length}</strong></p>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Card de Calidad y Clasificación (LAB-004) */}
-                            <div className="bg-gradient-to-r from-amber-50/80 via-orange-50/60 to-amber-50/80 border border-amber-200/90 rounded-xl p-4 space-y-3 shadow-2xs">
-                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-amber-200/60 pb-2.5">
-                                    <div className="flex items-center gap-2">
-                                        <div className="p-1.5 bg-amber-500 text-white rounded-lg shadow-2xs">
-                                            <ShieldCheck size={16} />
-                                        </div>
-                                        <div>
-                                            <h4 className="text-xs font-bold text-amber-950 uppercase tracking-wide flex items-center gap-1.5">
-                                                Dictamen Técnico y Clasificación de Calidad (LAB-004)
-                                            </h4>
-                                            <p className="text-[11px] text-amber-800/80 font-medium">
-                                                Evaluación realizada por el personal técnico de Control de Calidad
-                                            </p>
-                                        </div>
-                                    </div>
-
-                                    <div className="flex items-center gap-2 self-start sm:self-auto">
-                                        <button
-                                            type="button"
-                                            disabled={printingPdfId === viewingReception.id}
-                                            onClick={() => handlePrintLab001(viewingReception.id, viewingReception.provider_lot)}
-                                            className="px-3 py-1.5 bg-white hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-xl text-xs font-bold transition-all shadow-2xs flex items-center gap-1.5 disabled:opacity-50"
-                                            title="Imprimir Formato Oficial LAB 001 (Rev. 7.03.24)"
-                                        >
-                                            {printingPdfId === viewingReception.id ? <Loader2 className="animate-spin" size={13} /> : <Printer size={13} />}
-                                            <span>Imprimir LAB 001</span>
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => handleOpenQualityModal(viewingReception)}
-                                            className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5"
-                                        >
-                                            <ShieldCheck size={13} />
-                                            <span>{viewingReception.quality_inspector_name ? 'Editar Dictamen LAB 001' : 'Evaluar Calidad (LAB 001)'}</span>
-                                        </button>
-                                    </div>
-                                </div>
-
-                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                                    <div>
-                                        <span className="text-[10px] text-slate-500 font-bold uppercase block">Inspector Calidad:</span>
-                                        <strong className="text-slate-900">{viewingReception.quality_inspector_name || 'Pendiente de asignar'}</strong>
-                                    </div>
-                                    <div>
-                                        <span className="text-[10px] text-slate-500 font-bold uppercase block">Clasificación / Grado:</span>
-                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg font-black text-indigo-700 bg-white border border-indigo-200 text-xs shadow-2xs mt-0.5">
-                                            <Award size={12} className="text-indigo-600" />
-                                            {viewingReception.egg_classification || 'Grado A'} ({viewingReception.egg_size || 'L'})
-                                        </span>
-                                    </div>
-                                    <div>
-                                        <span className="text-[10px] text-slate-500 font-bold uppercase block">Estado Dictamen:</span>
-                                        <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-tight mt-0.5 ${
-                                            viewingReception.quality_status === 'aprobado'
-                                                ? 'bg-emerald-100 text-emerald-800'
-                                                : viewingReception.quality_status === 'rechazado'
-                                                ? 'bg-rose-100 text-rose-800'
-                                                : viewingReception.quality_status === 'condicional'
-                                                ? 'bg-sky-100 text-sky-800'
-                                                : 'bg-amber-100 text-amber-800'
-                                        }`}>
-                                            {viewingReception.quality_status || 'Pendiente'}
-                                        </span>
-                                    </div>
-                                    <div>
-                                        <span className="text-[10px] text-slate-500 font-bold uppercase block">Muestreo Defectos:</span>
-                                        <div className="text-slate-700 font-semibold text-[11px] mt-0.5">
-                                            <span>Rotos: <strong className="text-rose-700">{viewingReception.quality_defect_broken_pct || 0}%</strong></span>
-                                            <span className="mx-1.5">•</span>
-                                            <span>Sucios: <strong className="text-amber-700">{viewingReception.quality_defect_dirty_pct || 0}%</strong></span>
-                                            {viewingReception.quality_brix && (
-                                                <>
-                                                    <span className="mx-1.5">•</span>
-                                                    <span>Brix: <strong className="text-indigo-700">{viewingReception.quality_brix}°Bx</strong></span>
-                                                </>
-                                            )}
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {viewingReception.quality_notes && (
-                                    <div className="text-xs bg-white/90 p-2.5 rounded-xl border border-amber-200 text-slate-800">
-                                        <span className="font-bold text-amber-900 block text-[10px] uppercase tracking-wide">Observaciones Técnicas:</span>
-                                        <p className="mt-0.5 text-slate-700 font-medium">{viewingReception.quality_notes}</p>
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Tabla de Tarimas */}
-                            <div className="space-y-2">
-                                <div className="flex items-center justify-between">
-                                    <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-                                        <Boxes size={14} className="text-indigo-600" />
-                                        Tarimas Registradas en Báscula ({parsedTarimas.length})
-                                    </h3>
-                                    <button
-                                        type="button"
-                                        onClick={() => handleOpenPrintTarima(parsedTarimas[0], parsedTarimas, recData)}
-                                        className="px-3 py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 rounded-xl text-xs font-bold border border-sky-200 transition-colors flex items-center gap-1.5 shadow-xs"
-                                    >
-                                        <Printer size={13} />
-                                        Imprimir Todas las Tarimas
-                                    </button>
-                                </div>
-
-                                <div className="overflow-x-auto rounded-xl border border-slate-200">
-                                    <table className="w-full text-left text-xs">
-                                        <thead className="bg-slate-50 text-slate-600 font-bold uppercase text-[10px] border-b border-slate-200">
-                                            <tr>
-                                                <th className="p-2.5 text-center w-12">#</th>
-                                                <th className="p-2.5">Código QR / Identificador</th>
-                                                <th className="p-2.5 text-right">Cajas</th>
-                                                <th className="p-2.5 text-right">Peso Bruto</th>
-                                                <th className="p-2.5 text-right">Tara</th>
-                                                <th className="p-2.5 text-right">Peso Neto</th>
-                                                <th className="p-2.5 text-center w-36">Impresión</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-slate-100 font-semibold text-slate-800">
-                                            {parsedTarimas.map((t, idx) => {
-                                                const tNum = t.tarima_number || (idx + 1);
-                                                const code = `TAR-${(viewingReception.provider_lot || 'LOT').toUpperCase()}-${String(tNum).padStart(2, '0')}`;
-                                                return (
-                                                    <tr key={t.id || idx} className="hover:bg-slate-50">
-                                                        <td className="p-2.5 text-center font-bold text-slate-500">{tNum}</td>
-                                                        <td className="p-2.5">
-                                                            <span className="font-mono text-xs font-bold bg-slate-100 text-indigo-700 px-2 py-0.5 rounded border border-slate-200">
-                                                                {code}
-                                                            </span>
-                                                        </td>
-                                                        <td className="p-2.5 text-right font-bold text-slate-700">{t.boxes_count || 0} cjs</td>
-                                                        <td className="p-2.5 text-right text-slate-600">{parseFloat(t.gross_weight_lbs || 0).toLocaleString()} lb</td>
-                                                        <td className="p-2.5 text-right text-slate-400">{parseFloat(t.tare_weight_lbs || 0).toLocaleString()} lb</td>
-                                                        <td className="p-2.5 text-right font-black text-emerald-700">
-                                                            {parseFloat(t.net_weight_lbs || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} lb
-                                                        </td>
-                                                        <td className="p-2.5 text-center">
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => handleOpenPrintTarima(t, parsedTarimas, recData)}
-                                                                className="px-2.5 py-1 bg-white hover:bg-sky-50 text-sky-700 rounded-lg border border-slate-200 hover:border-sky-300 text-[11px] font-bold flex items-center justify-center gap-1 mx-auto transition-colors shadow-xs"
-                                                            >
-                                                                <Printer size={12} />
-                                                                Imprimir Tarima #{tNum}
-                                                            </button>
-                                                        </td>
-                                                    </tr>
-                                                );
-                                            })}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-
-                            {/* Modal Footer */}
-                            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t border-slate-200">
-                                <button
-                                    type="button"
-                                    onClick={() => handlePrintReceptionSummary(viewingReception)}
-                                    className="w-full sm:w-auto px-4 py-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl text-xs font-bold border border-indigo-200 flex items-center justify-center gap-2 transition-colors shadow-xs"
-                                >
-                                    <Download size={15} />
-                                    Imprimir Resumen de Recepción (PDF LOG-004)
-                                </button>
-                                <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-                                    <button
-                                        type="button"
-                                        onClick={() => setViewingReception(null)}
-                                        className="px-5 py-2.5 bg-white hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold border border-slate-300 transition-colors shadow-xs"
-                                    >
-                                        Cerrar
-                                    </button>
-                                    {viewingReception.status !== 'anulado' && (
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                const rec = viewingReception;
-                                                setViewingReception(null);
-                                                handleEdit(rec);
-                                            }}
-                                            className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-2"
-                                        >
-                                            <Pencil size={14} />
-                                            Editar Recepción Completa
-                                        </button>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                );
-            })()}
-
+            <EggReceptionDetailModal
+                isOpen={Boolean(viewingReception)}
+                onClose={() => setViewingReception(null)}
+                reception={viewingReception}
+                user={user}
+                formatDate={formatDate}
+                getStatusBadge={getStatusBadge}
+                getStatusIcon={getStatusIcon}
+                printingPdfId={printingPdfId}
+                handlePrintLab001={handlePrintLab001}
+                handleOpenQualityModal={handleOpenQualityModal}
+                handleOpenPrintTarima={handleOpenPrintTarima}
+                handlePrintReceptionSummary={handlePrintReceptionSummary}
+                handleEdit={handleEdit}
+            />
+
             {voidConfirmId !== null && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
                     <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-2xl max-w-md w-full mx-4 text-slate-900">
@@ -2441,1141 +2935,22 @@ const EggReception = () => {
             )}
 
             {/* Modal de Evaluación y Reporte de Calidad Oficial (LAB 001, Rev. 7.03.24) */}
-            {qualityModal.isOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-3 sm:p-4">
-                    <div className="bg-white border border-slate-200 rounded-2xl shadow-2xl max-w-4xl w-full mx-auto max-h-[92vh] flex flex-col text-slate-900 overflow-hidden">
-                        {/* Modal Header */}
-                        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3.5 bg-slate-50/80">
-                            <div className="flex items-center gap-3">
-                                <div className="p-2.5 bg-amber-500 text-white rounded-xl shadow-xs">
-                                    <ShieldCheck className="h-6 w-6" />
-                                </div>
-                                <div>
-                                    <div className="flex items-center gap-2">
-                                        <h2 className="text-base font-black text-slate-900 tracking-tight">
-                                            Laboratorio de Control de Calidad • Reporte de Materia Prima
-                                        </h2>
-                                        <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-amber-100 text-amber-900 border border-amber-300">
-                                            LAB 001 • Rev. 7.03.24
-                                        </span>
-                                    </div>
-                                    <p className="text-xs text-slate-500 font-medium">
-                                        Complemento técnico oficial de recepción, muestreo y dictamen de lote
-                                    </p>
-                                </div>
-                            </div>
-                            <div className="flex items-center gap-2 flex-wrap">
-                                <button
-                                    type="button"
-                                    disabled={printingPdfId === qualityModal.rm?.id}
-                                    onClick={handlePrintOriginCertFromModal}
-                                    className="px-3 py-1.5 bg-white hover:bg-teal-50 text-teal-900 border border-teal-300 rounded-xl text-xs font-bold transition-all shadow-2xs flex items-center gap-1.5 disabled:opacity-50"
-                                    title="Imprimir Certificado de Calidad de Origen (Proveedor a ANDELSA) en PDF"
-                                >
-                                    {printingPdfId === qualityModal.rm?.id ? <Loader2 className="animate-spin" size={14} /> : <ShieldCheck size={14} className="text-teal-700" />}
-                                    <span className="hidden sm:inline">Cert. Origen (PDF)</span>
-                                </button>
-                                <button
-                                    type="button"
-                                    disabled={printingPdfId === qualityModal.rm?.id}
-                                    onClick={handleDownloadOriginCertDocxFromModal}
-                                    className="px-3 py-1.5 bg-white hover:bg-teal-50 text-teal-900 border border-teal-300 rounded-xl text-xs font-bold transition-all shadow-2xs flex items-center gap-1.5 disabled:opacity-50"
-                                    title="Descargar Certificado de Calidad de Origen en formato Word (.docx)"
-                                >
-                                    <FileText size={14} className="text-teal-600" />
-                                    <span className="hidden sm:inline">Origen (Word)</span>
-                                </button>
-                                <button
-                                    type="button"
-                                    disabled={printingPdfId === qualityModal.rm?.id}
-                                    onClick={handlePrintLab001FromModal}
-                                    className="px-3 py-1.5 bg-white hover:bg-amber-50 text-amber-900 border border-amber-300 rounded-xl text-xs font-bold transition-all shadow-2xs flex items-center gap-1.5 disabled:opacity-50"
-                                    title="Imprimir formato físico oficial LAB 001 en PDF"
-                                >
-                                    {printingPdfId === qualityModal.rm?.id ? <Loader2 className="animate-spin" size={14} /> : <Printer size={14} className="text-amber-700" />}
-                                    <span className="hidden sm:inline">{printingPdfId === qualityModal.rm?.id ? 'Generando...' : 'LAB 001'}</span>
-                                </button>
-                                <button
-                                    type="button"
-                                    disabled={printingPdfId === qualityModal.rm?.id}
-                                    onClick={handleDownloadLab001DocxFromModal}
-                                    className="px-3 py-1.5 bg-white hover:bg-indigo-50 text-indigo-900 border border-indigo-200 rounded-xl text-xs font-bold transition-all shadow-2xs flex items-center gap-1.5 disabled:opacity-50"
-                                    title="Descargar dictamen técnico oficial en formato Word editable (.docx)"
-                                >
-                                    <FileText size={14} className="text-indigo-600" />
-                                    <span className="hidden sm:inline">Word (.docx)</span>
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setQualityModal(prev => ({ ...prev, isOpen: false }))}
-                                    className="text-slate-400 hover:text-slate-700 p-1.5 rounded-xl hover:bg-slate-100 transition-colors"
-                                >
-                                    <XCircle size={20} />
-                                </button>
-                            </div>
-                        </div>
-
-                        {/* Resumen del Lote en Cabecera */}
-                        {qualityModal.rm && (
-                            <div className="bg-amber-50/60 border-b border-amber-200/70 px-5 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
-                                <div className="flex items-center gap-4 flex-wrap">
-                                    <div>
-                                        <span className="text-[10px] font-bold text-amber-900/70 uppercase block">Lote:</span>
-                                        <strong className="text-slate-900 font-black">{qualityModal.provider_lot || qualityModal.rm.provider_lot}</strong>
-                                    </div>
-                                    <div>
-                                        <span className="text-[10px] font-bold text-amber-900/70 uppercase block">Proveedor:</span>
-                                        <strong className="text-slate-800">{qualityModal.rm.provider_name}</strong>
-                                    </div>
-                                    <div>
-                                        <span className="text-[10px] font-bold text-amber-900/70 uppercase block">Cajas / Peso:</span>
-                                        <strong className="text-slate-800">{qualityModal.total_boxes || qualityModal.rm.total_boxes || 0} cjs (~{parseFloat(qualityModal.rm.weight_lbs || 0).toLocaleString()} Lbs)</strong>
-                                    </div>
-                                    <div>
-                                        <span className="text-[10px] font-bold text-amber-900/70 uppercase block">Ingreso:</span>
-                                        <strong className="text-slate-800">{formatDate(qualityModal.plant_entry_date)}</strong>
-                                    </div>
-                                </div>
-                                <div className="flex items-center gap-1.5">
-                                    <span className="text-[10px] font-bold text-amber-900/70 uppercase">Clasificación:</span>
-                                    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black border ${getQualityBadgeClass(qualityModal.quality_status, qualityModal.egg_classification)}`}>
-                                        {qualityModal.egg_classification || 'Grado A'}
-                                    </span>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Pestañas de Navegación del Formulario LAB 001 y Certificado de Origen */}
-                        <div className="flex items-center border-b border-slate-200 px-5 bg-white overflow-x-auto">
-                            <button
-                                type="button"
-                                onClick={() => setQualityModal(prev => ({ ...prev, activeTab: 'general' }))}
-                                className={`px-4 py-3 text-xs font-bold border-b-2 transition-all flex items-center gap-2 shrink-0 ${
-                                    qualityModal.activeTab === 'general'
-                                        ? 'border-amber-600 text-amber-800 bg-amber-50/40'
-                                        : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'
-                                }`}
-                            >
-                                <ClipboardList size={14} />
-                                <span>1. Datos Generales & Clasificación</span>
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setQualityModal(prev => ({ ...prev, activeTab: 'physico' }))}
-                                className={`px-4 py-3 text-xs font-bold border-b-2 transition-all flex items-center gap-2 shrink-0 ${
-                                    qualityModal.activeTab === 'physico'
-                                        ? 'border-amber-600 text-amber-800 bg-amber-50/40'
-                                        : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'
-                                }`}
-                            >
-                                <FlaskConical size={14} />
-                                <span>2. Análisis Fisicoquímicos (13 Parámetros)</span>
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setQualityModal(prev => ({ ...prev, activeTab: 'organo' }))}
-                                className={`px-4 py-3 text-xs font-bold border-b-2 transition-all flex items-center gap-2 shrink-0 ${
-                                    qualityModal.activeTab === 'organo'
-                                        ? 'border-amber-600 text-amber-800 bg-amber-50/40'
-                                        : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'
-                                }`}
-                            >
-                                <Truck size={14} />
-                                <span>3. Organolépticos & Transporte</span>
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setQualityModal(prev => ({ ...prev, activeTab: 'review' }))}
-                                className={`px-4 py-3 text-xs font-bold border-b-2 transition-all flex items-center gap-2 shrink-0 ${
-                                    qualityModal.activeTab === 'review'
-                                        ? 'border-amber-600 text-amber-800 bg-amber-50/40'
-                                        : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'
-                                }`}
-                            >
-                                <Award size={14} />
-                                <span>4. Dictamen Oficial & Firmas</span>
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setQualityModal(prev => ({ ...prev, activeTab: 'origin_cert' }))}
-                                className={`px-4 py-3 text-xs font-bold border-b-2 transition-all flex items-center gap-2 shrink-0 ${
-                                    qualityModal.activeTab === 'origin_cert'
-                                        ? 'border-teal-600 text-teal-800 bg-teal-50/40'
-                                        : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'
-                                }`}
-                            >
-                                <ShieldCheck size={14} className="text-teal-600" />
-                                <span>5. Certificado de Calidad de Origen</span>
-                            </button>
-                        </div>
-
-                        {/* Modal Body / Form */}
-                        <form onSubmit={handleSaveQualityClassification} className="flex-1 overflow-y-auto p-5 space-y-4">
-                            {!canEditQuality && (
-                                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-900 flex items-center gap-2">
-                                    <Lock size={16} className="shrink-0 text-amber-600" />
-                                    <span><b>Modo Solo Lectura:</b> Su rol no posee permisos para editar el dictamen de calidad (LAB 001).</span>
-                                </div>
-                            )}
-
-                            {/* TAB 1: DATOS GENERALES */}
-                            {qualityModal.activeTab === 'general' && (
-                                <div className="space-y-4">
-                                    {/* Clasificación Destacada (Formato LAB 001) */}
-                                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col sm:flex-row items-center justify-between gap-3">
-                                        <div>
-                                            <label className="text-xs font-black text-slate-900 uppercase tracking-wide block">
-                                                CLASIFICACION HUEVO SEGÚN ANALISIS *
-                                            </label>
-                                            <span className="text-[11px] text-slate-500">
-                                                Dictamen técnico de recepción plasmado en el recuadro superior oficial de LAB 001
-                                            </span>
-                                        </div>
-                                        <div className="w-full sm:w-64">
-                                            <select
-                                                disabled={!canEditQuality}
-                                                value={qualityModal.egg_classification}
-                                                onChange={(e) => setQualityModal({ ...qualityModal, egg_classification: e.target.value })}
-                                                className="w-full px-3 py-2 bg-white border-2 border-slate-900 rounded-xl text-xs font-black text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500/20 shadow-xs"
-                                            >
-                                                <option value="Grado AA">Grado AA (Extra Especial / Cáscara Impecable)</option>
-                                                <option value="Grado A">Grado A (Estándar Premium de Planta)</option>
-                                                <option value="Grado B">Grado B (Comercial / Cáscara Irregular)</option>
-                                                <option value="Grado Industrial">Grado Industrial (Quiebre Inmediato)</option>
-                                                <option value="No Conforme">No Conforme / Rechazado</option>
-                                            </select>
-                                        </div>
-                                    </div>
-
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3.5">
-                                        {/* Tipo de Proveedor (Local / Extranjero) */}
-                                        <div className="space-y-1">
-                                            <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">
-                                                Origen del Proveedor
-                                            </label>
-                                            <div className="flex gap-2">
-                                                <button
-                                                    type="button"
-                                                    disabled={!canEditQuality}
-                                                    onClick={() => setQualityModal({ ...qualityModal, provider_type: 'LOCAL' })}
-                                                    className={`flex-1 py-1.5 px-3 rounded-xl text-xs font-bold border transition-all ${
-                                                        qualityModal.provider_type === 'LOCAL'
-                                                            ? 'bg-emerald-600 text-white border-emerald-700 shadow-xs'
-                                                            : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
-                                                    }`}
-                                                >
-                                                    Local
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    disabled={!canEditQuality}
-                                                    onClick={() => setQualityModal({ ...qualityModal, provider_type: 'EXTRANJERO' })}
-                                                    className={`flex-1 py-1.5 px-3 rounded-xl text-xs font-bold border transition-all ${
-                                                        qualityModal.provider_type === 'EXTRANJERO'
-                                                            ? 'bg-indigo-600 text-white border-indigo-700 shadow-xs'
-                                                            : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
-                                                    }`}
-                                                >
-                                                    Extranjero
-                                                </button>
-                                            </div>
-                                        </div>
-
-                                        {/* Granja */}
-                                        <div className="space-y-1">
-                                            <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">
-                                                Granja de Procedencia
-                                            </label>
-                                            <input
-                                                type="text"
-                                                disabled={!canEditQuality}
-                                                placeholder="Ej: Granja El Progreso, Galpón 4"
-                                                value={qualityModal.farm_name}
-                                                onChange={(e) => setQualityModal({ ...qualityModal, farm_name: e.target.value })}
-                                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs"
-                                            />
-                                        </div>
-
-                                        {/* Lote */}
-                                        <div className="space-y-1">
-                                            <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">
-                                                Lote de Recepción
-                                            </label>
-                                            <input
-                                                type="text"
-                                                disabled={!canEditQuality}
-                                                placeholder="Lote proveedor"
-                                                value={qualityModal.provider_lot}
-                                                onChange={(e) => setQualityModal({ ...qualityModal, provider_lot: e.target.value })}
-                                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-indigo-700 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs"
-                                            />
-                                        </div>
-
-                                        {/* Nota de Remisión */}
-                                        <div className="space-y-1">
-                                            <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">
-                                                Nota de Remisión / Guía
-                                            </label>
-                                            <input
-                                                type="text"
-                                                disabled={!canEditQuality}
-                                                placeholder="Ej: NR-8921"
-                                                value={qualityModal.remission_note}
-                                                onChange={(e) => setQualityModal({ ...qualityModal, remission_note: e.target.value })}
-                                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs"
-                                            />
-                                        </div>
-
-                                        {/* Número de Cajas */}
-                                        <div className="space-y-1">
-                                            <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">
-                                                Número de Cajas
-                                            </label>
-                                            <input
-                                                type="number"
-                                                disabled={!canEditQuality}
-                                                placeholder="Total cajas recibidas"
-                                                value={qualityModal.total_boxes}
-                                                onChange={(e) => setQualityModal({ ...qualityModal, total_boxes: parseInt(e.target.value) || 0 })}
-                                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs"
-                                            />
-                                        </div>
-
-                                        {/* Peso en Gramos Unitario Muestreado */}
-                                        <div className="space-y-1">
-                                            <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">
-                                                Peso Unitario en Gramos (Muestreo)
-                                            </label>
-                                            <div className="relative">
-                                                <input
-                                                    type="number"
-                                                    step="0.1"
-                                                    disabled={!canEditQuality}
-                                                    placeholder="Ej: 62.5"
-                                                    value={qualityModal.sample_egg_weight_g}
-                                                    onChange={(e) => setQualityModal({ ...qualityModal, sample_egg_weight_g: e.target.value })}
-                                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs"
-                                                />
-                                                <span className="absolute right-3 top-2 text-xs text-slate-400 font-bold">g/huevo</span>
-                                            </div>
-                                        </div>
-
-                                        {/* Color Cascarón */}
-                                        <div className="space-y-1">
-                                            <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">
-                                                Color Cascarón
-                                            </label>
-                                            <select
-                                                disabled={!canEditQuality}
-                                                value={qualityModal.egg_color}
-                                                onChange={(e) => setQualityModal({ ...qualityModal, egg_color: e.target.value })}
-                                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs"
-                                            >
-                                                <option value="blanco">Blanco</option>
-                                                <option value="marrón">Marrón / Rojo</option>
-                                                <option value="mixto">Mixto</option>
-                                            </select>
-                                        </div>
-
-                                        {/* Tamaño de Huevo */}
-                                        <div className="space-y-1">
-                                            <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">
-                                                Tamaño de Huevo
-                                            </label>
-                                            <select
-                                                disabled={!canEditQuality}
-                                                value={qualityModal.egg_size}
-                                                onChange={(e) => setQualityModal({ ...qualityModal, egg_size: e.target.value })}
-                                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs"
-                                            >
-                                                <option value="XL">XL (Super Grande / &gt;73g)</option>
-                                                <option value="L">L (Grande / 63g - 73g)</option>
-                                                <option value="M">M (Mediano / 53g - 63g)</option>
-                                                <option value="S">S (Pequeño / &lt;53g)</option>
-                                                <option value="Jumbo">Jumbo (&gt;78g)</option>
-                                            </select>
-                                        </div>
-
-                                        {/* Fecha Producción */}
-                                        <div className="space-y-1">
-                                            <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">
-                                                Fecha Producción / Postura
-                                            </label>
-                                            <input
-                                                type="date"
-                                                disabled={!canEditQuality}
-                                                value={qualityModal.production_date}
-                                                onChange={(e) => setQualityModal({ ...qualityModal, production_date: e.target.value })}
-                                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs"
-                                            />
-                                        </div>
-
-                                        {/* Fecha Vencimiento */}
-                                        <div className="space-y-1">
-                                            <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">
-                                                Fecha Vencimiento
-                                            </label>
-                                            <input
-                                                type="date"
-                                                disabled={!canEditQuality}
-                                                value={qualityModal.expiration_date}
-                                                onChange={(e) => setQualityModal({ ...qualityModal, expiration_date: e.target.value })}
-                                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs"
-                                            />
-                                        </div>
-
-                                        {/* Fecha Ingreso a Planta */}
-                                        <div className="space-y-1">
-                                            <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">
-                                                Fecha Ingreso a Planta
-                                            </label>
-                                            <input
-                                                type="date"
-                                                disabled={!canEditQuality}
-                                                value={qualityModal.plant_entry_date}
-                                                onChange={(e) => setQualityModal({ ...qualityModal, plant_entry_date: e.target.value })}
-                                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs"
-                                            />
-                                        </div>
-
-                                        {/* Fecha Recepción */}
-                                        <div className="space-y-1">
-                                            <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">
-                                                Fecha Recepción
-                                            </label>
-                                            <input
-                                                type="date"
-                                                disabled={!canEditQuality}
-                                                value={qualityModal.reception_date}
-                                                onChange={(e) => setQualityModal({ ...qualityModal, reception_date: e.target.value })}
-                                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs"
-                                            />
-                                        </div>
-
-                                        {/* Fecha Análisis */}
-                                        <div className="space-y-1">
-                                            <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">
-                                                Fecha Análisis Laboratorio
-                                            </label>
-                                            <input
-                                                type="date"
-                                                disabled={!canEditQuality}
-                                                value={qualityModal.analysis_date}
-                                                onChange={(e) => setQualityModal({ ...qualityModal, analysis_date: e.target.value })}
-                                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs"
-                                            />
-                                        </div>
-
-                                        {/* Hora Análisis */}
-                                        <div className="space-y-1">
-                                            <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">
-                                                Hora del Análisis
-                                            </label>
-                                            <input
-                                                type="time"
-                                                disabled={!canEditQuality}
-                                                value={qualityModal.analysis_time}
-                                                onChange={(e) => setQualityModal({ ...qualityModal, analysis_time: e.target.value })}
-                                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs"
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* TAB 2: ANALISIS FISICOQUIMICOS */}
-                            {qualityModal.activeTab === 'physico' && (
-                                <div className="space-y-3">
-                                    <div className="flex items-center justify-between">
-                                        <div>
-                                            <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wide">
-                                                Parámetros Fisicoquímicos (Formato Oficial LAB 001)
-                                            </h3>
-                                            <p className="text-[11px] text-slate-500">
-                                                Registre las lecturas analíticas por muestra o lote de granja conforme a la hoja de laboratorio.
-                                            </p>
-                                        </div>
-                                    </div>
-
-                                    <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
-                                        <table className="w-full text-xs text-left">
-                                            <thead className="bg-slate-100/90 text-slate-700 font-bold border-b border-slate-200 uppercase text-[10px]">
-                                                <tr>
-                                                    <th className="px-4 py-2.5 w-1/2">Parámetro</th>
-                                                    <th className="px-4 py-2.5 w-1/4 text-center">Lectura / Muestra 1</th>
-                                                    <th className="px-4 py-2.5 w-1/4 text-center">Lectura / Muestra 2</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-slate-200 bg-white">
-                                                {[
-                                                    { key: 'granja', label: 'GRANJA', placeholder: 'Identificador / Galpón' },
-                                                    { key: 'espesor_celda_aire', label: 'ESPESOR CELDA DE AIRE', placeholder: 'Ej: 3 mm' },
-                                                    { key: 'ph_huevo_fresco', label: 'PH HUEVO FRESCO', placeholder: 'Ej: 7.6 - 8.2' },
-                                                    { key: 'solidos_huevo_fresco', label: 'SOLIDOS HUEVO FRESCO', placeholder: 'Ej: 23.5 - 24.5 %' },
-                                                    { key: 'firmeza_albumina', label: 'FIRMEZA DE ALBUMINA', placeholder: 'Unidades Haugh' },
-                                                    { key: 'ph_albumina', label: 'PH DE ALBUMINA', placeholder: 'Ej: 8.8 - 9.1' },
-                                                    { key: 'solidos_albumina', label: 'SOLIDOS ALBUMINA', placeholder: 'Ej: 11.5 - 12.5 %' },
-                                                    { key: 'firmeza_yema', label: 'FIRMEZA YEMA', placeholder: 'Firme / Regular' },
-                                                    { key: 'forma_yema', label: 'FORMA YEMA', placeholder: 'Índice / Esférica' },
-                                                    { key: 'color_yema', label: 'COLOR YEMA', placeholder: 'Escala Roche (1-15)' },
-                                                    { key: 'ph_yema', label: 'PH YEMA', placeholder: 'Ej: 6.0 - 6.3' },
-                                                    { key: 'solidos_yema', label: 'SOLIDOS DE YEMA', placeholder: 'Ej: 48 - 50 %' },
-                                                    { key: 'estado_separacion', label: 'ESTADO DE SEPARACION', placeholder: 'Conforme / Limpio' }
-                                                ].map((param, idx) => (
-                                                    <tr key={param.key} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}>
-                                                        <td className="px-4 py-2 font-bold text-slate-800 text-[11px]">
-                                                            {param.label}
-                                                        </td>
-                                                        <td className="px-2 py-1.5">
-                                                            <input
-                                                                type="text"
-                                                                disabled={!canEditQuality}
-                                                                placeholder={param.placeholder}
-                                                                value={qualityModal.physicochemical[param.key]?.val1 || ''}
-                                                                onChange={(e) => {
-                                                                    const val = e.target.value;
-                                                                    setQualityModal(prev => ({
-                                                                        ...prev,
-                                                                        physicochemical: {
-                                                                            ...prev.physicochemical,
-                                                                            [param.key]: {
-                                                                                ...(prev.physicochemical[param.key] || {}),
-                                                                                val1: val
-                                                                            }
-                                                                        }
-                                                                    }));
-                                                                }}
-                                                                className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs text-center font-medium focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500"
-                                                            />
-                                                        </td>
-                                                        <td className="px-2 py-1.5">
-                                                            <input
-                                                                type="text"
-                                                                disabled={!canEditQuality}
-                                                                placeholder={param.placeholder}
-                                                                value={qualityModal.physicochemical[param.key]?.val2 || ''}
-                                                                onChange={(e) => {
-                                                                    const val = e.target.value;
-                                                                    setQualityModal(prev => ({
-                                                                        ...prev,
-                                                                        physicochemical: {
-                                                                            ...prev.physicochemical,
-                                                                            [param.key]: {
-                                                                                ...(prev.physicochemical[param.key] || {}),
-                                                                                val2: val
-                                                                            }
-                                                                        }
-                                                                    }));
-                                                                }}
-                                                                className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs text-center font-medium focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500"
-                                                            />
-                                                        </td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* TAB 3: ORGANOLEPTICOS & TRANSPORTE */}
-                            {qualityModal.activeTab === 'organo' && (
-                                <div className="space-y-4">
-                                    {/* Olores Organolépticos */}
-                                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
-                                        <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wide">
-                                            Análisis Organolépticos • Evaluación de Olor
-                                        </h3>
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                                            {[
-                                                { key: 'olor_normal', label: 'OLOR CARACTERISTICO A HUEVO NORMAL', desc: 'Conforme, sin notas extrañas' },
-                                                { key: 'olor_fuerte', label: 'OLOR CARACTERISTICO A HUEVO FUERTE', desc: 'Alerta por intensidad o edad del huevo' },
-                                                { key: 'olor_descomposicion_prematura', label: 'OLOR EN DESCOMPOSICION PREMATURA', desc: 'No conforme, riesgo biológico' },
-                                                { key: 'olor_descomposicion_avanzada', label: 'OLOR EN DESCOMPOSICION AVANZADA', desc: 'Rechazo inmediato de lote' }
-                                            ].map((item) => (
-                                                <label
-                                                    key={item.key}
-                                                    className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
-                                                        qualityModal.organoleptic[item.key]
-                                                            ? item.key.includes('descomposicion')
-                                                                ? 'bg-rose-50 border-rose-300 text-rose-900'
-                                                                : 'bg-emerald-50 border-emerald-300 text-emerald-900'
-                                                            : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
-                                                    }`}
-                                                >
-                                                    <input
-                                                        type="checkbox"
-                                                        disabled={!canEditQuality}
-                                                        checked={!!qualityModal.organoleptic[item.key]}
-                                                        onChange={(e) => {
-                                                            const chk = e.target.checked;
-                                                            setQualityModal(prev => ({
-                                                                ...prev,
-                                                                organoleptic: {
-                                                                    ...prev.organoleptic,
-                                                                    [item.key]: chk
-                                                                }
-                                                            }));
-                                                        }}
-                                                        className="mt-0.5 rounded text-amber-600 focus:ring-amber-500 h-4 w-4"
-                                                    />
-                                                    <div>
-                                                        <span className="text-xs font-bold block">{item.label}</span>
-                                                        <span className="text-[10px] text-slate-500 font-medium">{item.desc}</span>
-                                                    </div>
-                                                </label>
-                                            ))}
-                                        </div>
-                                    </div>
-
-                                    {/* Consistencia de Cascarón */}
-                                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-2.5">
-                                        <label className="text-xs font-bold text-slate-900 uppercase tracking-wide block">
-                                            CONSISTENCIA CASCARON
-                                        </label>
-                                        <div className="grid grid-cols-3 gap-3">
-                                            {[
-                                                { val: 'resistente', label: 'RESISTENTE', color: 'emerald' },
-                                                { val: 'poco_resistente', label: 'POCO RESISTENTE', color: 'amber' },
-                                                { val: 'fragil', label: 'FRAGIL', color: 'rose' }
-                                            ].map((c) => {
-                                                const isSel = (qualityModal.organoleptic.consistencia_cascaron || 'resistente') === c.val;
-                                                return (
-                                                    <button
-                                                        key={c.val}
-                                                        type="button"
-                                                        disabled={!canEditQuality}
-                                                        onClick={() => setQualityModal(prev => ({
-                                                            ...prev,
-                                                            organoleptic: { ...prev.organoleptic, consistencia_cascaron: c.val }
-                                                        }))}
-                                                        className={`py-2 px-3 rounded-xl text-xs font-black border transition-all flex items-center justify-center gap-1.5 ${
-                                                            isSel
-                                                                ? c.color === 'emerald'
-                                                                    ? 'bg-emerald-600 text-white border-emerald-700 shadow-xs'
-                                                                    : c.color === 'amber'
-                                                                    ? 'bg-amber-600 text-white border-amber-700 shadow-xs'
-                                                                    : 'bg-rose-600 text-white border-rose-700 shadow-xs'
-                                                                : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
-                                                        }`}
-                                                    >
-                                                        {isSel && <Check size={14} />}
-                                                        <span>{c.label}</span>
-                                                    </button>
-                                                );
-                                            })}
-                                        </div>
-                                    </div>
-
-                                    {/* Transporte y Almacenaje */}
-                                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
-                                        <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wide">
-                                            Transporte y Almacenaje
-                                        </h3>
-                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                            <div className="space-y-1">
-                                                <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">
-                                                    Limpieza / Orden Camión
-                                                </label>
-                                                <input
-                                                    type="text"
-                                                    disabled={!canEditQuality}
-                                                    placeholder="Ej: CONFORME / LIMPIO"
-                                                    value={qualityModal.transport_storage?.limpieza_camion || ''}
-                                                    onChange={(e) => {
-                                                        const val = e.target.value;
-                                                        setQualityModal(prev => ({
-                                                            ...prev,
-                                                            transport_storage: { ...prev.transport_storage, limpieza_camion: val }
-                                                        }));
-                                                    }}
-                                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs"
-                                                />
-                                            </div>
-                                            <div className="space-y-1">
-                                                <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">
-                                                    Apariencia de Cajas a su Ingreso
-                                                </label>
-                                                <input
-                                                    type="text"
-                                                    disabled={!canEditQuality}
-                                                    placeholder="Ej: BUEN ESTADO / LIMPIAS"
-                                                    value={qualityModal.transport_storage?.apariencia_cajas || ''}
-                                                    onChange={(e) => {
-                                                        const val = e.target.value;
-                                                        setQualityModal(prev => ({
-                                                            ...prev,
-                                                            transport_storage: { ...prev.transport_storage, apariencia_cajas: val }
-                                                        }));
-                                                    }}
-                                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs"
-                                                />
-                                            </div>
-                                            <div className="space-y-1">
-                                                <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">
-                                                    T° Transporte
-                                                </label>
-                                                <input
-                                                    type="text"
-                                                    disabled={!canEditQuality}
-                                                    placeholder="Ej: 18.5 °C"
-                                                    value={qualityModal.transport_storage?.temperatura_transporte || ''}
-                                                    onChange={(e) => {
-                                                        const val = e.target.value;
-                                                        setQualityModal(prev => ({
-                                                            ...prev,
-                                                            transport_storage: { ...prev.transport_storage, temperatura_transporte: val }
-                                                        }));
-                                                    }}
-                                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs"
-                                                />
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* TAB 4: DICTAMEN OFICIAL & FIRMAS */}
-                            {qualityModal.activeTab === 'review' && (
-                                <div className="space-y-4">
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                                        {/* Dictamen Oficial del Lote */}
-                                        <div className="space-y-1 sm:col-span-2">
-                                            <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">
-                                                Dictamen Oficial del Lote *
-                                            </label>
-                                            <select
-                                                disabled={!canEditQuality}
-                                                value={qualityModal.quality_status}
-                                                onChange={(e) => setQualityModal({ ...qualityModal, quality_status: e.target.value })}
-                                                className="w-full px-3 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-black text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs"
-                                            >
-                                                <option value="aprobado">✅ Aprobado para Producción y Quebrado</option>
-                                                <option value="condicional">⚠️ Aprobado Condicional (Uso Restringido o Mezcla)</option>
-                                                <option value="cuarentena">⏳ Cuarentena / En Espera de Laboratorio</option>
-                                                <option value="rechazado">❌ No Conforme / Rechazado para Producción</option>
-                                            </select>
-                                        </div>
-
-                                        {/* Muestreo de Defectos Físicos */}
-                                        <div className="space-y-1">
-                                            <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">
-                                                % Huevo Roto / Fisurado
-                                            </label>
-                                            <div className="relative">
-                                                <input
-                                                    type="number"
-                                                    step="0.01"
-                                                    min="0"
-                                                    max="100"
-                                                    disabled={!canEditQuality}
-                                                    placeholder="0.00"
-                                                    value={qualityModal.quality_defect_broken_pct}
-                                                    onChange={(e) => setQualityModal({ ...qualityModal, quality_defect_broken_pct: e.target.value })}
-                                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs"
-                                                />
-                                                <span className="absolute right-3 top-2 text-xs text-slate-400 font-bold">%</span>
-                                            </div>
-                                        </div>
-
-                                        <div className="space-y-1">
-                                            <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">
-                                                % Huevo Sucio / Manchado
-                                            </label>
-                                            <div className="relative">
-                                                <input
-                                                    type="number"
-                                                    step="0.01"
-                                                    min="0"
-                                                    max="100"
-                                                    disabled={!canEditQuality}
-                                                    placeholder="0.00"
-                                                    value={qualityModal.quality_defect_dirty_pct}
-                                                    onChange={(e) => setQualityModal({ ...qualityModal, quality_defect_dirty_pct: e.target.value })}
-                                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs"
-                                                />
-                                                <span className="absolute right-3 top-2 text-xs text-slate-400 font-bold">%</span>
-                                            </div>
-                                        </div>
-
-                                        <div className="space-y-1 sm:col-span-2">
-                                            <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">
-                                                °Brix / Sólidos Totales (Opcional)
-                                            </label>
-                                            <input
-                                                type="number"
-                                                step="0.1"
-                                                disabled={!canEditQuality}
-                                                placeholder="Opcional. Ej: 23.5"
-                                                value={qualityModal.quality_brix}
-                                                onChange={(e) => setQualityModal({ ...qualityModal, quality_brix: e.target.value })}
-                                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs"
-                                            />
-                                        </div>
-
-                                        {/* Observaciones Técnicas */}
-                                        <div className="space-y-1 sm:col-span-2">
-                                            <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">
-                                                OBSERVACIONES :
-                                            </label>
-                                            <textarea
-                                                rows={3}
-                                                disabled={!canEditQuality}
-                                                placeholder="Detalle aquí cualquier observación sobre el lote, cámara de aire, olor, aspecto de cáscara o acuerdos con proveedor..."
-                                                value={qualityModal.quality_notes}
-                                                onChange={(e) => setQualityModal({ ...qualityModal, quality_notes: e.target.value })}
-                                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs"
-                                            />
-                                        </div>
-
-                                        {/* Firmas: Realizado y Revisado */}
-                                        <div className="space-y-1">
-                                            <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">
-                                                REALIZADO : (Inspector de Calidad) *
-                                            </label>
-                                            <input
-                                                type="text"
-                                                required
-                                                disabled={!canEditQuality}
-                                                placeholder="Nombre del técnico analista"
-                                                value={qualityModal.inspector_name}
-                                                onChange={(e) => setQualityModal({ ...qualityModal, inspector_name: e.target.value })}
-                                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs"
-                                            />
-                                        </div>
-
-                                        <div className="space-y-1">
-                                            <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">
-                                                REVISADO : (Supervisor / Jefe de Calidad) *
-                                            </label>
-                                            <input
-                                                type="text"
-                                                required
-                                                disabled={!canEditQuality}
-                                                placeholder="Nombre del supervisor que valida"
-                                                value={qualityModal.quality_reviewed_by}
-                                                onChange={(e) => setQualityModal({ ...qualityModal, quality_reviewed_by: e.target.value })}
-                                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs"
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* TAB 5: CERTIFICADO DE CALIDAD DE ORIGEN (FORMATO OFICIAL PROVEEDOR - ANDELSA) */}
-                            {qualityModal.activeTab === 'origin_cert' && (
-                                <div className="space-y-4">
-                                    {/* Cabecera del Certificado de Origen */}
-                                    <div className="bg-teal-50/70 border border-teal-200 rounded-2xl p-4 space-y-3">
-                                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-teal-200/80 pb-3">
-                                            <div>
-                                                <div className="flex items-center gap-2">
-                                                    <span className="p-1.5 bg-teal-600 text-white rounded-xl shadow-2xs">
-                                                        <ShieldCheck size={16} />
-                                                    </span>
-                                                    <h3 className="text-xs font-black uppercase tracking-wider text-teal-950">
-                                                        Certificado de Calidad de Origen • Cadena de Custodia
-                                                    </h3>
-                                                </div>
-                                                <p className="text-[11px] text-teal-800 font-medium mt-0.5">
-                                                    Documento legal emitido por el proveedor para <b>ANDELSA</b> acreditando inocuidad, transporte y razas de aves
-                                                </p>
-                                            </div>
-
-                                            <div className="flex items-center gap-2">
-                                                <button
-                                                    type="button"
-                                                    disabled={printingPdfId === qualityModal.rm?.id}
-                                                    onClick={handlePrintOriginCertFromModal}
-                                                    className="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 disabled:opacity-50"
-                                                >
-                                                    <Printer size={13} />
-                                                    <span>PDF</span>
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    disabled={printingPdfId === qualityModal.rm?.id}
-                                                    onClick={handleDownloadOriginCertDocxFromModal}
-                                                    className="px-3 py-1.5 bg-white hover:bg-teal-100 text-teal-900 border border-teal-300 rounded-xl text-xs font-bold transition-all shadow-2xs flex items-center gap-1.5 disabled:opacity-50"
-                                                >
-                                                    <FileText size={13} className="text-teal-700" />
-                                                    <span>Word (.docx)</span>
-                                                </button>
-                                            </div>
-                                        </div>
-
-                                        {/* Recuadro Lote ANDELSA vs Lote Proveedor */}
-                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
-                                            <div className="bg-white border border-teal-200 rounded-xl p-3 space-y-1">
-                                                <span className="text-[10px] font-bold text-teal-700 uppercase tracking-tight block">
-                                                    EMISOR (PROVEEDOR) :
-                                                </span>
-                                                <strong className="text-xs text-slate-900 font-bold block truncate">
-                                                    {qualityModal.rm?.provider_name || 'INVERSIONES AVÍCOLAS DE HONDURAS, S.A.'}
-                                                </strong>
-                                                <span className="text-[10px] text-slate-500 font-medium block">
-                                                    Lote Proveedor: <b>{qualityModal.provider_lot || '---'}</b>
-                                                </span>
-                                            </div>
-
-                                            <div className="bg-amber-50/90 border-2 border-amber-400 rounded-xl p-3 space-y-1 shadow-2xs">
-                                                <span className="text-[10px] font-black text-amber-900 uppercase tracking-tight block">
-                                                    LOTE (SE LO COLOCAMOS EN ANDELSA) :
-                                                </span>
-                                                <strong className="text-sm font-black text-slate-900 font-mono block">
-                                                    {qualityModal.rm?.andelsa_lot || qualityModal.rm?.lot_code || `REC-${qualityModal.rm?.id}`}
-                                                </strong>
-                                                <span className="text-[10px] text-amber-800 font-medium block">
-                                                    Destinatario: <b>ANDELSA</b>
-                                                </span>
-                                            </div>
-
-                                            <div className="bg-white border border-teal-200 rounded-xl p-3 space-y-1">
-                                                <span className="text-[10px] font-bold text-teal-700 uppercase tracking-tight block">
-                                                    FECHAS CLAVE :
-                                                </span>
-                                                <div className="text-[11px] text-slate-700 space-y-0.5">
-                                                    <div>Producción: <b>{qualityModal.production_date || '---'}</b></div>
-                                                    <div>Entrega: <b>{qualityModal.reception_date || '---'}</b></div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* Sección: Requerimientos y Conformidades del Transporte y Empaque */}
-                                    <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3 shadow-2xs">
-                                        <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5 border-b border-slate-100 pb-2">
-                                            <Truck size={14} className="text-teal-600" />
-                                            Requerimientos y Conformidades de Inocuidad
-                                        </h4>
-
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                                            <div className="space-y-2">
-                                                <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wide block">
-                                                    Color del Huevo
-                                                </label>
-                                                <div className="flex items-center gap-4">
-                                                    <label className="inline-flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-700">
-                                                        <input
-                                                            type="radio"
-                                                            name="origin_egg_color"
-                                                            value="blanco"
-                                                            checked={(qualityModal.egg_color || 'blanco').toLowerCase() === 'blanco'}
-                                                            onChange={() => setQualityModal({ ...qualityModal, egg_color: 'blanco' })}
-                                                            className="text-teal-600 focus:ring-teal-500"
-                                                        />
-                                                        <span>Blanco (Conforme)</span>
-                                                    </label>
-                                                    <label className="inline-flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-700">
-                                                        <input
-                                                            type="radio"
-                                                            name="origin_egg_color"
-                                                            value="marron"
-                                                            checked={(qualityModal.egg_color || '').toLowerCase() === 'marron'}
-                                                            onChange={() => setQualityModal({ ...qualityModal, egg_color: 'marron' })}
-                                                            className="text-teal-600 focus:ring-teal-500"
-                                                        />
-                                                        <span>Marrón / Rojo</span>
-                                                    </label>
-                                                </div>
-                                            </div>
-
-                                            <div className="space-y-2">
-                                                <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wide block">
-                                                    Conformidades Físicas (Transporte y Empaque)
-                                                </label>
-                                                <div className="space-y-2">
-                                                    <label className="inline-flex items-center gap-2 cursor-pointer text-xs font-medium text-slate-700">
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={qualityModal.is_camion_cerrado}
-                                                            onChange={(e) => setQualityModal({ ...qualityModal, is_camion_cerrado: e.target.checked })}
-                                                            className="rounded text-teal-600 focus:ring-teal-500"
-                                                        />
-                                                        <span>Camión cerrado</span>
-                                                    </label>
-                                                    <br />
-                                                    <label className="inline-flex items-center gap-2 cursor-pointer text-xs font-medium text-slate-700">
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={qualityModal.is_limpieza_camion}
-                                                            onChange={(e) => setQualityModal({ ...qualityModal, is_limpieza_camion: e.target.checked })}
-                                                            className="rounded text-teal-600 focus:ring-teal-500"
-                                                        />
-                                                        <span>Limpieza del camión</span>
-                                                    </label>
-                                                    <br />
-                                                    <label className="inline-flex items-center gap-2 cursor-pointer text-xs font-medium text-slate-700">
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={qualityModal.is_cartones_limpios}
-                                                            onChange={(e) => setQualityModal({ ...qualityModal, is_cartones_limpios: e.target.checked })}
-                                                            className="rounded text-teal-600 focus:ring-teal-500"
-                                                        />
-                                                        <span>Cartones no reciclables y limpios sin plagas ni objetos extraños</span>
-                                                    </label>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* Sección: Tabla Dinámica de Razas y Semanas de Edad de las Aves */}
-                                    <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3 shadow-2xs">
-                                        <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                                            <div>
-                                                <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-                                                    Lotes de Aves en Origen (Raza y Edad)
-                                                </h4>
-                                                <span className="text-[10px] text-slate-400 font-medium">
-                                                    Registre las razas y semanas de postura correspondientes a este cargamento
-                                                </span>
-                                            </div>
-
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    setQualityModal(prev => ({
-                                                        ...prev,
-                                                        bird_batches: [
-                                                            ...(prev.bird_batches || []),
-                                                            { breed: 'DEKALB WHITE', age_weeks: '35 SEMANAS DE EDAD' }
-                                                        ]
-                                                    }));
-                                                }}
-                                                className="px-3 py-1.5 bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200 rounded-xl text-xs font-bold flex items-center gap-1 transition-all"
-                                            >
-                                                <Plus size={13} />
-                                                <span>+ Agregar Lote de Aves</span>
-                                            </button>
-                                        </div>
-
-                                        <div className="overflow-x-auto">
-                                            <table className="w-full text-left border-collapse">
-                                                <thead>
-                                                    <tr className="border-b border-slate-200 bg-slate-50 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                                                        <th className="p-2.5 w-12 text-center">#</th>
-                                                        <th className="p-2.5">Raza del Ave</th>
-                                                        <th className="p-2.5">Edad en Semanas</th>
-                                                        <th className="p-2.5 w-12 text-center">Acción</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody className="divide-y divide-slate-100 text-xs">
-                                                    {(qualityModal.bird_batches || []).map((batch, bIdx) => (
-                                                        <tr key={bIdx} className="hover:bg-slate-50/60 transition-colors">
-                                                            <td className="p-2.5 text-center font-mono font-bold text-slate-400 text-[11px]">
-                                                                {bIdx + 1}
-                                                            </td>
-                                                            <td className="p-2.5">
-                                                                <input
-                                                                    type="text"
-                                                                    value={batch.breed}
-                                                                    onChange={(e) => {
-                                                                        const val = e.target.value;
-                                                                        setQualityModal(prev => {
-                                                                            const updated = [...(prev.bird_batches || [])];
-                                                                            updated[bIdx] = { ...updated[bIdx], breed: val };
-                                                                            return { ...prev, bird_batches: updated };
-                                                                        });
-                                                                    }}
-                                                                    placeholder="Ej: DEKALB WHITE, BOVANS BROWN"
-                                                                    className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-bold uppercase text-slate-800 focus:ring-1 focus:ring-teal-500"
-                                                                />
-                                                            </td>
-                                                            <td className="p-2.5">
-                                                                <input
-                                                                    type="text"
-                                                                    value={batch.age_weeks}
-                                                                    onChange={(e) => {
-                                                                        const val = e.target.value;
-                                                                        setQualityModal(prev => {
-                                                                            const updated = [...(prev.bird_batches || [])];
-                                                                            updated[bIdx] = { ...updated[bIdx], age_weeks: val };
-                                                                            return { ...prev, bird_batches: updated };
-                                                                        });
-                                                                    }}
-                                                                    placeholder="Ej: 69 SEMANAS DE EDAD"
-                                                                    className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-semibold uppercase text-slate-800 focus:ring-1 focus:ring-teal-500"
-                                                                />
-                                                            </td>
-                                                            <td className="p-2.5 text-center">
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => {
-                                                                        setQualityModal(prev => ({
-                                                                            ...prev,
-                                                                            bird_batches: (prev.bird_batches || []).filter((_, i) => i !== bIdx)
-                                                                        }));
-                                                                    }}
-                                                                    className="p-1 text-slate-400 hover:text-rose-600 rounded-lg transition-colors"
-                                                                    title="Eliminar fila"
-                                                                >
-                                                                    <Trash2 size={13} />
-                                                                </button>
-                                                            </td>
-                                                        </tr>
-                                                    ))}
-                                                    {(!qualityModal.bird_batches || qualityModal.bird_batches.length === 0) && (
-                                                        <tr>
-                                                            <td colSpan={4} className="p-4 text-center text-slate-400 italic text-xs">
-                                                                No se han registrado lotes de aves. Haga clic en "+ Agregar Lote de Aves".
-                                                            </td>
-                                                        </tr>
-                                                    )}
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Modal Footer Controls */}
-                            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t border-slate-200">
-                                <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto">
-                                    <button
-                                        type="button"
-                                        disabled={printingPdfId === qualityModal.rm?.id}
-                                        onClick={handlePrintOriginCertFromModal}
-                                        className="px-3.5 py-2 bg-teal-50 hover:bg-teal-100 text-teal-900 rounded-xl text-xs font-bold border border-teal-300 transition-colors shadow-2xs flex items-center justify-center gap-1.5 disabled:opacity-50"
-                                    >
-                                        <ShieldCheck size={14} className="text-teal-700" />
-                                        <span>Cert. Origen (PDF)</span>
-                                    </button>
-                                    <button
-                                        type="button"
-                                        disabled={printingPdfId === qualityModal.rm?.id}
-                                        onClick={handlePrintLab001FromModal}
-                                        className="px-3.5 py-2 bg-white hover:bg-amber-50 text-amber-900 rounded-xl text-xs font-bold border border-amber-300 transition-colors shadow-2xs flex items-center justify-center gap-1.5 disabled:opacity-50"
-                                    >
-                                        {printingPdfId === qualityModal.rm?.id ? <Loader2 className="animate-spin" size={14} /> : <Printer size={14} className="text-amber-700" />}
-                                        <span>Reporte LAB 001</span>
-                                    </button>
-                                </div>
-
-                                <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end">
-                                    <button
-                                        type="button"
-                                        onClick={() => setQualityModal(prev => ({ ...prev, isOpen: false }))}
-                                        className="px-4 py-2 bg-white hover:bg-slate-100 text-slate-700 rounded-xl text-xs font-bold border border-slate-300 transition-colors shadow-2xs"
-                                    >
-                                        {canEditQuality ? 'Cancelar' : 'Cerrar'}
-                                    </button>
-                                    {canEditQuality && (
-                                        <button
-                                            type="submit"
-                                            disabled={qualityModal.isSubmitting}
-                                            className="px-5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1.5 disabled:opacity-50"
-                                        >
-                                            <ShieldCheck size={15} />
-                                            <span>{qualityModal.isSubmitting ? 'Guardando Reporte...' : 'Guardar Reporte LAB 001'}</span>
-                                        </button>
-                                    )}
-                                </div>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            )}
-
+            <EggQualityEvaluationModal
+                isOpen={qualityModal.isOpen}
+                onClose={() => setQualityModal(prev => ({ ...prev, isOpen: false }))}
+                qualityModal={qualityModal}
+                setQualityModal={setQualityModal}
+                canEditQuality={canEditQuality}
+                formatDate={formatDate}
+                getQualityBadgeClass={getQualityBadgeClass}
+                handleSaveQualityClassification={handleSaveQualityClassification}
+                handlePrintOriginCertFromModal={handlePrintOriginCertFromModal}
+                handleDownloadOriginCertDocxFromModal={handleDownloadOriginCertDocxFromModal}
+                handlePrintLab001FromModal={handlePrintLab001FromModal}
+                handleDownloadLab001DocxFromModal={handleDownloadLab001DocxFromModal}
+                printingPdfId={printingPdfId}
+            />
+
             {/* Modal Confirmar Eliminación Permanente de Recepción */}
             {deleteConfirmRm && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
@@ -3641,6 +3016,17 @@ const EggReception = () => {
                 pdfUrl={pdfPreviewModal.url}
                 fileName={pdfPreviewModal.fileName}
                 footerNote="Laboratorio de Control de Calidad • Reporte Oficial de Materia Prima y Dictamen Técnico (LAB 001)"
+            />
+
+            {/* Modal de Parametrización de Proveedor y Taras */}
+            <ProviderLotConfigModal
+                isOpen={lotConfigModalData.isOpen}
+                onClose={() => setLotConfigModalData({ isOpen: false, config: null, initialProviderId: '' })}
+                configToEdit={lotConfigModalData.config}
+                initialProviderId={lotConfigModalData.initialProviderId}
+                providers={providers}
+                loadProvidersOptions={loadProvidersOptions}
+                onSaved={handleLotConfigSaved}
             />
         </div>
     );

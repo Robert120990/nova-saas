@@ -28,8 +28,13 @@ const getPOS = async (req, res) => {
 };
 
 const createPOS = async (req, res) => {
-    const data = req.body;
+    const data = { ...req.body };
     data.company_id = req.company_id;
+    if (data.allow_discounts !== undefined) {
+        data.allow_discounts = (data.allow_discounts === true || data.allow_discounts === 'true' || data.allow_discounts === 1 || data.allow_discounts === '1' || data.allow_discounts === 'on') ? 1 : 0;
+    } else {
+        data.allow_discounts = 0;
+    }
     try {
         const [result] = await pool.query('INSERT INTO points_of_sale SET ?', [data]);
         res.status(201).json({ id: result.insertId, ...data });
@@ -40,7 +45,10 @@ const createPOS = async (req, res) => {
 
 const updatePOS = async (req, res) => {
     const { id } = req.params;
-    const data = req.body;
+    const data = { ...req.body };
+    if (data.allow_discounts !== undefined) {
+        data.allow_discounts = (data.allow_discounts === true || data.allow_discounts === 'true' || data.allow_discounts === 1 || data.allow_discounts === '1' || data.allow_discounts === 'on') ? 1 : 0;
+    }
     try {
         await pool.query('UPDATE points_of_sale SET ? WHERE id = ? AND company_id = ?', [data, id, req.company_id]);
         res.json({ message: 'Punto de venta actualizado' });

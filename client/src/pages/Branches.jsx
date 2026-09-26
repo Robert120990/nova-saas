@@ -3,9 +3,24 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import Table from '../components/ui/Table';
 import Modal from '../components/ui/Modal';
-import { Plus, Edit, Trash2, Phone, Mail, Home } from 'lucide-react';
+import { Plus, Edit, Trash2, Phone, Mail, Home, Percent, Info } from 'lucide-react';
 import { toast } from 'sonner';
 import { useConfirm } from '../context/ConfirmContext';
+
+const formatPercentages = (val) => {
+    if (!val) return '5, 10, 15, 20';
+    if (Array.isArray(val)) return val.join(', ');
+    if (typeof val === 'string') {
+        try {
+            const parsed = JSON.parse(val);
+            if (Array.isArray(parsed)) return parsed.join(', ');
+        } catch {
+            return val;
+        }
+        return val;
+    }
+    return '5, 10, 15, 20';
+};
 
 const SAVE_TIMEOUT_MS = 15000;
 
@@ -183,6 +198,17 @@ const Branches = () => {
                             <td className="px-6 py-4">
                                 <div className="text-xs text-slate-500 font-medium">Dist. {b.distrito_nombre || b.distrito || '01'}, {b.municipio_nombre || b.municipio}, {b.departamento_nombre || b.departamento}</div>
                                 <div className="text-[10px] text-slate-400 truncate max-w-[200px]">{b.direccion}</div>
+                                {b.discount_percentages && (
+                                    <div className="text-[10px] text-slate-500 mt-1 flex items-center gap-1 font-medium bg-slate-50 px-2 py-0.5 rounded border border-slate-100 w-fit">
+                                        <Percent size={10} className="text-indigo-600" />
+                                        <span>Desc: {formatPercentages(b.discount_percentages)}%</span>
+                                        {(b.max_discount_percentage || b.max_discount_amount) && (
+                                            <span className="text-slate-400">
+                                                (Tope: {b.max_discount_percentage ? `${b.max_discount_percentage}%` : ''}{b.max_discount_percentage && b.max_discount_amount ? ' / ' : ''}{b.max_discount_amount ? `$${b.max_discount_amount}` : ''})
+                                            </span>
+                                        )}
+                                    </div>
+                                )}
                             </td>
                             <td className="px-6 py-4">
                                 {b.telefono && <div className="text-xs text-slate-600 flex items-center gap-1"><Phone size={12} className="text-slate-400"/> {b.telefono}</div>}
@@ -297,6 +323,62 @@ const Branches = () => {
                             name="omitir_digito_verificador"
                             value={omitirDigitoVerificador ? '1' : '0'}
                         />
+                    </div>
+                    <div className="border-t border-slate-100 pt-3">
+                        <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider ml-1 block mb-2">Políticas de Descuento (POS)</label>
+                        <div className="p-3 bg-slate-50 border border-slate-200/80 rounded-xl space-y-3">
+                            <div>
+                                <label className={labelCls}>Porcentajes Rápidos Disponibles (%)</label>
+                                <input 
+                                    name="discount_percentages" 
+                                    defaultValue={formatPercentages(selectedBranch?.discount_percentages)} 
+                                    placeholder="5, 10, 15, 20" 
+                                    className={fieldCls} 
+                                />
+                                <span className="text-[10px] text-slate-400 mt-1 block">Valores separados por comas. Se mostrarán como botones rápidos en la terminal.</span>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div>
+                                    <label className={labelCls}>Porcentaje Máximo Permitido (%)</label>
+                                    <input 
+                                        name="max_discount_percentage" 
+                                        type="number" 
+                                        step="0.01" 
+                                        min="0" 
+                                        max="100" 
+                                        defaultValue={selectedBranch?.max_discount_percentage ?? ''} 
+                                        placeholder="Ej: 50 (opcional)" 
+                                        className={fieldCls} 
+                                    />
+                                </div>
+                                <div>
+                                    <label className={labelCls}>Monto Máximo de Descuento ($)</label>
+                                    <input 
+                                        name="max_discount_amount" 
+                                        type="number" 
+                                        step="0.01" 
+                                        min="0" 
+                                        defaultValue={selectedBranch?.max_discount_amount ?? ''} 
+                                        placeholder="Ej: 100.00 (opcional)" 
+                                        className={fieldCls} 
+                                    />
+                                </div>
+                                <div className="mt-2.5 p-3 bg-indigo-50/70 border border-indigo-100 rounded-xl text-[11px] text-slate-600 space-y-1.5 leading-relaxed">
+                                    <div className="flex items-center gap-1.5 font-bold text-indigo-900 uppercase text-[10px] tracking-wider">
+                                        <Info size={13} className="text-indigo-600 shrink-0" />
+                                        <span>Reglas de Aplicación y Control de Topes</span>
+                                    </div>
+                                    <ul className="list-disc list-inside space-y-1 pl-1 text-[10.5px]">
+                                        <li>
+                                            <strong className="text-slate-800">Porcentaje Máximo (%):</strong> Tope de margen por producto y general. Ningún ítem ni venta podrá superar este porcentaje de descuento sobre su base gravada.
+                                        </li>
+                                        <li>
+                                            <strong className="text-slate-800">Monto Máximo ($):</strong> Tope monetario máximo <em>acumulado por venta / ticket</em>. La suma de todos los descuentos otorgados (individuales y generales) en una misma venta no podrá exceder este valor.
+                                        </li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                     <div>
                         <label className={labelCls}>Dirección</label>

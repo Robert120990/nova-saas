@@ -70,6 +70,11 @@ const buffer = await excelService.createExcelBuffer({
 return excelService.sendExcelResponse(res, buffer, 'reporte.xlsx');
 ```
 
+### Generación No Bloqueante con Worker Threads (OBLIGATORIO)
+`excelService.createExcelBuffer()` delega internamente el cálculo y compilación del libro binario a un pool de **Worker Threads** nativo (`reportWorkerPool.service.js`) con fallback automático. Esto garantiza que las exportaciones pesadas no congelen el Event Loop del servidor ni afecten operaciones críticas como cobros en POS o DTEs.
+- **Regla estricta:** NUNCA instanciar `new ExcelJS.Workbook()` ni compilar hojas de cálculo directamente dentro de los controladores o rutas. Consumir siempre `excelService.createExcelBuffer()`.
+- Para reportes en PDF de alto volumen, se puede utilizar el despachador `reportWorkerPool.executePdfInWorker({ serviceRelativePath, methodName, data })`.
+
 ## 3. Generación de PDF (Backend) — Estándar Contable Unificado (OBLIGATORIO)
 
 Todos los reportes nuevos en PDF (tanto operacionales como contables) deben generarse utilizando el helper centralizado `server/src/utils/reportPdfHelper.js` para mantener una identidad visual 100% idéntica, profesional y consistente en todo el sistema.

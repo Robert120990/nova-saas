@@ -1,3 +1,4 @@
+import { formatDate } from '../../utils/dateUtils';
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
@@ -114,16 +115,6 @@ const RentaConfig = () => {
     const lbl = "block text-xs font-semibold text-slate-500 mb-1";
     const inputSm = "w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-xs text-right";
 
-    const formatDate = (date) => {
-        if (!date) return 'Indefinido';
-        const d = new Date(date);
-        if (isNaN(d.getTime())) return 'Fecha inválida';
-        const year = d.getFullYear();
-        const month = String(d.getMonth() + 1).padStart(2, '0');
-        const day = String(d.getDate()).padStart(2, '0');
-        return `${day}/${month}/${year}`;
-    };
-
     const tipoLabel = (tipo) => tipo === 'Q' ? 'Quincenal' : 'Mensual';
 
     return (
@@ -153,7 +144,7 @@ const RentaConfig = () => {
                             </div>
                         </td>
                         <td className="px-3 py-1 text-xs text-slate-500">{formatDate(item.fecha_desde)}</td>
-                        <td className="px-3 py-1 text-xs text-slate-500">{formatDate(item.fecha_hasta)}</td>
+                        <td className="px-3 py-1 text-xs text-slate-500">{formatDate(item.fecha_hasta, 'Indefinido')}</td>
                         <td className="px-3 py-1 flex gap-1">
                             <button onClick={() => openModal(item)} className="p-1 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Edit size={15} /></button>
                             <button onClick={() => handleDelete(item.id)} className="p-1 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={15} /></button>

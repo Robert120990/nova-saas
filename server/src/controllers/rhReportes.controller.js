@@ -1817,7 +1817,15 @@ const getPasivosLaboralesReport = async (req, res) => {
             const diffDic = Math.max(0, Math.floor((corteDate.getTime() - baseDic.getTime()) / (1000 * 60 * 60 * 24)));
             const pasivoAguinaldo = Math.round(((diffDic / 365) * diasTablaAguinaldo * salarioDiario) * 100) / 100;
 
-            const pasivoTotal = Math.round((pasivoIndemnizacion + pasivoVacacion + pasivoAguinaldo) * 100) / 100;
+            // Quincena 25 Proporcional (D.L. 499): 50% de salario mensual para sueldos <= $1,500
+            const startOfYear = new Date(currentYearCorte, 0, 1);
+            const effectiveStartQ25 = ingresoDate > startOfYear ? ingresoDate : startOfYear;
+            const diffDaysQ25 = Math.max(0, Math.floor((corteDate.getTime() - effectiveStartQ25.getTime()) / (1000 * 60 * 60 * 24)) + 1);
+            const pasivoQuincena25 = sueldoBase <= 1500.00
+                ? Math.round(((sueldoBase * 0.50) * (Math.min(365, diffDaysQ25) / 365)) * 100) / 100
+                : 0;
+
+            const pasivoTotal = Math.round((pasivoIndemnizacion + pasivoVacacion + pasivoAguinaldo + pasivoQuincena25) * 100) / 100;
 
             return {
                 id: e.id,
@@ -1831,6 +1839,7 @@ const getPasivosLaboralesReport = async (req, res) => {
                 pasivo_indemnizacion: pasivoIndemnizacion,
                 pasivo_vacacion: pasivoVacacion,
                 pasivo_aguinaldo: pasivoAguinaldo,
+                pasivo_quincena25: pasivoQuincena25,
                 pasivo_total: pasivoTotal
             };
         });
@@ -1839,9 +1848,10 @@ const getPasivosLaboralesReport = async (req, res) => {
             acc.total_indemnizacion += curr.pasivo_indemnizacion;
             acc.total_vacacion += curr.pasivo_vacacion;
             acc.total_aguinaldo += curr.pasivo_aguinaldo;
+            acc.total_quincena25 += curr.pasivo_quincena25;
             acc.total_pasivo += curr.pasivo_total;
             return acc;
-        }, { total_indemnizacion: 0, total_vacacion: 0, total_aguinaldo: 0, total_pasivo: 0, total_empleados: items.length });
+        }, { total_indemnizacion: 0, total_vacacion: 0, total_aguinaldo: 0, total_quincena25: 0, total_pasivo: 0, total_empleados: items.length });
 
         const periodText = `FECHA DE CORTE: ${reportPdfHelper.formatDate(fecha_corte)}`;
         const subtitle = `CÁLCULO DE PASIVOS LABORALES ACUMULADOS SEGÚN CÓDIGO DE TRABAJO`;
@@ -1866,6 +1876,7 @@ const getPasivosLaboralesReport = async (req, res) => {
                         { header: 'Indemnización ($)', key: 'pasivo_indemnizacion', width: 18 },
                         { header: 'Vacación Prop. ($)', key: 'pasivo_vacacion', width: 18 },
                         { header: 'Aguinaldo Prop. ($)', key: 'pasivo_aguinaldo', width: 18 },
+                        { header: 'Quincena 25 Prop. ($)', key: 'pasivo_quincena25', width: 18 },
                         { header: 'Pasivo Total ($)', key: 'pasivo_total', width: 20 }
                     ],
                     data: [
@@ -1880,6 +1891,7 @@ const getPasivosLaboralesReport = async (req, res) => {
                             pasivo_indemnizacion: item.pasivo_indemnizacion.toFixed(2),
                             pasivo_vacacion: item.pasivo_vacacion.toFixed(2),
                             pasivo_aguinaldo: item.pasivo_aguinaldo.toFixed(2),
+                            pasivo_quincena25: item.pasivo_quincena25.toFixed(2),
                             pasivo_total: item.pasivo_total.toFixed(2)
                         })),
                         {
@@ -1888,6 +1900,7 @@ const getPasivosLaboralesReport = async (req, res) => {
                             pasivo_indemnizacion: totals.total_indemnizacion.toFixed(2),
                             pasivo_vacacion: totals.total_vacacion.toFixed(2),
                             pasivo_aguinaldo: totals.total_aguinaldo.toFixed(2),
+                            pasivo_quincena25: totals.total_quincena25.toFixed(2),
                             pasivo_total: totals.total_pasivo.toFixed(2)
                         }
                     ]

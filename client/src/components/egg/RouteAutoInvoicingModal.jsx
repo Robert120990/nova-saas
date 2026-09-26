@@ -17,7 +17,8 @@ import {
     PlusCircle,
     Trash2,
     Copy,
-    Mail
+    Mail,
+    MapPin
 } from 'lucide-react';
 
 const DTE_TYPE_OPTIONS = [
@@ -74,6 +75,9 @@ export default function RouteAutoInvoicingModal({
             const hasNrc = !!(stop.customer_nrc && String(stop.customer_nrc).trim());
             const dteType = isForeign ? '11' : (hasNrc ? '03' : '01');
 
+            const isCustomerComidasEsp = (stop.customer_name || '').toUpperCase().includes('COMIDAS ESPECIALIZADAS') || (stop.customer_name || '').toUpperCase().includes('COMIDAS E INDUSTRIAS');
+            const isCustomerCallejas = (stop.customer_name || '').toUpperCase().includes('CALLEJA') || stop.customer_id === 11316 || stop.customer_id === 32555;
+
             // Desglosar ítems de la parada
             let items = [];
             if (stop.items_json) {
@@ -87,15 +91,40 @@ export default function RouteAutoInvoicingModal({
                             const parsedUnits = (rawUnits !== undefined && rawUnits !== null && rawUnits !== '' && parseFloat(rawUnits) > 0)
                                 ? parseFloat(rawUnits)
                                 : null;
+                            const rawBarcode = (it.barcode || it.product_barcode || it.catalog_barcode || '').trim();
+                            let initProd = it.product_type || 'Huevo Entero Pasteurizado';
+                            let initPres = it.presentation || 'cubeta 30LB';
+                            const isKg = isCustomerComidasEsp || !!it.is_kg_mode || it.unit_of_measure === 'kg';
+
+                            if (isKg) {
+                                initPres = initPres.replace(/\b(\d+)?\s*(lbs?|lb)\b/gi, '').replace(/\s+/g, ' ').trim() || initPres;
+                                initProd = initProd.replace(/\b(\d+)?\s*(lbs?|lb)\b/gi, '').replace(/\s+/g, ' ').trim() || initProd;
+                            }
+
+                            if (isCustomerCallejas && rawBarcode && !initProd.startsWith(rawBarcode)) {
+                                initProd = `${rawBarcode} ${initProd}`.trim();
+                            }
+
+                            const isUnitDefault = it.billing_unit === 'units' || 
+                                (it.billing_unit !== 'lbs' && (isCustomerCallejas || (parsedUnits && parsedUnits > 0)));
+
                             return {
-                                product_type: it.product_type || 'Huevo Entero Pasteurizado',
-                                presentation: it.presentation || 'cubeta 30LB',
+                                product_type: initProd,
+                                original_product_type: it.product_type || 'Huevo Entero Pasteurizado',
+                                presentation: initPres,
+                                original_presentation: it.presentation || 'cubeta 30LB',
                                 units: parsedUnits,
                                 quantity_units: parsedUnits,
-                                quantity_lbs: parseFloat(it.quantity_lbs || 0),
-                                price_per_lb: parseFloat(it.price_per_lb || 0),
-                                batch_id: it.batch_id || stop.batch_id || stop.order_batch_id || null,
-                                lot_code: it.lot_code || stop.lot_code || stop.order_lot_code || stop.linked_batch_code || ''
+                                billing_unit: it.billing_unit || (isUnitDefault ? 'units' : 'lbs'),
+                                quantity_lbs: parseFloat(it.quantity_lbs || stop.quantity_lbs || 0),
+                                quantity_kg: it.quantity_kg ? parseFloat(it.quantity_kg) : (parseFloat(it.quantity_lbs || stop.quantity_lbs || 0) * 0.45359237),
+                                price_per_lb: parseFloat(it.price_per_lb || stop.price_per_lb || 0),
+                                batch_id: it.batch_id || stop.order_batch_id || stop.batch_id || null,
+                                packaging_id: it.packaging_id || null,
+                                original_lot_code: it.original_lot_code || it.lot_code || stop.order_lot_code || stop.lot_code || '',
+                                lot_code: it.lot_code || stop.order_lot_code || stop.lot_code || stop.linked_batch_code || '',
+                                barcode: rawBarcode,
+                                is_kg_mode: isKg
                             };
                         });
                     }
@@ -109,15 +138,40 @@ export default function RouteAutoInvoicingModal({
                 const parsedStopUnits = (rawStopUnits !== undefined && rawStopUnits !== null && rawStopUnits !== '' && parseFloat(rawStopUnits) > 0)
                     ? parseFloat(rawStopUnits)
                     : null;
+                const rawBarcode = (stop.barcode || stop.product_barcode || '').trim();
+                let initProd = stop.product_type || 'Huevo Entero Pasteurizado';
+                let initPres = stop.presentation || 'cubeta 30LB';
+                const isKg = isCustomerComidasEsp || stop.unit_of_measure === 'kg';
+
+                if (isKg) {
+                    initPres = initPres.replace(/\b(\d+)?\s*(lbs?|lb)\b/gi, '').replace(/\s+/g, ' ').trim() || initPres;
+                    initProd = initProd.replace(/\b(\d+)?\s*(lbs?|lb)\b/gi, '').replace(/\s+/g, ' ').trim() || initProd;
+                }
+
+                if (isCustomerCallejas && rawBarcode && !initProd.startsWith(rawBarcode)) {
+                    initProd = `${rawBarcode} ${initProd}`.trim();
+                }
+
+                const isUnitDefault = stop.billing_unit === 'units' || 
+                    (stop.billing_unit !== 'lbs' && (isCustomerCallejas || (parsedStopUnits && parsedStopUnits > 0)));
+
                 items = [{
-                    product_type: stop.product_type || 'Huevo Entero Pasteurizado',
-                    presentation: stop.presentation || 'cubeta 30LB',
+                    product_type: initProd,
+                    original_product_type: stop.product_type || 'Huevo Entero Pasteurizado',
+                    presentation: initPres,
+                    original_presentation: stop.presentation || 'cubeta 30LB',
                     units: parsedStopUnits,
                     quantity_units: parsedStopUnits,
+                    billing_unit: stop.billing_unit || (isUnitDefault ? 'units' : 'lbs'),
                     quantity_lbs: parseFloat(stop.quantity_lbs || 0),
+                    quantity_kg: stop.quantity_kg ? parseFloat(stop.quantity_kg) : (parseFloat(stop.quantity_lbs || 0) * 0.45359237),
                     price_per_lb: parseFloat(stop.price_per_lb || 0),
-                    batch_id: stop.batch_id || stop.order_batch_id || null,
-                    lot_code: stop.lot_code || stop.order_lot_code || stop.linked_batch_code || ''
+                    batch_id: stop.order_batch_id || stop.batch_id || null,
+                    packaging_id: null,
+                    original_lot_code: stop.order_lot_code || stop.lot_code || '',
+                    lot_code: stop.order_lot_code || stop.lot_code || stop.linked_batch_code || '',
+                    barcode: rawBarcode,
+                    is_kg_mode: isKg
                 }];
             }
 
@@ -197,6 +251,7 @@ export default function RouteAutoInvoicingModal({
             newItems[itemIndex] = {
                 ...newItems[itemIndex],
                 lot_code: lot.lot_code,
+                original_lot_code: lot.lot_code,
                 batch_id: lot.batch_id,
                 packaging_id: lot.packaging_id,
                 low_stock_warning: hasLowStock,
@@ -260,14 +315,14 @@ export default function RouteAutoInvoicingModal({
     };
 
     // Funciones para Adicionar, Editar y Eliminar Detalles Libres (sin producto/cantidad/precio obligatorios)
-    const handleAddCustomDetail = (stopId) => {
+    const handleAddCustomDetail = (stopId, defaultText = '') => {
         setStopsConfig(prev => {
             const currentStop = prev[stopId];
             if (!currentStop || currentStop.is_billed) return prev;
             const newItem = {
                 id: 'custom-' + Date.now(),
                 is_custom_detail: true,
-                product_type: '',
+                product_type: defaultText,
                 presentation: 'Detalle',
                 quantity_lbs: '',
                 price_per_lb: '',
@@ -303,6 +358,82 @@ export default function RouteAutoInvoicingModal({
         });
     };
 
+    const handleUpdateItemField = (stopId, itemIndex, field, value) => {
+        setStopsConfig(prev => {
+            const currentStop = prev[stopId];
+            if (!currentStop || currentStop.is_billed) return prev;
+            const newItems = [...currentStop.items];
+            newItems[itemIndex] = {
+                ...newItems[itemIndex],
+                [field]: value
+            };
+            return {
+                ...prev,
+                [stopId]: {
+                    ...currentStop,
+                    items: newItems
+                }
+            };
+        });
+    };
+
+    const handleToggleKgMode = (stopId, itemIndex) => {
+        setStopsConfig(prev => {
+            const currentStop = prev[stopId];
+            if (!currentStop || currentStop.is_billed) return prev;
+            const newItems = [...currentStop.items];
+            const it = newItems[itemIndex];
+            const nextKgMode = !it.is_kg_mode;
+
+            let newPres = it.presentation || '';
+            let newProdType = it.product_type || '';
+            if (nextKgMode) {
+                newPres = newPres.replace(/\b(\d+)?\s*(lbs?|lb)\b/gi, '').replace(/\s+/g, ' ').trim();
+                newProdType = newProdType.replace(/\b(\d+)?\s*(lbs?|lb)\b/gi, '').replace(/\s+/g, ' ').trim();
+            } else {
+                newPres = it.original_presentation || it.presentation;
+                newProdType = it.original_product_type || it.product_type;
+            }
+
+            newItems[itemIndex] = {
+                ...it,
+                is_kg_mode: nextKgMode,
+                presentation: newPres,
+                product_type: newProdType
+            };
+            return {
+                ...prev,
+                [stopId]: {
+                    ...currentStop,
+                    items: newItems
+                }
+            };
+        });
+    };
+
+    const handlePrependBarcode = (stopId, itemIndex, barcodeToPrepend) => {
+        if (!barcodeToPrepend) return;
+        setStopsConfig(prev => {
+            const currentStop = prev[stopId];
+            if (!currentStop || currentStop.is_billed) return prev;
+            const newItems = [...currentStop.items];
+            const it = newItems[itemIndex];
+            const currentText = (it.product_type || '').trim();
+            const updated = currentText.startsWith(barcodeToPrepend) ? currentText : `${barcodeToPrepend} ${currentText}`;
+            newItems[itemIndex] = {
+                ...it,
+                product_type: updated
+            };
+            return {
+                ...prev,
+                [stopId]: {
+                    ...currentStop,
+                    items: newItems
+                }
+            };
+        });
+    };
+
     const handleRemoveCustomDetail = (stopId, itemIndex) => {
         setStopsConfig(prev => {
             const currentStop = prev[stopId];
@@ -316,6 +447,54 @@ export default function RouteAutoInvoicingModal({
                 }
             };
         });
+    };
+
+    // Alternar modalidad de facturación (Presentación / Unidades vs Libras / Peso)
+    const handleToggleBillingUnit = (stopId, itemIndex) => {
+        setStopsConfig(prev => {
+            const currentStop = prev[stopId];
+            if (!currentStop || currentStop.is_billed) return prev;
+            const newItems = [...currentStop.items];
+            const it = newItems[itemIndex];
+            const currentMode = it.billing_unit || 'units';
+            const nextMode = currentMode === 'units' ? 'lbs' : 'units';
+            newItems[itemIndex] = {
+                ...it,
+                billing_unit: nextMode
+            };
+            return {
+                ...prev,
+                [stopId]: {
+                    ...currentStop,
+                    items: newItems
+                }
+            };
+        });
+    };
+
+    // Cambiar modalidad global para todas las paradas pendientes
+    const handleSetAllBillingUnit = (mode) => {
+        setStopsConfig(prev => {
+            const updated = { ...prev };
+            Object.keys(updated).forEach(stopId => {
+                const stopCfg = updated[stopId];
+                if (!stopCfg || stopCfg.is_billed) return;
+                updated[stopId] = {
+                    ...stopCfg,
+                    items: (stopCfg.items || []).map(it => {
+                        if (it.is_custom_detail) return it;
+                        return {
+                            ...it,
+                            billing_unit: mode
+                        };
+                    })
+                };
+            });
+            return updated;
+        });
+        toast.info(mode === 'units'
+            ? 'Modalidad cambiada: Facturar por Presentación (Uds) en todas las paradas.'
+            : 'Modalidad cambiada: Facturar por Libras (Peso) en todas las paradas.');
     };
 
     // Filtrar lotes en el modal de selección
@@ -395,7 +574,7 @@ export default function RouteAutoInvoicingModal({
             return;
         }
 
-        // 2. Validar que los productos de catálogo tengan lote asignado y detalles libres tengan descripción
+        // 2. Validar que los detalles libres tengan descripción si se ingresaron
         for (const stop of selectedStops) {
             const cfg = stopsConfig[stop.id];
             for (let i = 0; i < cfg.items.length; i++) {
@@ -405,15 +584,6 @@ export default function RouteAutoInvoicingModal({
                         toast.warning(`Hay un detalle libre sin descripción en la parada de "${stop.customer_name}". Ingrese un texto o elimínelo.`);
                         return;
                     }
-                    continue; // Exento de lote
-                }
-                if (!it.lot_code || !String(it.lot_code).trim()) {
-                    toast.warning(
-                        `Falta asignar lote para "${it.product_type}" en el pedido de "${stop.customer_name}". Se ha abierto el selector de lotes.`,
-                        { duration: 6000 }
-                    );
-                    handleOpenLotPicker(stop.id, i, it, stop.customer_name);
-                    return;
                 }
             }
         }
@@ -438,9 +608,14 @@ export default function RouteAutoInvoicingModal({
                         dias_credito: parseInt(cfg.dias_credito, 10) || 0,
                         items: (cfg.items || []).map(it => ({
                             ...it,
+                            billing_unit: it.billing_unit || 'units',
+                            units: it.units ?? it.quantity_units ?? null,
                             quantity_lbs: Number.isFinite(parseFloat(it.quantity_lbs)) ? parseFloat(it.quantity_lbs) : 0,
                             price_per_lb: Number.isFinite(parseFloat(it.price_per_lb)) ? parseFloat(it.price_per_lb) : 0,
-                            batch_id: it.batch_id ? (parseInt(it.batch_id, 10) || null) : null
+                            batch_id: it.batch_id ? (parseInt(it.batch_id, 10) || null) : null,
+                            packaging_id: it.packaging_id ? (parseInt(it.packaging_id, 10) || null) : null,
+                            original_lot_code: it.original_lot_code || it.lot_code || '',
+                            lot_code: (it.lot_code || '').trim()
                         }))
                     };
                 })
@@ -508,15 +683,15 @@ export default function RouteAutoInvoicingModal({
                 </div>
             </div>
 
-            {/* Alerta de Lotes Faltantes */}
+            {/* Alerta Informativa de Lotes */}
             {stats.missingLotsCount > 0 && (
-                <div className="bg-amber-50 border border-amber-200 p-3.5 rounded-2xl flex items-center justify-between gap-3 text-amber-800 text-xs">
+                <div className="bg-amber-50/90 border border-amber-200 p-3 rounded-2xl flex items-center justify-between gap-3 text-amber-800 text-xs shadow-2xs">
                     <div className="flex items-center gap-2.5">
                         <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0" />
                         <div>
-                            <span className="font-black">Atención: Hay {stats.missingLotsCount} producto(s) sin lote asignado en las paradas seleccionadas.</span>
+                            <span className="font-black">Aviso Informativo: Hay {stats.missingLotsCount} producto(s) sin lote de inventario en las paradas seleccionadas.</span>
                             <p className="text-[11px] text-amber-700 font-medium mt-0.5">
-                                Haz clic en <span className="font-bold underline">"+ Asignar Lote"</span> en cada producto para seleccionarlo desde el inventario antes de facturar.
+                                Puedes facturar directamente (se registrará sin lote como S/L) o hacer clic en <span className="font-bold underline">"+ Asignar Lote"</span> para vincular y descontar del inventario.
                             </p>
                         </div>
                     </div>
@@ -525,14 +700,36 @@ export default function RouteAutoInvoicingModal({
 
             {/* 2. Lista de Paradas / Pedidos */}
             <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                    <h4 className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
-                        <Receipt className="w-4 h-4 text-indigo-600" />
-                        <span>Paradas de la Ruta y Parámetros de Facturación</span>
-                    </h4>
-                    <span className="text-[11px] font-bold text-slate-400">
-                        {stats.selectedCount} seleccionada(s) para emitir
-                    </span>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-1 border-b border-slate-200">
+                    <div className="flex items-center gap-2">
+                        <h4 className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                            <Receipt className="w-4 h-4 text-indigo-600" />
+                            <span>Paradas de la Ruta y Parámetros de Facturación</span>
+                        </h4>
+                        <span className="text-[11px] font-bold text-slate-400">
+                            ({stats.selectedCount} seleccionada(s))
+                        </span>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-[10px] font-bold text-slate-500 uppercase mr-1">Modalidad global:</span>
+                        <button
+                            type="button"
+                            onClick={() => handleSetAllBillingUnit('units')}
+                            className="text-[10px] font-bold px-2 py-1 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 transition flex items-center gap-1"
+                            title="Establecer facturación por presentación/unidades para todas las paradas pendientes"
+                        >
+                            <span>📦 Todas por Presentación (Uds)</span>
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => handleSetAllBillingUnit('lbs')}
+                            className="text-[10px] font-bold px-2 py-1 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200 transition flex items-center gap-1"
+                            title="Establecer facturación por peso/libras para todas las paradas pendientes"
+                        >
+                            <span>⚖️ Todas por Libras (Peso)</span>
+                        </button>
+                    </div>
                 </div>
 
                 <div className="space-y-3 max-h-[420px] overflow-y-auto pr-1">
@@ -720,13 +917,30 @@ export default function RouteAutoInvoicingModal({
                                                             <span className="text-[10px] uppercase font-black tracking-wide">Nota / Obs:</span>
                                                         </div>
                                                         {!isBilled ? (
-                                                            <input
-                                                                type="text"
-                                                                value={it.product_type || ''}
-                                                                onChange={(e) => handleUpdateCustomDetail(stop.id, itemIdx, 'product_type', e.target.value)}
-                                                                placeholder="Descripción libre (ej: Servicio de flete, observación, empaques...)"
-                                                                className="flex-1 min-w-[200px] text-xs font-semibold bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-slate-800 outline-none focus:border-indigo-500"
-                                                            />
+                                                            <div className="flex-1 flex items-center gap-1.5 w-full">
+                                                                <input
+                                                                    type="text"
+                                                                    value={it.product_type || ''}
+                                                                    onChange={(e) => handleUpdateCustomDetail(stop.id, itemIdx, 'product_type', e.target.value)}
+                                                                    placeholder="Descripción libre (ej: Servicio de flete, observación, empaques...)"
+                                                                    className="flex-1 min-w-[200px] text-xs font-semibold bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-slate-800 outline-none focus:border-indigo-500"
+                                                                />
+                                                                {stop.branch_name && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                            const branchLabel = `Sucursal: ${stop.branch_name}`;
+                                                                            const current = (it.product_type || '').trim();
+                                                                            const updated = current ? (current.includes(stop.branch_name) ? current : `${current} - ${branchLabel}`) : branchLabel;
+                                                                            handleUpdateCustomDetail(stop.id, itemIdx, 'product_type', updated);
+                                                                        }}
+                                                                        title={`Insertar nombre de sucursal: ${stop.branch_name}`}
+                                                                        className="shrink-0 flex items-center gap-1 text-[11px] font-bold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-2 py-1 rounded-lg border border-indigo-200 shadow-xs transition"
+                                                                    >
+                                                                        <span>📍 + Sucursal</span>
+                                                                    </button>
+                                                                )}
+                                                            </div>
                                                         ) : (
                                                             <span className="font-semibold text-slate-800">{it.product_type}</span>
                                                         )}
@@ -806,6 +1020,10 @@ export default function RouteAutoInvoicingModal({
                                             units = Number.isInteger(calc) ? calc : Math.round(calc * 100) / 100;
                                         }
 
+                                        const isBillingByUnits = (it.billing_unit ?? 'units') === 'units';
+                                        const effectiveBilledQty = (isBillingByUnits && units > 0) ? units : qtyLbs;
+                                        const effectiveUnitPrice = effectiveBilledQty > 0 ? (itemTotal / effectiveBilledQty) : priceLb;
+
                                         return (
                                             <div
                                                 key={itemIdx}
@@ -814,82 +1032,185 @@ export default function RouteAutoInvoicingModal({
                                                         ? 'bg-white/60 border-emerald-200'
                                                         : hasLot
                                                         ? 'bg-slate-50 border-slate-200 shadow-xs'
-                                                        : 'bg-amber-50/80 border-amber-300 shadow-xs'
+                                                        : 'bg-slate-50/70 border-slate-200/90 shadow-2xs'
                                                 }`}
                                             >
                                                 <div className="flex-1 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 items-center">
                                                     {/* 1. Producto */}
-                                                    <div className="col-span-2 sm:col-span-1 md:col-span-2">
-                                                        <span className="block text-[9px] font-black uppercase text-slate-400">Producto</span>
-                                                        <span className="font-black text-slate-900 line-clamp-1">{it.product_type}</span>
+                                                    <div className="col-span-2 sm:col-span-1 md:col-span-2 space-y-1">
+                                                        <div className="flex items-center justify-between gap-1 flex-wrap">
+                                                            <span className="block text-[9px] font-black uppercase text-slate-400">Producto</span>
+                                                            {!isBilled && (
+                                                                <div className="flex items-center gap-1 flex-wrap">
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => handleToggleBillingUnit(stop.id, itemIdx)}
+                                                                        title={isBillingByUnits ? 'Cambiar a facturar por Libras (Peso)' : 'Cambiar a facturar por Presentación (Unidades)'}
+                                                                        className={`text-[9px] font-black px-1.5 py-0.5 rounded border transition flex items-center gap-1 ${
+                                                                            isBillingByUnits
+                                                                                ? 'bg-blue-100 text-blue-800 border-blue-300 hover:bg-blue-200'
+                                                                                : 'bg-emerald-100 text-emerald-800 border-emerald-300 hover:bg-emerald-200'
+                                                                        }`}
+                                                                    >
+                                                                        {isBillingByUnits ? '📦 x Presentación' : '⚖️ x Libras'}
+                                                                    </button>
+                                                                    {it.barcode && (
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => handlePrependBarcode(stop.id, itemIdx, it.barcode)}
+                                                                            title={`Anteponer código de barra (${it.barcode}) al nombre`}
+                                                                            className="text-[9px] font-bold text-indigo-700 hover:text-indigo-900 bg-indigo-50 hover:bg-indigo-100 px-1.5 py-0.5 rounded border border-indigo-200 transition"
+                                                                        >
+                                                                            + Barcode
+                                                                        </button>
+                                                                    )}
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => handleToggleKgMode(stop.id, itemIdx)}
+                                                                        title={it.is_kg_mode ? 'Cambiar a Libras (LB)' : 'Facturar en Kilogramos (KG) y limpiar mención de libras'}
+                                                                        className={`text-[9px] font-black px-1.5 py-0.5 rounded border transition ${
+                                                                            it.is_kg_mode
+                                                                                ? 'bg-amber-100 text-amber-800 border-amber-300'
+                                                                                : 'bg-slate-100 text-slate-600 hover:bg-slate-200 border-slate-200'
+                                                                        }`}
+                                                                    >
+                                                                        {it.is_kg_mode ? 'KG Activo' : 'Modo KG'}
+                                                                    </button>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                        {!isBilled ? (
+                                                            <input
+                                                                type="text"
+                                                                value={it.product_type || ''}
+                                                                onChange={(e) => handleUpdateItemField(stop.id, itemIdx, 'product_type', e.target.value)}
+                                                                placeholder="Nombre producto..."
+                                                                className="w-full text-xs font-bold text-slate-800 bg-white border border-slate-200 rounded-md px-2 py-1 focus:ring-1 focus:ring-indigo-500 focus:outline-hidden"
+                                                            />
+                                                        ) : (
+                                                            <span className="font-black text-slate-900 line-clamp-1">{it.product_type}</span>
+                                                        )}
                                                     </div>
 
                                                     {/* 2. Presentación */}
-                                                    <div>
+                                                    <div className="space-y-1">
                                                         <span className="block text-[9px] font-black uppercase text-slate-400">Presentación</span>
-                                                        <span className="font-bold text-slate-700">{it.presentation || 'cubeta 30LB'}</span>
+                                                        {!isBilled ? (
+                                                            <input
+                                                                type="text"
+                                                                value={it.presentation || ''}
+                                                                onChange={(e) => handleUpdateItemField(stop.id, itemIdx, 'presentation', e.target.value)}
+                                                                placeholder="cubeta..."
+                                                                className="w-full text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-md px-2 py-1 focus:ring-1 focus:ring-indigo-500 focus:outline-hidden"
+                                                            />
+                                                        ) : (
+                                                            <span className="font-bold text-slate-700">{it.presentation || 'cubeta 30LB'}</span>
+                                                        )}
                                                     </div>
 
                                                     {/* 3. Cant. Unidades */}
                                                     <div className="text-center sm:text-left">
-                                                        <span className="block text-[9px] font-black uppercase text-slate-400">Unidades</span>
-                                                        <span className="font-black text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100 inline-block">
+                                                        <div className="flex items-center gap-1">
+                                                            <span className={`block text-[9px] font-black uppercase ${isBillingByUnits ? 'text-blue-700' : 'text-slate-400'}`}>
+                                                                {isBillingByUnits ? 'Cant. DTE (Uds)' : 'Unidades'}
+                                                            </span>
+                                                            {isBillingByUnits && (
+                                                                <span className="text-[8px] bg-blue-100 text-blue-700 font-extrabold px-1 rounded">DTE</span>
+                                                            )}
+                                                        </div>
+                                                        <span className={`font-black px-2 py-0.5 rounded-md border inline-block text-xs mt-0.5 ${
+                                                            isBillingByUnits 
+                                                                ? 'text-blue-900 bg-blue-50 border-blue-200 shadow-2xs' 
+                                                                : 'text-slate-500 bg-slate-100 border-slate-200'
+                                                        }`}>
                                                             {units} Uds
                                                         </span>
                                                     </div>
 
-                                                    {/* 4. Cant. Libras */}
+                                                    {/* 4. Cant. Libras / Kilogramos */}
                                                     <div className="text-center sm:text-left">
-                                                        <span className="block text-[9px] font-black uppercase text-slate-400">Libras (Peso)</span>
-                                                        <span className="font-black text-slate-900">
-                                                            {qtyLbs.toLocaleString()} Lbs
+                                                        <div className="flex items-center gap-1">
+                                                            <span className={`block text-[9px] font-black uppercase ${!isBillingByUnits ? 'text-emerald-700' : 'text-slate-400'}`}>
+                                                                {!isBillingByUnits 
+                                                                    ? (it.is_kg_mode ? 'Cant. DTE (Kg)' : 'Cant. DTE (Lbs)')
+                                                                    : (it.is_kg_mode ? 'Peso (Kg)' : 'Peso (Lbs)')
+                                                                }
+                                                            </span>
+                                                            {!isBillingByUnits && (
+                                                                <span className="text-[8px] bg-emerald-100 text-emerald-700 font-extrabold px-1 rounded">DTE</span>
+                                                            )}
+                                                        </div>
+                                                        <span className={`font-black px-2 py-0.5 rounded-md border inline-block text-xs mt-0.5 ${
+                                                            !isBillingByUnits 
+                                                                ? 'text-emerald-900 bg-emerald-50 border-emerald-200 shadow-2xs' 
+                                                                : 'text-slate-600 bg-slate-100 border-slate-200'
+                                                        }`}>
+                                                            {it.is_kg_mode
+                                                                ? `${(qtyLbs * 0.45359237).toFixed(2)} Kg`
+                                                                : `${qtyLbs.toLocaleString()} Lbs`
+                                                            }
                                                         </span>
                                                     </div>
 
                                                     {/* 5 & 6. Precio y Total */}
                                                     <div className="text-right">
-                                                        <span className="block text-[9px] font-black uppercase text-slate-400">
-                                                            @ <Money value={priceLb} />/lb
+                                                        <span className="block text-[9px] font-black uppercase text-slate-500">
+                                                            {isBillingByUnits ? (
+                                                                <>@ <Money value={effectiveUnitPrice} />/ud</>
+                                                            ) : (
+                                                                <>@ <Money value={priceLb} />/lb</>
+                                                            )}
                                                         </span>
                                                         <span className="font-black text-slate-900 text-sm">
                                                             <Money value={itemTotal} />
                                                         </span>
+                                                        {isBillingByUnits && (
+                                                            <span className="block text-[9px] text-slate-400 font-medium">
+                                                                (@ <Money value={priceLb} />/lb)
+                                                            </span>
+                                                        )}
                                                     </div>
                                                 </div>
 
                                                 {/* 7. Lote & Botón Pop-up Selector */}
                                                 <div className="flex items-center justify-end gap-2 shrink-0 pt-2 md:pt-0 border-t md:border-t-0 border-slate-100">
-                                                    {hasLot ? (
-                                                        <div className="flex items-center gap-1.5">
-                                                            <span className="inline-flex items-center gap-1 text-[11px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200 px-2.5 py-1 rounded-lg">
-                                                                <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                                                                <span>Lote: {it.lot_code}</span>
-                                                            </span>
-                                                            {!isBilled && (
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => handleOpenLotPicker(stop.id, itemIdx, it, stop.customer_name)}
-                                                                    className="text-[10px] font-bold text-slate-500 hover:text-indigo-600 hover:underline px-1 py-0.5"
-                                                                >
-                                                                    Cambiar
-                                                                </button>
-                                                            )}
-                                                        </div>
+                                                    {isBilled ? (
+                                                        <span className="inline-flex items-center gap-1 text-[11px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200 px-2.5 py-1 rounded-lg">
+                                                            <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                                            <span>Lote: {it.lot_code || 'S/L'}</span>
+                                                        </span>
                                                     ) : (
-                                                        <div className="flex items-center gap-1.5">
-                                                            <span className="inline-flex items-center gap-1 text-[11px] font-black bg-amber-200 text-amber-900 border border-amber-300 px-2 py-0.5 rounded-lg animate-pulse">
-                                                                <AlertTriangle className="w-3 h-3 text-amber-700" />
-                                                                <span>Sin Lote</span>
-                                                            </span>
-                                                            {!isBilled && (
+                                                        <div className="flex flex-col items-end gap-1">
+                                                            <div className="flex items-center gap-1.5">
+                                                                <div className={`flex items-center rounded-lg px-2 py-0.5 border ${hasLot ? 'bg-emerald-50 border-emerald-200' : 'bg-slate-100 border-slate-200'}`}>
+                                                                    <span className={`text-[9px] font-black uppercase mr-1 ${hasLot ? 'text-emerald-800' : 'text-slate-500'}`}>Lote:</span>
+                                                                    <input
+                                                                        type="text"
+                                                                        value={it.lot_code || ''}
+                                                                        onChange={(e) => handleUpdateItemField(stop.id, itemIdx, 'lot_code', e.target.value)}
+                                                                        placeholder="Sin Lote (S/L)"
+                                                                        title="Código/texto de lote para la factura/DTE (editable por requerimiento del cliente)"
+                                                                        className={`text-[11px] font-bold bg-transparent border-none p-0 focus:ring-0 focus:outline-hidden w-28 sm:w-32 ${hasLot ? 'text-emerald-950' : 'text-slate-700'}`}
+                                                                    />
+                                                                </div>
                                                                 <button
                                                                     type="button"
                                                                     onClick={() => handleOpenLotPicker(stop.id, itemIdx, it, stop.customer_name)}
-                                                                    className="flex items-center gap-1 text-[11px] font-black bg-amber-600 hover:bg-amber-700 text-white px-2.5 py-1 rounded-lg shadow-xs transition"
+                                                                    className={`flex items-center gap-1 text-[10px] px-2 py-1 rounded-lg border transition ${
+                                                                        hasLot 
+                                                                            ? 'text-slate-600 hover:text-indigo-600 bg-white hover:bg-slate-50 border-slate-200 font-bold' 
+                                                                            : 'text-indigo-700 hover:text-indigo-900 bg-indigo-50 hover:bg-indigo-100 border-indigo-200 font-black'
+                                                                    }`}
+                                                                    title={hasLot ? "Cambiar lote de inventario vinculado" : "Vincular con un lote del inventario para descontar existencias"}
                                                                 >
                                                                     <Package className="w-3 h-3" />
-                                                                    <span>+ Asignar Lote</span>
+                                                                    <span>{hasLot ? 'Cambiar' : '+ Asignar'}</span>
                                                                 </button>
+                                                            </div>
+                                                            {it.original_lot_code && it.lot_code && it.lot_code.trim() !== it.original_lot_code.trim() && (
+                                                                <span className="text-[9px] font-medium text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-100" title={`Se descontará del lote físico #${it.original_lot_code}`}>
+                                                                    Descuenta de #{it.original_lot_code}
+                                                                </span>
                                                             )}
                                                         </div>
                                                     )}
@@ -898,9 +1219,20 @@ export default function RouteAutoInvoicingModal({
                                         );
                                     })}
 
-                                    {/* Botón para Adicionar Detalle Libre */}
+                                    {/* Botón para Adicionar Detalle Libre y Nota de Sucursal */}
                                     {!isBilled && (
-                                        <div className="pt-1.5 flex justify-end">
+                                        <div className="pt-1.5 flex flex-wrap items-center justify-end gap-2">
+                                            {stop.branch_name && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleAddCustomDetail(stop.id, `Sucursal: ${stop.branch_name}`)}
+                                                    className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-700 hover:text-emerald-900 hover:bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-300 bg-emerald-50/50 transition shadow-xs"
+                                                    title={`Adicionar nota libre con el nombre de la sucursal (${stop.branch_name})`}
+                                                >
+                                                    <MapPin className="w-3.5 h-3.5 text-emerald-600" />
+                                                    <span>+ Nota Sucursal ({stop.branch_name})</span>
+                                                </button>
+                                            )}
                                             <button
                                                 type="button"
                                                 onClick={() => handleAddCustomDetail(stop.id)}

@@ -1,0 +1,47 @@
+[
+  {
+    "id": "cat-002-tipos-dte",
+    "catalogo": "CAT-002",
+    "nombre": "Tipo de Documento Tributario Electrónico",
+    "documento": "Catálogos Oficiales de Facturación Electrónica MH",
+    "pagina": 1,
+    "tags": ["cat-002", "tipo documento", "dte", "factura", "credito fiscal", "ccf", "nota de credito", "retencion", "sujeto excluido", "exportacion", "remision"],
+    "contenido": "Catálogo CAT-002 - Tipo de Documento Tributario Electrónico:\n- Código 01: Factura Electrónica (Consumidor Final, no genera crédito fiscal, sin NRC obligatorio).\n- Código 03: Comprobante de Crédito Fiscal (CCF - Exclusivo para operaciones entre contribuyentes inscritos en IVA, exige NRC y NIT válidos y actividad económica).\n- Código 04: Nota de Remisión (Ampara traslado de bienes muebles sin transferir propiedad o pendiente de facturar).\n- Código 05: Nota de Crédito (Ajustes, devoluciones, rebajas o anulaciones sobre CCFs emitidos previamente).\n- Código 06: Nota de Débito (Cargos adicionales, intereses o aumentos de precio sobre CCFs previos).\n- Código 07: Comprobante de Retención (Emitido por Agentes de Retención - Grandes Contribuyentes al retener el 1% de IVA en compras >= $100 sin IVA).\n- Código 08: Comprobante de Liquidación.\n- Código 09: Documento Contable de Liquidación.\n- Código 11: Factura de Exportación (Venta de bienes y servicios hacia el exterior, exenta de IVA tasa 0%).\n- Código 14: Factura de Sujeto Excluido (Adquisición de bienes o servicios a personas naturales que no son contribuyentes de IVA; no lleva IVA débito pero genera retención de renta según el caso).\n- Código 15: Comprobante de Donación."
+  },
+  {
+    "id": "cat-014-unidades-medida",
+    "catalogo": "CAT-014",
+    "nombre": "Unidad de Medida Oficial de Hacienda",
+    "documento": "Catálogos Oficiales de Facturación Electrónica MH",
+    "pagina": 3,
+    "tags": ["cat-014", "unidad de medida", "unidades", "galon", "litro", "kilo", "quintal", "libra", "otra", "servicios"],
+    "contenido": "Catálogo CAT-014 - Unidades de Medida Oficiales:\n- Código 59: Galón (gal) -> OBLIGATORIO por normativa de Hacienda para todos los combustibles líquidos (Gasolina Superior, Regular y Diésel).\n- Código 99: Otra -> Unidad estándar obligatoria para servicios, honorarios profesionales, comisiones, fletes, alquileres e intangibles.\n- Código 58: Botella.\n- Código 57: Litro (l).\n- Código 21: Kilogramo (kg).\n- Código 22: Gramo (g).\n- Código 23: Libra (lb).\n- Código 24: Onza (oz).\n- Código 26: Quintal (qq).\n- Código 18: Docena.\n- Código 34: Metro (m).\n- Código 37: Metro cuadrado (m2).\n- Código 42: Metro cúbico (m3).\n- Código 40: Yarda."
+  },
+  {
+    "id": "cat-015-tributos-impuestos",
+    "catalogo": "CAT-015",
+    "nombre": "Códigos de Tributos e Impuestos",
+    "documento": "Catálogos Oficiales de Facturación Electrónica MH",
+    "pagina": 4,
+    "tags": ["cat-015", "tributos", "impuestos", "iva", "retencion", "fovial", "cotrans", "tasas"],
+    "contenido": "Catálogo CAT-015 - Códigos de Tributos de El Salvador:\n- Código 20: Impuesto a la Transferencia de Bienes Muebles y a la Prestación de Servicios (IVA 13%). Tasa general aplicable sobre el precio neto de venta.\n- Código 22: Retención 1% de IVA. Aplica cuando un Gran Contribuyente adquiere bienes o servicios a otros contribuyentes por importes >= $100.00 sin IVA.\n- Código C3: FOVIAL (Fondo de Conservación Vial). Contribución fija de $0.20 por cada galón de Gasolina Especial, Regular y Diésel.\n- Código D1: COTRANS (Compensación al Transporte). Contribución fija de $0.10 por cada galón de Gasolina Especial, Regular y Diésel.\n- Regla de cálculo de combustibles: El subtotal imponible del IVA incluye el precio base + FOVIAL + COTRANS (el IVA grava la suma total)."
+  },
+  {
+    "id": "cat-022-documentos-identidad",
+    "catalogo": "CAT-022",
+    "nombre": "Tipo de Documento de Identificación del Receptor",
+    "documento": "Catálogos Oficiales de Facturación Electrónica MH",
+    "pagina": 5,
+    "tags": ["cat-022", "tipo documento identidad", "dui", "nit", "pasaporte", "carnet de residente"],
+    "contenido": "Catálogo CAT-022 - Tipo de Documento de Identificación:\n- Código 36: NIT (Número de Identificación Tributaria). Obligatorio para personas jurídicas (14 dígitos con formato 0000-000000-000-0) o 9 dígitos para personas naturales con DUI homologado como NIT.\n- Código 13: DUI (Documento Único de Identidad). Identificación oficial salvadoreña: 8 dígitos numéricos, un guion y un dígito verificador (formato: 00000000-0).\n- Código 02: Carnet de Residente (para extranjeros residentes legales en El Salvador).\n- Código 03: Pasaporte (para extranjeros no domiciliados o turistas).\n- Código 37: Otro."
+  },
+  {
+    "id": "cat-017-formas-pago",
+    "catalogo": "CAT-017",
+    "nombre": "Formas de Pago",
+    "documento": "Catálogos Oficiales de Facturación Electrónica MH",
+    "pagina": 6,
+    "tags": ["cat-017", "forma de pago", "efectivo", "tarjeta", "transferencia", "cheque", "credito"],
+    "contenido": "Catálogo CAT-017 - Formas de Pago Oficiales:\n- Código 01: Billetes y Monedas (Efectivo).\n- Código 02: Tarjeta de Débito.\n- Código 03: Tarjeta de Crédito.\n- Código 04: Cheque.\n- Código 05: Transferencia Bancaria / Depósito.\n- Código 08: Dinero Electrónico.\n- Código 09: Monedero Electrónico (Chivo Wallet / Bitcoin).\n- Código 11: Crédito (Pago a plazos o cuenta corriente).\n- Código 99: Otros."
+  }
+]

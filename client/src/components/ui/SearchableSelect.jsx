@@ -78,14 +78,37 @@ const SearchableSelect = ({
 
     const effectiveOptions = loadOptions ? remoteOptions : safeOptions;
 
+    const getOptionCode = (opt) => {
+        if (!opt) return '';
+        if (codeKey && opt[codeKey] !== undefined && opt[codeKey] !== null) return String(opt[codeKey]);
+        if (valueKey && opt[valueKey] !== undefined && opt[valueKey] !== null && valueKey !== 'code') return String(opt[valueKey]);
+        return opt.codigo || opt.codigo_barra || opt.code || opt.sku || (opt.id !== undefined && opt.id !== null ? String(opt.id) : '');
+    };
+
+    const getOptionLabel = (opt) => {
+        if (!opt) return '';
+        if (displayKey && opt[displayKey] !== undefined && opt[displayKey] !== null) return String(opt[displayKey]);
+        if (labelKey && opt[labelKey] !== undefined && opt[labelKey] !== null && labelKey !== 'description') return String(opt[labelKey]);
+        if (labelKey === 'description' && opt.description !== undefined && opt.description !== null) return String(opt.description);
+        return opt.nombre || opt.descripcion || opt.description || opt.name || opt.label || 'Sin nombre';
+    };
+
     const selectedOption = (value !== undefined && value !== null && value !== '') 
-        ? effectiveOptions.find(opt => opt && String(opt[valueKey]) === String(value)) || null
+        ? effectiveOptions.find(opt => {
+            if (!opt) return false;
+            if (opt[valueKey] !== undefined && String(opt[valueKey]) === String(value)) return true;
+            if (opt.id !== undefined && String(opt.id) === String(value)) return true;
+            if (opt.codigo !== undefined && String(opt.codigo) === String(value)) return true;
+            return false;
+        }) || null
         : null;
 
+    const selectedCode = selectedOption ? getOptionCode(selectedOption) : '';
+    const selectedText = selectedOption ? getOptionLabel(selectedOption) : '';
     const displayText = selectedOption
         ? (displayKey 
             ? selectedOption[displayKey] 
-            : `${codeKey ? (selectedOption[codeKey] || 'N/A') : (selectedOption[valueKey] || 'N/A')} - ${selectedOption[labelKey] || 'Sin nombre'}`)
+            : (selectedCode ? `${selectedCode} - ${selectedText}` : selectedText))
         : (selectedLabel || null);
 
     const filteredOptions = loadOptions
@@ -98,9 +121,9 @@ const SearchableSelect = ({
             if (Array.isArray(searchKeys) && searchKeys.length > 0) {
                 text = searchKeys.map(k => String(opt[k] ?? '')).join(' ');
             } else {
-                const v = String(opt[valueKey] || '');
-                const l = String(opt[labelKey] || '');
-                const c = codeKey ? String(opt[codeKey] || '') : '';
+                const v = String(opt[valueKey] || opt.id || '');
+                const l = String(opt[labelKey] || opt.nombre || opt.descripcion || '');
+                const c = String((codeKey ? opt[codeKey] : '') || opt.codigo || opt.codigo_barra || '');
                 text = `${v} ${l} ${c}`;
             }
             const score = matchScore(text, s);
@@ -292,24 +315,37 @@ const SearchableSelect = ({
                     </div>
                     <div ref={listRef} onScroll={handleListScroll} className="max-h-60 overflow-y-auto">
                         {filteredOptions.length > 0 ? (
-                            filteredOptions.map((opt, i) => (
-                                <div 
-                                    key={opt[valueKey] || i}
-                                    onClick={() => handleSelect(opt)}
-                                    onMouseEnter={() => setFocusIdx(i)}
-                                    className={`px-4 py-2.5 text-sm cursor-pointer flex items-center justify-between hover:bg-indigo-50 transition-colors ${
-                                        focusIdx === i ? 'bg-indigo-50' : ''
-                                    } ${
-                                        isSelected(opt) ? 'text-indigo-700 font-bold' : 'text-slate-600'
-                                    }`}
-                                >
-                                    <div className="flex flex-col">
-                                        <span className="text-[9px] font-mono text-slate-400 uppercase">{codeLabel}: {codeKey ? opt[codeKey] : opt[valueKey]}</span>
-                                        <span className="truncate text-[10px] font-bold text-slate-700">{displayKey ? opt[displayKey] : opt[labelKey]}</span>
+                            filteredOptions.map((opt, i) => {
+                                const optCode = getOptionCode(opt);
+                                const optLabel = getOptionLabel(opt);
+                                return (
+                                    <div 
+                                        key={opt[valueKey] || opt.id || i}
+                                        onClick={() => handleSelect(opt)}
+                                        onMouseEnter={() => setFocusIdx(i)}
+                                        className={`px-4 py-2.5 text-sm cursor-pointer flex items-center justify-between hover:bg-indigo-50 transition-colors ${
+                                            focusIdx === i ? 'bg-indigo-50' : ''
+                                        } ${
+                                            isSelected(opt) ? 'text-indigo-700 font-bold' : 'text-slate-600'
+                                        }`}
+                                    >
+                                        <div className="flex items-center justify-between w-full min-w-0">
+                                            <div className="flex flex-col flex-1 min-w-0 pr-2">
+                                                {optCode ? (
+                                                    <span className="text-[9px] font-mono text-slate-400 uppercase">{codeLabel}: {optCode}</span>
+                                                ) : null}
+                                                <span className="truncate text-[10px] font-bold text-slate-700">{optLabel}</span>
+                                            </div>
+                                            {opt.precio_unitario !== undefined && opt.precio_unitario !== null && (
+                                                <span className="text-[11px] font-bold text-emerald-600 font-mono shrink-0 ml-2">
+                                                    ${parseFloat(opt.precio_unitario || 0).toFixed(2)}
+                                                </span>
+                                            )}
+                                            {isSelected(opt) && <Check size={14} className="text-indigo-600 shrink-0 ml-2" />}
+                                        </div>
                                     </div>
-                                    {isSelected(opt) && <Check size={14} className="text-indigo-600" />}
-                                </div>
-                            ))
+                                );
+                            })
                         ) : (
                             <div className="px-4 py-8 text-center text-slate-400 text-sm italic">
                                 {remoteLoading && loadOptions ? 'Cargando...' : 'No se encontraron resultados'}

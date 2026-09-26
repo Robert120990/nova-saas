@@ -70,12 +70,27 @@ const generateRTEEModern = (data) => {
             // 1. CABECERA SIMÉTRICA (Emisor Card + DTE Card)
             // ==========================================
             const headerY = 24;
-            const headerH = 124;
             const isProd = dte.ambiente === '01';
 
             // --- 1.A Tarjeta del Emisor (Lado Izquierdo: 318pt) ---
             const emisorBoxX = startX;
             const emisorBoxW = 318;
+
+            const isCasaMatriz = emisor.es_casa_matriz === 1 || emisor.es_casa_matriz === true || emisor.tipo_establecimiento === '02';
+            const dirLabel = isCasaMatriz ? 'DIR. MATRIZ: ' : 'DIR. SUCURSAL: ';
+            const emisorUbicacion = emisor.direccion_completa || [
+                emisor.direccion?.complemento || emisor.direccion || '',
+                emisor.municipio_nombre || emisor.direccion?.municipio_nombre || '',
+                emisor.departamento_nombre || emisor.direccion?.departamento_nombre || ''
+            ].filter(Boolean).join(', ') || 'El Salvador';
+
+            // Medición previa para soportar direcciones largas multilínea sin desbordamiento
+            doc.fontSize(6.5).font('Helvetica');
+            const dirEstHeight = doc.heightOfString(`${dirLabel}${emisorUbicacion}`, {
+                width: emisorBoxW - 20,
+                lineGap: 1
+            });
+            const headerH = Math.max(126, Math.ceil(70 + 11 + dirEstHeight + 3 + 9 + 7));
 
             // Contenedor blanco con borde definido
             doc.roundedRect(emisorBoxX, headerY, emisorBoxW, headerH, 5)
@@ -121,17 +136,18 @@ const generateRTEEModern = (data) => {
             }
 
             // Nombre comercial / Razón social (Alto contraste)
+            const nombreEmisor = (emisor.razon_social || emisor.nombre || emisor.company_name || emisor.nombre_comercial || 'EMISOR').trim();
+            const fontSizeNombre = nombreEmisor.length > 45 ? 8.5 : (nombreEmisor.length > 28 ? 9.2 : 10);
             doc.fillColor(THEME.navyDark)
-               .fontSize(10)
+               .fontSize(fontSizeNombre)
                .font('Helvetica-Bold')
-               .text(emisor.nombre ? emisor.nombre.toUpperCase() : 'EMISOR', textStartX, headerY + 9, {
+               .text(nombreEmisor.toUpperCase(), textStartX, headerY + 9, {
                    width: textMaxW,
                    lineGap: 1
                });
 
             // Sucursal / Establecimiento destacado
             const sucursalNombre = emisor.sucursal_nombre || emisor.branch_name;
-            const isCasaMatriz = emisor.es_casa_matriz === 1 || emisor.es_casa_matriz === true || emisor.tipo_establecimiento === '02';
             const sucursalTipoLabel = isCasaMatriz ? 'CASA MATRIZ' : 'SUCURSAL';
 
             if (sucursalNombre) {
@@ -156,7 +172,7 @@ const generateRTEEModern = (data) => {
             }
 
             // Divisor interno en la tarjeta del emisor
-            const emisorDividerY = headerY + 68;
+            const emisorDividerY = Math.max(headerY + 66, doc.y + 3);
             doc.moveTo(emisorBoxX + 10, emisorDividerY)
                .lineTo(emisorBoxX + emisorBoxW - 10, emisorDividerY)
                .lineWidth(0.5)
@@ -164,7 +180,7 @@ const generateRTEEModern = (data) => {
                .stroke();
 
             // Bloque inferior de la tarjeta del emisor (NIT, NRC, Establecimiento, Punto de Venta, Dirección y Contacto)
-            const metaY = emisorDividerY + 5;
+            const metaY = emisorDividerY + 4;
 
             // Fila 1: NIT, NRC, Establecimiento y Punto de Venta
             doc.fillColor(THEME.textMedium)
@@ -196,33 +212,33 @@ const generateRTEEModern = (data) => {
                 doc.text('', { continued: false });
             }
 
-            // Fila 2: Dirección de la Sucursal / Casa Matriz con etiqueta explícita
-            const dirLabel = isCasaMatriz ? 'DIR. MATRIZ: ' : 'DIR. SUCURSAL: ';
-            const emisorUbicacion = emisor.direccion_completa || [
-                emisor.direccion?.complemento || emisor.direccion || '',
-                emisor.municipio_nombre || emisor.direccion?.municipio_nombre || '',
-                emisor.departamento_nombre || emisor.direccion?.departamento_nombre || ''
-            ].filter(Boolean).join(', ');
-
+            // Fila 2: Dirección de la Sucursal / Casa Matriz multilínea con salto automático
+            const dirY = metaY + 11;
             doc.fillColor(THEME.textMedium)
-               .fontSize(6.8)
+               .fontSize(6.5)
                .font('Helvetica-Bold')
-               .text(dirLabel, emisorBoxX + 10, metaY + 12, { continued: true })
+               .text(dirLabel, emisorBoxX + 10, dirY, { width: emisorBoxW - 20, continued: true })
                .fillColor(THEME.navyDark)
                .font('Helvetica')
-               .text(emisorUbicacion || 'El Salvador', {
+               .text(emisorUbicacion, {
                    width: emisorBoxW - 20,
-                   ellipsis: true
+                   lineGap: 1
                });
 
-            // Fila 3: Contacto (Teléfono y Correo)
-            const contactoTexto = `Tel: ${emisor.telefono || 'N/A'}   •   Email: ${emisor.correo || 'N/A'}`;
+            // Fila 3: Contacto (Teléfono y Correo de la Sucursal prioritarios)
+            const contactY = doc.y + 2.5;
+            const telFinal = emisor.sucursal_telefono || emisor.branch_telefono || emisor.telefono;
+            const correoFinal = emisor.sucursal_correo || emisor.branch_correo || emisor.correo;
+            const contactoParts = [];
+            if (telFinal && telFinal !== 'N/A' && String(telFinal).trim() !== '') contactoParts.push(`Tel: ${telFinal}`);
+            if (correoFinal && correoFinal !== 'N/A' && String(correoFinal).trim() !== '') contactoParts.push(`Email: ${correoFinal}`);
+            const contactoTexto = contactoParts.length > 0 ? contactoParts.join('   •   ') : 'Contacto: N/A';
+
             doc.fillColor(THEME.textMuted)
                .fontSize(6.5)
                .font('Helvetica')
-               .text(contactoTexto, emisorBoxX + 10, metaY + 23, {
-                   width: emisorBoxW - 20,
-                   ellipsis: true
+               .text(contactoTexto, emisorBoxX + 10, contactY, {
+                   width: emisorBoxW - 20
                });
 
             // --- 1.B Tarjeta del DTE (Lado Derecho: 224pt) ---
@@ -634,9 +650,15 @@ const generateRTEEModern = (data) => {
                 let curY = tableStartY + 24;
 
                 items.forEach((item, idx) => {
-                    doc.fontSize(7.5).font('Helvetica');
-                    const descH = doc.heightOfString(item.descripcion || '', { width: 285 });
-                    const rowH = Math.max(descH, 12) + 8;
+                    let displayUnitPrice = parseFloat(item.precioUnitario) || 0;
+                    let displayTotalItem = parseFloat(item.totalItem) || 0;
+                    const displayDescuento = parseFloat(item.montoDescuento || 0);
+                    const isDescItem = displayUnitPrice === 0 && displayTotalItem === 0;
+
+                    const descWidth = isDescItem ? 485 : 285;
+                    doc.fontSize(isDescItem ? 7.2 : 7.5).font(isDescItem ? 'Helvetica-Bold' : 'Helvetica');
+                    const descH = doc.heightOfString(item.descripcion || '', { width: descWidth });
+                    const rowH = Math.max(descH, 12) + (isDescItem ? 4 : 8);
 
                     if (curY + rowH > 670) {
                         doc.addPage();
@@ -648,10 +670,6 @@ const generateRTEEModern = (data) => {
                     const formattedQty = Number(item.cantidad) % 1 === 0 ? 
                         item.cantidad.toString() : 
                         Number(item.cantidad).toFixed(4).replace(/0+$/, '').replace(/\.$/, '');
-
-                    let displayUnitPrice = parseFloat(item.precioUnitario) || 0;
-                    let displayTotalItem = parseFloat(item.totalItem) || 0;
-                    const displayDescuento = parseFloat(item.montoDescuento || 0);
 
                     if (esConsumidorFinal && tieneImpuestosCombustible && isFuelItem(item)) {
                         const cant = parseFloat(item.cantidad) || 0;
@@ -672,20 +690,26 @@ const generateRTEEModern = (data) => {
                            .fill();
                     }
 
-                    doc.fillColor(THEME.navyDark).fontSize(7.5).font('Helvetica');
-                    doc.text(formattedQty, startX + 8, curY, { width: 38, align: 'center' });
-                    doc.text(item.descripcion || '', startX + 52, curY, { width: 285 });
-                    doc.text(`$${displayUnitPrice.toFixed(4)}`, startX + 345, curY, { align: 'right', width: 62 });
-
-                    if (displayDescuento > 0) {
-                        doc.fillColor(THEME.dangerRed).font('Helvetica-Bold').text(`$${displayDescuento.toFixed(2)}`, startX + 415, curY, { align: 'right', width: 55 });
-                        doc.fillColor(THEME.navyDark).font('Helvetica');
+                    if (isDescItem) {
+                        // Renglón de descripción informativa (Lote, sucursal, notas adicionales bajo el producto)
+                        doc.fillColor(THEME.textMedium).fontSize(7.2).font('Helvetica-Bold');
+                        doc.text(item.descripcion || '', startX + 52, curY, { width: descWidth });
                     } else {
-                        doc.fillColor(THEME.textMuted).text(`$ -`, startX + 415, curY, { align: 'right', width: 55 });
-                        doc.fillColor(THEME.navyDark);
-                    }
+                        doc.fillColor(THEME.navyDark).fontSize(7.5).font('Helvetica');
+                        doc.text(formattedQty, startX + 8, curY, { width: 38, align: 'center' });
+                        doc.text(item.descripcion || '', startX + 52, curY, { width: 285 });
+                        doc.text(`$${displayUnitPrice.toFixed(4)}`, startX + 345, curY, { align: 'right', width: 62 });
 
-                    doc.font('Helvetica-Bold').text(`$${displayTotalItem.toFixed(2)}`, startX + 475, curY, { align: 'right', width: 68 });
+                        if (displayDescuento > 0) {
+                            doc.fillColor(THEME.dangerRed).font('Helvetica-Bold').text(`$${displayDescuento.toFixed(2)}`, startX + 415, curY, { align: 'right', width: 55 });
+                            doc.fillColor(THEME.navyDark).font('Helvetica');
+                        } else {
+                            doc.fillColor(THEME.textMuted).text(`$ -`, startX + 415, curY, { align: 'right', width: 55 });
+                            doc.fillColor(THEME.navyDark);
+                        }
+
+                        doc.font('Helvetica-Bold').text(`$${displayTotalItem.toFixed(2)}`, startX + 475, curY, { align: 'right', width: 68 });
+                    }
 
                     // Línea divisoria suave
                     doc.moveTo(startX, curY + rowH - 3)
@@ -701,22 +725,41 @@ const generateRTEEModern = (data) => {
                 // 5. RESUMEN FINANCIERO Y CÓDIGO QR
                 // ==========================================
                 let gravadasDisplay = parseFloat(venta.total_gravado) || 0;
-                let sumaOperacionesDisplay = gravadasDisplay;
+                let sumaOperacionesDisplay = parseFloat(venta.subtotal_ventas) || gravadasDisplay;
+                const descGeneral = parseFloat(venta.descuento_general) || (
+                    parseFloat(venta.total_descuento) > 0 && !items.some(i => (parseFloat(i.montoDescuento) || 0) > 0)
+                        ? parseFloat(venta.total_descuento)
+                        : 0
+                );
+                const pctDesc = parseFloat(venta.porcentaje_descuento) || 0;
+                let pctFormatted = 0;
+                if (pctDesc > 0) {
+                    if (Math.abs(pctDesc - Math.round(pctDesc)) <= 0.1) {
+                        pctFormatted = Math.round(pctDesc);
+                    } else {
+                        pctFormatted = Number(pctDesc.toFixed(2));
+                    }
+                }
 
                 if (esConsumidorFinal && tieneImpuestosCombustible) {
                     const totalPagarNum = parseFloat(venta.total_pagar) || 0;
                     const totalExentoNum = parseFloat(venta.total_exento) || 0;
                     const totalNoSujNum = parseFloat(venta.total_nosujetas) || 0;
                     gravadasDisplay = Math.max(0, Math.round((totalPagarNum - fovialVenta - cotransVenta - totalExentoNum - totalNoSujNum) * 100) / 100);
-                    const descNum = parseFloat(venta.total_descuento) || 0;
+                    const descNum = descGeneral > 0 ? descGeneral : (parseFloat(venta.total_descuento) || 0);
                     sumaOperacionesDisplay = Math.round((gravadasDisplay + descNum) * 100) / 100;
+                } else if (descGeneral > 0) {
+                    sumaOperacionesDisplay = parseFloat(venta.subtotal_ventas) || Math.round((gravadasDisplay + (parseFloat(venta.total_exento) || 0) + (parseFloat(venta.total_nosujetas) || 0)) * 100) / 100;
+                    gravadasDisplay = Math.max(0, Math.round((gravadasDisplay - descGeneral) * 100) / 100);
                 }
 
                 const lines = [];
                 lines.push({ label: 'SUMA DE OPERACIONES:', val: sumaOperacionesDisplay, isBold: false });
 
-                const totalDesc = parseFloat(venta.total_descuento) || 0;
-                if (totalDesc > 0) lines.push({ label: '(-) DESCUENTOS:', val: totalDesc, isNegative: true });
+                if (descGeneral > 0) {
+                    const descLabel = pctFormatted > 0 ? `(-) DESCUENTO GENERAL (${pctFormatted}%):` : '(-) DESCUENTO GENERAL:';
+                    lines.push({ label: descLabel, val: descGeneral, isNegative: true });
+                }
 
                 lines.push({ label: 'VENTAS GRAVADAS:', val: gravadasDisplay, isBold: false });
 

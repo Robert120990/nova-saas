@@ -386,12 +386,17 @@ export default function EggDispatch() {
         }
     };
 
-    const fetchRouteDetail = async (routeId) => {
+    const fetchRouteDetail = async (routeOrId) => {
+        const routeId = typeof routeOrId === 'object' ? routeOrId?.id : routeOrId;
+        if (!routeId) return null;
         try {
             const res = await axios.get(`/api/egg-industrial/dispatch/routes/${routeId}`);
-            setRouteDetail(res.data || null);
+            const data = res.data || null;
+            setRouteDetail(data);
+            return data;
         } catch (error) {
             console.error('Error al cargar detalle de ruta:', error);
+            return null;
         }
     };
 
@@ -504,17 +509,18 @@ export default function EggDispatch() {
     };
 
     const handleDeleteRoute = async (routeId) => {
-        if (!window.confirm('¿Eliminar esta ruta de despacho? Los pedidos volverán a quedar disponibles.')) return;
+        if (!window.confirm('¿Eliminar esta ruta de despacho? Los pedidos no facturados volverán a quedar disponibles en estado pendiente.')) return;
         try {
-            await axios.delete(`/api/egg-industrial/dispatch/routes/${routeId}`);
-            toast.success('Ruta eliminada y pedidos liberados.');
+            const res = await axios.delete(`/api/egg-industrial/dispatch/routes/${routeId}`);
+            toast.success(res.data?.message || 'Ruta eliminada y pedidos liberados.');
             setSelectedRoute(null);
             setRouteDetail(null);
             fetchRoutes();
             fetchOrders();
         } catch (error) {
             console.error('Error al eliminar ruta:', error);
-            toast.error('Error al eliminar ruta.');
+            const msg = error.response?.data?.message || error.message || 'Error al eliminar ruta.';
+            toast.error(msg);
         }
     };
 
@@ -531,6 +537,14 @@ export default function EggDispatch() {
         } finally {
             setOptimizingRoute(false);
         }
+    };
+
+    const handleOpenAutoInvoice = async () => {
+        const activeRouteId = routeDetail?.id || selectedRoute?.id || (typeof selectedRoute === 'number' ? selectedRoute : null);
+        if (activeRouteId) {
+            await fetchRouteDetail(activeRouteId);
+        }
+        setAutoInvoiceModalOpen(true);
     };
 
     const handleMoveStop = async (stopIndex, direction) => {
@@ -1058,6 +1072,11 @@ export default function EggDispatch() {
                                                         <div key={itemIdx} className="mb-1.5 last:mb-0">
                                                             <div className="font-semibold text-slate-800 flex items-center gap-1.5 flex-wrap">
                                                                 <span>{item.product_type}</span>
+                                                                {(item.catalog_code || ord.catalog_code) && (
+                                                                    <span className="text-[10px] font-mono font-bold text-amber-800 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200" title={`Código SKU Catálogo: ${item.catalog_code || ord.catalog_code}`}>
+                                                                        {item.catalog_code || ord.catalog_code}
+                                                                    </span>
+                                                                )}
                                                                 {getOrderItems(ord).length > 1 && (
                                                                     <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.2 rounded">
                                                                         {parseFloat(item.quantity_lbs || 0).toLocaleString()} Lbs
@@ -1262,7 +1281,7 @@ export default function EggDispatch() {
 
                                             {/* Botón Facturar Ruta Automáticamente */}
                                             <button
-                                                onClick={() => setAutoInvoiceModalOpen(true)}
+                                                onClick={handleOpenAutoInvoice}
                                                 className="flex items-center gap-1.5 text-xs font-black bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-xl shadow-sm transition active:scale-95"
                                                 title="Facturar automáticamente los pedidos de esta ruta con asignación de lotes"
                                             >
@@ -1273,6 +1292,16 @@ export default function EggDispatch() {
                                                         {routeDetail.stops.filter(s => (!s.is_billed && !s.sale_sello_recepcion) || s.is_rejected || s.dte_status === 'REJECTED').length}
                                                     </span>
                                                 )}
+                                            </button>
+
+                                            {/* Botón Agregar Pedidos a la Ruta */}
+                                            <button
+                                                onClick={() => handleEditRoute(selectedRoute || routeDetail, routeDetail)}
+                                                className="flex items-center gap-1 text-xs font-bold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-2.5 py-1.5 rounded-xl border border-indigo-200 shadow-xs transition"
+                                                title="Agregar más pedidos a esta ruta para facturarlos después"
+                                            >
+                                                <Plus className="w-3.5 h-3.5" />
+                                                <span>+ Agregar Pedidos</span>
                                             </button>
 
                                             {/* Botón Editar Ruta */}
@@ -1413,6 +1442,11 @@ export default function EggDispatch() {
                                                                      <div key={itemIdx} className="bg-slate-50 border border-slate-100 rounded-lg p-2 flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-xs">
                                                                          <div className="flex items-center gap-1.5 flex-wrap">
                                                                              <span className="font-bold text-slate-800">• {item.product_type}</span>
+                                                                             {(item.catalog_code || stop.catalog_code) && (
+                                                                                 <span className="text-[9px] font-mono font-bold text-amber-800 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200" title={`Código SKU: ${item.catalog_code || stop.catalog_code}`}>
+                                                                                     {item.catalog_code || stop.catalog_code}
+                                                                                 </span>
+                                                                             )}
                                                                              <span className="text-slate-500 text-[10px]">({item.presentation || 'cubeta 30LB'})</span>
                                                                              {(item.lot_code || stop.lot_code || stop.order_lot_code || stop.linked_batch_code) && (
                                                                                  <span className="bg-emerald-50 text-emerald-800 border border-emerald-200 font-bold text-[10px] px-1.5 py-0.2 rounded">
@@ -1437,7 +1471,22 @@ export default function EggDispatch() {
                                                         <button
                                                             onClick={() => {
                                                                 const foundOrd = orders.find(o => o.id === stop.order_id);
-                                                                setEditingOrder(foundOrd || stop);
+                                                                const orderData = foundOrd || {
+                                                                    ...stop,
+                                                                    id: stop.order_id,
+                                                                    order_number: stop.order_number,
+                                                                    quantity_lbs: stop.quantity_lbs,
+                                                                    price_per_lb: stop.price_per_lb,
+                                                                    product_type: stop.product_type,
+                                                                    presentation: stop.presentation,
+                                                                    items_json: stop.items_json,
+                                                                    batch_id: stop.batch_id || stop.order_batch_id,
+                                                                    lot_code: stop.lot_code || stop.order_lot_code,
+                                                                    customer_id: stop.customer_id,
+                                                                    customer_branch_id: stop.customer_branch_id,
+                                                                    notes: stop.order_notes || stop.notes
+                                                                };
+                                                                setEditingOrder(orderData);
                                                                 setOrderModalOpen(true);
                                                             }}
                                                             className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 rounded"
@@ -1972,9 +2021,13 @@ export default function EggDispatch() {
                     setEditingOrder(null);
                 }}
                 orderToEdit={editingOrder}
-                onOrderSaved={() => {
-                    fetchOrders();
-                    if (selectedRoute) fetchRouteDetail(selectedRoute);
+                onOrderSaved={async () => {
+                    await fetchOrders();
+                    await fetchRoutes();
+                    const activeRouteId = routeDetail?.id || selectedRoute?.id || (typeof selectedRoute === 'number' ? selectedRoute : null);
+                    if (activeRouteId) {
+                        await fetchRouteDetail(activeRouteId);
+                    }
                 }}
                 defaultDate={selectedDate}
             />
@@ -2095,20 +2148,23 @@ export default function EggDispatch() {
                                 </div>
                             ) : (
                                 availableOrdersForRoute.map(ord => {
-                                    const isSelected = routeForm.selectedOrderIds.includes(ord.id);
+                                    const isAlreadyBilledInRoute = !!(routeDetail?.stops?.some(s => s.order_id === ord.id && (s.is_billed || s.sale_id || s.sale_sello_recepcion)));
+                                    const isSelected = isAlreadyBilledInRoute || routeForm.selectedOrderIds.includes(ord.id);
                                     const orderItems = getOrderItems(ord);
                                     return (
                                         <label
                                             key={ord.id}
-                                            className={`flex items-start justify-between p-3 cursor-pointer text-xs transition ${
-                                                isSelected ? 'bg-indigo-50/80' : 'hover:bg-slate-50'
+                                            className={`flex items-start justify-between p-3 text-xs transition ${
+                                                isAlreadyBilledInRoute ? 'bg-emerald-50/50 cursor-default' : isSelected ? 'bg-indigo-50/80 cursor-pointer' : 'hover:bg-slate-50 cursor-pointer'
                                             }`}
                                         >
                                             <div className="flex items-start gap-3">
                                                 <input
                                                     type="checkbox"
                                                     checked={isSelected}
+                                                    disabled={isAlreadyBilledInRoute}
                                                     onChange={(e) => {
+                                                        if (isAlreadyBilledInRoute) return;
                                                         if (e.target.checked) {
                                                             setRouteForm(prev => ({
                                                                 ...prev,
@@ -2121,11 +2177,16 @@ export default function EggDispatch() {
                                                             }));
                                                         }
                                                     }}
-                                                    className="rounded text-indigo-600 focus:ring-indigo-500 h-4 w-4 mt-0.5"
+                                                    className={`rounded text-indigo-600 focus:ring-indigo-500 h-4 w-4 mt-0.5 ${isAlreadyBilledInRoute ? 'cursor-not-allowed opacity-60' : ''}`}
                                                 />
                                                 <div>
                                                     <div className="font-bold text-slate-900 flex items-center gap-2">
                                                         <span>{ord.customer_name}</span>
+                                                        {isAlreadyBilledInRoute && (
+                                                            <span className="text-[9px] font-black bg-emerald-100 text-emerald-800 px-1.5 py-0.2 rounded border border-emerald-200" title="Pedido ya facturado en esta ruta (preservado)">
+                                                                ✓ Facturado
+                                                            </span>
+                                                        )}
                                                         {ord.priority === 'urgente' && (
                                                             <span className="text-[9px] font-black bg-rose-100 text-rose-700 px-1.5 py-0.2 rounded">
                                                                 URGENTE

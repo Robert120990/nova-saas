@@ -147,11 +147,30 @@ const EggReports = () => {
         : 0;
 
     const totalProdLbs = activeTab === 'production'
-        ? reportData.reduce((acc, row) => acc + (parseFloat(row.actual_output_lbs) || 0), 0)
+        ? reportData.reduce((acc, row) => acc + (parseFloat(row.actual_output_lbs || row.yield_liquid_lbs || 0)), 0)
         : 0;
     const totalProdBroken = activeTab === 'production'
-        ? reportData.reduce((acc, row) => acc + (parseFloat(row.egg_broken_lbs) || 0), 0)
+        ? reportData.reduce((acc, row) => acc + (parseFloat(row.egg_broken_lbs || row.input_weight_lbs || 0)), 0)
         : 0;
+    const totalProdBoxes = activeTab === 'production'
+        ? reportData.reduce((acc, row) => acc + (parseInt(row.total_boxes || 0, 10)), 0)
+        : 0;
+    const totalNetEggLbs = activeTab === 'production'
+        ? reportData.reduce((acc, row) => acc + (parseFloat(row.net_egg_yield_lbs || 0)), 0)
+        : 0;
+    const avgYieldPerBox = totalProdBoxes > 0
+        ? (totalNetEggLbs / totalProdBoxes).toFixed(1)
+        : '0.0';
+
+    const _totalProdPackagedLbs = activeTab === 'production'
+        ? reportData.reduce((acc, row) => acc + (parseFloat(row.packaged_weight_lbs || 0)), 0)
+        : 0;
+    const totalProdLiquidPlusPackaged = activeTab === 'production'
+        ? reportData.reduce((acc, row) => acc + (parseFloat(row.liquid_plus_packaged_lbs || (parseFloat(row.actual_output_lbs || row.yield_liquid_lbs || 0) + parseFloat(row.packaged_weight_lbs || 0)))), 0)
+        : 0;
+    const globalLiquidPlusPackagedYieldPct = totalProdBroken > 0
+        ? ((totalProdLiquidPlusPackaged / totalProdBroken) * 100).toFixed(1)
+        : '0.0';
 
     const totalPkgUnits = activeTab === 'packaging'
         ? reportData.reduce((acc, row) => acc + (parseInt(row.units_packaged) || 0), 0)
@@ -377,10 +396,10 @@ const EggReports = () => {
             </div>
 
             {/* KPI Cards Dinámicos */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+            <div className={`grid gap-3 ${activeTab === 'production' ? 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-6' : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4'}`}>
                 <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
                     <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
-                        Registros Encontrados
+                        Registros
                     </span>
                     <span className="text-xl font-black text-slate-900">
                         {reportData.length}
@@ -391,7 +410,7 @@ const EggReports = () => {
                     <>
                         <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
                             <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
-                                Total Libras Producidas
+                                Líq. Producido
                             </span>
                             <span className="text-xl font-black text-emerald-600">
                                 {totalProdLbs.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} Lbs
@@ -399,10 +418,34 @@ const EggReports = () => {
                         </div>
                         <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
                             <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
-                                Huevo Quebrado (MP)
+                                Cajas Procesadas
                             </span>
                             <span className="text-xl font-black text-indigo-600">
-                                {totalProdBroken.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} Lbs
+                                {totalProdBoxes.toLocaleString()} Cjs
+                            </span>
+                        </div>
+                        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
+                                Rend. / Caja
+                            </span>
+                            <span className="text-xl font-black text-teal-600">
+                                {avgYieldPerBox} Lbs/Cja
+                            </span>
+                        </div>
+                        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
+                                Líq. + Envasado
+                            </span>
+                            <span className="text-xl font-black text-blue-600">
+                                {totalProdLiquidPlusPackaged.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} Lbs
+                            </span>
+                        </div>
+                        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
+                                % Rend. Total
+                            </span>
+                            <span className="text-xl font-black text-blue-700">
+                                {globalLiquidPlusPackagedYieldPct}%
                             </span>
                         </div>
                     </>
@@ -485,33 +528,61 @@ const EggReports = () => {
                                         <th className="p-3">Fecha</th>
                                         <th className="p-3">Producto</th>
                                         <th className="p-3 text-right">Quebraje (Lbs)</th>
-                                        <th className="p-3 text-right">Rendimiento (Lbs)</th>
-                                        <th className="p-3 text-right">Rend. %</th>
+                                        <th className="p-3 text-right text-indigo-700">Cajas MP</th>
+                                        <th className="p-3 text-right text-amber-700">Insumos (Lbs)</th>
+                                        <th className="p-3 text-right text-teal-700">Líq. Neto</th>
+                                        <th className="p-3 text-right text-teal-800 bg-teal-50/60 font-black">Lbs/Caja</th>
+                                        <th className="p-3 text-right text-teal-800 bg-teal-50/60 font-black">% Efic.</th>
+                                        <th className="p-3 text-right text-emerald-700">Líq. Pasteurizado</th>
+                                        <th className="p-3 text-right text-purple-700">Envasado (Lbs)</th>
+                                        <th className="p-3 text-right text-blue-800 bg-blue-50/70 font-black">Líq. + Envasado</th>
+                                        <th className="p-3 text-right text-blue-800 bg-blue-50/70 font-black">% Rend. Total</th>
                                         <th className="p-3 text-center">Estado Envasado</th>
-                                        <th className="p-3 text-right">Efic. Envasado %</th>
+                                        <th className="p-3 text-right">Efic. Env. %</th>
                                         <th className="p-3 text-center">Estado</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
                                     {reportData.map((row) => (
                                         <tr key={row.id} className="hover:bg-slate-50/80 transition-colors">
-                                            <td className="p-3 font-black text-indigo-700">
+                                            <td className="p-3 font-black text-indigo-700 whitespace-nowrap">
                                                 {row.batch_code_display || row.batch_uuid}
                                             </td>
-                                            <td className="p-3 text-slate-600">
+                                            <td className="p-3 text-slate-600 whitespace-nowrap">
                                                 {row.created_at ? new Date(row.created_at).toLocaleDateString() : '-'}
                                             </td>
-                                            <td className="p-3 font-bold text-slate-800 capitalize">
+                                            <td className="p-3 font-bold text-slate-800 capitalize whitespace-nowrap">
                                                 {row.product_type}
                                             </td>
                                             <td className="p-3 text-right font-medium text-slate-700">
-                                                {parseFloat(row.egg_broken_lbs || 0).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
+                                                {parseFloat(row.egg_broken_lbs || row.input_weight_lbs || 0).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
+                                            </td>
+                                            <td className="p-3 text-right font-bold text-indigo-700">
+                                                {row.total_boxes || 0}
+                                            </td>
+                                            <td className="p-3 text-right font-semibold text-amber-700">
+                                                {parseFloat(row.additional_ingredients_lbs || 0).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
+                                            </td>
+                                            <td className="p-3 text-right font-bold text-teal-700">
+                                                {parseFloat(row.net_egg_yield_lbs || 0).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
+                                            </td>
+                                            <td className="p-3 text-right font-black text-teal-900 bg-teal-50/40">
+                                                {parseFloat(row.yield_per_box_lbs || 0).toFixed(1)} Lbs
+                                            </td>
+                                            <td className="p-3 text-right font-black text-teal-900 bg-teal-50/40">
+                                                {parseFloat(row.pure_egg_yield_pct || 0).toFixed(1)}%
                                             </td>
                                             <td className="p-3 text-right font-bold text-emerald-700">
-                                                {parseFloat(row.actual_output_lbs || 0).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
+                                                {parseFloat(row.actual_output_lbs || row.yield_liquid_lbs || 0).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
                                             </td>
-                                            <td className="p-3 text-right font-bold text-slate-800">
-                                                {parseFloat(row.yield_pct || 0).toFixed(1)}%
+                                            <td className="p-3 text-right font-bold text-purple-700">
+                                                {parseFloat(row.packaged_weight_lbs || 0).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
+                                            </td>
+                                            <td className="p-3 text-right font-black text-blue-900 bg-blue-50/40 whitespace-nowrap">
+                                                {(parseFloat(row.liquid_plus_packaged_lbs || (parseFloat(row.actual_output_lbs || row.yield_liquid_lbs || 0) + parseFloat(row.packaged_weight_lbs || 0)))).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} Lbs
+                                            </td>
+                                            <td className="p-3 text-right font-black text-blue-900 bg-blue-50/40">
+                                                {parseFloat(row.liquid_plus_packaged_yield_pct || (parseFloat(row.egg_broken_lbs || row.input_weight_lbs || 0) > 0 ? (((parseFloat(row.actual_output_lbs || row.yield_liquid_lbs || 0) + parseFloat(row.packaged_weight_lbs || 0)) / parseFloat(row.egg_broken_lbs || row.input_weight_lbs || 1)) * 100) : 0)).toFixed(1)}%
                                             </td>
                                             <td className="p-3 text-center">
                                                 <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase ${

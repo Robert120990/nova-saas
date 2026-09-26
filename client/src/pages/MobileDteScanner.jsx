@@ -401,10 +401,10 @@ export default function MobileDteScanner() {
             <header className="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
                 <div className="flex items-center gap-2.5">
                     <div className="w-8 h-8 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-black shadow-md shadow-indigo-600/30">
-                        N
+                        S
                     </div>
                     <div>
-                        <h1 className="text-sm font-bold text-white tracking-tight">Nova SaaS</h1>
+                        <h1 className="text-sm font-bold text-white tracking-tight">Sipe Web SaaS</h1>
                         <p className="text-[11px] text-slate-400">Escáner Móvil de DTE</p>
                     </div>
                 </div>
@@ -734,7 +734,7 @@ export default function MobileDteScanner() {
 
             {/* Footer */}
             <footer className="text-center pt-4 text-[10px] text-slate-400">
-                Nova SaaS • Sistema Integrado de Facturación y DTE
+                Sipe Web SaaS • Sistema Integrado de Facturación y DTE
             </footer>
         </div>
     );

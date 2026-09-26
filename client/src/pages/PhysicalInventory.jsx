@@ -29,12 +29,13 @@ import {
     Check,
     List
 } from 'lucide-react';
-import * as XLSX from 'xlsx';
+import { exportAoaToExcel } from '../utils/excelExport';
 import { useAuth } from '../context/AuthContext';
 import { useConfirm } from '../context/ConfirmContext';
 import Table from '../components/ui/Table';
 import Pagination from '../components/ui/Pagination';
 import Modal from '../components/ui/Modal';
+import ProductSearchModal from '../components/products/ProductSearchModal';
 import useWebSocket from '../hooks/useWebSocket';
 
 const PhysicalInventory = () => {
@@ -62,9 +63,6 @@ const PhysicalInventory = () => {
     const [quickProd, setQuickProd] = useState(null);
     const [quickCant, setQuickCant] = useState('');
     const [isProductModalOpen, setIsProductModalOpen] = useState(false);
-    const [productSearch, setProductSearch] = useState('');
-    const [debouncedProductSearch, setDebouncedProductSearch] = useState('');
-    const [modalPage, setModalPage] = useState(1);
     const barcodeInputRef = useRef(null);
     const qtyInputRef = useRef(null);
 
@@ -103,20 +101,6 @@ const PhysicalInventory = () => {
         queryKey: ['categories-all'],
         queryFn: async () => (await axios.get('/api/categories', { params: { limit: 5000 } })).data?.data || []
     });
-
-    const { data: modalProductsData = { data: [], total: 0, totalPages: 0 }, isLoading: isLoadingModalProducts } = useQuery({
-        queryKey: ['physical-products', debouncedProductSearch, branchId, modalPage],
-        queryFn: async () => (await axios.get('/api/products', {
-            params: { search: debouncedProductSearch || undefined, branch_id: branchId || undefined, limit: 20, page: modalPage }
-        })).data,
-        enabled: isProductModalOpen
-    });
-    const modalProducts = modalProductsData.data.filter(p => p.status === 'activo' && p.afecta_inventario === 1);
-
-    React.useEffect(() => {
-        const timer = setTimeout(() => { setDebouncedProductSearch(productSearch); setModalPage(1); }, 500);
-        return () => clearTimeout(timer);
-    }, [productSearch]);
 
     const { data: historyData = { data: [], totalItems: 0, totalPages: 0 }, isLoading: loadingHistory } = useQuery({
         queryKey: ['physical-inventory-history', historySearch, historyPage, user?.branch_id],
@@ -554,16 +538,7 @@ const PhysicalInventory = () => {
                 aoa.push([]); // Separation row
             });
 
-            const ws = XLSX.utils.aoa_to_sheet(aoa);
-            
-            ws['!cols'] = [
-                { wch: 20 }, { wch: 45 }, { wch: 15 }, 
-                { wch: 15 }, { wch: 15 }, { wch: 18 }, { wch: 18 }
-            ];
-
-            const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, "Inventario Físico");
-            XLSX.writeFile(wb, `Inventario_Fisico_${(inv.branch_name || 'Sucursal').replace(/[^a-zA-Z0-9]/g, '_')}_INV${inv.id}.xlsx`);
+            exportAoaToExcel(aoa, `Inventario_Fisico_${(inv.branch_name || 'Sucursal').replace(/[^a-zA-Z0-9]/g, '_')}_INV${inv.id}`, "Inventario Físico");
             
             toast.dismiss('excel-export');
             toast.success('Excel exportado correctamente');
@@ -1213,77 +1188,15 @@ const PhysicalInventory = () => {
             )}
 
             {/* Product Modal */}
-            <Modal
+            <ProductSearchModal
                 isOpen={isProductModalOpen}
                 onClose={() => setIsProductModalOpen(false)}
-                title="Buscador de Productos (F3)"
-                size="4xl"
-            >
-                <div className="p-6 space-y-6">
-                    <div className="relative">
-                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                        <input 
-                            id="modal-product-search"
-                            type="text"
-                            value={productSearch}
-                            onChange={(e) => setProductSearch(e.target.value)}
-                            placeholder="Buscar por nombre o código..."
-                            className="w-full pl-12 pr-6 py-4 bg-slate-50 border-none rounded-2xl outline-none focus:ring-4 focus:ring-indigo-500/5 transition-all text-sm font-bold"
-                            autoFocus
-                        />
-                    </div>
-                    <div className="bg-white rounded-[2rem] border border-slate-100 overflow-x-auto max-h-[400px] overflow-y-auto">
-                        <table className="w-full text-left border-collapse">
-                            <thead>
-                                <tr className="bg-slate-50/50 border-b border-slate-100 sticky top-0 z-10">
-                                    <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Código</th>
-                                    <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Producto</th>
-                                    <th className="px-8 py-5 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest">Acción</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-50">
-                                {isLoadingModalProducts ? (
-                                    <tr>
-                                        <td colSpan="3" className="px-8 py-16 text-center text-slate-400 text-sm font-medium">Cargando productos...</td>
-                                    </tr>
-                                ) : modalProducts.length === 0 ? (
-                                    <tr>
-                                        <td colSpan="3" className="px-8 py-16 text-center text-slate-400 text-sm font-medium">No se encontraron productos</td>
-                                    </tr>
-                                ) : modalProducts
-                                    .filter(p => !productSearch || p.nombre.toLowerCase().includes(productSearch.toLowerCase()) || p.codigo.toLowerCase().includes(productSearch.toLowerCase()))
-                                    .map((p) => (
-                                        <tr key={p.id} className="hover:bg-slate-50 transition-all group">
-                                            <td className="px-8 py-4 font-mono font-black text-indigo-500 text-xs">#{p.codigo}</td>
-                                            <td className="px-8 py-4 font-bold text-slate-700 text-xs">{p.nombre}</td>
-                                            <td className="px-8 py-4 text-right">
-                                                <button 
-                                                    id={`btn-select-prod-${p.id}`}
-                                                    onClick={() => handleSelectProduct(p)}
-                                                    className="p-2 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-600 hover:text-white transition-all shadow-sm"
-                                                >
-                                                    <Plus size={16} />
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    ))}
-                            </tbody>
-                        </table>
-                        {modalProductsData.totalPages > 1 && (
-                            <div className="border-t border-slate-100 p-4">
-                                <Pagination
-                                    currentPage={modalPage}
-                                    totalPages={modalProductsData.totalPages}
-                                    totalItems={modalProductsData.total}
-                                    onPageChange={setModalPage}
-                                    itemsOnPage={modalProducts.length}
-                                    isLoading={isLoadingModalProducts}
-                                />
-                            </div>
-                        )}
-                    </div>
-                </div>
-            </Modal>
+                onSelectProduct={(p) => {
+                    handleSelectProduct(p);
+                }}
+                branchId={branchId}
+                mode="inventory"
+            />
 
             {/* QR Preview Modal */}
             <Modal

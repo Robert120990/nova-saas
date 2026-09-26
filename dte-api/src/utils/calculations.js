@@ -28,7 +28,6 @@ function calculateItem(item, tipoDte = '01', ivaRate = 13) {
 
     // Extraer FOVIAL (D1) y COTRANS (C8) por ítem desde los tributos del payload.
     // El precio de combustible los incluye, por lo que deben quitarse ANTES de extraer el IVA.
-    // Se redondean a 2 decimales igual que el POS para que el neto/total cuadre con lo ingresado.
     const tributos = Array.isArray(item.tributos) ? item.tributos : [];
     const extractFuelTax = (taxCode) => tributos.reduce((sum, t) => {
         if (t && typeof t === 'object' && t.codigo === taxCode) return sum + (parseFloat(t.valor) || 0);
@@ -36,6 +35,7 @@ function calculateItem(item, tipoDte = '01', ivaRate = 13) {
     }, 0);
     const fovial = round(extractFuelTax('D1'));
     const cotrans = round(extractFuelTax('C8'));
+    const unitFuelTax = quantity > 0 ? (fovial + cotrans) / quantity : 0;
 
     let netPrice, netDiscount, ventaGravada, iva;
 
@@ -43,21 +43,26 @@ function calculateItem(item, tipoDte = '01', ivaRate = 13) {
         // MODO FACTURA: Valores Inclusive
         netPrice = priceInput;
         netDiscount = discountInput;
-        ventaGravada = round((netPrice * quantity) - netDiscount);
+        ventaGravada = round(Math.max(0, (netPrice * quantity) - netDiscount));
         iva = round6((ventaGravada * ivaRate) / (100 + ivaRate));
     } else if (tipoDte === '11') {
         // MODO EXPORTACIÓN: No lleva IVA, extraer el neto del precio inclusive
         netPrice = round6(priceInput / divisor);
         netDiscount = round6(discountInput / divisor);
-        ventaGravada = round((netPrice * quantity) - netDiscount);
+        ventaGravada = round(Math.max(0, (netPrice * quantity) - netDiscount));
         iva = 0;
     } else {
-        // MODO CRÉDITO FISCAL: Primero quitar FOVIAL/COTRANS del precio y luego extraer el IVA
-        const baseConIVA = Math.max(0, (priceInput * quantity) - discountInput - fovial - cotrans);
-        netPrice = round6(quantity > 0 ? baseConIVA / (quantity * divisor) : 0);
+        // MODO CRÉDITO FISCAL: Quitar impuestos específicos de combustible primero,
+        // luego extraer el precio neto unitario ANTES del descuento para que cuadre:
+        // (precioUni * cantidad) - montoDescu = ventaGravada (Requisito MH)
+        const lineInclusive = Math.max(0, (priceInput * quantity) - discountInput);
+        const baseConIVA = Math.max(0, lineInclusive - fovial - cotrans);
+        const baseSinFuel = Math.max(0, priceInput - unitFuelTax);
+        netPrice = round6(baseSinFuel / divisor);
         netDiscount = round6(discountInput / divisor);
-        ventaGravada = round(netPrice * quantity);
+        ventaGravada = round(Math.max(0, (netPrice * quantity) - netDiscount));
         const isGravado = !item.exento && item.tipoItem !== 2 && item.tipoItem !== 3;
+        // Calcular IVA complementario sobre la base con IVA para garantizar cuadre exacto al centavo
         iva = isGravado ? round(baseConIVA - ventaGravada) : 0;
     }
 
@@ -70,29 +75,63 @@ function calculateItem(item, tipoDte = '01', ivaRate = 13) {
         ventaExenta: item.tipoItem === 2 ? ventaGravada : 0,
         ventaGravada: item.tipoItem === 1 ? ventaGravada : 0,
         ivaItem: iva,
-        totalItemInclusive: tipoDte === '01' ? ventaGravada : round(ventaGravada + iva)
+        totalItemInclusive: tipoDte === '01' ? ventaGravada : round(ventaGravada + iva + fovial + cotrans)
     };
 }
 
-function calculateTotals(items, taxes = [], tipoDte = '01') {
+function calculateTotals(items, taxes = [], tipoDte = '01', generalDiscount = 0, ivaRate = 13, explicitPercentage = null) {
     let totalNoSuj = 0;
     let totalExenta = 0;
     let totalGravada = 0;
     let totalIva = 0;
-    let totalDescu = 0;
+    let totalDescuItems = 0;
+    let totalExpectedInclusive = 0;
 
     items.forEach(item => {
         totalNoSuj += item.ventaNoSuj || 0;
         totalExenta += item.ventaExenta || 0;
         totalGravada += item.ventaGravada || 0;
         totalIva += item.ivaItem || 0;
-        totalDescu += item.montoDescu || 0;
+        totalDescuItems += item.montoDescu || 0;
+        totalExpectedInclusive += item.totalItemInclusive || 0;
     });
 
+    const rate = ivaRate / 100;
+    const divisor = 1 + rate;
+
+    // Descuento general aplicado estrictamente a la porción gravada
+    const rawGenDiscount = Math.max(0, parseFloat(generalDiscount) || 0);
+    let descuGravada = 0;
+
+    if (tipoDte === '03' || tipoDte === '05' || tipoDte === '06') {
+        // En CCF, si el descuento general viene del POS en valor inclusive, se convierte a neto:
+        descuGravada = round(rawGenDiscount / divisor);
+    } else {
+        // En Factura 01, el descuento general es inclusive:
+        descuGravada = round(rawGenDiscount);
+    }
+
+    // Regla de validación: el descuento gravado no puede superar el valor gravado disponible
+    descuGravada = Math.min(descuGravada, round(totalGravada));
+
+    const descuNoSuj = 0;
+    const descuExenta = 0;
+
     const rSubTotalVentas = round(totalNoSuj + totalExenta + totalGravada);
-    const rTotalIva = round(totalIva);
-    const rTotalDescu = round(totalDescu);
-    
+    const subTotal = round(rSubTotalVentas - descuGravada - descuExenta - descuNoSuj);
+    const rTotalDescu = round(totalDescuItems + descuGravada + descuExenta + descuNoSuj);
+    let porcentajeDescuento = 0;
+    if (explicitPercentage !== null && explicitPercentage !== undefined && !isNaN(explicitPercentage) && Number(explicitPercentage) > 0) {
+        porcentajeDescuento = round(Number(explicitPercentage));
+    } else if (totalGravada > 0) {
+        const calculatedPct = (descuGravada / totalGravada) * 100;
+        if (Math.abs(calculatedPct - Math.round(calculatedPct)) <= 0.08) {
+            porcentajeDescuento = Math.round(calculatedPct);
+        } else {
+            porcentajeDescuento = round(calculatedPct);
+        }
+    }
+
     let totalOtrosImp = 0;
     taxes.forEach(t => {
         totalOtrosImp += round(parseFloat(t.valor) || 0);
@@ -100,25 +139,45 @@ function calculateTotals(items, taxes = [], tipoDte = '01') {
     const rOtrosImp = round(totalOtrosImp);
 
     // FORMULA DEPENDS ON DTE TYPE
-    let subTotal, totalPagar;
+    let totalPagar;
+    let finalIva = 0;
     
     if (tipoDte === '01') {
-        // En Factura 01, subTotal es igual a subTotalVentas porque ya incluye impuestos
-        subTotal = round(rSubTotalVentas);
+        // En Factura 01, subTotal ya incluye impuestos de las ventas gravadas remanentes
         totalPagar = round(subTotal + rOtrosImp);
+        finalIva = round(((totalGravada - descuGravada) * ivaRate) / (100 + ivaRate));
     } else {
-        // En CCF 03, subTotal es estrictamente la base imponible sin impuestos
-        subTotal = round(rSubTotalVentas);
-        // totalPagar suma la base + IVA + otros impuestos
-        totalPagar = round(subTotal + rTotalIva + rOtrosImp);
+        // En CCF 03 y afines (05, 06):
+        if (descuGravada > 0) {
+            const descuIva = round(descuGravada * rate);
+            finalIva = Math.max(0, round(totalIva - descuIva));
+        } else {
+            finalIva = round(totalIva);
+        }
+
+        // Blindaje contra descuadre de 1 centavo:
+        // El total general inclusive esperado de la transacción es la suma de los valores inclusive de los ítems menos el descuento general:
+        const expectedTotal = round(totalExpectedInclusive - rawGenDiscount);
+        const currentSum = round(subTotal + finalIva + rOtrosImp);
+        const diff = round(expectedTotal - currentSum);
+
+        if (Math.abs(diff) === 0.01 && (finalIva + diff) >= 0) {
+            finalIva = round(finalIva + diff);
+        }
+
+        totalPagar = round(subTotal + finalIva + rOtrosImp);
     }
 
     return {
         totalNoSuj: round(totalNoSuj),
         totalExenta: round(totalExenta),
         totalGravada: round(totalGravada),
+        descuNoSuj: descuNoSuj,
+        descuExenta: descuExenta,
+        descuGravada: descuGravada,
+        porcentajeDescuento: porcentajeDescuento,
         subTotalVentas: rSubTotalVentas,
-        montoPorIVA: rTotalIva,
+        montoPorIVA: finalIva,
         totalDescu: rTotalDescu,
         subTotal: subTotal,
         totalPagar: totalPagar

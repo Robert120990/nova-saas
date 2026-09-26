@@ -1,10 +1,19 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useLocation, Outlet } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import Navbar from './Navbar';
 import AIAssistant from '../ui/AIAssistant';
 import CommandPalette from '../ui/CommandPalette';
 import ErrorBoundary from '../ui/ErrorBoundary';
+
+const PageLoader = () => (
+    <div className="flex flex-col items-center justify-center min-h-[300px] p-8 space-y-3">
+        <div className="w-8 h-8 border-2 border-indigo-600/20 border-t-indigo-600 rounded-full animate-spin" />
+        <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest animate-pulse">
+            Cargando sección...
+        </span>
+    </div>
+);
 
 const Layout = () => {
     const location = useLocation();
@@ -45,7 +54,9 @@ const Layout = () => {
                 <main className="flex-1 overflow-y-auto p-3 sm:p-6 md:p-8">
                     <div className="max-w-7xl mx-auto" key={location.pathname}>
                         <ErrorBoundary showDetails>
-                            <Outlet />
+                            <Suspense fallback={<PageLoader />}>
+                                <Outlet />
+                            </Suspense>
                         </ErrorBoundary>
                     </div>
                 </main>

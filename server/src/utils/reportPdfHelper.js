@@ -142,20 +142,20 @@ function renderHeader(doc, company, title, periodText, orientation = 'portrait',
     doc.fontSize(8).font('Helvetica').fillColor('#475569').text(taxText, 30, 49, { align: 'center', width: contentWidth });
 
     // 4. Período
-    let currentY = 61;
+    let currentY = Math.max(62, doc.y + 3);
     if (periodText) {
         doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#1e293b').text(periodText.toUpperCase(), 30, currentY, { align: 'center', width: contentWidth });
-        currentY += 12;
+        currentY = doc.y + 2;
     }
 
     // 5. Leyenda monetaria
     doc.fontSize(7.5).font('Helvetica').fillColor('#64748b').text('(CIFRAS EXPRESADAS EN DOLARES DE LOS ESTADOS UNIDOS DE AMERICA)', 30, currentY, { align: 'center', width: contentWidth });
-    currentY += 12;
+    currentY = doc.y + 4;
 
     // Línea divisoria sutil
     doc.strokeColor('#e2e8f0').lineWidth(0.5).moveTo(30, currentY).lineTo(pageWidth - 30, currentY).stroke();
 
-    doc.y = currentY + 7;
+    doc.y = currentY + 6;
     return doc.y;
 }
 

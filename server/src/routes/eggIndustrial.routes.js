@@ -7,6 +7,7 @@ router.get('/raw-materials', eggController.getRawMaterials);
 router.post('/raw-materials', eggController.createRawMaterial);
 router.put('/raw-materials/:id', eggController.updateRawMaterial);
 router.put('/raw-materials/:id/quality-classification', eggController.saveQualityClassification);
+router.put('/raw-materials/:id/approve', eggController.approveRawMaterial);
 router.get('/raw-materials/:id/lab-001-pdf', eggController.getRawMaterialLab001Pdf);
 router.post('/raw-materials/:id/lab-001-pdf', eggController.getRawMaterialLab001Pdf);
 router.get('/raw-materials/:id/origin-certificate', eggController.getOriginCertificate);
@@ -18,6 +19,7 @@ router.delete('/raw-materials/:id', eggController.deleteRawMaterial);
 router.get('/cip', eggController.getCipLogs);
 router.post('/cip', eggController.createCipLog);
 router.post('/cip/quick-sanitize', eggController.quickSanitizeCip);
+router.delete('/cip/:id', eggController.deleteCipLog);
 
 // 3. Lotes de Producción
 router.get('/batches', eggController.getProductionBatches);
@@ -29,14 +31,20 @@ router.get('/batches/:id/stages', eggController.getBatchStages);
 router.post('/batches/:id/tarimas', eggController.addTarimasToBatch);
 router.post('/batches/:id/add-tarimas', eggController.addTarimasToBatch);
 router.post('/batches/:id/close-packaging', eggController.closeBatchPackaging);
+router.post('/batches/:id/reopen-packaging', eggController.reopenBatchPackaging);
+router.post('/batches/:id/close-pasteurization', eggController.closePasteurization);
+router.post('/batches/:id/reopen-pasteurization', eggController.reopenPasteurization);
 router.get('/batches/:id/export-summary', eggController.exportBatchSummary);
 
 // 3.1 Mermas de Producción (Soporte dual /mermas y /wastes)
 router.get('/batches/:id/mermas', eggController.getBatchWastes);
 router.post('/batches/:id/mermas', eggController.createBatchWaste);
+router.put('/batches/:id/mermas/:wasteId', eggController.updateBatchWaste);
 router.delete('/mermas/:id', eggController.deleteBatchWaste);
 router.get('/batches/:id/wastes', eggController.getBatchWastes);
 router.post('/batches/:id/wastes', eggController.createBatchWaste);
+router.put('/batches/:id/wastes/:wasteId', eggController.updateBatchWaste);
+router.put('/wastes/:id', eggController.updateBatchWaste);
 router.delete('/batches/:id/wastes/:wasteId', eggController.deleteBatchWaste);
 router.delete('/wastes/:id', eggController.deleteBatchWaste);
 
@@ -45,6 +53,9 @@ router.get('/batches/:id/remanentes', eggController.getBatchRemanentes);
 router.get('/remanentes/available', eggController.getAvailableRemanentes);
 router.post('/batches/:id/remanentes', eggController.createBatchRemanente);
 router.put('/remanentes/:id', eggController.updateBatchRemanente);
+router.put('/batches/:id/remanentes/:remanenteId', eggController.updateBatchRemanente);
+router.delete('/remanentes/:id', eggController.deleteBatchRemanente);
+router.delete('/batches/:id/remanentes/:remanenteId', eggController.deleteBatchRemanente);
 
 // 4. Pasteurización
 router.post('/pasteurize', eggController.createPasteurizationLog);
@@ -151,6 +162,7 @@ router.put('/quality-parameters/:id', eggController.saveQualityParameter);
 router.delete('/quality-parameters/:id', eggController.deleteQualityParameter);
 router.get('/lab/logs', eggController.getLabLogs);
 router.get('/lab/quality-letter/:batchId/export', eggController.exportQualityLetter);
+router.get('/lab/export-mario', eggController.exportMarioQualityExcel);
 router.post('/lab/logs', eggController.createLabLog);
 router.put('/lab/logs/:id', eggController.updateLabLog);
 router.post('/lab/send-unified-email', eggController.sendUnifiedCoaEmail);
@@ -239,7 +251,19 @@ router.delete('/code-mappings/:id', eggController.deleteCodeMapping);
 
 // 25. Inventario Traducido de Huevo Industrial
 router.get('/inventory-translated', eggController.getTranslatedInventory);
-router.get('/inventory-translated/export', eggController.exportTranslatedInventory);
+// 26. Metas, Comisiones y Simulador con Tope ($1,000) e Integración a Planilla
+const eggCommissionsController = require('../controllers/eggCommissions.controller');
+router.get('/commissions/simulate', eggCommissionsController.simulateCommission);
+router.post('/commissions/simulate', eggCommissionsController.simulateCommission);
+router.get('/commissions/sellers-employees', eggCommissionsController.getSellersAndEmployees);
+router.post('/commissions/link-seller-employee', eggCommissionsController.linkSellerToEmployee);
+router.get('/commissions/goals', eggCommissionsController.getSellerGoals);
+router.post('/commissions/goals', eggCommissionsController.saveSellerGoal);
+router.post('/commissions/calculate', eggCommissionsController.calculatePeriodCommissions);
+router.post('/commissions/create-seller', eggCommissionsController.createEggSeller);
+router.post('/commissions/remove-seller', eggCommissionsController.removeEggSeller);
+router.post('/commissions/transfer-to-payroll', eggCommissionsController.transferCommissionToPayroll);
+router.get('/commissions/summary', eggCommissionsController.getCommissionsSummary);
 
 module.exports = router;
 
