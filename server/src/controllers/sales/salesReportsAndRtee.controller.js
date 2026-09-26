@@ -2529,7 +2529,7 @@ const getPublicDTEInfo = async (req, res) => {
     const { codigo } = req.params;
     try {
         const [dte] = await pool.query(
-            `SELECT d.tipo_dte, d.numero_control, d.status, d.ambiente, d.sello_recepcion, d.fh_procesamiento,
+            `SELECT d.codigo_generacion, d.tipo_dte, d.numero_control, d.status, d.ambiente, d.sello_recepcion, d.fh_procesamiento,
                     h.fecha_emision, h.total_pagar,
                     comp.razon_social as company_name,
                     b.nombre as branch_name,

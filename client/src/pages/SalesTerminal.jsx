@@ -1402,7 +1402,7 @@ const SalesTerminal = () => {
         const printContainer = window.open('', '_blank', 'width=400,height=600');
         const origin = window.location.origin;
         const qrUrl = sale.dte?.codigo_generacion
-            ? `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(origin + '/api/public/dte/' + sale.dte.codigo_generacion + '/pdf')}`
+            ? `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(origin + '/dte?codigo=' + encodeURIComponent(sale.dte.codigo_generacion))}`
             : '';
         const now = new Date();
         const fechaStr = now.toLocaleDateString('es-SV');

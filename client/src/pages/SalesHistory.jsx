@@ -558,8 +558,9 @@ const SalesHistory = () => {
             }
 
             const origin = window.location.origin;
-            const qrUrl = (sale.dte_control || sale.codigo_generacion)
-                ? `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(origin + '/api/public/dte/' + (sale.codigo_generacion || sale.dte_control) + '/pdf')}`
+            const targetCode = sale.codigo_generacion || sale.dte_control;
+            const qrUrl = targetCode
+                ? `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(origin + '/dte?codigo=' + encodeURIComponent(targetCode))}`
                 : '';
 
             const html = `

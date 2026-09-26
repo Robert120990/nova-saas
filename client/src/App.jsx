@@ -238,6 +238,7 @@ function App() {
                 <Routes>
                     <Route path="/login" element={<Login />} />
                     <Route path="/dte" element={<PublicDTE />} />
+                    <Route path="/dte/:codigo" element={<PublicDTE />} />
                     <Route path="/scan/:token" element={<Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-slate-900 text-white text-xs">Cargando...</div>}><ScanInventory /></Suspense>} />
                     <Route path="/scan-dte/:sessionId" element={<Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-slate-900 text-white text-xs">Cargando...</div>}><MobileDteScanner /></Suspense>} />
                     
