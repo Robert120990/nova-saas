@@ -6,6 +6,7 @@ const mailerService = require('../services/mailer.service');
 const { getSaleRTEEPdfBuffer } = require('./sales.controller');
 const { PDFDocument } = require('pdf-lib');
 const { resolveEggCatalogProduct, parseDefaultPresentationWeightLbs } = require('../utils/eggProductResolver');
+const eggReturnableService = require('../services/eggReturnableService');
 
 // Helpers de sanitización numérica defensiva contra valores NaN / vacíos en MySQL
 const safeNum = (val, fallback = 0) => {
@@ -2328,44 +2329,24 @@ const autoInvoiceDispatchRoute = async (req, res) => {
                     }]);
                 }
 
-                // Control de envases retornables (cubetas)
+                // Control de envases retornables (cubetas y tapaderas)
                 if (item.is_returnable && item.returnable_units > 0 && stop.customer_id) {
                     try {
-                        const [retRows] = await connection.query(
-                            `SELECT id FROM egg_returnable_packaging 
-                             WHERE company_id = ? AND customer_id = ? AND packaging_type = 'cubeta_30lb'
-                             LIMIT 1`,
-                            [company_id, stop.customer_id]
-                        );
-                        let retId = retRows[0]?.id;
-                        if (!retId) {
-                            const [newRet] = await connection.query(
-                                `INSERT INTO egg_returnable_packaging (company_id, customer_id, customer_name, packaging_type, initial_balance, notes)
-                                 VALUES (?, ?, ?, 'cubeta_30lb', 0, 'Auto-creado desde Facturación de Despacho')`,
-                                [company_id, stop.customer_id, customer.nombre]
-                            );
-                            retId = newRet.insertId;
-                        }
-
-                        await connection.query(
-                            `INSERT INTO egg_returnable_movements (company_id, returnable_id, movement_type, quantity, reference_document, notes, registered_by)
-                             VALUES (?, ?, 'entrega', ?, ?, ?, ?)`,
-                            [
-                                company_id,
-                                retId,
-                                item.returnable_units,
-                                `DTE-${dteType || '01'} / Venta #${saleId}`,
-                                `Despacho automático de ${item.returnable_units} cubeta(s) de ovoproducto`,
-                                req.user?.nombre || 'Despacho Automático'
-                            ]
-                        );
-
-                        await connection.query(
-                            `UPDATE egg_returnable_packaging 
-                             SET delivered_qty = delivered_qty + ?, last_movement_date = CURDATE()
-                             WHERE id = ? AND company_id = ?`,
-                            [item.returnable_units, retId, company_id]
-                        );
+                        await eggReturnableService.recordSaleReturnables(connection, {
+                            company_id: company_id,
+                            customer_id: stop.customer_id,
+                            customer_name: customer.nombre,
+                            sale_id: saleId,
+                            dte_type: dteType,
+                            numero_control: null,
+                            items: [{
+                                ...item,
+                                is_returnable: true,
+                                returnable_units: item.returnable_units
+                            }],
+                            user_name: req.user?.nombre || 'Despacho Automático',
+                            fecha_emision: new Date()
+                        });
                     } catch (retErr) {
                         console.warn('[AutoInvoice] Error registrando empaque retornable:', retErr.message);
                     }

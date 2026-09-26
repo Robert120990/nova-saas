@@ -158,8 +158,10 @@ router.get('/lab/solids-calc', eggController.getSolidsCalculation);
 
 // 18. Control de Retornables (Cubetas y Tapaderas)
 router.get('/returnables/balances', eggController.getReturnableBalances);
+router.get('/returnables/customers/:id/statement', eggController.getReturnableCustomerStatement);
 router.post('/returnables/customers', eggController.saveReturnableCustomer);
 router.post('/returnables/movements', eggController.registerReturnableMovement);
+router.post('/returnables/sync-sales', eggController.syncReturnablesFromSales);
 
 // 19. Calendario de Producción y Roles de Planta
 router.get('/calendar', eggController.getScheduledProductions);

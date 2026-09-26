@@ -10,6 +10,7 @@ const eggOriginCertificate = require('../services/eggOriginCertificate.service')
 const reportPdfHelper = require('../utils/reportPdfHelper');
 const excelService = require('../services/excel.service');
 const { resolveEggCatalogProduct } = require('../utils/eggProductResolver');
+const eggReturnableService = require('../services/eggReturnableService');
 
 // Helpers de sanitización numérica defensiva contra valores NaN / vacíos en MySQL
 const safeNum = (val, fallback = 0) => {
@@ -3639,11 +3640,19 @@ const getSolidsCalculation = async (req, res) => {
 const getReturnableBalances = async (req, res) => {
     try {
         const [rows] = await pool.query(
-            `SELECT r.*, c.nombre as customer_full_name, c.telefono
+            `SELECT r.*, 
+                    c.nombre as customer_full_name, 
+                    c.codigo as customer_code,
+                    c.telefono, 
+                    c.direccion,
+                    c.nrc,
+                    c.nit,
+                    c.dias_credito,
+                    GREATEST(0, r.current_balance - r.current_tapaderas) as missing_tapaderas
              FROM egg_returnable_packaging r
              LEFT JOIN customers c ON r.customer_id = c.id
              WHERE r.company_id = ?
-             ORDER BY r.current_balance DESC`,
+             ORDER BY r.current_balance DESC, r.customer_name ASC`,
             [req.company_id]
         );
         res.json(rows);
@@ -3652,22 +3661,52 @@ const getReturnableBalances = async (req, res) => {
     }
 };
 
+const getReturnableCustomerStatement = async (req, res) => {
+    try {
+        const customerIdOrReturnableId = req.params.id;
+        const statement = await eggReturnableService.getCustomerStatement(req.company_id, customerIdOrReturnableId);
+        if (!statement) {
+            return res.status(404).json({ message: 'No se encontró registro de envases para el cliente especificado.' });
+        }
+        res.json(statement);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+const syncReturnablesFromSales = async (req, res) => {
+    try {
+        const syncResult = await eggReturnableService.syncHistoricalSales(req.company_id);
+        res.json({
+            message: `Sincronización completada: ${syncResult.syncedCount} venta(s) procesadas, ${syncResult.syncedCubetas} cubeta(s) y tapadera(s) actualizadas en ${syncResult.customersUpdated} cliente(s).`,
+            ...syncResult
+        });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
 const saveReturnableCustomer = async (req, res) => {
     try {
-        const { id, customer_id, customer_name, packaging_type, initial_balance, notes } = req.body;
+        const { id, customer_id, customer_name, packaging_type, initial_balance, initial_tapaderas, notes } = req.body;
+        const initCubetas = parseInt(initial_balance, 10) || 0;
+        const initTapaderas = initial_tapaderas !== undefined ? (parseInt(initial_tapaderas, 10) || 0) : initCubetas;
+
         if (id) {
             await pool.query(
                 `UPDATE egg_returnable_packaging 
-                 SET customer_id = ?, customer_name = ?, packaging_type = ?, initial_balance = ?, notes = ?
+                 SET customer_id = ?, customer_name = ?, packaging_type = ?, 
+                     initial_balance = ?, initial_tapaderas = ?, notes = ?
                  WHERE id = ? AND company_id = ?`,
-                [customer_id || null, customer_name, packaging_type || 'cubeta_30lb', initial_balance || 0, notes || null, id, req.company_id]
+                [customer_id || null, customer_name, packaging_type || 'cubeta_30lb', initCubetas, initTapaderas, notes || null, id, req.company_id]
             );
             res.json({ message: 'Registro actualizado con éxito.', id });
         } else {
             const [result] = await pool.query(
-                `INSERT INTO egg_returnable_packaging (company_id, customer_id, customer_name, packaging_type, initial_balance, notes)
-                 VALUES (?, ?, ?, ?, ?, ?)`,
-                [req.company_id, customer_id || null, customer_name, packaging_type || 'cubeta_30lb', initial_balance || 0, notes || null]
+                `INSERT INTO egg_returnable_packaging 
+                 (company_id, customer_id, customer_name, packaging_type, initial_balance, initial_tapaderas, notes)
+                 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+                [req.company_id, customer_id || null, customer_name, packaging_type || 'cubeta_30lb', initCubetas, initTapaderas, notes || null]
             );
             res.status(201).json({ message: 'Cliente registrado para control de retornables.', id: result.insertId });
         }
@@ -3678,10 +3717,30 @@ const saveReturnableCustomer = async (req, res) => {
 
 const registerReturnableMovement = async (req, res) => {
     try {
-        const { returnable_id, movement_type, quantity, reference_document, notes, registered_by } = req.body;
-        const qty = parseInt(quantity);
-        if (!qty || qty <= 0) {
-            return res.status(400).json({ message: 'La cantidad debe ser mayor a cero.' });
+        const { 
+            returnable_id, 
+            movement_type, 
+            quantity, 
+            cubetas_qty, 
+            cubetas_30lb_qty,
+            cubetas_32lb_qty,
+            tapaderas_qty, 
+            movement_date, 
+            reference_document, 
+            notes, 
+            registered_by 
+        } = req.body;
+
+        const c30 = parseInt(cubetas_30lb_qty, 10) || 0;
+        const c32 = parseInt(cubetas_32lb_qty, 10) || 0;
+        let cQty = parseInt(cubetas_qty !== undefined ? cubetas_qty : quantity, 10) || 0;
+        if (cQty === 0 && (c30 > 0 || c32 > 0)) {
+            cQty = c30 + c32;
+        }
+        const tQty = parseInt(tapaderas_qty !== undefined ? tapaderas_qty : (cubetas_qty !== undefined ? cubetas_qty : quantity), 10) || 0;
+
+        if (cQty <= 0 && tQty <= 0) {
+            return res.status(400).json({ message: 'Debe ingresar una cantidad válida de cubetas o tapaderas (mayor a cero).' });
         }
 
         const [existing] = await pool.query(
@@ -3692,31 +3751,61 @@ const registerReturnableMovement = async (req, res) => {
             return res.status(404).json({ message: 'Registro de retornable no encontrado.' });
         }
 
+        const movDate = movement_date ? new Date(movement_date) : new Date();
+        const mainQty = Math.max(cQty, tQty);
+
         // Registrar movimiento
         await pool.query(
-            `INSERT INTO egg_returnable_movements (company_id, returnable_id, movement_type, quantity, reference_document, notes, registered_by)
-             VALUES (?, ?, ?, ?, ?, ?, ?)`,
-            [req.company_id, returnable_id, movement_type, qty, reference_document || null, notes || null, registered_by || req.user?.nombre || 'Bodeguero']
+            `INSERT INTO egg_returnable_movements 
+             (company_id, returnable_id, movement_type, quantity, cubetas_qty, cubetas_30lb_qty, cubetas_32lb_qty, tapaderas_qty, movement_date, reference_document, notes, registered_by)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+                req.company_id, 
+                returnable_id, 
+                movement_type || 'devolucion', 
+                mainQty, 
+                cQty, 
+                c30,
+                c32,
+                tQty, 
+                movDate,
+                reference_document || null, 
+                notes || null, 
+                registered_by || req.user?.nombre || 'Bodeguero'
+            ]
         );
 
         // Actualizar saldos en egg_returnable_packaging
         if (movement_type === 'entrega') {
             await pool.query(
                 `UPDATE egg_returnable_packaging 
-                 SET delivered_qty = delivered_qty + ?, last_movement_date = CURDATE() 
+                 SET delivered_qty = delivered_qty + ?, 
+                     delivered_tapaderas = delivered_tapaderas + ?, 
+                     last_movement_date = ? 
                  WHERE id = ? AND company_id = ?`,
-                [qty, returnable_id, req.company_id]
+                [cQty, tQty, movDate, returnable_id, req.company_id]
             );
         } else if (movement_type === 'devolucion') {
             await pool.query(
                 `UPDATE egg_returnable_packaging 
-                 SET returned_qty = returned_qty + ?, last_movement_date = CURDATE() 
+                 SET returned_qty = returned_qty + ?, 
+                     returned_tapaderas = returned_tapaderas + ?, 
+                     last_movement_date = ? 
                  WHERE id = ? AND company_id = ?`,
-                [qty, returnable_id, req.company_id]
+                [cQty, tQty, movDate, returnable_id, req.company_id]
+            );
+        } else if (movement_type === 'ajuste') {
+            await pool.query(
+                `UPDATE egg_returnable_packaging 
+                 SET delivered_qty = delivered_qty + ?, 
+                     delivered_tapaderas = delivered_tapaderas + ?, 
+                     last_movement_date = ? 
+                 WHERE id = ? AND company_id = ?`,
+                [cQty, tQty, movDate, returnable_id, req.company_id]
             );
         }
 
-        res.status(201).json({ message: 'Movimiento registrado correctamente.' });
+        res.status(201).json({ message: 'Movimiento de envases registrado correctamente.' });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -7693,6 +7782,8 @@ module.exports = {
     sendUnifiedCoaEmail,
     getSolidsCalculation,
     getReturnableBalances,
+    getReturnableCustomerStatement,
+    syncReturnablesFromSales,
     saveReturnableCustomer,
     registerReturnableMovement,
     // Calendario de Producción, Roles y Sugerencias Inteligentes

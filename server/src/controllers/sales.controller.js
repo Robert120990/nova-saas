@@ -10,6 +10,7 @@ const excelService = require('../services/excel.service');
 const notificationService = require('../services/notification.service');
 const { dteValidoExistsSql, dteLatestColSql } = require('../services/dteQueryFilters');
 const reportPdfHelper = require('../utils/reportPdfHelper');
+const eggReturnableService = require('../services/eggReturnableService');
 
 const dteTypeNames = {
     '01': 'Factura',
@@ -322,6 +323,25 @@ const createSale = async (req, res) => {
                 'UPDATE dtes SET venta_id = ? WHERE codigo_generacion = ? AND company_id = ?',
                 [saleId, dteInfo.codigo_generacion, req.company_id]
             );
+        }
+
+        // 6b. Control automático de empaques retornables (cubetas y tapaderas)
+        if (header.customer_id) {
+            try {
+                await eggReturnableService.recordSaleReturnables(connection, {
+                    company_id: req.company_id,
+                    customer_id: header.customer_id,
+                    customer_name: header.cliente_nombre,
+                    sale_id: saleId,
+                    dte_type: header.dte_type,
+                    numero_control: dteInfo.numero_control || null,
+                    items: items,
+                    user_name: req.user?.nombre,
+                    fecha_emision: header.fecha_emision || new Date()
+                });
+            } catch (retErr) {
+                console.warn(`[SalesController] Error registrando empaque retornable para venta ${saleId}:`, retErr.message);
+            }
         }
 
         await connection.commit();
