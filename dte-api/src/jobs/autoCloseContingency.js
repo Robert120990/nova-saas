@@ -52,21 +52,18 @@ async function checkAndAutoCloseContingencies(options = {}) {
                 const auth = await authenticate(task.api_user, task.api_password, ambiente, true);
 
                 if (auth.success) {
-                    console.log(`[AutoContingencyCloser] 🟢 Hacienda restablecida para empresa ${task.company_id}. Cerrando automáticamente contingencia ${task.id} (${task.minutes_open} min abierta)...`);
-
-                    // 3. Cerrar el período en base de datos
-                    await stopContingency(task.id);
-
-                    // 4. Generar, validar, firmar y transmitir el reporte oficial del evento a Hacienda
+                    // 3. Generar, validar, firmar y transmitir el reporte oficial del evento a Hacienda PRIMERO
                     const reportResult = await sendContingencyReport(task.id);
                     if (reportResult.success) {
-                        console.log(`[AutoContingencyCloser] ✅ Reporte de contingencia ${task.id} enviado exitosamente a Hacienda. Iniciando retransmisión de documentos...`);
+                        // 4. Cerrar el período en base de datos SOLO cuando el reporte fue aceptado por MH
+                        await stopContingency(task.id);
+                        console.log(`[AutoContingencyCloser] ✅ Reporte de contingencia ${task.id} enviado exitosamente a Hacienda. Período cerrado e iniciando retransmisión...`);
                         // 5. Disparar cola BullMQ de retransmisión solo cuando el evento ya fue registrado en Hacienda
                         contingencyQueue.enqueueContingencyDocuments(task.company_id).catch(err => {
                             console.error('[AutoContingencyCloser] Error encolando documentos en BullMQ:', err.message);
                         });
                     } else {
-                        console.warn(`[AutoContingencyCloser] ⚠️ Reporte de contingencia ${task.id} no pudo enviarse a MH (${reportResult.message}). Se pospone retransmisión para evitar rechazo 007.`);
+                        console.warn(`[AutoContingencyCloser] ⚠️ Reporte de contingencia ${task.id} no pudo enviarse a MH (${reportResult.message}). El período PERMANECE ABIERTO.`);
                     }
                 } else {
                     console.log(`[AutoContingencyCloser] ⏳ Hacienda continúa no disponible para empresa ${task.company_id}: ${auth.message}`);

@@ -10,11 +10,10 @@ const { getEndpoint, getMHAmbiente } = require('../config/haciendaConfig');
 
 async function startContingency(payload) {
     const { motivo, tipoContingencia, companyId, branchId } = payload;
-    const now = new Date();
 
     const [result] = await pool.query(
-        'INSERT INTO dte_contingencies (company_id, branch_id, fecha_inicio, motivo, tipo_contingencia, estado) VALUES (?, ?, ?, ?, ?, ?)',
-        [companyId, branchId || null, now, motivo, tipoContingencia || 1, 'OPEN']
+        'INSERT INTO dte_contingencies (company_id, branch_id, fecha_inicio, motivo, tipo_contingencia, estado) VALUES (?, ?, NOW(), ?, ?, ?)',
+        [companyId, branchId || null, motivo, tipoContingencia || 1, 'OPEN']
     );
 
     return {
@@ -25,11 +24,9 @@ async function startContingency(payload) {
 }
 
 async function stopContingency(contingencyId) {
-    const now = new Date();
-
     await pool.query(
-        'UPDATE dte_contingencies SET fecha_fin = ?, estado = ? WHERE id = ?',
-        [now, 'CLOSED', contingencyId]
+        'UPDATE dte_contingencies SET fecha_fin = NOW(), estado = ? WHERE id = ?',
+        ['CLOSED', contingencyId]
     );
 
     return {
@@ -252,7 +249,11 @@ async function sendContingencyReport(contingencyId) {
 
 async function getContingencyStatus(companyId) {
     const [rows] = await pool.query(
-        'SELECT * FROM dte_contingencies WHERE company_id = ? ORDER BY created_at DESC LIMIT 10',
+        'SELECT id, company_id, branch_id, ' +
+        'DATE_FORMAT(fecha_inicio, "%Y-%m-%d %H:%i:%s") as fecha_inicio, ' +
+        'DATE_FORMAT(fecha_fin, "%Y-%m-%d %H:%i:%s") as fecha_fin, ' +
+        'motivo, tipo_contingencia, estado, codigo_generacion, sello_recepcion, respuesta_hacienda, created_at, updated_at ' +
+        'FROM dte_contingencies WHERE company_id = ? ORDER BY id DESC LIMIT 10',
         [companyId]
     );
 

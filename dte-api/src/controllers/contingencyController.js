@@ -24,28 +24,27 @@ async function start(req, res) {
 async function stop(req, res) {
     const { id } = req.params;
     try {
-        // Cerrar el período
-        const result = await contingencyService.stopContingency(id);
-        // Enviar reporte a Hacienda
-        let reportOk = false;
-        try {
-            const reportResult = await contingencyService.sendContingencyReport(id);
-            result.report = reportResult;
-            reportOk = Boolean(reportResult?.success && reportResult?.selloRecepcion);
-        } catch (err) {
-            console.error('[Contingency] Error enviando reporte:', err.message);
-            result.reportError = err.message;
+        // 1. Enviar reporte a Hacienda PRIMERO
+        const reportResult = await contingencyService.sendContingencyReport(id);
+        const reportOk = Boolean(reportResult?.success && (reportResult?.selloRecepcion || reportResult?.message?.includes('sin documentos')));
+
+        if (!reportOk && reportResult && !reportResult.success) {
+            return res.status(400).json({
+                success: false,
+                message: `No se pudo cerrar la contingencia: Hacienda no recibió el reporte del evento (${reportResult.message || 'Error de conexión'}).`,
+                report: reportResult
+            });
         }
 
-        // Iniciar de inmediato la retransmisión de documentos acumulados vía BullMQ solo si el evento fue confirmado en MH
-        if (reportOk || !result.report) {
-            const { contingencyQueue } = require('../queue');
-            contingencyQueue.enqueueContingencyDocuments(req.company_id).catch(err => {
-                console.error('[ContingencyController] Error encolando documentos en BullMQ:', err.message);
-            });
-        } else {
-            console.warn(`[ContingencyController] Reporte de evento #${id} no confirmado aún por MH (${result.report?.message}). Los documentos se retransmitirán tan pronto el evento sea aceptado.`);
-        }
+        // 2. Cerrar el período en base de datos SOLO si Hacienda aceptó el reporte
+        const result = await contingencyService.stopContingency(id);
+        result.report = reportResult;
+
+        // 3. Iniciar de inmediato la retransmisión de documentos acumulados vía BullMQ
+        const { contingencyQueue } = require('../queue');
+        contingencyQueue.enqueueContingencyDocuments(req.company_id).catch(err => {
+            console.error('[ContingencyController] Error encolando documentos en BullMQ:', err.message);
+        });
 
         res.status(200).json(result);
     } catch (error) {
