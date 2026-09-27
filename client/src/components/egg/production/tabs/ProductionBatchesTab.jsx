@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { formatDateTime } from '../../../../utils/dateUtils';
 import { toast } from 'sonner';
 import {
@@ -15,11 +16,13 @@ import {
     FileText,
     FileCheck,
     Scale,
-    FlaskConical
+    FlaskConical,
+    MoreVertical
 } from 'lucide-react';
 
 
 export default function ProductionBatchesTab({ model }) {
+    const [openActionMenuId, setOpenActionMenuId] = useState(null);
     const { setQualityModal, openExportMenuId, setOpenExportMenuId, loading, searchTerm, setSearchTerm, activeTab, setSelectedBatchForPasteurize, setIsPasteurizeModalOpen, canEditProduction, canDeleteProduction, canManageLots, setDeleteConfirmBatch, handleOpenStagesModal, handleOpenClosePasteurization, handleReopenPasteurization, handleOpenBalanceModal, handleOpenWastesModal, handleOpenEditBatch, handleExportSummary, getBatchStatusBadge, filteredBatches } = model;
 
     return (<>{activeTab === 'batches' && (
@@ -156,179 +159,200 @@ export default function ProductionBatchesTab({ model }) {
                                                     </div>
                                                 )}
                                             </td>
-                                            <td className="px-3 py-2.5 text-center">
-                                                <div className="flex items-center justify-center gap-1.5 flex-wrap">
-                                                    {/* Control de Calidad FQ / MB */}
+                                            <td className="px-3 py-2 text-center whitespace-nowrap">
+                                                <div className="inline-flex items-center justify-center gap-1.5">
+                                                    {/* 1. Control de Calidad FQ / MB */}
                                                     <button
                                                         type="button"
                                                         onClick={() => setQualityModal({ isOpen: true, batch: b })}
-                                                        className={`p-1.5 rounded-lg border transition-colors shadow-xs ${
+                                                        className={`p-1.5 rounded-lg border transition-all shadow-xs ${
                                                             b.status === 'aprobado_calidad'
-                                                                ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200'
+                                                                ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-300'
                                                                 : b.status === 'bloqueado_haccp'
-                                                                ? 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200'
-                                                                : 'bg-teal-50 hover:bg-teal-100 text-teal-700 border-teal-200'
+                                                                ? 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-300'
+                                                                : 'bg-teal-50 hover:bg-teal-100 text-teal-700 border-teal-300'
                                                         }`}
-                                                        title="Control de Calidad LAB-004 (FQ & MB) y Liberación"
+                                                        title="Control de Calidad LAB-004 (FQ & MB) y Dictamen"
                                                     >
-                                                        <FlaskConical size={13} />
+                                                        <FlaskConical size={14} />
                                                     </button>
 
-                                                    {/* Visualizador de Etapas */}
+                                                    {/* 2. Visualizador de Etapas */}
                                                     <button
                                                         type="button"
                                                         onClick={() => handleOpenStagesModal(b)}
-                                                        className="p-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg border border-indigo-200 transition-colors shadow-xs"
-                                                        title="Visualizador de Etapas Cumplidas del Proceso (Quebraje, Pasteurización, Remanentes, Envasado, Calidad)"
+                                                        className="p-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg border border-indigo-200 transition-all shadow-xs"
+                                                        title="Visualizador de Etapas Cumplidas del Proceso"
                                                     >
-                                                        <Layers size={13} />
+                                                        <Layers size={14} />
                                                     </button>
 
-                                                    {/* Mermas */}
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => handleOpenWastesModal(b)}
-                                                        className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg border border-rose-200 transition-colors shadow-xs"
-                                                        title="Registrar y Consultar Mermas del Lote"
-                                                    >
-                                                        <AlertOctagon size={13} />
-                                                    </button>
-
-                                                    {/* Exportar Resumen (PDF, Excel, Word) */}
-                                                    <div className="relative inline-block">
+                                                    {/* 3. Acción Primaria: Pasteurizar (si en proceso) o Balance */}
+                                                    {b.status === 'en_proceso' ? (
                                                         <button
                                                             type="button"
-                                                            onClick={() => setOpenExportMenuId(openExportMenuId === b.id ? null : b.id)}
-                                                            className="p-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-lg border border-slate-200 transition-colors shadow-xs flex items-center gap-0.5"
-                                                            title="Exportar Resumen de Producción (PDF, Excel, Word)"
+                                                            onClick={() => {
+                                                                setSelectedBatchForPasteurize(b.id);
+                                                                setIsPasteurizeModalOpen(true);
+                                                            }}
+                                                            className="px-2 py-1 bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-800 rounded-lg text-xs font-bold transition-all shadow-xs flex items-center gap-1"
+                                                            title="Iniciar Pasteurización"
                                                         >
-                                                            <Download size={13} />
+                                                            <Flame size={12} className="text-amber-600" />
+                                                            <span>Pasteurizar</span>
                                                         </button>
-                                                        {openExportMenuId === b.id && (
+                                                    ) : b.status !== 'creado' && b.status !== 'bloqueado_haccp' ? (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleOpenBalanceModal(b)}
+                                                            className="px-2 py-1 bg-teal-50 hover:bg-teal-100 border border-teal-300 text-teal-800 rounded-lg text-xs font-bold transition-all shadow-xs flex items-center gap-1"
+                                                            title="Balance de Masas y Rendimientos"
+                                                        >
+                                                            <Scale size={12} className="text-teal-600" />
+                                                            <span>Balance</span>
+                                                        </button>
+                                                    ) : null}
+
+                                                    {/* 4. Menú de Más Acciones (Dropdown compacto) */}
+                                                    <div className="relative inline-block text-left">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setOpenActionMenuId(openActionMenuId === b.id ? null : b.id)}
+                                                            className="p-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-lg border border-slate-300 transition-colors shadow-xs flex items-center"
+                                                            title="Más opciones del lote"
+                                                        >
+                                                            <MoreVertical size={14} />
+                                                        </button>
+
+                                                        {openActionMenuId === b.id && (
                                                             <>
                                                                 <div
                                                                     className="fixed inset-0 z-30"
-                                                                    onClick={() => setOpenExportMenuId(null)}
+                                                                    onClick={() => setOpenActionMenuId(null)}
                                                                 />
-                                                                <div className="absolute right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl p-1.5 z-40 flex flex-col gap-1 min-w-[130px] text-left animate-in fade-in duration-100">
+                                                                <div className="absolute right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl p-1.5 z-40 flex flex-col gap-1 min-w-[170px] text-left animate-in fade-in duration-100">
+                                                                    {/* Exportar Resumen */}
+                                                                    <div className="px-2 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100 flex items-center justify-between">
+                                                                        <span>Exportar</span>
+                                                                        <Download size={10} />
+                                                                    </div>
+                                                                    <div className="flex items-center gap-1 px-1">
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => {
+                                                                                handleExportSummary(b.id, 'pdf');
+                                                                                setOpenActionMenuId(null);
+                                                                            }}
+                                                                            className="flex-1 px-1.5 py-1 text-center hover:bg-rose-50 rounded-lg text-[10px] font-bold text-rose-700 border border-rose-100 transition-colors"
+                                                                        >
+                                                                            PDF
+                                                                        </button>
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => {
+                                                                                handleExportSummary(b.id, 'excel');
+                                                                                setOpenActionMenuId(null);
+                                                                            }}
+                                                                            className="flex-1 px-1.5 py-1 text-center hover:bg-emerald-50 rounded-lg text-[10px] font-bold text-emerald-700 border border-emerald-100 transition-colors"
+                                                                        >
+                                                                            Excel
+                                                                        </button>
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => {
+                                                                                handleExportSummary(b.id, 'word');
+                                                                                setOpenActionMenuId(null);
+                                                                            }}
+                                                                            className="flex-1 px-1.5 py-1 text-center hover:bg-blue-50 rounded-lg text-[10px] font-bold text-blue-700 border border-blue-100 transition-colors"
+                                                                        >
+                                                                            Word
+                                                                        </button>
+                                                                    </div>
+
+                                                                    <div className="h-px bg-slate-100 my-0.5" />
+
+                                                                    {/* Mermas */}
                                                                     <button
                                                                         type="button"
                                                                         onClick={() => {
-                                                                            handleExportSummary(b.id, 'pdf');
-                                                                            setOpenExportMenuId(null);
+                                                                            handleOpenWastesModal(b);
+                                                                            setOpenActionMenuId(null);
                                                                         }}
-                                                                        className="flex items-center gap-1.5 px-2 py-1.5 hover:bg-rose-50 rounded-lg text-[11px] font-bold text-rose-700 w-full"
+                                                                        className="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-50 rounded-lg text-xs font-medium text-slate-700 w-full transition-colors"
                                                                     >
-                                                                        <FileText size={12} />
-                                                                        PDF
+                                                                        <AlertOctagon size={13} className="text-amber-600" />
+                                                                        <span>Mermas y Desperdicios</span>
                                                                     </button>
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={() => {
-                                                                            handleExportSummary(b.id, 'excel');
-                                                                            setOpenExportMenuId(null);
-                                                                        }}
-                                                                        className="flex items-center gap-1.5 px-2 py-1.5 hover:bg-emerald-50 rounded-lg text-[11px] font-bold text-emerald-700 w-full"
-                                                                    >
-                                                                        <FileSpreadsheet size={12} />
-                                                                        Excel (.xlsx)
-                                                                    </button>
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={() => {
-                                                                            handleExportSummary(b.id, 'word');
-                                                                            setOpenExportMenuId(null);
-                                                                        }}
-                                                                        className="flex items-center gap-1.5 px-2 py-1.5 hover:bg-blue-50 rounded-lg text-[11px] font-bold text-blue-700 w-full"
-                                                                    >
-                                                                        <FileCheck size={12} />
-                                                                        Word (.docx)
-                                                                    </button>
+
+                                                                    {/* Cerrar / Reabrir Pasteurización */}
+                                                                    {b.pasteurization_status === 'cerrado' ? (
+                                                                        canManageLots && (
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => {
+                                                                                    handleReopenPasteurization(b);
+                                                                                    setOpenActionMenuId(null);
+                                                                                }}
+                                                                                className="flex items-center gap-2 px-2 py-1.5 hover:bg-amber-50 rounded-lg text-xs font-bold text-amber-800 w-full transition-colors"
+                                                                            >
+                                                                                <Lock size={13} className="text-amber-600" />
+                                                                                <span>Reabrir Pasteurización</span>
+                                                                            </button>
+                                                                        )
+                                                                    ) : (
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => {
+                                                                                handleOpenClosePasteurization(b);
+                                                                                setOpenActionMenuId(null);
+                                                                            }}
+                                                                            className="flex items-center gap-2 px-2 py-1.5 hover:bg-emerald-50 rounded-lg text-xs font-bold text-emerald-800 w-full transition-colors"
+                                                                        >
+                                                                            <Lock size={13} className="text-emerald-600" />
+                                                                            <span>Cerrar Pasteurización</span>
+                                                                        </button>
+                                                                    )}
+
+                                                                    {/* Editar Lote */}
+                                                                    {canEditProduction && (
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => {
+                                                                                handleOpenEditBatch(b);
+                                                                                setOpenActionMenuId(null);
+                                                                            }}
+                                                                            className="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-50 rounded-lg text-xs font-medium text-slate-700 w-full transition-colors"
+                                                                        >
+                                                                            <Pencil size={13} className="text-slate-500" />
+                                                                            <span>Editar Lote</span>
+                                                                        </button>
+                                                                    )}
+
+                                                                    {/* Eliminar Lote */}
+                                                                    {canDeleteProduction && (
+                                                                        <>
+                                                                            <div className="h-px bg-slate-100 my-0.5" />
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => {
+                                                                                    setDeleteConfirmBatch(b);
+                                                                                    setOpenActionMenuId(null);
+                                                                                }}
+                                                                                className="flex items-center gap-2 px-2 py-1.5 hover:bg-rose-50 rounded-lg text-xs font-bold text-rose-700 w-full transition-colors"
+                                                                            >
+                                                                                <Trash2 size={13} className="text-rose-600" />
+                                                                                <span>Eliminar Lote</span>
+                                                                            </button>
+                                                                        </>
+                                                                    )}
                                                                 </div>
                                                             </>
                                                         )}
                                                     </div>
 
-                                                    {/* Balance de Masas */}
-                                                    {b.status !== 'creado' && b.status !== 'bloqueado_haccp' && (
-                                                        <button
-                                                            onClick={() => handleOpenBalanceModal(b)}
-                                                            className="px-2 py-1 bg-teal-50 hover:bg-teal-100 border border-teal-200 text-teal-700 rounded-lg text-[11px] font-bold transition-all shadow-xs flex items-center gap-1"
-                                                            title="Editar Balance de Masas"
-                                                        >
-                                                            <Scale size={12} />
-                                                            Balance
-                                                        </button>
-                                                    )}
-
-                                                    {/* Pasteurizar si en_proceso */}
-                                                    {b.status === 'en_proceso' && (
-                                                        <button
-                                                            onClick={() => {
-                                                                setSelectedBatchForPasteurize(b.id);
-                                                                setIsPasteurizeModalOpen(true);
-                                                            }}
-                                                            className="px-2 py-1 bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-700 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1 shadow-xs"
-                                                            title="Iniciar Pasteurización"
-                                                        >
-                                                            <Flame size={12} />
-                                                            Pasteurizar
-                                                        </button>
-                                                    )}
-
-                                                    {/* Cerrar / Reabrir Pasteurización */}
-                                                    {b.pasteurization_status === 'cerrado' ? (
-                                                        canManageLots && (
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => handleReopenPasteurization(b)}
-                                                                className="px-2 py-1 bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-800 rounded-lg text-[10px] font-bold transition-all shadow-xs flex items-center gap-1"
-                                                                title="Reabrir Pasteurización (Permite volver a agregar tarimas o ajustar registros)"
-                                                            >
-                                                                <Lock size={11} className="text-amber-600" />
-                                                                Reabrir Past.
-                                                            </button>
-                                                        )
-                                                    ) : (
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => handleOpenClosePasteurization(b)}
-                                                            className="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-800 rounded-lg text-[10px] font-bold transition-all shadow-xs flex items-center gap-1"
-                                                            title="Cerrar Pasteurización y Fijar Lote Térmico Oficial"
-                                                        >
-                                                            <Lock size={11} className="text-emerald-600" />
-                                                            Cerrar Past.
-                                                        </button>
-                                                    )}
-
-                                                    {/* Editar Lote (Abre la pantalla completa de producción) */}
-                                                    {canEditProduction && (
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => handleOpenEditBatch(b)}
-                                                            className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg border border-slate-300 transition-colors shadow-xs"
-                                                            title="Editar Lote de Producción (Abrir pantalla de producción)"
-                                                        >
-                                                            <Pencil size={13} />
-                                                        </button>
-                                                    )}
-
-                                                    {/* Eliminar Lote */}
-                                                    {canDeleteProduction && (
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => setDeleteConfirmBatch(b)}
-                                                            className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg border border-rose-200 transition-colors shadow-xs"
-                                                            title="Eliminar Lote de Producción y Revertir Materia Prima"
-                                                        >
-                                                            <Trash2 size={13} />
-                                                        </button>
-                                                    )}
-
                                                     {b.status === 'bloqueado_haccp' && (
-                                                        <span className="text-rose-600 font-bold text-xs flex items-center justify-center gap-1">
+                                                        <span className="text-rose-600 font-bold text-xs flex items-center justify-center gap-1" title="Bloqueado por HACCP">
                                                             <Lock size={12} />
-                                                            Bloqueado
                                                         </span>
                                                     )}
                                                 </div>
