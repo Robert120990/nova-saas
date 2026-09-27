@@ -12,8 +12,8 @@ import {
 } from '../../../utils/julianDate';
 const PRODUCT_PROFILES = [
     { id: 'Huevo Entero Pasteurizado', name: 'Huevo Entero Pasteurizado', defaultSolids: 23.5, color: 'indigo', desc: '83% rendimiento estándar' },
-    { id: 'Huevo Formulado por Separación', name: 'Huevo Formulado por Separación (Yema + H2O)', defaultSolids: 22.5, color: 'emerald', desc: 'Venta de Clara + Yema con aditivo H2O' },
-    { id: 'Huevo Entero Plus', name: 'Huevo Entero Plus', defaultSolids: 21.5, color: 'cyan', desc: 'Con liquido a 8% y ácido cítrico' },
+    { id: 'Huevo Formulado por Separación', name: 'Huevo Formulado por Separación (Yema + MP liquida A)', defaultSolids: 22.5, color: 'emerald', desc: 'Venta de Clara + Yema con MP liquida A' },
+    { id: 'Huevo Entero Plus', name: 'Huevo Entero Plus', defaultSolids: 21.5, color: 'cyan', desc: 'Con MP liquida A 8% y ácido cítrico' },
     { id: 'Clara de Huevo Pasteurizada', name: 'Clara de Huevo Pasteurizada', defaultSolids: 11.5, color: 'teal', desc: '54% rendimiento, alta demanda' },
     { id: 'Yema Azucarada', name: 'Yema Azucarada (4% azúcar)', defaultSolids: 48.0, color: 'amber', desc: 'Para panificación y repostería' },
     { id: 'Yema Salada', name: 'Yema Salada (10% sal)', defaultSolids: 47.0, color: 'orange', desc: 'Para aderezos y mayonesa' },
@@ -22,7 +22,7 @@ const PRODUCT_PROFILES = [
 const FACTORY_ROLES = [
     'Quebrado y Carga',
     'Sanitización CIP',
-    'Dosificación H2O / Mezcla',
+    'Dosificación MP liquida A / Mezcla',
     'Pasteurización HACCP',
     'Control de Calidad LAB-004',
     'Empaque y Cuarto Frío',
@@ -31,7 +31,7 @@ const FACTORY_ROLES = [
 const DEFAULT_PRESETS_BY_ROLE = {
     'Quebrado y Carga': 'Alinear y quebrar cajas de huevo blanco en cámara de quebrado.',
     'Sanitización CIP': 'Sanitizar pasteurizador con Ácido Peracético 1.5% a 78°C antes de iniciar.',
-    'Dosificación H2O / Mezcla': 'Medir y dosificar liquido a con ácido cítrico estabilizador.',
+    'Dosificación MP liquida A / Mezcla': 'Medir y dosificar MP liquida A con ácido cítrico estabilizador.',
     'Pasteurización HACCP': 'Mantener régimen pasteurizador a 64.5°C por 210s monitoreando CCP-1.',
     'Control de Calidad LAB-004': 'Verificar refractómetro: Sólidos totales y pH antes de envasado.',
     'Empaque y Cuarto Frío': 'Alistar cubetas sanitizadas con liner alimentario y etiquetas de lote.'
@@ -349,8 +349,8 @@ export default function useProductionCalendarModel() {
         let notes = '';
 
         if (profLower.includes('separaci') || profLower.includes('formulado')) {
-            // Caso reformulación con H2O por separación de clara
-            // 1 lb yema pura (50% sólidos) + 1.22 lbs H2O -> 2.22 lbs formulado
+            // Caso reformulación con MP liquida A por separación de clara
+            // 1 lb yema pura (50% sólidos) + 1.22 lbs MP liquida A -> 2.22 lbs formulado
             solids = 22.5;
             claraSepPct = 100;
             const yemaNeeded = qty / 2.22;
@@ -361,7 +361,7 @@ export default function useProductionCalendarModel() {
             yemaReutilized = yemaCoproduct;
             waterLbs = Math.round(qty - yemaNeeded);
             citricAcid = (qty * 0.0015).toFixed(2);
-            notes = `Separar ${claraLbs.toLocaleString()} Lbs de clara pura para empaque. Reincorporar ${yemaReutilized.toLocaleString()} Lbs de yema coproducto con ${waterLbs.toLocaleString()} Lbs de H2O purificada y ${citricAcid} Lbs de ácido cítrico.`;
+            notes = `Separar ${claraLbs.toLocaleString()} Lbs de clara pura para empaque. Reincorporar ${yemaReutilized.toLocaleString()} Lbs de yema coproducto con ${waterLbs.toLocaleString()} Lbs de MP liquida A y ${citricAcid} Lbs de ácido cítrico.`;
         } else if (profLower.includes('clara')) {
             solids = 11.5;
             rawLiquid = Math.round(qty / 0.5395);

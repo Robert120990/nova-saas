@@ -17,7 +17,7 @@ const calculateDynamicCost = async (req) => {
             milk_added_pct = null,  // % Leche
             base_egg_solids = null, // Sólidos base medidos refractómetro
             target_solids = null,   // Sólidos objetivo deseados
-            // Parámetros de Separación Clara/Yema & Huevo Formulado con H2O
+            // Parámetros de Separación Clara/Yema & Huevo Formulado con MP liquida A
             clara_separated_pct = 100.0, // % de clara destinada a venta directa
             clara_sale_price_per_lb = 1.35, // Precio de venta pactado de clara ($/lb)
             yema_solids_pct = 50.0, // Sólidos de la yema pura (%)
@@ -88,7 +88,7 @@ const calculateDynamicCost = async (req) => {
         let separationData = null;
 
         if (isSeparationMode) {
-            // --- MODELO OFICIAL ANDELSA: SEPARACIÓN DE CLARA + HUEVO FORMULADO CON YEMA & H2O ---
+            // --- MODELO OFICIAL ANDELSA: SEPARACIÓN DE CLARA + HUEVO FORMULADO CON YEMA & MP LIQUIDA A ---
             const rawShellLbs = safeBatchSize;
             const grossRawCost = (rawShellLbs / safeLbsPerBox) * safeBoxCost;
 

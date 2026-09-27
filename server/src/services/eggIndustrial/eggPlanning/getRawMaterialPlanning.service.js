@@ -269,7 +269,7 @@ const getRawMaterialPlanning = async (req) => {
                 purified_water: {
                     lbs: Math.round(totalWaterH2oLbs),
                     bottles_5gal: Math.ceil(totalWaterH2oLbs / 41.8),
-                    description: 'liquido a para balance de yema coproducto'
+                    description: 'MP liquida A para balance de yema coproducto'
                 },
                 citric_acid: {
                     lbs: parseFloat(totalCitricAcidLbs.toFixed(2)),

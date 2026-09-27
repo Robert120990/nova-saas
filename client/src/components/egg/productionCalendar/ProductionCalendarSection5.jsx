@@ -237,7 +237,7 @@ export default function ProductionCalendarSection5({ model }) {
                             </div>
 
                             <div className="bg-white p-2.5 rounded-lg border border-indigo-100">
-                                <span className="text-[10px] text-slate-500 font-semibold block">Aditivo H2O Purificada:</span>
+                                <span className="text-[10px] text-slate-500 font-semibold block">MP liquida A:</span>
                                 <span className="font-extrabold text-emerald-600 text-sm">
                                     {formData.mix_formula_json?.water_h2o_lbs?.toLocaleString() || 0} Lbs
                                 </span>

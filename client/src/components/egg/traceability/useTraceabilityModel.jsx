@@ -154,7 +154,7 @@ export default function useTraceabilityModel() {
         }
         const waterLbs = (w * waterPct) / 100;
         const eggBaseLbs = w - waterLbs;
-        const garrafones = waterLbs / 42.0; // 1 garrafón = 42 lbs H2O
+        const garrafones = waterLbs / 42.0; // 1 garrafón = 42 lbs MP liquida A
         const citricLbs = w * 0.001; // 0.1% ácido cítrico
 
         setCalcResult({

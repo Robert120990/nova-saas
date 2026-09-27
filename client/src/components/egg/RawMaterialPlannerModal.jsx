@@ -315,7 +315,7 @@ const RawMaterialPlannerModal = ({ isOpen, onClose, initialDate = new Date() }) 
             head: [['Material / Insumo Requerido', 'Cantidad Mensual', 'Presentación Sugerida', 'Aplicación en Planta']],
             body: [
                 ['Huevo Cáscara Grado A', `${(eggBal.boxes_to_purchase || 0).toLocaleString()} cajas`, 'Cajas de 360 uds (12 cartones)', 'Materia prima base de quebrado y pasteurización'],
-                ['Agua Desmineralizada Purificada', `${ingBal.purified_water?.bottles_5gal || 0} garrafas (~${(ingBal.purified_water?.lbs || 0).toLocaleString()} Lbs)`, 'Garrafas 5 galones grado alimentario', 'Estandarización de sólidos totales según ficha técnica'],
+                ['MP liquida A', `${ingBal.purified_water?.bottles_5gal || 0} garrafas (~${(ingBal.purified_water?.lbs || 0).toLocaleString()} Lbs)`, 'Garrafas 5 galones grado alimentario', 'Estandarización de sólidos totales según ficha técnica'],
                 ['Ácido Cítrico Grado Alimentario', `${ingBal.citric_acid?.lbs || 0} Lbs (${ingBal.citric_acid?.kg || 0} Kg)`, 'Sacos de 25 Kg anhidro USP', 'Regulador de pH y conservante inocuo de lote'],
                 ['Cubetas Plásticas 30 Lbs', `${(packBal.buckets_30lb || 0).toLocaleString()} unidades`, 'Pallets de 250 cubetas vírgenes', 'Envasado primario estandarizado para clientes'],
                 ['Tapaderas Herméticas con Anillo', `${(packBal.lids || 0).toLocaleString()} unidades`, 'Cajas de tapaderas precintadas', 'Cierre hermético con sello de seguridad inviolable'],
@@ -611,8 +611,8 @@ const RawMaterialPlannerModal = ({ isOpen, onClose, initialDate = new Date() }) 
                         type="button"
                         onClick={() => setActiveTab('egg')}
                         className={`px-3.5 py-2 text-xs font-bold rounded-t-xl transition-all flex items-center gap-1.5 whitespace-nowrap ${activeTab === 'egg'
-                                ? 'bg-indigo-600 text-white shadow-sm'
-                                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                            ? 'bg-indigo-600 text-white shadow-sm'
+                            : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                             }`}
                     >
                         <Boxes className="w-4 h-4" />
@@ -623,20 +623,20 @@ const RawMaterialPlannerModal = ({ isOpen, onClose, initialDate = new Date() }) 
                         type="button"
                         onClick={() => setActiveTab('ingredients')}
                         className={`px-3.5 py-2 text-xs font-bold rounded-t-xl transition-all flex items-center gap-1.5 whitespace-nowrap ${activeTab === 'ingredients'
-                                ? 'bg-indigo-600 text-white shadow-sm'
-                                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                            ? 'bg-indigo-600 text-white shadow-sm'
+                            : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                             }`}
                     >
                         <Droplets className="w-4 h-4" />
-                        <span>Insumos & Aditivos (H2O / Ácido)</span>
+                        <span>Insumos & Aditivos (MPA/ Ácido)</span>
                     </button>
 
                     <button
                         type="button"
                         onClick={() => setActiveTab('packaging')}
                         className={`px-3.5 py-2 text-xs font-bold rounded-t-xl transition-all flex items-center gap-1.5 whitespace-nowrap ${activeTab === 'packaging'
-                                ? 'bg-indigo-600 text-white shadow-sm'
-                                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                            ? 'bg-indigo-600 text-white shadow-sm'
+                            : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                             }`}
                     >
                         <PackageCheck className="w-4 h-4" />
@@ -647,8 +647,8 @@ const RawMaterialPlannerModal = ({ isOpen, onClose, initialDate = new Date() }) 
                         type="button"
                         onClick={() => setActiveTab('orders')}
                         className={`px-3.5 py-2 text-xs font-bold rounded-t-xl transition-all flex items-center gap-1.5 whitespace-nowrap ${activeTab === 'orders'
-                                ? 'bg-indigo-600 text-white shadow-sm'
-                                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                            ? 'bg-indigo-600 text-white shadow-sm'
+                            : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                             }`}
                     >
                         <Printer className="w-4 h-4" />
@@ -955,8 +955,8 @@ const RawMaterialPlannerModal = ({ isOpen, onClose, initialDate = new Date() }) 
                                                                     type="button"
                                                                     onClick={() => updateProviderAllocation(alloc.id, 'container_capacity', 900)}
                                                                     className={`px-1.5 py-0.5 rounded text-[9px] font-bold transition-all ${parseInt(alloc.container_capacity) === 900
-                                                                            ? 'bg-indigo-600 text-white'
-                                                                            : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                                                                        ? 'bg-indigo-600 text-white'
+                                                                        : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
                                                                         }`}
                                                                 >
                                                                     900 cjs
@@ -965,8 +965,8 @@ const RawMaterialPlannerModal = ({ isOpen, onClose, initialDate = new Date() }) 
                                                                     type="button"
                                                                     onClick={() => updateProviderAllocation(alloc.id, 'container_capacity', 600)}
                                                                     className={`px-1.5 py-0.5 rounded text-[9px] font-bold transition-all ${parseInt(alloc.container_capacity) === 600
-                                                                            ? 'bg-indigo-600 text-white'
-                                                                            : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                                                                        ? 'bg-indigo-600 text-white'
+                                                                        : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
                                                                         }`}
                                                                 >
                                                                     600 cjs
@@ -1062,8 +1062,8 @@ const RawMaterialPlannerModal = ({ isOpen, onClose, initialDate = new Date() }) 
                                                 <span className="text-slate-500 font-medium">Meta Requerida:</span>
                                                 <strong className="text-slate-800">{targetDemandBoxes.toLocaleString()} cjs</strong>
                                                 <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${totalAllocatedBoxes >= targetDemandBoxes
-                                                        ? 'bg-emerald-100 text-emerald-800'
-                                                        : 'bg-amber-100 text-amber-800'
+                                                    ? 'bg-emerald-100 text-emerald-800'
+                                                    : 'bg-amber-100 text-amber-800'
                                                     }`}>
                                                     {coveragePercent}% Cubierto
                                                 </span>
@@ -1154,7 +1154,7 @@ const RawMaterialPlannerModal = ({ isOpen, onClose, initialDate = new Date() }) 
                                 <div className="p-3.5 bg-emerald-50/70 border border-emerald-200 rounded-xl flex items-start gap-3">
                                     <Sparkles className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
                                     <div className="text-xs text-emerald-950 leading-relaxed">
-                                        <strong>Insumos Críticos de Formulación:</strong> Necesarios para estandarizar el huevo formulado por separación (reincorporación de yema con H2O purificada) y mezclas institucionales de yema dulce/salada.
+                                        <strong>Insumos Críticos de Formulación:</strong> Necesarios para estandarizar el huevo formulado por separación (reincorporación de yema con MP liquido a) y mezclas institucionales de yema dulce/salada.
                                     </div>
                                 </div>
 
@@ -1162,7 +1162,7 @@ const RawMaterialPlannerModal = ({ isOpen, onClose, initialDate = new Date() }) 
                                     {/* liquido a */}
                                     <div className="p-3.5 bg-white border border-slate-200 rounded-xl shadow-sm space-y-1.5">
                                         <div className="flex items-center justify-between">
-                                            <span className="text-xs font-bold text-slate-800">Agua Desmineralizada H2O</span>
+                                            <span className="text-xs font-bold text-slate-800">MP liquida a</span>
                                             <Droplets className="w-4 h-4 text-cyan-600" />
                                         </div>
                                         <div className="text-lg font-black text-cyan-700">
@@ -1367,7 +1367,7 @@ const RawMaterialPlannerModal = ({ isOpen, onClose, initialDate = new Date() }) 
                                             </td>
                                         </tr>
                                         <tr>
-                                            <td className="p-2.5 font-bold text-slate-900">Agua Purificada Desmineralizada</td>
+                                            <td className="p-2.5 font-bold text-slate-900">MP liquida A</td>
                                             <td className="p-2.5 text-right font-medium">
                                                 {ingBal.purified_water?.lbs?.toLocaleString()} Lbs
                                             </td>

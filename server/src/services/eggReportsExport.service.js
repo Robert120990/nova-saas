@@ -226,7 +226,7 @@ async function getProductionReportData(companyId, filters = {}) {
             rawEggInputLbs = parseFloat(b.input_weight_lbs || 0);
         }
 
-        // Insumos adicionales (azúcar, sal, ácido cítrico, leche en polvo, agua, ppg, etc.)
+        // Insumos adicionales (azúcar, sal, ácido cítrico, leche en polvo, MP liquida A, ppg, etc.)
         const sugarLbs = parseFloat(ing.sugar_lbs || 0);
         const saltLbs = parseFloat(ing.salt_lbs || 0);
         const citricAcidLbs = parseFloat(ing.citric_acid_lbs || 0);

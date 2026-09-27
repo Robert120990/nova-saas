@@ -179,7 +179,7 @@ const getMonthlyProductionSuggestions = async (req) => {
                         notes: 'Separación centrífuga de alta pureza. Enfriar y almacenar yema en tanque HOLDING-2.'
                     };
                 } else if (dayOfWeek === 3) {
-                    // Miércoles: Corrida de Huevo Formulado (Yema coproducto + H2O Purificada) -> Arbitraje
+                    // Miércoles: Corrida de Huevo Formulado (Yema coproducto + MP liquida A) -> Arbitraje
                     profile = 'Huevo Formulado por Separación';
                     const surplusYolk = Math.round(Math.min(8000, Math.max(5000, Math.round(demandClara / 4))) * (0.308 / 0.5395));
                     const waterAdded = Math.round(surplusYolk * 1.22);
@@ -189,7 +189,7 @@ const getMonthlyProductionSuggestions = async (req) => {
                     const boxesSaved = Math.round(targetLbs / 36.1);
                     const moneySaved = boxesSaved * 38.00;
                     totalCoproductSavingsUsd += moneySaved;
-                    reason = `Arbitraje Coproducto: Reincorporar ${surplusYolk.toLocaleString()} Lbs de yema del lunes con ${waterAdded.toLocaleString()} Lbs H2O y ácido cítrico. Ahorro de $${moneySaved.toLocaleString()}`;
+                    reason = `Arbitraje Coproducto: Reincorporar ${surplusYolk.toLocaleString()} Lbs de yema del lunes con ${waterAdded.toLocaleString()} Lbs MP liquida A y ácido cítrico. Ahorro de $${moneySaved.toLocaleString()}`;
                     priority = 'alta';
                     mixFormula = {
                         raw_egg_boxes: 0,
@@ -198,7 +198,7 @@ const getMonthlyProductionSuggestions = async (req) => {
                         water_h2o_lbs: waterAdded,
                         water_bottles: Math.ceil(waterAdded / 41.8),
                         citric_acid_lbs: citricAcid,
-                        notes: 'Balance yema + H2O a 22.5% Brix. Validación LAB-004 obligatoria.'
+                        notes: 'Balance yema + MP liquida A a 22.5% Brix. Validación LAB-004 obligatoria.'
                     };
                 } else {
                     // Viernes: Huevo Entero Pasteurizado Puro

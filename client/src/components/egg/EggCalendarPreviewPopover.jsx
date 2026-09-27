@@ -154,7 +154,7 @@ export const EggCalendarPreviewPopover = ({ hoverPreview }) => {
                         <div className="grid grid-cols-2 gap-1 text-slate-700 font-medium">
                             {mix.raw_egg_boxes > 0 && <div>Cajas cáscara: <b>{mix.raw_egg_boxes} cjs</b></div>}
                             {mix.raw_liquid_lbs > 0 && <div>Líquido: <b>{mix.raw_liquid_lbs} Lbs</b></div>}
-                            {mix.water_h2o_lbs > 0 && <div className="text-teal-700">H2O purificada: <b>{mix.water_h2o_lbs} Lbs</b></div>}
+                            {mix.water_h2o_lbs > 0 && <div className="text-teal-700">MP liquida A: <b>{mix.water_h2o_lbs} Lbs</b></div>}
                             {mix.clara_produced_lbs > 0 && <div>Clara útil: <b>{mix.clara_produced_lbs} Lbs</b></div>}
                         </div>
                         {mix.notes && <p className="text-slate-500 italic truncate">{mix.notes}</p>}
@@ -177,11 +177,10 @@ export const EggCalendarPreviewPopover = ({ hoverPreview }) => {
                             {(Array.isArray(tasks.slice(0, 4)) ? tasks.slice(0, 4) : []).map((t, i) => (
                                 <span
                                     key={i}
-                                    className={`px-1.5 py-0.2 rounded text-[9px] font-semibold ${
-                                        t.checklist_status === 'completado'
+                                    className={`px-1.5 py-0.2 rounded text-[9px] font-semibold ${t.checklist_status === 'completado'
                                             ? 'bg-emerald-100 text-emerald-800'
                                             : 'bg-slate-100 text-slate-600'
-                                    }`}
+                                        }`}
                                 >
                                     {t.factory_role || t.task_description}
                                 </span>

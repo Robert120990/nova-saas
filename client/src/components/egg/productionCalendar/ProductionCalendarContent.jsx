@@ -196,7 +196,7 @@ export default function ProductionCalendarContent({ model }) {
                                                     {prod.suggestion_source && prod.suggestion_source.includes('coproduct') && (
                                                         <div className="mt-1 flex items-center gap-1 text-[8px] font-bold text-emerald-700 bg-emerald-100/80 px-1 py-0.2 rounded">
                                                             <Split className="w-2.5 h-2.5" />
-                                                            <span>Yema + H2O</span>
+                                                            <span>Yema + MP liquida A</span>
                                                         </div>
                                                     )}
                                                 </div>

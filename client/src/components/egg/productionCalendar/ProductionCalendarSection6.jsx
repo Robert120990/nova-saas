@@ -107,7 +107,7 @@ export default function ProductionCalendarSection6({ model }) {
                             <div className="p-3.5 bg-gradient-to-r from-indigo-50 via-sky-50 to-emerald-50 border border-indigo-200 rounded-xl flex items-start gap-3">
                                 <Sparkles className="w-5 h-5 text-indigo-600 shrink-0 mt-0.5" />
                                 <div className="text-xs text-slate-700 leading-relaxed">
-                                    <strong className="text-indigo-900 font-bold">Proyección Mensual Inteligente:</strong> Este plan mensual se genera analizando la <strong>demanda confirmada</strong> en pedidos de clientes, los <strong>acuerdos de suministro recurrentes</strong> y el <strong>histórico de ventas</strong>. Cada corrida incluye su <strong>Lote con Calendario Juliano</strong> pre-asignado y balancea los coproductos (Clara vs Formulado Yema + H2O) para minimizar desperdicios.
+                                    <strong className="text-indigo-900 font-bold">Proyección Mensual Inteligente:</strong> Este plan mensual se genera analizando la <strong>demanda confirmada</strong> en pedidos de clientes, los <strong>acuerdos de suministro recurrentes</strong> y el <strong>histórico de ventas</strong>. Cada corrida incluye su <strong>Lote con Calendario Juliano</strong> pre-asignado y balancea los coproductos (Clara vs Formulado Yema + MP liquida A) para minimizar desperdicios.
                                 </div>
                             </div>
 
@@ -155,7 +155,7 @@ export default function ProductionCalendarSection6({ model }) {
                                         </div>
 
                                         <div className="p-3 rounded-xl bg-emerald-50/70 border border-emerald-200">
-                                            <span className="text-[10px] font-bold text-emerald-800 uppercase block">Formulado (Yema+H2O)</span>
+                                            <span className="text-[10px] font-bold text-emerald-800 uppercase block">Formulado (Yema+MP liquida A)</span>
                                             <div className="flex items-baseline gap-1.5 mt-1">
                                                 <span className="text-lg font-black text-emerald-900">
                                                     {(monthlyPlanData.summary?.projected_production_lbs?.formulado_yema_h2o || 0).toLocaleString()}
@@ -258,7 +258,7 @@ export default function ProductionCalendarSection6({ model }) {
                                                                 <span><strong>Materia Prima:</strong> {run.mix_formula_json?.raw_egg_boxes} cajas</span>
                                                                 {run.mix_formula_json?.water_bottles > 0 && (
                                                                     <span className="text-cyan-700 font-semibold">
-                                                                        + {run.mix_formula_json.water_bottles} garrafas H2O
+                                                                        + {run.mix_formula_json.water_bottles} garrafas MP liquida A
                                                                     </span>
                                                                 )}
                                                             </div>
