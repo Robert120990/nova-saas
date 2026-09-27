@@ -1,6 +1,5 @@
 export { default as useConfigModel } from './useConfigModel';
 export { default as ConfigHelpConceptModalModal } from './ConfigHelpConceptModalModal';
-export { default as ConfigHelpConceptModalModal2 } from './ConfigHelpConceptModalModal2';
 export { default as ConfigProductsTab } from './tabs/ConfigProductsTab';
 export { default as ConfigLotPrefixesTab } from './tabs/ConfigLotPrefixesTab';
 export { default as ConfigCostsTab } from './tabs/ConfigCostsTab';

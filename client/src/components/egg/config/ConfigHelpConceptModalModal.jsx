@@ -7,7 +7,7 @@ import {
 
 
 export default function ConfigHelpConceptModalModal({ model, open = model.helpConceptModal, onClose = () => model.setHelpConceptModal(null) }) {
-    const { helpConceptModal, setHelpConceptModal } = model;
+    const { helpConceptModal } = model;
     if (!open) return null;
     return (<>{helpConceptModal && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
@@ -65,7 +65,7 @@ export default function ConfigHelpConceptModalModal({ model, open = model.helpCo
 
                         <div className="flex justify-end pt-3 border-t border-slate-200">
                             <button
-                                onClick={() => setHelpConceptModal(null)}
+                                onClick={onClose}
                                 className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs"
                             >
                                 Entendido

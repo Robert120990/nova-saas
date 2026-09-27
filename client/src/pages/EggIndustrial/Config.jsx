@@ -1,4 +1,4 @@
-import { useConfigModel, ConfigHelpConceptModalModal, ConfigHelpConceptModalModal2, ConfigProductsTab, ConfigLotPrefixesTab, ConfigCostsTab, ConfigIsSyncModalOpenModal, ConfigCodeMappingsTab, ConfigIsProductCatalogModalOpenModal, ConfigIsMappingModalOpenModal, ConfigHeader } from '../../components/egg/config';
+import { useConfigModel, ConfigHelpConceptModalModal, ConfigProductsTab, ConfigLotPrefixesTab, ConfigCostsTab, ConfigIsSyncModalOpenModal, ConfigCodeMappingsTab, ConfigIsProductCatalogModalOpenModal, ConfigIsMappingModalOpenModal, ConfigHeader } from '../../components/egg/config';
 import ProviderLotConfigModal from '../../components/egg/ProviderLotConfigModal';
 
 
@@ -30,9 +30,6 @@ export default function EggConfig() {
             <ConfigIsProductCatalogModalOpenModal model={model} />
             {/* MODAL DE AYUDA INTERACTIVO (?) */}
             <ConfigHelpConceptModalModal model={model} />
-
-            {/* MODAL DE AYUDA INTERACTIVO (?) */}
-            <ConfigHelpConceptModalModal2 model={model} />
 
             {/* MODAL DE SINCRONIZACIÓN DE PLANILLAS Y GASTOS OPERATIVOS */}
             <ConfigIsSyncModalOpenModal model={model} />
