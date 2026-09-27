@@ -1,3 +1,4 @@
+import { formatDate } from '../../utils/dateUtils';
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { toast } from 'sonner';
@@ -190,11 +191,7 @@ const RawMaterialPlannerModal = ({ isOpen, onClose, initialDate = new Date() }) 
         const packBal = plannerData?.packaging_balance || {};
         const isDeficit = (eggBal.net_balance_boxes || 0) < 0;
         const currentPeriod = `${monthNames[month - 1]} ${year}`;
-        const emissionDate = new Date().toLocaleDateString('es-SV', {
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric'
-        });
+        const emissionDate = formatDate(new Date());
         const mainProvider = plannerData?.trucks_schedule?.[0]?.suggested_provider || 'AVICOLA SALVADOREÑA, S.A. DE C.V.';
 
         // 1. Header Corporativo Superior
@@ -456,7 +453,7 @@ const RawMaterialPlannerModal = ({ isOpen, onClose, initialDate = new Date() }) 
                             onChange={(e) => setMonth(parseInt(e.target.value, 10))}
                             className="bg-white border border-slate-300 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
                         >
-                            {monthNames.map((name, i) => (
+                            {(Array.isArray(monthNames) ? monthNames : []).map((name, i) => (
                                 <option key={i + 1} value={i + 1}>
                                     {name}
                                 </option>
@@ -467,7 +464,7 @@ const RawMaterialPlannerModal = ({ isOpen, onClose, initialDate = new Date() }) 
                             onChange={(e) => setYear(parseInt(e.target.value, 10))}
                             className="bg-white border border-slate-300 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
                         >
-                            {[year - 1, year, year + 1].map((y) => (
+                            {(Array.isArray([year - 1, year, year + 1]) ? [year - 1, year, year + 1] : []).map((y) => (
                                 <option key={y} value={y}>
                                     {y}
                                 </option>
@@ -707,7 +704,7 @@ const RawMaterialPlannerModal = ({ isOpen, onClose, initialDate = new Date() }) 
                                             </span>
                                             {Array.isArray(histComp.same_month_prior_years) && histComp.same_month_prior_years.length > 0 ? (
                                                 <div className="space-y-1.5">
-                                                    {histComp.same_month_prior_years.map((h, i) => (
+                                                    {(Array.isArray(histComp.same_month_prior_years) ? histComp.same_month_prior_years : []).map((h, i) => (
                                                         <div key={i} className="flex items-center justify-between text-xs bg-white p-2 rounded-lg border border-slate-200/80 shadow-2xs">
                                                             <span className="font-bold text-slate-800">{monthNames[h.month - 1]} {h.year}</span>
                                                             <span className="font-black text-indigo-700">{parseFloat(h.total_boxes || 0).toLocaleString()} cajas</span>
@@ -729,7 +726,7 @@ const RawMaterialPlannerModal = ({ isOpen, onClose, initialDate = new Date() }) 
                                             </span>
                                             {Array.isArray(histComp.recent_prior_months) && histComp.recent_prior_months.length > 0 ? (
                                                 <div className="space-y-1.5">
-                                                    {histComp.recent_prior_months.map((h, i) => (
+                                                    {(Array.isArray(histComp.recent_prior_months) ? histComp.recent_prior_months : []).map((h, i) => (
                                                         <div key={i} className="flex items-center justify-between text-xs bg-white p-2 rounded-lg border border-slate-200/80 shadow-2xs">
                                                             <span className="font-bold text-slate-800">{monthNames[h.month - 1]} {h.year}</span>
                                                             <span className="font-black text-indigo-700">{parseFloat(h.total_boxes || 0).toLocaleString()} cajas</span>
@@ -922,7 +919,7 @@ const RawMaterialPlannerModal = ({ isOpen, onClose, initialDate = new Date() }) 
 
                                     {/* Lista de Proveedores Asignados */}
                                     <div className="space-y-2.5">
-                                        {providerAllocations.map((alloc, aIdx) => {
+                                        {(Array.isArray(providerAllocations) ? providerAllocations : []).map((alloc, aIdx) => {
                                             const subtotalBoxes = (parseInt(alloc.container_capacity) || 0) * (parseInt(alloc.shipments_count) || 0);
                                             const subtotalLbs = Math.round(subtotalBoxes * 36.1);
 
@@ -939,7 +936,7 @@ const RawMaterialPlannerModal = ({ isOpen, onClose, initialDate = new Date() }) 
                                                             className="w-full bg-white border border-slate-300 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-800 shadow-2xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
                                                         >
                                                             <option value="">Seleccionar del catálogo...</option>
-                                                            {(plannerData?.providers_catalog || []).map((prov) => (
+                                                            {((Array.isArray(plannerData?.providers_catalog || []) ? plannerData?.providers_catalog || [] : [])).map((prov) => (
                                                                 <option key={prov.id} value={prov.id}>
                                                                     {prov.nombre}
                                                                 </option>
@@ -1097,7 +1094,7 @@ const RawMaterialPlannerModal = ({ isOpen, onClose, initialDate = new Date() }) 
                                 </h3>
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                    {(plannerData?.trucks_schedule || []).map((truck, idx) => (
+                                    {((Array.isArray(plannerData?.trucks_schedule || []) ? plannerData?.trucks_schedule || [] : [])).map((truck, idx) => (
                                         <div
                                             key={idx}
                                             className="p-3.5 rounded-xl border border-slate-200 bg-white hover:border-indigo-300 transition-all shadow-sm space-y-2.5"

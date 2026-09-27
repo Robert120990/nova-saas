@@ -1,3 +1,4 @@
+import { formatDate } from '../../../utils/dateUtils';
 import { useNavigate } from 'react-router-dom';
 import { Users, Handshake, Plus, CheckCircle2, Clock, AlertTriangle, Calendar, History, Edit2, Trash2 } from 'lucide-react';
 import Money from '../../ui/Money';
@@ -46,13 +47,19 @@ export default function EggCosteoClientsTab({
                     {/* Filtros de Vigencia */}
                     <div className="flex flex-wrap items-center gap-1.5 bg-white p-2.5 rounded-xl border border-slate-200 text-xs shadow-sm">
                         <span className="text-[11px] font-bold text-slate-500 uppercase mr-1">Filtrar por Vigencia:</span>
-                        {[
+                        {(Array.isArray([
                             { id: 'todos', label: 'Todos los Acuerdos' },
                             { id: 'vigente', label: 'Vigentes' },
                             { id: 'por_vencer', label: 'Por Vencer (≤30 días)' },
                             { id: 'vencido', label: 'Vencidos' },
                             { id: 'programado', label: 'Programados' }
-                        ].map(f => (
+                        ]) ? [
+                            { id: 'todos', label: 'Todos los Acuerdos' },
+                            { id: 'vigente', label: 'Vigentes' },
+                            { id: 'por_vencer', label: 'Por Vencer (≤30 días)' },
+                            { id: 'vencido', label: 'Vencidos' },
+                            { id: 'programado', label: 'Programados' }
+                        ] : []).map(f => (
                             <button
                                 key={f.id}
                                 type="button"
@@ -85,11 +92,15 @@ export default function EggCosteoClientsTab({
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100 font-semibold text-slate-800">
-                                    {(calculationResult?.clients_comparison || [])
+                                    {(Array.isArray((calculationResult?.clients_comparison || [])
                                         .filter(client => {
                                             if (validityFilter === 'todos') return true;
                                             return client.validity_status === validityFilter;
-                                        })
+                                        })) ? (calculationResult?.clients_comparison || [])
+                                        .filter(client => {
+                                            if (validityFilter === 'todos') return true;
+                                            return client.validity_status === validityFilter;
+                                        }) : [])
                                         .map((client) => {
                                             const badgeClass =
                                                 client.status === 'green'
@@ -139,9 +150,9 @@ export default function EggCosteoClientsTab({
                                                                 </span>
                                                             )}
                                                             <div className="text-[10px] text-slate-400 font-mono">
-                                                                {client.valid_from ? new Date(client.valid_from).toLocaleDateString() : 'Sin inicio'}
+                                                                {client.valid_from ? formatDate(client.valid_from) : 'Sin inicio'}
                                                                 {' → '}
-                                                                {client.valid_to ? new Date(client.valid_to).toLocaleDateString() : 'Permanente'}
+                                                                {client.valid_to ? formatDate(client.valid_to) : 'Permanente'}
                                                             </div>
                                                         </div>
                                                     </td>

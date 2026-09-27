@@ -174,7 +174,7 @@ export const EggCalendarPreviewPopover = ({ hoverPreview }) => {
                             </span>
                         </div>
                         <div className="flex flex-wrap gap-1">
-                            {tasks.slice(0, 4).map((t, i) => (
+                            {(Array.isArray(tasks.slice(0, 4)) ? tasks.slice(0, 4) : []).map((t, i) => (
                                 <span
                                     key={i}
                                     className={`px-1.5 py-0.2 rounded text-[9px] font-semibold ${
@@ -311,7 +311,7 @@ export const EggCalendarPreviewPopover = ({ hoverPreview }) => {
                             Partidas del Pedido ({itemsList.length}):
                         </span>
                         <div className="space-y-1 max-h-20 overflow-y-auto">
-                            {itemsList.map((it, idx) => (
+                            {(Array.isArray(itemsList) ? itemsList : []).map((it, idx) => (
                                 <div key={idx} className="flex items-center justify-between bg-slate-50 p-1 rounded font-medium">
                                     <span className="truncate max-w-[180px]">{it.product_type} - {it.presentation}</span>
                                     <span className="font-bold text-slate-800">{parseFloat(it.quantity_lbs || 0).toLocaleString()} Lbs</span>

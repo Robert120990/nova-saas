@@ -1,3 +1,5 @@
+import useMoneyFormatter from '../../../hooks/useMoneyFormatter';
+import { MoneyInput } from '../../ui/Money';
 import { useState } from 'react';
 import { TrendingUp, CheckCircle2, ChevronUp, ChevronDown, Package } from 'lucide-react';
 import Money from '../../ui/Money';
@@ -7,6 +9,7 @@ export default function EggCosteoSimulatorTab({
     calculationResult,
     handleParamChange
 }) {
+    const formatMoney = useMoneyFormatter();
     const [showPresentationsMatrixSim, setShowPresentationsMatrixSim] = useState(false);
 
     return (
@@ -26,7 +29,7 @@ export default function EggCosteoSimulatorTab({
                             <div className="flex items-center gap-3">
                                 <label className="text-xs font-bold text-slate-700">Precio Objetivo a Simular:</label>
                                 <div className="w-36">
-                                    <input
+                                    <MoneyInput
                                         type="number"
                                         step="0.01"
                                         min="0"
@@ -110,7 +113,7 @@ export default function EggCosteoSimulatorTab({
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100 font-semibold text-slate-800">
-                                        {(calculationResult?.target_simulation?.margin_matrix || []).map((row, idx) => (
+                                        {((Array.isArray(calculationResult?.target_simulation?.margin_matrix || []) ? calculationResult?.target_simulation?.margin_matrix || [] : [])).map((row, idx) => (
                                             <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
                                                 <td className="py-3 px-3">
                                                     <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold inline-block ${row.margin_target_pct >= 25
@@ -159,7 +162,7 @@ export default function EggCosteoSimulatorTab({
                                         </div>
                                         <p className="text-xs text-slate-500 font-medium mt-0.5">
                                             {showPresentationsMatrixSim
-                                                ? `Impacto del precio simulado de ${(parseFloat(calcParams.target_sale_price_per_lb) || 0).toFixed(2)}/lb en cada formato. Haz clic para ocultar.`
+                                                ? `Impacto del precio simulado de ${formatMoney(parseFloat(calcParams.target_sale_price_per_lb) || 0, 2)}/lb en cada formato. Haz clic para ocultar.`
                                                 : 'Márgenes y utilidades por formato al precio simulado. Haz clic para desplegar.'
                                             }
                                         </p>
@@ -203,7 +206,7 @@ export default function EggCosteoSimulatorTab({
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-slate-100 font-semibold text-slate-800">
-                                                {(calculationResult?.presentations_comparison || []).map((row, idx) => {
+                                                {((Array.isArray(calculationResult?.presentations_comparison || []) ? calculationResult?.presentations_comparison || [] : [])).map((row, idx) => {
                                                     const isSelected = row.is_current || (calcParams.presentation || '').toLowerCase().includes(row.lbs.toString());
                                                     const hasSimPrice = (parseFloat(calcParams.target_sale_price_per_lb) || 0) > 0;
                                                     const marginPct = row.simulation?.margin_pct || 0;

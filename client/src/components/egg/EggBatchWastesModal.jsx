@@ -164,7 +164,7 @@ const EggBatchWastesModal = ({
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100">
-                                        {wastesModal.wastes.map(w => (
+                                        {(Array.isArray(wastesModal.wastes) ? wastesModal.wastes : []).map(w => (
                                             <tr key={w.id} className="hover:bg-slate-50">
                                                 <td className="p-2.5 font-bold capitalize text-slate-900">{w.stage}</td>
                                                 <td className="p-2.5 text-rose-700 font-semibold capitalize">{w.waste_type?.replace('_', ' ')}</td>

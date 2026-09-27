@@ -36,7 +36,7 @@ const EggTarimaSearchModal = ({
                 <div className="space-y-3">
                     {availableLots.length === 0 ? (
                         <p className="text-xs text-slate-400 text-center py-6">No hay lotes con saldo disponible en bodega de recepción.</p>
-                    ) : availableLots.map(lot => {
+                    ) : (Array.isArray(availableLots) ? availableLots : []).map(lot => {
                         let lotTarimas = lot.tarimas_available || [];
                         if (lotTarimas.length === 0 && lot.tarimas_json) {
                             try {
@@ -69,7 +69,7 @@ const EggTarimaSearchModal = ({
 
                                 {activeTarimas.length > 0 ? (
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                        {activeTarimas.map(t => (
+                                        {(Array.isArray(activeTarimas) ? activeTarimas : []).map(t => (
                                             <div key={t.tarima_number} className="bg-white border border-slate-200 rounded-lg p-2.5 flex items-center justify-between gap-2 shadow-2xs">
                                                 <div>
                                                     <div className="text-xs font-bold text-slate-800 flex items-center gap-1.5">

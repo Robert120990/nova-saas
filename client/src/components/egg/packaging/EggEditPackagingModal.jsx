@@ -137,7 +137,7 @@ const EggEditPackagingModal = ({
                                         }}
                                         className="w-full px-3 py-2 bg-white border border-indigo-200 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                                     >
-                                        {batches.map(b => (
+                                        {(Array.isArray(batches) ? batches : []).map(b => (
                                             <option key={b.id} value={b.id}>
                                                 [{b.batch_code_display || b.batch_uuid}] {b.product_type} {b.packaging_status === 'cerrado' ? '(Cerrado)' : ''}
                                             </option>
@@ -156,7 +156,7 @@ const EggEditPackagingModal = ({
                                         onChange={(e) => setPackagingForm({ ...packagingForm, product_type: e.target.value })}
                                         className="w-full px-3 py-2 bg-white border border-indigo-200 rounded-xl text-xs text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 capitalize"
                                     >
-                                        {PRODUCT_OPTIONS.map(opt => (
+                                        {(Array.isArray(PRODUCT_OPTIONS) ? PRODUCT_OPTIONS : []).map(opt => (
                                             <option key={opt.value} value={opt.value}>{opt.label}</option>
                                         ))}
                                     </select>
@@ -174,7 +174,7 @@ const EggEditPackagingModal = ({
                                         placeholder="Ej. cubeta 30LB, cubeta 32LB..."
                                     />
                                     <datalist id="edit-presentation-options">
-                                        {PRESENTATION_OPTIONS.map(pres => (
+                                        {(Array.isArray(PRESENTATION_OPTIONS) ? PRESENTATION_OPTIONS : []).map(pres => (
                                             <option key={pres} value={pres} />
                                         ))}
                                     </datalist>

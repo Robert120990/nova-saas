@@ -17,7 +17,7 @@ export default defineConfig({
     __APP_VERSION__: JSON.stringify(commitHash)
   },
   plugins: [
-    basicSsl(), 
+    basicSsl(),
     react(),
     VitePWA({
       registerType: 'autoUpdate',
@@ -52,6 +52,7 @@ export default defineConfig({
     port: 3000,
     host: '0.0.0.0',
     proxy: {
+      '/ws': { target: 'ws://127.0.0.1:4000', ws: true },
       '/api': { target: 'http://127.0.0.1:4000', xfwd: true },
       '/uploads': { target: 'http://127.0.0.1:4000', xfwd: true },
       '/health': { target: 'http://127.0.0.1:4000', xfwd: true }

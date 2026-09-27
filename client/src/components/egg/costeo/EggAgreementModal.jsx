@@ -1,3 +1,4 @@
+import { MoneyInput } from '../../ui/Money';
 import { X } from 'lucide-react';
 
 export default function EggAgreementModal({
@@ -81,7 +82,7 @@ export default function EggAgreementModal({
                             <label className="text-[11px] font-bold text-slate-600 uppercase block mb-1.5">
                                 Precio Pactado ($/Lb)
                             </label>
-                            <input
+                            <MoneyInput
                                 type="number"
                                 step="0.0001"
                                 required

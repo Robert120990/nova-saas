@@ -59,7 +59,7 @@ const EggAddTarimasModal = ({
                             </span>
                         </div>
                         <div className="space-y-1.5">
-                            {addTarimasModal.batch.raw_materials.map((rmPrev, pIdx) => (
+                            {(Array.isArray(addTarimasModal.batch.raw_materials) ? addTarimasModal.batch.raw_materials : []).map((rmPrev, pIdx) => (
                                 <div key={pIdx} className="bg-white border border-slate-200/80 rounded-lg p-2.5 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
                                     <div>
                                         <div className="font-bold text-slate-800 flex items-center gap-1.5">
@@ -69,7 +69,7 @@ const EggAddTarimasModal = ({
                                         </div>
                                         {Array.isArray(rmPrev.tarimas) && rmPrev.tarimas.length > 0 ? (
                                             <div className="flex flex-wrap gap-1 mt-1">
-                                                {rmPrev.tarimas.map((t, ti) => (
+                                                {(Array.isArray(rmPrev.tarimas) ? rmPrev.tarimas : []).map((t, ti) => (
                                                     <span key={ti} className="bg-indigo-50 border border-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded text-[10px] font-semibold inline-flex items-center gap-1">
                                                         <span>Tarima #{t.tarima_number}</span>
                                                         {t.storage_location && (
@@ -158,7 +158,7 @@ const EggAddTarimasModal = ({
                 {/* Listado de Lotes de Materia Prima y Tarimas Complementarias */}
                 <form onSubmit={handleAddTarimasSubmit} className="space-y-4">
                     <div className="space-y-3">
-                        {addTarimasModal.raw_materials.map((rm, idx) => {
+                        {(Array.isArray(addTarimasModal.raw_materials) ? addTarimasModal.raw_materials : []).map((rm, idx) => {
                             const selectedLot = rawMaterials.find(m => String(m.id) === String(rm.raw_material_id));
                             let lotTarimas = selectedLot?.tarimas_available || [];
                             if (lotTarimas.length === 0 && selectedLot?.tarimas_json) {
@@ -194,7 +194,7 @@ const EggAddTarimasModal = ({
                                                 required
                                             >
                                                 <option value="">Seleccione Lote de Materia Prima en Bodega...</option>
-                                                {rawMaterials.map(m => {
+                                                {(Array.isArray(rawMaterials) ? rawMaterials : []).map(m => {
                                                     const isAgotado = m.is_depleted || parseFloat(m.stock_lbs || 0) <= 0.01;
                                                     const isAlreadyChosen = addTarimasModal.raw_materials.some((r, i) => i !== idx && r.raw_material_id === String(m.id));
                                                     return (
@@ -273,7 +273,7 @@ const EggAddTarimasModal = ({
                                             {/* Chips interactivos de tarimas */}
                                             {lotTarimas.length > 0 ? (
                                                 <div className="flex flex-wrap gap-1.5 pt-1">
-                                                    {lotTarimas.map((t) => {
+                                                    {(Array.isArray(lotTarimas) ? lotTarimas : []).map((t) => {
                                                         const isAdded = (rm.tarimas || []).some(it => parseInt(it.tarima_number, 10) === parseInt(t.tarima_number, 10));
                                                         const isDepleted = t.is_depleted || (t.available_boxes <= 0 && t.available_lbs <= 0.01);
                                                         const availBoxes = t.available_boxes ?? t.boxes_count ?? 0;
@@ -325,7 +325,7 @@ const EggAddTarimasModal = ({
                                                     </div>
 
                                                     <div className="space-y-1.5">
-                                                        {rm.tarimas.map((t, ti) => {
+                                                        {(Array.isArray(rm.tarimas) ? rm.tarimas : []).map((t, ti) => {
                                                             const maxBoxes = t.available_boxes || t.boxes_count || 0;
                                                             const maxLbs = t.available_lbs || parseFloat(t.quantity_lbs) || 0;
 

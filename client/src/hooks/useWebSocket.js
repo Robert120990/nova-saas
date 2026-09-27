@@ -1,3 +1,4 @@
+import { createAuthenticatedSocket } from '../utils/webSocketUtils';
 import { useEffect, useRef, useCallback, useState } from 'react';
 
 export default function useWebSocket({ companyId, onMessage }) {
@@ -11,10 +12,7 @@ export default function useWebSocket({ companyId, onMessage }) {
     const connect = useCallback(() => {
         if (!companyId) return;
 
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const url = `${protocol}//${window.location.hostname}:4000/ws/inventory?company_id=${companyId}`;
-
-        const ws = new WebSocket(url);
+        const ws = createAuthenticatedSocket('/ws/inventory', companyId);
         wsRef.current = ws;
 
         ws.onopen = () => {

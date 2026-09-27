@@ -1,3 +1,7 @@
+import useMoneyFormatter from '../../../hooks/useMoneyFormatter';
+import { formatDate } from '../../../utils/dateUtils';
+import { MoneyInput } from '../../ui/Money';
+import Money from '../../ui/Money';
 import { X } from 'lucide-react';
 
 export default function EggCipModal({
@@ -9,6 +13,7 @@ export default function EggCipModal({
     setCipModal,
     onSelectProduct
 }) {
+    const formatMoney = useMoneyFormatter();
     if (!open) return null;
 
     return (
@@ -38,9 +43,9 @@ export default function EggCipModal({
                             className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2 text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-cyan-500/20 shadow-sm"
                         >
                             <option value="">-- Sin Vincular / Ingreso Manual --</option>
-                            {productsLookup.map(prod => (
+                            {(Array.isArray(productsLookup) ? productsLookup : []).map(prod => (
                                 <option key={prod.id} value={prod.id}>
-                                    [{prod.codigo}] {prod.nombre} {prod.latest_purchase_cost ? `(Fac #${prod.latest_invoice_number}: ${parseFloat(prod.latest_purchase_cost).toFixed(2)})` : `(Costo: ${parseFloat(prod.costo || 0).toFixed(2)})`}
+                                    [{prod.codigo}] {prod.nombre} {prod.latest_purchase_cost ? `(Fac #${prod.latest_invoice_number}: ${formatMoney(parseFloat(prod.latest_purchase_cost))})` : `(Costo: ${formatMoney(parseFloat(prod.costo || 0))})`}
                                 </option>
                             ))}
                         </select>
@@ -51,10 +56,10 @@ export default function EggCipModal({
                                     if (!prod) return null;
                                     return prod.latest_invoice_number ? (
                                         <div>
-                                            <span className="font-bold">Factura de Compra Reciente:</span> #{prod.latest_invoice_number} ({prod.latest_purchase_date ? new Date(prod.latest_purchase_date).toLocaleDateString() : 'S/F'}) a <strong className="text-emerald-700 font-bold">${parseFloat(prod.latest_purchase_cost).toFixed(2)}</strong> / ud {prod.latest_provider_name ? `(${prod.latest_provider_name})` : ''}
+                                            <span className="font-bold">Factura de Compra Reciente:</span> #{prod.latest_invoice_number} ({prod.latest_purchase_date ? formatDate(prod.latest_purchase_date) : 'S/F'}) a <strong className="text-emerald-700 font-bold"><Money value={parseFloat(prod.latest_purchase_cost)} /></strong> / ud {prod.latest_provider_name ? `(${prod.latest_provider_name})` : ''}
                                         </div>
                                     ) : (
-                                        <span className="text-slate-600 italic">Producto sin facturas ingresadas aún (Costo catálogo: ${parseFloat(prod.costo || 0).toFixed(2)})</span>
+                                        <span className="text-slate-600 italic">Producto sin facturas ingresadas aún (Costo catálogo: <Money value={parseFloat(prod.costo || 0)} />)</span>
                                     );
                                 })()}
                             </div>
@@ -101,7 +106,7 @@ export default function EggCipModal({
                     <div className="grid grid-cols-2 gap-3">
                         <div>
                             <label className="text-[11px] font-bold text-slate-600 uppercase block mb-1">Costo Presentación ($)</label>
-                            <input
+                            <MoneyInput
                                 type="number"
                                 step="0.01"
                                 required

@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
-import { 
-    Camera, 
-    X, 
-    QrCode, 
-    RefreshCcw, 
-    AlertTriangle, 
-    Search, 
+import {
+    Camera,
+    X,
+    QrCode,
+    RefreshCcw,
+    AlertTriangle,
+    Search,
     Barcode
 } from 'lucide-react';
 import { Html5Qrcode } from 'html5-qrcode';
@@ -107,7 +107,7 @@ export default function ProductionTarimaScannerModal({
         }
 
         // Buscar lote en rawMaterials para ver si tiene múltiples tarimas disponibles
-        const matchedLot = (rawMaterials || []).find(m => 
+        const matchedLot = (rawMaterials || []).find(m =>
             (m.provider_lot || '').trim().toUpperCase() === (parsed.lotCode || '').trim().toUpperCase() ||
             String(m.id) === String(parsed.lotCode)
         );
@@ -273,7 +273,7 @@ export default function ProductionTarimaScannerModal({
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-xs animate-in fade-in duration-150">
             <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]">
-                
+
                 {/* Cabecera del Modal */}
                 <div className="px-6 py-4 bg-gradient-to-r from-indigo-700 via-indigo-600 to-indigo-800 text-white flex items-center justify-between">
                     <div className="flex items-center gap-3">
@@ -328,7 +328,7 @@ export default function ProductionTarimaScannerModal({
                             </div>
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-56 overflow-y-auto p-1">
-                                {pendingLotSelection.availableTarimas.map((t) => {
+                                {(Array.isArray(pendingLotSelection.availableTarimas) ? pendingLotSelection.availableTarimas : []).map((t) => {
                                     const availBoxes = t.available_boxes ?? t.boxes_count ?? 0;
                                     const availLbs = t.available_lbs ?? t.net_weight_lbs ?? t.gross_weight_lbs ?? 0;
                                     return (
@@ -393,7 +393,7 @@ export default function ProductionTarimaScannerModal({
                 ) : (
                     /* Contenido Central: Visor de Cámara */
                     <div className="p-6 overflow-y-auto space-y-4 flex-1">
-                        
+
                         {/* Viewport del Escáner */}
                         <div className="relative rounded-2xl overflow-hidden bg-slate-950 aspect-square flex items-center justify-center border-2 border-indigo-100 shadow-inner">
                             <div id="production-tarima-qr-reader" className="w-full h-full object-cover" />

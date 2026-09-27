@@ -6,6 +6,7 @@ export { default as EggBatchWastesModal } from './EggBatchWastesModal';
 export { default as EggCalendarPreviewPopover } from './EggCalendarPreviewPopover';
 export { default as EggClosePasteurizationModal } from './EggClosePasteurizationModal';
 export { default as EggCommissionsSimulator } from './EggCommissionsSimulator';
+export { default as EggEmissionRecoveryButton } from './EggEmissionRecoveryButton';
 export { default as EggCustomerOrderModal } from './EggCustomerOrderModal';
 export { default as EggQualityEvaluationModal } from './EggQualityEvaluationModal';
 export { default as EggReceptionDetailModal } from './EggReceptionDetailModal';

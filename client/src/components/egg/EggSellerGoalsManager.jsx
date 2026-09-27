@@ -1,3 +1,5 @@
+import { unwrapList } from '../../utils/apiUtils';
+import { MoneyInput } from '../ui/Money';
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { toast } from 'sonner';
@@ -72,8 +74,8 @@ export default function EggSellerGoalsManager({ selectedYear, selectedMonth }) {
             setSellers(seRes.data?.sellers || []);
             setOtherSellers(seRes.data?.otherSellers || []);
             setEmployees(seRes.data?.employees || []);
-            setGoals(goalsRes.data || []);
-            setSummary(sumRes.data || []);
+            setGoals(unwrapList(goalsRes));
+            setSummary(unwrapList(sumRes));
         } catch (err) {
             console.error('Error loading commissions data:', err);
             toast.error('Error al cargar datos comerciales.');
@@ -245,7 +247,7 @@ export default function EggSellerGoalsManager({ selectedYear, selectedMonth }) {
                             onChange={(e) => setMonth(parseInt(e.target.value))}
                             className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-800 focus:ring-1 focus:ring-indigo-500"
                         >
-                            {monthsNames.map((m, idx) => (
+                            {(Array.isArray(monthsNames) ? monthsNames : []).map((m, idx) => (
                                 <option key={idx + 1} value={idx + 1}>
                                     {m}
                                 </option>
@@ -329,7 +331,7 @@ export default function EggSellerGoalsManager({ selectedYear, selectedMonth }) {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100 font-medium text-slate-800">
-                                {summary.map((row) => {
+                                {(Array.isArray(summary) ? summary : []).map((row) => {
                                     const isCapped = Boolean(row.is_capped);
                                     const isTransferred = row.status === 'transferido_planilla';
                                     const hasEmployee = Boolean(row.employee_id);
@@ -446,7 +448,7 @@ export default function EggSellerGoalsManager({ selectedYear, selectedMonth }) {
                                 </p>
                             </div>
                         ) : (
-                            sellers.map((s) => (
+                            (Array.isArray(sellers) ? sellers : []).map((s) => (
                                 <div key={s.id} className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-slate-300 transition-all">
                                     <div>
                                         <span className="font-bold text-xs text-slate-900 block">{s.nombre}</span>
@@ -460,7 +462,7 @@ export default function EggSellerGoalsManager({ selectedYear, selectedMonth }) {
                                             className="bg-white border border-slate-300 rounded-lg px-2.5 py-1 text-xs font-semibold text-slate-800 focus:ring-1 focus:ring-indigo-500"
                                         >
                                             <option value="">-- Sin Empleado Vinculado --</option>
-                                            {employees.map((emp) => (
+                                            {(Array.isArray(employees) ? employees : []).map((emp) => (
                                                 <option key={emp.id} value={emp.id}>
                                                     {emp.codigo} - {emp.nombres} {emp.apellidos}
                                                 </option>
@@ -504,7 +506,7 @@ export default function EggSellerGoalsManager({ selectedYear, selectedMonth }) {
                                 </p>
                             </div>
                         ) : (
-                            sellers.map((s) => {
+                            (Array.isArray(sellers) ? sellers : []).map((s) => {
                             const goal = goals.find(g => g.seller_id === s.id);
                             return (
                                 <div key={s.id} className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between gap-3">
@@ -578,7 +580,7 @@ export default function EggSellerGoalsManager({ selectedYear, selectedMonth }) {
                                     <label className="font-bold text-slate-600 uppercase text-[10px] block mb-1">
                                         Precio Piso ($/lb):
                                     </label>
-                                    <input
+                                    <MoneyInput
                                         type="number"
                                         step="0.01"
                                         value={editingGoal.target_min_price_lb}
@@ -703,7 +705,7 @@ export default function EggSellerGoalsManager({ selectedYear, selectedMonth }) {
                                     className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 font-semibold text-slate-800 focus:ring-2 focus:ring-indigo-500/20"
                                 >
                                     <option value="">-- Seleccionar Empleado --</option>
-                                    {employees.map(emp => (
+                                    {(Array.isArray(employees) ? employees : []).map(emp => (
                                         <option key={emp.id} value={emp.id}>
                                             {emp.codigo} - {emp.nombres} {emp.apellidos}
                                         </option>
@@ -722,7 +724,7 @@ export default function EggSellerGoalsManager({ selectedYear, selectedMonth }) {
                                     className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 font-semibold text-slate-800 focus:ring-2 focus:ring-indigo-500/20"
                                 >
                                     <option value="">-- Seleccionar Vendedor --</option>
-                                    {otherSellers.map(s => (
+                                    {(Array.isArray(otherSellers) ? otherSellers : []).map(s => (
                                         <option key={s.id} value={s.id}>
                                             {s.nombre} (ID #{s.id})
                                         </option>

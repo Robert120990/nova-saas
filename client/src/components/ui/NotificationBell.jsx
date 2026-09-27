@@ -1,3 +1,4 @@
+import { createAuthenticatedSocket } from '../../utils/webSocketUtils';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
@@ -67,10 +68,9 @@ const NotificationBell = () => {
   const connectWebSocket = useCallback(() => {
     if (!user?.company_id || !user?.id) return;
 
-    const url = `ws://${window.location.hostname}:4000/ws/notifications?company_id=${user.company_id}&user_id=${user.id}`;
 
     try {
-      const ws = new WebSocket(url);
+      const ws = createAuthenticatedSocket('/ws/notifications', user.company_id);
       ws.onmessage = (event) => {
         try {
           const { event: evt, data } = JSON.parse(event.data);

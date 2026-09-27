@@ -1,3 +1,4 @@
+import Money from '../ui/Money';
 import { useState, useEffect, useRef } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
 import axios from 'axios';
@@ -358,7 +359,7 @@ export default function DteQrDeliveryScannerModal({
 
                             {matchingDtes.length > 0 && (
                                 <div className="mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-36 overflow-y-auto divide-y divide-slate-100 z-10 relative">
-                                    {matchingDtes.map((d) => (
+                                    {(Array.isArray(matchingDtes) ? matchingDtes : []).map((d) => (
                                         <button
                                             key={d.id}
                                             type="button"
@@ -371,7 +372,7 @@ export default function DteQrDeliveryScannerModal({
                                         >
                                             <div>
                                                 <div className="font-mono font-bold text-indigo-700">{d.codigo_generacion}</div>
-                                                <div className="text-[10px] text-slate-500">Control: {d.numero_control} | ${d.total}</div>
+                                                <div className="text-[10px] text-slate-500">Control: {d.numero_control} | <Money value={d.total} /></div>
                                             </div>
                                             <span className="text-[10px] bg-indigo-100 text-indigo-700 font-bold px-1.5 py-0.5 rounded">
                                                 Seleccionar

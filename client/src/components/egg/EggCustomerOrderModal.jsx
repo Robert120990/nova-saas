@@ -1,7 +1,8 @@
+import { getTodayString } from '../../utils/dateUtils';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import axios from 'axios';
 import { toast } from 'sonner';
-import { 
+import {
     X, Plus, Trash2, Search, Check, Building2, RefreshCw, Package, CheckCircle2, Barcode,
     MapPin, ChevronDown
 } from 'lucide-react';
@@ -307,7 +308,7 @@ export default function EggCustomerOrderModal({
         customer_name: '',
         customer_branch_id: '',
         manual_branch_name: '',
-        required_delivery_date: defaultDate || new Date().toISOString().split('T')[0],
+        required_delivery_date: defaultDate || getTodayString(new Date()),
         priority: 'normal',
         notes: ''
     });
@@ -399,9 +400,9 @@ export default function EggCustomerOrderModal({
                 customer_name: orderToEdit.customer_name || '',
                 customer_branch_id: orderToEdit.customer_branch_id || '',
                 manual_branch_name: orderToEdit.branch_name || '',
-                required_delivery_date: orderToEdit.required_delivery_date 
-                    ? orderToEdit.required_delivery_date.split('T')[0] 
-                    : new Date().toISOString().split('T')[0],
+                required_delivery_date: orderToEdit.required_delivery_date
+                    ? orderToEdit.required_delivery_date.split('T')[0]
+                    : getTodayString(new Date()),
                 priority: orderToEdit.priority || 'normal',
                 notes: orderToEdit.notes || ''
             });
@@ -425,8 +426,8 @@ export default function EggCustomerOrderModal({
             let parsedItems = [];
             if (orderToEdit.items_json) {
                 try {
-                    parsedItems = typeof orderToEdit.items_json === 'string' 
-                        ? JSON.parse(orderToEdit.items_json) 
+                    parsedItems = typeof orderToEdit.items_json === 'string'
+                        ? JSON.parse(orderToEdit.items_json)
                         : orderToEdit.items_json;
                 } catch (e) {
                     console.error('Error parseando items_json:', e);
@@ -437,7 +438,7 @@ export default function EggCustomerOrderModal({
                 setItems(parsedItems.map((it, idx) => {
                     const factor = getPresentationFactors(it.presentation);
                     const weightLbs = parseFloat(it.unit_weight_lbs) || factor.lbs;
-                    const units = it.quantity_units 
+                    const units = it.quantity_units
                         || (it.quantity_lbs ? Math.max(1, Math.round(parseFloat(it.quantity_lbs) / weightLbs)) : '');
                     const lbs = parseFloat(it.quantity_lbs) || (units ? (parseFloat(units) * weightLbs) : '');
                     const kg = lbs ? (parseFloat(lbs) * 0.453592) : '';
@@ -462,7 +463,7 @@ export default function EggCustomerOrderModal({
             } else {
                 const factor = getPresentationFactors(orderToEdit.presentation);
                 const weightLbs = parseFloat(orderToEdit.unit_weight_lbs) || factor.lbs;
-                const units = orderToEdit.quantity_units 
+                const units = orderToEdit.quantity_units
                     || (orderToEdit.quantity_lbs ? Math.max(1, Math.round(parseFloat(orderToEdit.quantity_lbs) / weightLbs)) : '');
                 const lbs = parseFloat(orderToEdit.quantity_lbs) || (units ? (parseFloat(units) * weightLbs) : '');
                 const kg = lbs ? (parseFloat(lbs) * 0.453592) : '';
@@ -505,7 +506,7 @@ export default function EggCustomerOrderModal({
             customer_name: '',
             customer_branch_id: '',
             manual_branch_name: '',
-            required_delivery_date: defaultDate || new Date().toISOString().split('T')[0],
+            required_delivery_date: defaultDate || getTodayString(new Date()),
             priority: 'normal',
             notes: ''
         });
@@ -1020,7 +1021,7 @@ export default function EggCustomerOrderModal({
         setItems(prev => prev.map(it => {
             if (it.id !== id) return it;
             const updated = { ...it, [field]: value };
-            
+
             // Si cambia la cantidad en unidades, recalcular lbs y kg
             if (field === 'quantity_units') {
                 const factorLbs = parseFloat(updated.unit_weight_lbs) || getPresentationFactors(updated.presentation).lbs;
@@ -1203,8 +1204,8 @@ export default function EggCustomerOrderModal({
                                         setCustomerMode('catalog');
                                     }}
                                     className={`px-2.5 py-1 rounded-lg transition-all ${
-                                        customerMode === 'catalog' 
-                                            ? 'bg-indigo-600 text-white shadow-sm' 
+                                        customerMode === 'catalog'
+                                            ? 'bg-indigo-600 text-white shadow-sm'
                                             : 'text-slate-600 hover:text-slate-900'
                                     }`}
                                 >
@@ -1218,8 +1219,8 @@ export default function EggCustomerOrderModal({
                                         setOrderForm(prev => ({ ...prev, customer_id: null, customer_branch_id: null }));
                                     }}
                                     className={`px-2.5 py-1 rounded-lg transition-all ${
-                                        customerMode === 'manual' 
-                                            ? 'bg-amber-600 text-white shadow-sm' 
+                                        customerMode === 'manual'
+                                            ? 'bg-amber-600 text-white shadow-sm'
                                             : 'text-slate-600 hover:text-slate-900'
                                     }`}
                                 >
@@ -1256,7 +1257,7 @@ export default function EggCustomerOrderModal({
                                             }
                                         }}
                                         className={`w-full text-xs font-semibold border rounded-xl px-3 py-2 pr-8 transition outline-none ${
-                                            selectedCustomer 
+                                            selectedCustomer
                                                 ? 'border-emerald-500 bg-emerald-50/20 text-slate-900 ring-1 ring-emerald-500/30 font-bold'
                                                 : customerMode === 'manual'
                                                 ? 'border-amber-400 bg-amber-50/20 text-slate-900'
@@ -1299,7 +1300,7 @@ export default function EggCustomerOrderModal({
                                             </button>
                                         )}
 
-                                        {customerSearchResults.map(c => (
+                                        {(Array.isArray(customerSearchResults) ? customerSearchResults : []).map(c => (
                                             <button
                                                 key={c.id}
                                                 type="button"
@@ -1466,7 +1467,7 @@ export default function EggCustomerOrderModal({
                                                 )}
 
                                                 {/* Listado de sucursales filtradas */}
-                                                {filteredBranches.map(b => {
+                                                {(Array.isArray(filteredBranches) ? filteredBranches : []).map(b => {
                                                     const isSelected = String(orderForm.customer_branch_id) === String(b.id);
                                                     return (
                                                         <button
@@ -1613,8 +1614,8 @@ export default function EggCustomerOrderModal({
 
                         {/* Tabla de items */}
                         <div className="space-y-2.5">
-                            {items.map((it, idx) => (
-                                <div 
+                            {(Array.isArray(items) ? items : []).map((it, idx) => (
+                                <div
                                     key={it.id}
                                     className="bg-white p-3 rounded-xl border border-slate-200/90 shadow-sm grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end"
                                 >
@@ -1625,21 +1626,21 @@ export default function EggCustomerOrderModal({
                                         </label>
                                         <select
                                             value={
-                                                it.selected_by_code && it.catalog_code 
-                                                    ? `code:${it.catalog_code}` 
+                                                it.selected_by_code && it.catalog_code
+                                                    ? `code:${it.catalog_code}`
                                                     : (availableProducts.includes(it.product_type) ? it.product_type : (it.catalog_code ? `code:${it.catalog_code}` : it.product_type))
                                             }
                                             onChange={(e) => handleProductSelectChange(it.id, e.target.value)}
                                             className="w-full text-xs font-bold border border-slate-200 rounded-lg px-2 py-1.5 text-slate-800 outline-none focus:border-indigo-500"
                                         >
                                             <optgroup label="📋 Productos de la Matriz Industrial">
-                                                {availableProducts.map(p => (
+                                                {(Array.isArray(availableProducts) ? availableProducts : []).map(p => (
                                                     <option key={`p-${p}`} value={p}>{p}</option>
                                                 ))}
                                             </optgroup>
                                             {allMatrixCodes.length > 0 && (
                                                 <optgroup label="🏷️ Códigos Directos de Catálogo (SKU / Matriz)">
-                                                    {allMatrixCodes.map((c, cIdx) => (
+                                                    {(Array.isArray(allMatrixCodes) ? allMatrixCodes : []).map((c, cIdx) => (
                                                         <option key={`c-${c.code}-${cIdx}`} value={`code:${c.code}`}>
                                                             [{c.code}] {c.product_name} ({c.weight_lbs} lb)
                                                         </option>
@@ -1682,7 +1683,7 @@ export default function EggCustomerOrderModal({
                                         >
                                             {getPresentationsForProduct(it.product_type).length > 0 && (
                                                 <optgroup label="✨ Presentaciones Mapeadas (Matriz)">
-                                                    {getPresentationsForProduct(it.product_type).map((pm, pmIdx) => (
+                                                    {(Array.isArray(getPresentationsForProduct(it.product_type)) ? getPresentationsForProduct(it.product_type) : []).map((pm, pmIdx) => (
                                                         <option key={`pm-${pmIdx}`} value={`code:${pm.code}`}>
                                                             {pm.presentation} [{pm.code}] ({pm.weight_lbs} lb)
                                                         </option>
@@ -1690,7 +1691,7 @@ export default function EggCustomerOrderModal({
                                                 </optgroup>
                                             )}
                                             <optgroup label="📦 Otras Presentaciones">
-                                                {PRESENTATIONS.map(p => (
+                                                {(Array.isArray(PRESENTATIONS) ? PRESENTATIONS : []).map(p => (
                                                     <option key={`gen-${p}`} value={p}>{p}</option>
                                                 ))}
                                             </optgroup>
@@ -1779,8 +1780,9 @@ export default function EggCustomerOrderModal({
                                             className="w-full text-[11px] font-semibold border border-slate-200 rounded-lg px-2 py-1.5 text-emerald-800 bg-emerald-50/20 outline-none focus:border-emerald-500"
                                         >
                                             <option value="">-- Sin asignar --</option>
-                                            {availableBatches
-                                                .filter(b => String(b.id) === String(it.batch_id) || isBatchCompatibleWithProduct(b.product_type, it.product_type))
+                                            {(Array.isArray(availableBatches
+                                                .filter(b => String(b.id) === String(it.batch_id) || isBatchCompatibleWithProduct(b.product_type, it.product_type))) ? availableBatches
+                                                .filter(b => String(b.id) === String(it.batch_id) || isBatchCompatibleWithProduct(b.product_type, it.product_type)) : [])
                                                 .map(b => (
                                                     <option key={b.id} value={b.id}>
                                                         {b.batch_code_display || b.lote} ({b.product_type || 'Ovoproducto'})

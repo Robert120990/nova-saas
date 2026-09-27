@@ -1,3 +1,4 @@
+import { formatDate } from '../../../utils/dateUtils';
 import { Flame, Settings2, ShoppingCart, RefreshCcw, Droplets, Plus, FileText, Edit2, Trash2, Package } from 'lucide-react';
 import Money from '../../ui/Money';
 
@@ -42,42 +43,42 @@ export default function EggCosteoCatalogTab({
                             <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
                                 <span className="text-[10px] text-slate-500 uppercase font-bold block">Diesel Caldera</span>
                                 <span className="text-sm font-black text-slate-900 mt-1 block">
-                                    {configs.boiler_diesel_gal_batch || 20.84} gal
+                                    {configs.boiler_diesel_gal_batch ?? 20.84} gal
                                 </span>
-                                <span className="text-[10px] text-slate-400">@ ${configs.boiler_diesel_price_gal || 4.14}/gal</span>
+                                <span className="text-[10px] text-slate-400">@ <Money value={configs.boiler_diesel_price_gal ?? 4.14} />/gal</span>
                             </div>
                             <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
                                 <span className="text-[10px] text-slate-500 uppercase font-bold block">Electricidad</span>
                                 <span className="text-sm font-black text-slate-900 mt-1 block">
-                                    ${configs.boiler_kwh_cost_batch || 386.00}
+                                    <Money value={configs.boiler_kwh_cost_batch ?? 386.00} />
                                 </span>
                                 <span className="text-[10px] text-slate-400">Por batch</span>
                             </div>
                             <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
                                 <span className="text-[10px] text-slate-500 uppercase font-bold block">Agua Caldera</span>
                                 <span className="text-sm font-black text-slate-900 mt-1 block">
-                                    ${configs.boiler_water_cost_batch || 17.34}
+                                    <Money value={configs.boiler_water_cost_batch ?? 17.34} />
                                 </span>
                                 <span className="text-[10px] text-slate-400">Por batch</span>
                             </div>
                             <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
                                 <span className="text-[10px] text-slate-500 uppercase font-bold block">Mano de Obra</span>
                                 <span className="text-sm font-black text-slate-900 mt-1 block">
-                                    ${configs.mod_cost_per_lb || 0.0500}
+                                    <Money value={configs.mod_cost_per_lb ?? 0.0500} />
                                 </span>
                                 <span className="text-[10px] text-slate-400">Por libra</span>
                             </div>
                             <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
                                 <span className="text-[10px] text-slate-500 uppercase font-bold block">GIF Mensual</span>
                                 <span className="text-sm font-black text-slate-900 mt-1 block">
-                                    ${(configs.monthly_gif_total || 24537.00).toLocaleString()}
+                                    <Money value={(configs.monthly_gif_total ?? 24537.00)} />
                                 </span>
                                 <span className="text-[10px] text-slate-400">Total fijo</span>
                             </div>
                             <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
                                 <span className="text-[10px] text-slate-500 uppercase font-bold block">Volumen Base</span>
                                 <span className="text-sm font-black text-slate-900 mt-1 block">
-                                    {(configs.monthly_projected_lbs || 100000).toLocaleString()}
+                                    {(configs.monthly_projected_lbs ?? 100000).toLocaleString()}
                                 </span>
                                 <span className="text-[10px] text-slate-400">Libras / mes</span>
                             </div>
@@ -146,7 +147,7 @@ export default function EggCosteoCatalogTab({
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100 font-semibold text-slate-800">
-                                        {cipItems.map((cip) => {
+                                        {(Array.isArray(cipItems) ? cipItems : []).map((cip) => {
                                             const unitPrice = parseFloat(cip.presentation_cost) / (parseFloat(cip.presentation_qty) || 1);
                                             const cycleCost = unitPrice * (parseFloat(cip.dose_per_batch) || 0);
                                             return (
@@ -159,8 +160,8 @@ export default function EggCosteoCatalogTab({
                                                                     <FileText className="w-3 h-3 text-indigo-600" />
                                                                     <span>Fac. #{cip.latest_invoice_number}</span>
                                                                 </span>
-                                                                <span>Compra: <strong className="text-emerald-700 font-bold">${parseFloat(cip.latest_purchase_cost).toFixed(2)}</strong>/ud</span>
-                                                                {cip.latest_purchase_date && <span>({new Date(cip.latest_purchase_date).toLocaleDateString()})</span>}
+                                                                <span>Compra: <strong className="text-emerald-700 font-bold"><Money value={parseFloat(cip.latest_purchase_cost)} /></strong>/ud</span>
+                                                                {cip.latest_purchase_date && <span>({formatDate(cip.latest_purchase_date)})</span>}
                                                                 {cip.latest_provider_name && <span className="text-slate-400">({cip.latest_provider_name})</span>}
                                                                 {Math.abs(parseFloat(cip.presentation_cost) - (parseFloat(cip.latest_purchase_cost) * (parseFloat(cip.presentation_qty) || 1))) > 0.01 && (
                                                                     <button
@@ -248,7 +249,7 @@ export default function EggCosteoCatalogTab({
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100 font-semibold text-slate-800">
-                                        {packagingItems.map((p) => (
+                                        {(Array.isArray(packagingItems) ? packagingItems : []).map((p) => (
                                             <tr key={p.id} className="hover:bg-slate-50/80 transition-colors">
                                                 <td className="py-2.5 px-3 font-mono font-bold text-indigo-700">{p.item_code}</td>
                                                 <td className="py-2.5 px-3">
@@ -259,8 +260,8 @@ export default function EggCosteoCatalogTab({
                                                                 <FileText className="w-3 h-3 text-indigo-600" />
                                                                 <span>Fac. #{p.latest_invoice_number}</span>
                                                             </span>
-                                                            <span>Compra: <strong className="text-emerald-700 font-bold">${parseFloat(p.latest_purchase_cost).toFixed(4)}</strong></span>
-                                                            {p.latest_purchase_date && <span>({new Date(p.latest_purchase_date).toLocaleDateString()})</span>}
+                                                            <span>Compra: <strong className="text-emerald-700 font-bold"><Money value={parseFloat(p.latest_purchase_cost)} /></strong></span>
+                                                            {p.latest_purchase_date && <span>({formatDate(p.latest_purchase_date)})</span>}
                                                             {p.latest_provider_name && <span className="text-slate-400">({p.latest_provider_name})</span>}
                                                             {Math.abs(parseFloat(p.unit_cost) - parseFloat(p.latest_purchase_cost)) > 0.0001 && (
                                                                 <button

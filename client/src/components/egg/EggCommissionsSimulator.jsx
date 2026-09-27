@@ -1,3 +1,4 @@
+import { MoneyInput } from '../ui/Money';
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import {
@@ -171,7 +172,7 @@ export default function EggCommissionsSimulator({ defaultPlantCost = 1.05 }) {
                         />
                         {/* Botones de Presets Rápidos */}
                         <div className="flex flex-wrap gap-1.5 pt-1">
-                            {[20000, 40000, 60000, 66667, 80000, 100000].map((preset) => (
+                            {(Array.isArray([20000, 40000, 60000, 66667, 80000, 100000]) ? [20000, 40000, 60000, 66667, 80000, 100000] : []).map((preset) => (
                                 <button
                                     key={preset}
                                     type="button"
@@ -195,12 +196,12 @@ export default function EggCommissionsSimulator({ defaultPlantCost = 1.05 }) {
                                 Precio Promedio de Venta:
                             </label>
                             <span className="font-mono font-bold text-slate-900 text-xs">
-                                ${parseFloat(salePrice).toFixed(4)} / lb
+                                <Money value={parseFloat(salePrice)} /> / lb
                             </span>
                         </div>
                         <div className="flex items-center gap-2">
                             <span className="text-slate-400 font-bold text-xs">$</span>
-                            <input
+                            <MoneyInput
                                 type="number"
                                 step="0.01"
                                 min="0.80"
@@ -219,12 +220,12 @@ export default function EggCommissionsSimulator({ defaultPlantCost = 1.05 }) {
                                 Costo Planta (MP + Proceso + Empaque):
                             </label>
                             <span className="font-mono font-bold text-slate-900 text-xs">
-                                ${parseFloat(plantCost).toFixed(4)} / lb
+                                <Money value={parseFloat(plantCost)} /> / lb
                             </span>
                         </div>
                         <div className="flex items-center gap-2">
                             <span className="text-slate-400 font-bold text-xs">$</span>
-                            <input
+                            <MoneyInput
                                 type="number"
                                 step="0.01"
                                 min="0.50"
@@ -243,15 +244,19 @@ export default function EggCommissionsSimulator({ defaultPlantCost = 1.05 }) {
                                 Tarifa de Comisión por Libra:
                             </label>
                             <span className="font-mono font-bold text-emerald-700 text-xs">
-                                {(parseFloat(ratePerLb) * 100).toFixed(2)} ¢ / lb (${parseFloat(ratePerLb).toFixed(4)})
+                                {(parseFloat(ratePerLb) * 100).toFixed(2)} ¢ / lb (<Money value={parseFloat(ratePerLb)} />)
                             </span>
                         </div>
                         <div className="grid grid-cols-3 gap-2">
-                            {[
+                            {(Array.isArray([
                                 { label: '1.0 ¢ / lb', val: 0.0100 },
                                 { label: '1.5 ¢ / lb', val: 0.0150 },
                                 { label: '2.0 ¢ / lb', val: 0.0200 }
-                            ].map((item) => (
+                            ]) ? [
+                                { label: '1.0 ¢ / lb', val: 0.0100 },
+                                { label: '1.5 ¢ / lb', val: 0.0150 },
+                                { label: '2.0 ¢ / lb', val: 0.0200 }
+                            ] : []).map((item) => (
                                 <button
                                     key={item.val}
                                     type="button"
@@ -383,7 +388,7 @@ export default function EggCommissionsSimulator({ defaultPlantCost = 1.05 }) {
                                 <Money value={res.total_cost_amount} />
                             </div>
                             <span className="text-[10px] text-slate-400 block font-medium">
-                                ${(plantCost).toFixed(2)}/lb
+                                <Money value={(plantCost)} />/lb
                             </span>
                         </div>
 
@@ -456,7 +461,7 @@ export default function EggCommissionsSimulator({ defaultPlantCost = 1.05 }) {
                         </p>
                     </div>
                     <span className="text-[11px] font-bold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200 self-start sm:self-auto">
-                        Tarifa actual: ${(ratePerLb * 100).toFixed(2)} ¢ / lb
+                        Tarifa actual: <Money value={(ratePerLb * 100)} /> ¢ / lb
                     </span>
                 </div>
 
@@ -474,7 +479,7 @@ export default function EggCommissionsSimulator({ defaultPlantCost = 1.05 }) {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 font-medium text-slate-800">
-                            {table.map((row, idx) => {
+                            {(Array.isArray(table) ? table : []).map((row, idx) => {
                                 const isCurrent = Math.abs(row.lbs - volumeLbs) < 500;
                                 return (
                                     <tr

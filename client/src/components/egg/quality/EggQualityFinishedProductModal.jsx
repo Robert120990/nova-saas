@@ -1,3 +1,4 @@
+import { getTodayString } from '../../../utils/dateUtils';
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { toast } from 'sonner';
@@ -41,7 +42,7 @@ const EggQualityFinishedProductModal = ({
     const [form, setForm] = useState({
         batch_id: '',
         commercial_lot_code: '',
-        sample_date: new Date().toISOString().split('T')[0],
+        sample_date: getTodayString(new Date()),
         customer_id: '',
         customer_name: '',
         presentation: 'Cubeta 30 Lb',
@@ -89,7 +90,7 @@ const EggQualityFinishedProductModal = ({
                 setForm({
                     batch_id: found.batch_id || bId,
                     commercial_lot_code: found.commercial_lot_code || found.pkg_lot_code || batch?.commercial_lot_code || batch?.batch_code_display || '',
-                    sample_date: found.sample_date ? found.sample_date.split('T')[0] : new Date().toISOString().split('T')[0],
+                    sample_date: found.sample_date ? found.sample_date.split('T')[0] : getTodayString(new Date()),
                     customer_id: found.customer_id || '',
                     customer_name: found.customer_name || '',
                     presentation: found.presentation || batch?.presentation || 'Cubeta 30 Lb',

@@ -1,3 +1,4 @@
+import { MoneyInput } from '../ui/Money';
 import { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
 import { toast } from 'sonner';
@@ -105,7 +106,7 @@ export default function RouteAutoInvoicingModal({
                                 initProd = `${rawBarcode} ${initProd}`.trim();
                             }
 
-                            const isUnitDefault = it.billing_unit === 'units' || 
+                            const isUnitDefault = it.billing_unit === 'units' ||
                                 (it.billing_unit !== 'lbs' && (isCustomerCallejas || (parsedUnits && parsedUnits > 0)));
 
                             return {
@@ -152,7 +153,7 @@ export default function RouteAutoInvoicingModal({
                     initProd = `${rawBarcode} ${initProd}`.trim();
                 }
 
-                const isUnitDefault = stop.billing_unit === 'units' || 
+                const isUnitDefault = stop.billing_unit === 'units' ||
                     (stop.billing_unit !== 'lbs' && (isCustomerCallejas || (parsedStopUnits && parsedStopUnits > 0)));
 
                 items = [{
@@ -237,7 +238,7 @@ export default function RouteAutoInvoicingModal({
         });
 
         if (hasLowStock) {
-            toast.warning(`Existencia insuficiente en lote #${lot.lot_code} (Disponible: ${lot.units_in_stock} cub / ${lotStockLbs.toFixed(1)} Lbs). Se permite continuar.`, { duration: 5000 });
+            return toast.warning(`Existencia insuficiente en lote #${lot.lot_code} (Disponible: ${lot.units_in_stock} cub / ${lotStockLbs.toFixed(1)} Lbs). Seleccione otro lote o ajuste las cantidades antes de facturar.`, { duration: 5000 });
         } else if (olderAvailableLot) {
             toast.info(`Aviso de Rotación: Existe un lote más antiguo disponible (#${olderAvailableLot.lot_code}, ${olderAvailableLot.units_in_stock} cub) para ${lot.product_type}. Se asigna #${lot.lot_code}.`, { duration: 5500 });
         } else {
@@ -588,6 +589,13 @@ export default function RouteAutoInvoicingModal({
             }
         }
 
+        for (const stop of selectedStops) {
+            for (const item of stopsConfig[stop.id].items) {
+                if (!item.is_custom_detail && !item.packaging_id && !item.original_lot_code && !item.lot_code) {
+                    toast.error('Seleccione un lote liberado para cada producto.'); return;
+                }
+            }
+        }
         // 3. Confirmación
         if (!window.confirm(`¿Confirmas la facturación automática y emisión de DTEs para ${selectedStops.length} parada(s) de la ruta ${route.codigo_ruta}?`)) {
             return;
@@ -623,7 +631,8 @@ export default function RouteAutoInvoicingModal({
 
             const res = await axios.post(`/api/egg-industrial/dispatch/routes/${route.id}/auto-invoice`, payload);
             const results = res.data?.results || [];
-            toast.success(res.data?.message || 'Facturación automática completada exitosamente.');
+            if (res.data?.success) toast.success(res.data.message);
+            else toast.warning('Ventas guardadas con emisiones pendientes. Revise los resultados y concilie desde la ruta.');
             setBillingResults(results);
             setShowResultsModal(true);
             if (onInvoiceSuccess) {
@@ -733,7 +742,7 @@ export default function RouteAutoInvoicingModal({
                 </div>
 
                 <div className="space-y-3 max-h-[420px] overflow-y-auto pr-1">
-                    {route?.stops?.map((stop, _idx) => {
+                    {(Array.isArray(route?.stops) ? route?.stops : [])?.map((stop, _idx) => {
                         const cfg = stopsConfig[stop.id] || {};
                         const isBilled = cfg.is_billed;
 
@@ -827,7 +836,7 @@ export default function RouteAutoInvoicingModal({
                                                     onChange={(e) => handleChangeDteType(stop.id, e.target.value)}
                                                     className="text-xs font-bold bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 text-slate-800 outline-none focus:border-indigo-500"
                                                 >
-                                                    {DTE_TYPE_OPTIONS.map(opt => (
+                                                    {(Array.isArray(DTE_TYPE_OPTIONS) ? DTE_TYPE_OPTIONS : []).map(opt => (
                                                         <option key={opt.code} value={opt.code}>{opt.short}</option>
                                                     ))}
                                                 </select>
@@ -894,7 +903,7 @@ export default function RouteAutoInvoicingModal({
 
                                 {/* Desglose de Productos y Lotes */}
                                 <div className="mt-3 pt-2.5 border-t border-slate-100 space-y-1.5">
-                                    {cfg.items?.map((it, itemIdx) => {
+                                    {(Array.isArray(cfg.items) ? cfg.items : [])?.map((it, itemIdx) => {
                                         // 1. Caso: Detalle Libre (sin producto, ni cantidad, ni precio obligatorios)
                                         if (it.is_custom_detail) {
                                             const customQty = parseFloat(it.quantity_lbs || 0);
@@ -963,7 +972,7 @@ export default function RouteAutoInvoicingModal({
                                                                 </div>
                                                                 <div className="flex items-center gap-1">
                                                                     <span className="text-[10px] font-bold text-slate-400">Precio $:</span>
-                                                                    <input
+                                                                    <MoneyInput
                                                                         type="number"
                                                                         min="0"
                                                                         step="0.01"
@@ -1119,8 +1128,8 @@ export default function RouteAutoInvoicingModal({
                                                             )}
                                                         </div>
                                                         <span className={`font-black px-2 py-0.5 rounded-md border inline-block text-xs mt-0.5 ${
-                                                            isBillingByUnits 
-                                                                ? 'text-blue-900 bg-blue-50 border-blue-200 shadow-2xs' 
+                                                            isBillingByUnits
+                                                                ? 'text-blue-900 bg-blue-50 border-blue-200 shadow-2xs'
                                                                 : 'text-slate-500 bg-slate-100 border-slate-200'
                                                         }`}>
                                                             {units} Uds
@@ -1131,7 +1140,7 @@ export default function RouteAutoInvoicingModal({
                                                     <div className="text-center sm:text-left">
                                                         <div className="flex items-center gap-1">
                                                             <span className={`block text-[9px] font-black uppercase ${!isBillingByUnits ? 'text-emerald-700' : 'text-slate-400'}`}>
-                                                                {!isBillingByUnits 
+                                                                {!isBillingByUnits
                                                                     ? (it.is_kg_mode ? 'Cant. DTE (Kg)' : 'Cant. DTE (Lbs)')
                                                                     : (it.is_kg_mode ? 'Peso (Kg)' : 'Peso (Lbs)')
                                                                 }
@@ -1141,8 +1150,8 @@ export default function RouteAutoInvoicingModal({
                                                             )}
                                                         </div>
                                                         <span className={`font-black px-2 py-0.5 rounded-md border inline-block text-xs mt-0.5 ${
-                                                            !isBillingByUnits 
-                                                                ? 'text-emerald-900 bg-emerald-50 border-emerald-200 shadow-2xs' 
+                                                            !isBillingByUnits
+                                                                ? 'text-emerald-900 bg-emerald-50 border-emerald-200 shadow-2xs'
                                                                 : 'text-slate-600 bg-slate-100 border-slate-200'
                                                         }`}>
                                                             {it.is_kg_mode
@@ -1197,8 +1206,8 @@ export default function RouteAutoInvoicingModal({
                                                                     type="button"
                                                                     onClick={() => handleOpenLotPicker(stop.id, itemIdx, it, stop.customer_name)}
                                                                     className={`flex items-center gap-1 text-[10px] px-2 py-1 rounded-lg border transition ${
-                                                                        hasLot 
-                                                                            ? 'text-slate-600 hover:text-indigo-600 bg-white hover:bg-slate-50 border-slate-200 font-bold' 
+                                                                        hasLot
+                                                                            ? 'text-slate-600 hover:text-indigo-600 bg-white hover:bg-slate-50 border-slate-200 font-bold'
                                                                             : 'text-indigo-700 hover:text-indigo-900 bg-indigo-50 hover:bg-indigo-100 border-indigo-200 font-black'
                                                                     }`}
                                                                     title={hasLot ? "Cambiar lote de inventario vinculado" : "Vincular con un lote del inventario para descontar existencias"}
@@ -1368,7 +1377,7 @@ export default function RouteAutoInvoicingModal({
                                     </p>
                                 </div>
                             ) : (
-                                filteredLots.map(lot => {
+                                (Array.isArray(filteredLots) ? filteredLots : []).map(lot => {
                                     const hasStock = lot.has_stock && (lot.units_in_stock > 0 || lot.total_weight_lbs > 0);
 
                                     return (
@@ -1470,7 +1479,7 @@ export default function RouteAutoInvoicingModal({
                         </div>
 
                         <div className="space-y-3">
-                            {billingResults.map((res, idx) => {
+                            {(Array.isArray(billingResults) ? billingResults : []).map((res, idx) => {
                                 const isAceptado = res.dte_status === 'ACEPTADO_HACIENDA';
                                 const isContingencia = res.dte_status === 'CONTINGENCIA';
                                 const isRechazado = res.dte_status === 'RECHAZADO_HACIENDA';
@@ -1559,7 +1568,7 @@ export default function RouteAutoInvoicingModal({
                                                     Observaciones de Hacienda:
                                                 </span>
                                                 {Array.isArray(res.hacienda_details) ? (
-                                                    res.hacienda_details.map((d, dIdx) => (
+                                                    (Array.isArray(res.hacienda_details) ? res.hacienda_details : []).map((d, dIdx) => (
                                                         <div key={dIdx}>• {typeof d === 'object' ? JSON.stringify(d) : String(d)}</div>
                                                     ))
                                                 ) : (

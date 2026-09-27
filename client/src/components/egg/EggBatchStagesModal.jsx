@@ -387,7 +387,7 @@ const EggBatchStagesModal = ({
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-slate-100">
-                                                {tarimasUsedList.map((t, ti) => (
+                                                {(Array.isArray(tarimasUsedList) ? tarimasUsedList : []).map((t, ti) => (
                                                     <tr key={ti} className="hover:bg-slate-50">
                                                         <td className="py-2 font-mono font-bold text-indigo-700">
                                                             #{t.tarima_number || (ti + 1)}
@@ -439,7 +439,7 @@ const EggBatchStagesModal = ({
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-slate-100">
-                                                {remanentesUsedList.map((r, ri) => (
+                                                {(Array.isArray(remanentesUsedList) ? remanentesUsedList : []).map((r, ri) => (
                                                     <tr key={ri} className="hover:bg-slate-50">
                                                         <td className="py-2 font-mono font-bold text-indigo-700">{r.source_batch_code || `Lote #${r.batch_id}`}</td>
                                                         <td className="py-2 text-slate-600">{r.source_batch_date ? formatDate(r.source_batch_date) : '-'}</td>
@@ -493,7 +493,7 @@ const EggBatchStagesModal = ({
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-slate-100">
-                                                {remanentesGeneratedList.map(r => (
+                                                {(Array.isArray(remanentesGeneratedList) ? remanentesGeneratedList : []).map(r => (
                                                     <tr key={r.id} className="hover:bg-slate-50">
                                                         <td className="py-2 font-mono font-bold text-teal-800">{r.remanente_code || `REM-${r.id}`}</td>
                                                         <td className="py-2 capitalize font-medium">{r.product_type}</td>
@@ -569,7 +569,7 @@ const EggBatchStagesModal = ({
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-slate-100">
-                                                {wastesList.map(w => (
+                                                {(Array.isArray(wastesList) ? wastesList : []).map(w => (
                                                     <tr key={w.id} className="hover:bg-slate-50">
                                                         <td className="py-2 capitalize font-semibold text-slate-800">{w.stage}</td>
                                                         <td className="py-2 capitalize text-rose-700 font-bold">{w.waste_type?.replace('_', ' ')}</td>

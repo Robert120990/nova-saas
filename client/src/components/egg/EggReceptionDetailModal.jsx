@@ -256,7 +256,7 @@ const EggReceptionDetailModal = ({
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100 font-semibold text-slate-800">
-                                {parsedTarimas.map((t, idx) => {
+                                {(Array.isArray(parsedTarimas) ? parsedTarimas : []).map((t, idx) => {
                                     const tNum = t.tarima_number || (idx + 1);
                                     const code = `TAR-${(reception.provider_lot || 'LOT').toUpperCase()}-${String(tNum).padStart(2, '0')}`;
                                     return (

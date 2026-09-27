@@ -19,6 +19,12 @@ export const getTodayString = (d = new Date()) => {
     return `${year}-${month}-${day}`;
 };
 
+export const getNowDateTimeLocal = (date = new Date()) => {
+    const value = date instanceof Date ? date : new Date(date);
+    if (isNaN(value.getTime())) return '';
+    return `${getTodayString(value)}T${String(value.getHours()).padStart(2, '0')}:${String(value.getMinutes()).padStart(2, '0')}`;
+};
+
 /**
  * Returns the first day of month formatted as YYYY-MM-01 in LOCAL time.
  * @param {Date|string|number} [d=new Date()]
@@ -48,7 +54,7 @@ export const getLastDayOfMonth = (d = new Date()) => {
 
 /**
  * Formats a date string or Date object to DD/MM/YYYY.
- * @param {Date|string} dateStr 
+ * @param {Date|string} dateStr
  * @returns {string} DD/MM/YYYY
  */
 export const formatDateDMY = (dateStr) => {

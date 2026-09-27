@@ -505,7 +505,7 @@ const EggQualityEvaluationModal = ({
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-slate-200 bg-white">
-                                                {[
+                                                {(Array.isArray([
                                                     { key: 'granja', label: 'GRANJA', placeholder: 'Identificador / Galpón' },
                                                     { key: 'espesor_celda_aire', label: 'ESPESOR CELDA DE AIRE', placeholder: 'Ej: 3 mm' },
                                                     { key: 'ph_huevo_fresco', label: 'PH HUEVO FRESCO', placeholder: 'Ej: 7.6 - 8.2' },
@@ -519,7 +519,21 @@ const EggQualityEvaluationModal = ({
                                                     { key: 'ph_yema', label: 'PH YEMA', placeholder: 'Ej: 6.0 - 6.3' },
                                                     { key: 'solidos_yema', label: 'SOLIDOS DE YEMA', placeholder: 'Ej: 48 - 50 %' },
                                                     { key: 'estado_separacion', label: 'ESTADO DE SEPARACION', placeholder: 'Conforme / Limpio' }
-                                                ].map((param, idx) => (
+                                                ]) ? [
+                                                    { key: 'granja', label: 'GRANJA', placeholder: 'Identificador / Galpón' },
+                                                    { key: 'espesor_celda_aire', label: 'ESPESOR CELDA DE AIRE', placeholder: 'Ej: 3 mm' },
+                                                    { key: 'ph_huevo_fresco', label: 'PH HUEVO FRESCO', placeholder: 'Ej: 7.6 - 8.2' },
+                                                    { key: 'solidos_huevo_fresco', label: 'SOLIDOS HUEVO FRESCO', placeholder: 'Ej: 23.5 - 24.5 %' },
+                                                    { key: 'firmeza_albumina', label: 'FIRMEZA DE ALBUMINA', placeholder: 'Unidades Haugh' },
+                                                    { key: 'ph_albumina', label: 'PH DE ALBUMINA', placeholder: 'Ej: 8.8 - 9.1' },
+                                                    { key: 'solidos_albumina', label: 'SOLIDOS ALBUMINA', placeholder: 'Ej: 11.5 - 12.5 %' },
+                                                    { key: 'firmeza_yema', label: 'FIRMEZA YEMA', placeholder: 'Firme / Regular' },
+                                                    { key: 'forma_yema', label: 'FORMA YEMA', placeholder: 'Índice / Esférica' },
+                                                    { key: 'color_yema', label: 'COLOR YEMA', placeholder: 'Escala Roche (1-15)' },
+                                                    { key: 'ph_yema', label: 'PH YEMA', placeholder: 'Ej: 6.0 - 6.3' },
+                                                    { key: 'solidos_yema', label: 'SOLIDOS DE YEMA', placeholder: 'Ej: 48 - 50 %' },
+                                                    { key: 'estado_separacion', label: 'ESTADO DE SEPARACION', placeholder: 'Conforme / Limpio' }
+                                                ] : []).map((param, idx) => (
                                                     <tr key={param.key} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}>
                                                         <td className="px-4 py-2 font-bold text-slate-800 text-[11px]">
                                                             {param.label}
@@ -585,12 +599,17 @@ const EggQualityEvaluationModal = ({
                                             Análisis Organolépticos • Evaluación de Olor
                                         </h3>
                                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                                            {[
+                                            {(Array.isArray([
                                                 { key: 'olor_normal', label: 'OLOR CARACTERISTICO A HUEVO NORMAL', desc: 'Conforme, sin notas extrañas' },
                                                 { key: 'olor_fuerte', label: 'OLOR CARACTERISTICO A HUEVO FUERTE', desc: 'Alerta por intensidad o edad del huevo' },
                                                 { key: 'olor_descomposicion_prematura', label: 'OLOR EN DESCOMPOSICION PREMATURA', desc: 'No conforme, riesgo biológico' },
                                                 { key: 'olor_descomposicion_avanzada', label: 'OLOR EN DESCOMPOSICION AVANZADA', desc: 'Rechazo inmediato de lote' }
-                                            ].map((item) => (
+                                            ]) ? [
+                                                { key: 'olor_normal', label: 'OLOR CARACTERISTICO A HUEVO NORMAL', desc: 'Conforme, sin notas extrañas' },
+                                                { key: 'olor_fuerte', label: 'OLOR CARACTERISTICO A HUEVO FUERTE', desc: 'Alerta por intensidad o edad del huevo' },
+                                                { key: 'olor_descomposicion_prematura', label: 'OLOR EN DESCOMPOSICION PREMATURA', desc: 'No conforme, riesgo biológico' },
+                                                { key: 'olor_descomposicion_avanzada', label: 'OLOR EN DESCOMPOSICION AVANZADA', desc: 'Rechazo inmediato de lote' }
+                                            ] : []).map((item) => (
                                                 <label
                                                     key={item.key}
                                                     className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
@@ -632,11 +651,15 @@ const EggQualityEvaluationModal = ({
                                             CONSISTENCIA CASCARON
                                         </label>
                                         <div className="grid grid-cols-3 gap-3">
-                                            {[
+                                            {(Array.isArray([
                                                 { val: 'resistente', label: 'RESISTENTE', color: 'emerald' },
                                                 { val: 'poco_resistente', label: 'POCO RESISTENTE', color: 'amber' },
                                                 { val: 'fragil', label: 'FRAGIL', color: 'rose' }
-                                            ].map((c) => {
+                                            ]) ? [
+                                                { val: 'resistente', label: 'RESISTENTE', color: 'emerald' },
+                                                { val: 'poco_resistente', label: 'POCO RESISTENTE', color: 'amber' },
+                                                { val: 'fragil', label: 'FRAGIL', color: 'rose' }
+                                            ] : []).map((c) => {
                                                 const isSel = (qualityModal.organoleptic.consistencia_cascaron || 'resistente') === c.val;
                                                 return (
                                                     <button
@@ -1058,7 +1081,7 @@ const EggQualityEvaluationModal = ({
                                                     </tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-slate-100 text-xs">
-                                                    {(qualityModal.bird_batches || []).map((batch, bIdx) => (
+                                                    {((Array.isArray(qualityModal.bird_batches || []) ? qualityModal.bird_batches || [] : [])).map((batch, bIdx) => (
                                                         <tr key={bIdx} className="hover:bg-slate-50/60 transition-colors">
                                                             <td className="p-2.5 text-center font-mono font-bold text-slate-400 text-[11px]">
                                                                 {bIdx + 1}

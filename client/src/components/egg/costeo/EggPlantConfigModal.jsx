@@ -1,3 +1,4 @@
+import { MoneyInput } from '../../ui/Money';
 import { X } from 'lucide-react';
 
 export default function EggPlantConfigModal({
@@ -38,7 +39,7 @@ export default function EggPlantConfigModal({
                     </div>
                     <div>
                         <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">Precio Diesel ($/Gal)</label>
-                        <input
+                        <MoneyInput
                             type="number"
                             step="0.01"
                             value={data?.boiler_diesel_price_gal || 4.14}
@@ -48,7 +49,7 @@ export default function EggPlantConfigModal({
                     </div>
                     <div>
                         <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">Electricidad ($/Batch)</label>
-                        <input
+                        <MoneyInput
                             type="number"
                             step="1"
                             value={data?.boiler_kwh_cost_batch || 386}
@@ -58,7 +59,7 @@ export default function EggPlantConfigModal({
                     </div>
                     <div>
                         <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">Agua Caldera ($/Batch)</label>
-                        <input
+                        <MoneyInput
                             type="number"
                             step="0.01"
                             value={data?.boiler_water_cost_batch || 17.34}
@@ -68,7 +69,7 @@ export default function EggPlantConfigModal({
                     </div>
                     <div>
                         <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">Mano de Obra MOD ($/Lb)</label>
-                        <input
+                        <MoneyInput
                             type="number"
                             step="0.001"
                             value={data?.mod_cost_per_lb || 0.05}

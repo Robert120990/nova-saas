@@ -56,9 +56,9 @@ const EggNewPackagingModal = ({
                                     else if (firstPres.includes('5LB') || firstPres.toLowerCase().includes('bolsa')) { defaultPres = 'bolsa 5LB'; defaultW = '5.00'; }
                                 }
 
-                                setPackagingForm({ 
-                                    ...packagingForm, 
-                                    batch_id: bid, 
+                                setPackagingForm({
+                                    ...packagingForm,
+                                    batch_id: bid,
                                     product_type: pType,
                                     items: [
                                         { presentation: defaultPres, units_packaged: '', weight_per_unit_lbs: defaultW }
@@ -68,10 +68,13 @@ const EggNewPackagingModal = ({
                             className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                         >
                             <option value="">Seleccione Lote Disponible...</option>
-                            {batches.filter(b => {
+                            {(Array.isArray(batches.filter(b => {
                                 const allowed = ['pasteurizado', 'aprobado_calidad', 'empaquetado', 'bloqueado_haccp'];
                                 return allowed.includes(b.status);
-                            }).map(b => {
+                            })) ? batches.filter(b => {
+                                const allowed = ['pasteurizado', 'aprobado_calidad', 'empaquetado', 'bloqueado_haccp'];
+                                return allowed.includes(b.status);
+                            }) : []).map(b => {
                                 const packaged = parseFloat(b.packaged_weight_lbs || 0);
                                 const disp = Math.max(0, parseFloat(b.yield_liquid_lbs || 0) - packaged);
                                 const isClosed = b.packaging_status === 'cerrado';
@@ -209,7 +212,7 @@ const EggNewPackagingModal = ({
                             </span>
                         </div>
 
-                        {packagingForm.items.map((it, idx) => {
+                        {(Array.isArray(packagingForm.items) ? packagingForm.items : []).map((it, idx) => {
                             const itemTotal = ((parseFloat(it.units_packaged) || 0) * (parseFloat(it.weight_per_unit_lbs) || 0));
                             return (
                                 <div key={idx} className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs space-y-2">

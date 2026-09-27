@@ -41,7 +41,7 @@ const EggFreezerModal = ({
                                 className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                             >
                                 <option value="">Seleccione Lote Envasado...</option>
-                                {packagingRecords.map(p => (
+                                {(Array.isArray(packagingRecords) ? packagingRecords : []).map(p => (
                                     <option key={p.id} value={p.id}>
                                         {p.lot_code} - {p.product_type} ({p.units_packaged} Uds)
                                     </option>
@@ -126,7 +126,7 @@ const EggFreezerModal = ({
                     <div className="space-y-3 overflow-y-auto max-h-[500px] pr-1">
                         {freezerLogs.length === 0 ? (
                             <p className="text-xs text-slate-500 text-center py-6">No hay registros de túnel registrados.</p>
-                        ) : freezerLogs.map(log => (
+                        ) : (Array.isArray(freezerLogs) ? freezerLogs : []).map(log => (
                             <div key={log.id} className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col md:flex-row justify-between gap-4">
                                 <div className="space-y-1.5">
                                     <div className="flex items-center gap-2">
@@ -138,7 +138,7 @@ const EggFreezerModal = ({
                                         <span>Ingreso: <b className="text-slate-700">{formatDateTime(log.created_at)}</b></span>
                                     </div>
                                 </div>
-                                
+
                                 <div className="flex md:flex-col justify-between items-end text-right">
                                     <div className="flex items-center gap-1.5">
                                         <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${getFreezerStatusBadge ? getFreezerStatusBadge(log.status) : ''}`}>

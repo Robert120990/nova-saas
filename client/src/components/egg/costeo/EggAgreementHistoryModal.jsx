@@ -1,3 +1,5 @@
+import { formatDate } from '../../../utils/dateUtils';
+import { formatDateTime } from '../../../utils/dateUtils';
 import { X, Clock, RefreshCcw, FileText } from 'lucide-react';
 import Money from '../../ui/Money';
 
@@ -47,7 +49,7 @@ export default function EggAgreementHistoryModal({
                     </div>
                 ) : (
                     <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
-                        {history.map((item, index) => (
+                        {(Array.isArray(history) ? history : []).map((item, index) => (
                             <div key={item.id || index} className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2 relative">
                                 <div className="flex items-center justify-between gap-2">
                                     <div className="flex items-center gap-2">
@@ -61,7 +63,7 @@ export default function EggAgreementHistoryModal({
                                         )}
                                     </div>
                                     <span className="text-[10px] font-mono text-slate-500 bg-white px-2 py-0.5 rounded border border-slate-200">
-                                        {new Date(item.created_at).toLocaleString()}
+                                        {formatDateTime(item.created_at)}
                                     </span>
                                 </div>
 
@@ -69,9 +71,9 @@ export default function EggAgreementHistoryModal({
                                     <div>
                                         <span className="font-bold text-slate-500">Vigencia: </span>
                                         <span className="font-mono">
-                                            {item.valid_from ? new Date(item.valid_from).toLocaleDateString() : 'Sin inicio'}
+                                            {item.valid_from ? formatDate(item.valid_from) : 'Sin inicio'}
                                             {' → '}
-                                            {item.valid_to ? new Date(item.valid_to).toLocaleDateString() : 'Permanente'}
+                                            {item.valid_to ? formatDate(item.valid_to) : 'Permanente'}
                                         </span>
                                     </div>
                                     <div>

@@ -1,3 +1,5 @@
+import { formatDateTime } from '../../../utils/dateUtils';
+import { formatDate } from '../../../utils/dateUtils';
 import { History, RefreshCcw, Factory, Clock } from 'lucide-react';
 import Money from '../../ui/Money';
 
@@ -108,7 +110,7 @@ export default function EggCosteoHistoryTab({
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-slate-100 font-semibold text-slate-800">
-                                            {costingHistoryList.map((row, idx) => {
+                                            {(Array.isArray(costingHistoryList) ? costingHistoryList : []).map((row, idx) => {
                                                 const yieldPct = row.total_input_lbs > 0
                                                     ? ((row.total_yield_lbs / row.total_input_lbs) * 100).toFixed(1)
                                                     : '0.0';
@@ -153,12 +155,12 @@ export default function EggCosteoHistoryTab({
                     {/* SUB-VISTA 2: ESCENARIOS GUARDADOS */}
                     {historySubTab === 'scenarios' && (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                            {scenarios.map((scen) => (
+                            {(Array.isArray(scenarios) ? scenarios : []).map((scen) => (
                                 <div key={scen.id} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
                                     <div className="flex items-start justify-between gap-2">
                                         <h4 className="text-sm font-bold text-slate-900">{scen.scenario_name}</h4>
                                         <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md font-semibold shrink-0">
-                                            {new Date(scen.created_at).toLocaleDateString()}
+                                            {formatDate(scen.created_at)}
                                         </span>
                                     </div>
                                     <div className="text-xs text-slate-600 space-y-1">
@@ -228,10 +230,10 @@ export default function EggCosteoHistoryTab({
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-slate-100 font-semibold text-slate-800">
-                                            {globalAgreementHistory.map((h) => (
+                                            {(Array.isArray(globalAgreementHistory) ? globalAgreementHistory : []).map((h) => (
                                                 <tr key={h.id} className="hover:bg-slate-50/80 transition-colors">
                                                     <td className="py-3 px-4 font-mono text-slate-600">
-                                                        {new Date(h.created_at).toLocaleString()}
+                                                        {formatDateTime(h.created_at)}
                                                     </td>
                                                     <td className="py-3 px-3 font-bold text-slate-900">
                                                         {h.customer_name}
@@ -247,9 +249,9 @@ export default function EggCosteoHistoryTab({
                                                         <Money value={h.agreed_price_per_lb} />
                                                     </td>
                                                     <td className="py-3 px-3 text-slate-600 font-mono text-[11px]">
-                                                        {h.valid_from ? new Date(h.valid_from).toLocaleDateString() : 'Sin inicio'}
+                                                        {h.valid_from ? formatDate(h.valid_from) : 'Sin inicio'}
                                                         {' → '}
-                                                        {h.valid_to ? new Date(h.valid_to).toLocaleDateString() : 'Permanente'}
+                                                        {h.valid_to ? formatDate(h.valid_to) : 'Permanente'}
                                                     </td>
                                                     <td className="py-3 px-3 text-slate-700 italic max-w-xs truncate" title={h.change_reason}>
                                                         {h.change_reason || 'Sin motivo especificado'}
