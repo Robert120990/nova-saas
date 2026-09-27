@@ -14,6 +14,17 @@ const completeProductionBatch = async (req, res) => {
 
         // Cambiar estado a aprobado_calidad o mantener bloqueado_haccp, empaquetado o congelado
         let nextStatus = batch.status;
+        if (nextStatus === 'en_proceso') {
+            const [lab] = await connection.query(
+                'SELECT release_status FROM egg_lab_micro_logs WHERE batch_id = ? AND company_id = ? ORDER BY id DESC LIMIT 1',
+                [id, req.company_id]
+            );
+            if (lab.length && lab[0].release_status === 'liberado') {
+                nextStatus = 'aprobado_calidad';
+            } else if (batch.pasteurization_status === 'cerrado' || batch.pasteurization_status === 'pasteurizado') {
+                nextStatus = 'pasteurizado';
+            }
+        }
         const values = [yield_liquid_lbs, waste_shell_lbs, waste_loss_lbs].map(v => eggRules.number(v, 'Peso'));
         if (values[0] <= 0) eggRules.fail('El rendimiento debe ser mayor a cero.');
         if (batch.completed_at) {
@@ -131,7 +142,7 @@ const createPasteurizationLog = async (req, res) => {
     } catch (error) {
         await connection.rollback();
         res.status(error.status || 500).json({ message: error.message });
-    } finally { await connection.rollback(); connection.release(); }
+    } finally { connection.release(); }
 };
 
 const closePasteurization = async (req, res) => {
@@ -166,15 +177,54 @@ const closePasteurization = async (req, res) => {
         if (!logs.length) eggRules.fail('Registre una pasteurización conforme antes de cerrar.');
         const resolvedPastLot = (pasteurization_lot || batch.pasteurization_lot || 'PAST-' + batch.id).trim();
 
+        // Auto-cálculo y registro de merma de cáscara (13% fijo) y saldo líquido estimado (87%)
+        const inputWeight = Number(batch.input_weight_lbs || 0);
+        let autoShell = null;
+        let autoYield = null;
+
+        if (inputWeight > 0) {
+            const customShell = (req.body.waste_shell_lbs !== undefined && req.body.waste_shell_lbs !== null && req.body.waste_shell_lbs !== '')
+                ? Number(req.body.waste_shell_lbs) : null;
+            const customYield = (req.body.yield_liquid_lbs !== undefined && req.body.yield_liquid_lbs !== null && req.body.yield_liquid_lbs !== '')
+                ? Number(req.body.yield_liquid_lbs) : null;
+
+            autoShell = customShell !== null
+                ? customShell
+                : (batch.waste_shell_lbs !== null && Number(batch.waste_shell_lbs) > 0
+                    ? Number(batch.waste_shell_lbs)
+                    : Math.round(inputWeight * 0.13 * 100) / 100);
+
+            autoYield = customYield !== null
+                ? customYield
+                : (batch.yield_liquid_lbs !== null && Number(batch.yield_liquid_lbs) > 0
+                    ? Number(batch.yield_liquid_lbs)
+                    : Math.round((inputWeight - autoShell) * 100) / 100);
+
+            // Registrar en egg_batch_waste_logs si aún no se ha registrado la merma de cáscara para este lote
+            const [existingWaste] = await connection.query(
+                'SELECT id FROM egg_batch_waste_logs WHERE batch_id = ? AND company_id = ? AND stage = "quebraje" AND waste_type = "cascaron" LIMIT 1',
+                [id, company_id]
+            );
+            if (!existingWaste.length && autoShell > 0) {
+                await connection.query(
+                    `INSERT INTO egg_batch_waste_logs (company_id, batch_id, stage, waste_type, quantity_lbs, reason, operator_name)
+                     VALUES (?, ?, 'quebraje', 'cascaron', ?, 'Merma automática de cáscara (13% fijo tras pasteurización)', ?)`,
+                    [company_id, id, autoShell, operator_name]
+                );
+            }
+        }
+
         await connection.query(
             `UPDATE egg_production_batches
              SET pasteurization_status = 'cerrado',
                  pasteurization_lot = ?,
                  status = CASE WHEN status = 'en_proceso' THEN 'pasteurizado' ELSE status END,
+                 waste_shell_lbs = COALESCE(waste_shell_lbs, ?),
+                 yield_liquid_lbs = COALESCE(yield_liquid_lbs, ?),
                  pasteurization_closed_at = NOW(),
                  pasteurization_closed_by = ?
              WHERE id = ? AND company_id = ?`,
-            [resolvedPastLot, operator_name, id, company_id]
+            [resolvedPastLot, autoShell, autoYield, operator_name, id, company_id]
         );
 
         await connection.query(
@@ -189,8 +239,8 @@ const closePasteurization = async (req, res) => {
              VALUES (?, 'pasteurization.closed', 'info', ?, ?, ?)`,
             [
                 company_id,
-                `Pasteurización del lote #${id} (${batch.batch_code_display || batch.batch_uuid}) cerrada con lote pasteurizado: ${resolvedPastLot}.`,
-                JSON.stringify({ batch_id: parseInt(id), pasteurization_lot: resolvedPastLot, notes }),
+                `Pasteurización del lote #${id} (${batch.batch_code_display || batch.batch_uuid}) cerrada con lote pasteurizado: ${resolvedPastLot}. Cáscara 13%: ${autoShell || 0} Lbs, Líquido: ${autoYield || 0} Lbs.`,
+                JSON.stringify({ batch_id: parseInt(id), pasteurization_lot: resolvedPastLot, waste_shell_lbs: autoShell, yield_liquid_lbs: autoYield, notes }),
                 operator_name
             ]
         );
@@ -198,9 +248,11 @@ const closePasteurization = async (req, res) => {
         await connection.commit();
         res.json({
             success: true,
-            message: `Pasteurización cerrada exitosamente con lote: ${resolvedPastLot}.`,
+            message: `Pasteurización cerrada exitosamente con lote: ${resolvedPastLot}. Merma cáscara (13%): ${autoShell || 0} Lbs, Rendimiento líquido: ${autoYield || 0} Lbs.`,
             pasteurization_lot: resolvedPastLot,
-            pasteurization_status: 'cerrado'
+            pasteurization_status: 'cerrado',
+            waste_shell_lbs: autoShell,
+            yield_liquid_lbs: autoYield
         });
     } catch (error) {
         await connection.rollback();

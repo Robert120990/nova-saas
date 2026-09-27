@@ -29,10 +29,15 @@ const createLabLog = async (req, res) => {
         const fungiVal = parseNumSafe(fungi_yeasts_cfu ?? hongos_levaduras);
         const phVal = parseNumSafe(ph);
         const brixVal = parseNumSafe(brix);
-        const solidsVal = parseNumSafe(solids_percentage ?? solidos_totales_pct);
+        let solidsVal = parseNumSafe(solids_percentage ?? solidos_totales_pct);
         const tempVal = parseNumSafe(temperature_c);
-        const salVal = parseNumSafe(salinity_pct);
-        const densVal = parseNumSafe(density);
+        let salVal = parseNumSafe(salinity_pct);
+        let densVal = parseNumSafe(density);
+
+        if (brixVal !== null) {
+            if (solidsVal === null) solidsVal = Math.round(brixVal * 1.017 * 10) / 10;
+            if (densVal === null) densVal = 0.130;
+        }
 
         const salmonella = String(salmonella_25g ?? salmonella_spp ?? '').toLowerCase();
         const staph = String(staph_aureus ?? '').toLowerCase();
@@ -40,7 +45,12 @@ const createLabLog = async (req, res) => {
         const staphStr = ['negativo', 'positivo', 'ausencia', 'presencia'].includes(staph) ? staph : null;
 
         const batch = await owned(connection, 'egg_production_batches', batch_id, company_id, true);
-        const evaluation = evaluateLab(req.body);
+        const evaluation = evaluateLab({
+            ...req.body,
+            solids_percentage: solidsVal,
+            density: densVal,
+            salinity_pct: salVal
+        });
         const evaluatedMb = evaluation.mb;
         const evaluatedFq = evaluation.fq;
         let evaluatedRelease = evaluation.release;
@@ -133,10 +143,15 @@ const updateLabLog = async (req, res) => {
         const fungiVal = parseNumSafe(fungi_yeasts_cfu ?? hongos_levaduras);
         const phVal = parseNumSafe(ph);
         const brixVal = parseNumSafe(brix);
-        const solidsVal = parseNumSafe(solids_percentage ?? solidos_totales_pct);
+        let solidsVal = parseNumSafe(solids_percentage ?? solidos_totales_pct);
         const tempVal = parseNumSafe(temperature_c);
-        const salVal = parseNumSafe(salinity_pct);
-        const densVal = parseNumSafe(density);
+        let salVal = parseNumSafe(salinity_pct);
+        let densVal = parseNumSafe(density);
+
+        if (brixVal !== null) {
+            if (solidsVal === null) solidsVal = Math.round(brixVal * 1.017 * 10) / 10;
+            if (densVal === null) densVal = 0.130;
+        }
 
         const salmonella = String(salmonella_25g ?? salmonella_spp ?? '').toLowerCase();
         const staph = String(staph_aureus ?? '').toLowerCase();
@@ -146,7 +161,12 @@ const updateLabLog = async (req, res) => {
         const [current] = await connection.query('SELECT batch_id FROM egg_lab_micro_logs WHERE id = ? AND company_id = ? FOR UPDATE', [id, company_id]);
         if (!current.length || Number(current[0].batch_id) !== Number(batch_id)) fail('Análisis inexistente o lote diferente.', 404);
         const batch = await owned(connection, 'egg_production_batches', batch_id, company_id, true);
-        const evaluation = evaluateLab(req.body);
+        const evaluation = evaluateLab({
+            ...req.body,
+            solids_percentage: solidsVal,
+            density: densVal,
+            salinity_pct: salVal
+        });
         const evaluatedMb = evaluation.mb;
         const evaluatedFq = evaluation.fq;
         let evaluatedRelease = evaluation.release;

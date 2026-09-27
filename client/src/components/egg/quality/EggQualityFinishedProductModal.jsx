@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { toast } from 'sonner';
 import {
-    FlaskConical, CheckCircle2, Calendar, User, Save, FileText, X, FileSpreadsheet, FileDown, Loader2, Building2
+    FlaskConical, CheckCircle2, Calendar, User, Save, FileText, X, FileSpreadsheet, FileDown, Loader2, Building2, Sparkles
 } from 'lucide-react';
 
 const PRODUCT_STANDARDS = {
@@ -15,7 +15,7 @@ const PRODUCT_STANDARDS = {
     hf: { name: 'Huevo Formulado (HF)', ph: [6.7, 7.7], sol: [22.0, 23.0], temp: [2.0, 4.0], hasSal: false }
 };
 
-const resolveStandard = (productName = '') => {
+export const resolveStandard = (productName = '') => {
     const p = String(productName).toLowerCase();
     if (p.includes('denny') || p.includes('wrd')) return PRODUCT_STANDARDS.wrd;
     if (p.includes('leche') || p.includes('w/l')) return PRODUCT_STANDARDS.wl;
@@ -23,6 +23,42 @@ const resolveStandard = (productName = '') => {
     if (p.includes('yema')) return PRODUCT_STANDARDS.ya;
     if (p.includes('form') || p.includes('hf')) return PRODUCT_STANDARDS.hf;
     return PRODUCT_STANDARDS.we;
+};
+
+export const calculateTheoreticalFQ = (brixValue, tempValue = 3.5, productName = '') => {
+    const bx = parseFloat(brixValue);
+    if (isNaN(bx) || bx <= 0) return null;
+    const std = resolveStandard(productName);
+    const p = String(productName).toLowerCase();
+
+    let factor = 1.017;
+    if (p.includes('clara')) factor = 1.010;
+    else if (p.includes('yema')) factor = 1.025;
+    else if (p.includes('denny') || p.includes('wrd') || p.includes('leche') || p.includes('w/l') || p.includes('form') || p.includes('hf')) factor = 1.015;
+
+    const t = parseFloat(tempValue) || 3.5;
+    const tempCorr = (t - 20) * 0.0007;
+    const theoreticalSolids = Math.round(((bx * factor) + tempCorr) * 10) / 10;
+
+    let theoreticalDensity = '0.130';
+    if (std.dens) {
+        theoreticalDensity = ((std.dens[0] + std.dens[1]) / 2).toFixed(3);
+    } else if (p.includes('clara')) {
+        theoreticalDensity = '0.350';
+    } else if (p.includes('yema')) {
+        theoreticalDensity = '0.110';
+    }
+
+    let theoreticalSalinity = '';
+    if (std.hasSal && std.sal) {
+        theoreticalSalinity = ((std.sal[0] + std.sal[1]) / 2).toFixed(2);
+    }
+
+    return {
+        solids_percentage: String(theoreticalSolids),
+        density: theoreticalDensity,
+        salinity_pct: theoreticalSalinity
+    };
 };
 
 const EggQualityFinishedProductModal = ({
@@ -224,6 +260,22 @@ const EggQualityFinishedProductModal = ({
         }
     };
 
+    const handleAutoCalculateFQ = (customBrix = null) => {
+        const brixVal = customBrix !== null ? customBrix : form.brix;
+        const computed = calculateTheoreticalFQ(brixVal, form.temperature_c, batch?.product_type || form.presentation);
+        if (!computed) {
+            toast.warning('Ingrese un valor numérico válido de °Brix para auto-calcular FQ.');
+            return;
+        }
+        setForm(prev => ({
+            ...prev,
+            solids_percentage: computed.solids_percentage,
+            density: computed.density,
+            salinity_pct: computed.salinity_pct || prev.salinity_pct
+        }));
+        toast.success(`Parámetros FQ calculados: Sólidos ${computed.solids_percentage}%, Densidad ${computed.density} g/ml${computed.salinity_pct ? `, Salinidad ${computed.salinity_pct}%` : ''}`);
+    };
+
     const isPhInSpec = standard.ph ? (parseFloat(form.ph) >= standard.ph[0] && parseFloat(form.ph) <= standard.ph[1]) : true;
     const isSolInSpec = standard.sol ? (parseFloat(form.solids_percentage) >= standard.sol[0] && parseFloat(form.solids_percentage) <= standard.sol[1]) : true;
     const isTempInSpec = standard.temp ? (parseFloat(form.temperature_c) >= standard.temp[0] && parseFloat(form.temperature_c) <= standard.temp[1]) : true;
@@ -283,9 +335,20 @@ const EggQualityFinishedProductModal = ({
                     {/* TAB 1: FÍSICO-QUÍMICO */}
                     {activeTab === 'fq' && (
                         <div className="space-y-4">
-                            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-600 flex items-center justify-between">
+                            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-600 flex items-center justify-between flex-wrap gap-2">
                                 <span>Medición inmediata en planta (pH-metro, Refractómetro, Termómetro).</span>
-                                <span className="font-semibold text-slate-800">Norma: {standard.name}</span>
+                                <div className="flex items-center gap-2">
+                                    <span className="font-semibold text-slate-800">Norma: {standard.name}</span>
+                                    <button
+                                        type="button"
+                                        onClick={() => handleAutoCalculateFQ()}
+                                        className="px-2.5 py-1 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
+                                        title="Calcular automáticamente Sólidos Totales, Densidad y Salinidad desde Grados Brix"
+                                    >
+                                        <Sparkles size={13} />
+                                        <span>Auto-calcular FQ</span>
+                                    </button>
+                                </div>
                             </div>
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -323,14 +386,37 @@ const EggQualityFinishedProductModal = ({
                                 </div>
 
                                 <div>
-                                    <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1">Grados Brix (°Bx)</label>
+                                    <div className="flex items-center justify-between mb-1">
+                                        <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide">Grados Brix (°Bx)</label>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleAutoCalculateFQ()}
+                                            className="text-[10px] text-teal-600 hover:text-teal-800 font-bold underline cursor-pointer flex items-center gap-0.5"
+                                            title="Auto-calcular parámetros FQ a partir de este valor de °Bx"
+                                        >
+                                            <Sparkles size={10} />
+                                            <span>Auto-calcular</span>
+                                        </button>
+                                    </div>
                                     <input
                                         type="number" step="0.1"
                                         value={form.brix}
-                                        onChange={e => setForm({ ...form, brix: e.target.value })}
+                                        onChange={e => {
+                                            const newBrix = e.target.value;
+                                            setForm(prev => {
+                                                const updated = { ...prev, brix: newBrix };
+                                                const computed = calculateTheoreticalFQ(newBrix, prev.temperature_c, batch?.product_type || prev.presentation);
+                                                if (computed) {
+                                                    updated.solids_percentage = computed.solids_percentage;
+                                                    updated.density = computed.density;
+                                                    if (computed.salinity_pct) updated.salinity_pct = computed.salinity_pct;
+                                                }
+                                                return updated;
+                                            });
+                                        }}
                                         className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-medium text-slate-800"
                                     />
-                                    <span className="text-[10px] text-slate-400 mt-1 block">Lectura refractométrica directa</span>
+                                    <span className="text-[10px] text-slate-400 mt-1 block">Lectura directa (deriva Sólidos, Densidad y Salinidad)</span>
                                 </div>
 
                                 <div>

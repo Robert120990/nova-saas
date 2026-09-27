@@ -8,10 +8,18 @@ const EggClosePasteurizationModal = ({
     onPasteurizationLotChange,
     notes,
     onNotesChange,
+    wasteShellLbs,
+    onWasteShellLbsChange,
+    yieldLiquidLbs,
+    onYieldLiquidLbsChange,
     onSubmit,
     isSubmitting
 }) => {
     if (!isOpen || !batch) return null;
+
+    const inputLbs = parseFloat(batch.input_weight_lbs || 0);
+    const autoShellLbs = inputLbs > 0 ? (inputLbs * 0.13).toFixed(2) : '0.00';
+    const autoYieldLbs = inputLbs > 0 ? (inputLbs * 0.87).toFixed(2) : '0.00';
 
     return (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
@@ -44,6 +52,31 @@ const EggClosePasteurizationModal = ({
                     </div>
                     <p className="text-[11px] text-amber-800">
                         Al cerrar la pasteurización, se fijará el lote térmico oficial y se impedirá añadir más tarimas o modificar temperaturas/retención sin permiso especial de administración.
+                    </p>
+                </div>
+
+                {/* Desglose de Masa Automático: Merma de Cáscara 13% y Líquido 87% */}
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2">
+                    <div className="flex items-center justify-between text-xs">
+                        <span className="font-bold text-slate-700">Entrada del Lote:</span>
+                        <span className="font-black text-slate-900 font-mono">{inputLbs.toLocaleString()} Lbs</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-200">
+                        <div className="p-2 bg-amber-50/80 border border-amber-200 rounded-lg">
+                            <span className="text-[10px] font-bold text-amber-800 uppercase block">Cáscara (13% fijo)</span>
+                            <span className="text-xs font-black text-amber-900 font-mono">
+                                {wasteShellLbs ? parseFloat(wasteShellLbs).toLocaleString() : autoShellLbs} Lbs
+                            </span>
+                        </div>
+                        <div className="p-2 bg-teal-50/80 border border-teal-200 rounded-lg">
+                            <span className="text-[10px] font-bold text-teal-800 uppercase block">Líquido Estimado (87%)</span>
+                            <span className="text-xs font-black text-teal-900 font-mono">
+                                {yieldLiquidLbs ? parseFloat(yieldLiquidLbs).toLocaleString() : autoYieldLbs} Lbs
+                            </span>
+                        </div>
+                    </div>
+                    <p className="text-[10px] text-slate-500 italic">
+                        ℹ️ El sistema registrará automáticamente la merma de cáscara del 13% en el balance de masas y en la bitácora de mermas.
                     </p>
                 </div>
 

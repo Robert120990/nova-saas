@@ -76,6 +76,10 @@ export default function EggProduction() {
                 batch={closePasteurizationModal.batch}
                 pasteurizationLot={closePasteurizationModal.pasteurization_lot}
                 onPasteurizationLotChange={(val) => setClosePasteurizationModal(prev => ({ ...prev, pasteurization_lot: val }))}
+                wasteShellLbs={closePasteurizationModal.waste_shell_lbs}
+                onWasteShellLbsChange={(val) => setClosePasteurizationModal(prev => ({ ...prev, waste_shell_lbs: val }))}
+                yieldLiquidLbs={closePasteurizationModal.yield_liquid_lbs}
+                onYieldLiquidLbsChange={(val) => setClosePasteurizationModal(prev => ({ ...prev, yield_liquid_lbs: val }))}
                 notes={closePasteurizationModal.notes}
                 onNotesChange={(val) => setClosePasteurizationModal(prev => ({ ...prev, notes: val }))}
                 onSubmit={handleConfirmClosePasteurization}

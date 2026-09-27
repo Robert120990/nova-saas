@@ -170,10 +170,20 @@ export default function useProductionModel() {
 
     const handleOpenClosePasteurization = (batch) => {
         if (!batch) return;
+        const inputLbs = parseFloat(batch.input_weight_lbs || 0);
+        const defaultShell = batch.waste_shell_lbs && parseFloat(batch.waste_shell_lbs) > 0
+            ? String(batch.waste_shell_lbs)
+            : (inputLbs > 0 ? (inputLbs * 0.13).toFixed(2) : '');
+        const defaultYield = batch.yield_liquid_lbs && parseFloat(batch.yield_liquid_lbs) > 0
+            ? String(batch.yield_liquid_lbs)
+            : (inputLbs > 0 ? (inputLbs * 0.87).toFixed(2) : '');
+
         setClosePasteurizationModal({
             isOpen: true,
             batch,
             pasteurization_lot: batch.pasteurization_lot || (batch.batch_code_display ? `PAST-${batch.batch_code_display}` : `PAST-${batch.id}`),
+            waste_shell_lbs: defaultShell,
+            yield_liquid_lbs: defaultYield,
             notes: '',
             isSubmitting: false
         });
@@ -181,7 +191,7 @@ export default function useProductionModel() {
 
     const handleConfirmClosePasteurization = async (e) => {
         if (e && e.preventDefault) e.preventDefault();
-        const { batch, pasteurization_lot, notes } = closePasteurizationModal;
+        const { batch, pasteurization_lot, notes, waste_shell_lbs, yield_liquid_lbs } = closePasteurizationModal;
         if (!batch) return;
         if (!pasteurization_lot?.trim()) {
             return toast.error('Debe ingresar un identificador o lote de pasteurización.');
@@ -191,6 +201,8 @@ export default function useProductionModel() {
         try {
             const res = await axios.post(`/api/egg-industrial/batches/${batch.id}/close-pasteurization`, {
                 pasteurization_lot: pasteurization_lot.trim(),
+                waste_shell_lbs: waste_shell_lbs || undefined,
+                yield_liquid_lbs: yield_liquid_lbs || undefined,
                 notes: notes?.trim() || null
             });
             toast.success(res.data?.message || 'Pasteurización cerrada exitosamente.');
@@ -255,9 +267,9 @@ export default function useProductionModel() {
             });
         } else {
             const cfg = productConfig.find(c => c.product_type === batch.product_type) || {};
-            const yieldPct = parseFloat(cfg.yield_pct || 85) / 100;
-            const shellPct = parseFloat(cfg.waste_shell_pct || 12) / 100;
-            const lossPct = parseFloat(cfg.waste_loss_pct || 3) / 100;
+            const yieldPct = parseFloat(cfg.yield_pct || 87) / 100;
+            const shellPct = parseFloat(cfg.waste_shell_pct || 13) / 100;
+            const lossPct = parseFloat(cfg.waste_loss_pct || 0) / 100;
             const inputLbs = parseFloat(batch.input_weight_lbs || 0);
             setCompleteForm({
                 yield_liquid_lbs: inputLbs > 0 ? (inputLbs * yieldPct).toFixed(2) : '',
