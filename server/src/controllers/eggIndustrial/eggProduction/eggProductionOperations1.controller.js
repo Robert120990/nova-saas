@@ -1,0 +1,215 @@
+const { pool, ensureEggSchema } = require('./shared');
+
+const getCipLogs = async (req, res) => {
+    try {
+        const [rows] = await pool.query(
+            `SELECT c.*,
+                    b.batch_code_display,
+                    b.batch_uuid,
+                    b.product_type as batch_product
+             FROM egg_cip_logs c
+             LEFT JOIN egg_production_batches b ON c.batch_id = b.id
+             WHERE c.company_id = ?
+             ORDER BY c.created_at DESC`,
+            [req.company_id]
+        );
+        res.json(rows);
+    } catch (error) {
+        res.status(error.status || 500).json({ message: error.message });
+    }
+};
+
+const createCipLog = async (req, res) => {
+    try {
+        const {
+            equipment_name,
+            chemical_used,
+            temperature_c,
+            duration_minutes,
+            operator_name,
+            validation_status,
+            notes,
+            cleaned_at,
+            created_at,
+            batch_id
+        } = req.body;
+
+        const customDate = cleaned_at || created_at || null;
+        const targetBatchId = batch_id ? parseInt(batch_id, 10) : null;
+
+        const [result] = await pool.query(
+            `INSERT INTO egg_cip_logs (
+                company_id,
+                equipment_name,
+                chemical_used,
+                temperature_c,
+                duration_minutes,
+                operator_name,
+                batch_id,
+                validation_status,
+                notes,
+                created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, NOW()))`,
+            [
+                req.company_id,
+                equipment_name,
+                chemical_used,
+                temperature_c,
+                duration_minutes,
+                operator_name || req.user?.nombre || 'Operador',
+                targetBatchId,
+                validation_status || 'completado',
+                notes,
+                customDate
+            ]
+        );
+
+        // Crear evento
+        await pool.query(
+            `INSERT INTO egg_industrial_events (company_id, event_type, severity, description, payload, operator_name)
+             VALUES (?, 'cip.completed', ?, ?, ?, ?)`,
+            [
+                req.company_id,
+                validation_status === 'completado' ? 'info' : 'warning',
+                `Sanitización CIP en equipo ${equipment_name} registrada con estado: ${validation_status || 'completado'}${targetBatchId ? ` (Vinculado a lote #${targetBatchId})` : ''}.`,
+                JSON.stringify({ cip_id: result.insertId, equipment_name, batch_id: targetBatchId }),
+                operator_name || req.user?.nombre || 'Operador'
+            ]
+        );
+
+        res.status(201).json({ id: result.insertId, ...req.body, created_at: customDate || new Date().toISOString() });
+    } catch (error) {
+        res.status(error.status || 500).json({ message: error.message });
+    }
+};
+
+const deleteCipLog = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const company_id = req.company_id;
+
+        const [existing] = await pool.query(
+            'SELECT * FROM egg_cip_logs WHERE id = ? AND company_id = ?',
+            [id, company_id]
+        );
+        if (existing.length === 0) {
+            return res.status(404).json({ message: 'Registro de sanitización CIP no encontrado.' });
+        }
+
+        await pool.query('DELETE FROM egg_cip_logs WHERE id = ? AND company_id = ?', [id, company_id]);
+
+        await pool.query(
+            `INSERT INTO egg_industrial_events (company_id, event_type, severity, description, payload, operator_name)
+             VALUES (?, 'cip.deleted', 'warning', ?, ?, ?)`,
+            [
+                company_id,
+                `Registro de sanitización CIP #${id} (${existing[0].equipment_name}) eliminado por ${req.user?.nombre || 'Operador'}.`,
+                JSON.stringify({ cip_id: parseInt(id), equipment_name: existing[0].equipment_name }),
+                req.user?.nombre || 'Operador'
+            ]
+        );
+
+        res.json({ success: true, message: 'Registro de sanitización CIP eliminado con éxito.' });
+    } catch (error) {
+        res.status(error.status || 500).json({ message: error.message });
+    }
+};
+
+const quickSanitizeCip = async (req, res) => {
+    try {
+        const { operator_name, notes } = req.body;
+        const [result] = await pool.query(
+            `INSERT INTO egg_cip_logs (company_id, equipment_name, chemical_used, temperature_c, duration_minutes, operator_name, validation_status, notes)
+             VALUES (?, 'pasteurizador', 'Ácido Peracético 1.5% (Sanitización Express)', 78.50, 45, ?, 'completado', ?)`,
+            [
+                req.company_id,
+                operator_name || req.user?.nombre || 'Operador de Planta',
+                notes || 'Sanitización CIP express validada y aprobada para inicio de turno de producción.'
+            ]
+        );
+
+        await pool.query(
+            `INSERT INTO egg_industrial_events (company_id, event_type, severity, description, payload, operator_name)
+             VALUES (?, 'cip.completed', 'info', ?, ?, ?)`,
+            [
+                req.company_id,
+                'Sanitización CIP express en pasteurizador validada y completada.',
+                JSON.stringify({ cip_id: result.insertId, equipment_name: 'pasteurizador' }),
+                operator_name || req.user?.nombre || 'Operador de Planta'
+            ]
+        );
+
+        res.status(201).json({ success: true, id: result.insertId, message: 'Sanitización CIP express registrada y aprobada.' });
+    } catch (error) {
+        res.status(error.status || 500).json({ message: error.message });
+    }
+};
+
+const getProductionBatches = async (req, res) => {
+    try {
+        await ensureEggSchema();
+        let rows = [];
+        try {
+            const [queriedRows] = await pool.query(
+                `SELECT b.*, esp.lot_code as scheduled_lot_code, esp.production_date as scheduled_production_date
+                 FROM egg_production_batches b
+                 LEFT JOIN egg_scheduled_productions esp ON b.scheduled_production_id = esp.id
+                 WHERE b.company_id = ?
+                 ORDER BY b.started_at DESC`,
+                [req.company_id]
+            );
+            rows = queriedRows;
+        } catch (queryErr) {
+            console.warn("[getProductionBatches] Query with join failed, falling back to direct batches query:", queryErr.message);
+            const [fallbackRows] = await pool.query(
+                `SELECT b.* FROM egg_production_batches b
+                 WHERE b.company_id = ?
+                 ORDER BY b.started_at DESC`,
+                [req.company_id]
+            );
+            rows = fallbackRows;
+        }
+
+        for (const batch of rows) {
+            const [materials] = await pool.query(
+                `SELECT brm.*, rm.egg_type, rm.provider_lot, rm.egg_color, rm.egg_size
+                 FROM batch_raw_materials brm
+                 JOIN egg_raw_materials rm ON brm.raw_material_id = rm.id
+                 WHERE brm.batch_id = ?`,
+                [batch.id]
+            );
+            for (const m of materials) {
+                if (m.tarimas_json && typeof m.tarimas_json === 'string') {
+                    try { m.tarimas = JSON.parse(m.tarimas_json); } catch (e) { m.tarimas = []; }
+                } else {
+                    m.tarimas = m.tarimas_json || [];
+                }
+            }
+            batch.raw_materials = materials;
+
+            const [pkgSum] = await pool.query(
+                'SELECT COALESCE(SUM(total_batch_weight_lbs), 0) as packaged_weight FROM egg_packaging_records WHERE batch_id = ? AND company_id = ?',
+                [batch.id, req.company_id]
+            );
+            batch.packaged_weight_lbs = pkgSum[0].packaged_weight;
+
+            const [varCosts] = await pool.query(
+                'SELECT * FROM egg_batch_variable_costs WHERE batch_id = ? AND company_id = ?',
+                [batch.id, req.company_id]
+            );
+            batch.variable_costs = varCosts;
+
+            const [remanentes] = await pool.query(
+                'SELECT * FROM egg_batch_remanentes WHERE target_batch_id = ? AND company_id = ?',
+                [batch.id, req.company_id]
+            );
+            batch.remanentes_used = remanentes;
+        }
+
+        res.json(rows);
+    } catch (error) {
+        console.error("Error in getProductionBatches:", error);
+        res.status(error.status || 500).json({ message: error.message });
+    }
+};
+module.exports = { getCipLogs, createCipLog, deleteCipLog, quickSanitizeCip, getProductionBatches };

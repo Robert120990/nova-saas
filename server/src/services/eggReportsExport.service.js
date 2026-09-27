@@ -10,7 +10,7 @@ const reportPdfHelper = require('../utils/reportPdfHelper');
 async function getRawMaterialsReportData(companyId, filters = {}) {
     const { startDate, endDate, providerId, eggType } = filters;
     let query = `
-        SELECT rm.*, 
+        SELECT rm.*,
                COALESCE(p.nombre, p.nombre_comercial, 'Proveedor General') as provider_name,
                COALESCE(p.nit, 'N/A') as provider_nit,
                COALESCE(rm.fecha, rm.created_at) as reception_date,
@@ -70,12 +70,12 @@ async function generateRawMaterialsReportPdf(companyId, filters = {}) {
     const buffers = [];
     doc.on('data', buffers.push.bind(buffers));
 
-    const periodText = filters.startDate && filters.endDate 
-        ? `Período: ${filters.startDate} al ${filters.endDate}` 
+    const periodText = filters.startDate && filters.endDate
+        ? `Período: ${filters.startDate} al ${filters.endDate}`
         : `Historial General de Ingresos de Materia Prima`;
 
     let currentY = reportPdfHelper.renderHeader(
-        doc, company, 'REPORTE DE INGRESO DE MATERIA PRIMA (HUEVO EN CÁSCARA Y LÍQUIDO)', 
+        doc, company, 'REPORTE DE INGRESO DE MATERIA PRIMA (HUEVO EN CÁSCARA Y LÍQUIDO)',
         periodText, 'landscape', 'Control Mensual por Proveedor y Tipo de Producto'
     );
 
@@ -102,7 +102,7 @@ async function generateRawMaterialsReportPdf(companyId, filters = {}) {
         if (currentY > 520) {
             doc.addPage();
             currentY = reportPdfHelper.renderHeader(
-                doc, company, 'REPORTE DE INGRESO DE MATERIA PRIMA (HUEVO EN CÁSCARA Y LÍQUIDO)', 
+                doc, company, 'REPORTE DE INGRESO DE MATERIA PRIMA (HUEVO EN CÁSCARA Y LÍQUIDO)',
                 periodText, 'landscape', 'Control Mensual por Proveedor y Tipo de Producto'
             );
             doc.rect(30, currentY, 732, 14).fill('#f1f5f9');
@@ -189,19 +189,16 @@ async function getProductionReportData(companyId, filters = {}) {
 
     const [rows] = await pool.query(query, params);
 
-    // Sumar empaquetado real, materias primas (cajas e insumos adicionales)
+    // Tres consultas por reporte, independientemente del número de lotes.
+    const ids = rows.map(row => row.id);
+    const [packagedRows] = ids.length ? await pool.query('SELECT batch_id, SUM(total_batch_weight_lbs) AS packaged_weight FROM egg_packaging_records WHERE company_id = ? AND batch_id IN (?) GROUP BY batch_id', [companyId, ids]) : [[]];
+    const [materials] = ids.length ? await pool.query('SELECT brm.batch_id, brm.quantity_lbs, brm.boxes_count, brm.tarimas_json FROM batch_raw_materials brm JOIN egg_production_batches b ON b.id = brm.batch_id WHERE b.company_id = ? AND brm.batch_id IN (?)', [companyId, ids]) : [[]];
+    const packaged = new Map(packagedRows.map(row => [row.batch_id, Number(row.packaged_weight)]));
+    const materialMap = new Map();
+    for (const row of materials) { if (!materialMap.has(row.batch_id)) materialMap.set(row.batch_id, []); materialMap.get(row.batch_id).push(row); }
     for (const b of rows) {
-        const [pkgSum] = await pool.query(
-            'SELECT COALESCE(SUM(total_batch_weight_lbs), 0) as packaged_weight FROM egg_packaging_records WHERE batch_id = ? AND company_id = ?',
-            [b.id, companyId]
-        );
-        b.packaged_weight_lbs = parseFloat(pkgSum[0]?.packaged_weight || 0);
-
-        // Materias primas y tarimas de este lote
-        const [rmRows] = await pool.query(
-            'SELECT quantity_lbs, boxes_count, tarimas_json FROM batch_raw_materials WHERE batch_id = ?',
-            [b.id]
-        );
+        b.packaged_weight_lbs = packaged.get(b.id) || 0;
+        const rmRows = materialMap.get(b.id) || [];
 
         let totalBoxes = 0;
         let rawEggInputLbs = 0;
@@ -251,7 +248,7 @@ async function getProductionReportData(companyId, filters = {}) {
         const pureEggYieldPct = rawEggInputLbs > 0 ? Math.round(((netEggYieldLbs / rawEggInputLbs) * 100) * 10) / 10 : 0;
 
         // Propiedades asignadas para Frontend, PDF y Excel
-        const liquidPlusPackagedLbs = Math.round((totalYieldLbs + b.packaged_weight_lbs) * 100) / 100;
+        const liquidPlusPackagedLbs = Math.round((totalYieldLbs) * 100) / 100;
         const liquidPlusPackagedYieldPct = rawEggInputLbs > 0 ? Math.round(((liquidPlusPackagedLbs / rawEggInputLbs) * 100) * 10) / 10 : 0;
 
         b.total_boxes = totalBoxes;
@@ -277,7 +274,7 @@ async function getProductionReportData(companyId, filters = {}) {
     const avgYieldPerBox = totalBoxesSum > 0 ? Math.round((totalNetEggLiquidLbs / totalBoxesSum) * 100) / 100 : 0;
     const globalYieldPct = totalInputLbs > 0 ? ((totalLiquidLbs / totalInputLbs) * 100).toFixed(2) : '0.00';
     const globalPureEggYieldPct = totalInputLbs > 0 ? ((totalNetEggLiquidLbs / totalInputLbs) * 100).toFixed(2) : '0.00';
-    const totalLiquidPlusPackagedLbs = Math.round((totalLiquidLbs + totalPackagedLbs) * 100) / 100;
+    const totalLiquidPlusPackagedLbs = Math.round((totalLiquidLbs) * 100) / 100;
     const globalLiquidPlusPackagedYieldPct = totalInputLbs > 0 ? ((totalLiquidPlusPackagedLbs / totalInputLbs) * 100).toFixed(2) : '0.00';
 
     return {
@@ -314,43 +311,43 @@ async function generateProductionReportPdf(companyId, filters = {}) {
     doc.on('data', buffers.push.bind(buffers));
 
     const periodText = (filters.startDate || filters.from) && (filters.endDate || filters.to)
-        ? `Período: ${filters.startDate || filters.from} al ${filters.endDate || filters.to}` 
+        ? `Período: ${filters.startDate || filters.from} al ${filters.endDate || filters.to}`
         : `Historial Consolidado de Producciones Industriales`;
 
     let currentY = reportPdfHelper.renderHeader(
-        doc, company, 'REPORTE CONSOLIDADO DE PRODUCCIÓN, RENDIMIENTO Y EFICACIA POR CAJA', 
+        doc, company, 'REPORTE CONSOLIDADO DE PRODUCCIÓN, RENDIMIENTO Y EFICACIA POR CAJA',
         periodText, 'landscape', 'Rendimiento Neto de Huevo por Caja (Descontando Insumos Adicionales) y Balance de Masas'
     );
 
-    const colX = { 
-        lote: 30, 
-        prod: 100, 
-        fecha: 170, 
-        input: 218, 
-        cajas: 274, 
-        insumos: 312, 
-        neto: 360, 
-        yieldBox: 412, 
-        eficPura: 462, 
-        pkg: 504, 
-        liqEnv: 554, 
-        rendTot: 610, 
-        estatus: 660 
+    const colX = {
+        lote: 30,
+        prod: 100,
+        fecha: 170,
+        input: 218,
+        cajas: 274,
+        insumos: 312,
+        neto: 360,
+        yieldBox: 412,
+        eficPura: 462,
+        pkg: 504,
+        liqEnv: 554,
+        rendTot: 610,
+        estatus: 660
     };
-    const colW = { 
-        lote: 68, 
-        prod: 68, 
-        fecha: 46, 
-        input: 54, 
-        cajas: 36, 
-        insumos: 46, 
-        neto: 50, 
-        yieldBox: 48, 
-        eficPura: 40, 
-        pkg: 48, 
-        liqEnv: 54, 
-        rendTot: 48, 
-        estatus: 50 
+    const colW = {
+        lote: 68,
+        prod: 68,
+        fecha: 46,
+        input: 54,
+        cajas: 36,
+        insumos: 46,
+        neto: 50,
+        yieldBox: 48,
+        eficPura: 40,
+        pkg: 48,
+        liqEnv: 54,
+        rendTot: 48,
+        estatus: 50
     };
 
     doc.rect(30, currentY, 732, 14).fill('#f1f5f9');
@@ -365,7 +362,7 @@ async function generateProductionReportPdf(companyId, filters = {}) {
     doc.text('LBS/CAJA', colX.yieldBox, currentY + 3.5, { align: 'right' });
     doc.text('% EFIC.', colX.eficPura, currentY + 3.5, { align: 'right' });
     doc.text('ENVASADO', colX.pkg, currentY + 3.5, { align: 'right' });
-    doc.text('LÍQ+ENV', colX.liqEnv, currentY + 3.5, { align: 'right' });
+    doc.text('PRODUCIDO', colX.liqEnv, currentY + 3.5, { align: 'right' });
     doc.text('% REND.', colX.rendTot, currentY + 3.5, { align: 'right' });
     doc.text('ESTATUS', colX.estatus, currentY + 3.5);
     currentY += 16;
@@ -376,7 +373,7 @@ async function generateProductionReportPdf(companyId, filters = {}) {
         if (currentY > 520) {
             doc.addPage();
             currentY = reportPdfHelper.renderHeader(
-                doc, company, 'REPORTE CONSOLIDADO DE PRODUCCIÓN, RENDIMIENTO Y EFICACIA POR CAJA', 
+                doc, company, 'REPORTE CONSOLIDADO DE PRODUCCIÓN, RENDIMIENTO Y EFICACIA POR CAJA',
                 periodText, 'landscape', 'Rendimiento Neto de Huevo por Caja (Descontando Insumos Adicionales) y Balance de Masas'
             );
             doc.rect(30, currentY, 732, 14).fill('#f1f5f9');
@@ -391,7 +388,7 @@ async function generateProductionReportPdf(companyId, filters = {}) {
             doc.text('LBS/CAJA', colX.yieldBox, currentY + 3.5, { align: 'right' });
             doc.text('% EFIC.', colX.eficPura, currentY + 3.5, { align: 'right' });
             doc.text('ENVASADO', colX.pkg, currentY + 3.5, { align: 'right' });
-            doc.text('LÍQ+ENV', colX.liqEnv, currentY + 3.5, { align: 'right' });
+            doc.text('PRODUCIDO', colX.liqEnv, currentY + 3.5, { align: 'right' });
             doc.text('% REND.', colX.rendTot, currentY + 3.5, { align: 'right' });
             doc.text('ESTATUS', colX.estatus, currentY + 3.5);
             currentY += 16;
@@ -507,12 +504,12 @@ async function generatePackagingReportPdf(companyId, filters = {}) {
     const buffers = [];
     doc.on('data', buffers.push.bind(buffers));
 
-    const periodText = filters.startDate && filters.endDate 
-        ? `Período: ${filters.startDate} al ${filters.endDate}` 
+    const periodText = filters.startDate && filters.endDate
+        ? `Período: ${filters.startDate} al ${filters.endDate}`
         : `Historial General de Empaque y Producto Terminado`;
 
     let currentY = reportPdfHelper.renderHeader(
-        doc, company, 'REPORTE DE EMPAQUE Y ENVASADO POR PRODUCCIÓN', 
+        doc, company, 'REPORTE DE EMPAQUE Y ENVASADO POR PRODUCCIÓN',
         periodText, 'landscape', 'Control de Unidades Envasadas, Libras y Zonas de Almacenamiento'
     );
 
@@ -538,7 +535,7 @@ async function generatePackagingReportPdf(companyId, filters = {}) {
         if (currentY > 520) {
             doc.addPage();
             currentY = reportPdfHelper.renderHeader(
-                doc, company, 'REPORTE DE EMPAQUE Y ENVASADO POR PRODUCCIÓN', 
+                doc, company, 'REPORTE DE EMPAQUE Y ENVASADO POR PRODUCCIÓN',
                 periodText, 'landscape', 'Control de Unidades Envasadas, Libras y Zonas de Almacenamiento'
             );
             doc.rect(30, currentY, 732, 14).fill('#f1f5f9');
@@ -635,12 +632,12 @@ async function generateQualityReportPdf(companyId, filters = {}) {
     const buffers = [];
     doc.on('data', buffers.push.bind(buffers));
 
-    const periodText = filters.startDate && filters.endDate 
-        ? `Período: ${filters.startDate} al ${filters.endDate}` 
+    const periodText = filters.startDate && filters.endDate
+        ? `Período: ${filters.startDate} al ${filters.endDate}`
         : `Historial Consolidado de Control de Calidad LAB-004`;
 
     let currentY = reportPdfHelper.renderHeader(
-        doc, company, 'REPORTE DE CALIDAD Y DICTÁMENES TÉCNICOS (LAB-004)', 
+        doc, company, 'REPORTE DE CALIDAD Y DICTÁMENES TÉCNICOS (LAB-004)',
         periodText, 'landscape', 'Control Microbiológico, Físico-Químico y Dictamen por Lote'
     );
 
@@ -666,7 +663,7 @@ async function generateQualityReportPdf(companyId, filters = {}) {
         if (currentY > 520) {
             doc.addPage();
             currentY = reportPdfHelper.renderHeader(
-                doc, company, 'REPORTE DE CALIDAD Y DICTÁMENES TÉCNICOS (LAB-004)', 
+                doc, company, 'REPORTE DE CALIDAD Y DICTÁMENES TÉCNICOS (LAB-004)',
                 periodText, 'landscape', 'Control Microbiológico, Físico-Químico y Dictamen por Lote'
             );
             doc.rect(30, currentY, 732, 14).fill('#f1f5f9');
@@ -773,12 +770,12 @@ async function generateWastesReportPdf(companyId, filters = {}) {
     const buffers = [];
     doc.on('data', buffers.push.bind(buffers));
 
-    const periodText = filters.startDate && filters.endDate 
-        ? `Período: ${filters.startDate} al ${filters.endDate}` 
+    const periodText = filters.startDate && filters.endDate
+        ? `Período: ${filters.startDate} al ${filters.endDate}`
         : `Historial General de Mermas Industriales y Tuberías`;
 
     let currentY = reportPdfHelper.renderHeader(
-        doc, company, 'REPORTE DE MERMAS OPERATIVAS DE PRODUCCIÓN Y ENVASADO', 
+        doc, company, 'REPORTE DE MERMAS OPERATIVAS DE PRODUCCIÓN Y ENVASADO',
         periodText, 'landscape', 'Control de Pérdidas por Quebraje, Tuberías, Desperdicios y Envasado'
     );
 
@@ -803,7 +800,7 @@ async function generateWastesReportPdf(companyId, filters = {}) {
         if (currentY > 520) {
             doc.addPage();
             currentY = reportPdfHelper.renderHeader(
-                doc, company, 'REPORTE DE MERMAS OPERATIVAS DE PRODUCCIÓN Y ENVASADO', 
+                doc, company, 'REPORTE DE MERMAS OPERATIVAS DE PRODUCCIÓN Y ENVASADO',
                 periodText, 'landscape', 'Control de Pérdidas por Quebraje, Tuberías, Desperdicios y Envasado'
             );
             doc.rect(30, currentY, 732, 14).fill('#f1f5f9');
@@ -903,7 +900,7 @@ async function generateProductionReportExcel(companyId, filters = {}) {
         { header: '% Eficacia Huevo Puro', key: 'eficacia_pura', width: 20 },
         { header: 'Merma Cáscara (Lbs)', key: 'cascara', width: 18 },
         { header: 'Envasado Real (Lbs)', key: 'envasado', width: 18 },
-        { header: 'Líquido + Envasado (Lbs)', key: 'liq_env', width: 22 },
+        { header: 'Producción total (Lbs)', key: 'liq_env', width: 22 },
         { header: '% Rendimiento (Líq. + Env.)', key: 'rend_liq_env_pct', width: 26 },
         { header: '% Rendimiento Líquido Base', key: 'rendimiento_pct', width: 22 },
         { header: 'Estado', key: 'estado', width: 16 }
@@ -912,7 +909,7 @@ async function generateProductionReportExcel(companyId, filters = {}) {
         const inp = parseFloat(r.input_weight_lbs || 0);
         const yld = parseFloat(r.yield_liquid_lbs || 0);
         const pkg = parseFloat(r.packaged_weight_lbs || 0);
-        const liqEnv = parseFloat(r.liquid_plus_packaged_lbs || (yld + pkg));
+        const liqEnv = parseFloat(r.liquid_plus_packaged_lbs || yld);
         const rendLiqEnv = parseFloat(r.liquid_plus_packaged_yield_pct || (inp > 0 ? ((liqEnv / inp) * 100) : 0));
         return {
             lote: r.batch_code_display || r.batch_uuid,

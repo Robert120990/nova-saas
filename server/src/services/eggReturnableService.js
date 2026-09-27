@@ -29,8 +29,8 @@ function parseCubetaItem(item) {
     }
 
     if (item.is_returnable && item.returnable_units > 0) {
-        return { 
-            isCubeta: true, 
+        return {
+            isCubeta: true,
             units: parseInt(item.returnable_units, 10),
             weightType,
             productName: origName
@@ -49,8 +49,8 @@ function parseCubetaItem(item) {
         // 1. Extraer si la descripción tiene el formato "Cant: X Uds" (creado en despachos automáticos)
         const udsMatch = desc.match(/cant:\s*(\d+)\s*uds/i);
         if (udsMatch && udsMatch[1]) {
-            return { 
-                isCubeta: true, 
+            return {
+                isCubeta: true,
                 units: parseInt(udsMatch[1], 10),
                 weightType,
                 productName: origName
@@ -72,8 +72,8 @@ function parseCubetaItem(item) {
                 }
             }
 
-            return { 
-                isCubeta: true, 
+            return {
+                isCubeta: true,
                 units: calculatedUnits,
                 weightType,
                 productName: origName
@@ -89,7 +89,13 @@ function parseCubetaItem(item) {
  * clasificando el peso entregado (30 LB vs 32 LB) y llevando el saldo físico unificado.
  */
 async function recordSaleReturnables(dbConnection, saleData) {
-    const conn = dbConnection || pool;
+    if (!dbConnection || dbConnection === pool) {
+        const connection = await pool.getConnection();
+        try { await connection.beginTransaction(); const result = await recordSaleReturnables(connection, saleData); await connection.commit(); return result; }
+        catch (error) { await connection.rollback(); throw error; }
+        finally { connection.release(); }
+    }
+    const conn = dbConnection;
     const {
         company_id,
         customer_id,
@@ -105,6 +111,9 @@ async function recordSaleReturnables(dbConnection, saleData) {
     if (!company_id || !customer_id || !items || !Array.isArray(items) || items.length === 0) {
         return null;
     }
+
+    const [customer] = await conn.query('SELECT id, nombre FROM customers WHERE id = ? AND company_id = ? FOR UPDATE', [customer_id, company_id]);
+    if (!customer.length) throw new Error('Cliente de retornables no encontrado en esta empresa.');
 
     // Calcular total de cubetas facturadas y desglose 30lb / 32lb
     let totalCubetas = 0;
@@ -135,15 +144,15 @@ async function recordSaleReturnables(dbConnection, saleData) {
     // Verificar si ya fue registrado previamente para este sale_id (idempotencia)
     if (sale_id) {
         const [existingMov] = await conn.query(
-            `SELECT id FROM egg_returnable_movements 
+            `SELECT id FROM egg_returnable_movements
              WHERE company_id = ? AND sale_id = ? LIMIT 1`,
             [company_id, sale_id]
         );
         if (existingMov && existingMov.length > 0) {
             // Actualizar si las columnas 30lb / 32lb estaban en 0
             await conn.query(
-                `UPDATE egg_returnable_movements 
-                 SET cubetas_30lb_qty = ?, cubetas_32lb_qty = ? 
+                `UPDATE egg_returnable_movements
+                 SET cubetas_30lb_qty = ?, cubetas_32lb_qty = ?
                  WHERE id = ? AND cubetas_30lb_qty = 0 AND cubetas_32lb_qty = 0`,
                 [cubetas30lb, cubetas32lb, existingMov[0].id]
             );
@@ -155,15 +164,15 @@ async function recordSaleReturnables(dbConnection, saleData) {
     let resolvedCustomerName = customer_name;
     if (!resolvedCustomerName) {
         const [custRows] = await conn.query(
-            'SELECT nombre FROM customers WHERE id = ? LIMIT 1',
-            [customer_id]
+            'SELECT nombre FROM customers WHERE id = ? AND company_id = ? LIMIT 1',
+            [customer_id, company_id]
         );
         resolvedCustomerName = custRows[0]?.nombre || `Cliente #${customer_id}`;
     }
 
     // Buscar o crear registro en egg_returnable_packaging
     const [retRows] = await conn.query(
-        `SELECT id FROM egg_returnable_packaging 
+        `SELECT id FROM egg_returnable_packaging
          WHERE company_id = ? AND customer_id = ? AND packaging_type = 'cubeta_30lb'
          LIMIT 1`,
         [company_id, customer_id]
@@ -172,7 +181,7 @@ async function recordSaleReturnables(dbConnection, saleData) {
     let returnableId = retRows[0]?.id;
     if (!returnableId) {
         const [newRet] = await conn.query(
-            `INSERT INTO egg_returnable_packaging 
+            `INSERT INTO egg_returnable_packaging
              (company_id, customer_id, customer_name, packaging_type, initial_balance, initial_tapaderas, notes)
              VALUES (?, ?, ?, 'cubeta_30lb', 0, 0, 'Auto-creado desde Facturación DTE')`,
             [company_id, customer_id, resolvedCustomerName]
@@ -181,8 +190,8 @@ async function recordSaleReturnables(dbConnection, saleData) {
     }
 
     // Formatear documento de referencia
-    const refDoc = numero_control 
-        ? `${numero_control}` 
+    const refDoc = numero_control
+        ? `${numero_control}`
         : `DTE-${dte_type || '01'} / Venta #${sale_id}`;
 
     const movDate = fecha_emision ? new Date(fecha_emision) : new Date();
@@ -192,7 +201,7 @@ async function recordSaleReturnables(dbConnection, saleData) {
 
     // Insertar movimiento detallado con 30lb y 32lb
     const [movResult] = await conn.query(
-        `INSERT INTO egg_returnable_movements 
+        `INSERT INTO egg_returnable_movements
          (company_id, returnable_id, sale_id, movement_type, quantity, cubetas_qty, cubetas_30lb_qty, cubetas_32lb_qty, tapaderas_qty, movement_date, reference_document, notes, registered_by)
          VALUES (?, ?, ?, 'entrega', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
@@ -213,8 +222,8 @@ async function recordSaleReturnables(dbConnection, saleData) {
 
     // Actualizar saldos del cliente
     await conn.query(
-        `UPDATE egg_returnable_packaging 
-         SET delivered_qty = delivered_qty + ?, 
+        `UPDATE egg_returnable_packaging
+         SET delivered_qty = delivered_qty + ?,
              delivered_tapaderas = delivered_tapaderas + ?,
              last_movement_date = ?
          WHERE id = ? AND company_id = ?`,
@@ -241,7 +250,7 @@ async function syncHistoricalSales(company_id) {
 
     // Buscar ventas activas que tengan ítems con cubetas y cliente registrado
     const [salesRows] = await pool.query(
-        `SELECT DISTINCT sh.id as sale_id, sh.company_id, sh.customer_id, 
+        `SELECT DISTINCT sh.id as sale_id, sh.company_id, sh.customer_id,
                 COALESCE(c.nombre, sh.cliente_nombre) as customer_name,
                 sh.tipo_documento, sh.numero_control, sh.fecha_emision,
                 u.nombre as user_name
@@ -249,18 +258,18 @@ async function syncHistoricalSales(company_id) {
          JOIN sales_items si ON sh.id = si.sale_id
          LEFT JOIN customers c ON sh.customer_id = c.id
          LEFT JOIN users u ON sh.seller_id = u.id
-         WHERE sh.company_id = ? 
-           AND sh.customer_id IS NOT NULL 
+         WHERE sh.company_id = ?
+           AND sh.customer_id IS NOT NULL
            AND sh.estado != 'ANULADA'
            AND (
-               LOWER(si.descripcion) LIKE '%cubeta%' 
+               LOWER(si.descripcion) LIKE '%cubeta%'
                OR si.product_id IN (
-                   SELECT p.id FROM products p 
+                   SELECT p.id FROM products p
                    WHERE p.company_id = ? AND LOWER(p.nombre) LIKE '%cubeta%'
                )
            )
            AND sh.id NOT IN (
-               SELECT erm.sale_id FROM egg_returnable_movements erm 
+               SELECT erm.sale_id FROM egg_returnable_movements erm
                WHERE erm.company_id = ? AND erm.sale_id IS NOT NULL
            )
          ORDER BY sh.fecha_emision ASC, sh.id ASC`,
@@ -328,8 +337,8 @@ async function getCustomerStatement(company_id, returnableIdOrCustomerId) {
 
     // Obtener movimientos ordenados cronológicamente
     const [movements] = await pool.query(
-        `SELECT m.*, 
-                sh.tipo_documento as dte_tipo, 
+        `SELECT m.*,
+                sh.tipo_documento as dte_tipo,
                 sh.numero_control as dte_control,
                 sh.codigo_generacion as dte_codigo
          FROM egg_returnable_movements m
