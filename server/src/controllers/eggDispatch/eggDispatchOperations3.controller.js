@@ -8,6 +8,19 @@ const deleteDispatchRoute = async (req, res) => {
         const { id } = req.params;
         const company_id = req.company_id || req.user?.company_id;
 
+        const [rRows] = await connection.query(
+            'SELECT vehicle_id, estado FROM egg_dispatch_routes WHERE id = ? AND company_id = ? FOR UPDATE',
+            [id, company_id]
+        );
+        if (rRows.length === 0) {
+            await connection.rollback();
+            return res.status(404).json({ message: 'Ruta no encontrada.' });
+        }
+        if (rRows[0].estado === 'completada') {
+            await connection.rollback();
+            return res.status(409).json({ message: 'No se puede eliminar una ruta que ya fue completada y entregada.' });
+        }
+
         // 1. Obtener órdenes asociadas a la ruta (directamente o por paradas)
         const [associatedStops] = await connection.query(
             `SELECT s.id as stop_id, s.order_id, s.sale_id, s.dte_codigo_generacion,
@@ -43,11 +56,7 @@ const deleteDispatchRoute = async (req, res) => {
         await connection.query('DELETE FROM egg_dispatch_stops WHERE dispatch_route_id = ?', [id]);
 
         // 5. Liberar camión si estaba en ruta
-        const [rRows] = await connection.query(
-            'SELECT vehicle_id FROM egg_dispatch_routes WHERE id = ? AND company_id = ?',
-            [id, company_id]
-        );
-        if (rRows.length > 0 && rRows[0].vehicle_id) {
+        if (rRows[0]?.vehicle_id) {
             await connection.query(
                 'UPDATE delivery_vehicles SET estado = "disponible" WHERE id = ? AND estado = "en_ruta"',
                 [rRows[0].vehicle_id]

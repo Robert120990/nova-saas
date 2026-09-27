@@ -9,8 +9,14 @@ const createProductionBatch = async (req) => {
         const { product_type, presentation, operator_name } = req.body;
         const raw_materials = eggRules.normalizeMaterials(req.body.raw_materials);
         const company_id = req.company_id;
-        const branch_id = req.body.branch_id || req.branch_id || req.user?.branch_id;
-        await eggRules.owned(connection, 'branches', branch_id, company_id);
+        let branch_id = req.body.branch_id || req.branch_id || req.user?.branch_id;
+        if (!branch_id) {
+            const [b] = await connection.query('SELECT id FROM branches WHERE company_id = ? ORDER BY id ASC LIMIT 1', [company_id]);
+            branch_id = b[0]?.id;
+        }
+        if (branch_id) {
+            await eggRules.owned(connection, 'branches', branch_id, company_id);
+        }
         if (req.body.scheduled_production_id) {
             const schedule = await eggRules.owned(connection, 'egg_scheduled_productions', req.body.scheduled_production_id, company_id, true);
             if (schedule.batch_id || ['en_proceso', 'completado', 'cancelado'].includes(schedule.status)) eggRules.fail('El programa ya fue iniciado o cancelado.', 409);

@@ -129,6 +129,16 @@ const saveDispatchRoute = async (req) => {
 
         let existingStopsMap = {};
         if (id) {
+            const [currentRoute] = await connection.query('SELECT estado FROM egg_dispatch_routes WHERE id = ? AND company_id = ? FOR UPDATE', [id, company_id]);
+            if (currentRoute.length === 0) {
+                await connection.rollback();
+                return ({ status: 404, body: { message: 'Ruta no encontrada.' }, headers: responseHeaders });
+            }
+            if (['completada', 'cancelada'].includes(currentRoute[0].estado)) {
+                await connection.rollback();
+                return ({ status: 409, body: { message: `No se puede modificar una ruta que ya se encuentra ${currentRoute[0].estado}.` }, headers: responseHeaders });
+            }
+
             await connection.query(
                 `UPDATE egg_dispatch_routes SET
                     codigo_ruta = ?, fecha_despacho = ?, vehicle_id = ?,

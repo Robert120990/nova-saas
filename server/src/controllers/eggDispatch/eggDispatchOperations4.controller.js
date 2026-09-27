@@ -153,11 +153,11 @@ const confirmStopDelivery = async (req, res) => {
             }
         }
 
-        // 4. Verificar si todas las paradas de la ruta fueron completadas
+        // 4. Verificar si todas las paradas de la ruta fueron completadas o atendidas
         const [pendingStops] = await connection.query(
             `SELECT COUNT(*) as pending_count
              FROM egg_dispatch_stops
-             WHERE dispatch_route_id = ? AND estado_entrega != 'entregado'`,
+             WHERE dispatch_route_id = ? AND estado_entrega IN ('pendiente', 'en_camino')`,
             [stop.route_id]
         );
 

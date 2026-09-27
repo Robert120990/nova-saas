@@ -113,13 +113,23 @@ const getTraceability360Detail = async (req, res) => {
         if (batchId) {
             const [pkgs] = await pool.query(`
                 SELECT pk.*,
-                    (SELECT GROUP_CONCAT(DISTINCT COALESCE(sh.cliente_nombre, c.nombre, 'Consumidor Final') SEPARATOR ', ')
-                     FROM sales_items si
-                     JOIN sales_headers sh ON sh.id = si.sale_id
-                     LEFT JOIN customers c ON c.id = sh.customer_id
-                     WHERE pk.lot_code IS NOT NULL
-                       AND (si.codigo = pk.lot_code OR si.descripcion LIKE CONCAT('%', pk.lot_code, '%'))
-                       AND sh.estado != 'anulado'
+                    COALESCE(
+                        (SELECT GROUP_CONCAT(DISTINCT COALESCE(sh.cliente_nombre, c.nombre, 'Consumidor Final') SEPARATOR ', ')
+                         FROM egg_packaging_movements epm
+                         JOIN sales_headers sh ON sh.id = epm.sale_id AND sh.company_id = epm.company_id
+                         LEFT JOIN customers c ON c.id = sh.customer_id
+                         WHERE epm.packaging_id = pk.id
+                           AND epm.company_id = pk.company_id
+                           AND sh.estado != 'anulado'
+                        ),
+                        (SELECT GROUP_CONCAT(DISTINCT COALESCE(sh.cliente_nombre, c.nombre, 'Consumidor Final') SEPARATOR ', ')
+                         FROM sales_items si
+                         JOIN sales_headers sh ON sh.id = si.sale_id AND sh.company_id = pk.company_id
+                         LEFT JOIN customers c ON c.id = sh.customer_id
+                         WHERE pk.lot_code IS NOT NULL
+                           AND (si.codigo = pk.lot_code OR si.descripcion LIKE CONCAT('%', pk.lot_code, '%'))
+                           AND sh.estado != 'anulado'
+                        )
                     ) as sale_customer_name
                 FROM egg_packaging_records pk
                 WHERE pk.batch_id = ? AND pk.company_id = ?

@@ -13,6 +13,8 @@ const references = {
 module.exports = async function eggReferences(req, res, next) {
     if (!['POST', 'PUT', 'PATCH'].includes(req.method)) return next();
     try {
+        const companyId = req.company_id || req.user?.company_id;
+        if (!companyId) return next();
         const pending = [req.body];
         const checked = new Set();
         while (pending.length) {
@@ -23,7 +25,7 @@ module.exports = async function eggReferences(req, res, next) {
                 if (!references[key] || id === '' || id == null || id === 0) continue;
                 const marker = `${key}:${id}`;
                 if (!checked.has(marker)) {
-                    await owned(pool, references[key], id, req.company_id);
+                    await owned(pool, references[key], id, companyId);
                     checked.add(marker);
                 }
             }

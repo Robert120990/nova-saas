@@ -51,13 +51,23 @@ const getTraceability360List = async (req) => {
                 pk.expiry_date,
                 pk.customer_destination as pkg_customer_destination,
                 pk.barcode as commercial_barcode,
-                (SELECT GROUP_CONCAT(DISTINCT COALESCE(sh.cliente_nombre, c.nombre, 'Consumidor Final') SEPARATOR ', ')
-                 FROM sales_items si
-                 JOIN sales_headers sh ON sh.id = si.sale_id
-                 LEFT JOIN customers c ON c.id = sh.customer_id
-                 WHERE pk.lot_code IS NOT NULL
-                   AND (si.codigo = pk.lot_code OR si.descripcion LIKE CONCAT('%', pk.lot_code, '%'))
-                   AND sh.estado != 'anulado'
+                COALESCE(
+                    (SELECT GROUP_CONCAT(DISTINCT COALESCE(sh.cliente_nombre, c.nombre, 'Consumidor Final') SEPARATOR ', ')
+                     FROM egg_packaging_movements epm
+                     JOIN sales_headers sh ON sh.id = epm.sale_id AND sh.company_id = epm.company_id
+                     LEFT JOIN customers c ON c.id = sh.customer_id
+                     WHERE epm.packaging_id = pk.id
+                       AND epm.company_id = rm.company_id
+                       AND sh.estado != 'anulado'
+                    ),
+                    (SELECT GROUP_CONCAT(DISTINCT COALESCE(sh.cliente_nombre, c.nombre, 'Consumidor Final') SEPARATOR ', ')
+                     FROM sales_items si
+                     JOIN sales_headers sh ON sh.id = si.sale_id AND sh.company_id = rm.company_id
+                     LEFT JOIN customers c ON c.id = sh.customer_id
+                     WHERE pk.lot_code IS NOT NULL
+                       AND (si.codigo = pk.lot_code OR si.descripcion LIKE CONCAT('%', pk.lot_code, '%'))
+                       AND sh.estado != 'anulado'
+                    )
                 ) as sale_customer_name,
                 lab.id as lab_log_id,
                 lab.sample_date as lab_sample_date,
@@ -143,13 +153,23 @@ const getTraceability360List = async (req) => {
                 pk.expiry_date,
                 pk.customer_destination as pkg_customer_destination,
                 pk.barcode as commercial_barcode,
-                (SELECT GROUP_CONCAT(DISTINCT COALESCE(sh.cliente_nombre, c.nombre, 'Consumidor Final') SEPARATOR ', ')
-                 FROM sales_items si
-                 JOIN sales_headers sh ON sh.id = si.sale_id
-                 LEFT JOIN customers c ON c.id = sh.customer_id
-                 WHERE pk.lot_code IS NOT NULL
-                   AND (si.codigo = pk.lot_code OR si.descripcion LIKE CONCAT('%', pk.lot_code, '%'))
-                   AND sh.estado != 'anulado'
+                COALESCE(
+                    (SELECT GROUP_CONCAT(DISTINCT COALESCE(sh.cliente_nombre, c.nombre, 'Consumidor Final') SEPARATOR ', ')
+                     FROM egg_packaging_movements epm
+                     JOIN sales_headers sh ON sh.id = epm.sale_id AND sh.company_id = epm.company_id
+                     LEFT JOIN customers c ON c.id = sh.customer_id
+                     WHERE epm.packaging_id = pk.id
+                       AND epm.company_id = b.company_id
+                       AND sh.estado != 'anulado'
+                    ),
+                    (SELECT GROUP_CONCAT(DISTINCT COALESCE(sh.cliente_nombre, c.nombre, 'Consumidor Final') SEPARATOR ', ')
+                     FROM sales_items si
+                     JOIN sales_headers sh ON sh.id = si.sale_id AND sh.company_id = b.company_id
+                     LEFT JOIN customers c ON c.id = sh.customer_id
+                     WHERE pk.lot_code IS NOT NULL
+                       AND (si.codigo = pk.lot_code OR si.descripcion LIKE CONCAT('%', pk.lot_code, '%'))
+                       AND sh.estado != 'anulado'
+                    )
                 ) as sale_customer_name,
                 lab.id as lab_log_id,
                 lab.sample_date as lab_sample_date,
