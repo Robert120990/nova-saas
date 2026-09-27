@@ -1,4 +1,4 @@
-const { fail, number, pool } = require('./shared');
+const { fail, number, pool, ensureEggSchema } = require('./shared');
 
 const deleteBlastFreezerLog = async (req, res) => {
     try {
@@ -34,6 +34,11 @@ const deleteBlastFreezerLog = async (req, res) => {
 
 const getPackagingRecords = async (req, res) => {
     try {
+        await ensureEggSchema();
+        const companyId = req.company_id || req.user?.company_id;
+        if (!companyId) {
+            return res.status(400).json({ message: 'Company ID is required' });
+        }
         const [rows] = await pool.query(
             `SELECT pr.*,
                     COALESCE(pr.product_type, b.product_type) as product_type,
@@ -43,10 +48,11 @@ const getPackagingRecords = async (req, res) => {
              LEFT JOIN egg_production_batches b ON pr.batch_id = b.id
              WHERE pr.company_id = ?
              ORDER BY pr.created_at DESC`,
-            [req.company_id]
+            [companyId]
         );
         res.json(rows);
     } catch (error) {
+        console.error("Error in getPackagingRecords:", error);
         res.status(error.status || 500).json({ message: error.message });
     }
 };

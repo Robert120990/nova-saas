@@ -148,6 +148,10 @@ const quickSanitizeCip = async (req, res) => {
 const getProductionBatches = async (req, res) => {
     try {
         await ensureEggSchema();
+        const companyId = req.company_id || req.user?.company_id;
+        if (!companyId) {
+            return res.status(400).json({ message: 'Company ID is required' });
+        }
         let rows = [];
         try {
             const [queriedRows] = await pool.query(
@@ -156,7 +160,7 @@ const getProductionBatches = async (req, res) => {
                  LEFT JOIN egg_scheduled_productions esp ON b.scheduled_production_id = esp.id
                  WHERE b.company_id = ?
                  ORDER BY b.started_at DESC`,
-                [req.company_id]
+                [companyId]
             );
             rows = queriedRows;
         } catch (queryErr) {
@@ -165,45 +169,63 @@ const getProductionBatches = async (req, res) => {
                 `SELECT b.* FROM egg_production_batches b
                  WHERE b.company_id = ?
                  ORDER BY b.started_at DESC`,
-                [req.company_id]
+                [companyId]
             );
             rows = fallbackRows;
         }
 
         for (const batch of rows) {
-            const [materials] = await pool.query(
-                `SELECT brm.*, rm.egg_type, rm.provider_lot, rm.egg_color, rm.egg_size
-                 FROM batch_raw_materials brm
-                 JOIN egg_raw_materials rm ON brm.raw_material_id = rm.id
-                 WHERE brm.batch_id = ?`,
-                [batch.id]
-            );
-            for (const m of materials) {
-                if (m.tarimas_json && typeof m.tarimas_json === 'string') {
-                    try { m.tarimas = JSON.parse(m.tarimas_json); } catch (e) { m.tarimas = []; }
-                } else {
-                    m.tarimas = m.tarimas_json || [];
+            try {
+                const [materials] = await pool.query(
+                    `SELECT brm.*, rm.egg_type, rm.provider_lot, rm.egg_color, rm.egg_size
+                     FROM batch_raw_materials brm
+                     JOIN egg_raw_materials rm ON brm.raw_material_id = rm.id
+                     WHERE brm.batch_id = ?`,
+                    [batch.id]
+                );
+                for (const m of materials) {
+                    if (m.tarimas_json && typeof m.tarimas_json === 'string') {
+                        try { m.tarimas = JSON.parse(m.tarimas_json); } catch (e) { m.tarimas = []; }
+                    } else {
+                        m.tarimas = m.tarimas_json || [];
+                    }
                 }
+                batch.raw_materials = materials;
+            } catch (matErr) {
+                console.warn(`[getProductionBatches] Error fetching materials for batch ${batch.id}:`, matErr.message);
+                batch.raw_materials = [];
             }
-            batch.raw_materials = materials;
 
-            const [pkgSum] = await pool.query(
-                'SELECT COALESCE(SUM(total_batch_weight_lbs), 0) as packaged_weight FROM egg_packaging_records WHERE batch_id = ? AND company_id = ?',
-                [batch.id, req.company_id]
-            );
-            batch.packaged_weight_lbs = pkgSum[0].packaged_weight;
+            try {
+                const [pkgSum] = await pool.query(
+                    'SELECT COALESCE(SUM(total_batch_weight_lbs), 0) as packaged_weight FROM egg_packaging_records WHERE batch_id = ? AND company_id = ?',
+                    [batch.id, companyId]
+                );
+                batch.packaged_weight_lbs = pkgSum[0]?.packaged_weight || 0;
+            } catch (pkgErr) {
+                console.warn(`[getProductionBatches] Error fetching packaged_weight for batch ${batch.id}:`, pkgErr.message);
+                batch.packaged_weight_lbs = 0;
+            }
 
-            const [varCosts] = await pool.query(
-                'SELECT * FROM egg_batch_variable_costs WHERE batch_id = ? AND company_id = ?',
-                [batch.id, req.company_id]
-            );
-            batch.variable_costs = varCosts;
+            try {
+                const [varCosts] = await pool.query(
+                    'SELECT * FROM egg_batch_variable_costs WHERE batch_id = ? AND company_id = ?',
+                    [batch.id, companyId]
+                );
+                batch.variable_costs = varCosts;
+            } catch (vcErr) {
+                batch.variable_costs = [];
+            }
 
-            const [remanentes] = await pool.query(
-                'SELECT * FROM egg_batch_remanentes WHERE target_batch_id = ? AND company_id = ?',
-                [batch.id, req.company_id]
-            );
-            batch.remanentes_used = remanentes;
+            try {
+                const [remanentes] = await pool.query(
+                    'SELECT * FROM egg_batch_remanentes WHERE target_batch_id = ? AND company_id = ?',
+                    [batch.id, companyId]
+                );
+                batch.remanentes_used = remanentes;
+            } catch (remErr) {
+                batch.remanentes_used = [];
+            }
         }
 
         res.json(rows);

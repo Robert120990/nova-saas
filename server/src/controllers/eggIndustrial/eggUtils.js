@@ -54,11 +54,36 @@ const computeJulianLotCode = (productionDate, runNumber = 1) => {
 
 // Auto-garantizar tablas y columnas requeridas en caliente para evitar ER_BAD_FIELD_ERROR / ER_NO_SUCH_TABLE
 let schemaEnsured = false;
+let schemaEnsuringPromise = null;
+
 const ensureEggSchema = async () => {
     if (schemaEnsured) return;
-    const [columns] = await pool.query("SHOW COLUMNS FROM egg_packaging_records LIKE 'dispatched_units'");
-    if (!columns.length) throw new Error('Ejecute database/run_migration_v234.js antes de usar huevo industrial.');
-    schemaEnsured = true;
+    if (schemaEnsuringPromise) return schemaEnsuringPromise;
+
+    schemaEnsuringPromise = (async () => {
+        try {
+            const [columns] = await pool.query("SHOW COLUMNS FROM egg_packaging_records LIKE 'dispatched_units'");
+            if (!columns.length) {
+                console.log('[EggIndustrial] Ejecutando auto-migración de integridad y columnas faltantes v234...');
+                const { migrate } = require('../../../database/migration_v234_egg_integrity');
+                await migrate(pool);
+                console.log('[EggIndustrial] Auto-migración v234 completada exitosamente.');
+            }
+            schemaEnsured = true;
+        } catch (err) {
+            console.error('[EggIndustrial] Advertencia al verificar/migrar esquema:', err.message);
+            try {
+                const [checkCols] = await pool.query("SHOW COLUMNS FROM egg_packaging_records LIKE 'dispatched_units'");
+                if (checkCols.length > 0) schemaEnsured = true;
+            } catch (fallbackErr) {
+                console.error('[EggIndustrial] Error comprobando columnas tras migración:', fallbackErr.message);
+            }
+        } finally {
+            schemaEnsuringPromise = null;
+        }
+    })();
+
+    return schemaEnsuringPromise;
 };
 
 

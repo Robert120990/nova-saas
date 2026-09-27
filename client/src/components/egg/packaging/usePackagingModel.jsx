@@ -111,15 +111,32 @@ export default function usePackagingModel() {
         setLoading(true);
         try {
             const [pkgRes, bRes, fRes, cfgRes] = await Promise.all([
-                axios.get('/api/egg-industrial/packaging'),
-                axios.get('/api/egg-industrial/batches'),
-                axios.get('/api/egg-industrial/blast-freezer'),
-                axios.get('/api/egg-industrial/product-config')
+                axios.get('/api/egg-industrial/packaging').catch(err => {
+                    console.error('Error fetching packaging records:', err);
+                    return { data: [] };
+                }),
+                axios.get('/api/egg-industrial/batches').catch(err => {
+                    console.error('Error fetching batches in packaging:', err);
+                    return { data: [] };
+                }),
+                axios.get('/api/egg-industrial/blast-freezer').catch(err => {
+                    console.error('Error fetching blast freezer logs:', err);
+                    return { data: [] };
+                }),
+                axios.get('/api/egg-industrial/product-config').catch(err => {
+                    console.error('Error fetching product config:', err);
+                    return { data: {} };
+                })
             ]);
-            setPackagingRecords(pkgRes.data);
-            setBatches(bRes.data);
-            setFreezerLogs(fRes.data);
-            setProductConfig(cfgRes.data);
+            const pkgList = Array.isArray(pkgRes.data) ? pkgRes.data : (pkgRes.data?.data || []);
+            const batchesList = Array.isArray(bRes.data) ? bRes.data : (bRes.data?.data || []);
+            const freezerList = Array.isArray(fRes.data) ? fRes.data : (fRes.data?.data || []);
+            const cfgData = cfgRes.data?.data || cfgRes.data || {};
+
+            setPackagingRecords(pkgList);
+            setBatches(batchesList);
+            setFreezerLogs(freezerList);
+            setProductConfig(cfgData);
         } catch (error) {
             console.error('Error fetching packaging data:', error);
             toast.error('Error al cargar datos de envasado.');
@@ -362,11 +379,15 @@ export default function usePackagingModel() {
         }
     };
 
-    const filteredPackaging = packagingRecords.filter(p =>
-        p.lot_code?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        p.product_type?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        p.presentation?.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    const filteredPackaging = (Array.isArray(packagingRecords) ? packagingRecords : []).filter(p => {
+        if (!searchTerm) return true;
+        const term = searchTerm.toLowerCase();
+        return (
+            (p.lot_code && p.lot_code.toLowerCase().includes(term)) ||
+            (p.product_type && p.product_type.toLowerCase().includes(term)) ||
+            (p.presentation && p.presentation.toLowerCase().includes(term))
+        );
+    });
 
     const handleEdit = (p) => {
         setEditingPackaging(p);

@@ -1602,12 +1602,16 @@ export default function useProductionModel() {
         }
     };
 
-    const filteredBatches = (Array.isArray(batches) ? batches : []).filter(b =>
-        b.batch_code_display?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        b.batch_uuid?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        b.product_type?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        b.presentation?.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    const filteredBatches = (Array.isArray(batches) ? batches : []).filter(b => {
+        if (!searchTerm) return true;
+        const term = searchTerm.toLowerCase();
+        return (
+            (b.batch_code_display && b.batch_code_display.toLowerCase().includes(term)) ||
+            (b.batch_uuid && b.batch_uuid.toLowerCase().includes(term)) ||
+            (b.product_type && b.product_type.toLowerCase().includes(term)) ||
+            (b.presentation && b.presentation.toLowerCase().includes(term))
+        );
+    });
 
 
  return { getNowDateTimeLocal, user, navigate, location, companyId, scheduledProductions, setScheduledProductions, selectedScheduledProd, setSelectedScheduledProd, scannerModalOpen, setScannerModalOpen, tarimaPickerModal, setTarimaPickerModal, tarimaSearchPickerOpen, setTarimaSearchPickerOpen, qualityModal, setQualityModal, batches, setBatches, rawMaterials, setRawMaterials, availableRemanentes, setAvailableRemanentes, showAllRemanentes, setShowAllRemanentes, openExportMenuId, setOpenExportMenuId, cipLogs, setCipLogs, loading, setLoading, searchTerm, setSearchTerm, activeTab, setActiveTab, batchForm, setBatchForm, cipForm, setCipForm, selectedBatchForPasteurize, setSelectedBatchForPasteurize, pasteurizeForm, setPasteurizeForm, selectedBatchForComplete, setSelectedBatchForComplete, completeForm, setCompleteForm, isSubmitting, setIsSubmitting, cipBlockedError, setCipBlockedError, haccpViolationAlert, setHaccpViolationAlert, isNewBatchModalOpen, setIsNewBatchModalOpen, isPasteurizeModalOpen, setIsPasteurizeModalOpen, productConfig, setProductConfig, userPermissions, isAdmin, canEditProduction, canDeleteProduction, canManageLots, stagesModal, setStagesModal, closePasteurizationModal, setClosePasteurizationModal, scannerContext, setScannerContext, editingBatch, setEditingBatch, addTarimasModal, setAddTarimasModal, remanenteModal, setRemanenteModal, wastesModal, setWastesModal, editBatchModal, setEditBatchModal, deleteConfirmBatch, setDeleteConfirmBatch, handleOpenStagesModal, handleOpenClosePasteurization, handleConfirmClosePasteurization, handleReopenPasteurization, handleReopenBatchPackaging, handleOpenBalanceModal, handleOpenWastesModal, handleOpenEditWaste, handleCreateWaste, handleDeleteWaste, handleOpenEditRemanente, handleDeleteRemanente, handleOpenEditBatch, handleMarkRemanenteUsed, handleReactivateRemanente, handleAddSpecificTarimaToAddModal, handleLoadAllAvailableTarimasToAddModal, handleUpdateTarimaBoxesInAddModal, handleUpdateTarimaLbsInAddModal, handleRemoveTarimaFromAddModal, handleManualTarimaDigitize, handleAddTarimasSubmit, handleRemanenteSubmit, _handleEditBatchSubmit, handleDeleteBatchConfirm, handleExportSummary, fetchData, fetchScheduledProductions, handleSelectScheduledProduction, handleAddSpecificTarimaToRm, handleLoadAllAvailableTarimas, handleUpdateTarimaBoxesInRm, handleUpdateTarimaLbsInRm, handleRemoveTarimaFromRm, handleScanTarimaResult, isSeparationProduct, availableRawLots, oldestFifoLot, oldestAALot, isCurrentSeparation, recommendedLot, recommendationReason, nonAALotSelectedForSeparation, nonAALotObj, handleApplyRecommendedLot, handleCreateBatch, handleQuickSanitize, handleCreateCip, handleDeleteCip, handlePasteurize, handleCompleteBatch, getBatchStatusBadge, filteredBatches };
