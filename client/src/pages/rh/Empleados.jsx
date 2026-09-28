@@ -546,21 +546,21 @@ const Empleados = () => {
                             <div className="grid grid-cols-3 gap-4">
                                 <div>
                                     <label className={labelCls}>Departamento</label>
-                                    <select name="departamento" value={selectedDept} onChange={e => { setSelectedDept(e.target.value); setSelectedMun(''); setSelectedDistrito(''); }} className={fieldCls} required>
+                                    <select name="departamento" value={selectedDept} onChange={e => { setSelectedDept(e.target.value); setSelectedMun(''); setSelectedDistrito(''); }} className={fieldCls}>
                                         <option value="">Seleccionar</option>
                                         {departments?.map(d => <option key={d.code} value={d.code}>{d.description}</option>)}
                                     </select>
                                 </div>
                                 <div>
                                     <label className={labelCls}>Municipio</label>
-                                    <select name="municipio" value={selectedMun} onChange={e => setSelectedMun(e.target.value)} className={fieldCls} required>
+                                    <select name="municipio" value={selectedMun} onChange={e => setSelectedMun(e.target.value)} className={fieldCls}>
                                         <option value="">Seleccionar</option>
                                         {municipalities?.map(m => <option key={m.code} value={m.code}>{m.description}</option>)}
                                     </select>
                                 </div>
                                 <div>
                                     <label className={labelCls}>Distrito</label>
-                                    <select name="distrito" value={selectedDistrito} onChange={e => setSelectedDistrito(e.target.value)} className={fieldCls} required>
+                                    <select name="distrito" value={selectedDistrito} onChange={e => setSelectedDistrito(e.target.value)} className={fieldCls}>
                                         <option value="">Seleccionar</option>
                                         {distritos?.map(d => <option key={d.code} value={d.code}>{d.description}</option>)}
                                     </select>
