@@ -1,4 +1,5 @@
 const { eggStock, emitSavedSale, pool, dteService, mailerService, resolveEggCatalogProduct, eggReturnableService, safeNum, safeInt, getPresentationWeightLbs } = require('../../../controllers/eggDispatch/shared');
+const { validateDocumentNumber } = require('../../../utils/svfeValidators');
 
 const autoInvoiceDispatchRoute = async (req) => {
     const responseHeaders = {};
@@ -164,7 +165,12 @@ const autoInvoiceDispatchRoute = async (req) => {
             if (!physicalItems.length) throw Object.assign(new Error('Seleccione al menos un producto físico.'), { status: 400 });
             const stockSelection = await eggStock.reserveItems(connection, company_id, physicalItems);
 
-            // Validaciones DTE si la empresa tiene DTE activo
+            // Validaciones DTE y de consistencia de cliente
+            if ((customer.nombre || '').toUpperCase().includes('[INACTIVO') || (customer.nombre_comercial || '').toUpperCase().includes('[INACTIVO')) {
+                await connection.rollback();
+                return ({ status: 400, body: { message: `La parada del Pedido #${stop.order_number || stop.order_id} tiene asignado al cliente inactivo o duplicado "${customer.nombre}". Reasigne el cliente activo antes de facturar.` }, headers: responseHeaders });
+            }
+
             if (company.dte_active) {
                 const stopEstimatedTotal = (stop.items || []).reduce((sum, it) => {
                     const rawQty = safeNum(it.quantity_lbs ?? it.quantity ?? 0, 0);
@@ -179,11 +185,27 @@ const autoInvoiceDispatchRoute = async (req) => {
                         return ({ status: 400, body: { message: `Cliente "${customer.nombre}": ${addressError}` }, headers: responseHeaders });
                     }
                 }
-                if (dteType === '03' && !customer.nit) {
-                    await connection.rollback();
-                    return ({ status: 400, body: {
-                        message: `El cliente "${customer.nombre}" no tiene NIT registrado. Para emitir Crédito Fiscal (03) el cliente debe tener NIT.`
-                    }, headers: responseHeaders });
+                if (dteType === '03') {
+                    if (!customer.nit || !String(customer.nit).trim()) {
+                        await connection.rollback();
+                        return ({ status: 400, body: {
+                            message: `El cliente "${customer.nombre}" no tiene NIT registrado. Para emitir Crédito Fiscal (03) el cliente debe tener NIT registrado.`
+                        }, headers: responseHeaders });
+                    }
+                    const nitValidation = validateDocumentNumber(customer.nit, 'NIT');
+                    if (!nitValidation.isValid) {
+                        await connection.rollback();
+                        return ({ status: 400, body: {
+                            message: `El cliente "${customer.nombre}" tiene un NIT no válido (${nitValidation.error}). Actualice el NIT del cliente en Catálogos antes de facturar.`
+                        }, headers: responseHeaders });
+                    }
+                    const cleanNrc = String(customer.nrc || '').replace(/[-\s]/g, '');
+                    if (!cleanNrc || cleanNrc.length < 2) {
+                        await connection.rollback();
+                        return ({ status: 400, body: {
+                            message: `El cliente "${customer.nombre}" no tiene un NRC válido registrado. Para emitir Crédito Fiscal (03) el cliente debe tener NRC.`
+                        }, headers: responseHeaders });
+                    }
                 }
             }
 
@@ -429,10 +451,6 @@ const autoInvoiceDispatchRoute = async (req) => {
             const finalTotalGravado = safeNum(totalGravado, 0);
             const finalTotalIva = safeNum(totalIva, 0);
             const finalTotalExento = safeNum(totalExento, 0);
-            const finalTotalNoSujeto = safeNum(totalNoSujeto, 0);
-            const calculatedPagar = dteType === '04' ? 0.00001 : (dteType === '11' ? finalTotalGravado : (finalTotalGravado + finalTotalIva));
-            const totalPagar = safeNum(calculatedPagar, 0);
-
             let retencion = 0;
             let percepcion = 0;
             if (company.tipo_contribuyente !== 'Grande' && customer.condicion_fiscal === 'gran contribuyente' && dteType === '03') {
@@ -442,6 +460,15 @@ const autoInvoiceDispatchRoute = async (req) => {
             }
             const finalRetencion = safeNum(retencion, 0);
             const finalPercepcion = safeNum(percepcion, 0);
+
+            // Total a pagar neto oficial: Gravado + IVA + Exento + No Sujeto - Retención (1% Gran Contribuyente) + Percepción
+            const calculatedPagar = dteType === '04'
+                ? 0.00001
+                : (dteType === '11'
+                    ? finalTotalGravado
+                    : Math.max(0, Math.round((finalTotalGravado + finalTotalIva + finalTotalExento + finalTotalNoSujeto - finalRetencion + finalPercepcion) * 100) / 100)
+                );
+            const totalPagar = safeNum(calculatedPagar, 0);
 
             const sellerId = resolvedSellerId;
             const branchId = resolvedBranchId;
@@ -530,8 +557,8 @@ const autoInvoiceDispatchRoute = async (req) => {
                 user_name: req.user?.nombre || 'Despacho', fecha_emision: new Date()
             });
 
-            // 5c. Insertar Pago
-            if (!company.dte_active) await connection.query('INSERT INTO sales_payments SET ?', [{
+            // 5c. Insertar Pago inicial de la venta (garantiza persistencia y consistencia en retransmisiones)
+            await connection.query('INSERT INTO sales_payments SET ?', [{
                 sale_id: saleId,
                 metodo_pago: '01',
                 monto: totalPagar,

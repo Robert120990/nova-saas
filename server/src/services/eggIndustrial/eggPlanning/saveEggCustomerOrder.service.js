@@ -39,16 +39,21 @@ const saveEggCustomerOrder = async (req) => {
                 [resolvedCustomerId, company_id]
             );
             if (cCheck.length > 0) {
+                if ((cCheck[0].nombre || '').toUpperCase().includes('[INACTIVO') || (cCheck[0].nombre_comercial || '').toUpperCase().includes('[INACTIVO')) {
+                    return ({ status: 400, body: { message: `El cliente seleccionado "${cCheck[0].nombre}" está inactivo o marcado como duplicado. Por favor seleccione el cliente activo correspondiente.` }, headers: responseHeaders });
+                }
                 resolvedCustomerName = cCheck[0].nombre;
             } else {
                 resolvedCustomerId = null;
             }
         } else if (resolvedCustomerName) {
-            // Intentar buscar coincidencia sin forzar si no está registrado
+            // Intentar buscar coincidencia sin forzar si no está registrado, priorizando clientes activos
             const [cCheck] = await pool.query(
                 `SELECT id, nombre, nombre_comercial FROM customers
                  WHERE company_id = ?
                    AND (LOWER(TRIM(nombre)) = LOWER(TRIM(?)) OR LOWER(TRIM(nombre_comercial)) = LOWER(TRIM(?)))
+                   AND nombre NOT LIKE '[INACTIVO%'
+                 ORDER BY id ASC
                  LIMIT 1`,
                 [company_id, resolvedCustomerName, resolvedCustomerName]
             );
