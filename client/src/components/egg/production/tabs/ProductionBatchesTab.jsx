@@ -12,9 +12,6 @@ import {
     Trash2,
     Pencil,
     Download,
-    FileSpreadsheet,
-    FileText,
-    FileCheck,
     Scale,
     FlaskConical,
     MoreVertical
@@ -23,7 +20,7 @@ import {
 
 export default function ProductionBatchesTab({ model }) {
     const [openActionMenuId, setOpenActionMenuId] = useState(null);
-    const { setQualityModal, openExportMenuId, setOpenExportMenuId, loading, searchTerm, setSearchTerm, activeTab, setSelectedBatchForPasteurize, setIsPasteurizeModalOpen, canEditProduction, canDeleteProduction, canManageLots, setDeleteConfirmBatch, handleOpenStagesModal, handleOpenClosePasteurization, handleReopenPasteurization, handleOpenBalanceModal, handleOpenWastesModal, handleOpenEditBatch, handleExportSummary, getBatchStatusBadge, filteredBatches } = model;
+    const { setQualityModal, loading, searchTerm, setSearchTerm, activeTab, setSelectedBatchForPasteurize, setIsPasteurizeModalOpen, canEditProduction, canDeleteProduction, canManageLots, setDeleteConfirmBatch, handleOpenStagesModal, handleOpenClosePasteurization, handleReopenPasteurization, handleOpenBalanceModal, handleOpenWastesModal, handleOpenEditBatch, handleExportSummary, getBatchStatusBadge, filteredBatches } = model;
 
     return (<>{activeTab === 'batches' && (
                 <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">

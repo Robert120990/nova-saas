@@ -29,6 +29,52 @@ const DTE_TYPE_OPTIONS = [
     { code: '04', name: '04 - Nota de Remisión (NR)', short: '04 Remisión' }
 ];
 
+const normalizePresentation = (str) => String(str || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+const findMatchingPackaging = (item, lots) => {
+    if (!item || !Array.isArray(lots) || lots.length === 0) return null;
+    const cleanPres = normalizePresentation(item.presentation);
+    const itemLot = String(item.original_lot_code || item.lot_code || '').trim();
+    const cleanLot = itemLot.replace(/^LOTE\s+/i, '').replace(/^LOT-/i, '').replace(/\s+/g, '');
+    const batchId = item.batch_id ? Number(item.batch_id) : null;
+
+    // 1. Coincidencia por packaging_id
+    if (item.packaging_id) {
+        const found = lots.find(l => Number(l.packaging_id) === Number(item.packaging_id));
+        if (found) return found;
+    }
+
+    // 2. Coincidencia por código de lote de empaque exacto
+    if (itemLot) {
+        const found = lots.find(l => l.lot_code && String(l.lot_code).trim().toLowerCase() === itemLot.toLowerCase());
+        if (found) return found;
+    }
+
+    // 3. Coincidencia por batch_id o texto de lote de producción
+    const candidates = lots.filter(l => {
+        const matchBatch = (batchId && Number(l.batch_id) === batchId);
+        const matchDisplay = itemLot && (
+            (l.batch_code_display && String(l.batch_code_display).toLowerCase().includes(itemLot.toLowerCase())) ||
+            (l.lot_code && String(l.lot_code).toLowerCase().includes(itemLot.toLowerCase())) ||
+            (cleanLot && l.lot_code && l.lot_code.replace(/[^a-z0-9]/gi, '').toLowerCase().includes(cleanLot.toLowerCase()))
+        );
+        return matchBatch || matchDisplay;
+    });
+
+    if (candidates.length > 0) {
+        if (cleanPres) {
+            const presMatched = candidates.find(l => {
+                const lPres = normalizePresentation(l.presentation);
+                return lPres === cleanPres || lPres.includes(cleanPres) || cleanPres.includes(lPres);
+            });
+            if (presMatched) return presMatched;
+        }
+        return candidates[0];
+    }
+
+    return null;
+};
+
 export default function RouteAutoInvoicingModal({
     isOpen,
     onClose,
@@ -109,6 +155,18 @@ export default function RouteAutoInvoicingModal({
                             const isUnitDefault = it.billing_unit === 'units' ||
                                 (it.billing_unit !== 'lbs' && (isCustomerCallejas || (parsedUnits && parsedUnits > 0)));
 
+                            const itemBatchId = it.batch_id || stop.order_batch_id || stop.batch_id || null;
+                            const itemOriginalLot = it.original_lot_code || it.lot_code || stop.order_lot_code || stop.lot_code || '';
+                            const itemLotCode = it.lot_code || stop.order_lot_code || stop.lot_code || stop.linked_batch_code || '';
+                            const matchedPkg = findMatchingPackaging({
+                                batch_id: itemBatchId,
+                                packaging_id: it.packaging_id || null,
+                                original_lot_code: itemOriginalLot,
+                                lot_code: itemLotCode,
+                                presentation: initPres,
+                                product_type: initProd
+                            }, availableLots);
+
                             return {
                                 product_type: initProd,
                                 original_product_type: it.product_type || 'Huevo Entero Pasteurizado',
@@ -120,10 +178,10 @@ export default function RouteAutoInvoicingModal({
                                 quantity_lbs: parseFloat(it.quantity_lbs || stop.quantity_lbs || 0),
                                 quantity_kg: it.quantity_kg ? parseFloat(it.quantity_kg) : (parseFloat(it.quantity_lbs || stop.quantity_lbs || 0) * 0.45359237),
                                 price_per_lb: parseFloat(it.price_per_lb || stop.price_per_lb || 0),
-                                batch_id: it.batch_id || stop.order_batch_id || stop.batch_id || null,
-                                packaging_id: it.packaging_id || null,
-                                original_lot_code: it.original_lot_code || it.lot_code || stop.order_lot_code || stop.lot_code || '',
-                                lot_code: it.lot_code || stop.order_lot_code || stop.lot_code || stop.linked_batch_code || '',
+                                batch_id: itemBatchId || matchedPkg?.batch_id || null,
+                                packaging_id: it.packaging_id || matchedPkg?.packaging_id || null,
+                                original_lot_code: (it.packaging_id && it.original_lot_code) || matchedPkg?.lot_code || itemOriginalLot,
+                                lot_code: itemLotCode,
                                 barcode: rawBarcode,
                                 is_kg_mode: isKg
                             };
@@ -156,6 +214,18 @@ export default function RouteAutoInvoicingModal({
                 const isUnitDefault = stop.billing_unit === 'units' ||
                     (stop.billing_unit !== 'lbs' && (isCustomerCallejas || (parsedStopUnits && parsedStopUnits > 0)));
 
+                const stopBatchId = stop.order_batch_id || stop.batch_id || null;
+                const stopOriginalLot = stop.order_lot_code || stop.lot_code || '';
+                const stopLotCode = stop.order_lot_code || stop.lot_code || stop.linked_batch_code || '';
+                const matchedPkg = findMatchingPackaging({
+                    batch_id: stopBatchId,
+                    packaging_id: null,
+                    original_lot_code: stopOriginalLot,
+                    lot_code: stopLotCode,
+                    presentation: initPres,
+                    product_type: initProd
+                }, availableLots);
+
                 items = [{
                     product_type: initProd,
                     original_product_type: stop.product_type || 'Huevo Entero Pasteurizado',
@@ -167,10 +237,10 @@ export default function RouteAutoInvoicingModal({
                     quantity_lbs: parseFloat(stop.quantity_lbs || 0),
                     quantity_kg: stop.quantity_kg ? parseFloat(stop.quantity_kg) : (parseFloat(stop.quantity_lbs || 0) * 0.45359237),
                     price_per_lb: parseFloat(stop.price_per_lb || 0),
-                    batch_id: stop.order_batch_id || stop.batch_id || null,
-                    packaging_id: null,
-                    original_lot_code: stop.order_lot_code || stop.lot_code || '',
-                    lot_code: stop.order_lot_code || stop.lot_code || stop.linked_batch_code || '',
+                    batch_id: stopBatchId || matchedPkg?.batch_id || null,
+                    packaging_id: matchedPkg?.packaging_id || null,
+                    original_lot_code: matchedPkg?.lot_code || stopOriginalLot,
+                    lot_code: stopLotCode,
                     barcode: rawBarcode,
                     is_kg_mode: isKg
                 }];
@@ -187,16 +257,51 @@ export default function RouteAutoInvoicingModal({
         });
 
         setStopsConfig(initialConfig);
-    }, [isOpen, route]);
+    }, [isOpen, route, availableLots]);
 
-    // Cargar lotes activos al abrir el pop-up de asignación de lote
+    // Cargar lotes activos al abrir el modal para auto-vincular empaques
+    useEffect(() => {
+        if (!isOpen) return;
+        fetchAvailableLots();
+    }, [isOpen]);
+
+    // Cargar lotes activos al abrir el modal o el pop-up de asignación de lote
     const fetchAvailableLots = async () => {
         setIsLoadingLots(true);
         try {
             const res = await axios.get('/api/egg-industrial/traceability-360/available-lots', {
                 params: { all_lots: 'true' }
             });
-            setAvailableLots(Array.isArray(res.data) ? res.data : []);
+            const lots = Array.isArray(res.data) ? res.data : [];
+            setAvailableLots(lots);
+
+            // Auto-vincular empaques en partidas pendientes sin packaging_id
+            setStopsConfig(prev => {
+                let hasChanges = false;
+                const updated = { ...prev };
+                Object.keys(updated).forEach(stopId => {
+                    const stopCfg = updated[stopId];
+                    if (!stopCfg || stopCfg.is_billed) return;
+                    const mappedItems = (stopCfg.items || []).map(it => {
+                        if (it.is_custom_detail || it.packaging_id) return it;
+                        const matched = findMatchingPackaging(it, lots);
+                        if (matched) {
+                            hasChanges = true;
+                            return {
+                                ...it,
+                                packaging_id: matched.packaging_id,
+                                original_lot_code: matched.lot_code,
+                                batch_id: it.batch_id || matched.batch_id
+                            };
+                        }
+                        return it;
+                    });
+                    if (hasChanges) {
+                        updated[stopId] = { ...stopCfg, items: mappedItems };
+                    }
+                });
+                return hasChanges ? updated : prev;
+            });
         } catch (error) {
             console.error('Error cargando lotes disponibles:', error);
             toast.error('Error al cargar inventario de lotes.');
@@ -364,10 +469,23 @@ export default function RouteAutoInvoicingModal({
             const currentStop = prev[stopId];
             if (!currentStop || currentStop.is_billed) return prev;
             const newItems = [...currentStop.items];
-            newItems[itemIndex] = {
+            const updatedItem = {
                 ...newItems[itemIndex],
                 [field]: value
             };
+
+            if (field === 'presentation' || field === 'lot_code') {
+                const matched = findMatchingPackaging(updatedItem, availableLots);
+                if (matched) {
+                    updatedItem.packaging_id = matched.packaging_id;
+                    updatedItem.original_lot_code = matched.lot_code;
+                    if (!updatedItem.batch_id && matched.batch_id) {
+                        updatedItem.batch_id = matched.batch_id;
+                    }
+                }
+            }
+
+            newItems[itemIndex] = updatedItem;
             return {
                 ...prev,
                 [stopId]: {
@@ -1105,13 +1223,26 @@ export default function RouteAutoInvoicingModal({
                                                     <div className="space-y-1">
                                                         <span className="block text-[9px] font-black uppercase text-slate-400">Presentación</span>
                                                         {!isBilled ? (
-                                                            <input
-                                                                type="text"
-                                                                value={it.presentation || ''}
-                                                                onChange={(e) => handleUpdateItemField(stop.id, itemIdx, 'presentation', e.target.value)}
-                                                                placeholder="cubeta..."
-                                                                className="w-full text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-md px-2 py-1 focus:ring-1 focus:ring-indigo-500 focus:outline-hidden"
-                                                            />
+                                                            <>
+                                                                <input
+                                                                    type="text"
+                                                                    list={`pres-list-${stop.id}-${itemIdx}`}
+                                                                    value={it.presentation || ''}
+                                                                    onChange={(e) => handleUpdateItemField(stop.id, itemIdx, 'presentation', e.target.value)}
+                                                                    placeholder="cubeta..."
+                                                                    className="w-full text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-md px-2 py-1 focus:ring-1 focus:ring-indigo-500 focus:outline-hidden"
+                                                                />
+                                                                <datalist id={`pres-list-${stop.id}-${itemIdx}`}>
+                                                                    {availableLots
+                                                                        .filter(l => !it.batch_id || Number(l.batch_id) === Number(it.batch_id))
+                                                                        .map(l => l.presentation)
+                                                                        .filter((v, i, a) => v && a.indexOf(v) === i)
+                                                                        .map(p => (
+                                                                            <option key={p} value={p} />
+                                                                        ))
+                                                                    }
+                                                                </datalist>
+                                                            </>
                                                         ) : (
                                                             <span className="font-bold text-slate-700">{it.presentation || 'cubeta 30LB'}</span>
                                                         )}

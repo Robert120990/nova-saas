@@ -9,9 +9,9 @@ const EggClosePasteurizationModal = ({
     notes,
     onNotesChange,
     wasteShellLbs,
-    onWasteShellLbsChange,
+    _onWasteShellLbsChange,
     yieldLiquidLbs,
-    onYieldLiquidLbsChange,
+    _onYieldLiquidLbsChange,
     onSubmit,
     isSubmitting
 }) => {
