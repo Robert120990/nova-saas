@@ -246,8 +246,11 @@ export default function RouteAutoInvoicingModal({
                 }];
             }
 
+            const isInactiveCustomer = (stop.customer_name || '').toUpperCase().includes('[INACTIVO') ||
+                (stop.customer_commercial_name || '').toUpperCase().includes('[INACTIVO');
+
             initialConfig[stop.id] = {
-                selected: !isBilled,
+                selected: !isBilled && !isInactiveCustomer,
                 is_billed: isBilled,
                 dte_type: dteType,
                 condicion_operacion: condicionOperacion,
@@ -377,9 +380,17 @@ export default function RouteAutoInvoicingModal({
 
     // Actualizadores de configuración por parada
     const handleToggleSelectStop = (stopId) => {
+        const stop = (route?.stops || []).find(s => s.id === stopId);
+        const isInactive = (stop?.customer_name || '').toUpperCase().includes('[INACTIVO') ||
+            (stop?.customer_commercial_name || '').toUpperCase().includes('[INACTIVO');
+
         setStopsConfig(prev => {
             const curr = prev[stopId];
             if (!curr || curr.is_billed) return prev;
+            if (!curr.selected && isInactive) {
+                toast.error(`El cliente de esta parada está marcado como INACTIVO o DUPLICADO. Actualice la orden al cliente activo correspondiente antes de facturarlo.`);
+                return prev;
+            }
             return {
                 ...prev,
                 [stopId]: { ...curr, selected: !curr.selected }
@@ -714,7 +725,35 @@ export default function RouteAutoInvoicingModal({
                 }
             }
         }
-        // 3. Confirmación
+
+        // 3. Validar clientes inactivos
+        for (const stop of selectedStops) {
+            const isInactive = (stop.customer_name || '').toUpperCase().includes('[INACTIVO') ||
+                (stop.customer_commercial_name || '').toUpperCase().includes('[INACTIVO');
+            if (isInactive) {
+                toast.error(`La parada de "${stop.customer_name}" tiene un cliente INACTIVO o DUPLICADO. Actualice la orden al cliente activo correspondiente antes de facturar.`);
+                return;
+            }
+        }
+
+        // 4. Validar requisitos de Comprobante de Crédito Fiscal (03)
+        for (const stop of selectedStops) {
+            const cfg = stopsConfig[stop.id];
+            if (cfg?.dte_type === '03') {
+                const nit = (stop.customer_nit || '').replace(/[^0-9]/g, '');
+                const nrc = (stop.customer_nrc || '').trim();
+                if (!nrc) {
+                    toast.error(`El cliente "${stop.customer_name}" no tiene NRC para emitir Comprobante de Crédito Fiscal (03). Modifique los datos del cliente o cambie el documento a Factura (01).`);
+                    return;
+                }
+                if (!nit || (nit.length !== 9 && nit.length !== 14)) {
+                    toast.error(`El cliente "${stop.customer_name}" no tiene un NIT válido (debe tener 9 o 14 dígitos) para emitir Crédito Fiscal (03). Corrija el cliente o use Factura (01).`);
+                    return;
+                }
+            }
+        }
+
+        // 5. Confirmación
         if (!window.confirm(`¿Confirmas la facturación automática y emisión de DTEs para ${selectedStops.length} parada(s) de la ruta ${route.codigo_ruta}?`)) {
             return;
         }
@@ -920,6 +959,13 @@ export default function RouteAutoInvoicingModal({
                                                 {stop.prioridad === 'urgente' && (
                                                     <span className="text-[9px] font-black bg-rose-100 text-rose-700 px-1.5 py-0.2 rounded">
                                                         URGENTE
+                                                    </span>
+                                                )}
+
+                                                {((stop.customer_name || '').toUpperCase().includes('[INACTIVO') || (stop.customer_commercial_name || '').toUpperCase().includes('[INACTIVO')) && (
+                                                    <span className="inline-flex items-center gap-1 text-[9px] font-black bg-rose-100 text-rose-800 border border-rose-300 px-1.5 py-0.5 rounded">
+                                                        <AlertTriangle className="w-3 h-3 text-rose-600" />
+                                                        CLIENTE INACTIVO / DUPLICADO
                                                     </span>
                                                 )}
                                             </div>
