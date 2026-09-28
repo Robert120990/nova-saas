@@ -65,7 +65,9 @@ const {
     planillaVacacionesSchema,
     planillaVacacionesUpdateSchema,
     planillaAguinaldosSchema,
-    rhDescuentoSchema
+    rhDescuentoSchema,
+    rhDescuentoProgramadoSchema,
+    rhEmpleadoDescuentoSchema
 } = require('../schemas/rhSchemas');
 const {
     pozoServicioSchema,
@@ -1059,7 +1061,7 @@ router.delete('/rh/cargos/:id', rhCargoController.deleteCargo);
 
 // RRHH - Descuentos Programados
 router.get('/rh/descuentos-programados', rhDescuentoController.getDescuentos);
-router.post('/rh/descuentos-programados', validate(rhDescuentoSchema), rhDescuentoController.createDescuento);
+router.post('/rh/descuentos-programados', validate(rhDescuentoProgramadoSchema), rhDescuentoController.createDescuento);
 router.put('/rh/descuentos-programados/:id', rhDescuentoController.updateDescuento);
 router.delete('/rh/descuentos-programados/:id', rhDescuentoController.deleteDescuento);
 
@@ -1128,8 +1130,8 @@ router.delete('/rh/empleados/:id', rhEmpleadoController.deleteEmpleado);
 
 // RRHH - Empleado Descuentos Programados
 router.get('/rh/empleados/:id/descuentos', rhEmpleadoController.getDescuentos);
-router.post('/rh/empleados/:id/descuentos', validate(rhDescuentoSchema), rhEmpleadoController.createDescuento);
-router.put('/rh/empleados/:id/descuentos/:did', rhEmpleadoController.updateDescuento);
+router.post('/rh/empleados/:id/descuentos', validate(rhEmpleadoDescuentoSchema), rhEmpleadoController.createDescuento);
+router.put('/rh/empleados/:id/descuentos/:did', validate(rhEmpleadoDescuentoSchema), rhEmpleadoController.updateDescuento);
 router.delete('/rh/empleados/:id/descuentos/:did', rhEmpleadoController.deleteDescuento);
 
 // RRHH - Empleado Indemnizaciones
