@@ -55,12 +55,9 @@ const createLabLog = async (req, res) => {
         const evaluatedFq = evaluation.fq;
         let evaluatedRelease = evaluation.release;
         let evaluatedStatus = evaluation.status;
-        if (batch.status === 'bloqueado_haccp') {
-            evaluatedRelease = 'bloqueado_haccp'; evaluatedStatus = 'rechazado';
-        }
         if (evaluatedRelease === 'liberado') {
-            const [past] = await connection.query('SELECT id FROM egg_pasteurization_logs WHERE batch_id = ? AND company_id = ? AND haccp_compliant = 1 LIMIT 1', [batch_id, company_id]);
-            if (batch.pasteurization_status !== 'cerrado' || !past.length) fail('La liberación requiere pasteurización conforme y cerrada.');
+            const [past] = await connection.query('SELECT id FROM egg_pasteurization_logs WHERE batch_id = ? AND company_id = ? LIMIT 1', [batch_id, company_id]);
+            if (batch.pasteurization_status !== 'cerrado' || !past.length) fail('La liberación requiere pasteurización registrada y cerrada.');
         }
         if (customer_id) await owned(connection, 'customers', customer_id, company_id);
         const releasedAt = evaluatedRelease === 'liberado' ? new Date() : null;
@@ -171,12 +168,9 @@ const updateLabLog = async (req, res) => {
         const evaluatedFq = evaluation.fq;
         let evaluatedRelease = evaluation.release;
         let evaluatedStatus = evaluation.status;
-        if (batch.status === 'bloqueado_haccp') {
-            evaluatedRelease = 'bloqueado_haccp'; evaluatedStatus = 'rechazado';
-        }
         if (evaluatedRelease === 'liberado') {
-            const [past] = await connection.query('SELECT id FROM egg_pasteurization_logs WHERE batch_id = ? AND company_id = ? AND haccp_compliant = 1 LIMIT 1', [batch_id, company_id]);
-            if (batch.pasteurization_status !== 'cerrado' || !past.length) fail('La liberación requiere pasteurización conforme y cerrada.');
+            const [past] = await connection.query('SELECT id FROM egg_pasteurization_logs WHERE batch_id = ? AND company_id = ? LIMIT 1', [batch_id, company_id]);
+            if (batch.pasteurization_status !== 'cerrado' || !past.length) fail('La liberación requiere pasteurización registrada y cerrada.');
         }
         if (customer_id) await owned(connection, 'customers', customer_id, company_id);
         const releasedAt = evaluatedRelease === 'liberado' ? new Date() : null;

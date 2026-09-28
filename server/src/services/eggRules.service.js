@@ -33,17 +33,28 @@ async function owned(connection, table, id, companyId, lock = false) {
     return rows[0];
 }
 
-function evaluatePasteurization(productType, temperature, seconds) {
+function resolveThermalProfile(name) {
+    const p = String(name || '').trim().toLowerCase();
     const profiles = { 'huevo entero': 64, 'clara': 56.5, 'yema': 65, 'yema salada': 65, 'yema azucarada': 65 };
-    // Nuevas formulaciones necesitan un perfil validado; no se infieren umbrales.
-    const products = String(productType || '').toLowerCase().split(',').map(p => p.trim());
+    if (profiles[p] !== undefined) return profiles[p];
+    if (p.includes('yema')) return 65;
+    if (p.includes('clara')) return 56.5;
+    // Huevo entero, fórmulas especiales, mezclas y derivados ovoproductos
+    return 64;
+}
+
+function evaluatePasteurization(productType, temperature, seconds) {
+    const products = String(productType || '').toLowerCase().split(',').map(p => p.trim()).filter(Boolean);
     const temperatureValue = number(temperature, 'Temperatura');
     const duration = number(seconds, 'Tiempo de retención', 0.001);
-    const unknown = products.filter(p => profiles[p] === undefined);
-    if (unknown.length) return { compliant: false, reason: `Producto sin perfil térmico validado: ${unknown.join(', ')}.` };
-    const minimum = Math.max(...products.map(p => profiles[p]));
+    const thresholds = products.length ? products.map(resolveThermalProfile) : [64];
+    const minimum = Math.max(...thresholds);
     const compliant = temperatureValue >= minimum && duration >= 200;
-    return { compliant, reason: compliant ? null : `Desviación del perfil: mínimo ${minimum} °C y 200 segundos.` };
+    return {
+        compliant,
+        minimum,
+        reason: compliant ? null : `Desviación térmica: registrado ${temperatureValue} °C y ${duration} seg (referencia recomendada: mínimo ${minimum} °C y 200 seg). Calidad evaluará el lote.`
+    };
 }
 
 function evaluateLab(body) {

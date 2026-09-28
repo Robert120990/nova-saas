@@ -1547,14 +1547,14 @@ export default function useProductionModel() {
 
             const { haccp_compliant, deviation_description } = res.data;
 
-            if (!haccp_compliant) {
-                setHaccpViolationAlert(deviation_description);
-                toast.error('ALERTA CRÍTICA: Lote bloqueado por desviación HACCP.', { duration: 10000 });
+            if (!haccp_compliant && deviation_description) {
+                toast.warning(`Parámetros registrados con observación: ${deviation_description}. El lote pasó a estado pasteurizado; Control de Calidad dictaminará la liberación.`, { duration: 8000 });
             } else {
-                toast.success('Monitoreo HACCP validado. El lote pasó a estado pasteurizado.');
-                setSelectedBatchForPasteurize('');
-                setIsPasteurizeModalOpen(false);
+                toast.success('Monitoreo de pasteurización registrado correctamente. El lote pasó a estado pasteurizado.');
             }
+            setSelectedBatchForPasteurize('');
+            setIsPasteurizeModalOpen(false);
+            setHaccpViolationAlert(null);
             fetchData();
         } catch (error) {
             console.error('Error validating pasteurization HACCP:', error);
