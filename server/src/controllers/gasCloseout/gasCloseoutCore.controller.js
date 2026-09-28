@@ -390,9 +390,10 @@ exports.getCloseouts = async (req, res) => {
         let where = 'WHERE c.company_id = ?';
         let params = [req.company_id];
 
-        if (req.user.branch_id) {
+        const targetBranchId = req.user.branch_id || req.query.branch_id;
+        if (targetBranchId) {
             where += ' AND c.branch_id = ?';
-            params.push(req.user.branch_id);
+            params.push(targetBranchId);
         }
 
         if (search) {
@@ -408,9 +409,12 @@ exports.getCloseouts = async (req, res) => {
         const [rows] = await pool.query(`
             SELECT
               c.*,
+              b.nombre as branch_name,
               (SELECT COUNT(*) FROM gas_station_closeout_changes ch WHERE ch.closeout_id = c.id) as cambios_count,
               COALESCE(rd.total_lecturas, 0) as total_lecturas,
-              COALESCE(rd.total_monto, 0) as total_monto,
+              ROUND(COALESCE(rd.total_monto, 0) + COALESCE(lb.total_lubricantes, 0), 2) as total_monto,
+              COALESCE(rd.total_monto, 0) as total_combustible,
+              COALESCE(lb.total_lubricantes, 0) as total_lubricantes,
               COALESCE(rd.total_diferencia, 0) as total_diferencia,
               ROUND(
                 (COALESCE(eg.total_gastos, 0) + COALESCE(re.total_remesas, 0) +
@@ -422,6 +426,7 @@ exports.getCloseouts = async (req, res) => {
                 2
               ) as total_diferencia_efectivo
             FROM gas_station_closeouts c
+            LEFT JOIN branches b ON b.id = c.branch_id
             LEFT JOIN (SELECT closeout_id, SUM(monto) as total_monto, SUM(diferencia) as total_diferencia, COUNT(*) as total_lecturas FROM gas_station_closeout_readings GROUP BY closeout_id) rd ON rd.closeout_id = c.id
             LEFT JOIN (SELECT closeout_id, COALESCE(SUM(valor), 0) as total_gastos FROM gas_station_closeout_expenses GROUP BY closeout_id) eg ON eg.closeout_id = c.id
             LEFT JOIN (SELECT closeout_id, COALESCE(SUM(monto), 0) as total_remesas FROM gas_station_closeout_remesas GROUP BY closeout_id) re ON re.closeout_id = c.id
@@ -725,7 +730,7 @@ exports.updateReading = async (req, res) => {
         const finalLectura = newLectura !== undefined ? newLectura : parseFloat(current[0].lectura_actual);
         const finalCalibracion = newCalibracion !== undefined ? newCalibracion : parseFloat(current[0].calibracion);
         const diferencia = finalLectura - lectura_anterior - finalCalibracion;
-        const monto = diferencia * precio;
+        const monto = Math.round(diferencia * precio * 100) / 100;
 
         await pool.query(`
             UPDATE gas_station_closeout_readings
@@ -776,7 +781,7 @@ exports.batchUpdateReadings = async (req, res) => {
             const calibracion = parseFloat(current[0].calibracion);
             const lectura_actual = parseFloat(r.lectura_actual);
             const diferencia = lectura_actual - lectura_anterior - calibracion;
-            const monto = diferencia * precio;
+            const monto = Math.round(diferencia * precio * 100) / 100;
 
             await pool.query(`
                 UPDATE gas_station_closeout_readings
