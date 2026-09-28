@@ -159,6 +159,18 @@ const PlanillaReportModal = ({ isOpen, onClose, periodo }) => {
         return () => window.removeEventListener('keydown', handleKeyboardNav);
     }, [isOpen, pdfUrl, totalPages]);
 
+    // Sincronizar página en iframe de forma efectiva
+    useEffect(() => {
+        if (!iframeRef.current || !pdfUrl) return;
+        const targetUrl = `${pdfUrl.split('#')[0]}#page=${currentPage}&view=FitH`;
+        try {
+            iframeRef.current.contentWindow?.location.replace(targetUrl);
+        } catch {
+            // Si hay restricción cross-origin, reasignar src
+            iframeRef.current.src = targetUrl;
+        }
+    }, [currentPage, pdfUrl]);
+
     // Close on ESC
     useEffect(() => {
         if (!isOpen) return;
@@ -341,6 +353,7 @@ const PlanillaReportModal = ({ isOpen, onClose, periodo }) => {
                         </div>
                     ) : pdfUrl ? (
                         <iframe
+                            key={`${pdfUrl}-${currentPage}`}
                             ref={iframeRef}
                             src={`${pdfUrl.split('#')[0]}#page=${currentPage}&view=FitH`}
                             className="w-full flex-1 border-0 bg-slate-100"
