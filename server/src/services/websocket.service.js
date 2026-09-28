@@ -17,12 +17,17 @@ function send(clients, event, data) {
     const payload = JSON.stringify({ event, data });
     for (const socket of clients || []) if (socket.readyState === WebSocket.OPEN) socket.send(payload);
 }
+const fusionAgent = require('./fusionAgent.service');
+
 function initWebSocket(server, appVersion = 'unknown') {
     currentAppVersion = appVersion;
     const wss = new WebSocket.Server({ noServer: true, maxPayload: 16 * 1024, handleProtocols: () => 'sipe' });
     server.on('upgrade', async (request, socket, head) => {
         try {
             const url = new URL(request.url, `http://${request.headers.host}`);
+            if (url.pathname === '/ws/fusion-agent') {
+                return await fusionAgent.handleUpgrade(request, socket, head);
+            }
             if (!['/ws/egg-industrial', '/ws/inventory', '/ws/notifications'].includes(url.pathname)) return socket.destroy();
             const protocols = String(request.headers['sec-websocket-protocol'] || '').split(',').map(p => p.trim());
             const token = protocols.find(p => p.startsWith('auth.'))?.slice(5);

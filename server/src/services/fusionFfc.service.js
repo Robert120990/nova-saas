@@ -1,8 +1,14 @@
 const https = require('https');
 const pool = require('../config/db');
+const fusionAgent = require('./fusionAgent.service');
 
 let cachedToken = null;
 let tokenExpiresAt = 0;
+
+function isPrivateHost(hostStr) {
+    if (!hostStr) return false;
+    return /^(https?:\/\/)?(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|localhost|127\.)/i.test(hostStr);
+}
 
 function ffcRequest(urlStr, options = {}, body = null) {
     return new Promise((resolve, reject) => {
@@ -36,13 +42,25 @@ function ffcRequest(urlStr, options = {}, body = null) {
             });
 
             req.on('error', (err) => {
-                const isConn = ['ECONNREFUSED', 'ETIMEDOUT', 'EHOSTUNREACH'].includes(err.code);
-                const msg = isConn ? `No se pudo conectar con Fusion (${url.hostname}). Verifique la red local.` : `Error de red con Fusion: ${err.message}`;
+                const isConn = ['ECONNREFUSED', 'ETIMEDOUT', 'EHOSTUNREACH', 'ENOTFOUND'].includes(err.code);
+                let msg;
+                if (isConn) {
+                    if (isPrivateHost(url.hostname)) {
+                        msg = `No se pudo conectar a la IP privada de Fusion (${url.hostname}) desde este servidor. Inicie el Conector Local de Estación en la gasolinera.`;
+                    } else {
+                        msg = `No se pudo conectar con Fusion (${url.hostname}). Verifique la red local.`;
+                    }
+                } else {
+                    msg = `Error de red con Fusion: ${err.message}`;
+                }
                 const error = new Error(msg);
                 error.originalError = err;
                 reject(error);
             });
-            req.on('timeout', () => req.destroy(new Error(`Tiempo agotado conectando con Fusion (${url.hostname}).`)));
+            req.on('timeout', () => {
+                const hint = isPrivateHost(url.hostname) ? ' Asegúrese de tener activo el Conector Local de Estación.' : '';
+                req.destroy(new Error(`Tiempo agotado conectando con Fusion (${url.hostname}).${hint}`));
+            });
             if (body) req.write(typeof body === 'string' ? body : JSON.stringify(body));
             req.end();
         } catch (e) {
@@ -151,7 +169,11 @@ const fmtDT = (d, t) => {
     return `${d.slice(6, 8)}/${d.slice(4, 6)}/${d.slice(0, 4)} ${time}`;
 };
 
-async function getShiftPeriods(config) {
+async function getShiftPeriods(config, companyId = null, branchId = null) {
+    if (companyId && branchId && fusionAgent.isAgentConnected(companyId, branchId)) {
+        console.log(`[Fusion] Consultando turnos a través del Conector Local (Empresa #${companyId}, Estación #${branchId})`);
+        return await fusionAgent.callAgent(companyId, branchId, 'getShiftPeriods', { config });
+    }
     const res = await ffcAuthedRequest('/fusion/period/list/shift', config);
     const rawList = res.data?.list || res.data || [];
     const periods = rawList.map(p => {
@@ -177,7 +199,11 @@ async function getShiftPeriods(config) {
     return periods;
 }
 
-async function getPeriodTotalizers(periodId, config) {
+async function getPeriodTotalizers(periodId, config, companyId = null, branchId = null) {
+    if (companyId && branchId && fusionAgent.isAgentConnected(companyId, branchId)) {
+        console.log(`[Fusion] Consultando totalizadores del turno #${periodId} a través del Conector Local (Empresa #${companyId}, Estación #${branchId})`);
+        return await fusionAgent.callAgent(companyId, branchId, 'getPeriodTotalizers', { periodId, config });
+    }
     const infoRes = await ffcAuthedRequest(`/fusion/period/info/shift/${periodId}`, config);
     const info = infoRes.data;
     if (!info) throw new Error(`No se encontró información para el turno ${periodId} en Fusion.`);
@@ -270,9 +296,13 @@ async function getPeriodTotalizers(periodId, config) {
     };
 }
 
-async function testConnection(config) {
+async function testConnection(config, companyId = null, branchId = null) {
+    if (companyId && branchId && fusionAgent.isAgentConnected(companyId, branchId)) {
+        const res = await fusionAgent.callAgent(companyId, branchId, 'testConnection', { config });
+        return { ...res, via: 'agent' };
+    }
     const token = await getFusionToken(config, true);
-    return { success: true, host: config.host, token: token ? 'OK' : 'FAIL' };
+    return { success: true, host: config.host, token: token ? 'OK' : 'FAIL', via: 'direct' };
 }
 
 module.exports = {

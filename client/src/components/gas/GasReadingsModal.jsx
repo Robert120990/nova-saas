@@ -25,7 +25,8 @@ const GasReadingsModal = ({
     importResult,
     setImportResult,
     setImporting,
-    batchUpdateMutation
+    batchUpdateMutation,
+    branchId = null
 }) => {
     const [showFusionModal, setShowFusionModal] = useState(false);
 
@@ -319,6 +320,7 @@ const GasReadingsModal = ({
                         }
                     }}
                     loading={importing}
+                    branchId={branchId}
                 />
         </>
     );

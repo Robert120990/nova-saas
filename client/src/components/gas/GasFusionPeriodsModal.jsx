@@ -1,20 +1,23 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
-import { Zap, X, Search, RefreshCw, Loader2, CheckCircle2, Clock, AlertCircle, AlertTriangle } from 'lucide-react';
+import { Zap, X, Search, RefreshCw, Loader2, CheckCircle2, Clock, AlertCircle, AlertTriangle, Radio } from 'lucide-react';
 import { unwrapList } from '../../utils/apiUtils';
 import { formatDate } from '../../utils/dateUtils';
+import GasFusionAgentModal from './GasFusionAgentModal';
 
 const GasFusionPeriodsModal = ({
     isOpen,
     onClose,
     onSelectPeriod,
-    loading = false
+    loading = false,
+    branchId = null
 }) => {
     const [statusFilter, setStatusFilter] = useState('cerrado');
     const [searchTerm, setSearchTerm] = useState('');
     const [limit, setLimit] = useState(3);
     const [selectingId, setSelectingId] = useState(null);
+    const [showAgentModal, setShowAgentModal] = useState(false);
 
     const {
         data: periodsData,
@@ -24,31 +27,35 @@ const GasFusionPeriodsModal = ({
         refetch,
         isFetching
     } = useQuery({
-        queryKey: ['gas-fusion-periods', limit],
-        queryFn: async () => {
-            const res = await axios.get('/api/gas-station/fusion/periods', {
-                params: { limit }
-            });
-            return unwrapList(res);
-        },
+        queryKey: ['gas-fusion-periods', branchId, limit],
+        queryFn: async () => unwrapList(await axios.get('/api/gas-station/fusion/periods', {
+            params: { limit, branch_id: branchId }
+        })),
         enabled: isOpen,
-        staleTime: 30000
+        staleTime: 15000,
+        retry: 1
+    });
+
+    const { data: agentStatus } = useQuery({
+        queryKey: ['gas-fusion-agent-status-periods', branchId],
+        queryFn: async () => (!branchId ? null : (await axios.get('/api/gas-station/fusion/agent-status', {
+            params: { branch_id: branchId }
+        })).data),
+        enabled: isOpen && Boolean(branchId),
+        refetchInterval: isOpen ? 6000 : false
     });
 
     const periodsList = useMemo(() => {
         const raw = Array.isArray(periodsData) ? periodsData : [];
+        const term = searchTerm.trim().toLowerCase();
         return raw.filter(p => {
             if (statusFilter === 'cerrado' && !p.isClosed) return false;
             if (statusFilter === 'abierto' && p.isClosed) return false;
-            if (searchTerm.trim()) {
-                const term = searchTerm.trim().toLowerCase();
-                const idMatch = String(p.id).includes(term);
-                const startMatch = String(p.startFormatted || '').toLowerCase().includes(term);
-                const endMatch = String(p.endFormatted || '').toLowerCase().includes(term);
-                const usedMatch = p.usedInCloseout ? String(p.usedInCloseout.closeoutId).includes(term) : false;
-                return idMatch || startMatch || endMatch || usedMatch;
-            }
-            return true;
+            if (!term) return true;
+            return String(p.id).includes(term) ||
+                String(p.startFormatted || '').toLowerCase().includes(term) ||
+                String(p.endFormatted || '').toLowerCase().includes(term) ||
+                (p.usedInCloseout ? String(p.usedInCloseout.closeoutId).includes(term) : false);
         });
     }, [periodsData, statusFilter, searchTerm]);
 
@@ -71,7 +78,8 @@ const GasFusionPeriodsModal = ({
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-start justify-center pt-8 pb-8">
+        <>
+            <div className="fixed inset-0 z-50 flex items-start justify-center pt-8 pb-8">
             <div className="fixed inset-0 bg-black/40 backdrop-blur-xs" onClick={onClose} />
             <div className="relative bg-white rounded-2xl shadow-2xl w-[95%] max-w-2xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
                 {/* Cabecera */}
@@ -81,9 +89,26 @@ const GasFusionPeriodsModal = ({
                             <Zap size={18} />
                         </div>
                         <div>
-                            <h3 className="text-sm font-bold text-slate-800">
-                                Turnos Fusion FFC
-                            </h3>
+                            <div className="flex items-center gap-2">
+                                <h3 className="text-sm font-bold text-slate-800">
+                                    Turnos Fusion FFC
+                                </h3>
+                                {branchId && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowAgentModal(true)}
+                                        className={`px-2 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-1 transition-all ${
+                                            agentStatus?.connected
+                                                ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
+                                                : 'bg-amber-100 text-amber-800 hover:bg-amber-200'
+                                        }`}
+                                        title="Haga clic para ver el estado del Conector Local o descargarlo"
+                                    >
+                                        <Radio size={10} className={agentStatus?.connected ? 'animate-pulse text-emerald-600' : 'text-amber-600'} />
+                                        {agentStatus?.connected ? 'Conector En Línea' : 'Conector Desconectado'}
+                                    </button>
+                                )}
+                            </div>
                             <p className="text-[11px] text-slate-500 font-medium">
                                 Controlador Wayne / Dover Fueling Solutions (10.19.4.15)
                             </p>
@@ -138,11 +163,7 @@ const GasFusionPeriodsModal = ({
                                 className="bg-transparent text-slate-700 text-xs font-bold focus:outline-none cursor-pointer"
                                 title="Seleccionar cantidad de turnos a cargar para no saturar Fusion"
                             >
-                                <option value={3}>3 turnos</option>
-                                <option value={5}>5 turnos</option>
-                                <option value={10}>10 turnos</option>
-                                <option value={20}>20 turnos</option>
-                                <option value={50}>50 turnos</option>
+                                {[3, 5, 10, 20, 50].map(v => <option key={v} value={v}>{v} turnos</option>)}
                             </select>
                         </div>
                     </div>
@@ -169,21 +190,33 @@ const GasFusionPeriodsModal = ({
                             </p>
                         </div>
                     ) : isError ? (
-                        <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 space-y-2">
+                        <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 space-y-2.5">
                             <div className="flex items-center gap-2 font-bold text-xs">
                                 <AlertCircle size={16} />
-                                <span>Error de comunicación</span>
+                                <span>Error de comunicación con Fusion</span>
                             </div>
-                            <p className="text-xs">
+                            <p className="text-xs leading-relaxed">
                                 {error?.response?.data?.message || error?.message || 'No se pudo contactar con el controlador Fusion en la red local.'}
                             </p>
-                            <button
-                                type="button"
-                                onClick={() => refetch()}
-                                className="px-3 py-1 text-xs font-bold bg-white text-rose-700 border border-rose-300 rounded-lg shadow-xs hover:bg-rose-100/50"
-                            >
-                                Reintentar conexión
-                            </button>
+                            <div className="flex items-center gap-2 pt-1 flex-wrap">
+                                <button
+                                    type="button"
+                                    onClick={() => refetch()}
+                                    className="px-3 py-1.5 text-xs font-bold bg-white text-rose-700 border border-rose-300 rounded-lg shadow-xs hover:bg-rose-100/50"
+                                >
+                                    Reintentar conexión
+                                </button>
+                                {branchId && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowAgentModal(true)}
+                                        className="px-3 py-1.5 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg shadow-xs flex items-center gap-1.5 transition-colors"
+                                    >
+                                        <Radio size={13} />
+                                        Abrir Conector Local de Estación
+                                    </button>
+                                )}
+                            </div>
                         </div>
                     ) : periodsList.length === 0 ? (
                         <div className="py-12 text-center text-slate-400 text-xs">
@@ -296,7 +329,16 @@ const GasFusionPeriodsModal = ({
                 </div>
             </div>
         </div>
-    );
+
+        {branchId && (
+            <GasFusionAgentModal
+                isOpen={showAgentModal}
+                onClose={() => { setShowAgentModal(false); refetch(); }}
+                branch={{ branch_id: branchId }}
+            />
+        )}
+    </>
+);
 };
 
 export default GasFusionPeriodsModal;

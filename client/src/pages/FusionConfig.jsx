@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
-import { Cpu, Server, CheckCircle2, AlertCircle, Loader2, Save, Eye, EyeOff, RefreshCw } from 'lucide-react';
+import { Cpu, Server, CheckCircle2, AlertCircle, Loader2, Save, Eye, EyeOff, RefreshCw, Radio } from 'lucide-react';
 import { toast } from 'sonner';
 import { unwrapList } from '../utils/apiUtils';
+import { GasFusionAgentModal } from '../components/gas';
 
 export default function FusionConfig() {
     const queryClient = useQueryClient();
@@ -11,6 +12,7 @@ export default function FusionConfig() {
     const [showPassword, setShowPassword] = useState({});
     const [testingBranchId, setTestingBranchId] = useState(null);
     const [testResults, setTestResults] = useState({});
+    const [selectedAgentBranch, setSelectedAgentBranch] = useState(null);
 
     const { data: stations = [], isLoading } = useQuery({
         queryKey: ['gas-fusion-configs'],
@@ -254,25 +256,36 @@ export default function FusionConfig() {
                                         </div>
                                     )}
 
-                                    <div className="flex flex-wrap items-center justify-end gap-2.5 pt-2 border-t border-slate-100">
+                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-2 border-t border-slate-100">
                                         <button
                                             type="button"
-                                            onClick={() => handleTestConnection(st.branch_id)}
-                                            disabled={isTesting || !form.fusion_host || !form.fusion_user}
-                                            className="px-4 py-2 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-all disabled:opacity-50 flex items-center gap-1.5"
+                                            onClick={() => setSelectedAgentBranch(st)}
+                                            className="px-3.5 py-2 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-xl transition-all flex items-center justify-center gap-1.5 shadow-xs"
+                                            title="Ver estado del conector local y descargar archivos de instalación"
                                         >
-                                            {isTesting ? <Loader2 size={14} className="animate-spin text-indigo-600" /> : <Server size={14} />}
-                                            {isTesting ? 'Probando...' : 'Probar Conexión'}
+                                            <Radio size={14} className="text-indigo-600" />
+                                            Conector Local (Puente LAN)
                                         </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => handleSaveStation(st.branch_id)}
-                                            disabled={isSaving}
-                                            className="px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-all disabled:opacity-50 flex items-center gap-1.5 shadow-md shadow-indigo-100"
-                                        >
-                                            {isSaving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-                                            {isSaving ? 'Guardando...' : 'Guardar Parámetros'}
-                                        </button>
+                                        <div className="flex items-center justify-end gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => handleTestConnection(st.branch_id)}
+                                                disabled={isTesting || !form.fusion_host || !form.fusion_user}
+                                                className="px-4 py-2 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-all disabled:opacity-50 flex items-center gap-1.5"
+                                            >
+                                                {isTesting ? <Loader2 size={14} className="animate-spin text-indigo-600" /> : <Server size={14} />}
+                                                {isTesting ? 'Probando...' : 'Probar Conexión'}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleSaveStation(st.branch_id)}
+                                                disabled={isSaving}
+                                                className="px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-all disabled:opacity-50 flex items-center gap-1.5 shadow-md shadow-indigo-100"
+                                            >
+                                                {isSaving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                                                {isSaving ? 'Guardando...' : 'Guardar Parámetros'}
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -280,6 +293,12 @@ export default function FusionConfig() {
                     })}
                 </div>
             )}
+
+            <GasFusionAgentModal
+                isOpen={Boolean(selectedAgentBranch)}
+                onClose={() => setSelectedAgentBranch(null)}
+                branch={selectedAgentBranch}
+            />
         </div>
     );
 }

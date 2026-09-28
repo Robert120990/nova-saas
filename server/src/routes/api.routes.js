@@ -855,6 +855,10 @@ router.get('/gas-station/fusion/test-connection', gasFusionController.testConnec
 router.post('/gas-station/fusion/test-connection', gasFusionController.testConnection);
 router.get('/gas-station/fusion/configs', gasFusionController.getStationConfigs);
 router.put('/gas-station/fusion/configs', gasFusionController.saveStationConfig);
+router.get('/gas-station/fusion/agent-status', gasFusionController.getAgentStatus);
+router.get('/gas-station/fusion/agent-config', gasFusionController.getAgentConfig);
+router.get('/gas-station/fusion/agent-launcher', gasFusionController.getAgentLauncher);
+router.get('/gas-station/fusion/agent-script', gasFusionController.getAgentScript);
 
 // Gas Station - Expense Categories
 router.get('/gas-station/expense-categories', gasCloseoutController.getExpenseCategories);

@@ -1,5 +1,6 @@
 const pool = require('../config/db');
 const fusionService = require('../services/fusionFfc.service');
+const fusionAgent = require('../services/fusionAgent.service');
 
 /**
  * Obtener lista de turnos registrados en el controlador Fusion FFC
@@ -8,8 +9,9 @@ const fusionService = require('../services/fusionFfc.service');
  */
 exports.getPeriods = async (req, res) => {
     try {
-        const config = await fusionService.getFusionConfig(req.company_id, req.user?.branch_id);
-        const periods = await fusionService.getShiftPeriods(config);
+        const branchId = req.query.branch_id || req.user?.branch_id;
+        const config = await fusionService.getFusionConfig(req.company_id, branchId);
+        const periods = await fusionService.getShiftPeriods(config, req.company_id, branchId);
 
         // Consultar cuáles turnos de Fusion ya fueron utilizados en algún cierre de la empresa
         const [usedCloseouts] = await pool.query(
@@ -35,26 +37,15 @@ exports.getPeriods = async (req, res) => {
 
         const { status, limit = 3 } = req.query;
         let filtered = periods;
-
-        if (status === 'cerrado') {
-            filtered = periods.filter(p => p.isClosed);
-        } else if (status === 'abierto') {
-            filtered = periods.filter(p => !p.isClosed);
-        }
+        if (status === 'cerrado') filtered = periods.filter(p => p.isClosed);
+        else if (status === 'abierto') filtered = periods.filter(p => !p.isClosed);
 
         const limitNum = Number(limit) > 0 ? Number(limit) : 3;
         const limited = filtered.slice(0, limitNum);
-
-        res.json({
-            data: limited,
-            total: limited.length,
-            totalAvailable: filtered.length
-        });
+        res.json({ data: limited, total: limited.length, totalAvailable: filtered.length });
     } catch (error) {
         console.error('Error getPeriods Fusion:', error);
-        res.status(500).json({
-            message: error.message || 'Error al obtener los turnos desde el controlador Fusion FFC'
-        });
+        res.status(500).json({ message: error.message || 'Error al obtener los turnos desde el controlador Fusion FFC' });
     }
 };
 
@@ -67,8 +58,14 @@ exports.getPeriodReadings = async (req, res) => {
         const { periodId } = req.params;
         const { closeoutId } = req.query;
 
-        const config = await fusionService.getFusionConfig(req.company_id, req.user?.branch_id);
-        const { periodInfo, totalizers, pumpSales } = await fusionService.getPeriodTotalizers(periodId, config);
+        let branchId = req.query.branch_id || req.user?.branch_id;
+        if (!branchId && closeoutId) {
+            const [cRow] = await pool.query('SELECT branch_id FROM gas_station_closeouts WHERE id = ?', [closeoutId]);
+            if (cRow.length && cRow[0].branch_id) branchId = cRow[0].branch_id;
+        }
+
+        const config = await fusionService.getFusionConfig(req.company_id, branchId);
+        const { periodInfo, totalizers, pumpSales } = await fusionService.getPeriodTotalizers(periodId, config, req.company_id, branchId);
 
         if (!closeoutId) {
             return res.json({
@@ -174,7 +171,8 @@ exports.testConnection = async (req, res) => {
             config = await fusionService.getFusionConfig(req.company_id, bId);
         }
 
-        const result = await fusionService.testConnection(config);
+        const bId = branch_id || req.user?.branch_id;
+        const result = await fusionService.testConnection(config, req.company_id, bId);
         res.json({
             success: true,
             message: `Conexión exitosa con el controlador Fusion (${config.host})`,
@@ -266,4 +264,78 @@ exports.saveStationConfig = async (req, res) => {
         console.error('Error saveStationConfig Fusion:', error);
         res.status(500).json({ message: 'Error al guardar la configuración de Fusion' });
     }
+};
+
+/**
+ * Consultar estado de conexión del conector local de la estación
+ */
+exports.getAgentStatus = async (req, res) => {
+    try {
+        const branchId = req.query.branch_id || req.user?.branch_id;
+        if (!branchId) return res.status(400).json({ message: 'Se requiere branch_id' });
+        const status = fusionAgent.getAgentStatus(req.company_id, branchId);
+        const agentKey = await fusionAgent.getOrGenerateAgentKey(req.company_id, branchId);
+        const config = await fusionService.getFusionConfig(req.company_id, branchId);
+        res.json({
+            ...status,
+            agentKey,
+            companyId: Number(req.company_id),
+            branchId: Number(branchId),
+            fusionHost: config.host,
+            serverUrl: `${req.protocol}://${req.get('host')}`
+        });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+/**
+ * Descargar paquete de configuración config.json para el conector de la estación
+ */
+exports.getAgentConfig = async (req, res) => {
+    try {
+        const branchId = req.query.branch_id || req.user?.branch_id;
+        if (!branchId) return res.status(400).json({ message: 'Se requiere branch_id' });
+        const config = await fusionService.getFusionConfig(req.company_id, branchId);
+        const agentKey = await fusionAgent.getOrGenerateAgentKey(req.company_id, branchId);
+        const payload = {
+            serverUrl: `${req.protocol}://${req.get('host')}`,
+            companyId: Number(req.company_id),
+            branchId: Number(branchId),
+            agentKey,
+            fusionHost: config.host || 'https://10.19.4.15',
+            fusionUser: config.username || 'MANAGER',
+            fusionPassword: config.password || 'MANAGER'
+        };
+        res.setHeader('Content-Disposition', 'attachment; filename="config.json"');
+        res.setHeader('Content-Type', 'application/json');
+        res.send(JSON.stringify(payload, null, 2));
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+/**
+ * Descargar iniciador Windows (.bat) para el conector
+ */
+exports.getAgentLauncher = (req, res) => {
+    const bat = `@echo off\r\ntitle Conector Wayne Fusion FFC - SIPE WEB\r\ncolor 0A\r\ncd /d "%~dp0"\r\necho Conector Local Wayne Fusion FFC - SIPE WEB\r\nwhere node >nul 2>nul\r\nif %errorlevel% neq 0 ( echo [ERROR] Node.js no instalado. Descargue desde https://nodejs.org & pause & exit /b 1 )\r\nnode fusion-agent.js\r\nif %errorlevel% neq 0 pause\r\n`;
+    res.setHeader('Content-Disposition', 'attachment; filename="iniciar-agente.bat"');
+    res.setHeader('Content-Type', 'application/x-bat');
+    res.send(bat);
+};
+
+/**
+ * Descargar archivo fuente fusion-agent.js
+ */
+exports.getAgentScript = (req, res) => {
+    const fs = require('fs');
+    const path = require('path');
+    const p = path.resolve(__dirname, '../../../scripts/fusion-agent/fusion-agent.js');
+    if (fs.existsSync(p)) {
+        res.setHeader('Content-Disposition', 'attachment; filename="fusion-agent.js"');
+        res.setHeader('Content-Type', 'application/javascript');
+        return res.sendFile(p);
+    }
+    res.status(404).json({ message: 'Script conector no encontrado' });
 };
