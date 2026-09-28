@@ -215,11 +215,19 @@ async function buildPayloadFromSale(dteRecord, newReceptor, companyId) {
     }
 
     // 9. Mapear pagos
-    const mappedPayments = payments.map(p => ({
+    let mappedPayments = payments.map(p => ({
         codigo: p.metodo_pago || '01',
         monto: parseFloat(p.monto) || 0,
         referencia: p.referencia || null
     }));
+
+    if (mappedPayments.length === 0) {
+        mappedPayments = [{
+            codigo: '01',
+            monto: parseFloat(sale.total_pagar) || 0,
+            referencia: sale.condicion_operacion === 2 ? `Crédito ${customer?.dias_credito || 15} días` : 'Contado'
+        }];
+    }
 
     // 10. Construir payload completo para generateDTE
     return {

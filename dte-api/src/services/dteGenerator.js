@@ -573,15 +573,18 @@ async function generateDTE(payload) {
     totals = calculateTotals(calculatedItems, resumenTaxes, tipoDte, generalDiscount, ivaRate, generalDiscountPercentage);
     
     // Payments mapping
-    pagos = (payload.pagos || [
-        {
-            codigo: '01', // Efectivo
-            monto: totals.totalPagar,
-            referencia: null,
-            plazo: null,
-            periodo: null
-        }
-    ]).map(p => {
+    const rawPagos = (Array.isArray(payload.pagos) && payload.pagos.length > 0)
+        ? payload.pagos
+        : [
+            {
+                codigo: '01', // Efectivo
+                monto: totals.totalPagar,
+                referencia: null,
+                plazo: null,
+                periodo: null
+            }
+        ];
+    pagos = rawPagos.map(p => {
         // En operaciones a crédito (condición 2), Hacienda exige plazo y periodo válidos según Cat-018.
         // Cat-018 Plazo: "01" (Días), "02" (Meses), "03" (Años).
         // Periodo: Número entero > 0 que indica la cantidad de días/meses/años de crédito.
