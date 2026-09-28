@@ -25,7 +25,10 @@ const batchReadingsSchema = z.object({
     readings: z.array(z.object({
         readingId: z.coerce.number().int().positive({ message: 'ID de lectura es requerido' }),
         lectura_actual: z.coerce.number({ message: 'La lectura actual debe ser numérica' })
-    }).passthrough()).min(1, { message: 'El arreglo de lecturas es requerido' })
+    }).passthrough()).min(1, { message: 'El arreglo de lecturas es requerido' }),
+    fusion_shift_id: z.coerce.number().optional().nullable(),
+    fusion_sales_amount: z.coerce.number().optional().nullable(),
+    fusion_sales_volume: z.coerce.number().optional().nullable()
 }).passthrough();
 
 const singleReadingUpdateSchema = z.object({

@@ -103,6 +103,9 @@ const GasCloseout = () => {
     const [fechaTurno, setFechaTurno] = useState(getTodayString());
     const [numeroTurno, setNumeroTurno] = useState('');
     const [userModifiedTurno, setUserModifiedTurno] = useState(false);
+    const [fusionShiftId, setFusionShiftId] = useState(null);
+    const [fusionSalesAmount, setFusionSalesAmount] = useState(null);
+    const [fusionSalesVolume, setFusionSalesVolume] = useState(null);
     const [closeoutDespachadores, setCloseoutDespachadores] = useState([]);
     const [despachadorSelectValue, setDespachadorSelectValue] = useState('');
     const [showReadingsModal, setShowReadingsModal] = useState(false);
@@ -296,6 +299,9 @@ const GasCloseout = () => {
             setVales(editData.vales || []);
             setAnticiposDesp(editData.anticipos_despachadores || []);
             setTrupputDesp(editData.trupput_despachos || []);
+            setFusionShiftId(editData.fusion_shift_id || null);
+            setFusionSalesAmount(editData.fusion_sales_amount !== null && editData.fusion_sales_amount !== undefined ? parseFloat(editData.fusion_sales_amount) : null);
+            setFusionSalesVolume(editData.fusion_sales_volume !== null && editData.fusion_sales_volume !== undefined ? parseFloat(editData.fusion_sales_volume) : null);
             modalSnapshotsRef.current = {
                 gastos: JSON.stringify(cleanLoadedGastos),
                 remesas: JSON.stringify(editData.remesas || []),
@@ -322,6 +328,9 @@ const GasCloseout = () => {
             setEstado(null);
             setSellerId('');
             setSellerName('');
+            setFusionShiftId(null);
+            setFusionSalesAmount(null);
+            setFusionSalesVolume(null);
             setTankReadings([]);
             setLubricantReadings([]);
             setCloseoutDespachadores([]);
@@ -492,6 +501,19 @@ const GasCloseout = () => {
         return map;
     }, [closeoutDespachadores, remesas]);
 
+    const despachadoresTotales = useMemo(() => {
+        let venta = 0;
+        let noPercibido = 0;
+        let entregado = 0;
+        for (const d of closeoutDespachadores) {
+            venta += (despachadorVentas[d.despachador_id] || 0);
+            noPercibido += (despachadorNoPercibido[d.despachador_id] || 0);
+            entregado += (despachadorEntregado[d.despachador_id] || 0);
+        }
+        const diferencia = (noPercibido + entregado) - venta;
+        return { venta, noPercibido, entregado, diferencia };
+    }, [closeoutDespachadores, despachadorVentas, despachadorNoPercibido, despachadorEntregado]);
+
     const initMutation = useMutation({
         mutationFn: (data) => axios.post('/api/gas-station/closeouts/init', data),
         onSuccess: (res) => {
@@ -515,8 +537,10 @@ const GasCloseout = () => {
     });
 
     const batchUpdateMutation = useMutation({
-        mutationFn: (readings) =>
-            axios.patch(`/api/gas-station/closeouts/${closeoutId}/readings/batch`, { readings }),
+        mutationFn: (payload) => {
+            const body = Array.isArray(payload) ? { readings: payload } : payload;
+            return axios.patch(`/api/gas-station/closeouts/${closeoutId}/readings/batch`, body);
+        },
         onSuccess: (res) => {
             const updated = res.data.readings;
             setReadings(prev => prev.map(r => {
@@ -524,6 +548,16 @@ const GasCloseout = () => {
                 if (u) return { ...r, lectura_actual: u.lectura_actual, diferencia: u.diferencia, monto: u.monto };
                 return r;
             }));
+            if (res.data.fusion_shift_id) {
+                setFusionShiftId(res.data.fusion_shift_id);
+            }
+            if (res.data.fusion_sales_amount !== undefined && res.data.fusion_sales_amount !== null) {
+                setFusionSalesAmount(parseFloat(res.data.fusion_sales_amount));
+            }
+            if (res.data.fusion_sales_volume !== undefined && res.data.fusion_sales_volume !== null) {
+                setFusionSalesVolume(parseFloat(res.data.fusion_sales_volume));
+            }
+            queryClient.invalidateQueries({ queryKey: ['gas-fusion-periods'] });
             setImportResult(null);
             setImporting(false);
             toast.success(`${res.data.updated} lecturas actualizadas`);
@@ -601,6 +635,31 @@ const GasCloseout = () => {
             }
         };
         reader.readAsArrayBuffer(file);
+    };
+
+    const handleImportFusion = async (period) => {
+        if (!period?.id) return;
+        try {
+            setImporting(true);
+            const res = await axios.get(`/api/gas-station/fusion/periods/${period.id}/readings`, {
+                params: { closeoutId }
+            });
+            const { matched = [], warnings = [], unmatched = [], total = 0, pumpSales = {} } = res.data;
+            setImportResult({
+                matched,
+                warnings,
+                unmatched,
+                total,
+                periodId: period.id,
+                source: 'Fusion FFC',
+                pumpSales
+            });
+            toast.success(`Lecturas del turno #${period.id} de Fusion cargadas. Revise y confirme.`);
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Error al obtener lecturas desde Fusion FFC');
+        } finally {
+            setImporting(false);
+        }
     };
 
     const closeMutation = useMutation({
@@ -2318,8 +2377,24 @@ const GasCloseout = () => {
                                                 <td className="px-3 py-1.5 text-right text-slate-600 uppercase tracking-wider">Total Ingresos</td>
                                                 <td className="px-3 py-1.5 text-right font-mono text-emerald-600"><Money value={totals.totalMonto + lubricantTotal} /></td>
                                             </tr>
+                                            {fusionSalesAmount !== null && fusionSalesAmount !== undefined && (
+                                                <tr className="bg-blue-50/40 border-t border-dashed border-slate-200 text-[11px] font-normal text-slate-500">
+                                                    <td className="px-3 py-1.5 text-slate-500 italic">
+                                                        <span>Ref. Fusion (Sales {fusionShiftId ? `Turno #${fusionShiftId}` : ''})*:</span>
+                                                        {fusionSalesVolume ? <span className="ml-1 text-[10px] text-slate-400 not-italic">({Number(fusionSalesVolume).toFixed(3)} Gal)</span> : null}
+                                                    </td>
+                                                    <td className="px-3 py-1.5 text-right font-mono font-semibold text-slate-600">
+                                                        <Money value={fusionSalesAmount} />
+                                                    </td>
+                                                </tr>
+                                            )}
                                         </tfoot>
                                     </table>
+                                    {fusionSalesAmount !== null && fusionSalesAmount !== undefined && (
+                                        <div className="px-3 py-1.5 bg-slate-50/60 border-t border-slate-100 text-[10px] text-slate-400 italic">
+                                            * Comentario informativo de Fusion FFC; no altera el total de ingresos calculado de la lectura.
+                                        </div>
+                                    )}
                                 </div>
                                 <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex-1">
                                     <div className="px-4 py-2 border-b border-slate-100">
@@ -2484,17 +2559,38 @@ const GasCloseout = () => {
                                     </div>
                                 </div>
                             </div>
-                            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                                <div className="px-4 py-2 border-b border-slate-100">
-                                    <h3 className="text-xs font-bold text-slate-600 uppercase tracking-wider">Diferencia</h3>
-                                </div>
-                                <div className="px-4 py-3 flex items-center justify-between">
-                                    <span className="text-xs font-medium text-slate-500">Faltante / Sobrante del turno</span>
-                                    <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-black font-mono shadow-sm ${diferenciaTotal >= 0 ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200' : 'bg-red-50 text-red-700 ring-1 ring-red-200'}`}>
-                                        <Money value={diferenciaTotal} />
-                                    </span>
-                                </div>
-                            </div>
+                            {(() => {
+                                const diffAMostrar = closeoutDespachadores.length > 0 ? despachadoresTotales.diferencia : diferenciaTotal;
+                                return (
+                                    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                                        <div className="px-4 py-2 border-b border-slate-100 flex items-center justify-between">
+                                            <h3 className="text-xs font-bold text-slate-600 uppercase tracking-wider">Diferencia</h3>
+                                            {closeoutDespachadores.length > 0 && (
+                                                <span className="text-[10px] text-slate-400 font-medium">
+                                                    (Total diferencias despachadores)
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div className="px-4 py-3 flex items-center justify-between">
+                                            <span className="text-xs font-medium text-slate-500">Faltante / Sobrante del turno</span>
+                                            <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-black font-mono shadow-sm ${diffAMostrar >= 0 ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200' : 'bg-red-50 text-red-700 ring-1 ring-red-200'}`}>
+                                                <Money value={diffAMostrar} />
+                                            </span>
+                                        </div>
+                                        {fusionSalesAmount !== null && fusionSalesAmount !== undefined && (
+                                            <div className="px-4 py-2 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+                                                <span className="italic text-[11px]">
+                                                    Ref. Fusion (Sales {fusionShiftId ? `Turno #${fusionShiftId}` : ''})*:
+                                                </span>
+                                                <span className="font-mono font-semibold text-slate-700">
+                                                    <Money value={fusionSalesAmount} />
+                                                    {fusionSalesVolume ? <span className="ml-1 text-[10px] text-slate-400 font-normal">({Number(fusionSalesVolume).toFixed(3)} Gal)</span> : null}
+                                                </span>
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })()}
                             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                                 <div className="px-3 py-2 border-b border-slate-100 flex items-center justify-between">
                                     <h4 className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1.5">
@@ -2575,6 +2671,29 @@ const GasCloseout = () => {
                                                 );
                                             })}
                                         </tbody>
+                                        {closeoutDespachadores.length > 0 && (
+                                            <tfoot className="bg-slate-50 border-t-2 border-slate-200 font-bold text-[11px]">
+                                                <tr>
+                                                    <td colSpan={2} className="px-2 py-1.5 text-right text-slate-600 uppercase tracking-wider">
+                                                        Total de Diferencias
+                                                    </td>
+                                                    <td className="px-1.5 py-1.5 text-right font-mono text-emerald-600">
+                                                        <Money value={despachadoresTotales.venta} />
+                                                    </td>
+                                                    <td className="px-1.5 py-1.5 text-right font-mono text-red-600">
+                                                        <Money value={despachadoresTotales.noPercibido} />
+                                                    </td>
+                                                    <td className="px-1.5 py-1.5 text-right font-mono text-amber-600">
+                                                        <Money value={despachadoresTotales.entregado} />
+                                                    </td>
+                                                    <td className="px-1.5 py-1.5 text-right">
+                                                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black font-mono shadow-sm ${despachadoresTotales.diferencia >= 0 ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200' : 'bg-red-50 text-red-700 ring-1 ring-red-200'}`}>
+                                                            <Money value={despachadoresTotales.diferencia} />
+                                                        </span>
+                                                    </td>
+                                                </tr>
+                                            </tfoot>
+                                        )}
                                     </table>
                                 </div>
                             </div>
@@ -2651,6 +2770,7 @@ const GasCloseout = () => {
                     fileInputRef={fileInputRef}
                     importing={importing}
                     handleImportExcel={handleImportExcel}
+                    handleImportFusion={handleImportFusion}
                     readings={readings}
                     inputRefs={inputRefs}
                     handleReadingChange={handleReadingChange}

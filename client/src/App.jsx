@@ -27,6 +27,7 @@ const Categories = lazyWithRetry(() => import('./pages/Categories'));
 const UserAccess = lazyWithRetry(() => import('./pages/UserAccess'));
 const SmtpConfig = lazyWithRetry(() => import('./pages/SmtpConfig'));
 const SystemSettings = lazyWithRetry(() => import('./pages/SystemSettings'));
+const FusionConfig = lazyWithRetry(() => import('./pages/FusionConfig'));
 const ServerTerminal = lazyWithRetry(() => import('./pages/ServerTerminal'));
 const NotificacionesConfig = lazyWithRetry(() => import('./pages/NotificacionesConfig'));
 const NotificacionesLista = lazyWithRetry(() => import('./pages/NotificacionesLista'));
@@ -260,6 +261,7 @@ function App() {
                         <Route path="/user-access" element={<UserAccess />} />
                         <Route path="/configuracion/smtp" element={<SmtpConfig />} />
                         <Route path="/configuracion/sistema" element={<SystemSettings />} />
+                        <Route path="/configuracion/fusion-ffc" element={<FusionConfig />} />
                         <Route path="/configuracion/servidor" element={<ServerMetrics />} />
                         <Route path="/configuracion/terminal" element={<ServerTerminal />} />
                         <Route path="/configuracion/logs" element={<Navigate to="/configuracion/servidor" replace />} />

@@ -264,6 +264,7 @@ const gasOrderController = require('../controllers/gasOrder.controller');
 const gasReporteController = require('../controllers/gasReporte.controller');
 const gasRemesaDeliveryController = require('../controllers/gasRemesaDelivery.controller');
 const gasCouponLiquidationController = require('../controllers/gasCouponLiquidation.controller');
+const gasFusionController = require('../controllers/gasFusion.controller');
 const salesRemesaDeliveryController = require('../controllers/salesRemesaDelivery.controller');
 const pozoController = require('../controllers/pozo.controller');
 const filproController = require('../controllers/filpro.controller');
@@ -844,6 +845,14 @@ router.patch('/gas-station/closeouts/:id/fecha-turno', validate(closeoutFechaTur
 router.delete('/gas-station/closeouts/:id', gasCloseoutController.deleteCloseout);
 router.put('/gas-station/closeouts/:id/despachadores', gasCloseoutController.updateCloseoutDespachadores);
 router.put('/gas-station/closeouts/:id/despachador-nozzles', gasCloseoutController.updateCloseoutDespachadorNozzles);
+
+// Gas Station - Wayne Fusion FFC Controller Integration
+router.get('/gas-station/fusion/periods', gasFusionController.getPeriods);
+router.get('/gas-station/fusion/periods/:periodId/readings', gasFusionController.getPeriodReadings);
+router.get('/gas-station/fusion/test-connection', gasFusionController.testConnection);
+router.post('/gas-station/fusion/test-connection', gasFusionController.testConnection);
+router.get('/gas-station/fusion/configs', gasFusionController.getStationConfigs);
+router.put('/gas-station/fusion/configs', gasFusionController.saveStationConfig);
 
 // Gas Station - Expense Categories
 router.get('/gas-station/expense-categories', gasCloseoutController.getExpenseCategories);

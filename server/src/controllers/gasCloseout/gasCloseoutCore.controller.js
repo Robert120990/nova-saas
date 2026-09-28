@@ -787,7 +787,23 @@ exports.batchUpdateReadings = async (req, res) => {
             updated.push({ id: parseInt(r.readingId), lectura_actual, diferencia, monto });
         }
 
-        res.json({ updated: updated.length, readings: updated });
+        const { fusion_shift_id, fusion_sales_amount, fusion_sales_volume } = req.body;
+        if (fusion_shift_id !== undefined && fusion_shift_id !== null) {
+            await pool.query(
+                `UPDATE gas_station_closeouts 
+                 SET fusion_shift_id = ?, fusion_sales_amount = ?, fusion_sales_volume = ?, fusion_imported_at = NOW() 
+                 WHERE id = ?`,
+                [fusion_shift_id, fusion_sales_amount || null, fusion_sales_volume || null, closeoutId]
+            );
+        }
+
+        res.json({
+            updated: updated.length,
+            readings: updated,
+            fusion_shift_id: fusion_shift_id || null,
+            fusion_sales_amount: fusion_sales_amount || null,
+            fusion_sales_volume: fusion_sales_volume || null
+        });
     } catch (error) {
         console.error('Error batchUpdateReadings:', error);
         res.status(500).json({ message: 'Error al actualizar lecturas' });
