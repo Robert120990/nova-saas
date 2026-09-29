@@ -193,6 +193,7 @@ const EggInventory = lazyWithRetry(() => import('./pages/EggIndustrial/Inventory
 const CustomerAgreements = lazyWithRetry(() => import('./pages/CRM/CustomerAgreements'));
 const CrmConfig = lazyWithRetry(() => import('./pages/CRM/CrmConfig'));
 const CrmQuotations = lazyWithRetry(() => import('./pages/CRM/CrmQuotations'));
+const SistemaEnergetico = lazyWithRetry(() => import('./pages/energy/SistemaEnergetico'));
 
 import Layout from './components/layout/Layout';
 
@@ -443,6 +444,9 @@ function App() {
                         <Route path="/crm/cotizaciones" element={<CrmQuotations />} />
                         <Route path="/crm/acuerdos" element={<CustomerAgreements />} />
                         <Route path="/crm/configuracion" element={<CrmConfig />} />
+
+                        {/* Sistema Energético */}
+                        <Route path="/sistema-energetico" element={<SistemaEnergetico />} />
                         
                         <Route path="/" element={<Navigate to="/dashboard" replace />} />
                     </Route>

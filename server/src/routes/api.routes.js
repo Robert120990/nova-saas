@@ -271,6 +271,7 @@ const salesRemesaDeliveryController = require('../controllers/salesRemesaDeliver
 const pozoController = require('../controllers/pozo.controller');
 const filproController = require('../controllers/filpro.controller');
 const rhBiometricController = require('../controllers/rhBiometric.controller');
+const energySystemController = require('../controllers/energySystem.controller');
 
 // Notification Routes
 const notificationRoutes = require('./notification.routes');
@@ -1302,6 +1303,15 @@ router.post('/filpro/mappings', verifyToken, tenantMiddleware, checkPermission('
 router.delete('/filpro/mappings/:id', verifyToken, tenantMiddleware, checkPermission('manage_filpro_sync'), filproController.deleteMapping);
 router.post('/filpro/revert-dte', verifyToken, tenantMiddleware, checkPermission('manage_filpro_sync'), filproController.revertDte);
 router.post('/filpro/revert-day', verifyToken, tenantMiddleware, checkPermission('manage_filpro_sync'), filproController.revertDay);
+
+// Sistema Energético (Growatt + GESS SolarWeb)
+router.get('/energy/live', verifyToken, tenantMiddleware, checkPermission('manage_energy_system'), energySystemController.getLive);
+router.post('/energy/sync', verifyToken, tenantMiddleware, checkPermission('manage_energy_system'), energySystemController.syncNow);
+router.get('/energy/history', verifyToken, tenantMiddleware, checkPermission('manage_energy_system'), energySystemController.getHistory);
+router.get('/energy/daily-summary', verifyToken, tenantMiddleware, checkPermission('manage_energy_system'), energySystemController.getDailySummaries);
+router.get('/energy/config', verifyToken, tenantMiddleware, checkPermission('manage_energy_system'), energySystemController.getConfig);
+router.put('/energy/config', verifyToken, tenantMiddleware, checkPermission('manage_energy_system'), energySystemController.updateConfig);
+router.get('/energy/analytics', verifyToken, tenantMiddleware, checkPermission('manage_energy_system'), energySystemController.getAnalytics);
 
 // Notifications
 router.use('/notifications', notificationRoutes);

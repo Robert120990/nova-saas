@@ -75,9 +75,15 @@ import {
     Terminal,
     GitCompare,
     Fingerprint,
+    Zap,
+    Sun,
+    BatteryCharging,
 } from 'lucide-react';
 
 const iconMap = {
+    Zap,
+    Sun,
+    BatteryCharging,
     Terminal,
     LayoutDashboard,
     Building2,

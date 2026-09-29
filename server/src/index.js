@@ -125,6 +125,7 @@ const { startWorker } = require('./services/notificationWorker');
 const { startBot: startTelegramBot } = require('./services/telegram.service');
 const { startSuspiciousSalesDetector } = require('./services/suspiciousSalesDetector');
 const { startRrsAutoSyncCron } = require('./services/rrsVentasTiendaAutoSync.service');
+const { startEnergyAutoSyncCron } = require('./services/energySystem.service');
 const { preloadHaciendaCatalogs } = require('./services/catalogCache.service');
 const { mailQueue } = require('./queue');
 
@@ -164,5 +165,6 @@ server.listen(PORT, () => {
     startTelegramBot();
     startSuspiciousSalesDetector();
     startRrsAutoSyncCron();
+    startEnergyAutoSyncCron();
     preloadHaciendaCatalogs();
 });
