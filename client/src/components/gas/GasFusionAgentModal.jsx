@@ -2,11 +2,12 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
 import { 
-    X, CheckCircle2, AlertCircle, Download, Copy, Check, 
+    X, CheckCircle2, AlertCircle, Copy, Check, 
     Terminal, RefreshCw, Radio
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatDateTime } from '../../utils/dateUtils';
+import GasFusionAgentFiles from './GasFusionAgentFiles';
 
 const GasFusionAgentModal = ({ isOpen, onClose, branch }) => {
     const [copiedKey, setCopiedKey] = useState(false);
@@ -52,17 +53,6 @@ const GasFusionAgentModal = ({ isOpen, onClose, branch }) => {
         setCopiedCmd(true);
         toast.success('Comando copiado al portapapeles');
         setTimeout(() => setCopiedCmd(false), 2000);
-    };
-
-    const handleDownload = (endpoint, filename) => {
-        const url = `${endpoint}?branch_id=${branchId}`;
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        toast.info(`Descargando ${filename}...`);
     };
 
     return (
@@ -142,54 +132,7 @@ const GasFusionAgentModal = ({ isOpen, onClose, branch }) => {
                     </div>
 
                     {/* Descarga de Archivos */}
-                    <div className="space-y-2">
-                        <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
-                            Archivos del Conector (Descarga Directa)
-                        </label>
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                            <button
-                                type="button"
-                                onClick={() => handleDownload('/api/gas-station/fusion/agent-config', 'config.json')}
-                                className="p-3 bg-white border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/40 rounded-xl text-left transition-all group shadow-xs"
-                            >
-                                <div className="flex items-center justify-between mb-1">
-                                    <span className="text-[11px] font-black font-mono text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded">
-                                        1. config.json
-                                    </span>
-                                    <Download size={14} className="text-slate-400 group-hover:text-indigo-600" />
-                                </div>
-                                <p className="text-[10px] text-slate-500">Configuración con claves pre-llenadas</p>
-                            </button>
-
-                            <button
-                                type="button"
-                                onClick={() => handleDownload('/api/gas-station/fusion/agent-launcher', 'iniciar-agente.bat')}
-                                className="p-3 bg-white border border-slate-200 hover:border-emerald-300 hover:bg-emerald-50/40 rounded-xl text-left transition-all group shadow-xs"
-                            >
-                                <div className="flex items-center justify-between mb-1">
-                                    <span className="text-[11px] font-black font-mono text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">
-                                        2. iniciar-agente.bat
-                                    </span>
-                                    <Download size={14} className="text-slate-400 group-hover:text-emerald-600" />
-                                </div>
-                                <p className="text-[10px] text-slate-500">Iniciador Windows para doble clic</p>
-                            </button>
-
-                            <button
-                                type="button"
-                                onClick={() => handleDownload('/api/gas-station/fusion/agent-script', 'fusion-agent.js')}
-                                className="p-3 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 rounded-xl text-left transition-all group shadow-xs"
-                            >
-                                <div className="flex items-center justify-between mb-1">
-                                    <span className="text-[11px] font-black font-mono text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded">
-                                        3. fusion-agent.js
-                                    </span>
-                                    <Download size={14} className="text-slate-400 group-hover:text-slate-600" />
-                                </div>
-                                <p className="text-[10px] text-slate-500">Script ligero de comunicación</p>
-                            </button>
-                        </div>
-                    </div>
+                    <GasFusionAgentFiles branchId={branchId} />
 
                     {/* Guía Rápida */}
                     <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-2.5">

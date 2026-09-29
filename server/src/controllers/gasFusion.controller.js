@@ -331,11 +331,19 @@ exports.getAgentLauncher = (req, res) => {
 exports.getAgentScript = (req, res) => {
     const fs = require('fs');
     const path = require('path');
-    const p = path.resolve(__dirname, '../../../scripts/fusion-agent/fusion-agent.js');
-    if (fs.existsSync(p)) {
-        res.setHeader('Content-Disposition', 'attachment; filename="fusion-agent.js"');
-        res.setHeader('Content-Type', 'application/javascript');
-        return res.sendFile(p);
+    const possiblePaths = [
+        path.resolve(__dirname, '../assets/fusion-agent.js'),
+        path.resolve(__dirname, '../../../scripts/fusion-agent/fusion-agent.js'),
+        path.resolve(process.cwd(), 'scripts/fusion-agent/fusion-agent.js'),
+        path.resolve(process.cwd(), '../scripts/fusion-agent/fusion-agent.js'),
+        path.resolve(__dirname, '../../scripts/fusion-agent/fusion-agent.js')
+    ];
+    for (const p of possiblePaths) {
+        if (fs.existsSync(p)) {
+            res.setHeader('Content-Disposition', 'attachment; filename="fusion-agent.js"');
+            res.setHeader('Content-Type', 'application/javascript');
+            return res.sendFile(p);
+        }
     }
     res.status(404).json({ message: 'Script conector no encontrado' });
 };
