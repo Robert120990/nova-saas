@@ -1,18 +1,59 @@
+import { ShieldCheck, Lock } from 'lucide-react';
 
+export default function ProductionSelectedBatchForCompleteModal({
+    model,
+    open = model.selectedBatchForComplete,
+    onClose = () => model.setSelectedBatchForComplete(null),
+    onSave = model.handleCompleteBatch
+}) {
+    const {
+        selectedBatchForComplete,
+        completeForm,
+        setCompleteForm,
+        isSubmitting,
+        productConfig,
+        isAdmin,
+        canManageLots
+    } = model;
 
-
-
-export default function ProductionSelectedBatchForCompleteModal({ model, open = model.selectedBatchForComplete, onClose = () => model.setSelectedBatchForComplete(null), onSave = model.handleCompleteBatch }) {
-    const { selectedBatchForComplete, completeForm, setCompleteForm, isSubmitting, productConfig } = model;
     if (!open) return null;
-    return (<>{selectedBatchForComplete && (
+
+    const isFinalized = !!selectedBatchForComplete?.completed_at;
+    const canSupervise = isAdmin || canManageLots;
+
+    return (
+        <>
+            {selectedBatchForComplete && (
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
                     <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-2xl max-w-lg w-full space-y-6 text-slate-900">
                         <div>
-                            <h3 className="text-base font-bold text-slate-900 uppercase tracking-tight">Balance de Masas y Cierre de Lote</h3>
+                            <div className="flex items-center justify-between">
+                                <h3 className="text-base font-bold text-slate-900 uppercase tracking-tight">
+                                    Balance de Masas y Cierre de Lote
+                                </h3>
+                                {isFinalized && (
+                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                                        Finalizado
+                                    </span>
+                                )}
+                            </div>
                             <p className="text-xs text-slate-500 mt-1">Lote: <b>{selectedBatchForComplete.batch_uuid}</b></p>
                         </div>
                         <div className="h-px bg-slate-100" />
+
+                        {isFinalized && (
+                            <div className={`p-3.5 rounded-xl border text-xs ${canSupervise ? 'bg-amber-50/80 border-amber-200 text-amber-900' : 'bg-rose-50/80 border-rose-200 text-rose-900'}`}>
+                                <div className="flex items-center gap-2 font-bold mb-1">
+                                    {canSupervise ? <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" /> : <Lock className="w-4 h-4 text-rose-600 shrink-0" />}
+                                    <span>{canSupervise ? 'Modo de Corrección Supervisada (Lote Finalizado)' : 'Lote Finalizado - Requiere Autorización Supervisada'}</span>
+                                </div>
+                                <p className="text-[11px] leading-relaxed">
+                                    {canSupervise 
+                                        ? 'Usted está autenticado como Administrador/Supervisor. Puede modificar el balance de masas; la corrección se registrará con su usuario en la bitácora de auditoría.' 
+                                        : 'Este lote ya fue completado. Para modificar el balance de masas, un Supervisor o Administrador debe autorizar la operación introduciendo su contraseña a continuación.'}
+                                </p>
+                            </div>
+                        )}
 
                         <div className="grid grid-cols-3 gap-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
                             <div className="text-center">
@@ -39,6 +80,7 @@ export default function ProductionSelectedBatchForCompleteModal({ model, open = 
                                     className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                                     placeholder="Ej: 10320"
                                     step="0.01"
+                                    required
                                 />
                             </div>
 
@@ -67,7 +109,7 @@ export default function ProductionSelectedBatchForCompleteModal({ model, open = 
                                 </div>
                             </div>
 
-                            {/* Métricas en tiempo real de Balance: Rendimiento por caja y Líquido + Envasado */}
+                            {/* Métricas en tiempo real de Balance */}
                             {(() => {
                                 const inpLbs = parseFloat(selectedBatchForComplete?.input_weight_lbs || 0);
                                 const bxs = selectedBatchForComplete?.total_boxes || Math.round(inpLbs / 30) || 1;
@@ -98,6 +140,24 @@ export default function ProductionSelectedBatchForCompleteModal({ model, open = 
                                 );
                             })()}
 
+                            {/* Contraseña de supervisor si no tiene permisos directos */}
+                            {isFinalized && !canSupervise && (
+                                <div className="space-y-1.5 p-3.5 bg-amber-50/70 border border-amber-200 rounded-xl">
+                                    <label className="text-[11px] font-bold text-amber-900 uppercase tracking-wide flex items-center gap-1.5">
+                                        <Lock size={12} className="text-amber-600" />
+                                        Contraseña de Supervisor para Autorizar
+                                    </label>
+                                    <input
+                                        type="password"
+                                        value={completeForm.supervisor_password || ''}
+                                        onChange={(e) => setCompleteForm({ ...completeForm, supervisor_password: e.target.value })}
+                                        placeholder="Ingrese contraseña de Administrador o Supervisor"
+                                        className="w-full px-3 py-2 bg-white border border-amber-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
+                                        required
+                                    />
+                                </div>
+                            )}
+
                             <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
                                 <button
                                     type="button"
@@ -109,13 +169,17 @@ export default function ProductionSelectedBatchForCompleteModal({ model, open = 
                                 <button
                                     type="submit"
                                     disabled={isSubmitting}
-                                    className="px-5 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm"
+                                    className={`px-5 py-2 text-white rounded-xl text-xs font-bold transition-all shadow-sm ${
+                                        isFinalized ? 'bg-amber-600 hover:bg-amber-700' : 'bg-teal-600 hover:bg-teal-700'
+                                    }`}
                                 >
-                                    Guardar & Cerrar
+                                    {isSubmitting ? 'Guardando...' : (isFinalized ? 'Guardar Corrección Supervisada' : 'Guardar & Cerrar')}
                                 </button>
                             </div>
                         </form>
                     </div>
                 </div>
-            )}</>);
+            )}
+        </>
+    );
 }
