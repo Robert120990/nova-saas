@@ -270,6 +270,7 @@ const gasFusionController = require('../controllers/gasFusion.controller');
 const salesRemesaDeliveryController = require('../controllers/salesRemesaDelivery.controller');
 const pozoController = require('../controllers/pozo.controller');
 const filproController = require('../controllers/filpro.controller');
+const rhBiometricController = require('../controllers/rhBiometric.controller');
 
 // Notification Routes
 const notificationRoutes = require('./notification.routes');
@@ -290,6 +291,10 @@ router.post('/inventory/scan/:token/submit', inventoryScanController.submitScan)
 // Public mobile DTE scan routes (accessed via QR scan from phone)
 router.get('/public/scan-session/:sessionId', purchaseController.getScanSessionStatus);
 router.post('/public/scan-session/:sessionId/upload', memoryUpload.single('file'), purchaseController.uploadMobileScan);
+
+// Rutas de Agente Marcador Biométrico (autenticadas por x-agent-key)
+router.post('/rh/biometric/sync', rhBiometricController.syncFromAgent);
+router.post('/rh/biometric/heartbeat', rhBiometricController.heartbeatFromAgent);
 
 // Routes
 router.use(verifyToken);
@@ -1253,6 +1258,33 @@ router.get('/rh/reportes/acciones-personal', rhReportesController.getAccionesPer
 router.get('/rh/reportes/pasivos-laborales', rhReportesController.getPasivosLaboralesReport);
 router.get('/rh/reportes/control-vacaciones', rhReportesController.getControlVacacionesReport);
 router.get('/rh/reportes/rotacion-personal', rhReportesController.getRotacionPersonalReport);
+
+// Marcador Digital Biométrico (Recursos Humanos)
+router.get('/rh/biometric/devices', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.getDevices);
+router.post('/rh/biometric/devices', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.saveDevice);
+router.post('/rh/biometric/devices/:id/regenerate-key', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.regenerateAgentKey);
+router.get('/rh/biometric/devices/:id/download-config', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.downloadConfig);
+router.get('/rh/biometric/agent/download-bat', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.downloadBat);
+router.get('/rh/biometric/agent/download-script', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.downloadAgentScript);
+router.get('/rh/biometric/attendance-logs', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.getAttendanceLogs);
+router.post('/rh/biometric/manual-punch', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.createManualPunch);
+router.get('/rh/biometric/settings', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.getSettings);
+router.post('/rh/biometric/settings', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.updateSettings);
+router.get('/rh/biometric/shifts', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.getShifts);
+router.post('/rh/biometric/shifts', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.saveShift);
+router.delete('/rh/biometric/shifts/:id', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.deleteShift);
+router.get('/rh/biometric/employee-shifts', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.getEmployeeShifts);
+router.post('/rh/biometric/employee-shifts/:employeeId', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.assignEmployeeShift);
+router.get('/rh/biometric/holidays', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.getHolidays);
+router.post('/rh/biometric/holidays', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.saveHoliday);
+router.delete('/rh/biometric/holidays/:id', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.deleteHoliday);
+router.post('/rh/biometric/holidays/:id/toggle', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.toggleHoliday);
+router.get('/rh/biometric/overtime-employees', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.getOvertimeEmployees);
+router.post('/rh/biometric/overtime-employees/:employeeId', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.updateEmployeeOvertimeExemption);
+router.post('/rh/biometric/overtime-employees/batch', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.batchUpdateOvertimeExemptions);
+router.post('/rh/biometric/reclassify', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.reclassifyPunches);
+router.get('/rh/biometric/report', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.getAttendanceReport);
+router.get('/rh/biometric/report/export', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.exportAttendanceReport);
 
 router.get('/logs/stream/:service', verifyToken, settingsController.streamLogs);
 

@@ -1,0 +1,12 @@
+{
+  "serverUrl": "http://localhost:4000",
+  "companyId": 9,
+  "deviceId": 3,
+  "agentKey": "722aa3c919a3ed6332b5603fa74618ef31684655d3b48099",
+  "deviceIp": "192.168.3.201",
+  "devicePort": 4370,
+  "commKey": 0,
+  "protocol": "tcp",
+  "syncIntervalSeconds": 30,
+  "realTimeEnabled": true
+}

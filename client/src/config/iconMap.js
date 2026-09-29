@@ -74,6 +74,7 @@ import {
     Ticket,
     Terminal,
     GitCompare,
+    Fingerprint,
 } from 'lucide-react';
 
 const iconMap = {
@@ -152,6 +153,7 @@ const iconMap = {
     Palmtree,
     Ticket,
     GitCompare,
+    Fingerprint,
 };
 
 export default iconMap;

@@ -167,6 +167,7 @@ const Planillas = lazyWithRetry(() => import('./pages/rh/Planillas'));
 const Quincena25 = lazyWithRetry(() => import('./pages/rh/Quincena25'));
 const ReportesRh = lazyWithRetry(() => import('./pages/rh/ReportesRh'));
 const AccionesPersonal = lazyWithRetry(() => import('./pages/rh/AccionesPersonal'));
+const MarcadorDigital = lazyWithRetry(() => import('./pages/rh/MarcadorDigital'));
 
 const VatBookPurchases = lazyWithRetry(() => import('./pages/VatBooks/VatBookPurchases'));
 const VatBookSalesTaxpayers = lazyWithRetry(() => import('./pages/VatBooks/VatBookSalesTaxpayers'));
@@ -394,6 +395,7 @@ function App() {
                         <Route path="/rh/planillas" element={<Planillas />} />
                         <Route path="/rh/quincena25" element={<Quincena25 />} />
                         <Route path="/rh/acciones-personal" element={<AccionesPersonal />} />
+                        <Route path="/rh/marcador-digital" element={<MarcadorDigital />} />
                         <Route path="/rh/reportes" element={<Navigate to="/rh/reportes/isss" replace />} />
 <Route path="/rh/reportes/:tipo" element={<ReportesRh />} />
 
