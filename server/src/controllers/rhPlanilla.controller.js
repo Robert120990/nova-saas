@@ -886,6 +886,13 @@ const sincronizarPlanilla = async (req, res) => {
             [req.company_id, quincena]
         );
 
+        // Catálogo de todos los descuentos programados para identificar qué cuentas corresponden a descuentos programados
+        const [descuentosDef] = await pool.query(
+            `SELECT DISTINCT cuenta_id, descripcion FROM rh_descuentos_programados WHERE company_id = ?`,
+            [req.company_id]
+        );
+        const programmedCuentaIds = new Set(descuentosDef.map(d => d.cuenta_id).filter(Boolean));
+
         const today = new Date().toISOString().split('T')[0];
 
         // 5. Configuración de ISSS y Renta
@@ -1188,6 +1195,25 @@ const sincronizarPlanilla = async (req, res) => {
                                 d.valor_ingresado = expectedVal;
                                 hasChanges = true;
                             }
+                        } else {
+                            // Si el empleado ya no tiene este descuento programado activo y la cuenta es de tipo descuento programado
+                            const descC = (d.descripcion || '').toLowerCase();
+                            const isProgrammedAccount = (d.cuenta_id && programmedCuentaIds.has(d.cuenta_id)) ||
+                                descC.includes('prestamo') ||
+                                descC.includes('procuraduria') ||
+                                descC.includes('fondo social') ||
+                                descC.includes('fsv') ||
+                                descC.includes('anticipo');
+
+                            if (isProgrammedAccount && parseFloat(d.valor_ingresado || 0) !== 0) {
+                                await pool.query(
+                                    `UPDATE rh_planilla_detalles SET valor_base = 0, valor_ingresado = 0 WHERE id = ?`,
+                                    [d.id]
+                                );
+                                d.valor_base = 0;
+                                d.valor_ingresado = 0;
+                                hasChanges = true;
+                            }
                         }
                     }
                 }
@@ -1348,9 +1374,12 @@ const sincronizarPlanilla = async (req, res) => {
 
 const calcular = async (req, res) => {
     try {
-        const { planilla_id, empleado_id: reqEmpleadoId, detalles: reqDetalles, quincena: reqQuincena } = req.body;
+        const { planilla_id, empleado_id: reqEmpleadoId, detalles: reqDetalles, quincena: reqQuincena, periodo_anio: reqPeriodoAnio, periodo_mes: reqPeriodoMes } = req.body;
 
         let empleadoId, afpId, esJubilado, aplicaRenta, detalles, quincena = reqQuincena || 'primera';
+        let planilla = null;
+        let periodoAnio = reqPeriodoAnio || null;
+        let periodoMes = reqPeriodoMes || null;
 
         if (planilla_id) {
             const [planillaRows] = await pool.query(
@@ -1361,12 +1390,14 @@ const calcular = async (req, res) => {
                 [planilla_id, req.company_id]
             );
             if (planillaRows.length === 0) return res.status(404).json({ message: `${LABEL} no encontrada` });
-            const planilla = planillaRows[0];
+            planilla = planillaRows[0];
             empleadoId = planilla.empleado_id;
             afpId = planilla.afp_id;
             esJubilado = !!planilla.es_jubilado;
             aplicaRenta = planilla.aplica_renta === 0 ? false : true;
             quincena = planilla.quincena || quincena;
+            periodoAnio = planilla.periodo_anio;
+            periodoMes = planilla.periodo_mes;
 
             const [dRows] = await pool.query(
                 `SELECT * FROM rh_planilla_detalles WHERE planilla_id = ?`,
@@ -1452,13 +1483,13 @@ const calcular = async (req, res) => {
             let q1Gravado = 0;
             let prevRentaQ1 = 0;
 
-            if (planilla) {
+            if (periodoAnio && periodoMes) {
                 const [q1Rows] = await pool.query(
                     `SELECT total_percepciones, descuento_isss, descuento_afp, descuento_renta
                      FROM ${TABLE}
                      WHERE company_id = ? AND empleado_id = ? AND periodo_anio = ? AND periodo_mes = ? AND quincena = 'primera'
                      LIMIT 1`,
-                    [req.company_id, empleadoId, planilla.periodo_anio, planilla.periodo_mes]
+                    [req.company_id, empleadoId, periodoAnio, periodoMes]
                 );
                 if (q1Rows.length > 0) {
                     const q1 = q1Rows[0];

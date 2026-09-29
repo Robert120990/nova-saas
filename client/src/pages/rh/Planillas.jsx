@@ -181,7 +181,9 @@ const Planillas = () => {
                 const res = await axios.post('/api/rh/planillas/calcular', {
                     empleado_id: empleadoId,
                     detalles: detalles,
-                    quincena
+                    quincena,
+                    periodo_anio: periodoAnio,
+                    periodo_mes: periodoMes
                 });
                 setCalculo(res.data);
 
