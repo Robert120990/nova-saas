@@ -790,17 +790,17 @@ const getSalesReportPDF = async (req, res) => {
 
         const colW = {
             fecha: 46,
-            tipoDoc: 66,
-            numero: 105,
-            condicion: 48,
+            tipoDoc: 60,
+            numero: 116,
+            condicion: 44,
             gravada: 52,
-            exenta: 50,
+            exenta: 42,
             iva: 45,
-            ret: 42,
-            per: 42,
-            fov: 44,
-            cot: 44,
-            total: 66
+            ret: 40,
+            per: 40,
+            fov: 46,
+            cot: 46,
+            total: 65
         };
 
         const drawTableHeader = (yPos) => {
@@ -837,16 +837,16 @@ const getSalesReportPDF = async (req, res) => {
                 doc.strokeColor('#cbd5e1').lineWidth(0.5).moveTo(startX + colW.fecha + colW.tipoDoc + colW.numero, currentY).lineTo(startX + contentWidth, currentY).stroke();
                 currentY += 2;
                 doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#0f172a');
-                doc.text('SUBTOTAL:', startX + colW.fecha + colW.tipoDoc, currentY, { width: colW.numero, align: 'right' });
+                doc.text('SUBTOTAL:', startX + colW.fecha + colW.tipoDoc, currentY, { width: colW.numero, align: 'right', lineBreak: false });
                 let sx = startX + colW.fecha + colW.tipoDoc + colW.numero + colW.condicion;
-                doc.text(reportPdfHelper.fmt(cTotals.grav), sx, currentY, { width: colW.gravada, align: 'right' }); sx += colW.gravada;
-                doc.text(reportPdfHelper.fmt(cTotals.exe), sx, currentY, { width: colW.exenta, align: 'right' }); sx += colW.exenta;
-                doc.text(reportPdfHelper.fmt(cTotals.iva), sx, currentY, { width: colW.iva, align: 'right' }); sx += colW.iva;
-                doc.text(reportPdfHelper.fmt(cTotals.ret), sx, currentY, { width: colW.ret, align: 'right' }); sx += colW.ret;
-                doc.text(reportPdfHelper.fmt(cTotals.per), sx, currentY, { width: colW.per, align: 'right' }); sx += colW.per;
-                doc.text(reportPdfHelper.fmt(cTotals.fov), sx, currentY, { width: colW.fov, align: 'right' }); sx += colW.fov;
-                doc.text(reportPdfHelper.fmt(cTotals.cot), sx, currentY, { width: colW.cot, align: 'right' }); sx += colW.cot;
-                doc.text(reportPdfHelper.fmt(cTotals.total), sx, currentY, { width: colW.total - 6, align: 'right' });
+                doc.text(reportPdfHelper.fmt(cTotals.grav), sx, currentY, { width: colW.gravada, align: 'right', lineBreak: false }); sx += colW.gravada;
+                doc.text(reportPdfHelper.fmt(cTotals.exe), sx, currentY, { width: colW.exenta, align: 'right', lineBreak: false }); sx += colW.exenta;
+                doc.text(reportPdfHelper.fmt(cTotals.iva), sx, currentY, { width: colW.iva, align: 'right', lineBreak: false }); sx += colW.iva;
+                doc.text(reportPdfHelper.fmt(cTotals.ret), sx, currentY, { width: colW.ret, align: 'right', lineBreak: false }); sx += colW.ret;
+                doc.text(reportPdfHelper.fmt(cTotals.per), sx, currentY, { width: colW.per, align: 'right', lineBreak: false }); sx += colW.per;
+                doc.text(reportPdfHelper.fmt(cTotals.fov), sx, currentY, { width: colW.fov, align: 'right', lineBreak: false }); sx += colW.fov;
+                doc.text(reportPdfHelper.fmt(cTotals.cot), sx, currentY, { width: colW.cot, align: 'right', lineBreak: false }); sx += colW.cot;
+                doc.text(reportPdfHelper.fmt(cTotals.total), sx, currentY, { width: colW.total - 6, align: 'right', lineBreak: false });
                 currentY += 15;
                 cTotals = { grav: 0, exe: 0, iva: 0, ret: 0, per: 0, fov: 0, cot: 0, total: 0 };
             };
@@ -874,12 +874,16 @@ const getSalesReportPDF = async (req, res) => {
                     currentCustomer = row.customer_name;
                 }
 
-                doc.fontSize(7.5).font('Helvetica').fillColor('#1e293b');
+                doc.fontSize(7).font('Helvetica').fillColor('#1e293b');
                 let lx = startX + 4;
-                doc.text(reportPdfHelper.formatDate(row.fecha_emision), lx, currentY, { width: colW.fecha }); lx += colW.fecha;
-                doc.text((row.tipo_doc_nombre || '---').substring(0, 16), lx, currentY, { width: colW.tipoDoc }); lx += colW.tipoDoc;
-                doc.text(String(row.numero_control || `VTA-${row.id}`), lx, currentY, { width: colW.numero }); lx += colW.numero;
-                doc.text((row.condicion_nombre || 'CONTADO').substring(0, 10), lx, currentY, { width: colW.condicion }); lx += colW.condicion;
+                doc.text(reportPdfHelper.formatDate(row.fecha_emision), lx, currentY, { width: colW.fecha, lineBreak: false }); lx += colW.fecha;
+                doc.text((row.tipo_doc_nombre || '---').substring(0, 15), lx, currentY, { width: colW.tipoDoc, lineBreak: false }); lx += colW.tipoDoc;
+                
+                const rawNumero = String(row.numero_control || `VTA-${row.id}`);
+                const displayNumero = reportPdfHelper.fitText(doc, rawNumero, colW.numero - 4);
+                doc.text(displayNumero, lx, currentY, { width: colW.numero - 4, lineBreak: false }); lx += colW.numero;
+                
+                doc.text((row.condicion_nombre || 'CONTADO').substring(0, 10), lx, currentY, { width: colW.condicion, lineBreak: false }); lx += colW.condicion;
 
                 const grav = parseFloat(row.total_gravado || 0);
                 const exe = parseFloat(row.total_exento || 0);
@@ -890,14 +894,14 @@ const getSalesReportPDF = async (req, res) => {
                 const cot = parseFloat(row.cotrans || 0);
                 const tot = parseFloat(row.total_pagar || 0);
 
-                doc.text(reportPdfHelper.fmt(grav), lx, currentY, { width: colW.gravada, align: 'right' }); lx += colW.gravada;
-                doc.text(reportPdfHelper.fmt(exe), lx, currentY, { width: colW.exenta, align: 'right' }); lx += colW.exenta;
-                doc.text(reportPdfHelper.fmt(iva), lx, currentY, { width: colW.iva, align: 'right' }); lx += colW.iva;
-                doc.text(reportPdfHelper.fmt(ret), lx, currentY, { width: colW.ret, align: 'right' }); lx += colW.ret;
-                doc.text(reportPdfHelper.fmt(per), lx, currentY, { width: colW.per, align: 'right' }); lx += colW.per;
-                doc.text(reportPdfHelper.fmt(fov), lx, currentY, { width: colW.fov, align: 'right' }); lx += colW.fov;
-                doc.text(reportPdfHelper.fmt(cot), lx, currentY, { width: colW.cot, align: 'right' }); lx += colW.cot;
-                doc.text(reportPdfHelper.fmt(tot), lx, currentY, { width: colW.total - 6, align: 'right' });
+                doc.text(reportPdfHelper.fmt(grav), lx, currentY, { width: colW.gravada, align: 'right', lineBreak: false }); lx += colW.gravada;
+                doc.text(reportPdfHelper.fmt(exe), lx, currentY, { width: colW.exenta, align: 'right', lineBreak: false }); lx += colW.exenta;
+                doc.text(reportPdfHelper.fmt(iva), lx, currentY, { width: colW.iva, align: 'right', lineBreak: false }); lx += colW.iva;
+                doc.text(reportPdfHelper.fmt(ret), lx, currentY, { width: colW.ret, align: 'right', lineBreak: false }); lx += colW.ret;
+                doc.text(reportPdfHelper.fmt(per), lx, currentY, { width: colW.per, align: 'right', lineBreak: false }); lx += colW.per;
+                doc.text(reportPdfHelper.fmt(fov), lx, currentY, { width: colW.fov, align: 'right', lineBreak: false }); lx += colW.fov;
+                doc.text(reportPdfHelper.fmt(cot), lx, currentY, { width: colW.cot, align: 'right', lineBreak: false }); lx += colW.cot;
+                doc.text(reportPdfHelper.fmt(tot), lx, currentY, { width: colW.total - 6, align: 'right', lineBreak: false });
 
                 cTotals.grav += grav;
                 cTotals.exe += exe;
@@ -932,17 +936,17 @@ const getSalesReportPDF = async (req, res) => {
 
             doc.strokeColor('#0f172a').lineWidth(1).moveTo(startX, currentY).lineTo(startX + contentWidth, currentY).stroke();
             currentY += 4;
-            doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#0f172a');
-            doc.text('TOTAL GENERAL:', startX + colW.fecha + colW.tipoDoc, currentY, { width: colW.numero, align: 'right' });
+            doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#0f172a');
+            doc.text('TOTAL GENERAL:', startX + colW.fecha + colW.tipoDoc, currentY, { width: colW.numero, align: 'right', lineBreak: false });
             let gx = startX + colW.fecha + colW.tipoDoc + colW.numero + colW.condicion;
-            doc.text(reportPdfHelper.fmt(gTotals.grav), gx, currentY, { width: colW.gravada, align: 'right' }); gx += colW.gravada;
-            doc.text(reportPdfHelper.fmt(gTotals.exe), gx, currentY, { width: colW.exenta, align: 'right' }); gx += colW.exenta;
-            doc.text(reportPdfHelper.fmt(gTotals.iva), gx, currentY, { width: colW.iva, align: 'right' }); gx += colW.iva;
-            doc.text(reportPdfHelper.fmt(gTotals.ret), gx, currentY, { width: colW.ret, align: 'right' }); gx += colW.ret;
-            doc.text(reportPdfHelper.fmt(gTotals.per), gx, currentY, { width: colW.per, align: 'right' }); gx += colW.per;
-            doc.text(reportPdfHelper.fmt(gTotals.fov), gx, currentY, { width: colW.fov, align: 'right' }); gx += colW.fov;
-            doc.text(reportPdfHelper.fmt(gTotals.cot), gx, currentY, { width: colW.cot, align: 'right' }); gx += colW.cot;
-            doc.text(reportPdfHelper.fmt(gTotals.total), gx, currentY, { width: colW.total - 6, align: 'right' });
+            doc.text(reportPdfHelper.fmt(gTotals.grav), gx, currentY, { width: colW.gravada, align: 'right', lineBreak: false }); gx += colW.gravada;
+            doc.text(reportPdfHelper.fmt(gTotals.exe), gx, currentY, { width: colW.exenta, align: 'right', lineBreak: false }); gx += colW.exenta;
+            doc.text(reportPdfHelper.fmt(gTotals.iva), gx, currentY, { width: colW.iva, align: 'right', lineBreak: false }); gx += colW.iva;
+            doc.text(reportPdfHelper.fmt(gTotals.ret), gx, currentY, { width: colW.ret, align: 'right', lineBreak: false }); gx += colW.ret;
+            doc.text(reportPdfHelper.fmt(gTotals.per), gx, currentY, { width: colW.per, align: 'right', lineBreak: false }); gx += colW.per;
+            doc.text(reportPdfHelper.fmt(gTotals.fov), gx, currentY, { width: colW.fov, align: 'right', lineBreak: false }); gx += colW.fov;
+            doc.text(reportPdfHelper.fmt(gTotals.cot), gx, currentY, { width: colW.cot, align: 'right', lineBreak: false }); gx += colW.cot;
+            doc.text(reportPdfHelper.fmt(gTotals.total), gx, currentY, { width: colW.total - 6, align: 'right', lineBreak: false });
             currentY += 18;
         }
 
