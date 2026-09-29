@@ -352,16 +352,26 @@ async function generateDTE(payload) {
         } else {
             emisor.recintoFiscal = null;
         }
-        // tipoRegimen (CAT-028): para Bienes (1), Hacienda exige régimen válido (EX-1 = Exportación Definitiva).
-        // NUNCA enviar null.
-        if (expData.tipoRegimen) {
-            emisor.tipoRegimen = String(expData.tipoRegimen);
-        } else if (emisor.tipoItemExpor === 1) {
+        // tipoRegimen (CAT-033): para Bienes (1), Hacienda exige régimen válido (EX-1 = Exportación Definitiva).
+        // NUNCA enviar null en Bienes.
+        const validTipoRegimen = ['EX-1', 'EX-2', 'EX-3', 'TA-1'];
+        const inputTipoRegimen = String(expData.tipoRegimen || '').trim().toUpperCase();
+        if (validTipoRegimen.includes(inputTipoRegimen)) {
+            emisor.tipoRegimen = inputTipoRegimen;
+        } else if (inputTipoRegimen === 'EX' || emisor.tipoItemExpor === 1) {
             emisor.tipoRegimen = 'EX-1';
         } else {
             delete emisor.tipoRegimen;
         }
-        emisor.regimen = expData.regimen ? String(expData.regimen).substring(0, 13) : null;
+        // regimen (CAT-028): Régimen aduanero específico (ej: '1000.000').
+        // 'EX-1', 'EX', etc. corresponden a CAT-033 (tipoRegimen), NO a CAT-028 (regimen).
+        // Si no se proporciona un código aduanero específico de CAT-028, DEBE ser null.
+        const rawRegimen = expData.regimen ? String(expData.regimen).trim().toUpperCase() : null;
+        if (rawRegimen && !['EX-1', 'EX-2', 'EX-3', 'TA-1', 'EX'].includes(rawRegimen) && rawRegimen.length >= 4) {
+            emisor.regimen = rawRegimen.substring(0, 13);
+        } else {
+            emisor.regimen = null;
+        }
     }
 
     // 4. Items (Cuerpo Documento)
