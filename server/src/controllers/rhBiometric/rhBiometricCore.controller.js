@@ -1,5 +1,6 @@
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const rhBiometricService = require('../../services/rhBiometric.service');
 
 const getDevices = async (req, res) => {
@@ -101,6 +102,33 @@ const heartbeatFromAgent = async (req, res) => {
     }
 };
 
+const getBestServerUrl = (req) => {
+    const rawHost = req.get('host') || 'localhost:4000';
+    const isLocalhost = rawHost.includes('localhost') || rawHost.includes('127.0.0.1');
+    const protocol = (req.protocol === 'https' || req.headers['x-forwarded-proto'] === 'https') ? 'https' : 'http';
+
+    if (!isLocalhost && !rawHost.startsWith('192.168.') && !rawHost.startsWith('10.') && !rawHost.startsWith('172.')) {
+        return `${protocol}://${rawHost}`;
+    }
+
+    let lanIp = '127.0.0.1';
+    try {
+        const nets = os.networkInterfaces();
+        for (const name of Object.keys(nets)) {
+            for (const net of nets[name]) {
+                if (net.family === 'IPv4' && !net.internal) {
+                    lanIp = net.address;
+                    break;
+                }
+            }
+            if (lanIp !== '127.0.0.1') break;
+        }
+    } catch { /* fallback */ }
+
+    const backendPort = process.env.PORT || 4000;
+    return `http://${lanIp}:${backendPort}`;
+};
+
 const downloadConfig = async (req, res) => {
     try {
         const deviceId = req.params.id;
@@ -111,9 +139,7 @@ const downloadConfig = async (req, res) => {
         if (!devices.length) return res.status(404).json({ message: 'Dispositivo no encontrado.' });
         const dev = devices[0];
 
-        const host = req.get('host');
-        const protocol = req.protocol === 'https' || req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http';
-        const serverUrl = `${protocol}://${host}`;
+        const serverUrl = getBestServerUrl(req);
 
         const cfg = {
             serverUrl,
@@ -144,7 +170,7 @@ const downloadBat = (req, res) => {
         res.setHeader('Content-Disposition', 'attachment; filename="iniciar-conector.bat"');
         return res.sendFile(batPath);
     }
-    const fallbackBat = `@echo off\r\ntitle Conector Marcador Biometrico ZKTeco - SIPE WEB\r\ncolor 0A\r\ncd /d "%~dp0"\r\necho ======================================================================\r\necho   CONECTOR LOCAL MARCADOR DIGITAL ZKTECO - RECURSOS HUMANOS (SIPE)    \r\necho ======================================================================\r\necho Carpeta: %cd%\r\nwhere node >nul 2>nul\r\nif %errorlevel% neq 0 (\r\n  echo [ERROR] Node.js no esta instalado. Descarguelo desde https://nodejs.org\r\n  pause\r\n  exit /b 1\r\n)\r\nif not exist "biometric-agent.js" (\r\n  echo [ERROR] No se encuentra biometric-agent.js en esta carpeta.\r\n  pause\r\n  exit /b 1\r\n)\r\nif not exist "node_modules\\node-zklib" (\r\n  echo [INFO] Instalando libreria node-zklib...\r\n  call npm install node-zklib --no-audit --no-fund\r\n)\r\nnode biometric-agent.js\r\npause\r\n`;
+    const fallbackBat = `@echo off\r\ntitle Conector Marcador Biometrico ZKTeco - SIPE WEB\r\ncolor 0A\r\ncd /d "%~dp0"\r\necho Carpeta: %cd%\r\nwhere node >nul 2>nul\r\nif %errorlevel% neq 0 (\r\n  echo [ERROR] Node.js no esta instalado. Descarguelo desde https://nodejs.org\r\n  pause\r\n  exit /b 1\r\n)\r\nif not exist "biometric-agent.js" (\r\n  echo [ERROR] No se encuentra biometric-agent.js en esta carpeta.\r\n  pause\r\n  exit /b 1\r\n)\r\nif not exist "node_modules\\node-zklib" (\r\n  echo [INFO] Instalando libreria node-zklib...\r\n  call npm install node-zklib --no-audit --no-fund\r\n)\r\nnode biometric-agent.js\r\npause\r\n`;
     res.setHeader('Content-Type', 'application/x-bat');
     res.setHeader('Content-Disposition', 'attachment; filename="iniciar-conector.bat"');
     res.send(fallbackBat);

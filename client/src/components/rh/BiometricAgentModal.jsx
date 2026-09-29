@@ -48,6 +48,13 @@ const BiometricAgentModal = ({ open, onClose, device = null, onDeviceUpdated }) 
         document.body.removeChild(link);
     };
 
+    const handleDownloadAll = () => {
+        handleDownload(`/api/rh/biometric/devices/${device?.id}/download-config`, 'config.json');
+        setTimeout(() => handleDownload('/api/rh/biometric/agent/download-bat', 'iniciar-conector.bat'), 500);
+        setTimeout(() => handleDownload('/api/rh/biometric/agent/download-script', 'biometric-agent.js'), 1000);
+        toast.success('Descargando los 3 archivos del conector...');
+    };
+
     return (
         <div className="fixed inset-0 bg-slate-950/50 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4">
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl border border-slate-100 overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-150">
@@ -150,9 +157,19 @@ const BiometricAgentModal = ({ open, onClose, device = null, onDeviceUpdated }) 
 
                     {/* One-Click Downloads */}
                     <div>
-                        <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
-                            Archivos del Conector (Descarga Rápida)
-                        </h3>
+                        <div className="flex items-center justify-between mb-2">
+                            <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                                Archivos del Conector (Descarga Rápida)
+                            </h3>
+                            <button
+                                type="button"
+                                onClick={handleDownloadAll}
+                                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors border border-indigo-200"
+                            >
+                                <Download className="w-3.5 h-3.5" />
+                                Descargar los 3 archivos
+                            </button>
+                        </div>
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                             <button
                                 type="button"

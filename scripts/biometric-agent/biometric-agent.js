@@ -112,8 +112,13 @@ function sendToServer(apiPath, method = 'POST', data = {}) {
                 });
             });
 
-            req.on('error', (err) => reject(err));
-            req.on('timeout', () => { req.destroy(); reject(new Error('Timeout de conexión con el servidor SIPE')); });
+            req.on('error', (err) => {
+                const hint = (config.serverUrl.includes('localhost') || config.serverUrl.includes('127.0.0.1'))
+                    ? ' (Sugerencia: Si ejecuta en otra PC, use la IP del servidor en config.json)'
+                    : '';
+                reject(new Error(`Conexión fallida a ${rawUrl}: ${err.message}${hint}`));
+            });
+            req.on('timeout', () => { req.destroy(); reject(new Error(`Timeout de conexión con ${rawUrl}`)); });
             req.write(postData);
             req.end();
         } catch (err) {
@@ -294,6 +299,17 @@ async function startAgent() {
         log('Copie la clave desde la pantalla de Marcador Digital en el sistema SIPE WEB.', 'WARN');
     }
 
+    // Notificar al servidor que el agente inicio
+    try {
+        await sendToServer('/api/rh/biometric/heartbeat', 'POST', {
+            status: 'online',
+            started_at: new Date().toISOString()
+        });
+        log('Conexión inicial con el servidor SIPE establecida. Estado [EN LÍNEA].', 'SUCCESS');
+    } catch (hbErr) {
+        log(`No se pudo contactar al servidor SIPE en ${config.serverUrl}: ${hbErr.message}`, 'WARN');
+    }
+
     // Primera sincronización inmediata
     await syncAttendances();
 
@@ -301,14 +317,14 @@ async function startAgent() {
     const intervalMs = Math.max(10, config.syncIntervalSeconds) * 1000;
     syncTimer = setInterval(syncAttendances, intervalMs);
 
-    // Heartbeat cada 60 segundos hacia el servidor
+    // Heartbeat cada 25 segundos hacia el servidor para mantener status en linea
     setInterval(async () => {
         try {
             await sendToServer('/api/rh/biometric/heartbeat', 'POST', {
                 status: isDeviceConnected ? 'online' : 'error'
             });
         } catch { /* silencio en heartbeat secundario */ }
-    }, 60000);
+    }, 25000);
 }
 
 // Cierre elegante

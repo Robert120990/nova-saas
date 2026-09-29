@@ -1,5 +1,5 @@
 {
-  "serverUrl": "http://localhost:4000",
+  "serverUrl": "http://192.168.3.92:4000",
   "companyId": 9,
   "deviceId": 3,
   "agentKey": "722aa3c919a3ed6332b5603fa74618ef31684655d3b48099",
