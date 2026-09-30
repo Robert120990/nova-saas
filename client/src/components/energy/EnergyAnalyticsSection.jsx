@@ -62,6 +62,7 @@ export default function EnergyAnalyticsSection({ companyHeaders }) {
     }, [period, selectedDate, selectedMonth, selectedYear, selectedPlant, companyHeaders?.['x-company-id']]);
 
     useEffect(() => {
+        setAnalyticsData(null);
         setSelectedPlant('all');
     }, [companyHeaders?.['x-company-id']]);
 
@@ -255,41 +256,57 @@ export default function EnergyAnalyticsSection({ companyHeaders }) {
                 </div>
             </div>
 
-            {/* KPI Cards del Período Seleccionado */}
-            <EnergyAnalyticsCards period={period} summary={summary} />
+            {loading && !analyticsData ? (
+                <div className="p-12 text-center bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm">
+                    <RefreshCw className="w-8 h-8 text-indigo-500 animate-spin mx-auto mb-3" />
+                    <p className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                        Cargando analítica energética...
+                    </p>
+                    <p className="text-[11px] text-slate-400 mt-1">
+                        Sincronizando curvas de telemetría de la localidad seleccionada.
+                    </p>
+                </div>
+            ) : (
+                <>
+                    {/* KPI Cards del Período Seleccionado */}
+                    <EnergyAnalyticsCards period={period} summary={summary} />
 
-            {/* Gráfico Principal del Período */}
-            {period === 'day' && (
-                <EnergyDayChart 
-                    curvePoints={analyticsData?.curvePoints}
-                    title={`Curva de Generación Solar Diaria (${formatDate(selectedDate)})`}
-                    selectedPlantName={plantName}
-                />
+                    {/* Gráfico Principal del Período */}
+                    {period === 'day' && (
+                        <EnergyDayChart 
+                            curvePoints={analyticsData?.curvePoints}
+                            title={`Curva de Generación Solar y Aporte BESS (${formatDate(selectedDate)})`}
+                            selectedPlantName={plantName}
+                            hasBatteries={analyticsData?.hasBatteries}
+                            summary={summary}
+                        />
+                    )}
+
+                    {period === 'month' && (
+                        <EnergyMonthChart 
+                            monthData={analyticsData}
+                            selectedMonth={selectedMonth}
+                            selectedPlantName={plantName}
+                        />
+                    )}
+
+                    {period === 'year' && (
+                        <EnergyYearChart 
+                            yearData={analyticsData}
+                            selectedYear={selectedYear}
+                            selectedPlantName={plantName}
+                        />
+                    )}
+
+                    {/* Tabla Detallada Plegable */}
+                    <EnergyAnalyticsDataTable 
+                        period={period}
+                        analyticsData={analyticsData}
+                        showTable={showTable}
+                        onToggleTable={() => setShowTable(!showTable)}
+                    />
+                </>
             )}
-
-            {period === 'month' && (
-                <EnergyMonthChart 
-                    monthData={analyticsData}
-                    selectedMonth={selectedMonth}
-                    selectedPlantName={plantName}
-                />
-            )}
-
-            {period === 'year' && (
-                <EnergyYearChart 
-                    yearData={analyticsData}
-                    selectedYear={selectedYear}
-                    selectedPlantName={plantName}
-                />
-            )}
-
-            {/* Tabla Detallada Plegable */}
-            <EnergyAnalyticsDataTable 
-                period={period}
-                analyticsData={analyticsData}
-                showTable={showTable}
-                onToggleTable={() => setShowTable(!showTable)}
-            />
         </div>
     );
 }

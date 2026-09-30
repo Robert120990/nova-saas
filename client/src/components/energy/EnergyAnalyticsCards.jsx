@@ -2,14 +2,19 @@ import { Sun, BatteryCharging, DollarSign, Activity } from 'lucide-react';
 import { formatDate } from '../../utils/dateUtils';
 import Money from '../ui/Money';
 
-export default function EnergyAnalyticsCards({ period, summary }) {
+export default function EnergyAnalyticsCards({ period, summary = {} }) {
+    const hasBatteries = !!summary.hasBatteries;
+    const totalSolar = period === 'day' ? (summary.solarGeneratedKwh || 0) : (summary.totalSolarKwh || 0);
+    const totalSavings = summary.totalSavingsUsd || summary.solarSavingsUsd || 0;
+    const solarRate = summary.solarRate || 0.17;
+
     return (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {/* 1. Generación Solar */}
+            {/* 1. Generación Solar Inversores */}
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm">
                 <div className="flex items-center justify-between">
                     <span className="text-[11px] font-bold text-slate-500 uppercase">
-                        {period === 'day' ? 'Generación Solar Día' : (period === 'month' ? 'Solar Mes Acumulado' : 'Solar Año Acumulado')}
+                        {period === 'day' ? 'Generación Inversores Día' : (period === 'month' ? 'Generación Solar Mes' : 'Generación Solar Año')}
                     </span>
                     <div className="p-2 rounded-xl bg-amber-500/10 text-amber-500">
                         <Sun className="w-4 h-4" />
@@ -19,54 +24,52 @@ export default function EnergyAnalyticsCards({ period, summary }) {
                     <span className="text-2xl font-black text-slate-800 dark:text-slate-100">
                         {period === 'year' 
                             ? `${(summary.totalSolarMwh || 0).toFixed(1)} MWh`
-                            : `${((period === 'day' ? summary.solarGeneratedKwh : summary.totalSolarKwh) || 0).toLocaleString('en-US')} kWh`
+                            : `${totalSolar.toLocaleString('en-US')} kWh`
                         }
                     </span>
                 </div>
                 <p className="text-xs text-slate-500 mt-1">
-                    {period === 'day' && `Pico máximo: ${(summary.maxSolarPowerKw || 0).toFixed(1)} kW`}
-                    {period === 'month' && `Promedio diario: ${(summary.avgDailySolarKwh || 0).toFixed(1)} kWh/día`}
-                    {period === 'year' && `Promedio mensual: ${(summary.avgMonthlySolarKwh ? (summary.avgMonthlySolarKwh / 1000).toFixed(1) : 0)} MWh/mes`}
+                    {period === 'day' && `Pico solar: ${(summary.maxSolarPowerKw || 0).toFixed(1)} kW`}
+                    {period === 'month' && `Promedio: ${(summary.avgDailySolarKwh || 0).toFixed(1)} kWh/día`}
+                    {period === 'year' && `Promedio: ${(summary.avgMonthlySolarKwh ? (summary.avgMonthlySolarKwh / 1000).toFixed(1) : 0)} MWh/mes`}
                 </p>
             </div>
 
-            {/* 2. Banco de Baterías O Modalidad Solar Directa */}
+            {/* 2. Descarga Banco Baterías BESS */}
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm">
                 <div className="flex items-center justify-between">
                     <span className="text-[11px] font-bold text-slate-500 uppercase">
-                        {summary.hasBatteries ? 'Baterías (ANDELSA)' : 'Almacenamiento'}
+                        {period === 'day' ? 'Descarga Baterías BESS' : (period === 'month' ? 'Descarga BESS Mes' : 'Descarga BESS Año')}
                     </span>
-                    <div className={`p-2 rounded-xl ${summary.hasBatteries ? 'bg-rose-500/10 text-rose-500' : 'bg-amber-500/10 text-amber-500'}`}>
+                    <div className="p-2 rounded-xl bg-purple-500/10 text-purple-600 dark:text-purple-400">
                         <BatteryCharging className="w-4 h-4" />
                     </div>
                 </div>
                 <div className="mt-3">
-                    <span className="text-2xl font-black text-slate-800 dark:text-slate-100">
-                        {summary.hasBatteries ? (
-                            <>
-                                {period === 'day' && `${(summary.batteryDischargedKwh || 0).toFixed(1)} kWh`}
-                                {period === 'month' && `${((summary.monthDischargedKwh || 0) / 1000).toFixed(2)} MWh`}
-                                {period === 'year' && `${((summary.yearDischargedKwh || 0) / 1000).toFixed(2)} MWh`}
-                            </>
+                    <span className={`text-2xl font-black ${hasBatteries ? 'text-purple-600 dark:text-purple-400' : 'text-slate-400 text-lg'}`}>
+                        {hasBatteries ? (
+                            period === 'year'
+                                ? `${(summary.totalBatteryMwh || 0).toFixed(1)} MWh`
+                                : `${(period === 'day' ? summary.batteryDischargedKwh : (summary.monthDischargedKwh || summary.totalBatteryKwh || 0))?.toLocaleString('en-US')} kWh`
                         ) : (
-                            'Solo Solar'
+                            'No Aplica'
                         )}
                     </span>
                 </div>
                 <p className="text-xs text-slate-500 mt-1">
-                    {summary.hasBatteries ? (
+                    {hasBatteries ? (
                         <>
-                            {period === 'day' && `Descarga en pico (Carga: ${(summary.batteryChargedKwh || 0).toFixed(1)} kWh)`}
-                            {period === 'month' && `Descarga mes (Carga: ${((summary.monthChargedKwh || 0) / 1000).toFixed(2)} MWh)`}
-                            {period === 'year' && `Descarga año (Carga: ${((summary.yearChargedKwh || 0) / 1000).toFixed(2)} MWh)`}
+                            {period === 'day' && `Potencia pico: ${(summary.batteryDischargeKw || 0).toFixed(1)} kW (SoC ${summary.socPct || 0}%)`}
+                            {period === 'month' && `Promedio: ${(summary.avgDailyBatteryKwh || 0).toFixed(1)} kWh/día en hora pico`}
+                            {period === 'year' && `${(summary.yearDischargedKwh || summary.totalBatteryKwh || 0).toLocaleString('en-US')} kWh en hora pico`}
                         </>
                     ) : (
-                        'Inyección directa sin banco de baterías'
+                        'Localidad sin almacenamiento BESS'
                     )}
                 </p>
             </div>
 
-            {/* 3. Ahorro Estimado Total */}
+            {/* 3. Ahorro Económico Estimado */}
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm">
                 <div className="flex items-center justify-between">
                     <span className="text-[11px] font-bold text-slate-500 uppercase">
@@ -78,22 +81,16 @@ export default function EnergyAnalyticsCards({ period, summary }) {
                 </div>
                 <div className="mt-3">
                     <span className="text-2xl font-black text-slate-800 dark:text-slate-100">
-                        <Money amount={summary.totalSavingsUsd || 0} />
+                        <Money amount={totalSavings} />
                     </span>
                 </div>
-                <div className="text-[11px] text-slate-500 mt-1 flex items-center justify-between">
-                    {summary.hasBatteries ? (
-                        <>
-                            <span>Solar: <Money amount={summary.solarSavingsUsd || 0} /></span>
-                            <span>Pico Batería: <Money amount={summary.peakSavingsUsd || 0} /></span>
-                        </>
+                <p className="text-xs text-slate-500 mt-1">
+                    {hasBatteries ? (
+                        <>Solar: <strong className="text-slate-700 dark:text-slate-300"><Money amount={summary.solarSavingsUsd || 0} /></strong> &bull; BESS: <strong className="text-purple-600 dark:text-purple-400"><Money amount={summary.peakSavingsUsd || 0} /></strong></>
                     ) : (
-                        <>
-                            <span>Solar: <Money amount={summary.solarSavingsUsd || 0} /></span>
-                            <span className="text-slate-400">Sin Baterías</span>
-                        </>
+                        `Valorizado a $${solarRate.toFixed(2)} / kWh solar`
                     )}
-                </div>
+                </p>
             </div>
 
             {/* 4. Rendimiento / Récord */}
@@ -114,7 +111,7 @@ export default function EnergyAnalyticsCards({ period, summary }) {
                     </span>
                 </div>
                 <p className="text-xs text-slate-500 mt-1">
-                    {period === 'day' && `Potencia instantánea máxima`}
+                    {period === 'day' && 'Inyección instantánea máxima solar'}
                     {period === 'month' && (summary.bestDay ? `Día récord: ${formatDate(summary.bestDay.date)}` : 'Sin registros')}
                     {period === 'year' && (summary.bestMonth ? `Mes récord: ${(summary.bestMonth.kwh / 1000).toFixed(1)} MWh` : 'Sin registros')}
                 </p>

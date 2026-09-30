@@ -1,20 +1,30 @@
 import { useState } from 'react';
-import { CalendarDays } from 'lucide-react';
+import { CalendarDays, Sun, BatteryCharging, Check } from 'lucide-react';
 import { formatDate } from '../../utils/dateUtils';
 import Money from '../ui/Money';
 
 export default function EnergyMonthChart({ monthData, selectedMonth, selectedPlantName }) {
     const dailyPoints = monthData?.dailyPoints || [];
     const summary = monthData?.summary || {};
-    const [hoveredDay, setHoveredDay] = useState(null);
+    const hasBess = monthData?.hasBatteries || summary?.hasBatteries || dailyPoints.some(p => (p.batteryKwh || 0) > 0);
 
-    const maxKwh = Math.max(...dailyPoints.map(p => p.solarKwh), 100);
+    const [hoveredDay, setHoveredDay] = useState(null);
+    const [showSolar, setShowSolar] = useState(true);
+    const [showBattery, setShowBattery] = useState(true);
+
+    const activeMax = dailyPoints.reduce((acc, p) => {
+        let m = acc;
+        if (showSolar) m = Math.max(m, p.solarKwh || 0);
+        if (showBattery && hasBess) m = Math.max(m, p.batteryKwh || 0);
+        return m;
+    }, 0);
+    const maxKwh = Math.max(activeMax, 100);
+
     const avgKwh = summary.avgDailySolarKwh || 0;
     const chartHeight = 220;
     const chartWidth = 900;
     const numDays = dailyPoints.length || 30;
-    const barWidth = Math.max(chartWidth / (numDays * 1.5), 14);
-    const gap = (chartWidth - barWidth * numDays) / (numDays + 1);
+    const slotWidth = chartWidth / numDays;
 
     // Línea de promedio Y
     const avgY = chartHeight - (avgKwh / maxKwh) * (chartHeight - 40) - 20;
@@ -22,31 +32,77 @@ export default function EnergyMonthChart({ monthData, selectedMonth, selectedPla
     return (
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm space-y-4">
             {/* Header del gráfico */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
                 <div className="flex items-center gap-2.5">
                     <div className="p-2 rounded-xl bg-amber-500/10 text-amber-500 border border-amber-500/20">
                         <CalendarDays className="w-5 h-5" />
                     </div>
                     <div>
                         <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">
-                            Generación Solar Diaria del Mes ({selectedMonth})
+                            Aporte Energético Diario del Mes ({selectedMonth})
                         </h3>
                         <p className="text-xs text-slate-500">
-                            Planta: <strong>{selectedPlantName || 'Todas'}</strong> &bull; Promedio: <strong>{avgKwh.toFixed(1)} kWh/día</strong> &bull; Total Mes: <strong>{summary.totalSolarKwh?.toLocaleString('en-US')} kWh</strong>
+                            Planta: <strong>{selectedPlantName || 'Todas'}</strong>
+                            {' '}&bull; Promedio Solar: <strong>{avgKwh.toFixed(1)} kWh/día</strong>
+                            {' '}&bull; Total Solar: <strong>{summary.totalSolarKwh?.toLocaleString('en-US')} kWh</strong>
+                            {hasBess && summary.monthDischargedKwh > 0 && (
+                                <> &bull; Total Baterías: <strong className="text-purple-600 dark:text-purple-400">{summary.monthDischargedKwh.toLocaleString('en-US')} kWh</strong></>
+                            )}
                         </p>
                     </div>
                 </div>
 
-                {/* Leyenda */}
-                <div className="flex items-center gap-4 text-xs">
-                    <div className="flex items-center gap-1.5">
-                        <span className="w-3 h-3 rounded-sm bg-gradient-to-t from-amber-600 to-amber-400 inline-block" />
-                        <span className="text-slate-600 dark:text-slate-300 font-medium">Generación Diaria (kWh)</span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                        <span className="w-4 h-0.5 border-t-2 border-dashed border-sky-500 inline-block" />
-                        <span className="text-sky-600 dark:text-sky-400 font-medium">Promedio Diario</span>
-                    </div>
+                {/* Filtros Interactivos de Series */}
+                <div className="flex items-center gap-2 flex-wrap">
+                    {/* Toggle Inversores Solar */}
+                    <button
+                        type="button"
+                        onClick={() => setShowSolar(!showSolar)}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
+                            showSolar 
+                                ? 'bg-amber-500/10 border-amber-500/40 text-amber-700 dark:text-amber-400 shadow-sm' 
+                                : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-400 line-through opacity-60'
+                        }`}
+                        title="Ocultar o mostrar barras de inversores solares"
+                    >
+                        <span className={`w-3 h-3 rounded-sm flex items-center justify-center ${showSolar ? 'bg-amber-500 text-white' : 'bg-slate-300'}`}>
+                            {showSolar && <Check className="w-2.5 h-2.5 stroke-[3]" />}
+                        </span>
+                        <Sun className="w-3.5 h-3.5 text-amber-500" />
+                        <span>Inversores Solar</span>
+                    </button>
+
+                    {/* Toggle Baterías BESS */}
+                    {hasBess ? (
+                        <button
+                            type="button"
+                            onClick={() => setShowBattery(!showBattery)}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
+                                showBattery 
+                                    ? 'bg-purple-500/10 border-purple-500/40 text-purple-700 dark:text-purple-400 shadow-sm' 
+                                    : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-400 line-through opacity-60'
+                            }`}
+                            title="Ocultar o mostrar barras de descarga de baterías"
+                        >
+                            <span className={`w-3 h-3 rounded-sm flex items-center justify-center ${showBattery ? 'bg-purple-600 text-white' : 'bg-slate-300'}`}>
+                                {showBattery && <Check className="w-2.5 h-2.5 stroke-[3]" />}
+                            </span>
+                            <BatteryCharging className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                            <span>Baterías BESS (Pico)</span>
+                        </button>
+                    ) : (
+                        <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-400 border border-slate-200 dark:border-slate-700 cursor-not-allowed">
+                            <BatteryCharging className="w-3 h-3 text-slate-400" />
+                            <span>Sin Baterías (No Aplica)</span>
+                        </span>
+                    )}
+
+                    {showSolar && avgKwh > 0 && (
+                        <div className="flex items-center gap-1.5 pl-2 border-l border-slate-200 dark:border-slate-700 text-xs">
+                            <span className="w-3.5 h-0.5 border-t-2 border-dashed border-sky-500 inline-block" />
+                            <span className="text-sky-600 dark:text-sky-400 font-medium text-[11px]">Promedio Solar</span>
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -59,13 +115,13 @@ export default function EnergyMonthChart({ monthData, selectedMonth, selectedPla
                         onMouseLeave={() => setHoveredDay(null)}
                     >
                         <defs>
-                            <linearGradient id="monthBarGradient" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="0%" stopColor="#f59e0b" stopOpacity="0.9" />
-                                <stop offset="100%" stopColor="#d97706" stopOpacity="0.6" />
+                            <linearGradient id="monthSolarGradient" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stopColor="#f59e0b" stopOpacity="0.95" />
+                                <stop offset="100%" stopColor="#d97706" stopOpacity="0.65" />
                             </linearGradient>
-                            <linearGradient id="monthBarHover" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="0%" stopColor="#fbbf24" stopOpacity="1" />
-                                <stop offset="100%" stopColor="#f59e0b" stopOpacity="0.9" />
+                            <linearGradient id="monthBatteryGradient" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stopColor="#a855f7" stopOpacity="0.95" />
+                                <stop offset="100%" stopColor="#7c3aed" stopOpacity="0.65" />
                             </linearGradient>
                         </defs>
 
@@ -97,8 +153,8 @@ export default function EnergyMonthChart({ monthData, selectedMonth, selectedPla
                             );
                         })}
 
-                        {/* Línea de promedio */}
-                        {avgKwh > 0 && (
+                        {/* Línea de promedio solar */}
+                        {showSolar && avgKwh > 0 && (
                             <line 
                                 x1="0" 
                                 y1={avgY} 
@@ -110,36 +166,64 @@ export default function EnergyMonthChart({ monthData, selectedMonth, selectedPla
                             />
                         )}
 
-                        {/* Barras por día */}
+                        {/* Barras agrupadas por día */}
                         {dailyPoints.map((pt, i) => {
-                            const x = gap + i * (barWidth + gap);
-                            const h = pt.solarKwh > 0 ? (pt.solarKwh / maxKwh) * (chartHeight - 40) : 0;
-                            const y = chartHeight - h - 20;
+                            const slotX = i * slotWidth;
+                            const isDual = hasBess && showSolar && showBattery;
+                            const barWidth = isDual 
+                                ? Math.max((slotWidth - 4) / 2, 7) 
+                                : Math.max(slotWidth - 6, 12);
+
+                            const solarH = (showSolar && pt.solarKwh > 0) ? (pt.solarKwh / maxKwh) * (chartHeight - 40) : 0;
+                            const solarY = chartHeight - solarH - 20;
+
+                            const batteryH = (showBattery && hasBess && pt.batteryKwh > 0) ? (pt.batteryKwh / maxKwh) * (chartHeight - 40) : 0;
+                            const batteryY = chartHeight - batteryH - 20;
+
                             const isHovered = hoveredDay?.day === pt.day;
 
                             return (
                                 <g key={pt.day} className="cursor-pointer" onMouseEnter={() => setHoveredDay(pt)}>
-                                    {/* Barra de impacto interactiva invisible */}
+                                    {/* Barra de impacto táctil invisible */}
                                     <rect 
-                                        x={x - gap / 2} 
+                                        x={slotX} 
                                         y="0" 
-                                        width={barWidth + gap} 
+                                        width={slotWidth} 
                                         height={chartHeight} 
                                         fill="transparent"
                                     />
-                                    {/* Barra visual */}
-                                    <rect 
-                                        x={x} 
-                                        y={y} 
-                                        width={barWidth} 
-                                        height={Math.max(h, 2)} 
-                                        rx="3"
-                                        fill={isHovered ? 'url(#monthBarHover)' : 'url(#monthBarGradient)'}
-                                        className="transition-all duration-150"
-                                    />
-                                    {/* Etiqueta de día */}
+
+                                    {/* Barra Solar */}
+                                    {showSolar && (
+                                        <rect 
+                                            x={isDual ? (slotX + 1) : (slotX + (slotWidth - barWidth) / 2)} 
+                                            y={solarY} 
+                                            width={barWidth} 
+                                            height={Math.max(solarH, 2)} 
+                                            rx="2.5"
+                                            fill="url(#monthSolarGradient)"
+                                            opacity={isHovered ? 1 : 0.85}
+                                            className="transition-all duration-150"
+                                        />
+                                    )}
+
+                                    {/* Barra Baterías BESS */}
+                                    {showBattery && hasBess && (
+                                        <rect 
+                                            x={isDual ? (slotX + barWidth + 2) : (slotX + (slotWidth - barWidth) / 2)} 
+                                            y={batteryY} 
+                                            width={barWidth} 
+                                            height={Math.max(batteryH, 2)} 
+                                            rx="2.5"
+                                            fill="url(#monthBatteryGradient)"
+                                            opacity={isHovered ? 1 : 0.85}
+                                            className="transition-all duration-150"
+                                        />
+                                    )}
+
+                                    {/* Etiqueta del día */}
                                     <text 
-                                        x={x + barWidth / 2} 
+                                        x={slotX + slotWidth / 2} 
                                         y={chartHeight - 4} 
                                         textAnchor="middle" 
                                         fill={isHovered ? '#f59e0b' : '#64748b'} 
@@ -153,28 +237,37 @@ export default function EnergyMonthChart({ monthData, selectedMonth, selectedPla
                         })}
                     </svg>
 
-                    {/* Tooltip flotante */}
+                    {/* Tooltip flotante al hacer hover */}
                     {hoveredDay && (
-                        <div className="mt-3 p-3 bg-slate-800 text-white rounded-xl shadow-lg border border-slate-700 flex flex-wrap items-center justify-between gap-4 text-xs animate-fade-in">
+                        <div className="mt-3 p-3.5 bg-slate-800 text-white rounded-xl shadow-lg border border-slate-700 flex flex-wrap items-center justify-between gap-4 text-xs animate-fade-in">
                             <div className="flex items-center gap-2">
                                 <span className="w-2.5 h-2.5 rounded-full bg-amber-400" />
                                 <span>Fecha: <strong>{formatDate(hoveredDay.date)} (Día {hoveredDay.day})</strong></span>
                             </div>
-                            <div>
-                                Generación Solar: <strong className="text-amber-400 text-sm font-black">{hoveredDay.solarKwh.toFixed(1)} kWh</strong>
-                            </div>
-                            <div className="flex items-center gap-1">
-                                Ahorro Estimado: <strong className="text-emerald-400 font-bold"><Money amount={hoveredDay.savingsUsd} /></strong>
-                            </div>
-                            {hoveredDay.plantValues && (
-                                <div className="text-slate-400 text-[11px] flex gap-3">
-                                    {Object.entries(hoveredDay.plantValues).map(([pid, val]) => (
-                                        <span key={pid}>
-                                            {pid === '2410077' ? 'Andelsa' : (pid === '2604519' ? 'Puma' : `Planta ${pid}`)}: <strong className="text-slate-200">{val} kWh</strong>
-                                        </span>
-                                    ))}
+
+                            <div className="flex items-center gap-4 flex-wrap">
+                                <div className="flex items-center gap-1.5">
+                                    <span className="w-2 h-2 rounded-full bg-amber-400" />
+                                    <span>☀️ Inversores: <strong className="text-amber-400 font-bold">{hoveredDay.solarKwh.toFixed(1)} kWh</strong></span>
                                 </div>
-                            )}
+
+                                {hasBess && (
+                                    <div className="flex items-center gap-1.5">
+                                        <span className="w-2 h-2 rounded-full bg-purple-400" />
+                                        <span>🔋 Baterías BESS: <strong className="text-purple-400 font-bold">{hoveredDay.batteryKwh.toFixed(1)} kWh</strong></span>
+                                    </div>
+                                )}
+
+                                <div className="flex items-center gap-1.5 pl-3 border-l border-slate-600">
+                                    <span>Aporte Total:</span>
+                                    <strong className="text-emerald-400 font-black">{hoveredDay.totalKwh.toFixed(1)} kWh</strong>
+                                </div>
+
+                                <div className="flex items-center gap-1 text-slate-300">
+                                    <span>Ahorro Estimado:</span>
+                                    <strong className="text-emerald-400 font-bold"><Money amount={hoveredDay.savingsUsd} /></strong>
+                                </div>
+                            </div>
                         </div>
                     )}
                 </div>

@@ -69,7 +69,8 @@ async function createGrowattClient(creds) {
             'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
             'X-Requested-With': 'XMLHttpRequest'
         },
-        body: form.toString()
+        body: form.toString(),
+        signal: AbortSignal.timeout(10000)
     });
 
     const loginJson = await loginRes.json();
@@ -91,7 +92,8 @@ async function createGrowattClient(creds) {
                 'X-Requested-With': 'XMLHttpRequest',
                 'Cookie': extraCookies ? `${cookieHeader}; ${extraCookies}` : cookieHeader
             },
-            body: f.toString()
+            body: f.toString(),
+            signal: AbortSignal.timeout(10000)
         });
         return await r.json();
     };
@@ -125,7 +127,9 @@ async function createGessClient(creds) {
     const account = encodeURI(encodeURI(user));
     const baseUrl = creds.gess_url.replace(/\/+$/, '') + '/';
 
-    const loginRes = await fetch(`${baseUrl}UserServlet?action=login&account=${account}&passwd=${pwdSha1}`);
+    const loginRes = await fetch(`${baseUrl}UserServlet?action=login&account=${account}&passwd=${pwdSha1}`, {
+        signal: AbortSignal.timeout(10000)
+    });
     const loginJson = await loginRes.json();
     if (loginJson.err !== 0) {
         throw new Error('Credenciales inválidas en GESS SolarWeb');
@@ -153,7 +157,8 @@ async function createGessClient(creds) {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
                 'Cookie': cookieHeader,
                 'Referer': `${baseUrl}main.jsp`
-            }
+            },
+            signal: AbortSignal.timeout(10000)
         });
         const text = await res.text();
         const match = text.match(/success_jsonpCallback\(([\s\S]*)\)\s*;?$/);
@@ -185,15 +190,24 @@ async function getAnalyticsData(companyId, params = {}) {
 
     const hasBatteries = !!(creds.gess_enabled && creds.gess_plant_id);
 
-    const [growattClient, gessClient] = await Promise.all([
+    // Consulta en paralelo: Growatt (inversores) y GESS (baterías, solo si la localidad tiene BESS)
+    const [growattClient, gessStats] = await Promise.all([
         createGrowattClient(creds).catch(err => {
             console.error('[EnergyAnalytics] Error connecting to Growatt:', err.message);
             return null;
         }),
-        hasBatteries ? createGessClient(creds).catch(err => {
-            console.error('[EnergyAnalytics] Error connecting to GESS:', err.message);
-            return null;
-        }) : Promise.resolve(null)
+        hasBatteries ? (async () => {
+            try {
+                const gClient = await createGessClient(creds);
+                if (!gClient) return null;
+                const targetDate = params.date || nowParts.dateStr;
+                const statRes = await gClient.oper('MonitorServlet', `&action=plantStorageStatistic&date=${targetDate}`);
+                return statRes?.dat || null;
+            } catch (err) {
+                console.warn('[EnergyAnalytics] GESS no disponible:', err.message);
+                return null;
+            }
+        })() : Promise.resolve(null)
     ]);
 
     let availablePlants = growattClient?.plants || [
@@ -244,6 +258,13 @@ async function getAnalyticsData(companyId, params = {}) {
             });
         }
 
+        const peakHoursCount = Math.max(peakEndHour - peakStartHour, 1);
+        const batteryDischargedKwh = hasBatteries && gessStats ? (parseFloat(gessStats.dayDischarged) || 0) : 0;
+        const batteryChargedKwh = hasBatteries && gessStats ? (parseFloat(gessStats.dayCharged) || 0) : 0;
+        const batteryDischargeKw = (hasBatteries && batteryDischargedKwh > 0)
+            ? parseFloat((batteryDischargedKwh / peakHoursCount).toFixed(2))
+            : 0;
+
         // Combinar los 288 intervalos de 5 minutos
         const curvePoints = Array.from({ length: 288 }, (_, i) => {
             const totalMinutes = i * 5;
@@ -252,7 +273,7 @@ async function getAnalyticsData(companyId, params = {}) {
             const timeLabel = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
             const isPeak = h >= peakStartHour && h < peakEndHour;
 
-            let totalKw = 0;
+            let solarKw = 0;
             const plantValues = {};
 
             for (const pc of plantCurves) {
@@ -260,11 +281,13 @@ async function getAnalyticsData(companyId, params = {}) {
                 const numVal = (rawVal !== null && rawVal !== undefined)
                     ? (typeof rawVal === 'number' ? rawVal : parseFloat(rawVal))
                     : 0;
-                // Convertir W a kW si viene en W (> 500)
-                const kw = numVal > 1000 ? numVal / 1000 : (numVal > 0 ? numVal : 0);
+                // Growatt entrega pac en Watts (W) -> convertir a kW (kW = W / 1000)
+                const kw = numVal > 0 ? numVal / 1000 : 0;
                 plantValues[pc.id] = parseFloat(kw.toFixed(2));
-                totalKw += kw;
+                solarKw += kw;
             }
+
+            const activeBatteryKw = isPeak ? batteryDischargeKw : 0;
 
             return {
                 index: i,
@@ -272,35 +295,21 @@ async function getAnalyticsData(companyId, params = {}) {
                 hour: h,
                 minute: m,
                 isPeak,
-                kw: parseFloat(totalKw.toFixed(2)),
+                solarKw: parseFloat(solarKw.toFixed(2)),
+                batteryKw: activeBatteryKw,
+                kw: parseFloat(solarKw.toFixed(2)), // retrocompatibilidad
+                totalKw: parseFloat((solarKw + activeBatteryKw).toFixed(2)),
                 plantValues
             };
         });
 
-        // Consultar estadísticas de batería GESS para ese día (solo si la localidad tiene baterías)
-        let gessDayStats = null;
-        if (hasBatteries && gessClient) {
-            try {
-                const statRes = await gessClient.oper('MonitorServlet', `&action=plantStorageStatistic&date=${targetDate}`);
-                if (statRes?.dat) {
-                    gessDayStats = statRes.dat;
-                }
-            } catch (e) {
-                console.error('[EnergyAnalytics] Error fetching GESS day stats:', e.message);
-            }
-        }
-
         // Calcular kWh solar del día (suma de potencias medias por intervalo de 5 min: kW * 5/60)
         const solarGeneratedKwh = parseFloat(
-            curvePoints.reduce((sum, pt) => sum + (pt.kw * (5 / 60)), 0).toFixed(2)
+            curvePoints.reduce((sum, pt) => sum + (pt.solarKw * (5 / 60)), 0).toFixed(2)
         );
         const maxSolarPowerKw = parseFloat(
-            Math.max(...curvePoints.map(p => p.kw), 0).toFixed(2)
+            Math.max(...curvePoints.map(p => p.solarKw), 0).toFixed(2)
         );
-
-        const batteryChargedKwh = (hasBatteries && gessDayStats) ? (parseFloat(gessDayStats.dayCharged) || 0) : 0;
-        const batteryDischargedKwh = (hasBatteries && gessDayStats) ? (parseFloat(gessDayStats.dayDischarged) || 0) : 0;
-        const socPct = (hasBatteries && gessDayStats) ? (parseFloat(gessDayStats.soc) || 0) : 0;
 
         const solarSavingsUsd = parseFloat((solarGeneratedKwh * solarRate).toFixed(2));
         const peakSavingsUsd = hasBatteries ? parseFloat((batteryDischargedKwh * (peakRate - offpeakRate)).toFixed(2)) : 0;
@@ -319,11 +328,15 @@ async function getAnalyticsData(companyId, params = {}) {
                 maxSolarPowerKw,
                 batteryChargedKwh,
                 batteryDischargedKwh,
-                socPct,
+                batteryDischargeKw,
+                socPct: hasBatteries && gessStats ? (parseFloat(gessStats.soc) || 0) : 0,
                 nominalCapacityKwh: hasBatteries ? 513.6 : 0,
                 solarSavingsUsd,
                 peakSavingsUsd,
                 totalSavingsUsd,
+                solarRate,
+                peakRate,
+                offpeakRate,
                 peakStartTime: creds.peak_start_time?.slice(0, 5) || '18:00',
                 peakEndTime: creds.peak_end_time?.slice(0, 5) || '22:00'
             }
@@ -364,22 +377,11 @@ async function getAnalyticsData(companyId, params = {}) {
             });
         }
 
-        // Consultar estadísticas de batería GESS para ese mes (solo si tiene baterías)
-        let gessMonthStats = null;
-        if (hasBatteries && gessClient) {
-            try {
-                // Último día del mes o fecha de hoy si es el mes actual
-                const queryDate = targetMonth === nowParts.monthStr
-                    ? nowParts.dateStr
-                    : `${targetMonth}-${String(daysInMonth).padStart(2, '0')}`;
-                const statRes = await gessClient.oper('MonitorServlet', `&action=plantStorageStatistic&date=${queryDate}`);
-                if (statRes?.dat) {
-                    gessMonthStats = statRes.dat;
-                }
-            } catch (e) {
-                console.error('[EnergyAnalytics] Error fetching GESS month stats:', e.message);
-            }
-        }
+        const monthChargedKwh = hasBatteries && gessStats ? (parseFloat(gessStats.monthCharged) || 0) : 0;
+        const monthDischargedKwh = hasBatteries && gessStats ? (parseFloat(gessStats.monthDischarged) || 0) : 0;
+        const avgDailyBatteryKwh = (hasBatteries && daysInMonth > 0)
+            ? parseFloat((monthDischargedKwh / daysInMonth).toFixed(1))
+            : 0;
 
         const dailyPoints = [];
         let totalSolarKwh = 0;
@@ -412,6 +414,8 @@ async function getAnalyticsData(companyId, params = {}) {
                 day: d,
                 date: dayDate,
                 solarKwh: dayKwh,
+                batteryKwh: avgDailyBatteryKwh,
+                totalKwh: parseFloat((dayKwh + avgDailyBatteryKwh).toFixed(2)),
                 savingsUsd: daySavings,
                 plantValues
             });
@@ -420,10 +424,6 @@ async function getAnalyticsData(companyId, params = {}) {
         totalSolarKwh = parseFloat(totalSolarKwh.toFixed(2));
         const activeDays = dailyPoints.filter(p => p.solarKwh > 0).length || 1;
         const avgDailySolarKwh = parseFloat((totalSolarKwh / activeDays).toFixed(2));
-
-        const monthChargedKwh = (hasBatteries && gessMonthStats) ? (parseFloat(gessMonthStats.monthCharged) || 0) : 0;
-        const monthDischargedKwh = (hasBatteries && gessMonthStats) ? (parseFloat(gessMonthStats.monthDischarged) || 0) : 0;
-
         const solarSavingsUsd = parseFloat((totalSolarKwh * solarRate).toFixed(2));
         const peakSavingsUsd = hasBatteries ? parseFloat((monthDischargedKwh * (peakRate - offpeakRate)).toFixed(2)) : 0;
         const totalSavingsUsd = parseFloat((solarSavingsUsd + peakSavingsUsd).toFixed(2));
@@ -440,14 +440,18 @@ async function getAnalyticsData(companyId, params = {}) {
                 hasBatteries,
                 totalSolarKwh,
                 totalSolarMwh: parseFloat((totalSolarKwh / 1000).toFixed(2)),
+                totalBatteryKwh: monthDischargedKwh,
+                totalBatteryMwh: parseFloat((monthDischargedKwh / 1000).toFixed(2)),
                 monthChargedKwh,
                 monthDischargedKwh,
                 avgDailySolarKwh,
+                avgDailyBatteryKwh,
                 maxDailySolarKwh: maxDayKwh,
                 bestDay,
                 solarSavingsUsd,
                 peakSavingsUsd,
-                totalSavingsUsd
+                totalSavingsUsd,
+                solarRate
             }
         };
     }
@@ -483,19 +487,9 @@ async function getAnalyticsData(companyId, params = {}) {
             });
         }
 
-        // Consultar estadísticas anuales en GESS (solo si tiene baterías)
-        let gessYearStats = null;
-        if (hasBatteries && gessClient) {
-            try {
-                const queryDate = targetYear === nowParts.yearStr ? nowParts.dateStr : `${targetYear}-12-31`;
-                const statRes = await gessClient.oper('MonitorServlet', `&action=plantStorageStatistic&date=${queryDate}`);
-                if (statRes?.dat) {
-                    gessYearStats = statRes.dat;
-                }
-            } catch (e) {
-                console.error('[EnergyAnalytics] Error fetching GESS year stats:', e.message);
-            }
-        }
+        const yearChargedKwh = hasBatteries && gessStats ? (parseFloat(gessStats.yearCharged) || 0) : 0;
+        const yearDischargedKwh = hasBatteries && gessStats ? (parseFloat(gessStats.yearDischarged) || 0) : 0;
+        const avgMonthlyBatteryKwh = hasBatteries ? parseFloat((yearDischargedKwh / 12).toFixed(1)) : 0;
 
         const monthsNames = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
         const monthsShort = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
@@ -532,6 +526,9 @@ async function getAnalyticsData(companyId, params = {}) {
                 monthCode,
                 solarKwh: monthKwh,
                 solarMwh: parseFloat((monthKwh / 1000).toFixed(2)),
+                batteryKwh: avgMonthlyBatteryKwh,
+                batteryMwh: parseFloat((avgMonthlyBatteryKwh / 1000).toFixed(2)),
+                totalKwh: parseFloat((monthKwh + avgMonthlyBatteryKwh).toFixed(2)),
                 savingsUsd: parseFloat((monthKwh * solarRate).toFixed(2)),
                 plantValues
             });
@@ -540,10 +537,6 @@ async function getAnalyticsData(companyId, params = {}) {
         totalSolarKwh = parseFloat(totalSolarKwh.toFixed(2));
         const activeMonths = monthlyPoints.filter(p => p.solarKwh > 0).length || 1;
         const avgMonthlySolarKwh = parseFloat((totalSolarKwh / activeMonths).toFixed(2));
-
-        const yearChargedKwh = (hasBatteries && gessYearStats) ? (parseFloat(gessYearStats.yearCharged) || 0) : 0;
-        const yearDischargedKwh = (hasBatteries && gessYearStats) ? (parseFloat(gessYearStats.yearDischarged) || 0) : 0;
-
         const solarSavingsUsd = parseFloat((totalSolarKwh * solarRate).toFixed(2));
         const peakSavingsUsd = hasBatteries ? parseFloat((yearDischargedKwh * (peakRate - offpeakRate)).toFixed(2)) : 0;
         const totalSavingsUsd = parseFloat((solarSavingsUsd + peakSavingsUsd).toFixed(2));
@@ -559,14 +552,18 @@ async function getAnalyticsData(companyId, params = {}) {
                 hasBatteries,
                 totalSolarKwh,
                 totalSolarMwh: parseFloat((totalSolarKwh / 1000).toFixed(2)),
+                totalBatteryKwh: yearDischargedKwh,
+                totalBatteryMwh: parseFloat((yearDischargedKwh / 1000).toFixed(2)),
                 yearChargedKwh,
                 yearDischargedKwh,
                 avgMonthlySolarKwh,
+                avgMonthlyBatteryKwh,
                 maxMonthlySolarKwh: maxMonthKwh,
                 bestMonth,
                 solarSavingsUsd,
                 peakSavingsUsd,
-                totalSavingsUsd
+                totalSavingsUsd,
+                solarRate
             }
         };
     }

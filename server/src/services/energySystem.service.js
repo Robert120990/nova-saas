@@ -72,7 +72,8 @@ async function fetchGrowatt(creds) {
                 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
                 'X-Requested-With': 'XMLHttpRequest'
             },
-            body: form.toString()
+            body: form.toString(),
+            signal: AbortSignal.timeout(10000)
         });
 
         const loginJson = await loginRes.json();
@@ -95,7 +96,8 @@ async function fetchGrowatt(creds) {
                     'X-Requested-With': 'XMLHttpRequest',
                     'Cookie': extraCookies ? `${cookieHeader}; ${extraCookies}` : cookieHeader
                 },
-                body: f.toString()
+                body: f.toString(),
+                signal: AbortSignal.timeout(10000)
             });
             return await r.json();
         };
@@ -208,7 +210,9 @@ async function fetchGess(creds) {
         const account = encodeURI(encodeURI(user));
         const baseUrl = creds.gess_url.replace(/\/+$/, '') + '/';
 
-        const loginRes = await fetch(`${baseUrl}UserServlet?action=login&account=${account}&passwd=${pwdSha1}`);
+        const loginRes = await fetch(`${baseUrl}UserServlet?action=login&account=${account}&passwd=${pwdSha1}`, {
+            signal: AbortSignal.timeout(10000)
+        });
         const loginJson = await loginRes.json();
         if (loginJson.err !== 0) {
             return { enabled: true, success: false, error: 'Credenciales inválidas en GESS SolarWeb' };
@@ -236,7 +240,8 @@ async function fetchGess(creds) {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
                     'Cookie': cookieHeader,
                     'Referer': `${baseUrl}main.jsp`
-                }
+                },
+                signal: AbortSignal.timeout(10000)
             });
             const text = await res.text();
             const match = text.match(/success_jsonpCallback\(([\s\S]*)\)\s*;?$/);
