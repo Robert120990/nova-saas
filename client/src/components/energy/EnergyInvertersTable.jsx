@@ -16,11 +16,21 @@ export default function EnergyInvertersTable({ growattData }) {
                         <Sun className="w-5 h-5" />
                     </div>
                     <div>
-                        <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">
-                            Plantas Fotovoltaicas (Inversores Growatt)
-                        </h3>
+                        <div className="flex items-center gap-2">
+                            <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">
+                                Plantas Fotovoltaicas (Inversores Growatt)
+                            </h3>
+                            {growattData?.isFallback && (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+                                    Telemetría Sincronizada
+                                </span>
+                            )}
+                        </div>
                         <p className="text-xs text-slate-500">
                             Capacidad Total Instalada: <strong>{totalNominal > 0 ? `${totalNominal} kWp` : '—'}</strong>
+                            {growattData?.fallbackNotice && (
+                                <span className="ml-2 text-slate-400 font-normal hidden sm:inline">&bull; {growattData.fallbackNotice}</span>
+                            )}
                         </p>
                     </div>
                 </div>
