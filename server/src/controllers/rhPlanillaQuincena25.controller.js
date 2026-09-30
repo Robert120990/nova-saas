@@ -560,15 +560,26 @@ const exportBanco = async (req, res) => {
             params.push(parseInt(branch_id));
         }
 
-        query += ` ORDER BY e.codigo ASC`;
+        query += ` ORDER BY (CASE WHEN e.cuenta_planillera IS NOT NULL AND TRIM(e.cuenta_planillera) != '' AND TRIM(e.cuenta_planillera) != '0' AND TRIM(e.cuenta_planillera) != '-' THEN 0 ELSE 1 END), e.codigo ASC`;
         const [rows] = await pool.query(query, params);
 
         if (rows.length === 0) {
             return res.status(404).json({ message: 'Sin registros con monto a cobrar para exportar' });
         }
 
+        // Ordenar defensivamente en memoria: empleados con cuenta primero, sin cuenta al final
+        const sortedRows = [...rows].sort((a, b) => {
+            const cuentaA = String(a.cuenta_planillera || '').trim();
+            const cuentaB = String(b.cuenta_planillera || '').trim();
+            const hasA = Boolean(cuentaA && cuentaA !== '0' && cuentaA !== '-');
+            const hasB = Boolean(cuentaB && cuentaB !== '0' && cuentaB !== '-');
+            if (hasA && !hasB) return -1;
+            if (!hasA && hasB) return 1;
+            return 0;
+        });
+
         // CSV bancario (Excel friendly)
-        const csvRows = rows.map(r => {
+        const csvRows = sortedRows.map(r => {
             const nombre = `${r.nombres || ''} ${r.apellidos || ''}`.trim();
             const cuenta = r.cuenta_planillera || '';
             const monto = parseFloat(r.monto_recibir || 0).toFixed(2);
@@ -577,7 +588,7 @@ const exportBanco = async (req, res) => {
         const contentCsv = '\uFEFF' + 'sep=,\n' + csvRows.join('\n');
 
         // TXT bancario (Tabs)
-        const contentTxt = rows.map(r => {
+        const contentTxt = sortedRows.map(r => {
             const nombre = `${r.nombres || ''} ${r.apellidos || ''}`.trim();
             const cuenta = r.cuenta_planillera || '';
             const monto = parseFloat(r.monto_recibir || 0).toFixed(2);

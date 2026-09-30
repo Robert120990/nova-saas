@@ -676,6 +676,17 @@ const Planillas = () => {
             const rows = res.data.data || [];
             if (!rows.length) return toast.error('Sin datos para los filtros seleccionados');
             
+            // Ordenar: empleados con cuenta bancaria al inicio, sin cuenta al final
+            const sortedRows = [...rows].sort((a, b) => {
+                const cuentaA = String(a.cuenta_planillera || '').trim();
+                const cuentaB = String(b.cuenta_planillera || '').trim();
+                const hasA = Boolean(cuentaA && cuentaA !== '0' && cuentaA !== '-');
+                const hasB = Boolean(cuentaB && cuentaB !== '0' && cuentaB !== '-');
+                if (hasA && !hasB) return -1;
+                if (!hasA && hasB) return 1;
+                return 0;
+            });
+
             // CSV: separado por comas para Excel | TXT: separado por tabs para banco
             const makeRow = (r, sep) => {
                 const nombre = `${r.empleado_nombres || ''} ${r.empleado_apellidos || ''}`.trim();
@@ -687,14 +698,14 @@ const Planillas = () => {
             // CSV: sep=, fuerza a Excel (locale español) a usar coma como separador
             // BOM (\uFEFF) garantiza que ñ, tildes, etc. se muestren correctamente
             // ="cuenta" obliga a Excel a mostrar el número completo sin notación científica (1E+13)
-            const csvRows = rows.map(r => {
+            const csvRows = sortedRows.map(r => {
                 const nombre = `${r.empleado_nombres || ''} ${r.empleado_apellidos || ''}`.trim();
                 const cuenta = r.cuenta_planillera || '';
                 const monto = parseFloat(r.monto_recibir || 0).toFixed(2);
                 return `="${cuenta}",${monto},${nombre}`;
             });
             const contentCsv = '\uFEFF' + 'sep=,\n' + csvRows.join('\n');
-            const contentTxt = rows.map(r => makeRow(r, '\t')).join('\n');
+            const contentTxt = sortedRows.map(r => makeRow(r, '\t')).join('\n');
 
             const baseName = `PLANILLAS_${anio}${String(mes).padStart(2, '0')}_${quincena}`;
 
