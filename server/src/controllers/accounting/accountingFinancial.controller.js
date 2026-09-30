@@ -112,8 +112,12 @@ const getBalanceComprobacion = async (req, res) => {
         applyRollup(priorMap, 'initDebit', 'initCredit');
         applyRollup(currMap, 'cargo', 'abono');
 
-        // Compute running balances
+        // Compute running balances and debits/credits
         for (const [, a] of accountDataMap.entries()) {
+            const netInit = a.initDebit - a.initCredit;
+            a.initDeudor = netInit > 0 ? netInit : 0;
+            a.initAcreedor = netInit < 0 ? Math.abs(netInit) : 0;
+
             if (a.nature === 'debit') {
                 a.initBalance = a.initDebit - a.initCredit;
                 a.finalBalance = a.initBalance + a.cargo - a.abono;
@@ -121,6 +125,10 @@ const getBalanceComprobacion = async (req, res) => {
                 a.initBalance = a.initCredit - a.initDebit;
                 a.finalBalance = a.initBalance + a.abono - a.cargo;
             }
+
+            const netFinal = (a.initDebit - a.initCredit) + (a.cargo - a.abono);
+            a.finalDeudor = netFinal > 0 ? netFinal : 0;
+            a.finalAcreedor = netFinal < 0 ? Math.abs(netFinal) : 0;
         }
 
         // Filter by level and non-zero activity
@@ -129,18 +137,27 @@ const getBalanceComprobacion = async (req, res) => {
             return (Math.abs(a.initBalance) > 0.001 || a.cargo > 0 || a.abono > 0 || Math.abs(a.finalBalance) > 0.001);
         });
 
-        // Totals based on level 1 accounts (or filtered)
-        let totalInit = 0;
+        // Totals based on level 1 accounts (or minimum level present)
+        let totalInitDeudor = 0;
+        let totalInitAcreedor = 0;
         let totalCargo = 0;
         let totalAbono = 0;
-        let totalFinal = 0;
+        let totalFinalDeudor = 0;
+        let totalFinalAcreedor = 0;
+
+        let levelForTotals = 1;
+        if (!filteredAccounts.some(a => a.level === 1)) {
+            levelForTotals = filteredAccounts.reduce((min, a) => Math.min(min, a.level), 6);
+        }
 
         filteredAccounts.forEach(a => {
-            if (a.level === 1) {
-                totalInit += a.initBalance;
+            if (a.level === levelForTotals) {
+                totalInitDeudor += a.initDeudor;
+                totalInitAcreedor += a.initAcreedor;
                 totalCargo += a.cargo;
                 totalAbono += a.abono;
-                totalFinal += a.finalBalance;
+                totalFinalDeudor += a.finalDeudor;
+                totalFinalAcreedor += a.finalAcreedor;
             }
         });
 
@@ -153,10 +170,10 @@ const getBalanceComprobacion = async (req, res) => {
         filteredAccounts.forEach(a => {
             if (a.nature === 'debit') {
                 leftRows.push(a);
-                if (a.level === 1) totalIzquierda += a.finalBalance;
+                if (a.level === levelForTotals) totalIzquierda += a.finalBalance;
             } else {
                 rightRows.push(a);
-                if (a.level === 1) totalDerecha += a.finalBalance;
+                if (a.level === levelForTotals) totalDerecha += a.finalBalance;
             }
         });
 
@@ -193,19 +210,34 @@ const getBalanceComprobacion = async (req, res) => {
                 cuenta: a.code,
                 descripcion: a.name,
                 nivel: a.level,
-                saldo_inicial: a.initBalance,
+                saldo_inicial_deudor: a.initDeudor,
+                saldo_inicial_acreedor: a.initAcreedor,
                 cargo: a.cargo,
                 abono: a.abono,
-                saldo_final: a.finalBalance
+                saldo_final_deudor: a.finalDeudor,
+                saldo_final_acreedor: a.finalAcreedor
             }));
+            rowsForExcel.push({
+                cuenta: 'TOTALES',
+                descripcion: 'SUMAS IGUALES',
+                nivel: '',
+                saldo_inicial_deudor: totalInitDeudor,
+                saldo_inicial_acreedor: totalInitAcreedor,
+                cargo: totalCargo,
+                abono: totalAbono,
+                saldo_final_deudor: totalFinalDeudor,
+                saldo_final_acreedor: totalFinalAcreedor
+            });
             return buildExcelResponse(res, rowsForExcel, [
                 { header: 'Cuenta', key: 'cuenta', width: 14 },
                 { header: 'Descripción', key: 'descripcion', width: 35 },
-                { header: 'Nivel', key: 'nivel', width: 10 },
-                { header: 'Saldo Inicial', key: 'saldo_inicial', width: 15 },
-                { header: 'Cargo', key: 'cargo', width: 15 },
-                { header: 'Abono', key: 'abono', width: 15 },
-                { header: 'Saldo Final', key: 'saldo_final', width: 15 }
+                { header: 'Nivel', key: 'nivel', width: 8 },
+                { header: 'Inicial Deudor', key: 'saldo_inicial_deudor', width: 15 },
+                { header: 'Inicial Acreedor', key: 'saldo_inicial_acreedor', width: 15 },
+                { header: 'Debe (Cargos)', key: 'cargo', width: 15 },
+                { header: 'Haber (Abonos)', key: 'abono', width: 15 },
+                { header: 'Final Deudor', key: 'saldo_final_deudor', width: 15 },
+                { header: 'Final Acreedor', key: 'saldo_final_acreedor', width: 15 }
             ], `Balance_Comprobacion_${periodText.replace(/[/\\?*[]:]/g, '_')}.xlsx`);
         }
 
@@ -296,20 +328,36 @@ const getBalanceComprobacion = async (req, res) => {
 
             const startX = 30;
             const contentWidth = 732;
-            const colW = { code: 80, name: 272, init: 95, cargo: 95, abono: 95, final: 95 };
+            const colW = { code: 62, name: 190, initDeudor: 80, initAcreedor: 80, cargo: 80, abono: 80, finalDeudor: 80, finalAcreedor: 80 };
 
             const drawTableHeader = (yPos) => {
-                doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#0f172a');
-                doc.rect(startX, yPos, contentWidth, 13).fill('#f1f5f9');
+                doc.fontSize(7).font('Helvetica-Bold').fillColor('#0f172a');
+                doc.rect(startX, yPos, contentWidth, 20).fill('#f1f5f9');
                 doc.fillColor('#0f172a');
                 let x = startX + 4;
-                doc.text('CUENTA', x, yPos + 3); x += colW.code;
-                doc.text('DESCRIPCION DE LA CUENTA', x, yPos + 3); x += colW.name;
-                doc.text('SALDO INICIAL', x, yPos + 3, { align: 'right', width: colW.init - 6 }); x += colW.init;
-                doc.text('CARGO', x, yPos + 3, { align: 'right', width: colW.cargo - 6 }); x += colW.cargo;
-                doc.text('ABONO', x, yPos + 3, { align: 'right', width: colW.abono - 6 }); x += colW.abono;
-                doc.text('SALDO FINAL', x, yPos + 3, { align: 'right', width: colW.final - 6 });
-                return yPos + 16;
+                doc.text('CUENTA', x, yPos + 6, { width: colW.code }); x += colW.code;
+                doc.text('DESCRIPCION DE LA CUENTA', x, yPos + 6, { width: colW.name - 6 }); x += colW.name;
+
+                // Groupings
+                doc.text('SALDOS INICIALES', x, yPos + 2, { align: 'center', width: colW.initDeudor + colW.initAcreedor });
+                doc.text('MOVIMIENTOS', x + colW.initDeudor + colW.initAcreedor, yPos + 2, { align: 'center', width: colW.cargo + colW.abono });
+                doc.text('SALDOS FINALES', x + colW.initDeudor + colW.initAcreedor + colW.cargo + colW.abono, yPos + 2, { align: 'center', width: colW.finalDeudor + colW.finalAcreedor });
+
+                // Subheaders
+                doc.text('DEUDOR', x, yPos + 11, { align: 'right', width: colW.initDeudor - 6 }); x += colW.initDeudor;
+                doc.text('ACREEDOR', x, yPos + 11, { align: 'right', width: colW.initAcreedor - 6 }); x += colW.initAcreedor;
+                doc.text('DEBE', x, yPos + 11, { align: 'right', width: colW.cargo - 6 }); x += colW.cargo;
+                doc.text('HABER', x, yPos + 11, { align: 'right', width: colW.abono - 6 }); x += colW.abono;
+                doc.text('DEUDOR', x, yPos + 11, { align: 'right', width: colW.finalDeudor - 6 }); x += colW.finalDeudor;
+                doc.text('ACREEDOR', x, yPos + 11, { align: 'right', width: colW.finalAcreedor - 6 });
+
+                // Divider line between header levels
+                doc.strokeColor('#cbd5e1').lineWidth(0.5)
+                   .moveTo(startX + colW.code + colW.name, yPos + 10)
+                   .lineTo(startX + contentWidth, yPos + 10)
+                   .stroke();
+
+                return yPos + 23;
             };
 
             let y = drawTableHeader(doc.y + 4);
@@ -327,16 +375,18 @@ const getBalanceComprobacion = async (req, res) => {
                     }
 
                     const isMajor = a.level <= 2;
-                    doc.fontSize(isMajor ? 7.5 : 7).font(isMajor ? 'Helvetica-Bold' : 'Helvetica').fillColor('#0f172a');
+                    doc.fontSize(isMajor ? 7 : 6.5).font(isMajor ? 'Helvetica-Bold' : 'Helvetica').fillColor('#0f172a');
 
                     const indent = '  '.repeat(Math.max(0, a.level - 1));
                     let x = startX + 4;
                     doc.text(a.code, x, y, { width: colW.code }); x += colW.code;
-                    doc.text(`${indent}${a.name}`.substring(0, 48), x, y, { width: colW.name - 6 }); x += colW.name;
-                    doc.text(fmt(a.initBalance), x, y, { align: 'right', width: colW.init - 6 }); x += colW.init;
+                    doc.text(`${indent}${a.name}`.substring(0, 36), x, y, { width: colW.name - 6 }); x += colW.name;
+                    doc.text(fmt(a.initDeudor), x, y, { align: 'right', width: colW.initDeudor - 6 }); x += colW.initDeudor;
+                    doc.text(fmt(a.initAcreedor), x, y, { align: 'right', width: colW.initAcreedor - 6 }); x += colW.initAcreedor;
                     doc.text(fmt(a.cargo), x, y, { align: 'right', width: colW.cargo - 6 }); x += colW.cargo;
                     doc.text(fmt(a.abono), x, y, { align: 'right', width: colW.abono - 6 }); x += colW.abono;
-                    doc.text(fmt(a.finalBalance), x, y, { align: 'right', width: colW.final - 6 });
+                    doc.text(fmt(a.finalDeudor), x, y, { align: 'right', width: colW.finalDeudor - 6 }); x += colW.finalDeudor;
+                    doc.text(fmt(a.finalAcreedor), x, y, { align: 'right', width: colW.finalAcreedor - 6 });
                     y += 11;
                 }
 
@@ -348,13 +398,15 @@ const getBalanceComprobacion = async (req, res) => {
                 }
                 doc.strokeColor('#0f172a').lineWidth(1).moveTo(startX, y).lineTo(startX + contentWidth, y).stroke();
                 y += 4;
-                doc.fontSize(8).font('Helvetica-Bold').fillColor('#0f172a');
-                doc.text('TOTALES:', startX + 4, y);
+                doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#0f172a');
+                doc.text('SUMAS IGUALES:', startX + 4, y);
                 let tx = startX + colW.code + colW.name;
-                doc.text(fmt(totalInit), tx, y, { align: 'right', width: colW.init - 6 }); tx += colW.init;
+                doc.text(fmt(totalInitDeudor), tx, y, { align: 'right', width: colW.initDeudor - 6 }); tx += colW.initDeudor;
+                doc.text(fmt(totalInitAcreedor), tx, y, { align: 'right', width: colW.initAcreedor - 6 }); tx += colW.initAcreedor;
                 doc.text(fmt(totalCargo), tx, y, { align: 'right', width: colW.cargo - 6 }); tx += colW.cargo;
                 doc.text(fmt(totalAbono), tx, y, { align: 'right', width: colW.abono - 6 }); tx += colW.abono;
-                doc.text(fmt(totalFinal), tx, y, { align: 'right', width: colW.final - 6 });
+                doc.text(fmt(totalFinalDeudor), tx, y, { align: 'right', width: colW.finalDeudor - 6 }); tx += colW.finalDeudor;
+                doc.text(fmt(totalFinalAcreedor), tx, y, { align: 'right', width: colW.finalAcreedor - 6 });
                 y += 18;
             }
 
@@ -451,9 +503,12 @@ const getBalanceGeneral = async (req, res) => {
             } else {
                 a.balance = a.credit - a.debit;
             }
-            if (a.level === 1) {
-                if (a.type === 4 || a.code.startsWith('5')) totalIngresos += a.balance;
-                if (a.type === 5 || a.type === 6 || a.code.startsWith('4')) totalCostosGastos += a.balance;
+            if (a.level === 1 && !a.code.startsWith('1') && !a.code.startsWith('2') && !a.code.startsWith('3')) {
+                if (a.nature === 'credit' || a.type === 4) {
+                    totalIngresos += (a.credit - a.debit);
+                } else {
+                    totalCostosGastos += (a.debit - a.credit);
+                }
             }
         }
 
@@ -482,6 +537,16 @@ const getBalanceGeneral = async (req, res) => {
                 patrimonioRows.push(a);
                 if (a.code === '3') totalPatrimonio = a.balance;
             }
+        }
+
+        if (totalActivo === 0) {
+            activoRows.filter(a => a.level === 1).forEach(a => { totalActivo += a.balance; });
+        }
+        if (totalPasivo === 0) {
+            pasivoRows.filter(a => a.level === 1).forEach(a => { totalPasivo += a.balance; });
+        }
+        if (totalPatrimonio === 0) {
+            patrimonioRows.filter(a => a.level === 1).forEach(a => { totalPatrimonio += a.balance; });
         }
 
         const totalPasivoPatrimonio = totalPasivo + totalPatrimonio + utilidadEjercicio;
@@ -818,9 +883,12 @@ const getAnexoBalance = async (req, res) => {
             if (a.nature === 'debit') a.balance = a.debit - a.credit;
             else a.balance = a.credit - a.debit;
 
-            if (a.level === 1) {
-                if (a.type === 4 || a.code.startsWith('5')) totalIngresos += a.balance;
-                if (a.type === 5 || a.type === 6 || a.code.startsWith('4')) totalCostosGastos += a.balance;
+            if (a.level === 1 && !a.code.startsWith('1') && !a.code.startsWith('2') && !a.code.startsWith('3')) {
+                if (a.nature === 'credit' || a.type === 4) {
+                    totalIngresos += (a.credit - a.debit);
+                } else {
+                    totalCostosGastos += (a.debit - a.credit);
+                }
             }
         }
 
@@ -842,6 +910,16 @@ const getAnexoBalance = async (req, res) => {
             if (a.code === '2') totalPasivo = a.balance;
             if (a.code === '3') totalCapital = a.balance;
         });
+
+        if (totalActivo === 0) {
+            balanceAccounts.filter(a => a.code.startsWith('1') && a.level === 1).forEach(a => { totalActivo += a.balance; });
+        }
+        if (totalPasivo === 0) {
+            balanceAccounts.filter(a => a.code.startsWith('2') && a.level === 1).forEach(a => { totalPasivo += a.balance; });
+        }
+        if (totalCapital === 0) {
+            balanceAccounts.filter(a => a.code.startsWith('3') && a.level === 1).forEach(a => { totalCapital += a.balance; });
+        }
 
         if (req.query.format === 'excel') {
             const rowsForExcel = balanceAccounts.map(a => ({
@@ -1216,46 +1294,74 @@ const getEstadoResultados = async (req, res) => {
             else a.balance = a.credit - a.debit;
         }
 
-        // Structural components
+        // Structural components (Standard Salvadoran & NIIF mapping)
+        const isNiif = accMap.get('4')?.type === 4 || accMap.get('4')?.nature === 'credit';
+
         let ingresosOrdinarios = 0;
         let costosOrdinarios = 0;
         let gastosAdmin = 0;
         let gastosVenta = 0;
         let gastosFinancieros = 0;
+        let otrosGastos = 0;
         let otrosIngresos = 0;
 
-        for (const [, a] of accMap.entries()) {
-            const c = a.code;
-            if (c === '51' || (c === '4' && a.type === 4)) ingresosOrdinarios = a.balance;
-            else if (c === '41' || (c === '5' && a.type === 5)) costosOrdinarios = a.balance;
-            else if (c === '4201') gastosAdmin = a.balance;
-            else if (c === '4202') gastosVenta = a.balance;
-            else if (c === '42' && gastosAdmin === 0 && gastosVenta === 0) gastosAdmin = a.balance;
-            else if (c === '43') gastosFinancieros = a.balance;
-            else if (c === '52') otrosIngresos = a.balance;
+        if (isNiif) {
+            ingresosOrdinarios = accMap.get('41')?.balance || (accMap.get('4')?.nature === 'credit' ? accMap.get('4')?.balance : 0) || 0;
+            costosOrdinarios = accMap.get('51')?.balance || (accMap.get('5')?.nature === 'debit' ? accMap.get('5')?.balance : 0) || 0;
+            gastosAdmin = accMap.get('6101')?.balance || accMap.get('61')?.balance || 0;
+            gastosVenta = accMap.get('6201')?.balance || accMap.get('62')?.balance || 0;
+            gastosFinancieros = accMap.get('6301')?.balance || accMap.get('63')?.balance || 0;
+            otrosGastos = accMap.get('64')?.balance || 0;
+            otrosIngresos = accMap.get('42')?.balance || 0;
+        } else {
+            // Salvadoran standard: Class 4 = Costos y Gastos (deudor), Class 5 = Ingresos (acreedor)
+            ingresosOrdinarios = (accMap.get('51')?.balance || 0) + (accMap.get('53')?.balance || 0) - (accMap.get('4101')?.balance || 0);
+            costosOrdinarios = (accMap.get('4102')?.balance || 0) + (accMap.get('4103')?.balance || 0) + (accMap.get('4104')?.balance || 0);
+            gastosAdmin = accMap.get('4105')?.balance || 0;
+            gastosVenta = accMap.get('4106')?.balance || 0;
+            gastosFinancieros = accMap.get('4107')?.balance || 0;
+            otrosGastos = accMap.get('42')?.balance || 0;
+            otrosIngresos = accMap.get('52')?.balance || 0;
+
+            // Fallback if generic codes were used
+            if (ingresosOrdinarios === 0 && accMap.get('5')) {
+                ingresosOrdinarios = accMap.get('5').balance;
+            }
+            if (costosOrdinarios === 0 && gastosAdmin === 0 && gastosVenta === 0 && accMap.get('41')) {
+                costosOrdinarios = accMap.get('41').balance;
+            }
         }
 
-        // If specific codes were not used, fallback to account types 4, 5, 6
-        if (ingresosOrdinarios === 0) {
-            for (const [, a] of accMap.entries()) {
-                if (a.level === 1 && a.type === 4) ingresosOrdinarios = a.balance;
+        // Totals of all nominal accounts (unclosed net income baseline)
+        let totalIngresosNominales = 0;
+        let totalCostosGastosNominales = 0;
+        for (const [, a] of accMap.entries()) {
+            if (a.level === 1 && !a.code.startsWith('1') && !a.code.startsWith('2') && !a.code.startsWith('3')) {
+                if (a.nature === 'credit') {
+                    totalIngresosNominales += a.balance;
+                } else {
+                    totalCostosGastosNominales += a.balance;
+                }
             }
         }
-        if (costosOrdinarios === 0) {
-            for (const [, a] of accMap.entries()) {
-                if (a.level === 1 && a.type === 5) costosOrdinarios = a.balance;
-            }
+
+        // Reconcile any unassigned nominal residual so results match Balance General to the cent
+        const accountedCostosGastos = costosOrdinarios + gastosAdmin + gastosVenta + gastosFinancieros + otrosGastos;
+        const diffCostosGastos = Math.round((totalCostosGastosNominales - accountedCostosGastos) * 100) / 100;
+        if (Math.abs(diffCostosGastos) > 0.001) {
+            otrosGastos += diffCostosGastos;
         }
-        if (gastosAdmin === 0 && gastosVenta === 0) {
-            for (const [, a] of accMap.entries()) {
-                if (a.level === 1 && a.type === 6) gastosAdmin = a.balance;
-            }
+
+        const accountedIngresos = ingresosOrdinarios + otrosIngresos;
+        const diffIngresos = Math.round((totalIngresosNominales - accountedIngresos) * 100) / 100;
+        if (Math.abs(diffIngresos) > 0.001) {
+            otrosIngresos += diffIngresos;
         }
 
         const utilidadBruta = ingresosOrdinarios - costosOrdinarios;
         const totalGastosOperacion = gastosAdmin + gastosVenta;
         const utilidadOperacion = utilidadBruta - totalGastosOperacion;
-        const utilidadAntesImpuestos = utilidadOperacion - gastosFinancieros + otrosIngresos;
+        const utilidadAntesImpuestos = utilidadOperacion - gastosFinancieros - otrosGastos + otrosIngresos;
 
         const reservaLegal = utilidadAntesImpuestos > 0 ? Math.round(utilidadAntesImpuestos * 0.07 * 100) / 100 : 0;
         const tasaIsr = ingresosOrdinarios > 150000 ? 0.30 : 0.25;
@@ -1280,6 +1386,7 @@ const getEstadoResultados = async (req, res) => {
                 { concepto: 'TOTAL GASTOS DE OPERACIÓN', monto: totalGastosOperacion },
                 { concepto: 'UTILIDAD DE OPERACIÓN', monto: utilidadOperacion },
                 { concepto: 'Gastos Financieros', monto: gastosFinancieros },
+                { concepto: 'Otros Gastos', monto: otrosGastos },
                 { concepto: 'Otros Ingresos', monto: otrosIngresos },
                 { concepto: 'UTILIDAD ANTES DE IMPUESTOS', monto: utilidadAntesImpuestos },
                 { concepto: 'Reserva Legal (7%)', monto: reservaLegal },
@@ -1333,6 +1440,9 @@ const getEstadoResultados = async (req, res) => {
             doc.y += 4;
 
             renderLine('(-) Gastos Financieros', gastosFinancieros, false, false, '#475569');
+            if (Math.abs(otrosGastos) > 0.001) {
+                renderLine('(-) Otros Gastos', otrosGastos, false, false, '#475569');
+            }
             renderLine('(+) Otros Ingresos', otrosIngresos, false, false, '#475569');
             renderDivider();
             renderLine('(=) UTILIDAD ANTES DE IMPUESTOS', utilidadAntesImpuestos, true, true, '#0f172a');
@@ -1471,20 +1581,70 @@ const getCambiosPatrimonio = async (req, res) => {
             a.saldoFinal = a.saldoInicial + a.aumentos - a.disminuciones;
         }
 
+        // Nominal unclosed result for the period
+        const [nominalLines] = await pool.query(`
+            SELECT a.code, t.nature,
+                   COALESCE(SUM(l.debit), 0) as debits,
+                   COALESCE(SUM(l.credit), 0) as credits
+            FROM accounting_entry_lines l
+            JOIN chart_of_accounts a ON l.account_id = a.id
+            JOIN account_types t ON a.account_type_id = t.id
+            JOIN accounting_entries e ON l.entry_id = e.id
+            WHERE e.company_id = ? AND e.status = 'posted' AND e.date BETWEEN ? AND ?
+              AND (a.code NOT LIKE '1%' AND a.code NOT LIKE '2%' AND a.code NOT LIKE '3%')
+            GROUP BY a.code, t.nature
+        `, [req.company_id, startOfYear, periodEnd]);
+
+        let totalIngresosYear = 0;
+        let totalCostosGastosYear = 0;
+        nominalLines.forEach(l => {
+            const deb = parseFloat(l.debits || 0);
+            const cred = parseFloat(l.credits || 0);
+            if (l.nature === 'credit') {
+                totalIngresosYear += (cred - deb);
+            } else {
+                totalCostosGastosYear += (deb - cred);
+            }
+        });
+        const utilidadEjercicio = totalIngresosYear - totalCostosGastosYear;
+
         const filtered = Array.from(accMap.values()).filter(a => {
             if (a.level > 3) return false;
             return Math.abs(a.saldoInicial) > 0.001 || a.aumentos > 0 || a.disminuciones > 0 || Math.abs(a.saldoFinal) > 0.001;
         });
 
+        if (Math.abs(utilidadEjercicio) > 0.001) {
+            filtered.push({
+                code: '---',
+                name: 'UTILIDAD O PERDIDA DEL PRESENTE EJERCICIO',
+                level: 3,
+                saldoInicial: 0,
+                aumentos: utilidadEjercicio > 0 ? utilidadEjercicio : 0,
+                disminuciones: utilidadEjercicio < 0 ? Math.abs(utilidadEjercicio) : 0,
+                saldoFinal: utilidadEjercicio
+            });
+        }
+
         let totIni = 0, totInc = 0, totDec = 0, totFin = 0;
-        filtered.forEach(a => {
-            if (a.code === '3') {
-                totIni = a.saldoInicial;
-                totInc = a.aumentos;
-                totDec = a.disminuciones;
-                totFin = a.saldoFinal;
-            }
-        });
+        const rootAccount = accMap.get('3');
+        if (rootAccount && (Math.abs(rootAccount.saldoInicial) > 0.001 || rootAccount.aumentos > 0 || rootAccount.disminuciones > 0)) {
+            totIni = rootAccount.saldoInicial;
+            totInc = rootAccount.aumentos + (utilidadEjercicio > 0 ? utilidadEjercicio : 0);
+            totDec = rootAccount.disminuciones + (utilidadEjercicio < 0 ? Math.abs(utilidadEjercicio) : 0);
+            totFin = rootAccount.saldoFinal + utilidadEjercicio;
+        } else {
+            accMap.forEach(a => {
+                if (a.level === 2 && a.code.startsWith('3')) {
+                    totIni += a.saldoInicial;
+                    totInc += a.aumentos;
+                    totDec += a.disminuciones;
+                    totFin += a.saldoFinal;
+                }
+            });
+            totInc += (utilidadEjercicio > 0 ? utilidadEjercicio : 0);
+            totDec += (utilidadEjercicio < 0 ? Math.abs(utilidadEjercicio) : 0);
+            totFin += utilidadEjercicio;
+        }
 
         if (req.query.format === 'excel') {
             const rowsForExcel = filtered.map(a => ({

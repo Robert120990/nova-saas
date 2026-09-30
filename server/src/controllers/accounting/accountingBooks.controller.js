@@ -266,23 +266,59 @@ const getLibroDiarioMayor = async (req, res) => {
             ORDER BY a.code ASC, c.date ASC, c.number ASC, d.id ASC
         `, [req.company_id, fDesde, fHasta]);
 
+        // Opening Balances prior to fDesde
+        const [openBalances] = await pool.query(`
+            SELECT a.code, a.name, t.nature,
+                CASE WHEN t.nature = 'debit'
+                    THEN COALESCE(SUM(l.debit), 0) - COALESCE(SUM(l.credit), 0)
+                    ELSE COALESCE(SUM(l.credit), 0) - COALESCE(SUM(l.debit), 0)
+                END as balance
+            FROM chart_of_accounts a
+            JOIN account_types t ON a.account_type_id = t.id
+            JOIN accounting_entry_lines l ON a.id = l.account_id
+            JOIN accounting_entries e ON l.entry_id = e.id
+            WHERE a.company_id = ? AND a.active = 1 AND e.status = 'posted' AND e.date < ?
+            GROUP BY a.code, a.name, t.nature
+            HAVING balance != 0
+        `, [req.company_id, fDesde]);
+
+        const openMap = new Map();
+        openBalances.forEach(o => {
+            openMap.set(o.code, parseFloat(o.balance || 0));
+        });
+
         // Group by account
         const accountMap = new Map();
         let grandTotalCargos = 0;
         let grandTotalAbonos = 0;
 
+        // Seed with accounts that have opening balances
+        for (const o of openBalances) {
+            accountMap.set(o.code, {
+                code: o.code,
+                name: o.name,
+                nature: o.nature || 'debit',
+                initialBalance: parseFloat(o.balance || 0),
+                movimientos: [],
+                totalCargos: 0,
+                totalAbonos: 0,
+                saldoFinal: parseFloat(o.balance || 0)
+            });
+        }
+
         for (const r of rows) {
             const code = r.account_code;
             if (!accountMap.has(code)) {
+                const init = openMap.get(code) || 0;
                 accountMap.set(code, {
                     code,
                     name: r.account_name,
                     nature: r.nature || 'debit',
-                    initialBalance: 0,
+                    initialBalance: init,
                     movimientos: [],
                     totalCargos: 0,
                     totalAbonos: 0,
-                    saldoFinal: 0
+                    saldoFinal: init
                 });
             }
             const acc = accountMap.get(code);
@@ -471,12 +507,12 @@ const getLibroMayor = async (req, res) => {
                 END as balance
             FROM chart_of_accounts a
             JOIN account_types t ON a.account_type_id = t.id
-            LEFT JOIN accounting_entry_lines l ON a.id = l.account_id
-            LEFT JOIN accounting_entries e ON l.entry_id = e.id AND e.status = 'posted' AND e.date < ?
-            WHERE a.company_id = ? AND a.active = 1 ${ctaFilter}
-            GROUP BY a.id
+            JOIN accounting_entry_lines l ON a.id = l.account_id
+            JOIN accounting_entries e ON l.entry_id = e.id
+            WHERE a.company_id = ? AND e.status = 'posted' AND e.date < ? AND a.active = 1 ${ctaFilter}
+            GROUP BY a.id, a.code, a.name, t.nature
             HAVING balance != 0
-        `, [start_date, req.company_id, ...(account_id && account_id !== 'all' ? [account_id] : [])]);
+        `, openParams);
 
         const openMap = new Map();
         openBalances.forEach(o => {
@@ -1098,18 +1134,18 @@ const getRetenciones = async (req, res) => {
         const ids = retAccounts.map(a => a.id);
         const [lines] = await pool.query(`
             SELECT a.id as account_id, a.code, a.name, t.nature,
-                   COALESCE(SUM(l.debit), 0) as total_debit,
-                   COALESCE(SUM(l.credit), 0) as total_credit,
+                   COALESCE(SUM(CASE WHEN e.id IS NOT NULL THEN l.debit ELSE 0 END), 0) as total_debit,
+                   COALESCE(SUM(CASE WHEN e.id IS NOT NULL THEN l.credit ELSE 0 END), 0) as total_credit,
                    CASE WHEN t.nature = 'debit'
-                       THEN COALESCE(SUM(l.debit), 0) - COALESCE(SUM(l.credit), 0)
-                       ELSE COALESCE(SUM(l.credit), 0) - COALESCE(SUM(l.debit), 0)
+                       THEN COALESCE(SUM(CASE WHEN e.id IS NOT NULL THEN l.debit ELSE 0 END), 0) - COALESCE(SUM(CASE WHEN e.id IS NOT NULL THEN l.credit ELSE 0 END), 0)
+                       ELSE COALESCE(SUM(CASE WHEN e.id IS NOT NULL THEN l.credit ELSE 0 END), 0) - COALESCE(SUM(CASE WHEN e.id IS NOT NULL THEN l.debit ELSE 0 END), 0)
                    END as balance
             FROM chart_of_accounts a
             JOIN account_types t ON a.account_type_id = t.id
             LEFT JOIN accounting_entry_lines l ON a.id = l.account_id
             LEFT JOIN accounting_entries e ON l.entry_id = e.id AND e.status = 'posted' AND e.date BETWEEN ? AND ?
             WHERE a.id IN (${ids.join(',')}) AND a.company_id = ?
-            GROUP BY a.id
+            GROUP BY a.id, a.code, a.name, t.nature
             ORDER BY a.code ASC
         `, [periodStart, periodEnd, req.company_id]);
 
