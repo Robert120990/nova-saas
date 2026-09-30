@@ -13,7 +13,6 @@ export const useUpdate = () => {
 };
 
 export const UpdateProvider = ({ children }) => {
-    const isDev = import.meta.env.DEV;
 
     // Versión semántica autoincrementable y commit compilados en el frontend actual
     const buildCommit = typeof __APP_VERSION__ !== 'undefined' ? String(__APP_VERSION__).trim() : 'unknown';
@@ -37,10 +36,7 @@ export const UpdateProvider = ({ children }) => {
         // En escáner móvil de tickets evitar interrumpir al operador
         if (window.location.pathname.startsWith('/scan-dte')) return;
 
-        // En desarrollo local (Vite dev server) no alertar de actualizaciones automáticas
-        if (isDev && !isSimulated) {
-            return;
-        }
+
 
         const serverVersion = (version ? String(version).trim() : '').replace(/^#/, '');
         const serverCommit = (commit ? String(commit).trim() : (rawVersion ? String(rawVersion).trim() : '')).replace(/^#/, '');
@@ -88,7 +84,7 @@ export const UpdateProvider = ({ children }) => {
         if (isSimulated || Date.now() > snoozedUntil) {
             setIsModalOpen(true);
         }
-    }, [buildCommit, buildVersion, isDev]);
+    }, [buildCommit, buildVersion]);
 
     // Cerrar / Posponer actualización ("Más tarde" o "X")
     const dismissModal = useCallback(() => {
@@ -171,7 +167,7 @@ export const UpdateProvider = ({ children }) => {
 
     // Consulta periódica al endpoint /health del servidor
     useEffect(() => {
-        if (isDev) return; // En entorno dev evitar polling redundante
+
 
         const checkServerVersion = async () => {
             if (isUpdatingRef.current || document.visibilityState !== 'visible') return;
@@ -213,7 +209,7 @@ export const UpdateProvider = ({ children }) => {
             clearInterval(interval);
             document.removeEventListener('visibilitychange', handleVisibilityChange);
         };
-    }, [isDev, handleUpdateDetected]);
+    }, [handleUpdateDetected]);
 
     return (
         <UpdateContext.Provider
