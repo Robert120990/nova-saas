@@ -794,29 +794,27 @@ exports.getAccumulatedDayPrintData = async (req, res) => {
         const aggrReadings = {};
         for (const r of allReadings) {
             const key = r.nozzle_id;
+            const rDiff = Number(r.diferencia || 0);
+            const rMonto = Number(r.monto || 0);
             if (aggrReadings[key]) {
                 aggrReadings[key].lectura_actual = Number(r.lectura_actual || 0);
-                aggrReadings[key].calibracion += Number(r.calibracion || 0);
-                aggrReadings[key].total_galones += Number(r.total_galones || 0);
-                aggrReadings[key].total_venta += Number(r.total_venta || 0);
-                aggrReadings[key].total_venta_efectivo += Number(r.total_venta_efectivo || 0);
-                aggrReadings[key].total_venta_tarjeta += Number(r.total_venta_tarjeta || 0);
-                aggrReadings[key].total_venta_credito += Number(r.total_venta_credito || 0);
-                aggrReadings[key].total_venta_vale += Number(r.total_venta_vale || 0);
-                aggrReadings[key].total_venta_anticipos += Number(r.total_venta_anticipos || 0);
+                aggrReadings[key].calibracion = Math.round((aggrReadings[key].calibracion + Number(r.calibracion || 0)) * 10000) / 10000;
+                aggrReadings[key].diferencia = Math.round((aggrReadings[key].diferencia + rDiff) * 10000) / 10000;
+                aggrReadings[key].monto = Math.round((aggrReadings[key].monto + rMonto) * 100) / 100;
+                aggrReadings[key].total_galones = aggrReadings[key].diferencia;
+                aggrReadings[key].total_venta = aggrReadings[key].monto;
+                if (r.precio) aggrReadings[key].precio = Number(r.precio);
             } else {
                 aggrReadings[key] = {
                     ...r,
                     lectura_anterior: Number(r.lectura_anterior || 0),
                     lectura_actual: Number(r.lectura_actual || 0),
                     calibracion: Number(r.calibracion || 0),
-                    total_galones: Number(r.total_galones || 0),
-                    total_venta: Number(r.total_venta || 0),
-                    total_venta_efectivo: Number(r.total_venta_efectivo || 0),
-                    total_venta_tarjeta: Number(r.total_venta_tarjeta || 0),
-                    total_venta_credito: Number(r.total_venta_credito || 0),
-                    total_venta_vale: Number(r.total_venta_vale || 0),
-                    total_venta_anticipos: Number(r.total_venta_anticipos || 0)
+                    diferencia: rDiff,
+                    monto: rMonto,
+                    total_galones: rDiff,
+                    total_venta: rMonto,
+                    precio: Number(r.precio || 0)
                 };
             }
         }

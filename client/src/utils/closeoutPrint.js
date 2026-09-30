@@ -405,7 +405,7 @@ export function buildCloseoutPrintHtml(data) {
     // Liquidación / Diferencia (nivelada)
     html += `<div class="section" style="border: 1px solid #e2e8f0; border-radius: 4px; padding: 5px 8px; background: #fafafa; margin-bottom: 7px;">
         <div style="display:flex;justify-content:space-between;align-items:center;">
-            <span style="font-size:9.5px;font-weight:700;text-transform:uppercase;color:#475569;">Faltante / Sobrante del Turno:</span>
+            <span style="font-size:9.5px;font-weight:700;text-transform:uppercase;color:#475569;">${isAccumulated ? 'Faltante / Sobrante del Día:' : 'Faltante / Sobrante del Turno:'}</span>
             <span style="font-size:13px;font-weight:900;font-family:'Courier New',monospace;${diferenciaTotal >= 0 ? 'color:#059669;' : 'color:#dc2626;'}">
                 ${diferenciaTotal >= 0 ? '+' : ''}${fmtMoney(diferenciaTotal)}
             </span>
