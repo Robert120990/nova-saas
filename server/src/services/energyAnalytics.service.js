@@ -1,5 +1,17 @@
 const crypto = require('crypto');
 const pool = require('../config/db');
+const { decrypt } = require('../utils/crypto');
+const energySystemService = require('./energySystem.service');
+
+function safeDecrypt(val) {
+    if (!val || typeof val !== 'string') return '';
+    const parts = val.split(':');
+    if (parts.length === 3) {
+        const dec = decrypt(val);
+        return dec || val;
+    }
+    return val;
+}
 
 /**
  * Fecha y hora en zona horaria de El Salvador (UTC-6)
@@ -39,7 +51,7 @@ async function createGrowattClient(creds) {
     if (!creds.growatt_enabled) return null;
 
     const user = creds.growatt_username;
-    const pass = creds.growatt_password;
+    const pass = creds.growatt_password_decrypted || safeDecrypt(creds.growatt_password);
     const pwdMd5 = crypto.createHash('md5').update(pass).digest('hex');
     const baseUrl = creds.growatt_url.replace(/\/+$/, '');
 
@@ -108,7 +120,7 @@ async function createGessClient(creds) {
     if (!creds.gess_enabled || !creds.gess_plant_id) return null;
 
     const user = creds.gess_username;
-    const pass = creds.gess_password;
+    const pass = creds.gess_password_decrypted || safeDecrypt(creds.gess_password);
     const pwdSha1 = crypto.createHash('sha1').update(pass).digest('hex');
     const account = encodeURI(encodeURI(user));
     const baseUrl = creds.gess_url.replace(/\/+$/, '') + '/';
@@ -158,31 +170,8 @@ async function createGessClient(creds) {
  * Consulta de analítica histórica por Día, Mes o Año
  */
 async function getAnalyticsData(companyId, params = {}) {
-    const [credsRows] = await pool.query(
-        'SELECT * FROM energy_credentials WHERE company_id = ? LIMIT 1',
-        [companyId]
-    );
-
+    const creds = await energySystemService.getCredentials(companyId);
     const isSanMartin = String(companyId) === '1';
-    const creds = credsRows[0] || {
-        company_id: companyId,
-        growatt_url: 'https://server.growatt.com/',
-        growatt_username: 'Raul_Sosa',
-        growatt_password: '1234567',
-        growatt_enabled: 1,
-        growatt_plant_id: isSanMartin ? '2604519' : '2410077',
-        plant_name: isSanMartin ? 'Puma San Martín II' : 'Andelsa',
-        gess_url: 'http://gess.net.cn/SolarWeb/',
-        gess_username: 'proyectos',
-        gess_password: '123456',
-        gess_plant_id: isSanMartin ? 0 : 218,
-        gess_enabled: isSanMartin ? 0 : 1,
-        peak_start_time: '18:00:00',
-        peak_end_time: '22:00:00',
-        peak_kwh_rate: 0.2200,
-        offpeak_kwh_rate: 0.1400,
-        solar_kwh_value: 0.1700
-    };
 
     const period = params.period || 'day'; // 'day' | 'month' | 'year'
     const plantFilter = params.plantId || 'all';

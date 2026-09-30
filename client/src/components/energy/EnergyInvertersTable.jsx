@@ -3,7 +3,7 @@ import { Sun, CheckCircle2, Zap } from 'lucide-react';
 
 export default function EnergyInvertersTable({ growattData }) {
     const plants = growattData?.plants || [];
-    const totalNominal = growattData?.totalNominalKw || 340;
+    const totalNominal = growattData?.totalNominalKw ?? (plants.length > 0 ? plants.reduce((sum, p) => sum + (p.nominalPower || 0), 0) : 0);
     const totalPac = growattData?.totalPacKw || 0;
     const totalToday = growattData?.totalTodayKwh || 0;
     const totalRevenue = growattData?.totalRevenueUsd || 0;
@@ -20,7 +20,7 @@ export default function EnergyInvertersTable({ growattData }) {
                             Plantas Fotovoltaicas (Inversores Growatt)
                         </h3>
                         <p className="text-xs text-slate-500">
-                            Capacidad Total Instalada: <strong>{totalNominal} kWp</strong>
+                            Capacidad Total Instalada: <strong>{totalNominal > 0 ? `${totalNominal} kWp` : '—'}</strong>
                         </p>
                     </div>
                 </div>
@@ -41,12 +41,23 @@ export default function EnergyInvertersTable({ growattData }) {
                 </div>
             </div>
 
-            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-                {plants.map((plant) => (
-                    <div 
-                        key={plant.id} 
-                        className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 hover:border-amber-400/50 transition-all flex flex-col justify-between"
-                    >
+            {plants.length === 0 ? (
+                <div className="mt-4 p-8 rounded-xl border border-dashed border-slate-200 dark:border-slate-800 text-center">
+                    <Sun className="w-8 h-8 text-slate-300 dark:text-slate-600 mx-auto mb-2" />
+                    <p className="text-xs font-semibold text-slate-600 dark:text-slate-400">
+                        {growattData?.error ? `Error: ${growattData.error}` : 'No se encontraron plantas fotovoltaicas para esta localidad.'}
+                    </p>
+                    <p className="text-[11px] text-slate-400 mt-1">
+                        Verifique que la planta esté asignada correctamente en la configuración o use el botón Sincronizar Ahora.
+                    </p>
+                </div>
+            ) : (
+                <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {plants.map((plant) => (
+                        <div 
+                            key={plant.id} 
+                            className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 hover:border-amber-400/50 transition-all flex flex-col justify-between"
+                        >
                         <div className="flex items-start justify-between">
                             <div>
                                 <div className="flex items-center gap-2">
@@ -87,6 +98,7 @@ export default function EnergyInvertersTable({ growattData }) {
                     </div>
                 ))}
             </div>
+            )}
         </div>
     );
 }
