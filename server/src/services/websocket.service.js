@@ -46,8 +46,10 @@ function initWebSocket(server, appVersion = 'unknown') {
     wss.on('connection', (ws, req) => {
         const { companyId, user, path } = req.wsContext;
         add(companyClients, companyId, ws);
-        if (path === '/ws/notifications') add(userClients, Number(user.id), ws);
-        send([ws], 'app_version', { version: currentAppVersion });
+        const versionPayload = typeof currentAppVersion === 'object' && currentAppVersion !== null
+            ? currentAppVersion
+            : { version: currentAppVersion, commit: currentAppVersion };
+        send([ws], 'app_version', versionPayload);
         if (path === '/ws/egg-industrial') send([ws], 'telemetry_initial', telemetry.stateFor(companyId));
         const expiry = setTimeout(() => ws.close(1008, 'Sesión expirada'), Math.min(Math.max(0, (user.exp * 1000) - Date.now()), 2147483647));
         ws.on('message', async message => {
@@ -66,5 +68,9 @@ function initWebSocket(server, appVersion = 'unknown') {
 const broadcastToCompany = (companyId, event, data) => send(companyClients.get(Number(companyId)), event, data);
 const sendToUser = (userId, event, data) => send(userClients.get(Number(userId)), event, data);
 function broadcastToAll(event, data) { for (const clients of companyClients.values()) send(clients, event, data); }
-function setAppVersion(version) { currentAppVersion = version; broadcastToAll('app_version', { version }); }
+function setAppVersion(version) { 
+    currentAppVersion = version; 
+    const payload = typeof version === 'object' && version !== null ? version : { version, commit: version };
+    broadcastToAll('app_version', payload); 
+}
 module.exports = { initWebSocket, broadcastToCompany, broadcastToAll, sendToUser, setAppVersion };

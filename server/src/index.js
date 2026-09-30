@@ -81,8 +81,8 @@ app.post('/api/restart', express.json(), async (req, res) => {
 
 app.use('/api', apiRoutes);
 
-// Health check
-const SERVER_VERSION = (() => {
+// Health check & Versioning
+const COMMIT_HASH = (() => {
     try {
         return require('child_process').execSync('git rev-parse --short HEAD', { cwd: __dirname }).toString().trim();
     } catch {
@@ -90,8 +90,25 @@ const SERVER_VERSION = (() => {
     }
 })();
 
+const COMMIT_COUNT = (() => {
+    try {
+        return require('child_process').execSync('git rev-list --count HEAD', { cwd: __dirname }).toString().trim();
+    } catch {
+        return '143';
+    }
+})();
+
+const APP_VERSION = `v2.7.${COMMIT_COUNT}`;
+
 app.get('/health', (req, res) => {
-    res.json({ status: 'OK', version: SERVER_VERSION, environment: process.env.NODE_ENV, timestamp: new Date() });
+    res.json({ 
+        status: 'OK', 
+        version: COMMIT_HASH, 
+        commit: COMMIT_HASH,
+        appVersion: APP_VERSION,
+        environment: process.env.NODE_ENV, 
+        timestamp: new Date() 
+    });
 });
 
 // Serve client built files in production
@@ -155,7 +172,7 @@ const PORT = process.env.PORT || 4000;
 const server = http.createServer(app);
 
 // Inicializar el WebSocket acoplado al servidor HTTP con la versión del servidor
-initWebSocket(server, SERVER_VERSION);
+initWebSocket(server, { version: APP_VERSION, commit: COMMIT_HASH });
 
 // Inicializar worker de notificaciones en segundo plano
 startWorker();
