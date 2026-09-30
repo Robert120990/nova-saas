@@ -13,7 +13,8 @@ const pool = mysql.createPool({
     queueLimit: 0,
     decimalNumbers: true,
     enableKeepAlive: true,
-    keepAliveInitialDelay: 30000
+    keepAliveInitialDelay: 30000,
+    connectTimeout: 20000
 });
 
 module.exports = pool;
