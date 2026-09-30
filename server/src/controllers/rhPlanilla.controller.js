@@ -402,6 +402,7 @@ const updatePlanilla = async (req, res) => {
         }
 
         if (updateFields.length > 0) {
+            updateFields.push('updated_at = NOW()');
             updateParams.push(id, req.company_id);
             await pool.query(
                 `UPDATE ${TABLE} SET ${updateFields.join(', ')} WHERE id = ? AND company_id = ?`,
@@ -1804,7 +1805,7 @@ const getEmpleadoData = async (req, res) => {
         if (rows.length === 0) return res.status(404).json({ message: 'Empleado no encontrado' });
         const emp = rows[0];
 
-        let planillaId = null, detalles = [], totales = null;
+        let planillaId = null, detalles = [], totales = null, pRows = [];
 
         const [empDescuentos] = await pool.query(
             `SELECT ed.*, dp.cuenta_id, dp.codigo as desc_codigo, dp.descripcion as desc_nombre,
@@ -1829,11 +1830,12 @@ const getEmpleadoData = async (req, res) => {
                     [planillaId]
                 );
                 detalles = dRows;
-                const [pRows] = await pool.query(
-                    `SELECT total_percepciones, total_deducciones, descuento_isss, descuento_afp, descuento_renta, monto_recibir
+                const [pRowsData] = await pool.query(
+                    `SELECT total_percepciones, total_deducciones, descuento_isss, descuento_afp, descuento_renta, monto_recibir, dias_trabajados, sueldo_base, bonificacion_fija
                      FROM ${TABLE} WHERE id = ?`,
                     [planillaId]
                 );
+                pRows = pRowsData;
                 if (pRows.length > 0) {
                     const row = pRows[0];
                     const otrasDed = dRows.filter(d => d.operacion === 'restar').reduce((s, d) => s + parseFloat(d.valor_ingresado || 0), 0);
@@ -1921,7 +1923,18 @@ const getEmpleadoData = async (req, res) => {
             });
         }
 
-        res.json({ ...emp, planilla_id: planillaId, detalles, totales, descuentos_programados: empDescuentos });
+        const diasTrabajadosVal = pRows.length > 0 && pRows[0].dias_trabajados !== undefined && pRows[0].dias_trabajados !== null
+            ? parseInt(pRows[0].dias_trabajados)
+            : (emp.en_vacaciones === 1 || emp.incapacitado === 1 ? 0 : 15);
+
+        res.json({
+            ...emp,
+            planilla_id: planillaId,
+            dias_trabajados: diasTrabajadosVal,
+            detalles,
+            totales: totales ? { ...totales, dias_trabajados: diasTrabajadosVal } : null,
+            descuentos_programados: empDescuentos
+        });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }

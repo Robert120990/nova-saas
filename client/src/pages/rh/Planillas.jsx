@@ -5,7 +5,7 @@ import Table from '../../components/ui/Table';
 import Pagination from '../../components/ui/Pagination';
 import { useConfirm } from '../../context/ConfirmContext';
 import { toast } from 'sonner';
-import { Plus, Edit, Search, Users, Loader2, User, CheckCircle, Zap, Trash2, Lock, ArrowLeft, FileText, ReceiptText, RefreshCw, UserX, UserPlus, AlertCircle, Award } from 'lucide-react';
+import { Plus, Edit, Search, Users, Loader2, User, CheckCircle, Zap, Trash2, Lock, ArrowLeft, FileText, ReceiptText, RefreshCw, UserX, UserPlus, AlertCircle, Award, Save } from 'lucide-react';
 import { useDirtyTracker } from '../../hooks/useDirtyTracker';
 import EmployeeSearchModal from '../../components/rh/EmployeeSearchModal';
 import PlanillaReportModal from '../../components/rh/PlanillaReportModal';
@@ -109,14 +109,32 @@ const Planillas = () => {
     const [calculando, setCalculando] = useState(false);
     const [generando, setGenerando] = useState(false);
     const [periodoBloqueado, setPeriodoBloqueado] = useState(false);
+    const [guardandoManual, setGuardandoManual] = useState(false);
     const cacheRef = useRef({});
     const autoSaveRef = useRef(false);
     const savingRef = useRef(false);
     const selectedRef = useRef(null);
 
+    const diasTrabajadosRef = useRef(15);
+    const detallesRef = useRef([]);
+    const calculoRef = useRef(null);
+    const empleadoIdRef = useRef('');
+    const periodoAnioRef = useRef(yearNow);
+    const periodoMesRef = useRef(monthNow);
+    const quincenaRef = useRef('primera');
+    const hayOtraAbiertaRef = useRef(false);
+
     useEffect(() => {
         selectedRef.current = selected;
     }, [selected]);
+
+    useEffect(() => { diasTrabajadosRef.current = diasTrabajados; }, [diasTrabajados]);
+    useEffect(() => { detallesRef.current = detalles; }, [detalles]);
+    useEffect(() => { calculoRef.current = calculo; }, [calculo]);
+    useEffect(() => { empleadoIdRef.current = empleadoId; }, [empleadoId]);
+    useEffect(() => { periodoAnioRef.current = periodoAnio; }, [periodoAnio]);
+    useEffect(() => { periodoMesRef.current = periodoMes; }, [periodoMes]);
+    useEffect(() => { quincenaRef.current = quincena; }, [quincena]);
 
     useDirtyTracker('planillas', activeTab === 'nuevo' && empleadoId && detalles.length > 0);
 
@@ -156,6 +174,8 @@ const Planillas = () => {
             ab => !(ab.periodo_anio === periodoAnio && ab.periodo_mes === periodoMes && ab.quincena === quincena)
         )
     );
+    useEffect(() => { hayOtraAbiertaRef.current = hayOtraAbierta; }, [hayOtraAbierta]);
+
     const otraAbiertaItem = hayOtraAbierta
         ? planillasAbiertas.find(ab => !(ab.periodo_anio === periodoAnio && ab.periodo_mes === periodoMes && ab.quincena === quincena))
         : null;
@@ -172,6 +192,81 @@ const Planillas = () => {
         enabled: activeTab === 'nuevo'
     });
 
+    const saveCurrentEmployee = async ({ silent = false } = {}) => {
+        const curEmpId = empleadoIdRef.current;
+        const curDetalles = detallesRef.current;
+        if (!curEmpId || !curDetalles || curDetalles.length === 0) return null;
+        if (savingRef.current) return null;
+
+        savingRef.current = true;
+        if (!silent) setGuardandoManual(true);
+        try {
+            let curCalc = calculoRef.current;
+            if (!curCalc) {
+                try {
+                    const calcRes = await axios.post('/api/rh/planillas/calcular', {
+                        empleado_id: curEmpId,
+                        detalles: curDetalles,
+                        quincena: quincenaRef.current,
+                        periodo_anio: periodoAnioRef.current,
+                        periodo_mes: periodoMesRef.current
+                    });
+                    curCalc = calcRes.data;
+                    setCalculo(curCalc);
+                    calculoRef.current = curCalc;
+                } catch (e) {
+                    console.error('Error calculando antes de guardar:', e);
+                }
+            }
+
+            const data = {
+                empleado_id: curEmpId,
+                periodo_anio: periodoAnioRef.current,
+                periodo_mes: periodoMesRef.current,
+                quincena: quincenaRef.current,
+                dias_trabajados: diasTrabajadosRef.current,
+                detalles: curDetalles,
+                total_percepciones: curCalc?.total_percepciones || 0,
+                total_deducciones: curCalc?.total_deducciones || 0,
+                descuento_isss: curCalc?.descuento_isss || 0,
+                descuento_afp: curCalc?.descuento_afp || 0,
+                descuento_renta: curCalc?.descuento_renta || 0,
+                monto_recibir: curCalc?.monto_recibir || 0
+            };
+
+            const targetPlanillaId = selectedRef.current?.id || selected?.id || cacheRef.current[curEmpId]?.planilla_id;
+            const saveRes = await (targetPlanillaId
+                ? axios.put(`/api/rh/planillas/${targetPlanillaId}`, data)
+                : axios.post('/api/rh/planillas', data));
+
+            queryClient.invalidateQueries({ queryKey: ['rh-planillas-grupos'] });
+            queryClient.invalidateQueries({ queryKey: ['rh-planillas-abiertas'] });
+            const newPlanillaId = targetPlanillaId || saveRes.data?.id;
+            if (newPlanillaId) {
+                const newSel = { id: newPlanillaId, empleado_id: curEmpId };
+                setSelected(newSel);
+                selectedRef.current = newSel;
+                if (cacheRef.current[curEmpId]) {
+                    cacheRef.current[curEmpId].planilla_id = newPlanillaId;
+                }
+            }
+            autoSaveRef.current = false;
+            if (!silent) {
+                toast.success('Cambios guardados con éxito');
+            }
+            return newPlanillaId;
+        } catch (err) {
+            console.error('Error al guardar empleado:', err);
+            if (!silent) {
+                toast.error(err.response?.data?.message || 'Error al guardar');
+            }
+            throw err;
+        } finally {
+            savingRef.current = false;
+            if (!silent) setGuardandoManual(false);
+        }
+    };
+
     // Auto-calculate with 500ms debounce + auto-save when dirty
     useEffect(() => {
         if (!empleadoId || !detalles || detalles.length === 0) return;
@@ -181,50 +276,18 @@ const Planillas = () => {
                 const res = await axios.post('/api/rh/planillas/calcular', {
                     empleado_id: empleadoId,
                     detalles: detalles,
-                    quincena,
-                    periodo_anio: periodoAnio,
-                    periodo_mes: periodoMes
+                    quincena: quincenaRef.current,
+                    periodo_anio: periodoAnioRef.current,
+                    periodo_mes: periodoMesRef.current
                 });
                 setCalculo(res.data);
+                calculoRef.current = res.data;
 
-                if (autoSaveRef.current && !savingRef.current && !hayOtraAbierta) {
-                    autoSaveRef.current = false;
-                    savingRef.current = true;
-                    const data = {
-                        empleado_id: empleadoId,
-                        periodo_anio: periodoAnio,
-                        periodo_mes: periodoMes,
-                        quincena,
-                        dias_trabajados: diasTrabajados,
-                        detalles: detalles,
-                        total_percepciones: res.data.total_percepciones,
-                        total_deducciones: res.data.total_deducciones,
-                        descuento_isss: res.data.descuento_isss,
-                        descuento_afp: res.data.descuento_afp,
-                        descuento_renta: res.data.descuento_renta,
-                        monto_recibir: res.data.monto_recibir
-                    };
-                    try {
-                        const targetPlanillaId = selectedRef.current?.id || selected?.id;
-                        const saveRes = await (targetPlanillaId
-                            ? axios.put(`/api/rh/planillas/${targetPlanillaId}`, data)
-                            : axios.post('/api/rh/planillas', data));
-                        queryClient.invalidateQueries({ queryKey: ['rh-planillas-grupos'] });
-                        queryClient.invalidateQueries({ queryKey: ['rh-planillas-abiertas'] });
-                        const newPlanillaId = targetPlanillaId || saveRes.data.id;
-                        if (newPlanillaId) {
-                            const newSel = { id: newPlanillaId, empleado_id: empleadoId };
-                            setSelected(newSel);
-                            selectedRef.current = newSel;
-                            if (cacheRef.current[empleadoId]) {
-                                cacheRef.current[empleadoId].planilla_id = newPlanillaId;
-                            }
-                        }
-                    } catch (err) {
-                        toast.error(err.response?.data?.message || 'Error al guardar');
-                    } finally {
-                        savingRef.current = false;
-                    }
+                const targetPlanillaId = selectedRef.current?.id || selected?.id;
+                const canSave = Boolean(targetPlanillaId || !hayOtraAbiertaRef.current);
+
+                if (autoSaveRef.current && !savingRef.current && canSave) {
+                    await saveCurrentEmployee({ silent: true });
                 }
             } catch {
                 setCalculo(null);
@@ -289,12 +352,18 @@ const Planillas = () => {
             cacheRef.current[empleadoId] = {
                 detalles: [...detalles],
                 calculo: calculo ? { ...calculo } : null,
-                planilla_id: selectedRef.current?.id || selected?.id || null
+                planilla_id: selectedRef.current?.id || selected?.id || null,
+                dias_trabajados: diasTrabajados
             };
         }
     };
 
     const loadEmpleado = async (id) => {
+        if (autoSaveRef.current && empleadoIdRef.current) {
+            try {
+                await saveCurrentEmployee({ silent: true });
+            } catch { /* continuar */ }
+        }
         cacheDetallesActual();
 
         const cached = cacheRef.current[id];
@@ -313,6 +382,11 @@ const Planillas = () => {
             if (cached) {
                 setDetalles(cached.detalles);
                 setCalculo(cached.calculo);
+                if (cached.dias_trabajados !== undefined && cached.dias_trabajados !== null) {
+                    setDiasTrabajados(cached.dias_trabajados);
+                } else if (data.dias_trabajados !== undefined && data.dias_trabajados !== null) {
+                    setDiasTrabajados(parseInt(data.dias_trabajados));
+                }
                 setSelected(effectivePlanillaId ? { id: effectivePlanillaId, empleado_id: id } : null);
                 if (effectivePlanillaId) {
                     cacheRef.current[id] = { ...cached, planilla_id: effectivePlanillaId };
@@ -375,7 +449,12 @@ const Planillas = () => {
                     monto_recibir: Math.round((totPercep - totalDed) * 100) / 100
                 } : null;
                 setCalculo(calc);
-                cacheRef.current[id] = { detalles: parsedDetalles, calculo: calc, planilla_id: data.planilla_id };
+                cacheRef.current[id] = {
+                    detalles: parsedDetalles,
+                    calculo: calc,
+                    planilla_id: data.planilla_id,
+                    dias_trabajados: data.dias_trabajados !== undefined && data.dias_trabajados !== null ? parseInt(data.dias_trabajados) : 15
+                };
             } else {
                 setSelected(null);
                 setCalculo(null);
@@ -500,7 +579,12 @@ const Planillas = () => {
         setDetalles(updated);
         autoSaveRef.current = true;
         if (empleadoId) {
-            cacheRef.current[empleadoId] = { detalles: updated, calculo: calculo ? { ...calculo } : null, planilla_id: selected?.id };
+            cacheRef.current[empleadoId] = {
+                detalles: updated,
+                calculo: calculo ? { ...calculo } : null,
+                planilla_id: selected?.id,
+                dias_trabajados: d.codigo === '01' && d.tipo_valor === 'dias' ? raw : diasTrabajados
+            };
         }
     };
 
@@ -516,6 +600,14 @@ const Planillas = () => {
             });
             setDetalles(updated);
             autoSaveRef.current = true;
+            if (empleadoId) {
+                cacheRef.current[empleadoId] = {
+                    detalles: updated,
+                    calculo: calculo ? { ...calculo } : null,
+                    planilla_id: selected?.id,
+                    dias_trabajados: newDias
+                };
+            }
         }
     };
 
@@ -816,35 +908,11 @@ const Planillas = () => {
     };
 
     const handleVerPlanillaActual = async () => {
-        if (autoSaveRef.current && !savingRef.current && empleadoId && calculo) {
-            autoSaveRef.current = false;
-            savingRef.current = true;
+        if (autoSaveRef.current && empleadoIdRef.current) {
             try {
-                const data = {
-                    empleado_id: empleadoId,
-                    periodo_anio: periodoAnio,
-                    periodo_mes: periodoMes,
-                    quincena,
-                    dias_trabajados: diasTrabajados,
-                    detalles: detalles,
-                    total_percepciones: calculo.total_percepciones,
-                    total_deducciones: calculo.total_deducciones,
-                    descuento_isss: calculo.descuento_isss,
-                    descuento_afp: calculo.descuento_afp,
-                    descuento_renta: calculo.descuento_renta,
-                    monto_recibir: calculo.monto_recibir
-                };
-                if (selected?.id) {
-                    await axios.put(`/api/rh/planillas/${selected.id}`, data);
-                } else {
-                    await axios.post('/api/rh/planillas', data);
-                }
-                queryClient.invalidateQueries({ queryKey: ['rh-planillas-grupos'] });
-                queryClient.invalidateQueries({ queryKey: ['rh-planillas-abiertas'] });
+                await saveCurrentEmployee({ silent: true });
             } catch (e) {
                 console.error('Error saving before preview:', e);
-            } finally {
-                savingRef.current = false;
             }
         }
 
@@ -857,35 +925,11 @@ const Planillas = () => {
     };
 
     const handleVerRecibosActual = async () => {
-        if (autoSaveRef.current && !savingRef.current && empleadoId && calculo) {
-            autoSaveRef.current = false;
-            savingRef.current = true;
+        if (autoSaveRef.current && empleadoIdRef.current) {
             try {
-                const data = {
-                    empleado_id: empleadoId,
-                    periodo_anio: periodoAnio,
-                    periodo_mes: periodoMes,
-                    quincena,
-                    dias_trabajados: diasTrabajados,
-                    detalles: detalles,
-                    total_percepciones: calculo.total_percepciones,
-                    total_deducciones: calculo.total_deducciones,
-                    descuento_isss: calculo.descuento_isss,
-                    descuento_afp: calculo.descuento_afp,
-                    descuento_renta: calculo.descuento_renta,
-                    monto_recibir: calculo.monto_recibir
-                };
-                if (selected?.id) {
-                    await axios.put(`/api/rh/planillas/${selected.id}`, data);
-                } else {
-                    await axios.post('/api/rh/planillas', data);
-                }
-                queryClient.invalidateQueries({ queryKey: ['rh-planillas-grupos'] });
-                queryClient.invalidateQueries({ queryKey: ['rh-planillas-abiertas'] });
+                await saveCurrentEmployee({ silent: true });
             } catch (e) {
                 console.error('Error saving before preview:', e);
-            } finally {
-                savingRef.current = false;
             }
         }
 
@@ -895,6 +939,16 @@ const Planillas = () => {
             quincena: quincena,
             tipo: 'recibos'
         });
+    };
+
+    const handleVolverListado = async () => {
+        if (autoSaveRef.current && empleadoIdRef.current) {
+            try {
+                await saveCurrentEmployee({ silent: true });
+            } catch { /* continuar */ }
+        }
+        resetForm();
+        setActiveTab('historial');
     };
 
     const resetForm = () => {
@@ -910,6 +964,7 @@ const Planillas = () => {
         setCalculo(null);
         setPeriodoBloqueado(false);
         cacheRef.current = {};
+        autoSaveRef.current = false;
     };
 
     const handleVerDetalle = (item) => {
@@ -1138,7 +1193,7 @@ const Planillas = () => {
                         <div className="flex items-center gap-3">
                             <button
                                 type="button"
-                                onClick={() => { resetForm(); setActiveTab('historial'); }}
+                                onClick={handleVolverListado}
                                 className="p-2 hover:bg-slate-100 text-slate-600 hover:text-slate-900 rounded-xl transition-colors border border-slate-200 shadow-sm flex items-center justify-center"
                                 title="Volver a la lista de planillas"
                             >
@@ -1200,7 +1255,7 @@ const Planillas = () => {
                             )}
                             <button
                                 type="button"
-                                onClick={() => { resetForm(); setActiveTab('historial'); }}
+                                onClick={handleVolverListado}
                                 className="px-3.5 py-1.5 text-xs font-bold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-xl transition-all"
                             >
                                 Volver al Listado
@@ -1445,12 +1500,25 @@ const Planillas = () => {
                                         )}
 
                                         <div className="ml-auto flex flex-wrap items-center gap-2">
+                                            {empleadoData?.id && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => saveCurrentEmployee({ silent: false })}
+                                                    disabled={guardandoManual || savingRef.current}
+                                                    className="inline-flex items-center gap-1.5 text-[11px] font-bold text-white bg-indigo-600 hover:bg-indigo-700 px-3 py-1.5 rounded-lg shadow-sm transition-all active:scale-95 disabled:opacity-50"
+                                                    title="Guardar de inmediato todos los cambios y cuentas de este empleado"
+                                                >
+                                                    <Save size={13} className={guardandoManual ? 'animate-spin' : ''} />
+                                                    <span>{guardandoManual ? 'Guardando...' : 'Guardar'}</span>
+                                                </button>
+                                            )}
+
                                             {selected?.id ? (
                                                 <button
                                                     type="button"
                                                     onClick={handleExcluirEmpleado}
-                                                    disabled={excluirMutation.isPending}
-                                                    className="inline-flex items-center gap-1 text-[11px] font-bold text-rose-600 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 border border-rose-200 px-2.5 py-1 rounded-lg transition-all active:scale-95 disabled:opacity-50"
+                                                    disabled={excluirMutation.isPending || guardandoManual}
+                                                    className="inline-flex items-center gap-1 text-[11px] font-bold text-rose-600 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 border border-rose-200 px-2.5 py-1.5 rounded-lg transition-all active:scale-95 disabled:opacity-50"
                                                     title="Excluir a este empleado únicamente de esta planilla quincenal"
                                                 >
                                                     <UserX size={13} />
@@ -1464,8 +1532,8 @@ const Planillas = () => {
                                                     <button
                                                         type="button"
                                                         onClick={handleAgregarEmpleado}
-                                                        disabled={savingRef.current}
-                                                        className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2.5 py-1 rounded-lg transition-all shadow-sm active:scale-95 disabled:opacity-50"
+                                                        disabled={savingRef.current || guardandoManual}
+                                                        className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2.5 py-1.5 rounded-lg transition-all shadow-sm active:scale-95 disabled:opacity-50"
                                                         title="Agregar formalmente a este empleado a la planilla de esta quincena"
                                                     >
                                                         <UserPlus size={13} />
@@ -1504,9 +1572,23 @@ const Planillas = () => {
                                     <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block">Cuentas de Planilla</span>
                                     <span className="text-[10px] text-slate-400">Conceptos de percepciones y deducciones</span>
                                 </div>
-                                {autoSaveRef.current && (
-                                    <span className="text-[10px] text-indigo-600 font-medium animate-pulse">Guardando cambios...</span>
-                                )}
+                                <div className="flex items-center gap-2">
+                                    {autoSaveRef.current && (
+                                        <span className="text-[10px] text-indigo-600 font-medium animate-pulse">Guardando cambios...</span>
+                                    )}
+                                    {empleadoData?.id && (
+                                        <button
+                                            type="button"
+                                            onClick={() => saveCurrentEmployee({ silent: false })}
+                                            disabled={guardandoManual || savingRef.current}
+                                            className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-700 hover:text-indigo-900 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-2.5 py-1 rounded-lg transition-all active:scale-95 disabled:opacity-50"
+                                            title="Guardar manualmente los cambios de este empleado"
+                                        >
+                                            <Save size={13} className={guardandoManual ? 'animate-spin' : ''} />
+                                            <span>{guardandoManual ? 'Guardando...' : 'Guardar Cambios'}</span>
+                                        </button>
+                                    )}
+                                </div>
                             </div>
 
                             <div className="overflow-x-auto">
