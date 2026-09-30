@@ -16,6 +16,13 @@ const isDev = import.meta.env.DEV;
 const currentBuildVersion = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : null;
 if (currentBuildVersion && currentBuildVersion !== 'unknown') {
     localStorage.setItem('app_version', currentBuildVersion);
+    localStorage.setItem('app_commit', currentBuildVersion);
+    localStorage.setItem('last_applied_commit', currentBuildVersion);
+}
+const currentBuildSemantic = typeof __APP_SEMANTIC_VERSION__ !== 'undefined' ? __APP_SEMANTIC_VERSION__ : null;
+if (currentBuildSemantic && currentBuildSemantic !== 'unknown') {
+    localStorage.setItem('app_semantic_version', currentBuildSemantic);
+    localStorage.setItem('last_applied_version', currentBuildSemantic);
 }
 
 let swRegistration = null;

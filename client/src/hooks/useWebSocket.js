@@ -22,9 +22,9 @@ export default function useWebSocket({ companyId, onMessage }) {
         ws.onmessage = (event) => {
             try {
                 const parsed = JSON.parse(event.data);
-                if ((parsed.event === 'app_version' || parsed.event === 'system_update') && parsed.data?.version) {
+                if ((parsed.event === 'app_version' || parsed.event === 'system_update') && parsed.data) {
                     if (typeof window.__onVersionReceived === 'function') {
-                        window.__onVersionReceived(parsed.data.version);
+                        window.__onVersionReceived(parsed.data);
                     }
                 }
                 if (onMessageRef.current) {

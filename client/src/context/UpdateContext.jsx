@@ -13,13 +13,16 @@ export const useUpdate = () => {
 };
 
 export const UpdateProvider = ({ children }) => {
-    // Versión y commit compilados en el frontend actual
-    const currentCommit = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : (localStorage.getItem('app_version') || 'unknown');
+    const isDev = import.meta.env.DEV;
+
+    // Versión semántica autoincrementable y commit compilados en el frontend actual
+    const buildCommit = typeof __APP_VERSION__ !== 'undefined' ? String(__APP_VERSION__).trim() : 'unknown';
+    const buildVersion = typeof __APP_SEMANTIC_VERSION__ !== 'undefined' ? String(__APP_SEMANTIC_VERSION__).trim() : 'unknown';
 
     const [updateAvailable, setUpdateAvailable] = useState(false);
     const [updateInfo, setUpdateInfo] = useState({
-        version: 'v2.7.143',
-        commit: '',
+        version: buildVersion !== 'unknown' ? buildVersion : 'v2.7.143',
+        commit: buildCommit !== 'unknown' ? buildCommit : '',
         rawVersion: ''
     });
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -29,23 +32,50 @@ export const UpdateProvider = ({ children }) => {
     const updateInfoRef = useRef(updateInfo);
     updateInfoRef.current = updateInfo;
 
-    // Disparador controlado cuando se detecta una nueva versión en el servidor
-    const handleUpdateDetected = useCallback(({ version, commit, rawVersion }) => {
+    // Comprobar y gestionar la detección de actualizaciones
+    const handleUpdateDetected = useCallback(({ version, commit, rawVersion, isSimulated = false }) => {
         // En escáner móvil de tickets evitar interrumpir al operador
         if (window.location.pathname.startsWith('/scan-dte')) return;
 
-        const effectiveCommit = commit || (rawVersion && rawVersion.length <= 10 ? rawVersion : '');
-        const effectiveVersion = version || (effectiveCommit ? `v2.7.${effectiveCommit.slice(0, 4)}` : 'v2.7.143');
-
-        // Si la versión detectada coincide con la actual, no alertar
-        if (effectiveCommit && currentCommit && effectiveCommit === currentCommit) {
+        // En desarrollo local (Vite dev server) no alertar de actualizaciones automáticas
+        if (isDev && !isSimulated) {
             return;
         }
 
+        const serverVersion = (version ? String(version).trim() : '').replace(/^#/, '');
+        const serverCommit = (commit ? String(commit).trim() : (rawVersion ? String(rawVersion).trim() : '')).replace(/^#/, '');
+
+        if (!serverCommit || serverCommit === 'unknown') return;
+
+        // Versión / commit guardado tras una actualización previa en este navegador
+        const lastAppliedCommit = localStorage.getItem('last_applied_commit');
+        const lastAppliedVersion = localStorage.getItem('last_applied_version');
+
+        // Comprobación contra la versión del build compilado
+        const matchesBuild = (buildCommit !== 'unknown' && serverCommit === buildCommit) ||
+                             (buildVersion !== 'unknown' && serverVersion === buildVersion);
+
+        // Comprobación contra lo guardado en localStorage
+        const matchesApplied = (lastAppliedCommit && serverCommit === lastAppliedCommit) ||
+                               (lastAppliedVersion && serverVersion === lastAppliedVersion);
+
+        // Si ya coincide con el build actual o ya fue aplicado en este cliente:
+        // ¡YA ESTÁ ACTUALIZADO! NO sugerir actualización ni mostrar mensaje
+        if (!isSimulated && (matchesBuild || matchesApplied)) {
+            setUpdateAvailable(false);
+            setIsModalOpen(false);
+            return;
+        }
+
+        // El hash de commit debe tener formato corto de git (ej. 7-8 caracteres)
+        // Si por error de red o fallback viniera la versión semántica como commit, limpiar
+        const displayCommit = serverCommit.startsWith('v') ? '' : serverCommit;
+        const displayVersion = serverVersion || (displayCommit ? `v2.7.${displayCommit.slice(0, 4)}` : 'v2.7.143');
+
         const newInfo = {
-            version: effectiveVersion,
-            commit: effectiveCommit,
-            rawVersion: rawVersion || effectiveCommit || effectiveVersion
+            version: displayVersion,
+            commit: displayCommit,
+            rawVersion: serverCommit || displayVersion
         };
 
         setUpdateInfo(newInfo);
@@ -55,10 +85,10 @@ export const UpdateProvider = ({ children }) => {
         const snoozeKey = `update_snooze_${newInfo.commit || newInfo.version}`;
         const snoozedUntil = Number(sessionStorage.getItem(snoozeKey) || 0);
 
-        if (Date.now() > snoozedUntil) {
+        if (isSimulated || Date.now() > snoozedUntil) {
             setIsModalOpen(true);
         }
-    }, [currentCommit]);
+    }, [buildCommit, buildVersion, isDev]);
 
     // Cerrar / Posponer actualización ("Más tarde" o "X")
     const dismissModal = useCallback(() => {
@@ -82,7 +112,13 @@ export const UpdateProvider = ({ children }) => {
 
         const current = updateInfoRef.current;
         if (current.commit) {
+            localStorage.setItem('app_commit', current.commit);
             localStorage.setItem('app_version', current.commit);
+            localStorage.setItem('last_applied_commit', current.commit);
+        }
+        if (current.version) {
+            localStorage.setItem('app_semantic_version', current.version);
+            localStorage.setItem('last_applied_version', current.version);
         }
 
         // 1. Activar nuevo Service Worker si está en espera
@@ -120,9 +156,10 @@ export const UpdateProvider = ({ children }) => {
         window.__simulateUpdate = (customVersion, customCommit) => {
             sessionStorage.clear();
             handleUpdateDetected({
-                version: customVersion || 'v2.7.143',
-                commit: customCommit || '3503e5c',
-                rawVersion: customCommit || '3503e5c'
+                version: customVersion || 'v2.7.868',
+                commit: customCommit || '44e35d6',
+                rawVersion: customCommit || '44e35d6',
+                isSimulated: true
             });
         };
 
@@ -134,6 +171,8 @@ export const UpdateProvider = ({ children }) => {
 
     // Consulta periódica al endpoint /health del servidor
     useEffect(() => {
+        if (isDev) return; // En entorno dev evitar polling redundante
+
         const checkServerVersion = async () => {
             if (isUpdatingRef.current || document.visibilityState !== 'visible') return;
             try {
@@ -144,14 +183,12 @@ export const UpdateProvider = ({ children }) => {
                 const serverCommit = data.commit || data.version || '';
                 const serverAppVersion = data.appVersion || '';
 
-                if (serverCommit && currentCommit && serverCommit !== 'unknown' && currentCommit !== 'unknown') {
-                    if (serverCommit !== currentCommit) {
-                        handleUpdateDetected({
-                            version: serverAppVersion || `v2.7.${serverCommit.slice(0, 4)}`,
-                            commit: serverCommit,
-                            rawVersion: serverCommit
-                        });
-                    }
+                if (serverCommit && serverCommit !== 'unknown') {
+                    handleUpdateDetected({
+                        version: serverAppVersion,
+                        commit: serverCommit,
+                        rawVersion: serverCommit
+                    });
                 }
             } catch (err) {
                 // Silencioso ante desconexión de red temporal
@@ -176,7 +213,7 @@ export const UpdateProvider = ({ children }) => {
             clearInterval(interval);
             document.removeEventListener('visibilitychange', handleVisibilityChange);
         };
-    }, [currentCommit, handleUpdateDetected]);
+    }, [isDev, handleUpdateDetected]);
 
     return (
         <UpdateContext.Provider
