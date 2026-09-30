@@ -17,4 +17,10 @@ const pool = mysql.createPool({
     connectTimeout: 20000
 });
 
+if (pool.pool && typeof pool.pool.on === 'function') {
+    pool.pool.on('error', (err) => {
+        console.error('[MySQL Pool Error]', err?.code || err?.message || err);
+    });
+}
+
 module.exports = pool;
