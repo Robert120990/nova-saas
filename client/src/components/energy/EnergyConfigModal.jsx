@@ -4,14 +4,17 @@ import { toast } from 'sonner';
 import { Settings, X, Save, Sun, BatteryCharging, Clock } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
-export default function EnergyConfigModal({ open, onClose, onSaved }) {
+export default function EnergyConfigModal({ open, onClose, onSaved, companyId }) {
     const { user } = useAuth();
-    const companyHeaders = user?.company_id ? { 'x-company-id': String(user.company_id) } : {};
+    const activeCompanyId = companyId || user?.company_id || 9;
+    const companyHeaders = { 'x-company-id': String(activeCompanyId) };
     const [formData, setFormData] = useState({
         growatt_url: 'https://server.growatt.com/',
         growatt_username: 'Raul_Sosa',
         growatt_password: '',
         growatt_enabled: true,
+        growatt_plant_id: '2410077',
+        plant_name: 'Andelsa',
         gess_url: 'http://gess.net.cn/SolarWeb/',
         gess_username: 'proyectos',
         gess_password: '',
@@ -26,6 +29,8 @@ export default function EnergyConfigModal({ open, onClose, onSaved }) {
     });
 
     const [saving, setSaving] = useState(false);
+    const [hasGrowattPass, setHasGrowattPass] = useState(false);
+    const [hasGessPass, setHasGessPass] = useState(false);
 
     useEffect(() => {
         if (!open) return;
@@ -33,14 +38,18 @@ export default function EnergyConfigModal({ open, onClose, onSaved }) {
             .then(res => {
                 if (res.data?.data) {
                     const d = res.data.data;
+                    setHasGrowattPass(!!d.has_growatt_password);
+                    setHasGessPass(!!d.has_gess_password);
                     setFormData({
                         growatt_url: d.growatt_url || 'https://server.growatt.com/',
                         growatt_username: d.growatt_username || 'Raul_Sosa',
-                        growatt_password: d.growatt_password || '',
+                        growatt_password: '',
                         growatt_enabled: d.growatt_enabled === 1 || d.growatt_enabled === true,
+                        growatt_plant_id: d.growatt_plant_id || (Number(activeCompanyId) === 1 ? '2604519' : '2410077'),
+                        plant_name: d.plant_name || (Number(activeCompanyId) === 1 ? 'Puma San Martín II' : 'Andelsa'),
                         gess_url: d.gess_url || 'http://gess.net.cn/SolarWeb/',
                         gess_username: d.gess_username || 'proyectos',
-                        gess_password: d.gess_password || '',
+                        gess_password: '',
                         gess_plant_id: d.gess_plant_id || 218,
                         gess_enabled: d.gess_enabled === 1 || d.gess_enabled === true,
                         sync_interval_hours: d.sync_interval_hours || 4,
@@ -55,7 +64,7 @@ export default function EnergyConfigModal({ open, onClose, onSaved }) {
             .catch(err => {
                 toast.error('Error al cargar configuración: ' + (err.response?.data?.message || err.message));
             });
-    }, [open]);
+    }, [open, activeCompanyId]);
 
     if (!open) return null;
 
@@ -121,6 +130,34 @@ export default function EnergyConfigModal({ open, onClose, onSaved }) {
                         </div>
 
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            <div>
+                                <label className="text-[11px] font-bold text-slate-500 uppercase">Planta Growatt Asignada</label>
+                                <select 
+                                    value={formData.growatt_plant_id}
+                                    onChange={(e) => {
+                                        const pid = e.target.value;
+                                        setFormData({
+                                            ...formData,
+                                            growatt_plant_id: pid,
+                                            plant_name: pid === '2410077' ? 'Andelsa' : (pid === '2604519' ? 'Puma San Martín II' : formData.plant_name)
+                                        });
+                                    }}
+                                    className="mt-1 w-full text-[13px] font-medium p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
+                                >
+                                    <option value="2410077">2410077 - Andelsa (~200 kWp)</option>
+                                    <option value="2604519">2604519 - Puma San Martín II (~140 kWp)</option>
+                                </select>
+                            </div>
+                            <div className="sm:col-span-2">
+                                <label className="text-[11px] font-bold text-slate-500 uppercase">Nombre Descriptivo de la Planta</label>
+                                <input 
+                                    type="text"
+                                    value={formData.plant_name}
+                                    onChange={(e) => setFormData({ ...formData, plant_name: e.target.value })}
+                                    className="mt-1 w-full text-[13px] font-medium p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
+                                    placeholder="Ej. Andelsa o Puma San Martín II"
+                                />
+                            </div>
                             <div className="sm:col-span-3">
                                 <label className="text-[11px] font-bold text-slate-500 uppercase">URL del Servidor</label>
                                 <input 
@@ -140,10 +177,18 @@ export default function EnergyConfigModal({ open, onClose, onSaved }) {
                                 />
                             </div>
                             <div className="sm:col-span-2">
-                                <label className="text-[11px] font-bold text-slate-500 uppercase">Contraseña</label>
+                                <label className="text-[11px] font-bold text-slate-500 uppercase flex items-center justify-between">
+                                    <span>Contraseña</span>
+                                    {hasGrowattPass && (
+                                        <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 lowercase first-letter:uppercase">
+                                            ✓ Cifrada en BD
+                                        </span>
+                                    )}
+                                </label>
                                 <input 
                                     type="password"
                                     value={formData.growatt_password}
+                                    placeholder={hasGrowattPass ? '•••••••• (En blanco para conservar)' : 'Ingresa la contraseña'}
                                     onChange={(e) => setFormData({ ...formData, growatt_password: e.target.value })}
                                     className="mt-1 w-full text-[13px] font-medium p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
                                 />
@@ -168,6 +213,12 @@ export default function EnergyConfigModal({ open, onClose, onSaved }) {
                                 Habilitado
                             </label>
                         </div>
+
+                        {!formData.gess_enabled && (
+                            <div className="p-2.5 rounded-lg bg-indigo-100/70 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800 text-[11px] text-indigo-800 dark:text-indigo-300 font-medium">
+                                💡 <strong>Modo Solo Solar (Sin Baterías):</strong> Esta localidad inyecta energía fotovoltaica directamente a la planta/red sin banco de baterías BESS. Las métricas y ahorros se calculan al 100% sobre la generación solar.
+                            </div>
+                        )}
 
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                             <div className="sm:col-span-2">
@@ -198,10 +249,18 @@ export default function EnergyConfigModal({ open, onClose, onSaved }) {
                                 />
                             </div>
                             <div className="sm:col-span-2">
-                                <label className="text-[11px] font-bold text-slate-500 uppercase">Contraseña</label>
+                                <label className="text-[11px] font-bold text-slate-500 uppercase flex items-center justify-between">
+                                    <span>Contraseña</span>
+                                    {hasGessPass && (
+                                        <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 lowercase first-letter:uppercase">
+                                            ✓ Cifrada en BD
+                                        </span>
+                                    )}
+                                </label>
                                 <input 
                                     type="password"
                                     value={formData.gess_password}
+                                    placeholder={hasGessPass ? '•••••••• (En blanco para conservar)' : 'Ingresa la contraseña'}
                                     onChange={(e) => setFormData({ ...formData, gess_password: e.target.value })}
                                     className="mt-1 w-full text-[13px] font-medium p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
                                 />
@@ -235,55 +294,23 @@ export default function EnergyConfigModal({ open, onClose, onSaved }) {
 
                             <div>
                                 <label className="text-[11px] font-bold text-slate-500 uppercase">Inicio Hora Pico</label>
-                                <input 
-                                    type="time"
-                                    value={formData.peak_start_time}
-                                    onChange={(e) => setFormData({ ...formData, peak_start_time: e.target.value })}
-                                    className="mt-1 w-full text-[13px] font-medium p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
-                                />
+                                <input type="time" value={formData.peak_start_time} onChange={(e) => setFormData({ ...formData, peak_start_time: e.target.value })} className="mt-1 w-full text-[13px] font-medium p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800" />
                             </div>
-
                             <div>
                                 <label className="text-[11px] font-bold text-slate-500 uppercase">Fin Hora Pico</label>
-                                <input 
-                                    type="time"
-                                    value={formData.peak_end_time}
-                                    onChange={(e) => setFormData({ ...formData, peak_end_time: e.target.value })}
-                                    className="mt-1 w-full text-[13px] font-medium p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
-                                />
+                                <input type="time" value={formData.peak_end_time} onChange={(e) => setFormData({ ...formData, peak_end_time: e.target.value })} className="mt-1 w-full text-[13px] font-medium p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800" />
                             </div>
-
                             <div>
-                                <label className="text-[11px] font-bold text-slate-500 uppercase">Tarifa Red Hora Pico ($/kWh)</label>
-                                <input 
-                                    type="number"
-                                    step="0.001"
-                                    value={formData.peak_kwh_rate}
-                                    onChange={(e) => setFormData({ ...formData, peak_kwh_rate: parseFloat(e.target.value) })}
-                                    className="mt-1 w-full text-[13px] font-medium p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
-                                />
+                                <label className="text-[11px] font-bold text-slate-500 uppercase">Tarifa Red Pico ($/kWh)</label>
+                                <input type="number" step="0.001" value={formData.peak_kwh_rate} onChange={(e) => setFormData({ ...formData, peak_kwh_rate: parseFloat(e.target.value) })} className="mt-1 w-full text-[13px] font-medium p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800" />
                             </div>
-
                             <div>
                                 <label className="text-[11px] font-bold text-slate-500 uppercase">Tarifa Red Valle ($/kWh)</label>
-                                <input 
-                                    type="number"
-                                    step="0.001"
-                                    value={formData.offpeak_kwh_rate}
-                                    onChange={(e) => setFormData({ ...formData, offpeak_kwh_rate: parseFloat(e.target.value) })}
-                                    className="mt-1 w-full text-[13px] font-medium p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
-                                />
+                                <input type="number" step="0.001" value={formData.offpeak_kwh_rate} onChange={(e) => setFormData({ ...formData, offpeak_kwh_rate: parseFloat(e.target.value) })} className="mt-1 w-full text-[13px] font-medium p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800" />
                             </div>
-
                             <div>
                                 <label className="text-[11px] font-bold text-slate-500 uppercase">Valor Energía Solar ($/kWh)</label>
-                                <input 
-                                    type="number"
-                                    step="0.001"
-                                    value={formData.solar_kwh_value}
-                                    onChange={(e) => setFormData({ ...formData, solar_kwh_value: parseFloat(e.target.value) })}
-                                    className="mt-1 w-full text-[13px] font-medium p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
-                                />
+                                <input type="number" step="0.001" value={formData.solar_kwh_value} onChange={(e) => setFormData({ ...formData, solar_kwh_value: parseFloat(e.target.value) })} className="mt-1 w-full text-[13px] font-medium p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800" />
                             </div>
                         </div>
                     </div>

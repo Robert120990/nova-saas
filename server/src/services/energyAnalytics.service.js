@@ -105,7 +105,7 @@ async function createGrowattClient(creds) {
  * Autenticación y cliente GESS SolarWeb para llamadas analíticas
  */
 async function createGessClient(creds) {
-    if (!creds.gess_enabled) return null;
+    if (!creds.gess_enabled || !creds.gess_plant_id) return null;
 
     const user = creds.gess_username;
     const pass = creds.gess_password;
@@ -163,17 +163,20 @@ async function getAnalyticsData(companyId, params = {}) {
         [companyId]
     );
 
+    const isSanMartin = String(companyId) === '1';
     const creds = credsRows[0] || {
         company_id: companyId,
         growatt_url: 'https://server.growatt.com/',
         growatt_username: 'Raul_Sosa',
         growatt_password: '1234567',
         growatt_enabled: 1,
+        growatt_plant_id: isSanMartin ? '2604519' : '2410077',
+        plant_name: isSanMartin ? 'Puma San Martín II' : 'Andelsa',
         gess_url: 'http://gess.net.cn/SolarWeb/',
         gess_username: 'proyectos',
         gess_password: '123456',
-        gess_plant_id: 218,
-        gess_enabled: 1,
+        gess_plant_id: isSanMartin ? 0 : 218,
+        gess_enabled: isSanMartin ? 0 : 1,
         peak_start_time: '18:00:00',
         peak_end_time: '22:00:00',
         peak_kwh_rate: 0.2200,
@@ -191,21 +194,33 @@ async function getAnalyticsData(companyId, params = {}) {
     const peakStartHour = parseInt(creds.peak_start_time?.split(':')[0] || '18', 10);
     const peakEndHour = parseInt(creds.peak_end_time?.split(':')[0] || '22', 10);
 
+    const hasBatteries = !!(creds.gess_enabled && creds.gess_plant_id);
+
     const [growattClient, gessClient] = await Promise.all([
         createGrowattClient(creds).catch(err => {
             console.error('[EnergyAnalytics] Error connecting to Growatt:', err.message);
             return null;
         }),
-        createGessClient(creds).catch(err => {
+        hasBatteries ? createGessClient(creds).catch(err => {
             console.error('[EnergyAnalytics] Error connecting to GESS:', err.message);
             return null;
-        })
+        }) : Promise.resolve(null)
     ]);
 
-    const availablePlants = growattClient?.plants || [
+    let availablePlants = growattClient?.plants || [
         { id: '2410077', name: 'Andelsa' },
         { id: '2604519', name: 'Puma San Martín II' }
     ];
+
+    // Si la empresa tiene una planta específica asignada, filtrar las disponibles exclusivamente para ella
+    const companyPlantId = creds.growatt_plant_id || (isSanMartin ? '2604519' : '2410077');
+    if (companyPlantId && companyPlantId !== 'all') {
+        availablePlants = availablePlants.filter(p => String(p.id) === String(companyPlantId));
+    }
+
+    const effectivePlantFilter = companyPlantId && companyPlantId !== 'all'
+        ? companyPlantId
+        : plantFilter;
 
     // ==========================================
     // MODO DÍA: Curva de 5 minutos (288 intervalos)
@@ -214,9 +229,9 @@ async function getAnalyticsData(companyId, params = {}) {
         const targetDate = params.date || nowParts.dateStr;
 
         // Consultar Growatt para cada planta requerida
-        const plantsToQuery = plantFilter === 'all'
+        const plantsToQuery = effectivePlantFilter === 'all'
             ? availablePlants
-            : availablePlants.filter(p => p.id === String(plantFilter));
+            : availablePlants.filter(p => p.id === String(effectivePlantFilter));
 
         const plantCurves = [];
         for (const pl of plantsToQuery) {
@@ -273,9 +288,9 @@ async function getAnalyticsData(companyId, params = {}) {
             };
         });
 
-        // Consultar estadísticas de batería GESS para ese día
+        // Consultar estadísticas de batería GESS para ese día (solo si la localidad tiene baterías)
         let gessDayStats = null;
-        if (gessClient) {
+        if (hasBatteries && gessClient) {
             try {
                 const statRes = await gessClient.oper('MonitorServlet', `&action=plantStorageStatistic&date=${targetDate}`);
                 if (statRes?.dat) {
@@ -294,27 +309,29 @@ async function getAnalyticsData(companyId, params = {}) {
             Math.max(...curvePoints.map(p => p.kw), 0).toFixed(2)
         );
 
-        const batteryChargedKwh = gessDayStats ? (parseFloat(gessDayStats.dayCharged) || 0) : 0;
-        const batteryDischargedKwh = gessDayStats ? (parseFloat(gessDayStats.dayDischarged) || 0) : 0;
-        const socPct = gessDayStats ? (parseFloat(gessDayStats.soc) || 0) : 0;
+        const batteryChargedKwh = (hasBatteries && gessDayStats) ? (parseFloat(gessDayStats.dayCharged) || 0) : 0;
+        const batteryDischargedKwh = (hasBatteries && gessDayStats) ? (parseFloat(gessDayStats.dayDischarged) || 0) : 0;
+        const socPct = (hasBatteries && gessDayStats) ? (parseFloat(gessDayStats.soc) || 0) : 0;
 
         const solarSavingsUsd = parseFloat((solarGeneratedKwh * solarRate).toFixed(2));
-        const peakSavingsUsd = parseFloat((batteryDischargedKwh * (peakRate - offpeakRate)).toFixed(2));
+        const peakSavingsUsd = hasBatteries ? parseFloat((batteryDischargedKwh * (peakRate - offpeakRate)).toFixed(2)) : 0;
         const totalSavingsUsd = parseFloat((solarSavingsUsd + peakSavingsUsd).toFixed(2));
 
         return {
             period: 'day',
             date: targetDate,
-            plantId: plantFilter,
+            plantId: effectivePlantFilter,
+            hasBatteries,
             availablePlants,
             curvePoints,
             summary: {
+                hasBatteries,
                 solarGeneratedKwh,
                 maxSolarPowerKw,
                 batteryChargedKwh,
                 batteryDischargedKwh,
                 socPct,
-                nominalCapacityKwh: 513.6,
+                nominalCapacityKwh: hasBatteries ? 513.6 : 0,
                 solarSavingsUsd,
                 peakSavingsUsd,
                 totalSavingsUsd,
@@ -332,9 +349,9 @@ async function getAnalyticsData(companyId, params = {}) {
         const [yearNum, monthNum] = targetMonth.split('-').map(Number);
         const daysInMonth = new Date(yearNum, monthNum, 0).getDate();
 
-        const plantsToQuery = plantFilter === 'all'
+        const plantsToQuery = effectivePlantFilter === 'all'
             ? availablePlants
-            : availablePlants.filter(p => p.id === String(plantFilter));
+            : availablePlants.filter(p => p.id === String(effectivePlantFilter));
 
         const plantMonthData = [];
         for (const pl of plantsToQuery) {
@@ -358,9 +375,9 @@ async function getAnalyticsData(companyId, params = {}) {
             });
         }
 
-        // Consultar estadísticas de batería GESS para ese mes
+        // Consultar estadísticas de batería GESS para ese mes (solo si tiene baterías)
         let gessMonthStats = null;
-        if (gessClient) {
+        if (hasBatteries && gessClient) {
             try {
                 // Último día del mes o fecha de hoy si es el mes actual
                 const queryDate = targetMonth === nowParts.monthStr
@@ -415,21 +432,23 @@ async function getAnalyticsData(companyId, params = {}) {
         const activeDays = dailyPoints.filter(p => p.solarKwh > 0).length || 1;
         const avgDailySolarKwh = parseFloat((totalSolarKwh / activeDays).toFixed(2));
 
-        const monthChargedKwh = gessMonthStats ? (parseFloat(gessMonthStats.monthCharged) || 0) : 0;
-        const monthDischargedKwh = gessMonthStats ? (parseFloat(gessMonthStats.monthDischarged) || 0) : 0;
+        const monthChargedKwh = (hasBatteries && gessMonthStats) ? (parseFloat(gessMonthStats.monthCharged) || 0) : 0;
+        const monthDischargedKwh = (hasBatteries && gessMonthStats) ? (parseFloat(gessMonthStats.monthDischarged) || 0) : 0;
 
         const solarSavingsUsd = parseFloat((totalSolarKwh * solarRate).toFixed(2));
-        const peakSavingsUsd = parseFloat((monthDischargedKwh * (peakRate - offpeakRate)).toFixed(2));
+        const peakSavingsUsd = hasBatteries ? parseFloat((monthDischargedKwh * (peakRate - offpeakRate)).toFixed(2)) : 0;
         const totalSavingsUsd = parseFloat((solarSavingsUsd + peakSavingsUsd).toFixed(2));
 
         return {
             period: 'month',
             month: targetMonth,
             daysInMonth,
-            plantId: plantFilter,
+            plantId: effectivePlantFilter,
+            hasBatteries,
             availablePlants,
             dailyPoints,
             summary: {
+                hasBatteries,
                 totalSolarKwh,
                 totalSolarMwh: parseFloat((totalSolarKwh / 1000).toFixed(2)),
                 monthChargedKwh,
@@ -449,9 +468,9 @@ async function getAnalyticsData(companyId, params = {}) {
     // ==========================================
     if (period === 'year') {
         const targetYear = params.year || nowParts.yearStr; // 'YYYY'
-        const plantsToQuery = plantFilter === 'all'
+        const plantsToQuery = effectivePlantFilter === 'all'
             ? availablePlants
-            : availablePlants.filter(p => p.id === String(plantFilter));
+            : availablePlants.filter(p => p.id === String(effectivePlantFilter));
 
         const plantYearData = [];
         for (const pl of plantsToQuery) {
@@ -475,9 +494,9 @@ async function getAnalyticsData(companyId, params = {}) {
             });
         }
 
-        // Consultar estadísticas anuales en GESS
+        // Consultar estadísticas anuales en GESS (solo si tiene baterías)
         let gessYearStats = null;
-        if (gessClient) {
+        if (hasBatteries && gessClient) {
             try {
                 const queryDate = targetYear === nowParts.yearStr ? nowParts.dateStr : `${targetYear}-12-31`;
                 const statRes = await gessClient.oper('MonitorServlet', `&action=plantStorageStatistic&date=${queryDate}`);
@@ -533,20 +552,22 @@ async function getAnalyticsData(companyId, params = {}) {
         const activeMonths = monthlyPoints.filter(p => p.solarKwh > 0).length || 1;
         const avgMonthlySolarKwh = parseFloat((totalSolarKwh / activeMonths).toFixed(2));
 
-        const yearChargedKwh = gessYearStats ? (parseFloat(gessYearStats.yearCharged) || 0) : 0;
-        const yearDischargedKwh = gessYearStats ? (parseFloat(gessYearStats.yearDischarged) || 0) : 0;
+        const yearChargedKwh = (hasBatteries && gessYearStats) ? (parseFloat(gessYearStats.yearCharged) || 0) : 0;
+        const yearDischargedKwh = (hasBatteries && gessYearStats) ? (parseFloat(gessYearStats.yearDischarged) || 0) : 0;
 
         const solarSavingsUsd = parseFloat((totalSolarKwh * solarRate).toFixed(2));
-        const peakSavingsUsd = parseFloat((yearDischargedKwh * (peakRate - offpeakRate)).toFixed(2));
+        const peakSavingsUsd = hasBatteries ? parseFloat((yearDischargedKwh * (peakRate - offpeakRate)).toFixed(2)) : 0;
         const totalSavingsUsd = parseFloat((solarSavingsUsd + peakSavingsUsd).toFixed(2));
 
         return {
             period: 'year',
             year: targetYear,
-            plantId: plantFilter,
+            plantId: effectivePlantFilter,
+            hasBatteries,
             availablePlants,
             monthlyPoints,
             summary: {
+                hasBatteries,
                 totalSolarKwh,
                 totalSolarMwh: parseFloat((totalSolarKwh / 1000).toFixed(2)),
                 yearChargedKwh,

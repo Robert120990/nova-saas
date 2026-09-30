@@ -8,7 +8,9 @@ import {
     Activity, 
     BarChart2, 
     History,
-    Radio
+    Radio,
+    Building2,
+    Sun
 } from 'lucide-react';
 import { 
     EnergySummaryCards, 
@@ -25,6 +27,8 @@ import { useAuth } from '../../context/AuthContext';
 export default function SistemaEnergetico() {
     const { user } = useAuth();
     const [activeTab, setActiveTab] = useState('live'); // 'live' | 'charts' | 'history'
+    const [locations, setLocations] = useState([]);
+    const [selectedCompanyId, setSelectedCompanyId] = useState(user?.company_id || 9);
     const [liveData, setLiveData] = useState(null);
     const [syncing, setSyncing] = useState(false);
     const [autoRefresh, setAutoRefresh] = useState(true);
@@ -36,10 +40,28 @@ export default function SistemaEnergetico() {
     const [historyPage, setHistoryPage] = useState(1);
     const [historyTotalPages, setHistoryTotalPages] = useState(1);
     const [historyLoading, setHistoryLoading] = useState(false);
+    const canManageConfig = user?.role === 'SuperAdmin' || (Array.isArray(user?.permissions) ? user.permissions : []).includes('manage_energy_config');
     const [startDate, setStartDate] = useState(getTodayString());
     const [endDate, setEndDate] = useState(getTodayString());
 
-    const companyHeaders = user?.company_id ? { 'x-company-id': String(user.company_id) } : {};
+    const companyHeaders = { 'x-company-id': String(selectedCompanyId) };
+
+    // Cargar localidades disponibles según permisos RBAC
+    const fetchLocations = async () => {
+        try {
+            const res = await axios.get('/api/energy/locations');
+            const locs = res.data?.data || [];
+            setLocations(locs);
+            if (locs.length > 0) {
+                const currentAccessible = locs.some(l => Number(l.companyId) === Number(selectedCompanyId));
+                if (!currentAccessible) {
+                    setSelectedCompanyId(locs[0].companyId);
+                }
+            }
+        } catch (err) {
+            console.error('Error al cargar localidades energéticas:', err);
+        }
+    };
 
     // Cargar datos en vivo
     const fetchLive = async (showToast = false) => {
@@ -92,8 +114,12 @@ export default function SistemaEnergetico() {
     };
 
     useEffect(() => {
+        fetchLocations();
+    }, []);
+
+    useEffect(() => {
         fetchLive();
-    }, [user?.company_id]);
+    }, [selectedCompanyId]);
 
     // Polling en vivo cada 30s si auto-refresco está activo
     useEffect(() => {
@@ -102,14 +128,14 @@ export default function SistemaEnergetico() {
             fetchLive(false);
         }, 30000);
         return () => clearInterval(interval);
-    }, [autoRefresh, user?.company_id]);
+    }, [autoRefresh, selectedCompanyId]);
 
-    // Recargar historial al cambiar filtros o tab
+    // Recargar historial al cambiar filtros, tab o empresa
     useEffect(() => {
         if (activeTab === 'history') {
             fetchHistory();
         }
-    }, [activeTab, historyPage, startDate, endDate]);
+    }, [activeTab, historyPage, startDate, endDate, selectedCompanyId]);
 
     return (
         <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-6 animate-fade-in">
@@ -160,16 +186,67 @@ export default function SistemaEnergetico() {
                         {syncing ? 'Sincronizando...' : 'Sincronizar Ahora'}
                     </button>
 
-                    {/* Configuración */}
-                    <button
-                        onClick={() => setConfigModalOpen(true)}
-                        className="p-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                        title="Configurar credenciales y tarifas"
-                    >
-                        <Settings className="w-5 h-5" />
-                    </button>
+                    {/* Configuración (Solo Administradores con permiso) */}
+                    {canManageConfig && (
+                        <button
+                            onClick={() => setConfigModalOpen(true)}
+                            className="p-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                            title="Configurar credenciales y tarifas (Administrador)"
+                        >
+                            <Settings className="w-5 h-5" />
+                        </button>
+                    )}
                 </div>
             </div>
+
+            {/* Selector de Localidad / Empresa */}
+            {locations.length > 0 && (
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm">
+                    <div className="flex items-center gap-2">
+                        <div className="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400">
+                            <Building2 className="w-4 h-4" />
+                        </div>
+                        <div>
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                                Empresa / Localidad Monitoreada
+                            </span>
+                            <span className="text-xs font-bold text-slate-700 dark:text-slate-200">
+                                {locations.find(l => Number(l.companyId) === Number(selectedCompanyId))?.legalName || 'Seleccionar Localidad'}
+                            </span>
+                        </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-wrap">
+                        {locations.map((loc) => {
+                            const isSelected = Number(loc.companyId) === Number(selectedCompanyId);
+                            return (
+                                <button
+                                    key={loc.companyId}
+                                    onClick={() => {
+                                        setSelectedCompanyId(loc.companyId);
+                                        setLiveData(null);
+                                    }}
+                                    className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
+                                        isSelected
+                                            ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/25 ring-2 ring-indigo-400/40'
+                                            : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700'
+                                    }`}
+                                >
+                                    <Sun className={`w-3.5 h-3.5 ${isSelected ? 'text-amber-300' : 'text-amber-500'}`} />
+                                    <span>{loc.plantName}</span>
+                                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                                        isSelected 
+                                            ? 'bg-indigo-700/80 text-indigo-100' 
+                                            : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+                                    }`}>
+                                        {loc.hasBatteries ? 'Solar + Baterías' : 'Solo Solar'}
+                                    </span>
+                                </button>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
 
             {/* Pestañas de Navegación */}
             <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-2 overflow-x-auto">
@@ -245,6 +322,7 @@ export default function SistemaEnergetico() {
             <EnergyConfigModal 
                 open={configModalOpen}
                 onClose={() => setConfigModalOpen(false)}
+                companyId={selectedCompanyId}
                 onSaved={() => {
                     fetchLive(true);
                 }}

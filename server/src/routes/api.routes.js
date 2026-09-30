@@ -1305,13 +1305,14 @@ router.post('/filpro/revert-dte', verifyToken, tenantMiddleware, checkPermission
 router.post('/filpro/revert-day', verifyToken, tenantMiddleware, checkPermission('manage_filpro_sync'), filproController.revertDay);
 
 // Sistema Energético (Growatt + GESS SolarWeb)
-router.get('/energy/live', verifyToken, tenantMiddleware, checkPermission('manage_energy_system'), energySystemController.getLive);
-router.post('/energy/sync', verifyToken, tenantMiddleware, checkPermission('manage_energy_system'), energySystemController.syncNow);
-router.get('/energy/history', verifyToken, tenantMiddleware, checkPermission('manage_energy_system'), energySystemController.getHistory);
-router.get('/energy/daily-summary', verifyToken, tenantMiddleware, checkPermission('manage_energy_system'), energySystemController.getDailySummaries);
-router.get('/energy/config', verifyToken, tenantMiddleware, checkPermission('manage_energy_system'), energySystemController.getConfig);
-router.put('/energy/config', verifyToken, tenantMiddleware, checkPermission('manage_energy_system'), energySystemController.updateConfig);
-router.get('/energy/analytics', verifyToken, tenantMiddleware, checkPermission('manage_energy_system'), energySystemController.getAnalytics);
+router.get('/energy/locations', verifyToken, checkPermission(['manage_energy_system', 'manage_energy_config']), energySystemController.getLocations);
+router.get('/energy/live', verifyToken, tenantMiddleware, checkPermission(['manage_energy_system', 'manage_energy_config']), energySystemController.getLive);
+router.post('/energy/sync', verifyToken, tenantMiddleware, checkPermission(['manage_energy_system', 'manage_energy_config']), energySystemController.syncNow);
+router.get('/energy/history', verifyToken, tenantMiddleware, checkPermission(['manage_energy_system', 'manage_energy_config']), energySystemController.getHistory);
+router.get('/energy/daily-summary', verifyToken, tenantMiddleware, checkPermission(['manage_energy_system', 'manage_energy_config']), energySystemController.getDailySummaries);
+router.get('/energy/config', verifyToken, tenantMiddleware, checkPermission('manage_energy_config'), energySystemController.getConfig);
+router.put('/energy/config', verifyToken, tenantMiddleware, checkPermission('manage_energy_config'), energySystemController.updateConfig);
+router.get('/energy/analytics', verifyToken, tenantMiddleware, checkPermission(['manage_energy_system', 'manage_energy_config']), energySystemController.getAnalytics);
 
 // Notifications
 router.use('/notifications', notificationRoutes);

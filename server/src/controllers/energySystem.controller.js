@@ -33,8 +33,8 @@ async function syncNow(req, res) {
             data: result
         });
     } catch (error) {
-        console.error('[EnergyController.syncNow] Error:', error);
-        res.status(500).json({ success: false, message: error.message });
+        console.error('[EnergyController.syncNow] Error:', error.message);
+        res.status(error.statusCode || 500).json({ success: false, message: error.message });
     }
 }
 
@@ -56,7 +56,7 @@ async function getHistory(req, res) {
         });
         res.json({ success: true, ...history });
     } catch (error) {
-        console.error('[EnergyController.getHistory] Error:', error);
+        console.error('[EnergyController.getHistory] Error:', error.message);
         res.status(500).json({ success: false, message: error.message });
     }
 }
@@ -78,13 +78,13 @@ async function getDailySummaries(req, res) {
         });
         res.json({ success: true, data: summaries });
     } catch (error) {
-        console.error('[EnergyController.getDailySummaries] Error:', error);
+        console.error('[EnergyController.getDailySummaries] Error:', error.message);
         res.status(500).json({ success: false, message: error.message });
     }
 }
 
 /**
- * Obtener configuración y credenciales actuales
+ * Obtener configuración y credenciales actuales (con contraseñas enmascaradas)
  */
 async function getConfig(req, res) {
     try {
@@ -93,9 +93,21 @@ async function getConfig(req, res) {
             return res.status(400).json({ success: false, message: 'ID de empresa no especificado' });
         }
         const config = await energyService.getCredentials(companyId);
-        res.json({ success: true, data: config });
+
+        // Blindaje Cero Fuga: no enviar contraseñas al frontend
+        const masked = {
+            ...config,
+            growatt_password: '',
+            has_growatt_password: !!(config.growatt_password_decrypted || config.growatt_password),
+            gess_password: '',
+            has_gess_password: !!(config.gess_password_decrypted || config.gess_password)
+        };
+        delete masked.growatt_password_decrypted;
+        delete masked.gess_password_decrypted;
+
+        res.json({ success: true, data: masked });
     } catch (error) {
-        console.error('[EnergyController.getConfig] Error:', error);
+        console.error('[EnergyController.getConfig] Error:', error.message);
         res.status(500).json({ success: false, message: error.message });
     }
 }
@@ -110,14 +122,25 @@ async function updateConfig(req, res) {
             return res.status(400).json({ success: false, message: 'ID de empresa no especificado' });
         }
         const updated = await energyService.updateCredentials(companyId, req.body);
+
+        const masked = {
+            ...updated,
+            growatt_password: '',
+            has_growatt_password: !!(updated.growatt_password_decrypted || updated.growatt_password),
+            gess_password: '',
+            has_gess_password: !!(updated.gess_password_decrypted || updated.gess_password)
+        };
+        delete masked.growatt_password_decrypted;
+        delete masked.gess_password_decrypted;
+
         res.json({
             success: true,
-            message: 'Configuración energética guardada con éxito',
-            data: updated
+            message: 'Configuración energética guardada y protegida con éxito',
+            data: masked
         });
     } catch (error) {
-        console.error('[EnergyController.updateConfig] Error:', error);
-        res.status(500).json({ success: false, message: error.message });
+        console.error('[EnergyController.updateConfig] Error:', error.message);
+        res.status(error.statusCode || 500).json({ success: false, message: error.message });
     }
 }
 
@@ -147,6 +170,19 @@ async function getAnalytics(req, res) {
     }
 }
 
+/**
+ * Obtener listado de localidades y empresas energéticas accesibles para el usuario
+ */
+async function getLocations(req, res) {
+    try {
+        const locations = await energyService.getAvailableLocations(req.user);
+        res.json({ success: true, data: locations });
+    } catch (error) {
+        console.error('[EnergyController.getLocations] Error:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+}
+
 module.exports = {
     getLive,
     syncNow,
@@ -154,5 +190,6 @@ module.exports = {
     getDailySummaries,
     getConfig,
     updateConfig,
-    getAnalytics
+    getAnalytics,
+    getLocations
 };

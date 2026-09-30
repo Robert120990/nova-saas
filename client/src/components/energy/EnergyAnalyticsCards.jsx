@@ -30,27 +30,39 @@ export default function EnergyAnalyticsCards({ period, summary }) {
                 </p>
             </div>
 
-            {/* 2. Banco de Baterías */}
+            {/* 2. Banco de Baterías O Modalidad Solar Directa */}
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm">
                 <div className="flex items-center justify-between">
                     <span className="text-[11px] font-bold text-slate-500 uppercase">
-                        Baterías (ANDELSA)
+                        {summary.hasBatteries ? 'Baterías (ANDELSA)' : 'Almacenamiento'}
                     </span>
-                    <div className="p-2 rounded-xl bg-rose-500/10 text-rose-500">
+                    <div className={`p-2 rounded-xl ${summary.hasBatteries ? 'bg-rose-500/10 text-rose-500' : 'bg-amber-500/10 text-amber-500'}`}>
                         <BatteryCharging className="w-4 h-4" />
                     </div>
                 </div>
                 <div className="mt-3">
                     <span className="text-2xl font-black text-slate-800 dark:text-slate-100">
-                        {period === 'day' && `${(summary.batteryDischargedKwh || 0).toFixed(1)} kWh`}
-                        {period === 'month' && `${((summary.monthDischargedKwh || 0) / 1000).toFixed(2)} MWh`}
-                        {period === 'year' && `${((summary.yearDischargedKwh || 0) / 1000).toFixed(2)} MWh`}
+                        {summary.hasBatteries ? (
+                            <>
+                                {period === 'day' && `${(summary.batteryDischargedKwh || 0).toFixed(1)} kWh`}
+                                {period === 'month' && `${((summary.monthDischargedKwh || 0) / 1000).toFixed(2)} MWh`}
+                                {period === 'year' && `${((summary.yearDischargedKwh || 0) / 1000).toFixed(2)} MWh`}
+                            </>
+                        ) : (
+                            'Solo Solar'
+                        )}
                     </span>
                 </div>
                 <p className="text-xs text-slate-500 mt-1">
-                    {period === 'day' && `Descarga en pico (Carga: ${(summary.batteryChargedKwh || 0).toFixed(1)} kWh)`}
-                    {period === 'month' && `Descarga mes (Carga: ${((summary.monthChargedKwh || 0) / 1000).toFixed(2)} MWh)`}
-                    {period === 'year' && `Descarga año (Carga: ${((summary.yearChargedKwh || 0) / 1000).toFixed(2)} MWh)`}
+                    {summary.hasBatteries ? (
+                        <>
+                            {period === 'day' && `Descarga en pico (Carga: ${(summary.batteryChargedKwh || 0).toFixed(1)} kWh)`}
+                            {period === 'month' && `Descarga mes (Carga: ${((summary.monthChargedKwh || 0) / 1000).toFixed(2)} MWh)`}
+                            {period === 'year' && `Descarga año (Carga: ${((summary.yearChargedKwh || 0) / 1000).toFixed(2)} MWh)`}
+                        </>
+                    ) : (
+                        'Inyección directa sin banco de baterías'
+                    )}
                 </p>
             </div>
 
@@ -70,8 +82,17 @@ export default function EnergyAnalyticsCards({ period, summary }) {
                     </span>
                 </div>
                 <div className="text-[11px] text-slate-500 mt-1 flex items-center justify-between">
-                    <span>Solar: <Money amount={summary.solarSavingsUsd || 0} /></span>
-                    <span>Pico Batería: <Money amount={summary.peakSavingsUsd || 0} /></span>
+                    {summary.hasBatteries ? (
+                        <>
+                            <span>Solar: <Money amount={summary.solarSavingsUsd || 0} /></span>
+                            <span>Pico Batería: <Money amount={summary.peakSavingsUsd || 0} /></span>
+                        </>
+                    ) : (
+                        <>
+                            <span>Solar: <Money amount={summary.solarSavingsUsd || 0} /></span>
+                            <span className="text-slate-400">Sin Baterías</span>
+                        </>
+                    )}
                 </div>
             </div>
 

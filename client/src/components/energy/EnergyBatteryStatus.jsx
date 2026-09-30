@@ -10,6 +10,51 @@ export default function EnergyBatteryStatus({ gessData }) {
     const totalDischarged = gessData?.totalDischargedKwh || 0;
     const devices = gessData?.devices || [];
 
+    if (gessData?.enabled === false || gessData?.hasBatteries === false) {
+        return (
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm flex flex-col justify-between">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100 dark:border-slate-800">
+                    <div className="flex items-center gap-2.5">
+                        <div className="p-2 rounded-xl bg-amber-500/10 text-amber-500 border border-amber-500/20">
+                            <BatteryCharging className="w-5 h-5 text-amber-500" />
+                        </div>
+                        <div>
+                            <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">
+                                Banco de Baterías BESS
+                            </h3>
+                            <p className="text-xs text-slate-500">
+                                Estado de almacenamiento energético
+                            </p>
+                        </div>
+                    </div>
+
+                    <span className="px-3 py-1 rounded-full text-xs font-bold bg-amber-50 dark:bg-amber-950 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                        Sin Baterías (No Aplica)
+                    </span>
+                </div>
+
+                <div className="my-6 p-5 rounded-2xl bg-amber-50/50 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-900/40 text-center space-y-3">
+                    <div className="inline-flex p-3 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400">
+                        <BatteryCharging className="w-8 h-8 opacity-80" />
+                    </div>
+                    <div>
+                        <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200">
+                            Generación Fotovoltaica Directa Interconectada a Red
+                        </h4>
+                        <p className="text-xs text-slate-500 max-w-md mx-auto mt-1">
+                            Esta localidad opera con inversores fotovoltaicos solares interconectados directamente al centro de carga. El 100% de la energía solar generada se suministra en tiempo real a las instalaciones, reduciendo de inmediato la factura eléctrica comercial diurna sin requerir banco de baterías.
+                        </p>
+                    </div>
+                </div>
+
+                <div className="flex items-center justify-between text-xs text-slate-500 bg-slate-50 dark:bg-slate-800/30 px-4 py-2.5 rounded-xl border border-slate-200/60 dark:border-slate-800">
+                    <span>Modalidad de Operación: <strong>Autoconsumo Solar Directo</strong></span>
+                    <span className="font-semibold text-emerald-600">Inversores Activos</span>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100 dark:border-slate-800">

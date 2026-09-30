@@ -1,5 +1,16 @@
 const crypto = require('crypto');
+const { encrypt, decrypt } = require('../utils/crypto');
 const pool = require('../config/db');
+
+function safeDecrypt(val) {
+    if (!val || typeof val !== 'string') return '';
+    const parts = val.split(':');
+    if (parts.length === 3) {
+        const dec = decrypt(val);
+        return dec || val;
+    }
+    return val;
+}
 
 /**
  * Utilidades de fecha y hora local de El Salvador (UTC-6)
@@ -43,7 +54,7 @@ async function fetchGrowatt(creds) {
 
     try {
         const user = creds.growatt_username;
-        const pass = creds.growatt_password;
+        const pass = creds.growatt_password_decrypted || safeDecrypt(creds.growatt_password);
         const pwdMd5 = crypto.createHash('md5').update(pass).digest('hex');
 
         const form = new URLSearchParams();
@@ -101,12 +112,25 @@ async function fetchGrowatt(creds) {
             plantName: ''
         });
 
-        const plants = [];
-        const rawDatas = listRes?.datas || [];
+        const allPlantsRaw = listRes?.datas || [];
         const { dateStr } = getElSalvadorDateTimeParts();
 
+        // Determinar qué planta corresponde a esta empresa
+        let targetPlantId = creds.growatt_plant_id;
+        if (!targetPlantId && creds.company_id == 1) targetPlantId = '2604519';
+        if (!targetPlantId && creds.company_id == 9) targetPlantId = '2410077';
+
+        let rawDatas = allPlantsRaw;
+        if (targetPlantId && targetPlantId !== 'all') {
+            const filtered = allPlantsRaw.filter(item => String(item.id) === String(targetPlantId));
+            if (filtered.length > 0) {
+                rawDatas = filtered;
+            }
+        }
+
+        const plants = [];
         for (const item of rawDatas) {
-            const plantId = item.id;
+            const plantId = String(item.id);
             let invTotal = null;
             let dayChart = null;
 
@@ -124,12 +148,14 @@ async function fetchGrowatt(creds) {
             const currentPac = invTotal?.pac ? parseFloat(invTotal.pac) : (parseFloat(item.currentPac) || 0);
             const eToday = invTotal?.epvToday ? parseFloat(invTotal.epvToday) : (parseFloat(item.eToday) || 0);
             const eTotal = invTotal?.epvTotal ? parseFloat(invTotal.epvTotal) : 0;
+            const nominal = plantId === '2604519' ? 140 : (plantId === '2410077' ? 200 : (parseFloat(item.nominalPower) || 150));
 
             plants.push({
                 id: plantId,
                 name: item.plantName,
                 accountName: item.accountName,
                 onlineNum: parseInt(item.onlineNum, 10) || 0,
+                nominalPower: nominal,
                 currentPacKw: currentPac,
                 eTodayKwh: eToday,
                 eTotalKwh: eTotal,
@@ -140,13 +166,16 @@ async function fetchGrowatt(creds) {
 
         const totalPacKw = plants.reduce((sum, p) => sum + (p.currentPacKw || 0), 0);
         const totalTodayKwh = plants.reduce((sum, p) => sum + (p.eTodayKwh || 0), 0);
-        const totalKwh = plantTotal.eTotalSum ? parseFloat(plantTotal.eTotalSum) : plants.reduce((sum, p) => sum + (p.eTotalKwh || 0), 0);
+        const totalKwh = plants.reduce((sum, p) => sum + (p.eTotalKwh || 0), 0);
+        const totalNominalKw = plants.reduce((sum, p) => sum + (p.nominalPower || 0), 0) || (targetPlantId === '2604519' ? 140 : 200);
+        const solarRate = parseFloat(creds.solar_kwh_value) || 0.17;
+        const totalRevenueUsd = parseFloat((totalKwh * solarRate).toFixed(2));
 
         return {
             enabled: true,
             success: true,
-            totalNominalKw: parseFloat(plantTotal.nominalPower) || 340,
-            totalRevenueUsd: parseFloat(plantTotal.etotalMoneyText) || 0,
+            totalNominalKw,
+            totalRevenueUsd,
             totalPacKw: parseFloat(totalPacKw.toFixed(2)),
             totalTodayKwh: parseFloat(totalTodayKwh.toFixed(2)),
             totalKwh: parseFloat(totalKwh.toFixed(2)),
@@ -161,13 +190,20 @@ async function fetchGrowatt(creds) {
  * Cliente de integración para banco de baterías y EMS (GESS SolarWeb)
  */
 async function fetchGess(creds) {
-    if (!creds.gess_enabled) {
-        return { enabled: false, error: null, storage: null, devices: [] };
+    if (!creds.gess_enabled || !creds.gess_plant_id) {
+        return { 
+            enabled: false, 
+            hasBatteries: false,
+            message: 'Esta localidad no cuenta con banco de baterías BESS (inyección solar directa).',
+            error: null, 
+            storage: null, 
+            devices: [] 
+        };
     }
 
     try {
         const user = creds.gess_username;
-        const pass = creds.gess_password;
+        const pass = creds.gess_password_decrypted || safeDecrypt(creds.gess_password);
         const pwdSha1 = crypto.createHash('sha1').update(pass).digest('hex');
         const account = encodeURI(encodeURI(user));
         const baseUrl = creds.gess_url.replace(/\/+$/, '') + '/';
@@ -225,6 +261,7 @@ async function fetchGess(creds) {
 
         return {
             enabled: true,
+            hasBatteries: true,
             success: true,
             plantId,
             plantName: devRes?.dat?.[0]?.name || 'ANDELSA',
@@ -261,26 +298,34 @@ async function getCredentials(companyId) {
         'SELECT * FROM energy_credentials WHERE company_id = ? LIMIT 1',
         [companyId]
     );
-    if (rows.length > 0) return rows[0];
+    const isSanMartin = String(companyId) === '1';
+    const raw = rows.length > 0 ? rows[0] : null;
 
-    // Valores por defecto
-    return {
+    const creds = raw ? { ...raw } : {
         company_id: companyId,
         growatt_url: 'https://server.growatt.com/',
         growatt_username: 'Raul_Sosa',
-        growatt_password: '1234567',
+        growatt_password: encrypt('1234567'),
         growatt_enabled: 1,
+        growatt_plant_id: isSanMartin ? '2604519' : '2410077',
+        plant_name: isSanMartin ? 'Puma San Martín II' : 'Andelsa',
         gess_url: 'http://gess.net.cn/SolarWeb/',
         gess_username: 'proyectos',
-        gess_password: '123456',
-        gess_plant_id: 218,
-        gess_enabled: 1,
+        gess_password: encrypt('123456'),
+        gess_plant_id: isSanMartin ? 0 : 218,
+        gess_enabled: isSanMartin ? 0 : 1,
         sync_interval_hours: 4,
         peak_start_time: '18:00:00',
         peak_end_time: '22:00:00',
         peak_kwh_rate: 0.2200,
         offpeak_kwh_rate: 0.1400,
         solar_kwh_value: 0.1700
+    };
+
+    return {
+        ...creds,
+        growatt_password_decrypted: safeDecrypt(creds.growatt_password),
+        gess_password_decrypted: safeDecrypt(creds.gess_password)
     };
 }
 
@@ -289,6 +334,10 @@ async function getCredentials(companyId) {
  */
 async function getLiveTelemetry(companyId) {
     const creds = await getCredentials(companyId);
+
+    // Contexto de empresa
+    const [compRows] = await pool.query('SELECT id, razon_social, nombre_comercial FROM companies WHERE id = ?', [companyId]);
+    const companyInfo = compRows[0] || { id: companyId, razon_social: 'Empresa', nombre_comercial: '' };
 
     // Consulta paralela a ambos servicios
     const [growatt, gess] = await Promise.all([
@@ -303,33 +352,48 @@ async function getLiveTelemetry(companyId) {
     const peakEndHour = parseInt(creds.peak_end_time?.split(':')[0] || '22', 10);
     const isPeakHour = hour >= peakStartHour && hour < peakEndHour;
 
+    const hasBatteries = !!(creds.gess_enabled && gess.success);
+
     // Métricas combinadas
-    const solarPowerKw = growatt.success ? growatt.totalPacKw : (gess.success ? gess.pvPowerKw : 0);
-    const batteryPowerKw = gess.success ? gess.batteryPowerKw : 0;
-    const gridPowerKw = gess.success ? gess.gridPowerKw : 0;
-    const loadPowerKw = gess.success ? gess.loadPowerKw : 0;
-    const socPct = gess.success ? gess.socPct : 0;
+    const solarPowerKw = growatt.success ? growatt.totalPacKw : (hasBatteries ? gess.pvPowerKw : 0);
+    const batteryPowerKw = hasBatteries ? gess.batteryPowerKw : 0;
+    const gridPowerKw = hasBatteries ? gess.gridPowerKw : 0;
+    const loadPowerKw = hasBatteries ? gess.loadPowerKw : solarPowerKw;
+    const socPct = hasBatteries ? gess.socPct : 0;
 
     // Estado del flujo de batería
-    let batteryState = 'idle';
-    if (batteryPowerKw > 0.5) batteryState = 'charging';
-    else if (batteryPowerKw < -0.5) batteryState = 'discharging';
+    let batteryState = 'none';
+    if (hasBatteries) {
+        if (batteryPowerKw > 0.5) batteryState = 'charging';
+        else if (batteryPowerKw < -0.5) batteryState = 'discharging';
+        else batteryState = 'idle';
+    }
 
     // Ahorro estimado diario ($)
     const peakRate = parseFloat(creds.peak_kwh_rate) || 0.22;
     const solarRate = parseFloat(creds.solar_kwh_value) || 0.17;
-    const dischargedToday = gess.success ? gess.dayDischargedKwh : 0;
-    const solarToday = growatt.success ? growatt.totalTodayKwh : (gess.success ? (gess.dayChargedKwh * 0.5) : 0);
+    const dischargedToday = hasBatteries ? gess.dayDischargedKwh : 0;
+    const solarToday = growatt.success ? growatt.totalTodayKwh : 0;
 
     const savingsFromBatteryPeak = dischargedToday * peakRate;
     const savingsFromSolar = solarToday * solarRate;
     const totalEstimatedSavings = parseFloat((savingsFromBatteryPeak + savingsFromSolar).toFixed(2));
 
     return {
+        company: {
+            id: companyId,
+            name: companyInfo.nombre_comercial || companyInfo.razon_social,
+            legalName: companyInfo.razon_social,
+            plantName: creds.plant_name || (creds.growatt_plant_id === '2604519' ? 'Puma San Martín II' : 'Andelsa')
+        },
         timestamp: dateTimeStr,
         localTime: timeStr,
         isPeakHour,
+        hasBatteries,
         config: {
+            growattPlantId: creds.growatt_plant_id,
+            plantName: creds.plant_name,
+            gessEnabled: !!creds.gess_enabled,
             peakStartTime: creds.peak_start_time,
             peakEndTime: creds.peak_end_time,
             peakRate,
@@ -337,6 +401,7 @@ async function getLiveTelemetry(companyId) {
             solarRate
         },
         summary: {
+            hasBatteries,
             solarPowerKw,
             batteryPowerKw,
             gridPowerKw,
@@ -344,7 +409,7 @@ async function getLiveTelemetry(companyId) {
             socPct,
             batteryState,
             solarTodayKwh: solarToday,
-            batteryChargedTodayKwh: gess.success ? gess.dayChargedKwh : 0,
+            batteryChargedTodayKwh: hasBatteries ? gess.dayChargedKwh : 0,
             batteryDischargedTodayKwh: dischargedToday,
             totalEstimatedSavingsUsd: totalEstimatedSavings,
             savingsFromBatteryPeakUsd: parseFloat(savingsFromBatteryPeak.toFixed(2)),
@@ -359,6 +424,22 @@ async function getLiveTelemetry(companyId) {
  * Guarda una lectura en la base de datos y actualiza el resumen del día
  */
 async function recordReading(companyId, source = 'auto') {
+    if (source === 'manual') {
+        const [prev] = await pool.query(
+            'SELECT last_sync_at FROM energy_credentials WHERE company_id = ?',
+            [companyId]
+        );
+        if (prev[0]?.last_sync_at) {
+            const diffSec = Math.floor((Date.now() - new Date(prev[0].last_sync_at).getTime()) / 1000);
+            if (diffSec < 45) {
+                const wait = 45 - diffSec;
+                const err = new Error(`Sincronización reciente completada. Por favor espere ${wait} segundos antes de volver a sincronizar para evitar bloqueos de IP.`);
+                err.statusCode = 429;
+                throw err;
+            }
+        }
+    }
+
     const creds = await getCredentials(companyId);
     const live = await getLiveTelemetry(companyId);
     const { dateStr, dateTimeStr } = getElSalvadorDateTimeParts();
@@ -526,21 +607,75 @@ async function getDailySummaries(companyId, { startDate, endDate, limit = 30 }) 
     return rows.reverse();
 }
 
+function isSafeEnergyUrl(urlStr, allowedHosts) {
+    if (!urlStr) return true;
+    try {
+        const u = new URL(urlStr);
+        if (u.protocol !== 'http:' && u.protocol !== 'https:') return false;
+        const host = u.hostname.toLowerCase();
+        if (host === 'localhost' || host === '127.0.0.1' || host.startsWith('10.') || host.startsWith('192.168.') || host.startsWith('169.254.') || host.endsWith('.local')) {
+            return false;
+        }
+        return allowedHosts.some(h => host.includes(h));
+    } catch {
+        return false;
+    }
+}
+
 /**
- * Actualizar credenciales y configuración
+ * Actualizar credenciales y configuración con blindaje y cifrado
  */
 async function updateCredentials(companyId, data) {
+    // 1. Validación anti-SSRF de URLs externas
+    if (data.growatt_url && !isSafeEnergyUrl(data.growatt_url, ['growatt.com'])) {
+        throw new Error('URL de Growatt inválida o no permitida por políticas de seguridad.');
+    }
+    if (data.gess_url && !isSafeEnergyUrl(data.gess_url, ['gess.net.cn', 'solarweb'])) {
+        throw new Error('URL de GESS inválida o no permitida por políticas de seguridad.');
+    }
+
+    const isSanMartin = String(companyId) === '1';
+    const defaultPlantId = isSanMartin ? '2604519' : '2410077';
+    const defaultPlantName = isSanMartin ? 'Puma San Martín II' : 'Andelsa';
+
+    // 2. Recuperar contraseñas existentes para conservar si el usuario no las modificó
+    const [existingRows] = await pool.query(
+        'SELECT growatt_password, gess_password FROM energy_credentials WHERE company_id = ?',
+        [companyId]
+    );
+    const existing = existingRows[0] || {};
+
+    let finalGrowattPass = existing.growatt_password;
+    if (data.growatt_password && typeof data.growatt_password === 'string') {
+        const clean = data.growatt_password.trim();
+        if (clean !== '' && !clean.includes('•')) {
+            finalGrowattPass = encrypt(clean);
+        }
+    }
+    if (!finalGrowattPass) finalGrowattPass = encrypt('1234567');
+
+    let finalGessPass = existing.gess_password;
+    if (data.gess_password && typeof data.gess_password === 'string') {
+        const clean = data.gess_password.trim();
+        if (clean !== '' && !clean.includes('•')) {
+            finalGessPass = encrypt(clean);
+        }
+    }
+    if (!finalGessPass) finalGessPass = encrypt('123456');
+
     await pool.query(`
         INSERT INTO energy_credentials
-        (company_id, growatt_url, growatt_username, growatt_password, growatt_enabled,
+        (company_id, growatt_url, growatt_username, growatt_password, growatt_enabled, growatt_plant_id, plant_name,
          gess_url, gess_username, gess_password, gess_plant_id, gess_enabled,
          sync_interval_hours, peak_start_time, peak_end_time, peak_kwh_rate, offpeak_kwh_rate, solar_kwh_value)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON DUPLICATE KEY UPDATE
             growatt_url = VALUES(growatt_url),
             growatt_username = VALUES(growatt_username),
             growatt_password = VALUES(growatt_password),
             growatt_enabled = VALUES(growatt_enabled),
+            growatt_plant_id = VALUES(growatt_plant_id),
+            plant_name = VALUES(plant_name),
             gess_url = VALUES(gess_url),
             gess_username = VALUES(gess_username),
             gess_password = VALUES(gess_password),
@@ -557,12 +692,14 @@ async function updateCredentials(companyId, data) {
         companyId,
         data.growatt_url || 'https://server.growatt.com/',
         data.growatt_username || 'Raul_Sosa',
-        data.growatt_password || '1234567',
+        finalGrowattPass,
         data.growatt_enabled ? 1 : 0,
+        data.growatt_plant_id || defaultPlantId,
+        data.plant_name || (data.growatt_plant_id === '2604519' ? 'Puma San Martín II' : (data.growatt_plant_id === '2410077' ? 'Andelsa' : defaultPlantName)),
         data.gess_url || 'http://gess.net.cn/SolarWeb/',
         data.gess_username || 'proyectos',
-        data.gess_password || '123456',
-        parseInt(data.gess_plant_id, 10) || 218,
+        finalGessPass,
+        parseInt(data.gess_plant_id, 10) || (isSanMartin ? 0 : 218),
         data.gess_enabled ? 1 : 0,
         parseInt(data.sync_interval_hours, 10) || 4,
         data.peak_start_time || '18:00:00',
@@ -573,6 +710,46 @@ async function updateCredentials(companyId, data) {
     ]);
 
     return await getCredentials(companyId);
+}
+
+/**
+ * Obtener localidades/empresas energéticas disponibles según RBAC del usuario
+ */
+async function getAvailableLocations(user) {
+    const isSuperAdmin = user?.role === 'SuperAdmin' || user?.role_name === 'SuperAdmin' || user?.is_superadmin === 1 || user?.is_superadmin === true;
+    let userCompanies = [];
+
+    if (user?.company_id) {
+        userCompanies.push(Number(user.company_id));
+    }
+
+    if (!isSuperAdmin && user?.id) {
+        const [access] = await pool.query(
+            'SELECT empresa_id FROM usuario_empresa WHERE usuario_id = ? AND has_access = 1',
+            [user.id]
+        );
+        userCompanies = [...new Set([...userCompanies, ...access.map(a => Number(a.empresa_id))])];
+    }
+
+    const [rows] = await pool.query(`
+        SELECT ec.company_id, ec.growatt_plant_id, ec.plant_name, ec.gess_enabled,
+               c.razon_social, c.nombre_comercial
+        FROM energy_credentials ec
+        JOIN companies c ON c.id = ec.company_id
+        WHERE ec.growatt_enabled = 1 AND ec.growatt_plant_id IS NOT NULL AND ec.growatt_plant_id != ''
+        ORDER BY ec.company_id = 9 DESC, ec.company_id = 1 DESC, ec.company_id ASC
+    `);
+
+    return rows
+        .filter(r => isSuperAdmin || userCompanies.includes(r.company_id))
+        .map(r => ({
+            companyId: r.company_id,
+            name: r.nombre_comercial || r.razon_social,
+            legalName: r.razon_social,
+            plantId: r.growatt_plant_id,
+            plantName: r.plant_name || (r.growatt_plant_id === '2604519' ? 'Puma San Martín II' : (r.growatt_plant_id === '2410077' ? 'Andelsa' : 'Planta Solar')),
+            hasBatteries: !!r.gess_enabled
+        }));
 }
 
 /**
@@ -614,6 +791,7 @@ function startEnergyAutoSyncCron() {
 module.exports = {
     getCredentials,
     updateCredentials,
+    getAvailableLocations,
     fetchGrowatt,
     fetchGess,
     getLiveTelemetry,

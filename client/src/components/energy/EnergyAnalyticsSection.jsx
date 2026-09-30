@@ -59,7 +59,11 @@ export default function EnergyAnalyticsSection({ companyHeaders }) {
 
     useEffect(() => {
         fetchAnalytics();
-    }, [period, selectedDate, selectedMonth, selectedYear, selectedPlant]);
+    }, [period, selectedDate, selectedMonth, selectedYear, selectedPlant, companyHeaders?.['x-company-id']]);
+
+    useEffect(() => {
+        setSelectedPlant('all');
+    }, [companyHeaders?.['x-company-id']]);
 
     // Navegación temporal
     const handlePrev = () => {
@@ -108,9 +112,13 @@ export default function EnergyAnalyticsSection({ companyHeaders }) {
                       (period === 'year' && selectedYear === currentYear);
 
     const summary = analyticsData?.summary || {};
-    const plantName = selectedPlant === 'all' 
-        ? 'Todas las Plantas (Combinado)' 
-        : (selectedPlant === '2410077' ? 'Andelsa' : (selectedPlant === '2604519' ? 'Puma San Martín II' : `Planta ${selectedPlant}`));
+    const availablePlants = analyticsData?.availablePlants || [];
+    const currentPlantObj = availablePlants.find(p => String(p.id) === String(selectedPlant));
+    const plantName = currentPlantObj 
+        ? currentPlantObj.name 
+        : (availablePlants.length === 1 
+            ? availablePlants[0].name 
+            : (selectedPlant === 'all' ? 'Todas las Plantas' : `Planta ${selectedPlant}`));
 
     return (
         <div className="space-y-6">
@@ -218,15 +226,22 @@ export default function EnergyAnalyticsSection({ companyHeaders }) {
                 <div className="flex items-center gap-2">
                     <div className="flex items-center gap-1.5">
                         <Layers className="w-3.5 h-3.5 text-slate-400" />
-                        <select
-                            value={selectedPlant}
-                            onChange={(e) => setSelectedPlant(e.target.value)}
-                            className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-semibold text-slate-800 dark:text-slate-200"
-                        >
-                            <option value="all">Todas las Plantas</option>
-                            <option value="2410077">Andelsa (Growatt)</option>
-                            <option value="2604519">Puma San Martín II</option>
-                        </select>
+                        {availablePlants.length > 1 ? (
+                            <select
+                                value={selectedPlant}
+                                onChange={(e) => setSelectedPlant(e.target.value)}
+                                className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-semibold text-slate-800 dark:text-slate-200"
+                            >
+                                <option value="all">Todas las Plantas</option>
+                                {availablePlants.map(p => (
+                                    <option key={p.id} value={p.id}>{p.name}</option>
+                                ))}
+                            </select>
+                        ) : (
+                            <span className="px-3 py-1 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                                {availablePlants[0]?.name || plantName}
+                            </span>
+                        )}
                     </div>
 
                     <button
