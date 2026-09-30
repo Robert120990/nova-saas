@@ -358,13 +358,21 @@ const Sidebar = ({ onOpenSearch, isMobileOpen = false, onCloseMobile }) => {
         );
     };
 
-    const [version, setVersion] = useState('...');
+    const [versionInfo, setVersionInfo] = useState(() => ({
+        commit: typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '...',
+        version: typeof __APP_SEMANTIC_VERSION__ !== 'undefined' ? __APP_SEMANTIC_VERSION__ : ''
+    }));
 
     useEffect(() => {
         fetch('/health')
             .then(r => r.json())
-            .then(d => setVersion(d.version || '?'))
-            .catch(() => setVersion('?'));
+            .then(d => {
+                setVersionInfo({
+                    commit: d.commit || d.version || '?',
+                    version: d.appVersion || ''
+                });
+            })
+            .catch(() => {});
     }, []);
 
     const sidebarContent = (
@@ -421,9 +429,24 @@ const Sidebar = ({ onOpenSearch, isMobileOpen = false, onCloseMobile }) => {
 
             {!effectiveCollapsed && (
                 <div className="px-6 py-2 border-b border-slate-800/30">
-                    <p className="text-[11px] font-mono text-indigo-400/70 font-semibold tracking-wide">
-                        Versión: {version}
-                    </p>
+                    <NavLink
+                        to="/changelog"
+                        title="Ver Historial de Cambios"
+                        className="text-[11px] font-mono text-indigo-400/80 hover:text-indigo-300 font-semibold tracking-wide flex items-center gap-1.5 transition-colors group"
+                    >
+                        <span>Versión:</span>
+                        <span className="text-slate-300 group-hover:text-white transition-colors">
+                            {versionInfo.commit}
+                        </span>
+                        {versionInfo.version && (
+                            <>
+                                <span className="text-indigo-400/40">·</span>
+                                <span className="text-indigo-300 font-bold bg-indigo-500/10 border border-indigo-500/20 px-1.5 py-0.5 rounded text-[10px]">
+                                    {versionInfo.version}
+                                </span>
+                            </>
+                        )}
+                    </NavLink>
                 </div>
             )}
 
