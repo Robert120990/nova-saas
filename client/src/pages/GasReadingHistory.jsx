@@ -677,7 +677,9 @@ const GasReadingHistory = () => {
                                 </span>
                             </td>
                             <td className="px-3 py-1 text-xs font-mono font-bold text-indigo-600">{parseFloat(c.total_diferencia).toFixed(5)}</td>
-                            <td className="px-3 py-1 text-xs font-mono font-bold text-slate-900"><Money value={c.total_monto} /></td>
+                            <td className="px-3 py-1 text-xs font-mono font-bold text-slate-900">
+                                <div><Money value={c.total_monto} /></div>
+                            </td>
                             <td className="px-3 py-1">
                                 <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold font-mono ${
                                     parseFloat(c.total_diferencia_efectivo) >= 0

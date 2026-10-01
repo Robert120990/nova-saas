@@ -11,13 +11,21 @@ const Login = () => {
     const [selectionData, setSelectionData] = useState(null);
     const [selectedCompanyId, setSelectedCompanyId] = useState('');
     const [selectedBranchId, setSelectedBranchId] = useState('');
-    const [version, setVersion] = useState('...');
+    const [versionInfo, setVersionInfo] = useState(() => ({
+        commit: typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '...',
+        version: typeof __APP_SEMANTIC_VERSION__ !== 'undefined' ? __APP_SEMANTIC_VERSION__ : ''
+    }));
 
     useEffect(() => {
         fetch('/health')
             .then(r => r.json())
-            .then(d => setVersion(d.version || '?'))
-            .catch(() => setVersion('?'));
+            .then(d => {
+                setVersionInfo({
+                    commit: d.commit || d.version || '?',
+                    version: d.appVersion || ''
+                });
+            })
+            .catch(() => {});
     }, []);
     
     const { login, selectContext } = useAuth();
@@ -187,7 +195,9 @@ const Login = () => {
 
                 <div className="mt-10 pt-6 border-t border-slate-100 text-center space-y-1">
                     <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">© 2026 El Salvador DTE SIPE-WEB</p>
-                    <p className="text-[10px] font-mono text-slate-400 font-semibold">Versión: {version}</p>
+                    <p className="text-[10px] font-mono text-slate-400 font-semibold">
+                        Versión: {versionInfo.commit}{versionInfo.version ? ` · ${versionInfo.version}` : ''}
+                    </p>
                 </div>
             </div>
         </div>

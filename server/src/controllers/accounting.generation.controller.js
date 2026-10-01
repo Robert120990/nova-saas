@@ -108,16 +108,17 @@ async function buildVentasPreview(companyId, date, detailCredit, settings) {
 
     const creditosPorCliente = new Map();
     let creditosTotal = 0;
-    const totales = { gravadasNetas: 0, exentas: 0, nosujetas: 0, iva: 0, fovial: 0, cotrans: 0, percibido: 0 };
+    const totales = { gravadasNetas: 0, exentas: 0, nosujetas: 0, iva: 0, fovial: 0, cotrans: 0, percibido: 0, retenido: 0 };
     headers.forEach(h => {
         const sign = h.tipo_documento === '05' ? -1 : 1;
-        totales.gravadasNetas += sign * (parseFloat(h.total_gravado) - parseFloat(h.total_iva));
+        totales.gravadasNetas += sign * parseFloat(h.total_gravado);
         totales.exentas += sign * parseFloat(h.total_exento);
         totales.nosujetas += sign * parseFloat(h.total_nosujetas);
         totales.iva += sign * parseFloat(h.total_iva);
         totales.fovial += sign * parseFloat(h.fovial);
         totales.cotrans += sign * parseFloat(h.cotrans);
         totales.percibido += sign * parseFloat(h.iva_percibido);
+        totales.retenido += sign * parseFloat(h.iva_retenido || 0);
         if (h.condicion_operacion === 2) {
             const monto = sign * parseFloat(h.total_pagar);
             creditosTotal += monto;
@@ -153,6 +154,9 @@ async function buildVentasPreview(companyId, date, detailCredit, settings) {
     buildLine(lines, settings.CUENTA_FOVIAL_POR_PAGAR, 'FOVIAL del día', totales.fovial, 'credit');
     buildLine(lines, settings.CUENTA_COTRANS_POR_PAGAR, 'COTRANS del día', totales.cotrans, 'credit');
     buildLine(lines, settings.CUENTA_IVA_PERCIBIDO, 'IVA percibido del día', totales.percibido, 'credit');
+    if (totales.retenido > 0) {
+        buildLine(lines, settings.CUENTA_IVA_RETENIDO || settings.CUENTA_CLIENTES_CXC, 'IVA retenido por clientes', totales.retenido, 'debit');
+    }
 
     const { diff } = balanceLines(lines);
     if (Math.abs(diff) > 0.01) {
@@ -191,7 +195,7 @@ async function buildComprasPreview(companyId, date, detailCredit, settings) {
         totales.fovial += sign * parseFloat(p.fovial);
         totales.cotrans += sign * parseFloat(p.cotrans);
         retenciones += sign * parseFloat(p.retencion);
-        const neto = sign * (parseFloat(p.monto_total) - parseFloat(p.retencion));
+        const neto = sign * parseFloat(p.monto_total);
         if (String(p.condicion_operacion_id) === '2') {
             const key = p.provider_id || 0;
             const prev = porProveedor.get(key) || {

@@ -216,6 +216,10 @@ const Empleados = () => {
 
     const handleSubmit = (e) => {
         e.preventDefault();
+        // Solo procesar guardado de empleado en pestañas de datos del empleado
+        if (activeTab !== 'personal' && activeTab !== 'laboral') {
+            return;
+        }
         const formData = new FormData(e.target);
         const data = Object.fromEntries(formData.entries());
 
@@ -542,21 +546,21 @@ const Empleados = () => {
                             <div className="grid grid-cols-3 gap-4">
                                 <div>
                                     <label className={labelCls}>Departamento</label>
-                                    <select name="departamento" value={selectedDept} onChange={e => { setSelectedDept(e.target.value); setSelectedMun(''); setSelectedDistrito(''); }} className={fieldCls} required>
+                                    <select name="departamento" value={selectedDept} onChange={e => { setSelectedDept(e.target.value); setSelectedMun(''); setSelectedDistrito(''); }} className={fieldCls}>
                                         <option value="">Seleccionar</option>
                                         {departments?.map(d => <option key={d.code} value={d.code}>{d.description}</option>)}
                                     </select>
                                 </div>
                                 <div>
                                     <label className={labelCls}>Municipio</label>
-                                    <select name="municipio" value={selectedMun} onChange={e => setSelectedMun(e.target.value)} className={fieldCls} required>
+                                    <select name="municipio" value={selectedMun} onChange={e => setSelectedMun(e.target.value)} className={fieldCls}>
                                         <option value="">Seleccionar</option>
                                         {municipalities?.map(m => <option key={m.code} value={m.code}>{m.description}</option>)}
                                     </select>
                                 </div>
                                 <div>
                                     <label className={labelCls}>Distrito</label>
-                                    <select name="distrito" value={selectedDistrito} onChange={e => setSelectedDistrito(e.target.value)} className={fieldCls} required>
+                                    <select name="distrito" value={selectedDistrito} onChange={e => setSelectedDistrito(e.target.value)} className={fieldCls}>
                                         <option value="">Seleccionar</option>
                                         {distritos?.map(d => <option key={d.code} value={d.code}>{d.description}</option>)}
                                     </select>
@@ -823,7 +827,15 @@ const DescuentosTab = ({ visible, selected, descuentosAsignados, descuentosCatal
     };
 
     const handleSubmit = (e) => {
-        e.preventDefault();
+        if (e && e.preventDefault) e.preventDefault();
+        if (!formData.descuento_id) {
+            toast.error('Selecciona un tipo de descuento');
+            return;
+        }
+        if (!formData.valor || formData.valor <= 0) {
+            toast.error('Ingresa un valor válido para el descuento');
+            return;
+        }
         descuentoMutation.mutate({ data: formData, editId: editDescuento?.id }, { onSuccess: () => resetForm() });
     };
 
@@ -858,7 +870,7 @@ const DescuentosTab = ({ visible, selected, descuentosAsignados, descuentosCatal
             </div>
 
             {showForm && (
-                <form onSubmit={handleSubmit} className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
                     <div className="grid grid-cols-3 gap-3">
                         <div>
                             <label className={labelCls}>Descuento</label>
@@ -899,11 +911,11 @@ const DescuentosTab = ({ visible, selected, descuentosAsignados, descuentosCatal
                     </div>
                     <div className="flex justify-end gap-2 pt-2">
                         <button type="button" onClick={resetForm} className="px-3 py-1.5 text-xs font-bold text-slate-500 hover:text-slate-700">Cancelar</button>
-                        <button type="submit" disabled={descuentoMutation.isPending} className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold disabled:opacity-50">
+                        <button type="button" onClick={handleSubmit} disabled={descuentoMutation.isPending} className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold disabled:opacity-50">
                             {descuentoMutation.isPending ? 'Guardando...' : (editDescuento ? 'Actualizar' : 'Agregar')}
                         </button>
                     </div>
-                </form>
+                </div>
             )}
 
             <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">

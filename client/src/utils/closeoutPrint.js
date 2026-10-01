@@ -13,6 +13,7 @@ export function buildCloseoutPrintHtml(data) {
     const creditos = data.creditos || [];
     const vales = data.vales || [];
     const anticiposDesp = data.anticiposDesp || [];
+    const trupputDesp = data.trupputDesp || [];
     const despachadorNozzleAssignments = data.despachadorNozzleAssignments || [];
     const shiftReadings = data.shiftReadings || readings;
 
@@ -57,7 +58,8 @@ export function buildCloseoutPrintHtml(data) {
             tarjetas.filter(matchShiftAndDesp).reduce((s, t) => s + (parseFloat(t.monto) || 0), 0) +
             creditos.filter(matchShiftAndDesp).reduce((s, c) => s + (parseFloat(c.monto) || 0), 0) +
             vales.filter(matchShiftAndDesp).reduce((s, v) => s + (parseFloat(v.monto) || 0), 0) +
-            anticiposDesp.filter(matchShiftAndDesp).reduce((s, a) => s + (parseFloat(a.monto) || 0), 0);
+            anticiposDesp.filter(matchShiftAndDesp).reduce((s, a) => s + (parseFloat(a.monto) || 0), 0) +
+            trupputDesp.filter(matchShiftAndDesp).reduce((s, tp) => s + (parseFloat(tp.monto) || 0), 0);
         despachadorNoPercibido[rowKey] = Number(d.total_no_percibido || 0) > 0 ? Number(d.total_no_percibido) : noPercibidoSum;
 
         // 2. Calculate Entregado (remesas)
@@ -71,7 +73,10 @@ export function buildCloseoutPrintHtml(data) {
         const shiftReadingsList = shiftReadingsMap[cidKey] || readings;
         const totalFuelShift = shiftReadingsList.reduce((s, r) => {
             const diff = (parseFloat(r.lectura_actual) || 0) - (parseFloat(r.lectura_anterior) || 0) - (parseFloat(r.calibracion) || 0);
-            return s + (diff * (parseFloat(r.precio) || 0));
+            const m = (r.monto !== undefined && r.monto !== null && !isNaN(parseFloat(r.monto)))
+                ? parseFloat(r.monto)
+                : Math.round(diff * (parseFloat(r.precio) || 0) * 100) / 100;
+            return s + m;
         }, 0);
 
         const totalLubeShift = lubricantes
@@ -92,7 +97,11 @@ export function buildCloseoutPrintHtml(data) {
             if (assignedNozzles.length > 0) {
                 for (const r of shiftReadingsList) {
                     if (assignedNozzles.includes(r.nozzle_id)) {
-                        nozzleFuel += ((parseFloat(r.lectura_actual) || 0) - (parseFloat(r.lectura_anterior) || 0) - (parseFloat(r.calibracion) || 0)) * (parseFloat(r.precio) || 0);
+                        const diff = (parseFloat(r.lectura_actual) || 0) - (parseFloat(r.lectura_anterior) || 0) - (parseFloat(r.calibracion) || 0);
+                        const m = (r.monto !== undefined && r.monto !== null && !isNaN(parseFloat(r.monto)))
+                            ? parseFloat(r.monto)
+                            : Math.round(diff * (parseFloat(r.precio) || 0) * 100) / 100;
+                        nozzleFuel += m;
                     }
                 }
             }
@@ -152,12 +161,19 @@ export function buildCloseoutPrintHtml(data) {
     const creditosTotal = creditos.reduce((s, c) => s + (parseFloat(c.monto) || 0), 0);
     const valesTotal = vales.reduce((s, v) => s + (parseFloat(v.monto) || 0), 0);
     const anticiposDespTotal = anticiposDesp.reduce((s, a) => s + (parseFloat(a.monto) || 0), 0);
+    const trupputDespTotal = trupputDesp.reduce((s, a) => s + (parseFloat(a.monto) || 0), 0);
     const lubricantTotal = lubricantes.reduce((s, r) => s + (parseFloat(r.total) || 0), 0);
 
-    const totalMonto = readings.reduce((s, r) => s + ((r.lectura_actual - r.lectura_anterior - r.calibracion) * r.precio), 0);
-    const totalLectura = readings.reduce((s, r) => s + (r.lectura_actual - r.lectura_anterior - r.calibracion), 0);
+    const totalMonto = Math.round(readings.reduce((s, r) => {
+        const diff = (parseFloat(r.lectura_actual) || 0) - (parseFloat(r.lectura_anterior) || 0) - (parseFloat(r.calibracion) || 0);
+        const m = (r.monto !== undefined && r.monto !== null && !isNaN(parseFloat(r.monto)))
+            ? parseFloat(r.monto)
+            : Math.round(diff * (parseFloat(r.precio) || 0) * 100) / 100;
+        return s + m;
+    }, 0) * 100) / 100;
+    const totalLectura = readings.reduce((s, r) => s + ((parseFloat(r.lectura_actual) || 0) - (parseFloat(r.lectura_anterior) || 0) - (parseFloat(r.calibracion) || 0)), 0);
 
-    const egresosTotal = gastosTotal + remesasTotal + cuponesTotal + descuentosTotal + adelantosTotal + tarjetasTotal + creditosTotal + valesTotal + anticiposDespTotal;
+    const egresosTotal = gastosTotal + remesasTotal + cuponesTotal + descuentosTotal + adelantosTotal + tarjetasTotal + creditosTotal + valesTotal + anticiposDespTotal + trupputDespTotal;
     const ingresosTotal = totalMonto + lubricantTotal;
     const diferenciaTotal = egresosTotal - ingresosTotal;
 
@@ -167,9 +183,12 @@ export function buildCloseoutPrintHtml(data) {
         if (!summaryMap[key]) {
             summaryMap[key] = { codigo_producto: r.codigo_producto, descripcion_producto: r.descripcion_producto, precio: r.precio, total_lectura: 0, total_monto: 0 };
         }
-        const diff = r.lectura_actual - r.lectura_anterior - r.calibracion;
+        const diff = (parseFloat(r.lectura_actual) || 0) - (parseFloat(r.lectura_anterior) || 0) - (parseFloat(r.calibracion) || 0);
+        const m = (r.monto !== undefined && r.monto !== null && !isNaN(parseFloat(r.monto)))
+            ? parseFloat(r.monto)
+            : Math.round(diff * (parseFloat(r.precio) || 0) * 100) / 100;
         summaryMap[key].total_lectura += diff;
-        summaryMap[key].total_monto += diff * r.precio;
+        summaryMap[key].total_monto += m;
     });
     const summaryByProduct = Object.values(summaryMap);
 
@@ -214,7 +233,9 @@ export function buildCloseoutPrintHtml(data) {
             islandGroups.push(islandObj);
         }
         const diff = (parseFloat(r.lectura_actual) || 0) - (parseFloat(r.lectura_anterior) || 0) - (parseFloat(r.calibracion) || 0);
-        const monto = diff * (parseFloat(r.precio) || 0);
+        const monto = (r.monto !== undefined && r.monto !== null && !isNaN(parseFloat(r.monto)))
+            ? parseFloat(r.monto)
+            : Math.round(diff * (parseFloat(r.precio) || 0) * 100) / 100;
         islandMap[islandKey].readings.push({ ...r, diff, monto });
         islandMap[islandKey].subtotalLectura += diff;
         islandMap[islandKey].subtotalMonto += monto;
@@ -384,7 +405,7 @@ export function buildCloseoutPrintHtml(data) {
     // Liquidación / Diferencia (nivelada)
     html += `<div class="section" style="border: 1px solid #e2e8f0; border-radius: 4px; padding: 5px 8px; background: #fafafa; margin-bottom: 7px;">
         <div style="display:flex;justify-content:space-between;align-items:center;">
-            <span style="font-size:9.5px;font-weight:700;text-transform:uppercase;color:#475569;">Faltante / Sobrante del Turno:</span>
+            <span style="font-size:9.5px;font-weight:700;text-transform:uppercase;color:#475569;">${isAccumulated ? 'Faltante / Sobrante del Día:' : 'Faltante / Sobrante del Turno:'}</span>
             <span style="font-size:13px;font-weight:900;font-family:'Courier New',monospace;${diferenciaTotal >= 0 ? 'color:#059669;' : 'color:#dc2626;'}">
                 ${diferenciaTotal >= 0 ? '+' : ''}${fmtMoney(diferenciaTotal)}
             </span>
@@ -412,6 +433,7 @@ export function buildCloseoutPrintHtml(data) {
                     ${creditosTotal > 0 ? `<tr><td>Ventas a Crédito</td><td class="right mono">—</td><td class="right mono">${fmtMoney(creditosTotal)}</td></tr>` : ''}
                     ${valesTotal > 0 ? `<tr><td>Vales / Órdenes</td><td class="right mono">—</td><td class="right mono">${fmtMoney(valesTotal)}</td></tr>` : ''}
                     ${anticiposDespTotal > 0 ? `<tr><td>Anticipos Despachadores</td><td class="right mono">—</td><td class="right mono">${fmtMoney(anticiposDespTotal)}</td></tr>` : ''}
+                    ${trupputDespTotal > 0 ? `<tr><td>Despachos Trupput</td><td class="right mono">—</td><td class="right mono">${fmtMoney(trupputDespTotal)}</td></tr>` : ''}
                     ${gastosTotal > 0 ? `<tr><td>Gastos de Turno</td><td class="right mono">—</td><td class="right mono">${fmtMoney(gastosTotal)}</td></tr>` : ''}
                     ${cuponesTotal > 0 ? `<tr><td>Cupones</td><td class="right mono">—</td><td class="right mono">${fmtMoney(cuponesTotal)}</td></tr>` : ''}
                     ${descuentosTotal > 0 ? `<tr><td>Descuentos</td><td class="right mono">—</td><td class="right mono">${fmtMoney(descuentosTotal)}</td></tr>` : ''}

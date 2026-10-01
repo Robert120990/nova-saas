@@ -27,6 +27,7 @@ const Categories = lazyWithRetry(() => import('./pages/Categories'));
 const UserAccess = lazyWithRetry(() => import('./pages/UserAccess'));
 const SmtpConfig = lazyWithRetry(() => import('./pages/SmtpConfig'));
 const SystemSettings = lazyWithRetry(() => import('./pages/SystemSettings'));
+const FusionConfig = lazyWithRetry(() => import('./pages/FusionConfig'));
 const ServerTerminal = lazyWithRetry(() => import('./pages/ServerTerminal'));
 const NotificacionesConfig = lazyWithRetry(() => import('./pages/NotificacionesConfig'));
 const NotificacionesLista = lazyWithRetry(() => import('./pages/NotificacionesLista'));
@@ -166,6 +167,7 @@ const Planillas = lazyWithRetry(() => import('./pages/rh/Planillas'));
 const Quincena25 = lazyWithRetry(() => import('./pages/rh/Quincena25'));
 const ReportesRh = lazyWithRetry(() => import('./pages/rh/ReportesRh'));
 const AccionesPersonal = lazyWithRetry(() => import('./pages/rh/AccionesPersonal'));
+const MarcadorDigital = lazyWithRetry(() => import('./pages/rh/MarcadorDigital'));
 
 const VatBookPurchases = lazyWithRetry(() => import('./pages/VatBooks/VatBookPurchases'));
 const VatBookSalesTaxpayers = lazyWithRetry(() => import('./pages/VatBooks/VatBookSalesTaxpayers'));
@@ -191,6 +193,7 @@ const EggInventory = lazyWithRetry(() => import('./pages/EggIndustrial/Inventory
 const CustomerAgreements = lazyWithRetry(() => import('./pages/CRM/CustomerAgreements'));
 const CrmConfig = lazyWithRetry(() => import('./pages/CRM/CrmConfig'));
 const CrmQuotations = lazyWithRetry(() => import('./pages/CRM/CrmQuotations'));
+const SistemaEnergetico = lazyWithRetry(() => import('./pages/energy/SistemaEnergetico'));
 
 import Layout from './components/layout/Layout';
 
@@ -260,6 +263,7 @@ function App() {
                         <Route path="/user-access" element={<UserAccess />} />
                         <Route path="/configuracion/smtp" element={<SmtpConfig />} />
                         <Route path="/configuracion/sistema" element={<SystemSettings />} />
+                        <Route path="/configuracion/fusion-ffc" element={<FusionConfig />} />
                         <Route path="/configuracion/servidor" element={<ServerMetrics />} />
                         <Route path="/configuracion/terminal" element={<ServerTerminal />} />
                         <Route path="/configuracion/logs" element={<Navigate to="/configuracion/servidor" replace />} />
@@ -392,6 +396,7 @@ function App() {
                         <Route path="/rh/planillas" element={<Planillas />} />
                         <Route path="/rh/quincena25" element={<Quincena25 />} />
                         <Route path="/rh/acciones-personal" element={<AccionesPersonal />} />
+                        <Route path="/rh/marcador-digital" element={<MarcadorDigital />} />
                         <Route path="/rh/reportes" element={<Navigate to="/rh/reportes/isss" replace />} />
 <Route path="/rh/reportes/:tipo" element={<ReportesRh />} />
 
@@ -439,6 +444,9 @@ function App() {
                         <Route path="/crm/cotizaciones" element={<CrmQuotations />} />
                         <Route path="/crm/acuerdos" element={<CustomerAgreements />} />
                         <Route path="/crm/configuracion" element={<CrmConfig />} />
+
+                        {/* Sistema Energético */}
+                        <Route path="/sistema-energetico" element={<SistemaEnergetico />} />
                         
                         <Route path="/" element={<Navigate to="/dashboard" replace />} />
                     </Route>

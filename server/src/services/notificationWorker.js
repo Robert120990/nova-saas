@@ -9,8 +9,9 @@ const { sendToUser } = require('./websocket.service');
 const actionCache = new Map();
 let cacheTime = 0;
 const CACHE_TTL = 60000;
-const POLL_INTERVAL = 1500;
+const POLL_INTERVAL = 3000;
 const BATCH_SIZE = 10;
+let isPolling = false;
 
 async function getAction(actionCode) {
     const now = Date.now();
@@ -139,6 +140,8 @@ function buildEmailHtml(title, message, link) {
 }
 
 async function pollQueue() {
+    if (isPolling) return;
+    isPolling = true;
     let connection;
     try {
         connection = await pool.getConnection();
@@ -184,12 +187,15 @@ async function pollQueue() {
             }
         }
     } catch (error) {
-        console.error('[NotificationWorker] Error en pollQueue:', error);
+        console.error('[NotificationWorker] Error en pollQueue:', error.message || error);
         if (connection) {
-            try { await connection.rollback(); } catch (e) {}
+            try { await connection.rollback(); } catch {}
         }
     } finally {
-        if (connection) connection.release();
+        if (connection) {
+            try { connection.release(); } catch {}
+        }
+        isPolling = false;
     }
 }
 

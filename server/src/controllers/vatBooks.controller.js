@@ -759,7 +759,9 @@ const getVatBookSalesConsumersPDF = async (req, res) => {
         let rows;
         if (isResumen) {
             const query = `
-                SELECT DATE(sh.fecha_emision) as fecha, MIN(d.numero_control) as num_desde, MAX(d.numero_control) as num_hasta,
+                SELECT DATE(sh.fecha_emision) as fecha,
+                       COALESCE(MIN(CASE WHEN sh.tipo_documento = '01' THEN d.numero_control END), MIN(d.numero_control)) as num_desde,
+                       COALESCE(MAX(CASE WHEN sh.tipo_documento = '01' THEN d.numero_control END), MAX(d.numero_control)) as num_hasta,
                        SUM(CASE WHEN sh.tipo_documento = '05' THEN -sh.total_gravado ELSE sh.total_gravado END) as t_grav,
                        SUM(CASE WHEN sh.tipo_documento = '05' THEN -sh.total_exento ELSE sh.total_exento END) as t_exe,
                        SUM(CASE WHEN sh.tipo_documento = '05' THEN -sh.total_iva ELSE sh.total_iva END) as t_iva,

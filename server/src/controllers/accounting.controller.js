@@ -273,11 +273,11 @@ const getTrialBalance = async (req, res) => {
         const [rows] = await pool.query(`
             SELECT 
                 a.id, a.code, a.name, t.name as type_name, t.nature,
-                COALESCE(SUM(l.debit), 0) as total_debit,
-                COALESCE(SUM(l.credit), 0) as total_credit,
+                COALESCE(SUM(CASE WHEN e.id IS NOT NULL THEN l.debit ELSE 0 END), 0) as total_debit,
+                COALESCE(SUM(CASE WHEN e.id IS NOT NULL THEN l.credit ELSE 0 END), 0) as total_credit,
                 CASE WHEN t.nature = 'debit' 
-                    THEN COALESCE(SUM(l.debit), 0) - COALESCE(SUM(l.credit), 0)
-                    ELSE COALESCE(SUM(l.credit), 0) - COALESCE(SUM(l.debit), 0)
+                    THEN COALESCE(SUM(CASE WHEN e.id IS NOT NULL THEN l.debit ELSE 0 END), 0) - COALESCE(SUM(CASE WHEN e.id IS NOT NULL THEN l.credit ELSE 0 END), 0)
+                    ELSE COALESCE(SUM(CASE WHEN e.id IS NOT NULL THEN l.credit ELSE 0 END), 0) - COALESCE(SUM(CASE WHEN e.id IS NOT NULL THEN l.debit ELSE 0 END), 0)
                 END as balance
             FROM chart_of_accounts a
             JOIN account_types t ON a.account_type_id = t.id
@@ -309,12 +309,13 @@ const performClosing = async (req, res) => {
                 END as balance
              FROM chart_of_accounts a
              JOIN account_types t ON a.account_type_id = t.id
-             LEFT JOIN accounting_entry_lines l ON a.id = l.account_id
-             LEFT JOIN accounting_entries e ON l.entry_id = e.id AND e.status = 'posted'
+             JOIN accounting_entry_lines l ON a.id = l.account_id
+             JOIN accounting_entries e ON l.entry_id = e.id
              WHERE a.company_id = ? AND a.account_type_id IN (4,5,6) AND a.active = 1 AND a.allows_entries = 1
+               AND e.status = 'posted' AND e.date <= ?
              GROUP BY a.id
              HAVING balance != 0`,
-            [companyId]
+            [companyId, date]
         );
 
         // Buscar cuenta de "Resultado del Ejercicio" desde configuración
@@ -437,12 +438,13 @@ const performOpening = async (req, res) => {
                 END as balance
              FROM chart_of_accounts a
              JOIN account_types t ON a.account_type_id = t.id
-             LEFT JOIN accounting_entry_lines l ON a.id = l.account_id
-             LEFT JOIN accounting_entries e ON l.entry_id = e.id AND e.status = 'posted'
+             JOIN accounting_entry_lines l ON a.id = l.account_id
+             JOIN accounting_entries e ON l.entry_id = e.id
              WHERE a.company_id = ? AND a.account_type_id IN (1,2,3) AND a.active = 1 AND a.allows_entries = 1
+               AND e.status = 'posted' AND e.date <= ?
              GROUP BY a.id
              HAVING balance != 0`,
-            [companyId]
+            [companyId, date]
         );
 
         const lines = [];

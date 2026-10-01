@@ -6,20 +6,35 @@ const getChangelog = async (req, res) => {
         const { limit = 50 } = req.query;
         const repoPath = path.resolve(__dirname, '../../..');
 
+        let totalCommits = 0;
+        try {
+            totalCommits = parseInt(execSync('git rev-list --count HEAD', { cwd: repoPath }).toString().trim(), 10) || 0;
+        } catch {
+            totalCommits = 0;
+        }
+
         const output = execSync(
-            `git log --max-count=${parseInt(limit)} --format="%H|%h|%an|%ai|%s" --date=iso`,
+            `git log --max-count=${parseInt(limit, 10)} --format="%H|%h|%an|%ai|%s" --date=iso`,
             { cwd: repoPath }
         ).toString().trim();
 
         if (!output) return res.json({ data: [], total: 0 });
 
-        const commits = output.split('\n').filter(Boolean).map(line => {
+        const commits = output.split('\n').filter(Boolean).map((line, index) => {
             const [fullHash, hash, author, date, ...msgParts] = line.split('|');
             const msg = msgParts.join('|');
             const colonIdx = msg.indexOf(': ');
+
+            // Extracción o cálculo de la versión autoincrementable v2.7.<commitNumber>
+            const versionMatch = msg.match(/v2\.7\.\d+/i);
+            const versionNumber = totalCommits > 0 ? (totalCommits - index) : null;
+            const version = versionMatch ? versionMatch[0] : (versionNumber ? `v2.7.${versionNumber}` : null);
+
             return {
                 hash,
                 fullHash,
+                version,
+                commitNumber: versionNumber,
                 author,
                 date,
                 message: msg,

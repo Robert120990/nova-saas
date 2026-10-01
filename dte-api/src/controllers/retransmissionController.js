@@ -252,8 +252,8 @@ async function buildPayloadFromSale(dteRecord, newReceptor, companyId) {
         exportacion: dteRecord.tipo_dte === '11' ? {
             tipoItemExpor: sale.export_item_type || 1,
             recintoFiscal: sale.fiscal_enclosure || '00',
-            tipoRegimen: sale.export_regime || 'EX-1',
-            regimen: sale.export_regime || null,
+            tipoRegimen: (sale.export_regime && String(sale.export_regime).toUpperCase().startsWith('EX')) ? 'EX-1' : (sale.export_regime || 'EX-1'),
+            regimen: null,
             codPaisDestino: customer?.pais || customer?.pais_code || sale.dest_country_code || '',
             incoterms: sale.incoterms || '01',
             descIncoterms: sale.desc_incoterms || 'EXW- En fabrica',

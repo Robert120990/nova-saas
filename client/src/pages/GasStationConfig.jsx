@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { toast } from 'sonner';
+import { Cpu, Eye, EyeOff, Server, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 export default function GasStationConfig() {
@@ -13,6 +14,12 @@ export default function GasStationConfig() {
     const [empresaRrs, setEmpresaRrs] = useState('');
     const [creditosAfectanCxc, setCreditosAfectanCxc] = useState(false);
     const [creditosDesdeFecha, setCreditosDesdeFecha] = useState('');
+    const [fusionHost, setFusionHost] = useState('');
+    const [fusionUser, setFusionUser] = useState('');
+    const [fusionPassword, setFusionPassword] = useState('');
+    const [showFusionPassword, setShowFusionPassword] = useState(false);
+    const [testingFusion, setTestingFusion] = useState(false);
+    const [fusionTestResult, setFusionTestResult] = useState(null);
 
     const { data: settings } = useQuery({
         queryKey: ['gas-station-settings'],
@@ -29,6 +36,9 @@ export default function GasStationConfig() {
         if (settings?.variacion_permitida) setVariacionPermitida(settings.variacion_permitida);
         if (settings?.cuenta_bancaria_pista) setCuentaBancariaPista(settings.cuenta_bancaria_pista);
         if (settings?.rrs_id_empresa) setEmpresaRrs(settings.rrs_id_empresa);
+        if (settings?.fusion_host) setFusionHost(settings.fusion_host);
+        if (settings?.fusion_user) setFusionUser(settings.fusion_user);
+        if (settings?.fusion_password) setFusionPassword(settings.fusion_password);
         if (settings?.creditos_afectan_cxc !== undefined) {
             setCreditosAfectanCxc(settings.creditos_afectan_cxc === '1');
         }
@@ -58,7 +68,30 @@ export default function GasStationConfig() {
             rrs_id_empresa: empresaRrs || null,
             creditos_afectan_cxc: creditosAfectanCxc ? '1' : '0',
             creditos_afectan_cxc_desde: creditosAfectanCxc ? (creditosDesdeFecha || null) : null,
+            fusion_host: fusionHost || null,
+            fusion_user: fusionUser || null,
+            ...(fusionPassword ? { fusion_password: fusionPassword } : {})
         });
+    };
+
+    const handleTestFusion = async () => {
+        setTestingFusion(true);
+        setFusionTestResult(null);
+        try {
+            const res = await axios.post('/api/gas-station/fusion/test-connection', {
+                host: fusionHost,
+                username: fusionUser,
+                password: fusionPassword
+            });
+            setFusionTestResult({ success: true, message: res.data?.message || 'Conexión exitosa' });
+            toast.success('Conexión con Fusion FFC establecida');
+        } catch (err) {
+            const msg = err.response?.data?.message || 'Error de conexión con Fusion';
+            setFusionTestResult({ success: false, message: msg });
+            toast.error(msg);
+        } finally {
+            setTestingFusion(false);
+        }
     };
 
     const categoriesList = categories;
@@ -190,6 +223,81 @@ export default function GasStationConfig() {
                             </p>
                         </div>
                     )}
+                </div>
+
+                <div className="pt-4 border-t border-slate-100 space-y-4">
+                    <div className="flex items-center gap-2">
+                        <Cpu size={16} className="text-indigo-600" />
+                        <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                            Conexión a Fusion FFC (Esta Estación)
+                        </h3>
+                    </div>
+                    <p className="text-[11px] text-slate-500">
+                        Credenciales del controlador Wayne Fusion para extracción automática de lecturas y ventas de la estación actual.
+                    </p>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div>
+                            <label className={labelCls}>Dirección IP / Host</label>
+                            <input
+                                type="text"
+                                placeholder="Ej: 10.19.4.15"
+                                value={fusionHost}
+                                onChange={(e) => setFusionHost(e.target.value)}
+                                className={fieldCls}
+                            />
+                        </div>
+
+                        <div>
+                            <label className={labelCls}>Usuario Fusion</label>
+                            <input
+                                type="text"
+                                placeholder="Ej: manager"
+                                value={fusionUser}
+                                onChange={(e) => setFusionUser(e.target.value)}
+                                className={fieldCls}
+                            />
+                        </div>
+                    </div>
+
+                    <div>
+                        <label className={labelCls}>Contraseña</label>
+                        <div className="relative">
+                            <input
+                                type={showFusionPassword ? 'text' : 'password'}
+                                placeholder="••••••••"
+                                value={fusionPassword}
+                                onChange={(e) => setFusionPassword(e.target.value)}
+                                className={`${fieldCls} pr-10`}
+                            />
+                            <button
+                                type="button"
+                                onClick={() => setShowFusionPassword(p => !p)}
+                                className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600"
+                            >
+                                {showFusionPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                            </button>
+                        </div>
+                    </div>
+
+                    {fusionTestResult && (
+                        <div className={`p-3 rounded-xl border text-xs flex items-center gap-2 ${fusionTestResult.success ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-rose-50 border-rose-200 text-rose-800'}`}>
+                            {fusionTestResult.success ? <CheckCircle2 size={15} className="text-emerald-600 shrink-0" /> : <AlertCircle size={15} className="text-rose-600 shrink-0" />}
+                            <span className="font-medium">{fusionTestResult.message}</span>
+                        </div>
+                    )}
+
+                    <div>
+                        <button
+                            type="button"
+                            onClick={handleTestFusion}
+                            disabled={testingFusion || !fusionHost || !fusionUser}
+                            className="px-3.5 py-1.5 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-all disabled:opacity-50 flex items-center gap-1.5"
+                        >
+                            {testingFusion ? <Loader2 size={13} className="animate-spin text-indigo-600" /> : <Server size={13} />}
+                            {testingFusion ? 'Probando...' : 'Probar Conexión Fusion'}
+                        </button>
+                    </div>
                 </div>
 
                 <div className="flex justify-end pt-2">

@@ -105,7 +105,16 @@ const Aguinaldos = () => {
             const res = await axios.get('/api/rh/planilla-aguinaldos', { params });
             const rows = res.data;
             if (!rows.length) return toast.error('Sin datos');
-            const csv = rows.map(item => {
+            const sortedRows = [...rows].sort((a, b) => {
+                const cuentaA = String(a.cuenta_planillera || '').trim();
+                const cuentaB = String(b.cuenta_planillera || '').trim();
+                const hasA = Boolean(cuentaA && cuentaA !== '0' && cuentaA !== '-');
+                const hasB = Boolean(cuentaB && cuentaB !== '0' && cuentaB !== '-');
+                if (hasA && !hasB) return -1;
+                if (!hasA && hasB) return 1;
+                return 0;
+            });
+            const csv = sortedRows.map(item => {
                 const cuenta = String(item.cuenta_planillera || '');
                 const monto = parseFloat(item.monto_recibir || 0).toFixed(2);
                 const nombre = `${item.nombres || ''} ${item.apellidos || ''}`.trim();

@@ -144,7 +144,8 @@ const getStats = async (req, res) => {
                 JOIN products p ON si.product_id = p.id
                 WHERE sh.company_id = ? AND sh.estado != 'anulado' AND sh.estado != 'ANULADO'
                   AND NOT EXISTS (SELECT 1 FROM dtes WHERE venta_id = sh.id AND status = 'INVALIDADO')
-                  AND sh.created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+                  AND MONTH(sh.created_at) = MONTH(CURRENT_DATE())
+                  AND YEAR(sh.created_at) = YEAR(CURRENT_DATE())
                 GROUP BY sh.branch_id, p.id, p.nombre
                 ORDER BY sh.branch_id, total_qty DESC
             `, [companyId]);
@@ -157,11 +158,28 @@ const getStats = async (req, res) => {
                 }
             });
 
+            const [bQuantities] = await pool.query(`
+                SELECT sh.branch_id, SUM(si.cantidad) as total_qty
+                FROM sales_items si
+                JOIN sales_headers sh ON si.sale_id = sh.id
+                WHERE sh.company_id = ? AND sh.estado != 'anulado' AND sh.estado != 'ANULADO'
+                  AND NOT EXISTS (SELECT 1 FROM dtes WHERE venta_id = sh.id AND status = 'INVALIDADO')
+                  AND MONTH(sh.created_at) = MONTH(CURRENT_DATE())
+                  AND YEAR(sh.created_at) = YEAR(CURRENT_DATE())
+                GROUP BY sh.branch_id
+            `, [companyId]);
+
+            const branchQtyMap = {};
+            (bQuantities || []).forEach(bq => {
+                branchQtyMap[bq.branch_id] = parseFloat(bq.total_qty || 0);
+            });
+
             branches = (mSales || []).map(ms => ({
                 id: ms.branch_id,
                 name: ms.branch_name,
                 ambiente: ms.ambiente,
                 monthlyTotal: parseFloat(ms.total || 0),
+                totalQty: branchQtyMap[ms.branch_id] || 0,
                 topProducts: topByBranch[ms.branch_id] || [],
                 status: 'Online'
             }));

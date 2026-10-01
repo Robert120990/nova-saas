@@ -451,6 +451,7 @@ const autoInvoiceDispatchRoute = async (req) => {
             const finalTotalGravado = safeNum(totalGravado, 0);
             const finalTotalIva = safeNum(totalIva, 0);
             const finalTotalExento = safeNum(totalExento, 0);
+            const finalTotalNoSujeto = safeNum(totalNoSujeto, 0);
             let retencion = 0;
             let percepcion = 0;
             if (company.tipo_contribuyente !== 'Grande' && customer.condicion_fiscal === 'gran contribuyente' && dteType === '03') {
@@ -584,6 +585,8 @@ const autoInvoiceDispatchRoute = async (req) => {
                         condicion_operacion: condicionOperacion,
                         dias_credito: diasCredito,
                         total_gravado: finalTotalGravado,
+                        total_exento: finalTotalExento,
+                        total_nosujeto: finalTotalNoSujeto,
                         total_iva: finalTotalIva,
                         total_pagar: totalPagar,
                         total_retencion: finalRetencion,

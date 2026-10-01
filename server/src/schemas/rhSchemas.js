@@ -193,6 +193,31 @@ const planillaAguinaldosSchema = z.object({
 // ==========================================
 // 5. DESCUENTOS PROGRAMADOS
 // ==========================================
+// Catálogo general de descuentos programados (/rh/descuentos-programados)
+const rhDescuentoProgramadoSchema = z.object({
+    codigo: z.string({ error: 'El código es obligatorio' })
+        .trim()
+        .min(1, 'El código no puede estar vacío'),
+    descripcion: z.string({ error: 'La descripción es obligatoria' })
+        .trim()
+        .min(1, 'La descripción no puede estar vacía'),
+    cuenta_id: z.coerce.number().nullable().optional()
+}).passthrough();
+
+// Asignación de descuento a empleado (/rh/empleados/:id/descuentos)
+const rhEmpleadoDescuentoSchema = z.object({
+    descuento_id: z.coerce.number({ error: 'El descuento es obligatorio' })
+        .int()
+        .min(1, 'Debe seleccionar un descuento'),
+    quincena: z.enum(['primera', 'segunda', 'ambas']).default('primera'),
+    valor: z.coerce.number({ error: 'El valor debe ser numérico' })
+        .gt(0, 'El valor debe ser mayor a 0'),
+    numero_cuotas: z.coerce.number().int().min(1).default(1),
+    cuotas_restantes: z.coerce.number().int().min(0).default(1),
+    numero_credito: emptyToNull.nullable().optional()
+}).passthrough();
+
+// Mantener compatibilidad con rhDescuentoSchema
 const rhDescuentoSchema = z.object({
     tipo_descuento: z.string({ error: 'El tipo de descuento es obligatorio' })
         .trim()
@@ -214,5 +239,7 @@ module.exports = {
     planillaVacacionesSchema,
     planillaVacacionesUpdateSchema,
     planillaAguinaldosSchema,
-    rhDescuentoSchema
+    rhDescuentoSchema,
+    rhDescuentoProgramadoSchema,
+    rhEmpleadoDescuentoSchema
 };

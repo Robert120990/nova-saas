@@ -103,6 +103,9 @@ const GasCloseout = () => {
     const [fechaTurno, setFechaTurno] = useState(getTodayString());
     const [numeroTurno, setNumeroTurno] = useState('');
     const [userModifiedTurno, setUserModifiedTurno] = useState(false);
+    const [fusionShiftId, setFusionShiftId] = useState(null);
+    const [fusionSalesAmount, setFusionSalesAmount] = useState(null);
+    const [fusionSalesVolume, setFusionSalesVolume] = useState(null);
     const [closeoutDespachadores, setCloseoutDespachadores] = useState([]);
     const [despachadorSelectValue, setDespachadorSelectValue] = useState('');
     const [showReadingsModal, setShowReadingsModal] = useState(false);
@@ -296,6 +299,9 @@ const GasCloseout = () => {
             setVales(editData.vales || []);
             setAnticiposDesp(editData.anticipos_despachadores || []);
             setTrupputDesp(editData.trupput_despachos || []);
+            setFusionShiftId(editData.fusion_shift_id || null);
+            setFusionSalesAmount(editData.fusion_sales_amount !== null && editData.fusion_sales_amount !== undefined ? parseFloat(editData.fusion_sales_amount) : null);
+            setFusionSalesVolume(editData.fusion_sales_volume !== null && editData.fusion_sales_volume !== undefined ? parseFloat(editData.fusion_sales_volume) : null);
             modalSnapshotsRef.current = {
                 gastos: JSON.stringify(cleanLoadedGastos),
                 remesas: JSON.stringify(editData.remesas || []),
@@ -322,6 +328,9 @@ const GasCloseout = () => {
             setEstado(null);
             setSellerId('');
             setSellerName('');
+            setFusionShiftId(null);
+            setFusionSalesAmount(null);
+            setFusionSalesVolume(null);
             setTankReadings([]);
             setLubricantReadings([]);
             setCloseoutDespachadores([]);
@@ -457,7 +466,11 @@ const GasCloseout = () => {
             let total = 0;
             for (const r of readings) {
                 if (assignedNozzles.includes(r.nozzle_id)) {
-                    total += (r.lectura_actual - r.lectura_anterior - (r.calibracion || 0)) * r.precio;
+                    const diff = (parseFloat(r.lectura_actual) || 0) - (parseFloat(r.lectura_anterior) || 0) - (parseFloat(r.calibracion) || 0);
+                    const rowMonto = (r.monto !== undefined && r.monto !== null && !isNaN(parseFloat(r.monto)))
+                        ? parseFloat(r.monto)
+                        : Math.round(diff * (parseFloat(r.precio) || 0) * 100) / 100;
+                    total += rowMonto;
                 }
             }
             map[d.despachador_id] = total;
@@ -492,6 +505,19 @@ const GasCloseout = () => {
         return map;
     }, [closeoutDespachadores, remesas]);
 
+    const despachadoresTotales = useMemo(() => {
+        let venta = 0;
+        let noPercibido = 0;
+        let entregado = 0;
+        for (const d of closeoutDespachadores) {
+            venta += (despachadorVentas[d.despachador_id] || 0);
+            noPercibido += (despachadorNoPercibido[d.despachador_id] || 0);
+            entregado += (despachadorEntregado[d.despachador_id] || 0);
+        }
+        const diferencia = (noPercibido + entregado) - venta;
+        return { venta, noPercibido, entregado, diferencia };
+    }, [closeoutDespachadores, despachadorVentas, despachadorNoPercibido, despachadorEntregado]);
+
     const initMutation = useMutation({
         mutationFn: (data) => axios.post('/api/gas-station/closeouts/init', data),
         onSuccess: (res) => {
@@ -511,12 +537,32 @@ const GasCloseout = () => {
     const updateMutation = useMutation({
         mutationFn: ({ readingId, data }) =>
             axios.patch(`/api/gas-station/closeouts/${closeoutId}/readings/${readingId}`, data),
+        onSuccess: (res) => {
+            if (res.data) {
+                setReadings(prev => prev.map(r => {
+                    if (r.id === res.data.id) {
+                        return {
+                            ...r,
+                            lectura_actual: res.data.lectura_actual,
+                            calibracion: res.data.calibracion,
+                            lectura_anterior: res.data.lectura_anterior,
+                            diferencia: res.data.diferencia,
+                            monto: res.data.monto
+                        };
+                    }
+                    return r;
+                }));
+            }
+            queryClient.invalidateQueries({ queryKey: ['gas-closeouts'] });
+        },
         onError: (error) => toast.error(error.response?.data?.message || 'Error al guardar')
     });
 
     const batchUpdateMutation = useMutation({
-        mutationFn: (readings) =>
-            axios.patch(`/api/gas-station/closeouts/${closeoutId}/readings/batch`, { readings }),
+        mutationFn: (payload) => {
+            const body = Array.isArray(payload) ? { readings: payload } : payload;
+            return axios.patch(`/api/gas-station/closeouts/${closeoutId}/readings/batch`, body);
+        },
         onSuccess: (res) => {
             const updated = res.data.readings;
             setReadings(prev => prev.map(r => {
@@ -524,6 +570,17 @@ const GasCloseout = () => {
                 if (u) return { ...r, lectura_actual: u.lectura_actual, diferencia: u.diferencia, monto: u.monto };
                 return r;
             }));
+            if (res.data.fusion_shift_id) {
+                setFusionShiftId(res.data.fusion_shift_id);
+            }
+            if (res.data.fusion_sales_amount !== undefined && res.data.fusion_sales_amount !== null) {
+                setFusionSalesAmount(parseFloat(res.data.fusion_sales_amount));
+            }
+            if (res.data.fusion_sales_volume !== undefined && res.data.fusion_sales_volume !== null) {
+                setFusionSalesVolume(parseFloat(res.data.fusion_sales_volume));
+            }
+            queryClient.invalidateQueries({ queryKey: ['gas-closeouts'] });
+            queryClient.invalidateQueries({ queryKey: ['gas-fusion-periods'] });
             setImportResult(null);
             setImporting(false);
             toast.success(`${res.data.updated} lecturas actualizadas`);
@@ -603,6 +660,32 @@ const GasCloseout = () => {
         reader.readAsArrayBuffer(file);
     };
 
+    const handleImportFusion = async (period) => {
+        if (!period?.id) return;
+        try {
+            setImporting(true);
+            const targetBranchId = closeoutBranchId || editData?.branch_id || user?.branch_id;
+            const res = await axios.get(`/api/gas-station/fusion/periods/${period.id}/readings`, {
+                params: { closeoutId, branch_id: targetBranchId }
+            });
+            const { matched = [], warnings = [], unmatched = [], total = 0, pumpSales = {} } = res.data;
+            setImportResult({
+                matched,
+                warnings,
+                unmatched,
+                total,
+                periodId: period.id,
+                source: 'Fusion FFC',
+                pumpSales
+            });
+            toast.success(`Lecturas del turno #${period.id} de Fusion cargadas. Revise y confirme.`);
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Error al obtener lecturas desde Fusion FFC');
+        } finally {
+            setImporting(false);
+        }
+    };
+
     const closeMutation = useMutation({
         mutationFn: () => axios.post(`/api/gas-station/closeouts/${closeoutId}/close`),
         onSuccess: (res) => {
@@ -666,6 +749,7 @@ const GasCloseout = () => {
             setGastos(clean);
             if (modalSnapshotsRef.current) modalSnapshotsRef.current.gastos = JSON.stringify(clean);
             queryClient.invalidateQueries({ queryKey: ['gas-closeout-expenses', closeoutId] });
+            queryClient.invalidateQueries({ queryKey: ['gas-closeouts'] });
             setShowGastosModal(false);
             if (isAutoSavingRef.current) {
                 toast.success('Gastos guardados automáticamente al salir');
@@ -683,6 +767,7 @@ const GasCloseout = () => {
             setRemesas(res.data);
             if (modalSnapshotsRef.current) modalSnapshotsRef.current.remesas = JSON.stringify(res.data);
             queryClient.invalidateQueries({ queryKey: ['gas-closeout-remesas', closeoutId] });
+            queryClient.invalidateQueries({ queryKey: ['gas-closeouts'] });
             setShowRemesasModal(false);
             if (isAutoSavingRef.current) {
                 toast.success('Remesas guardadas automáticamente al salir');
@@ -708,6 +793,7 @@ const GasCloseout = () => {
             setCupones(res.data);
             if (modalSnapshotsRef.current) modalSnapshotsRef.current.cupones = JSON.stringify(res.data);
             queryClient.invalidateQueries({ queryKey: ['gas-closeout-cupones', closeoutId] });
+            queryClient.invalidateQueries({ queryKey: ['gas-closeouts'] });
             setShowCuponesModal(false);
             if (isAutoSavingRef.current) {
                 toast.success('Cupones guardados automáticamente al salir');
@@ -729,6 +815,7 @@ const GasCloseout = () => {
             setDescuentos(res.data);
             if (modalSnapshotsRef.current) modalSnapshotsRef.current.descuentos = JSON.stringify(res.data);
             queryClient.invalidateQueries({ queryKey: ['gas-closeout-descuentos', closeoutId] });
+            queryClient.invalidateQueries({ queryKey: ['gas-closeouts'] });
             setShowDescuentosModal(false);
             if (isAutoSavingRef.current) {
                 toast.success('Descuentos guardados automáticamente al salir');
@@ -750,6 +837,7 @@ const GasCloseout = () => {
             setAdelantos(res.data);
             if (modalSnapshotsRef.current) modalSnapshotsRef.current.adelantos = JSON.stringify(res.data);
             queryClient.invalidateQueries({ queryKey: ['gas-closeout-adelantos', closeoutId] });
+            queryClient.invalidateQueries({ queryKey: ['gas-closeouts'] });
             setShowAdelantosModal(false);
             if (isAutoSavingRef.current) {
                 toast.success('Adelantos guardados automáticamente al salir');
@@ -832,6 +920,7 @@ const GasCloseout = () => {
             setTarjetas(res.data);
             if (modalSnapshotsRef.current) modalSnapshotsRef.current.tarjetas = JSON.stringify(res.data);
             queryClient.invalidateQueries({ queryKey: ['gas-closeout-tarjetas', closeoutId] });
+            queryClient.invalidateQueries({ queryKey: ['gas-closeouts'] });
             setShowTarjetasModal(false);
             if (isAutoSavingRef.current) {
                 toast.success('Tarjetas guardadas automáticamente al salir');
@@ -849,6 +938,7 @@ const GasCloseout = () => {
             setCreditos(res.data);
             if (modalSnapshotsRef.current) modalSnapshotsRef.current.creditos = JSON.stringify(res.data);
             queryClient.invalidateQueries({ queryKey: ['gas-closeout-creditos', closeoutId] });
+            queryClient.invalidateQueries({ queryKey: ['gas-closeouts'] });
             setShowCreditosModal(false);
             if (isAutoSavingRef.current) {
                 toast.success('Créditos guardados automáticamente al salir');
@@ -866,6 +956,7 @@ const GasCloseout = () => {
             setVales(res.data);
             if (modalSnapshotsRef.current) modalSnapshotsRef.current.vales = JSON.stringify(res.data);
             queryClient.invalidateQueries({ queryKey: ['gas-closeout-vales', closeoutId] });
+            queryClient.invalidateQueries({ queryKey: ['gas-closeouts'] });
             setShowValesModal(false);
             if (isAutoSavingRef.current) {
                 toast.success('Vales guardados automáticamente al salir');
@@ -883,6 +974,7 @@ const GasCloseout = () => {
             setAnticiposDesp(res.data);
             if (modalSnapshotsRef.current) modalSnapshotsRef.current.anticipos = JSON.stringify(res.data);
             queryClient.invalidateQueries({ queryKey: ['gas-closeout-anticipos-desp', closeoutId] });
+            queryClient.invalidateQueries({ queryKey: ['gas-closeouts'] });
             setShowAnticiposModal(false);
             if (isAutoSavingRef.current) {
                 toast.success('Anticipos despachados guardados automáticamente al salir');
@@ -900,6 +992,7 @@ const GasCloseout = () => {
             setTrupputDesp(res.data);
             if (modalSnapshotsRef.current) modalSnapshotsRef.current.trupput = JSON.stringify(res.data);
             queryClient.invalidateQueries({ queryKey: ['gas-closeout-trupput-desp', closeoutId] });
+            queryClient.invalidateQueries({ queryKey: ['gas-closeouts'] });
             setShowTrupputModal(false);
             if (isAutoSavingRef.current) {
                 toast.success('Despachos Trupput guardados automáticamente al salir');
@@ -1236,6 +1329,7 @@ const GasCloseout = () => {
         mutationFn: (readings) => axios.post(`/api/gas-station/closeouts/${closeoutId}/lubricantes`, { readings }),
         onSuccess: (res) => {
             setLubricantReadings(res.data);
+            queryClient.invalidateQueries({ queryKey: ['gas-closeouts'] });
         },
         onError: (error) => toast.error(error.response?.data?.message || 'Error al guardar lubricantes')
     });
@@ -1752,18 +1846,32 @@ const GasCloseout = () => {
                     total_monto: 0
                 };
             }
-            const diferencia = r.lectura_actual - r.lectura_anterior - r.calibracion;
-            const monto = diferencia * r.precio;
+            const diferencia = (parseFloat(r.lectura_actual) || 0) - (parseFloat(r.lectura_anterior) || 0) - (parseFloat(r.calibracion) || 0);
+            const rowMonto = (r.monto !== undefined && r.monto !== null && !isNaN(parseFloat(r.monto)))
+                ? parseFloat(r.monto)
+                : Math.round(diferencia * (parseFloat(r.precio) || 0) * 100) / 100;
             map[key].total_lectura += diferencia;
-            map[key].total_monto += monto;
+            map[key].total_monto += rowMonto;
         });
         return Object.values(map);
     }, [readings]);
 
-    const totals = useMemo(() => ({
-        totalLectura: readings.reduce((s, r) => s + (r.lectura_actual - r.lectura_anterior - r.calibracion), 0),
-        totalMonto: readings.reduce((s, r) => s + ((r.lectura_actual - r.lectura_anterior - r.calibracion) * r.precio), 0)
-    }), [readings]);
+    const totals = useMemo(() => {
+        let totalLectura = 0;
+        let totalMonto = 0;
+        readings.forEach(r => {
+            const diff = (parseFloat(r.lectura_actual) || 0) - (parseFloat(r.lectura_anterior) || 0) - (parseFloat(r.calibracion) || 0);
+            totalLectura += diff;
+            const rowMonto = (r.monto !== undefined && r.monto !== null && !isNaN(parseFloat(r.monto)))
+                ? parseFloat(r.monto)
+                : Math.round(diff * (parseFloat(r.precio) || 0) * 100) / 100;
+            totalMonto += rowMonto;
+        });
+        return {
+            totalLectura,
+            totalMonto: Math.round(totalMonto * 100) / 100
+        };
+    }, [readings]);
 
     const lectVsTanqComparison = useMemo(() => {
         const lectByType = {};
@@ -1859,9 +1967,14 @@ const GasCloseout = () => {
     const handleReadingChange = (nozzleId, field, value) => {
         if (estado === 'cerrado' || estado === 'reabierto') return;
         if (field === 'lectura_anterior' && !isSuperAdmin) return;
-        setReadings(prev => prev.map(r =>
-            r.nozzle_id === nozzleId ? { ...r, [field]: parseFloat(value) || 0 } : r
-        ));
+        setReadings(prev => prev.map(r => {
+            if (r.nozzle_id !== nozzleId) return r;
+            const updated = { ...r, [field]: parseFloat(value) || 0 };
+            const diff = (parseFloat(updated.lectura_actual) || 0) - (parseFloat(updated.lectura_anterior) || 0) - (parseFloat(updated.calibracion) || 0);
+            updated.diferencia = diff;
+            updated.monto = Math.round(diff * (parseFloat(updated.precio) || 0) * 100) / 100;
+            return updated;
+        }));
     };
 
     const handleReadingBlur = (readingId, nozzleId) => {
@@ -2318,8 +2431,24 @@ const GasCloseout = () => {
                                                 <td className="px-3 py-1.5 text-right text-slate-600 uppercase tracking-wider">Total Ingresos</td>
                                                 <td className="px-3 py-1.5 text-right font-mono text-emerald-600"><Money value={totals.totalMonto + lubricantTotal} /></td>
                                             </tr>
+                                            {fusionSalesAmount !== null && fusionSalesAmount !== undefined && (
+                                                <tr className="bg-blue-50/40 border-t border-dashed border-slate-200 text-[11px] font-normal text-slate-500">
+                                                    <td className="px-3 py-1.5 text-slate-500 italic">
+                                                        <span>Ref. Fusion (Sales {fusionShiftId ? `Turno #${fusionShiftId}` : ''})*:</span>
+                                                        {fusionSalesVolume ? <span className="ml-1 text-[10px] text-slate-400 not-italic">({Number(fusionSalesVolume).toFixed(3)} Gal)</span> : null}
+                                                    </td>
+                                                    <td className="px-3 py-1.5 text-right font-mono font-semibold text-slate-600">
+                                                        <Money value={fusionSalesAmount} />
+                                                    </td>
+                                                </tr>
+                                            )}
                                         </tfoot>
                                     </table>
+                                    {fusionSalesAmount !== null && fusionSalesAmount !== undefined && (
+                                        <div className="px-3 py-1.5 bg-slate-50/60 border-t border-slate-100 text-[10px] text-slate-400 italic">
+                                            * Comentario informativo de Fusion FFC; no altera el total de ingresos calculado de la lectura.
+                                        </div>
+                                    )}
                                 </div>
                                 <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex-1">
                                     <div className="px-4 py-2 border-b border-slate-100">
@@ -2485,7 +2614,7 @@ const GasCloseout = () => {
                                 </div>
                             </div>
                             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                                <div className="px-4 py-2 border-b border-slate-100">
+                                <div className="px-4 py-2 border-b border-slate-100 flex items-center justify-between">
                                     <h3 className="text-xs font-bold text-slate-600 uppercase tracking-wider">Diferencia</h3>
                                 </div>
                                 <div className="px-4 py-3 flex items-center justify-between">
@@ -2494,6 +2623,17 @@ const GasCloseout = () => {
                                         <Money value={diferenciaTotal} />
                                     </span>
                                 </div>
+                                {fusionSalesAmount !== null && fusionSalesAmount !== undefined && (
+                                    <div className="px-4 py-2 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+                                        <span className="italic text-[11px]">
+                                            Ref. Fusion (Sales {fusionShiftId ? `Turno #${fusionShiftId}` : ''})*:
+                                        </span>
+                                        <span className="font-mono font-semibold text-slate-700">
+                                            <Money value={fusionSalesAmount} />
+                                            {fusionSalesVolume ? <span className="ml-1 text-[10px] text-slate-400 font-normal">({Number(fusionSalesVolume).toFixed(3)} Gal)</span> : null}
+                                        </span>
+                                    </div>
+                                )}
                             </div>
                             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                                 <div className="px-3 py-2 border-b border-slate-100 flex items-center justify-between">
@@ -2575,6 +2715,29 @@ const GasCloseout = () => {
                                                 );
                                             })}
                                         </tbody>
+                                        {closeoutDespachadores.length > 0 && (
+                                            <tfoot className="bg-slate-50 border-t-2 border-slate-200 font-bold text-[11px]">
+                                                <tr>
+                                                    <td colSpan={2} className="px-2 py-1.5 text-right text-slate-600 uppercase tracking-wider">
+                                                        Total de Diferencias
+                                                    </td>
+                                                    <td className="px-1.5 py-1.5 text-right font-mono text-emerald-600">
+                                                        <Money value={despachadoresTotales.venta} />
+                                                    </td>
+                                                    <td className="px-1.5 py-1.5 text-right font-mono text-red-600">
+                                                        <Money value={despachadoresTotales.noPercibido} />
+                                                    </td>
+                                                    <td className="px-1.5 py-1.5 text-right font-mono text-amber-600">
+                                                        <Money value={despachadoresTotales.entregado} />
+                                                    </td>
+                                                    <td className="px-1.5 py-1.5 text-right">
+                                                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black font-mono shadow-sm ${despachadoresTotales.diferencia >= 0 ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200' : 'bg-red-50 text-red-700 ring-1 ring-red-200'}`}>
+                                                            <Money value={despachadoresTotales.diferencia} />
+                                                        </span>
+                                                    </td>
+                                                </tr>
+                                            </tfoot>
+                                        )}
                                     </table>
                                 </div>
                             </div>
@@ -2651,6 +2814,7 @@ const GasCloseout = () => {
                     fileInputRef={fileInputRef}
                     importing={importing}
                     handleImportExcel={handleImportExcel}
+                    handleImportFusion={handleImportFusion}
                     readings={readings}
                     inputRefs={inputRefs}
                     handleReadingChange={handleReadingChange}
@@ -2664,6 +2828,7 @@ const GasCloseout = () => {
                     setImportResult={setImportResult}
                     setImporting={setImporting}
                     batchUpdateMutation={batchUpdateMutation}
+                    branchId={closeoutBranchId || editData?.branch_id || user?.branch_id}
                 />
 
                 <GasGastosModal

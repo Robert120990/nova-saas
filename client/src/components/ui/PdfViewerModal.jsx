@@ -80,6 +80,17 @@ const PdfViewerModal = ({
         return () => window.removeEventListener('keydown', handleKeyboardNav);
     }, [isOpen, pdfUrl, totalPages]);
 
+    // Sincronizar página en iframe de forma efectiva
+    useEffect(() => {
+        if (!iframeRef.current || !pdfUrl) return;
+        const targetUrl = `${pdfUrl.split('#')[0]}#page=${currentPage}&view=FitH`;
+        try {
+            iframeRef.current.contentWindow?.location.replace(targetUrl);
+        } catch {
+            iframeRef.current.src = targetUrl;
+        }
+    }, [currentPage, pdfUrl]);
+
     // Manejo de atajo ESC para cerrar
     useEffect(() => {
         const handleKeyDown = (e) => {

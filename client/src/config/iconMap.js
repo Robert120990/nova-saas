@@ -74,9 +74,16 @@ import {
     Ticket,
     Terminal,
     GitCompare,
+    Fingerprint,
+    Zap,
+    Sun,
+    BatteryCharging,
 } from 'lucide-react';
 
 const iconMap = {
+    Zap,
+    Sun,
+    BatteryCharging,
     Terminal,
     LayoutDashboard,
     Building2,
@@ -152,6 +159,7 @@ const iconMap = {
     Palmtree,
     Ticket,
     GitCompare,
+    Fingerprint,
 };
 
 export default iconMap;

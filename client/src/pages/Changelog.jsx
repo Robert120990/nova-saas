@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
-import { History, GitCommitHorizontal, Clock, User } from 'lucide-react';
+import { History, GitCommitHorizontal, Clock, User, Calendar, Sparkles } from 'lucide-react';
+import { formatDate, formatTime } from '../utils/dateUtils';
 
 const SCOPE_COLORS = {
     'RRHH': 'bg-pink-100 text-pink-700',
@@ -108,17 +109,42 @@ const Changelog = () => {
                                                     {commit.description}
                                                 </span>
                                             </div>
-                                            <div className="flex items-center gap-3 mt-1">
-                                                <span className="text-[11px] font-mono text-slate-400 flex items-center gap-1">
-                                                    <GitCommitHorizontal size={11} />
+                                            <div className="flex items-center gap-3 mt-1.5 flex-wrap">
+                                                {/* 1. Commit */}
+                                                <span className="text-[11px] font-mono text-slate-500 font-semibold flex items-center gap-1">
+                                                    <GitCommitHorizontal size={13} className="text-slate-400 shrink-0" />
                                                     {commit.hash}
                                                 </span>
-                                                <span className="text-[11px] text-slate-400 flex items-center gap-1">
-                                                    <Clock size={11} />
-                                                    {getTimeAgo(commit.date)}
+
+                                                {/* 2. Versión autoincrementable */}
+                                                {commit.version && (
+                                                    <span className="inline-flex items-center gap-1 text-[11px] font-mono font-bold text-indigo-700 bg-indigo-50 border border-indigo-200/70 px-2 py-0.5 rounded-full shadow-xs">
+                                                        <Sparkles size={11} className="text-indigo-500 fill-indigo-500/20 shrink-0" />
+                                                        {commit.version}
+                                                    </span>
+                                                )}
+
+                                                {/* 3. Fecha */}
+                                                <span 
+                                                    className="text-[11px] text-slate-500 flex items-center gap-1 font-medium"
+                                                    title={getTimeAgo(commit.date)}
+                                                >
+                                                    <Calendar size={12} className="text-slate-400 shrink-0" />
+                                                    {formatDate(commit.date)}
                                                 </span>
-                                                <span className="text-[11px] text-slate-400 flex items-center gap-1">
-                                                    <User size={11} />
+
+                                                {/* 4. Hora */}
+                                                <span 
+                                                    className="text-[11px] text-slate-500 flex items-center gap-1 font-medium"
+                                                    title={getTimeAgo(commit.date)}
+                                                >
+                                                    <Clock size={12} className="text-slate-400 shrink-0" />
+                                                    {formatTime(commit.date)?.slice(0, 5)}
+                                                </span>
+
+                                                {/* 5. Autor / Usuario */}
+                                                <span className="text-[11px] text-slate-500 flex items-center gap-1 font-medium">
+                                                    <User size={12} className="text-slate-400 shrink-0" />
                                                     {commit.author}
                                                 </span>
                                             </div>

@@ -1,0 +1,9 @@
+{
+  "serverUrl": "https://sys.sipesv.com",
+  "companyId": 1,
+  "branchId": 2,
+  "agentKey": "",
+  "fusionHost": "https://10.19.4.15",
+  "fusionUser": "MANAGER",
+  "fusionPassword": "MANAGER"
+}

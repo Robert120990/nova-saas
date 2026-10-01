@@ -283,7 +283,8 @@ export default function useProductionModel() {
             setCompleteForm({
                 yield_liquid_lbs: String(batch.yield_liquid_lbs || ''),
                 waste_shell_lbs: String(batch.waste_shell_lbs || '0'),
-                waste_loss_lbs: String(batch.waste_loss_lbs || '0')
+                waste_loss_lbs: String(batch.waste_loss_lbs || '0'),
+                supervisor_password: ''
             });
         } else {
             const cfg = productConfig.find(c => c.product_type === batch.product_type) || {};
@@ -294,7 +295,8 @@ export default function useProductionModel() {
             setCompleteForm({
                 yield_liquid_lbs: inputLbs > 0 ? (inputLbs * yieldPct).toFixed(2) : '',
                 waste_shell_lbs: inputLbs > 0 ? (inputLbs * shellPct).toFixed(2) : '0',
-                waste_loss_lbs: inputLbs > 0 ? (inputLbs * lossPct).toFixed(2) : '0'
+                waste_loss_lbs: inputLbs > 0 ? (inputLbs * lossPct).toFixed(2) : '0',
+                supervisor_password: ''
             });
         }
     };
@@ -1795,14 +1797,14 @@ export default function useProductionModel() {
 
             const { haccp_compliant, deviation_description } = res.data;
 
-            if (!haccp_compliant) {
-                setHaccpViolationAlert(deviation_description);
-                toast.error('ALERTA CRÍTICA: Lote bloqueado por desviación HACCP.', { duration: 10000 });
+            if (!haccp_compliant && deviation_description) {
+                toast.warning(`Parámetros registrados con observación: ${deviation_description}. El lote pasó a estado pasteurizado; Control de Calidad dictaminará la liberación.`, { duration: 8000 });
             } else {
-                toast.success('Monitoreo HACCP validado. El lote pasó a estado pasteurizado.');
-                setSelectedBatchForPasteurize('');
-                setIsPasteurizeModalOpen(false);
+                toast.success('Monitoreo de pasteurización registrado correctamente. El lote pasó a estado pasteurizado.');
             }
+            setSelectedBatchForPasteurize('');
+            setIsPasteurizeModalOpen(false);
+            setHaccpViolationAlert(null);
             fetchData();
         } catch (error) {
             console.error('Error validating pasteurization HACCP:', error);
@@ -1867,14 +1869,15 @@ export default function useProductionModel() {
         setIsSubmitting(true);
         const batchToUpdate = selectedBatchForComplete;
         try {
-            await axios.put(`/api/egg-industrial/batches/${batchToUpdate.id}/complete`, {
+            const res = await axios.put(`/api/egg-industrial/batches/${batchToUpdate.id}/complete`, {
                 yield_liquid_lbs: parseFloat(completeForm.yield_liquid_lbs),
                 waste_shell_lbs: parseFloat(completeForm.waste_shell_lbs || 0),
-                waste_loss_lbs: parseFloat(completeForm.waste_loss_lbs || 0)
+                waste_loss_lbs: parseFloat(completeForm.waste_loss_lbs || 0),
+                supervisor_password: completeForm.supervisor_password || undefined
             });
-            toast.success('Balance de masas registrado y actualizado correctamente.');
+            toast.success(res.data?.message || 'Balance de masas registrado y actualizado correctamente.');
             setSelectedBatchForComplete(null);
-            setCompleteForm({ yield_liquid_lbs: '', waste_shell_lbs: '', waste_loss_lbs: '' });
+            setCompleteForm({ yield_liquid_lbs: '', waste_shell_lbs: '', waste_loss_lbs: '', supervisor_password: '' });
             fetchData();
             if (stagesModal.isOpen && stagesModal.batch?.id === batchToUpdate.id) {
                 handleOpenStagesModal(batchToUpdate);

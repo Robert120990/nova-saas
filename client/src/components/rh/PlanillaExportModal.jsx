@@ -431,6 +431,12 @@ const PlanillaExportModal = ({ isOpen, onClose, periodo, onConfirm }) => {
                                     </div>
                                 </button>
                             </div>
+
+                            {/* Nota de ordenamiento bancario */}
+                            <div className="flex items-center gap-2 p-2.5 rounded-xl bg-sky-50/70 border border-sky-200/60 text-sky-800 text-[11px] leading-tight">
+                                <Info size={14} className="shrink-0 text-sky-600" />
+                                <span>Los empleados con cuenta bancaria se ordenan al inicio; los que no poseen cuenta se ubican al final para agilizar la dispersión.</span>
+                            </div>
                         </div>
                     )}
 

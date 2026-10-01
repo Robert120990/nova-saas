@@ -1,73 +1,5 @@
 const { eggRules, pool, broadcastToCompany, notificationService } = require('./shared');
-
-const completeProductionBatch = async (req, res) => {
-    const connection = await pool.getConnection();
-    try {
-        await connection.beginTransaction();
-        const { id } = req.params;
-        const { yield_liquid_lbs, waste_shell_lbs, waste_loss_lbs } = req.body;
-
-        // Traer datos del lote
-        const [batches] = await connection.query('SELECT * FROM egg_production_batches WHERE id = ? AND company_id = ? FOR UPDATE', [id, req.company_id]);
-        if (!batches.length) eggRules.fail('Lote no encontrado', 404);
-        const batch = batches[0];
-
-        // Cambiar estado a aprobado_calidad o mantener bloqueado_haccp, empaquetado o congelado
-        let nextStatus = batch.status;
-        if (nextStatus === 'en_proceso') {
-            const [lab] = await connection.query(
-                'SELECT release_status FROM egg_lab_micro_logs WHERE batch_id = ? AND company_id = ? ORDER BY id DESC LIMIT 1',
-                [id, req.company_id]
-            );
-            if (lab.length && lab[0].release_status === 'liberado') {
-                nextStatus = 'aprobado_calidad';
-            } else if (batch.pasteurization_status === 'cerrado' || batch.pasteurization_status === 'pasteurizado') {
-                nextStatus = 'pasteurizado';
-            }
-        }
-        const values = [yield_liquid_lbs, waste_shell_lbs, waste_loss_lbs].map(v => eggRules.number(v, 'Peso'));
-        if (values[0] <= 0) eggRules.fail('El rendimiento debe ser mayor a cero.');
-        if (batch.completed_at) {
-            const same = ['yield_liquid_lbs','waste_shell_lbs','waste_loss_lbs'].every((key,i) => Math.abs(Number(batch[key]) - values[i]) < 0.001);
-            if (!same) eggRules.fail('El lote ya fue finalizado. Requiere corrección supervisada.', 409);
-            await connection.commit();
-            return res.json({ id, status: batch.status, yield_liquid_lbs: batch.yield_liquid_lbs, unchanged: true });
-        }
-        const [packaged] = await connection.query('SELECT COALESCE(SUM(total_batch_weight_lbs),0) AS lbs FROM egg_packaging_records WHERE batch_id = ? AND company_id = ?', [id, req.company_id]);
-        if (values[0] < Number(packaged[0].lbs)) eggRules.fail('El rendimiento no puede ser menor al peso ya envasado.', 409);
-        // El cierre físico no concede ni revoca un dictamen de laboratorio.
-
-        await connection.query(
-            `UPDATE egg_production_batches
-             SET yield_liquid_lbs = ?, waste_shell_lbs = ?, waste_loss_lbs = ?, status = ?, completed_at = COALESCE(completed_at, NOW())
-             WHERE id = ? AND company_id = ?`,
-            [yield_liquid_lbs, waste_shell_lbs, waste_loss_lbs, nextStatus, id, req.company_id]
-        );
-
-        // Crear evento
-        await connection.query(
-            `INSERT INTO egg_industrial_events (company_id, event_type, severity, description, payload, operator_name)
-             VALUES (?, 'production.completed', 'info', ?, ?, ?)`,
-            [req.company_id, `Lote de producción completado. Rendimiento líquido: ${yield_liquid_lbs} LBS, Desperdicio cáscara: ${waste_shell_lbs} LBS.`, JSON.stringify({ batch_id: id, yield_liquid_lbs, waste_shell_lbs }), batch.operator_name]
-        );
-
-        await connection.commit();
-        const inputWeight = parseFloat(batch.input_weight_lbs || 0);
-        const yieldPct = inputWeight > 0 ? Math.round((parseFloat(yield_liquid_lbs || 0) / inputWeight) * 10000) / 100 : 0;
-        notificationService.notify('production_batch_completed', req.company_id, req.user?.branch_id, {
-            lote_id: parseInt(id),
-            producto: batch.product_type || '',
-            cantidad: inputWeight,
-            rendimiento: yieldPct,
-            duracion: 0
-        }).catch(() => { });
-
-        res.json({ id, status: nextStatus, yield_liquid_lbs });
-    } catch (error) {
-        await connection.rollback();
-        res.status(error.status || 500).json({ message: error.message });
-    } finally { connection.release(); }
-};
+const { completeProductionBatch } = require('./completeProductionBatch.controller');
 
 const createPasteurizationLog = async (req, res) => {
     const connection = await pool.getConnection();
@@ -102,43 +34,31 @@ const createPasteurizationLog = async (req, res) => {
         const [result] = await connection.query(
             `INSERT INTO egg_pasteurization_logs (company_id, batch_id, pasteurization_lot, temperature_c, holding_time_seconds, pressure_psi, flow_rate_gpm, haccp_compliant, deviation_description, operator_name)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [company_id, batch_id, resolvedPastLot, temperature_c, holding_time_seconds, pressure_psi, flow_rate_gpm, haccp_compliant, deviation_description, operator_name]
+            [company_id, batch_id, resolvedPastLot, temperature_c, holding_time_seconds, pressure_psi, flow_rate_gpm, haccp_compliant ? 1 : 0, deviation_description, operator_name]
+        );
+
+        // Independientemente de los parámetros, el lote avanza a pasteurizado operativamente.
+        // Control de Calidad es quien da de alta o bloquea el lote tras análisis de laboratorio LAB-004.
+        await connection.query(
+            `UPDATE egg_production_batches
+             SET status = CASE WHEN status IN ('en_proceso', 'pendiente', 'bloqueado_haccp') THEN 'pasteurizado' ELSE status END,
+                 pasteurization_status = CASE WHEN pasteurization_status = 'cerrado' THEN 'cerrado' ELSE 'pasteurizado' END,
+                 pasteurization_lot = COALESCE(pasteurization_lot, ?)
+             WHERE id = ? AND company_id = ?`,
+            [resolvedPastLot, batch_id, company_id]
         );
 
         if (!haccp_compliant) {
-            // --- BLOQUEO AUTOMÁTICO DE LOTE ---
-            await connection.query(
-                `UPDATE egg_production_batches SET status = 'bloqueado_haccp', pasteurization_lot = COALESCE(pasteurization_lot, ?) WHERE id = ? AND company_id = ?`,
-                [resolvedPastLot, batch_id, company_id]
-            );
-
-            // Crear evento crítico
+            // Evento informativo/advertencia para trazabilidad de Calidad (sin bloquear el lote)
             await connection.query(
                 `INSERT INTO egg_industrial_events (company_id, event_type, severity, description, payload, operator_name)
-                 VALUES (?, 'haccp.failure', 'critical', ?, ?, ?)`,
-                [company_id, `ALERTA HACCP: Lote ${batch.batch_uuid} ha sido BLOQUEADO automáticamente debido a desviaciones críticas en pasteurización.`, JSON.stringify({ batch_id, temperature_c, holding_time_seconds, deviation_description }), operator_name]
-            );
-
-            // Emitir por WebSocket
-            broadcastToCompany(company_id, 'haccp_alert', {
-                message: `ALERTA DE SEGURIDAD ALIMENTARIA: Desviación HACCP en pasteurización. Lote ${batch.batch_uuid} BLOQUEADO automáticamente. ${deviation_description}`,
-                temp: temperature_c,
-                batchUuid: batch.batch_uuid
-            });
-        } else {
-            // Actualizar lote si todo va bien y estaba en proceso
-            await connection.query(
-                `UPDATE egg_production_batches
-                 SET status = CASE WHEN status = 'en_proceso' THEN 'pasteurizado' ELSE status END,
-                     pasteurization_status = CASE WHEN pasteurization_status = 'cerrado' THEN 'cerrado' ELSE 'pasteurizado' END,
-                     pasteurization_lot = COALESCE(pasteurization_lot, ?)
-                 WHERE id = ? AND company_id = ?`,
-                [resolvedPastLot, batch_id, company_id]
+                 VALUES (?, 'pasteurization.observation', 'warning', ?, ?, ?)`,
+                [company_id, `Observación térmica en lote ${batch.batch_uuid}: ${deviation_description || 'Desviación térmica'}. Dictamen sujeto a Control de Calidad.`, JSON.stringify({ batch_id, temperature_c, holding_time_seconds, deviation_description }), operator_name]
             );
         }
 
         await connection.commit();
-        res.status(201).json({ id: result.insertId, haccp_compliant, deviation_description, batchStatus: haccp_compliant ? 'pasteurizado' : 'bloqueado_haccp', pasteurization_lot: resolvedPastLot });
+        res.status(201).json({ id: result.insertId, haccp_compliant, deviation_description, batchStatus: 'pasteurizado', pasteurization_lot: resolvedPastLot });
     } catch (error) {
         await connection.rollback();
         res.status(error.status || 500).json({ message: error.message });
@@ -164,17 +84,12 @@ const closePasteurization = async (req, res) => {
         }
         const batch = batches[0];
 
-        if (batch.status === 'bloqueado_haccp') {
-            await connection.rollback();
-            return res.status(400).json({ message: 'No se puede cerrar pasteurización de un lote bloqueado por HACCP.' });
-        }
-
         if (batch.pasteurization_status === 'cerrado') {
             await connection.commit();
             return res.json({ success: true, pasteurization_status: 'cerrado', pasteurization_lot: batch.pasteurization_lot });
         }
-        const [logs] = await connection.query('SELECT id FROM egg_pasteurization_logs WHERE batch_id = ? AND company_id = ? AND haccp_compliant = 1 LIMIT 1', [id, company_id]);
-        if (!logs.length) eggRules.fail('Registre una pasteurización conforme antes de cerrar.');
+        const [logs] = await connection.query('SELECT id FROM egg_pasteurization_logs WHERE batch_id = ? AND company_id = ? LIMIT 1', [id, company_id]);
+        if (!logs.length) eggRules.fail('Registre los parámetros de pasteurización antes de cerrar.');
         const resolvedPastLot = (pasteurization_lot || batch.pasteurization_lot || 'PAST-' + batch.id).trim();
 
         // Auto-cálculo y registro de merma de cáscara (13% fijo) y saldo líquido estimado (87%)

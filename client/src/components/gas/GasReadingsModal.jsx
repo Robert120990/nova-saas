@@ -1,5 +1,7 @@
-import { Fuel, ShieldCheck, Upload, Loader2, X } from 'lucide-react';
+import { useState } from 'react';
+import { Fuel, ShieldCheck, Upload, Loader2, X, Zap, Info } from 'lucide-react';
 import Money from '../ui/Money';
+import GasFusionPeriodsModal from './GasFusionPeriodsModal';
 
 const GasReadingsModal = ({
     isOpen,
@@ -10,6 +12,7 @@ const GasReadingsModal = ({
     fileInputRef,
     importing,
     handleImportExcel,
+    handleImportFusion,
     readings = [],
     inputRefs,
     handleReadingChange,
@@ -22,8 +25,11 @@ const GasReadingsModal = ({
     importResult,
     setImportResult,
     setImporting,
-    batchUpdateMutation
+    batchUpdateMutation,
+    branchId = null
 }) => {
+    const [showFusionModal, setShowFusionModal] = useState(false);
+
     if (!isOpen) return null;
 
     return (
@@ -48,6 +54,18 @@ const GasReadingsModal = ({
                                 <div className="flex items-center gap-2">
                                     {estado !== 'cerrado' && (
                                         <>
+                                            {handleImportFusion && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setShowFusionModal(true)}
+                                                    disabled={importing}
+                                                    className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-xl transition-all disabled:opacity-50"
+                                                    title="Cargar lecturas directamente desde el controlador Wayne Fusion FFC (10.19.4.15)"
+                                                >
+                                                    <Zap size={12} className="text-emerald-600" />
+                                                    Importar Fusion
+                                                </button>
+                                            )}
                                             <input
                                                 ref={fileInputRef}
                                                 type="file"
@@ -166,8 +184,12 @@ const GasReadingsModal = ({
                         <div className="relative bg-white rounded-2xl shadow-2xl w-[95%] max-w-lg max-h-[80vh] flex flex-col">
                             <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 shrink-0">
                                 <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                                    <Upload size={16} className="text-indigo-600" />
-                                    Importar Lecturas
+                                    {importResult.source === 'Fusion FFC' ? (
+                                        <Zap size={16} className="text-emerald-600" />
+                                    ) : (
+                                        <Upload size={16} className="text-indigo-600" />
+                                    )}
+                                    Importar Lecturas {importResult.source ? `— ${importResult.source} (Turno #${importResult.periodId})` : ''}
                                 </h3>
                                 <button onClick={() => { setImportResult(null); setImporting(false); }} className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors">
                                     <X size={16} className="text-slate-400" />
@@ -229,6 +251,29 @@ const GasReadingsModal = ({
                                         </div>
                                     </div>
                                 )}
+                                {importResult.pumpSales && importResult.pumpSales.totalMoney > 0 && (
+                                    <div className="mb-4 p-3 rounded-xl bg-blue-50/70 border border-blue-200">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                                <Info size={16} className="text-blue-600 shrink-0" />
+                                                <span className="text-xs font-bold text-blue-900">Ventas en Fusion (Pestaña Sales):</span>
+                                            </div>
+                                            <div className="text-right">
+                                                <span className="text-xs font-black text-blue-900 font-mono">
+                                                    <Money value={importResult.pumpSales.totalMoney} />
+                                                </span>
+                                                {importResult.pumpSales.totalVolume ? (
+                                                    <span className="text-[10px] text-blue-600 ml-2 font-medium">
+                                                        ({Number(importResult.pumpSales.totalVolume).toFixed(3)} Gal)
+                                                    </span>
+                                                ) : null}
+                                            </div>
+                                        </div>
+                                        <div className="text-[10px] text-blue-600/80 mt-1 italic">
+                                            * Referencia informativa extraída del FFC. No altera el total de ingresos calculado a partir de las lecturas.
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                             <div className="flex items-center justify-end gap-3 px-5 py-3 border-t border-slate-100 shrink-0">
                                 <button
@@ -239,10 +284,20 @@ const GasReadingsModal = ({
                                 </button>
                                 <button
                                     onClick={() => {
-                                        batchUpdateMutation.mutate(importResult.matched.map(m => ({
+                                        const readingsPayload = importResult.matched.map(m => ({
                                             readingId: m.readingId,
                                             lectura_actual: m.lectura_actual
-                                        })));
+                                        }));
+                                        if (importResult.periodId) {
+                                            batchUpdateMutation.mutate({
+                                                readings: readingsPayload,
+                                                fusion_shift_id: importResult.periodId,
+                                                fusion_sales_amount: importResult.pumpSales?.totalMoney ?? null,
+                                                fusion_sales_volume: importResult.pumpSales?.totalVolume ?? null
+                                            });
+                                        } else {
+                                            batchUpdateMutation.mutate(readingsPayload);
+                                        }
                                     }}
                                     disabled={importResult.matched.length === 0 || batchUpdateMutation.isPending}
                                     className="px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-all disabled:opacity-50 flex items-center gap-1"
@@ -255,7 +310,18 @@ const GasReadingsModal = ({
                     </div>
                 )}
 
-
+                <GasFusionPeriodsModal
+                    isOpen={showFusionModal}
+                    onClose={() => setShowFusionModal(false)}
+                    onSelectPeriod={async (period) => {
+                        if (handleImportFusion) {
+                            await handleImportFusion(period);
+                            setShowFusionModal(false);
+                        }
+                    }}
+                    loading={importing}
+                    branchId={branchId}
+                />
         </>
     );
 };

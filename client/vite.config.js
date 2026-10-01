@@ -12,20 +12,29 @@ const commitHash = (() => {
   }
 })()
 
+const commitCount = (() => {
+  try {
+    return execSync('git rev-list --count HEAD').toString().trim()
+  } catch {
+    return '143'
+  }
+})()
+
 export default defineConfig({
   define: {
-    __APP_VERSION__: JSON.stringify(commitHash)
+    __APP_VERSION__: JSON.stringify(commitHash),
+    __APP_SEMANTIC_VERSION__: JSON.stringify(`v2.7.${commitCount}`)
   },
   plugins: [
     basicSsl(),
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
+      registerType: 'prompt',
       includeAssets: ['favicon.ico', 'icons/icon-192.png', 'icons/icon-512.png'],
       manifest: false,
       workbox: {
         maximumFileSizeToCacheInBytes: 8 * 1024 * 1024,
-        skipWaiting: true,
+        skipWaiting: false,
         clientsClaim: true,
       }
     })

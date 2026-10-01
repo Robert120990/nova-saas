@@ -81,17 +81,40 @@ app.post('/api/restart', express.json(), async (req, res) => {
 
 app.use('/api', apiRoutes);
 
-// Health check
-const SERVER_VERSION = (() => {
-    try {
-        return require('child_process').execSync('git rev-parse --short HEAD', { cwd: __dirname }).toString().trim();
-    } catch {
-        return 'unknown';
+// Health check & Versioning
+let cachedVersionInfo = { commit: 'unknown', version: 'v2.7.0', lastCheck: 0 };
+
+const getAppVersionInfo = () => {
+    const now = Date.now();
+    if (now - cachedVersionInfo.lastCheck < 5000) {
+        return cachedVersionInfo;
     }
-})();
+    try {
+        const commit = require('child_process').execSync('git rev-parse --short HEAD', { cwd: __dirname }).toString().trim();
+        const count = require('child_process').execSync('git rev-list --count HEAD', { cwd: __dirname }).toString().trim();
+        cachedVersionInfo = {
+            commit,
+            version: `v2.7.${count}`,
+            lastCheck: now
+        };
+    } catch {
+        cachedVersionInfo.lastCheck = now;
+    }
+    return cachedVersionInfo;
+};
+
+const initialVersionInfo = getAppVersionInfo();
 
 app.get('/health', (req, res) => {
-    res.json({ status: 'OK', version: SERVER_VERSION, environment: process.env.NODE_ENV, timestamp: new Date() });
+    const current = getAppVersionInfo();
+    res.json({ 
+        status: 'OK', 
+        version: current.commit, 
+        commit: current.commit,
+        appVersion: current.version,
+        environment: process.env.NODE_ENV, 
+        timestamp: new Date() 
+    });
 });
 
 // Serve client built files in production
@@ -120,11 +143,12 @@ app.use((err, req, res, next) => {
 });
 
 const http = require('http');
-const { initWebSocket } = require('./services/websocket.service');
+const { initWebSocket, setAppVersion } = require('./services/websocket.service');
 const { startWorker } = require('./services/notificationWorker');
 const { startBot: startTelegramBot } = require('./services/telegram.service');
 const { startSuspiciousSalesDetector } = require('./services/suspiciousSalesDetector');
 const { startRrsAutoSyncCron } = require('./services/rrsVentasTiendaAutoSync.service');
+const { startEnergyAutoSyncCron } = require('./services/energySystem.service');
 const { preloadHaciendaCatalogs } = require('./services/catalogCache.service');
 const { mailQueue } = require('./queue');
 
@@ -154,7 +178,18 @@ const PORT = process.env.PORT || 4000;
 const server = http.createServer(app);
 
 // Inicializar el WebSocket acoplado al servidor HTTP con la versión del servidor
-initWebSocket(server, SERVER_VERSION);
+initWebSocket(server, { version: initialVersionInfo.version, commit: initialVersionInfo.commit });
+
+// Monitoreo de nuevas versiones para difusión en tiempo real vía WebSocket
+let lastBroadcastCommit = initialVersionInfo.commit;
+setInterval(() => {
+    const current = getAppVersionInfo();
+    if (current.commit && current.commit !== 'unknown' && current.commit !== lastBroadcastCommit) {
+        lastBroadcastCommit = current.commit;
+        console.log(`[VersionWatcher] Nueva versión detectada: ${current.version} (#${current.commit}), notificando a clientes...`);
+        setAppVersion({ version: current.version, commit: current.commit });
+    }
+}, 10000);
 
 // Inicializar worker de notificaciones en segundo plano
 startWorker();
@@ -164,5 +199,6 @@ server.listen(PORT, () => {
     startTelegramBot();
     startSuspiciousSalesDetector();
     startRrsAutoSyncCron();
+    startEnergyAutoSyncCron();
     preloadHaciendaCatalogs();
 });

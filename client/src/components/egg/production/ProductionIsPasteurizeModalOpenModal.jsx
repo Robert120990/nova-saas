@@ -76,6 +76,7 @@ export default function ProductionIsPasteurizeModalOpenModal({
     if (!open) return null;
 
     const isDualActive = hasDualLots && pasteurizeMode === 'dual';
+    const selectedBatchObj = currentBatch;
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-150">
@@ -93,7 +94,7 @@ export default function ProductionIsPasteurizeModalOpenModal({
                 </div>
 
                 {/* Guía Rápida de Límites de Pasteurización ANDELSA */}
-                <div className="grid grid-cols-3 gap-2 bg-slate-50 p-2.5 rounded-xl border border-slate-200 text-xs">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs">
                     <div className="text-center p-2 rounded-lg bg-white border border-slate-200">
                         <span className="text-slate-500 block font-bold uppercase text-[10px]">Huevo Entero</span>
                         <span className="text-slate-900 font-bold text-xs">≥ 64.0°C</span>
@@ -109,6 +110,16 @@ export default function ProductionIsPasteurizeModalOpenModal({
                         <span className="text-slate-900 font-bold text-xs">≥ 66.5°C</span>
                         <span className="text-slate-400 block text-[9px]">210 seg</span>
                     </div>
+                    <div className="text-center p-2 rounded-lg bg-amber-50/70 border border-amber-200">
+                        <span className="text-amber-700 block font-bold uppercase text-[10px]">Fórmulas / Otras</span>
+                        <span className="text-amber-950 font-bold text-xs">≥ 64.0°C</span>
+                        <span className="text-amber-600 block text-[9px]">210 seg</span>
+                    </div>
+                </div>
+
+                <div className="bg-blue-50 border border-blue-200 text-blue-900 rounded-xl px-3 py-2 text-[11px] flex items-center gap-2">
+                    <span className="font-bold uppercase tracking-wider text-[9px] bg-blue-200 text-blue-900 px-1.5 py-0.5 rounded">Control Operativo</span>
+                    <span>El registro pasteuriza el lote operativamente. El dictamen y alta comercial final la realiza Control de Calidad (LAB-004).</span>
                 </div>
 
                 {/* Selector de Lote en Proceso */}
@@ -128,6 +139,15 @@ export default function ProductionIsPasteurizeModalOpenModal({
                             </option>
                         ))}
                     </select>
+                    {selectedBatchObj && (
+                        <div className="mt-1.5 flex items-center gap-2 text-[11px] text-slate-500 font-medium flex-wrap">
+                            <span>Producto: <b className="text-slate-800 capitalize">{selectedBatchObj.product_type}</b> ({selectedBatchObj.presentation})</span>
+                            <span>•</span>
+                            <span>Perfil térmico sugerido: <b className="text-indigo-600 font-bold">
+                                {selectedBatchObj.product_type?.toLowerCase()?.includes('clara') ? '≥ 56.0°C' : selectedBatchObj.product_type?.toLowerCase()?.includes('yema') ? '≥ 66.5°C' : '≥ 64.0°C'}
+                            </b> (210 seg)</span>
+                        </div>
+                    )}
                 </div>
 
                 {/* Selector de Modalidad si se detecta Corrida Dual */}
@@ -158,16 +178,16 @@ export default function ProductionIsPasteurizeModalOpenModal({
                     </div>
                 )}
 
-                {/* Alert HACCP */}
+                {/* Alerta de Observación HACCP */}
                 {haccpViolationAlert && (
-                    <div className="bg-rose-50 border-2 border-rose-300 rounded-xl p-4 text-rose-900 space-y-2 shadow-sm">
-                        <div className="flex gap-2 items-center font-bold text-xs uppercase tracking-wide text-rose-700">
-                            <AlertOctagon size={18} className="text-rose-600" />
-                            ALERTA DE INOCUIDAD ALIMENTARIA: PARÁMETROS FUERA DE RANGO
+                    <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-4 text-amber-900 space-y-2 shadow-xs">
+                        <div className="flex gap-2 items-center font-bold text-xs uppercase tracking-wide text-amber-800">
+                            <AlertOctagon size={18} className="text-amber-600" />
+                            OBSERVACIÓN DE PARÁMETROS TÉRMICOS
                         </div>
-                        <p className="text-xs font-bold leading-relaxed">{haccpViolationAlert}</p>
-                        <p className="text-xs text-rose-700">
-                            <b>ACCIÓN AUTOMÁTICA:</b> El lote ha sido marcado como bloqueado para empaque comercial y requiere evaluación de calidad.
+                        <p className="text-xs font-medium leading-relaxed">{haccpViolationAlert}</p>
+                        <p className="text-[11px] text-amber-700">
+                            El lote avanza a pasteurizado; la liberación final se dictamina en Control de Calidad (LAB-004).
                         </p>
                     </div>
                 )}
@@ -226,7 +246,7 @@ export default function ProductionIsPasteurizeModalOpenModal({
                                     type="number"
                                     value={pasteurizeForm.holding_time_seconds}
                                     onChange={(e) => setPasteurizeForm({ ...pasteurizeForm, holding_time_seconds: e.target.value })}
-                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                                     placeholder="Ej: 210"
                                 />
                             </div>
@@ -260,7 +280,10 @@ export default function ProductionIsPasteurizeModalOpenModal({
                     <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
                         <button
                             type="button"
-                            onClick={onClose}
+                            onClick={() => {
+                                setIsPasteurizeModalOpen(false);
+                                onClose?.();
+                            }}
                             className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all border border-slate-200"
                         >
                             Cancelar

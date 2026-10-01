@@ -31,6 +31,7 @@ import {
 import Money from '../components/ui/Money';
 import Modal from '../components/ui/Modal';
 import SearchableSelect from '../components/ui/SearchableSelect';
+import { formatDate, formatDateTime } from '../utils/dateUtils';
 
 const FilproSync = () => {
     const queryClient = useQueryClient();
@@ -1309,7 +1310,7 @@ const FilproSync = () => {
                                     syncLogs.map((log) => (
                                         <tr key={log.id} className="hover:bg-slate-50/70 transition-colors">
                                             <td className="py-2.5 px-4 font-bold text-slate-900 whitespace-nowrap">
-                                                {log.sync_date}
+                                                {formatDate(log.sync_date)}
                                             </td>
                                             <td className="py-2.5 px-4 text-slate-600 whitespace-nowrap">
                                                 {log.branch_name || `Sucursal #${log.branch_id}`}
@@ -1327,7 +1328,7 @@ const FilproSync = () => {
                                                 {log.total_errors}
                                             </td>
                                             <td className="py-2.5 px-4 text-xs text-slate-500 whitespace-nowrap">
-                                                {new Date(log.created_at).toLocaleString()}
+                                                {formatDateTime(log.created_at)}
                                             </td>
                                         </tr>
                                     ))

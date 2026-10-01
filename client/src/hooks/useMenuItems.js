@@ -426,6 +426,7 @@ export const SPECIAL_PERM_KEYS = new Set([
     'apply_item_discount',
     'apply_general_discount',
     'manage_egg_production_lots',
+    'manage_energy_config',
 ]);
 
 export const SPECIAL_PERM_LABELS = {
@@ -440,6 +441,7 @@ export const SPECIAL_PERM_LABELS = {
     apply_item_discount: 'Aplicar Descuentos por Ítem en POS',
     apply_general_discount: 'Aplicar Descuento General en POS',
     manage_egg_production_lots: 'Editar Lotes y Cierre Pasteurización',
+    manage_energy_config: 'Configuración de Credenciales Energéticas',
 };
 
 export function isSpecialItem(item, key) {

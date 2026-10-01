@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { LogOut, Building2, GitBranch, ChevronRight, ChevronDown, Check, X, Save, Eye, EyeOff, Menu } from 'lucide-react';
+import { useUpdate } from '../../context/UpdateContext';
+import { LogOut, Building2, GitBranch, ChevronRight, ChevronDown, Check, X, Save, Eye, EyeOff, Menu, Sparkles } from 'lucide-react';
 import NotificationBell from '../ui/NotificationBell';
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
@@ -8,6 +9,7 @@ import { toast } from 'sonner';
 
 const Navbar = ({ onToggleMobileMenu }) => {
     const { logout, user, selectContext, updateUser } = useAuth();
+    const { updateAvailable, updateInfo, openModal } = useUpdate();
     console.log('Navbar user object:', user);
     const [isMenuOpen, setIsMenuOpen] = useState(false);
 
@@ -191,6 +193,19 @@ const Navbar = ({ onToggleMobileMenu }) => {
 
             {/* Right actions */}
             <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
+                {updateAvailable && (
+                    <button
+                        type="button"
+                        onClick={openModal}
+                        className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#f95700]/15 border border-[#f95700]/40 text-[#f95700] hover:bg-[#f95700]/25 text-xs font-bold transition-all shadow-sm cursor-pointer animate-pulse"
+                        title="Nueva actualización disponible en el servidor. Clic para ver detalles."
+                    >
+                        <Sparkles size={13} className="text-[#f95700]" />
+                        <span className="hidden sm:inline">Actualización</span>
+                        <span className="font-mono text-[11px]">{updateInfo?.version || ''}</span>
+                    </button>
+                )}
+
                 <NotificationBell />
 
                 <div className="hidden md:block h-8 w-px bg-slate-800/60" />
