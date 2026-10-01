@@ -12,7 +12,7 @@ async function migrate(pool) {
             ADD COLUMN branch_id INT NULL DEFAULT NULL AFTER product_id,
             ADD INDEX idx_epr_prod_branch (company_id, branch_id, product_id)
         `);
-        console.log('[Migration v236] Agregadas columnas product_id y branch_id a egg_packaging_records.');
+        console.log('[Migration v245] Agregadas columnas product_id y branch_id a egg_packaging_records.');
     }
 
     // 2. Buscar registros de empaque existentes que no tengan movimiento ENTRADA / ENVASADO_INDUSTRIAL en inventory_movements
@@ -29,7 +29,7 @@ async function migrate(pool) {
         ORDER BY pr.id ASC
     `);
 
-    console.log(`[Migration v236] Encontrados ${records.length} registros de empaque pendientes de sincronizar con inventario.`);
+    console.log(`[Migration v245] Encontrados ${records.length} registros de empaque pendientes de sincronizar con inventario.`);
 
     let syncedCount = 0;
     for (const record of records) {
@@ -48,7 +48,7 @@ async function migrate(pool) {
             branchId = defBranch[0]?.id || null;
         }
         if (!branchId) {
-            console.warn(`[Migration v236] No se encontró sucursal válida para empresa ${companyId}, empaque #${record.id}`);
+            console.warn(`[Migration v245] No se encontró sucursal válida para empresa ${companyId}, empaque #${record.id}`);
             continue;
         }
 
@@ -60,7 +60,7 @@ async function migrate(pool) {
         }
 
         if (!productId) {
-            console.warn(`[Migration v236] No se pudo resolver producto de catálogo para empaque #${record.id} (${record.product_type} - ${record.presentation})`);
+            console.warn(`[Migration v245] No se pudo resolver producto de catálogo para empaque #${record.id} (${record.product_type} - ${record.presentation})`);
             continue;
         }
 
@@ -89,10 +89,10 @@ async function migrate(pool) {
         );
 
         syncedCount++;
-        console.log(`[Migration v236] Empaque #${record.id} sincronizado: Producto ID ${productId}, Sucursal ${branchId}, ${units} unidades.`);
+        console.log(`[Migration v245] Empaque #${record.id} sincronizado: Producto ID ${productId}, Sucursal ${branchId}, ${units} unidades.`);
     }
 
-    console.log(`[Migration v236] Migración finalizada. Registros sincronizados: ${syncedCount}/${records.length}.`);
+    console.log(`[Migration v245] Migración finalizada. Registros sincronizados: ${syncedCount}/${records.length}.`);
 }
 
 module.exports = { migrate };

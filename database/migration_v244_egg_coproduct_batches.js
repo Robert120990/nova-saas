@@ -10,7 +10,7 @@ async function migrate(pool) {
             ADD COLUMN is_coproduct TINYINT(1) NOT NULL DEFAULT 0 AFTER parent_batch_id,
             ADD INDEX idx_epb_parent (company_id, parent_batch_id)
         `);
-        console.log('[Migration v235] Agregadas columnas parent_batch_id e is_coproduct a egg_production_batches.');
+        console.log('[Migration v244] Agregadas columnas parent_batch_id e is_coproduct a egg_production_batches.');
     }
 
     // 2. Columna is_shared en batch_raw_materials
@@ -22,7 +22,7 @@ async function migrate(pool) {
             ALTER TABLE batch_raw_materials
             ADD COLUMN is_shared TINYINT(1) NOT NULL DEFAULT 0 AFTER boxes_count
         `);
-        console.log('[Migration v235] Agregada columna is_shared a batch_raw_materials.');
+        console.log('[Migration v244] Agregada columna is_shared a batch_raw_materials.');
     }
 
     // 3. Columnas parent_production_id e is_coproduct en egg_scheduled_productions
@@ -36,7 +36,7 @@ async function migrate(pool) {
             ADD COLUMN is_coproduct TINYINT(1) NOT NULL DEFAULT 0 AFTER parent_production_id,
             ADD INDEX idx_esp_parent (company_id, parent_production_id)
         `);
-        console.log('[Migration v235] Agregadas columnas parent_production_id e is_coproduct a egg_scheduled_productions.');
+        console.log('[Migration v244] Agregadas columnas parent_production_id e is_coproduct a egg_scheduled_productions.');
     }
 }
 
