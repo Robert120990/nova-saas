@@ -26,6 +26,17 @@ const getTranslatedInventory = async (req, res) => {
                             if (item && item.code) {
                                 weightsByCode[item.code.toLowerCase().trim()] = item;
                             }
+                            const pid = Number(item?.product_id);
+                            if (Number.isInteger(pid) && pid > 0) {
+                                const specificLbs = parseFloat(item.weight_lbs);
+                                const specificKg = parseFloat(item.weight_kg);
+                                mappingByProductId[pid] = {
+                                    mapping: m,
+                                    weight_lbs: Number.isFinite(specificLbs) && specificLbs > 0 ? specificLbs : parseFloat(m.unit_weight_lbs || 1),
+                                    weight_kg: Number.isFinite(specificKg) && specificKg > 0 ? specificKg : parseFloat(m.unit_weight_kg || 0.45)
+                                };
+                                mappedProductIds.push(pid);
+                            }
                         });
                     }
                 } catch (e) {
@@ -179,10 +190,20 @@ const getTranslatedInventory = async (req, res) => {
         // 4. Agrupar existencias según la vinculación de productos (egg_product_code_mappings)
         const byMapping = mappings.map(m => {
             const mCodes = normalizeCatalogCodes(m.catalog_codes).map(c => c.toLowerCase());
+            const mProductIds = new Set();
+            if (m.catalog_product_id) mProductIds.add(Number(m.catalog_product_id));
+            if (m.code_weights_json) {
+                try {
+                    const parsed = typeof m.code_weights_json === 'string' ? JSON.parse(m.code_weights_json) : m.code_weights_json;
+                    if (Array.isArray(parsed)) {
+                        parsed.forEach(it => { if (it?.product_id) mProductIds.add(Number(it.product_id)); });
+                    }
+                } catch (e) {}
+            }
             const matchedProds = items.filter(it =>
                 mCodes.includes((it.product_code || '').toLowerCase()) ||
                 mCodes.includes((it.product_barcode || '').toLowerCase()) ||
-                (it.product_id && it.product_id === Number(m.catalog_product_id))
+                (it.product_id && mProductIds.has(Number(it.product_id)))
             );
 
             const totalUnits = matchedProds.reduce((sum, it) => sum + (parseFloat(it.stock_units) || 0), 0);

@@ -69,6 +69,20 @@ const ensureEggSchema = async () => {
                 await migrate(pool);
                 console.log('[EggIndustrial] Auto-migración v234 completada exitosamente.');
             }
+            const [coprodCols] = await pool.query("SHOW COLUMNS FROM egg_production_batches LIKE 'parent_batch_id'");
+            if (!coprodCols.length) {
+                console.log('[EggIndustrial] Ejecutando auto-migración v235 para soporte de co-productos...');
+                const { migrate: migrate235 } = require('../../../database/migration_v235_egg_coproduct_batches');
+                await migrate235(pool);
+                console.log('[EggIndustrial] Auto-migración v235 completada exitosamente.');
+            }
+            const [pkgSyncCols] = await pool.query("SHOW COLUMNS FROM egg_packaging_records LIKE 'product_id'");
+            if (!pkgSyncCols.length) {
+                console.log('[EggIndustrial] Ejecutando auto-migración v236 para sincronización de envasado con inventario...');
+                const { migrate: migrate236 } = require('../../../database/migration_v236_egg_packaging_inventory_sync');
+                await migrate236(pool);
+                console.log('[EggIndustrial] Auto-migración v236 completada exitosamente.');
+            }
             schemaEnsured = true;
         } catch (err) {
             console.error('[EggIndustrial] Advertencia al verificar/migrar esquema:', err.message);

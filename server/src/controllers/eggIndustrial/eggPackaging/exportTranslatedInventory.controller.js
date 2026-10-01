@@ -25,6 +25,17 @@ const exportTranslatedInventory = async (req, res) => {
                             if (item && item.code) {
                                 weightsByCode[item.code.toLowerCase().trim()] = item;
                             }
+                            const pid = Number(item?.product_id);
+                            if (Number.isInteger(pid) && pid > 0) {
+                                const specificLbs = parseFloat(item.weight_lbs);
+                                const specificKg = parseFloat(item.weight_kg);
+                                mappingByProductId[pid] = {
+                                    mapping: m,
+                                    weight_lbs: Number.isFinite(specificLbs) && specificLbs > 0 ? specificLbs : parseFloat(m.unit_weight_lbs || 1),
+                                    weight_kg: Number.isFinite(specificKg) && specificKg > 0 ? specificKg : parseFloat(m.unit_weight_kg || 0.45)
+                                };
+                                mappedProductIds.push(pid);
+                            }
                         });
                     }
                 } catch (e) {}

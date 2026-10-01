@@ -1,4 +1,5 @@
 const { fail, number } = require('./eggRules.service');
+const { resolveEggCatalogProduct } = require('../utils/eggProductResolver');
 
 function normalizePresentation(str) {
     return String(str || '').toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -147,4 +148,113 @@ async function recordDispatch(connection, companyId, saleId, selection) {
     }
 }
 
-module.exports = { selectPackaging, reserveItems, recordDispatch, isProductTypeCompatible, normalizePresentation };
+async function getEffectiveBranchId(connection, companyId, preferredBranchId) {
+    if (preferredBranchId) {
+        const [rows] = await connection.query('SELECT id FROM branches WHERE id = ? AND company_id = ? LIMIT 1', [preferredBranchId, companyId]);
+        if (rows.length > 0) return rows[0].id;
+    }
+    const [defRows] = await connection.query('SELECT id FROM branches WHERE company_id = ? ORDER BY es_casa_matriz DESC, id ASC LIMIT 1', [companyId]);
+    return defRows[0]?.id || null;
+}
+
+async function recordPackagingStock(connection, companyId, packagingId, recordData, unitsToRecord) {
+    const units = Number(unitsToRecord !== undefined ? unitsToRecord : recordData.units_packaged || 0);
+    if (!Number.isFinite(units) || units <= 0) return null;
+    const branchId = await getEffectiveBranchId(connection, companyId, recordData.branch_id);
+    if (!branchId) return null;
+
+    let productId = recordData.product_id;
+    if (!productId) {
+        const resolved = await resolveEggCatalogProduct(connection, companyId, recordData.product_type, recordData.presentation);
+        productId = resolved?.catalog_product_id || null;
+    }
+    if (!productId) return null;
+
+    await connection.query('INSERT IGNORE INTO product_branch (product_id, branch_id) VALUES (?, ?)', [productId, branchId]);
+    await connection.query(
+        `INSERT INTO inventory (company_id, branch_id, product_id, stock) VALUES (?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE stock = stock + ?`,
+        [companyId, branchId, productId, units, units]
+    );
+    await connection.query(
+        `INSERT INTO inventory_movements (company_id, branch_id, product_id, tipo_movimiento, cantidad, tipo_documento, documento_id, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
+        [companyId, branchId, productId, 'ENTRADA', units, 'ENVASADO_INDUSTRIAL', packagingId]
+    );
+    await connection.query('UPDATE egg_packaging_records SET product_id = ?, branch_id = ? WHERE id = ? AND company_id = ?', [productId, branchId, packagingId, companyId]).catch(() => {});
+    return { productId, branchId, units };
+}
+
+async function revertPackagingStock(connection, companyId, packagingId, recordData, unitsToRevert, reason = 'ANULACION_ENVASADO') {
+    const units = Number(unitsToRevert !== undefined ? unitsToRevert : recordData.units_packaged || 0);
+    if (!Number.isFinite(units) || units <= 0) return null;
+    const branchId = await getEffectiveBranchId(connection, companyId, recordData.branch_id);
+    if (!branchId) return null;
+
+    let productId = recordData.product_id;
+    if (!productId) {
+        const resolved = await resolveEggCatalogProduct(connection, companyId, recordData.product_type, recordData.presentation);
+        productId = resolved?.catalog_product_id || null;
+    }
+    if (!productId) return null;
+
+    await connection.query(
+        `INSERT INTO inventory (company_id, branch_id, product_id, stock) VALUES (?, ?, ?, -?)
+         ON DUPLICATE KEY UPDATE stock = stock - ?`,
+        [companyId, branchId, productId, units, units]
+    );
+    await connection.query(
+        `INSERT INTO inventory_movements (company_id, branch_id, product_id, tipo_movimiento, cantidad, tipo_documento, documento_id, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
+        [companyId, branchId, productId, 'SALIDA', units, reason, packagingId]
+    );
+    return { productId, branchId, units };
+}
+
+async function adjustPackagingStock(connection, companyId, packagingId, oldData, newData) {
+    const branchId = await getEffectiveBranchId(connection, companyId, newData.branch_id || oldData.branch_id);
+    if (!branchId) return null;
+
+    let oldProductId = oldData.product_id;
+    if (!oldProductId) {
+        const resolvedOld = await resolveEggCatalogProduct(connection, companyId, oldData.product_type, oldData.presentation);
+        oldProductId = resolvedOld?.catalog_product_id || null;
+    }
+    let newProductId = newData.product_id;
+    if (!newProductId) {
+        const resolvedNew = await resolveEggCatalogProduct(connection, companyId, newData.product_type, newData.presentation);
+        newProductId = resolvedNew?.catalog_product_id || null;
+    }
+
+    const oldUnits = Number(oldData.units_packaged || 0);
+    const newUnits = Number(newData.units_packaged || 0);
+
+    if (oldProductId && newProductId && oldProductId !== newProductId) {
+        if (oldUnits > 0) await revertPackagingStock(connection, companyId, packagingId, { ...oldData, product_id: oldProductId, branch_id: branchId }, oldUnits, 'AJUSTE_ENVASADO');
+        if (newUnits > 0) await recordPackagingStock(connection, companyId, packagingId, { ...newData, product_id: newProductId, branch_id: branchId }, newUnits);
+    } else {
+        const targetProductId = newProductId || oldProductId;
+        if (!targetProductId) return null;
+        const delta = newUnits - oldUnits;
+        if (delta > 0) {
+            await connection.query('INSERT IGNORE INTO product_branch (product_id, branch_id) VALUES (?, ?)', [targetProductId, branchId]);
+            await connection.query(`INSERT INTO inventory (company_id, branch_id, product_id, stock) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE stock = stock + ?`, [companyId, branchId, targetProductId, delta, delta]);
+            await connection.query(`INSERT INTO inventory_movements (company_id, branch_id, product_id, tipo_movimiento, cantidad, tipo_documento, documento_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`, [companyId, branchId, targetProductId, 'ENTRADA', delta, 'AJUSTE_ENVASADO', packagingId]);
+        } else if (delta < 0) {
+            const absDelta = Math.abs(delta);
+            await connection.query(`INSERT INTO inventory (company_id, branch_id, product_id, stock) VALUES (?, ?, ?, -?) ON DUPLICATE KEY UPDATE stock = stock - ?`, [companyId, branchId, targetProductId, absDelta, absDelta]);
+            await connection.query(`INSERT INTO inventory_movements (company_id, branch_id, product_id, tipo_movimiento, cantidad, tipo_documento, documento_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`, [companyId, branchId, targetProductId, 'SALIDA', absDelta, 'AJUSTE_ENVASADO', packagingId]);
+        }
+    }
+
+    if (newProductId || branchId) {
+        await connection.query('UPDATE egg_packaging_records SET product_id = ?, branch_id = ? WHERE id = ? AND company_id = ?', [newProductId || oldProductId || null, branchId, packagingId, companyId]).catch(() => {});
+    }
+    return { oldProductId, newProductId, branchId, oldUnits, newUnits };
+}
+
+module.exports = {
+    selectPackaging, reserveItems, recordDispatch, isProductTypeCompatible, normalizePresentation,
+    getEffectiveBranchId, recordPackagingStock, revertPackagingStock, adjustPackagingStock
+};
+

@@ -1,4 +1,5 @@
 const { fail, number, pool, ensureEggSchema } = require('./shared');
+const { recordPackagingStock } = require('../../../services/eggStock.service');
 
 const deleteBlastFreezerLog = async (req, res) => {
     try {
@@ -90,6 +91,17 @@ const createPackagingRecord = async (req, res) => {
         let latestWarehouseZone = warehouse_zone;
         let latestProductState = product_state;
 
+        const userPerms = Array.isArray(req.user?.permissions)
+            ? req.user.permissions
+            : (typeof req.user?.permissions === 'string' ? JSON.parse(req.user?.permissions || '[]') : []);
+        const canManageLots = req.eggAccess?.superAdmin || req.user?.role === 'SuperAdmin' || req.user?.role === 'Admin' || userPerms.includes('manage_egg_production_lots') || userPerms.includes('manage_egg_packaging_close');
+
+        const [remSum] = await connection.query(
+            'SELECT COALESCE(SUM(quantity_lbs), 0) as remanentes_lbs FROM egg_batch_remanentes WHERE target_batch_id = ? AND company_id = ?',
+            [batch_id, company_id]
+        );
+        const totalAvailableLiquid = Number(batch.yield_liquid_lbs || 0) + Number(remSum[0]?.remanentes_lbs || 0);
+
         for (const item of itemsToProcess) {
             const units_packaged = number(item.units_packaged, 'Unidades', 1);
             const weight_per_unit_lbs = parseFloat(item.weight_per_unit_lbs || 0);
@@ -97,7 +109,9 @@ const createPackagingRecord = async (req, res) => {
             number(item.weight_per_unit_lbs, 'Peso unitario', 0.001);
             if (!Number.isInteger(Number(item.units_packaged))) fail('Las unidades deben ser enteras.');
             const [balance] = await connection.query('SELECT COALESCE(SUM(total_batch_weight_lbs), 0) AS packaged FROM egg_packaging_records WHERE batch_id = ? AND company_id = ?', [batch_id, company_id]);
-            if (Number(balance[0].packaged) + units_packaged * weight_per_unit_lbs > Number(batch.yield_liquid_lbs || 0) + 0.01) fail('El envasado supera el rendimiento líquido registrado.');
+            if (!canManageLots && (Number(balance[0].packaged) + units_packaged * weight_per_unit_lbs > totalAvailableLiquid + 0.01)) {
+                fail('El envasado supera el rendimiento líquido disponible (incluyendo remanentes asignados).');
+            }
 
             const itemWarehouseZone = item.warehouse_zone || warehouse_zone || 'COOLER';
             const itemProductState = item.product_state || product_state || 'liquido';
@@ -175,8 +189,24 @@ const createPackagingRecord = async (req, res) => {
                 ]
             );
 
+            // Alimentar inventario comercial y Kardex automáticamente
+            const stockFeed = await recordPackagingStock(
+                connection,
+                company_id,
+                result.insertId,
+                {
+                    product_type: resolvedProduct,
+                    presentation: resolvedPresentation,
+                    units_packaged,
+                    branch_id: batch.branch_id
+                },
+                units_packaged
+            );
+
             createdRecords.push({
                 id: result.insertId,
+                product_id: stockFeed?.productId || null,
+                branch_id: stockFeed?.branchId || batch.branch_id || null,
                 lot_code,
                 product_type: resolvedProduct,
                 presentation: resolvedPresentation,

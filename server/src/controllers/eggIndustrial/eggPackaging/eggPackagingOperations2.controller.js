@@ -1,4 +1,5 @@
 const { owned, fail, number, pool } = require('./shared');
+const { adjustPackagingStock, revertPackagingStock } = require('../../../services/eggStock.service');
 
 const updatePackagingRecord = async (req, res) => {
     const connection = await pool.getConnection();
@@ -47,7 +48,11 @@ const updatePackagingRecord = async (req, res) => {
         const parent = await owned(connection, 'egg_production_batches', finalBatchId, company_id, true);
         if (parent.packaging_status === 'cerrado' || parent.status === 'bloqueado_haccp') fail('El lote está cerrado o bloqueado.', 409);
         const [other] = await connection.query('SELECT COALESCE(SUM(total_batch_weight_lbs), 0) AS weight FROM egg_packaging_records WHERE batch_id = ? AND company_id = ? AND id != ?', [finalBatchId, company_id, id]);
-        if (Number(other[0].weight) + total_batch_weight_lbs > Number(parent.yield_liquid_lbs || 0) + 0.01) fail('El peso supera el rendimiento disponible.');
+        const [remSum] = await connection.query('SELECT COALESCE(SUM(quantity_lbs), 0) as remanentes_lbs FROM egg_batch_remanentes WHERE target_batch_id = ? AND company_id = ?', [finalBatchId, company_id]);
+        const totalAvailableLiquid = Number(parent.yield_liquid_lbs || 0) + Number(remSum[0]?.remanentes_lbs || 0);
+        if (!canEditLots && (Number(other[0].weight) + total_batch_weight_lbs > totalAvailableLiquid + 0.01)) {
+            fail('El peso supera el rendimiento disponible (incluyendo remanentes asignados).');
+        }
         // Actualizar qr_code_payload si cambió algo clave
         let updatedQrPayload = currentRecord.qr_code_payload;
         try {
@@ -93,6 +98,20 @@ const updatePackagingRecord = async (req, res) => {
                 id,
                 company_id
             ]
+        );
+
+        // Ajustar inventario comercial y registrar movimiento Kardex de ser necesario
+        await adjustPackagingStock(
+            connection,
+            company_id,
+            id,
+            currentRecord,
+            {
+                units_packaged: finalUnits,
+                product_type: finalProductType,
+                presentation: finalPresentation,
+                branch_id: parent.branch_id || currentRecord.branch_id
+            }
         );
 
         // Si se solicitó reabrir el envasado del lote asociado
@@ -171,6 +190,16 @@ const deletePackagingRecord = async (req, res) => {
         if (freezerRefs.length > 0) {
             return res.status(400).json({ message: 'No se puede eliminar: este empaque tiene registros de Blast Freezer asociados. Elimine primero los registros de congelación.' });
         }
+
+        // Revertir inventario comercial y registrar salida en Kardex
+        await revertPackagingStock(
+            connection,
+            company_id,
+            id,
+            existing[0],
+            existing[0].units_packaged,
+            'ANULACION_ENVASADO'
+        );
 
         await connection.query('DELETE FROM egg_packaging_records WHERE id = ? AND company_id = ?', [id, company_id]);
 

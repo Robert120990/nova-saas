@@ -125,6 +125,7 @@ async function getBatchExportData(batchId, companyId) {
     const shellWaste = parseFloat(batch.waste_shell_lbs || 0);
     const processLoss = parseFloat(batch.waste_loss_lbs || 0);
     const packagedWeight = packagingRecords.reduce((sum, p) => sum + parseFloat(p.total_batch_weight_lbs || 0), 0);
+    batch.packaged_weight_lbs = packagedWeight;
     const wasteLogsWeight = wasteLogs.reduce((sum, w) => sum + parseFloat(w.quantity_lbs || 0), 0);
     const remanenteWeight = remanentes.reduce((sum, r) => sum + parseFloat(r.quantity_lbs || 0), 0);
 

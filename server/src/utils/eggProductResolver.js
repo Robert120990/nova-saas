@@ -93,6 +93,54 @@ async function resolveEggCatalogProduct(dbConnection, companyId, productType, pr
             const cleanType = cleanStr(rawType);
             const cleanPres = cleanStr(rawPres);
 
+            // 1.0 Buscar coincidencia específica en code_weights_json (códigos y pesos individuales)
+            for (const m of mappings) {
+                const mType = cleanStr(m.industrial_product_type);
+                const typeMatches = mType === cleanType || cleanType.includes(mType) || mType.includes(cleanType);
+                if (!typeMatches || !m.code_weights_json) continue;
+
+                let codeItems = [];
+                try {
+                    codeItems = typeof m.code_weights_json === 'string' ? JSON.parse(m.code_weights_json) : m.code_weights_json;
+                } catch {
+                    codeItems = [];
+                }
+                if (!Array.isArray(codeItems)) continue;
+
+                const best = codeItems.find(it => {
+                    const w = parseFloat(it.weight_lbs || 0);
+                    const name = cleanStr(it.product_name);
+                    const code = cleanStr(it.code);
+                    const presMatch = (cleanPres.includes('cubeta') && (name.includes('cubeta') || code.includes('cbt') || code.includes('c3'))) ||
+                                      ((cleanPres.includes('galon') || cleanPres.includes('galón')) && (name.includes('galon') || name.includes('galón') || code.includes('g') || code.includes('gl'))) ||
+                                      (cleanPres.includes('litro') && (name.includes('litro') || code.includes('l') || code.includes('ltr'))) ||
+                                      (cleanPres.includes('bolsa') && (name.includes('bolsa') || code.includes('bolsa')));
+                    return Math.abs(w - defaultWeightLbs) < 0.5 && presMatch;
+                }) || codeItems.find(it => {
+                    const w = parseFloat(it.weight_lbs || 0);
+                    return Math.abs(w - defaultWeightLbs) < 0.5;
+                });
+
+                if (best && best.product_id) {
+                    const weightLbs = parseFloat(best.weight_lbs || defaultWeightLbs);
+                    const weightKg = parseFloat(best.weight_kg || (weightLbs * 0.45359237).toFixed(4));
+                    return {
+                        catalog_product_id: Number(best.product_id),
+                        catalog_code: best.code || null,
+                        catalog_codes: best.code || '',
+                        catalog_product_name: best.product_name || rawType,
+                        catalog_barcode: null,
+                        unit_weight_lbs: weightLbs > 0 ? weightLbs : defaultWeightLbs,
+                        unit_weight_kg: weightKg > 0 ? weightKg : parseFloat((defaultWeightLbs * 0.45359237).toFixed(4)),
+                        unit_of_measure: weightLbs >= 30 ? 'cubeta' : (weightLbs === 8 ? 'galon' : (weightLbs === 2 ? 'litro' : 'lb')),
+                        cost: 0,
+                        is_returnable: cleanPres.includes('cubeta') || cleanStr(best.product_name || '').includes('cubeta'),
+                        source: 'code_weights_json',
+                        mapping_id: m.id
+                    };
+                }
+            }
+
             // Coincidencia exacta de tipo y presentación
             let match = mappings.find(m => 
                 cleanStr(m.industrial_product_type) === cleanType &&

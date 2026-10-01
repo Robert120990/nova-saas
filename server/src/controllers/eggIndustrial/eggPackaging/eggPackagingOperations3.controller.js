@@ -5,7 +5,7 @@ const closeBatchPackaging = async (req, res) => {
     try {
         await connection.beginTransaction();
         const { id } = req.params;
-        const { reason, operator_name } = req.body;
+        const { reason, operator_name, notes } = req.body;
         const company_id = req.company_id;
 
         const [batches] = await connection.query(
@@ -30,9 +30,26 @@ const closeBatchPackaging = async (req, res) => {
         );
         const packagedWeight = parseFloat(pkgSum[0]?.packaged_weight || 0);
         const yieldLiquid = parseFloat(batch.yield_liquid_lbs || 0);
-        if (yieldLiquid <= 0 || packagedWeight > yieldLiquid + 0.01) fail('Balance de envasado inválido.');
-        const missingLbs = Math.max(0, yieldLiquid - packagedWeight);
-        const efficiencyPct = yieldLiquid > 0 ? Math.round((packagedWeight / yieldLiquid) * 10000) / 100 : 0;
+
+        // Sumar remanentes asignados al lote si existen para obtener la base líquida total
+        const [remSum] = await connection.query(
+            'SELECT COALESCE(SUM(quantity_lbs), 0) as remanentes_lbs FROM egg_batch_remanentes WHERE target_batch_id = ? AND company_id = ?',
+            [id, company_id]
+        );
+        const remanentesLbs = parseFloat(remSum[0]?.remanentes_lbs || 0);
+        const totalAvailableLiquid = yieldLiquid + remanentesLbs;
+        const basisLiquid = totalAvailableLiquid > 0 ? totalAvailableLiquid : yieldLiquid;
+
+        if (basisLiquid <= 0 && packagedWeight <= 0) {
+            fail('No hay rendimiento líquido registrado ni producto envasado para realizar el cierre técnico.', 400);
+        }
+
+        const missingLbs = Math.max(0, basisLiquid - packagedWeight);
+        const efficiencyPct = basisLiquid > 0
+            ? Math.round((packagedWeight / basisLiquid) * 10000) / 100
+            : (packagedWeight > 0 ? 100 : 0);
+
+        const closingNotes = notes || reason || '';
 
         // Si faltaron libras por envasar, registrarlas como merma en tuberías / envasado
         if (missingLbs > 0.01) {
@@ -41,7 +58,7 @@ const closeBatchPackaging = async (req, res) => {
                  VALUES (?, ?, 'envasado', 'merma_tuberias_envasado', ?, ?, ?)`,
                 [
                     company_id, id, missingLbs,
-                    reason || `Faltante de cierre de envasado (${missingLbs.toFixed(2)} Lbs no envasadas / residuos en tuberías).`,
+                    closingNotes || `Faltante de cierre de envasado (${missingLbs.toFixed(2)} Lbs no envasadas / residuos en tuberías).`,
                     operator_name || req.user?.nombre || 'Operador Envasado'
                 ]
             );
@@ -64,8 +81,8 @@ const closeBatchPackaging = async (req, res) => {
              VALUES (?, 'packaging.closed', 'info', ?, ?, ?)`,
             [
                 company_id,
-                `Envasado de lote #${id} (${batch.batch_code_display || batch.batch_uuid}) cerrado. Envasado: ${packagedWeight} Lbs. Faltante registrado como merma: ${missingLbs} Lbs. Eficiencia: ${efficiencyPct}%.`,
-                JSON.stringify({ batch_id: parseInt(id), packagedWeight, yieldLiquid, missingLbs, efficiencyPct }),
+                `Envasado de lote #${id} (${batch.batch_code_display || batch.batch_uuid}) cerrado. Envasado: ${packagedWeight} Lbs. Base líquida: ${basisLiquid} Lbs. ${missingLbs > 0 ? `Faltante registrado como merma: ${missingLbs.toFixed(2)} Lbs.` : 'Sin merma residual.'} Eficiencia: ${efficiencyPct}%.`,
+                JSON.stringify({ batch_id: parseInt(id), packagedWeight, yieldLiquid, remanentesLbs, basisLiquid, missingLbs, efficiencyPct, notes: closingNotes }),
                 operator_name || req.user?.nombre || 'Operador'
             ]
         );

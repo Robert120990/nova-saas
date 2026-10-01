@@ -13,9 +13,14 @@ const EggCloseBatchModal = ({
 
     const b = batch;
     const yieldLbs = parseFloat(b.yield_liquid_lbs || 0);
+    const remanentesLbs = Array.isArray(b.remanentes_used)
+        ? b.remanentes_used.reduce((sum, r) => sum + parseFloat(r.quantity_lbs || 0), 0)
+        : 0;
+    const basisLbs = (yieldLbs + remanentesLbs) > 0 ? (yieldLbs + remanentesLbs) : yieldLbs;
     const packagedLbs = parseFloat(b.packaged_weight_lbs || 0);
-    const missingLbs = Math.max(0, yieldLbs - packagedLbs);
-    const effPct = yieldLbs > 0 ? ((packagedLbs / yieldLbs) * 100).toFixed(2) : '100.00';
+    const missingLbs = Math.max(0, basisLbs - packagedLbs);
+    const effPct = basisLbs > 0 ? ((packagedLbs / basisLbs) * 100).toFixed(2) : '100.00';
+    const hasSuperavit = packagedLbs > basisLbs + 0.01;
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-150">
@@ -43,31 +48,44 @@ const EggCloseBatchModal = ({
                     </button>
                 </div>
 
-                <div className="grid grid-cols-3 gap-2 bg-slate-50 p-3.5 rounded-xl border border-slate-200 text-center text-xs">
+                <div className={`grid ${remanentesLbs > 0 ? 'grid-cols-4' : 'grid-cols-3'} gap-2 bg-slate-50 p-3.5 rounded-xl border border-slate-200 text-center text-xs`}>
                     <div>
                         <span className="text-[10px] font-bold text-slate-400 uppercase block">Rendimiento</span>
                         <strong className="text-teal-700 text-sm">{yieldLbs.toLocaleString()} Lbs</strong>
                     </div>
+                    {remanentesLbs > 0 && (
+                        <div>
+                            <span className="text-[10px] font-bold text-slate-400 uppercase block">Remanente (+)</span>
+                            <strong className="text-amber-700 text-sm">{remanentesLbs.toLocaleString()} Lbs</strong>
+                        </div>
+                    )}
                     <div>
                         <span className="text-[10px] font-bold text-slate-400 uppercase block">Envasado Real</span>
                         <strong className="text-indigo-700 text-sm">{packagedLbs.toLocaleString()} Lbs</strong>
                     </div>
                     <div>
                         <span className="text-[10px] font-bold text-slate-400 uppercase block">Faltante/Merma</span>
-                        <strong className={`text-sm ${missingLbs > 0 ? 'text-rose-600' : 'text-emerald-700'}`}>
+                        <strong className={`text-sm ${missingLbs > 0.01 ? 'text-rose-600' : 'text-emerald-700'}`}>
                             {missingLbs.toLocaleString()} Lbs
                         </strong>
                     </div>
                 </div>
 
-                {missingLbs > 0 ? (
+                {hasSuperavit ? (
+                    <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3.5 text-xs text-emerald-900 flex items-center gap-2">
+                        <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
+                        <div>
+                            <b>{effPct}% de Eficiencia (Superávit de Envasado):</b> El volumen envasado ({packagedLbs.toLocaleString()} Lbs) supera la base líquida disponible ({basisLbs.toLocaleString()} Lbs){remanentesLbs > 0 ? ' con remanentes asignados' : ''}. No se generará merma residual en tuberías.
+                        </div>
+                    </div>
+                ) : missingLbs > 0.01 ? (
                     <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 text-xs text-amber-900 space-y-1">
                         <div className="font-bold flex items-center gap-1.5 text-amber-800">
                             <AlertTriangle size={15} className="shrink-0 text-amber-600" />
                             Alerta de Saldo Pendiente por Envasar:
                         </div>
                         <p>
-                            Faltan <b>{missingLbs.toFixed(2)} Lbs</b> por envasar respecto al rendimiento obtenido.
+                            Faltan <b>{missingLbs.toFixed(2)} Lbs</b> por envasar respecto a la base líquida disponible.
                             Al confirmar el cierre, esta diferencia se computará automáticamente como <b>pérdida en tuberías / desperdicio técnico</b> para evaluar el margen de eficiencia global.
                         </p>
                         <p className="font-bold text-slate-800 pt-1">
