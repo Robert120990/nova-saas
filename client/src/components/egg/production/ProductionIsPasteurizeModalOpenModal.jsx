@@ -280,10 +280,7 @@ export default function ProductionIsPasteurizeModalOpenModal({
                     <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
                         <button
                             type="button"
-                            onClick={() => {
-                                setIsPasteurizeModalOpen(false);
-                                onClose?.();
-                            }}
+                            onClick={onClose}
                             className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all border border-slate-200"
                         >
                             Cancelar
