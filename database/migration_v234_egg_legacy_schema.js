@@ -47,6 +47,14 @@ async function ensureLegacyEggSchema(pool) {
             console.log("[EggIndustrial] Auto-migrated scheduled_production_id in egg_production_batches.");
         }
 
+        const [coprodCols] = await pool.query(
+            "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'egg_production_batches' AND COLUMN_NAME = 'parent_batch_id'"
+        );
+        if (coprodCols.length === 0) {
+            await pool.query("ALTER TABLE egg_production_batches ADD COLUMN parent_batch_id INT NULL DEFAULT NULL AFTER scheduled_production_id, ADD COLUMN is_coproduct TINYINT(1) NOT NULL DEFAULT 0 AFTER parent_batch_id");
+            console.log("[EggIndustrial] Auto-migrated parent_batch_id and is_coproduct in egg_production_batches.");
+        }
+
         const [pastLotCols] = await pool.query(
             "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'egg_production_batches' AND COLUMN_NAME = 'pasteurization_lot'"
         );
@@ -92,6 +100,13 @@ async function ensureLegacyEggSchema(pool) {
         );
         if (boxesCols.length === 0) {
             await pool.query("ALTER TABLE batch_raw_materials ADD COLUMN boxes_count INT DEFAULT 0 AFTER tarimas_json");
+        }
+
+        const [sharedCols] = await pool.query(
+            "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'batch_raw_materials' AND COLUMN_NAME = 'is_shared'"
+        );
+        if (sharedCols.length === 0) {
+            await pool.query("ALTER TABLE batch_raw_materials ADD COLUMN is_shared TINYINT(1) NOT NULL DEFAULT 0 AFTER boxes_count");
         }
 
         // Columnas en egg_packaging_records para soportar empaque multiproducto y presentación independiente

@@ -34,7 +34,17 @@ async function owned(connection, table, id, companyId, lock = false) {
 }
 
 function evaluatePasteurization(productType, temperature, seconds) {
-    const profiles = { 'huevo entero': 64, 'clara': 56.5, 'yema': 65, 'yema salada': 65, 'yema azucarada': 65 };
+    const profiles = {
+        'huevo entero': 64,
+        'huevo rapido': 64,
+        'clara': 56.5,
+        'clara ppg': 56.5,
+        'yema': 65,
+        'yema salada': 65,
+        'yema azucarada': 65,
+        'fórmula especial': 64,
+        'formula especial': 64
+    };
     // Nuevas formulaciones necesitan un perfil validado; no se infieren umbrales.
     const products = String(productType || '').toLowerCase().split(',').map(p => p.trim());
     const temperatureValue = number(temperature, 'Temperatura');

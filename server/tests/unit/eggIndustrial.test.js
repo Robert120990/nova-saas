@@ -120,6 +120,21 @@ test('Cierre de empaque bloqueado se rechaza y cierre repetido no duplica merma'
         assert(!db.calls.some(c=>c.sql.includes('INSERT INTO egg_batch_wastes')));
     }
 });
+test('Cierre de empaque permite superavit o remanentes integrados sin error de balance', async () => {
+    const db = database((sql) => {
+        if (sql.includes('SELECT * FROM egg_production_batches')) return [[{ id: 23, status: 'aprobado_calidad', packaging_status: 'pendiente', yield_liquid_lbs: 6610.88 }]];
+        if (sql.includes('SELECT COALESCE(SUM(total_batch_weight_lbs)')) return [[{ packaged_weight: 10584 }]];
+        if (sql.includes('SELECT COALESCE(SUM(quantity_lbs)')) return [[{ remanentes_lbs: 2362.58 }]];
+        return write();
+    });
+    const result = await invoke(controller('eggPackaging', db).closeBatchPackaging, { params: { id: 23 }, body: { notes: 'Fin de corrida' } });
+    assert.equal(result.statusCode, 200);
+    assert.equal(result.body.success, true);
+    assert.equal(result.body.missingLbs, 0);
+    assert(result.body.efficiencyPct > 100);
+    assert(!db.calls.some(c => c.sql.includes('INSERT INTO egg_batch_waste_logs')));
+    assert(db.calls.some(c => c.sql.includes('UPDATE egg_production_batches')));
+});
 test('Editar remanente ajeno o asignado no cambia destino', async () => {
     const db=database(()=>[[{id:1,target_batch_id:42,status:'asignado_a_lote'}]]);
     const r=await invoke(controller('eggProduction',db).updateBatchRemanente,{params:{id:1},body:{target_batch_id:55,status:'disponible'}});
@@ -218,3 +233,112 @@ test('Migración conserva saldo disponible y repetirla no duplica despachos hist
     await migration.migrate(db);await migration.migrate(db);
     assert.equal(produced,10);assert.equal(produced-dispatched,7);assert.equal(ledger,1);assert(roles.includes('manage_egg_quality'));
 });
+
+test('Creación de segundo lote / co-producto enlaza corrida y no descuenta inventario MP dos veces', async () => {
+    let rawMaterialDeductions = 0;
+    let brmInserted = null;
+    let batchInserted = null;
+    const db = database((sql, params) => {
+        if (sql.includes('FROM branches')) return [[{ id: 1 }]];
+        if (sql.includes('FROM egg_cip_logs')) return [[{ id: 1 }]];
+        if (sql.includes('FROM egg_raw_materials')) return [[{ id: 88, company_id: 7, status: 'aprobado', stock_lbs: 2000, total_boxes: 100, egg_type: 'huevo limpio', provider_lot: 'LOT-MP-1' }]];
+        if (sql.includes('FROM egg_scheduled_productions')) return [[{ id: 5, company_id: 7, status: 'en_proceso', batch_id: 10 }]];
+        if (sql.includes('FROM egg_production_batches') && sql.includes('WHERE id = ?')) return [[{ id: 10, company_id: 7, scheduled_production_id: 5, input_weight_lbs: 1000 }]];
+        if (sql.includes('SELECT batch_code_display FROM egg_production_batches')) return [[]];
+        if (sql.includes('SELECT raw_material_id, quantity_lbs, tarimas_json, boxes_count FROM batch_raw_materials WHERE batch_id = ?')) {
+            return [[{ raw_material_id: 88, quantity_lbs: 1000, tarimas_json: null, boxes_count: 50 }]];
+        }
+        if (sql.includes('INSERT INTO egg_production_batches')) {
+            batchInserted = params;
+            return write();
+        }
+        if (sql.includes('INSERT INTO batch_raw_materials')) {
+            brmInserted = params;
+            return write();
+        }
+        if (sql.includes('UPDATE egg_raw_materials SET stock_lbs = stock_lbs -')) {
+            rawMaterialDeductions++;
+            return write();
+        }
+        if (sql.includes('UPDATE egg_scheduled_productions')) return write();
+        return write();
+    });
+
+    const c = controller('eggProduction', db);
+    const r = await invoke(c.createProductionBatch, {
+        company_id: 7,
+        user: { id: 1, name: 'Operador Test' },
+        body: {
+            scheduled_production_id: 5,
+            product_type: 'huevo entero',
+            presentation: 'cubeta 30LB'
+        }
+    });
+
+    assert.equal(r.statusCode, 201);
+    assert.equal(rawMaterialDeductions, 0, 'No debe descontar stock de materia prima física para un co-producto');
+    assert.equal(brmInserted[5], 1, 'batch_raw_materials debe registrar is_shared = 1');
+    assert.equal(batchInserted[4], 5, 'scheduled_production_id debe quedar enlazado');
+    assert.equal(batchInserted[5], 10, 'parent_batch_id debe ser el lote origen');
+    assert.equal(batchInserted[6], 1, 'is_coproduct debe guardarse en 1');
+});
+
+test('Envasado alimenta inventario y Kardex al registrar empaque', async () => {
+    let inventoryAdded = 0, kardexInserted = false;
+    const db = database((sql, params) => {
+        if (sql.includes('SELECT id FROM branches')) return [[{ id: 5 }]];
+        if (sql.includes('INSERT INTO inventory (')) {
+            inventoryAdded += params[3];
+            return write();
+        }
+        if (sql.includes('INSERT INTO inventory_movements')) {
+            kardexInserted = true;
+            assert.equal(params[3], 'ENTRADA');
+            assert.equal(params[4], 100);
+            assert.equal(params[5], 'ENVASADO_INDUSTRIAL');
+            assert.equal(params[6], 50);
+            return write();
+        }
+        return write();
+    });
+
+    const res = await stock.recordPackagingStock(db, 9, 50, {
+        product_id: 9732,
+        branch_id: 5,
+        units_packaged: 100
+    }, 100);
+
+    assert.equal(res.productId, 9732);
+    assert.equal(res.units, 100);
+    assert.equal(inventoryAdded, 100);
+    assert.equal(kardexInserted, true);
+});
+
+test('Edición y anulación de empaque ajustan o revierten inventario y Kardex', async () => {
+    let kardexTipo = '', stockDelta = 0;
+    const db = database((sql, params) => {
+        if (sql.includes('SELECT id FROM branches')) return [[{ id: 5 }]];
+        if (sql.includes('INSERT INTO inventory (')) {
+            const isNegative = sql.includes('-?');
+            stockDelta += (isNegative ? -params[3] : params[3]);
+            return write();
+        }
+        if (sql.includes('INSERT INTO inventory_movements')) {
+            kardexTipo = params[3];
+            return write();
+        }
+        return write();
+    });
+
+    // Ajuste positivo (+20 unidades)
+    await stock.adjustPackagingStock(db, 9, 50, { product_id: 9732, branch_id: 5, units_packaged: 50 }, { product_id: 9732, branch_id: 5, units_packaged: 70 });
+    assert.equal(stockDelta, 20);
+    assert.equal(kardexTipo, 'ENTRADA');
+
+    // Reversión por anulación (-70 unidades)
+    stockDelta = 0;
+    await stock.revertPackagingStock(db, 9, 50, { product_id: 9732, branch_id: 5 }, 70);
+    assert.equal(stockDelta, -70);
+    assert.equal(kardexTipo, 'SALIDA');
+});
+

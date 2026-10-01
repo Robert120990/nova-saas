@@ -9,6 +9,8 @@ const getBatchStages = async (req, res) => {
         if (!data) return res.status(404).json({ message: 'Lote no encontrado.' });
 
         const { batch, rawMaterials, pasteurizationLogs, remanentes, packagingRecords, wasteLogs, totals } = data;
+        batch.packaged_weight_lbs = totals.packagedWeight;
+        batch.remanentes_used = data.remanentesUsed || [];
 
         // Construir el desglose de las 4 etapas
         const stages = [

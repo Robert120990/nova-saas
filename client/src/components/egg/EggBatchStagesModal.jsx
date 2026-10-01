@@ -33,8 +33,17 @@ const EggBatchStagesModal = ({
     const remanentesUsedList = stagesModal.data?.remanentes_used || stagesModal.data?.remanentesUsed || [];
     const remanentesGeneratedList = stagesModal.data?.remanentes || [];
     const wastesList = stagesModal.data?.wastes || [];
+    const packagingList = stagesModal.data?.packaging_records || stagesModal.data?.packagingRecords || [];
     const isPastClosed = stagesModal.data?.batch?.pasteurization_status === 'cerrado';
     const isPkgClosed = stagesModal.data?.batch?.packaging_status === 'cerrado';
+
+    const packagedWeightLbs = parseFloat(
+        stagesModal.data?.batch?.packaged_weight_lbs ??
+        stagesModal.data?.totals?.packagedWeight ??
+        stagesModal.batch?.packaged_weight_lbs ??
+        packagingList.reduce((acc, p) => acc + (parseFloat(p.total_batch_weight_lbs) || 0), 0) ??
+        0
+    );
 
     return (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
@@ -59,6 +68,17 @@ const EggBatchStagesModal = ({
                                     <>
                                         <span>•</span>
                                         <span className="font-mono text-amber-700 font-bold">Past: {stagesModal.batch.pasteurization_lot}</span>
+                                    </>
+                                )}
+                                {Boolean(stagesModal.batch?.is_coproduct || stagesModal.data?.batch?.is_coproduct) && (
+                                    <>
+                                        <span>•</span>
+                                        <span className="bg-teal-50 border border-teal-200 text-teal-800 font-bold text-[10px] px-2 py-0.5 rounded-md flex items-center gap-1">
+                                            🔗 Co-Producto Compartido
+                                            {(stagesModal.batch?.parent_batch_code || stagesModal.data?.batch?.parent_batch_code) && (
+                                                <span className="font-mono text-teal-600">({stagesModal.batch?.parent_batch_code || stagesModal.data?.batch?.parent_batch_code})</span>
+                                            )}
+                                        </span>
                                     </>
                                 )}
                             </div>
@@ -97,6 +117,11 @@ const EggBatchStagesModal = ({
                                             <div>Total: <b className="text-slate-900">{parseFloat(stagesModal.data?.batch?.input_weight_lbs || 0).toLocaleString()} Lbs</b></div>
                                             <div>Materia Prima: <span className="font-medium">{stagesModal.data?.raw_materials?.length || 0} ingresos</span></div>
                                             <div>Tarimas: <span className="font-medium text-indigo-700">{tarimasUsedList.length} tarimas</span></div>
+                                            {Boolean(stagesModal.batch?.is_coproduct || stagesModal.data?.batch?.is_coproduct) && (
+                                                <div className="text-[10px] text-teal-800 bg-teal-50 border border-teal-200 rounded px-1.5 py-1 font-medium mt-1">
+                                                    🔗 Materia prima compartida con corrida origen.
+                                                </div>
+                                            )}
                                             {isPastClosed && (
                                                 <div className="text-[10px] text-amber-700 font-semibold flex items-center gap-1 pt-1">
                                                     <Lock size={10} /> Quebraje cerrado por pasteurización
@@ -249,18 +274,18 @@ const EggBatchStagesModal = ({
                                             <span className="px-2 py-0.5 bg-purple-100 text-purple-800 rounded-md text-[10px] font-bold uppercase">
                                                 Etapa 4: Empaque
                                             </span>
-                                            <span className={`w-2.5 h-2.5 rounded-full ${parseFloat(stagesModal.data?.batch?.packaged_weight_lbs || 0) > 0 ? 'bg-purple-600' : 'bg-slate-300'}`} />
+                                            <span className={`w-2.5 h-2.5 rounded-full ${packagedWeightLbs > 0 ? 'bg-purple-600' : 'bg-slate-300'}`} />
                                         </div>
                                         <h4 className="font-bold text-xs text-slate-800">Envasado</h4>
                                         <div className="mt-2 space-y-1 text-xs text-slate-600">
                                             <div>Rendimiento: <b>{parseFloat(stagesModal.data?.batch?.yield_liquid_lbs || 0).toLocaleString()} Lbs</b></div>
-                                            <div>Envasado: <b className="text-purple-700">{parseFloat(stagesModal.data?.batch?.packaged_weight_lbs || 0).toLocaleString()} Lbs</b></div>
-                                            <div>Estado: <b className={`capitalize font-bold ${isPkgClosed ? 'text-emerald-700' : 'text-slate-800'}`}>{stagesModal.data?.batch?.packaging_status || 'abierto'}</b></div>
-                                            {stagesModal.data?.batch?.packaging_efficiency_pct && (
+                                            <div>Envasado: <b className="text-purple-700">{packagedWeightLbs.toLocaleString()} Lbs</b></div>
+                                            <div>Estado: <b className={`capitalize font-bold ${isPkgClosed ? 'text-emerald-700' : 'text-slate-800'}`}>{stagesModal.data?.batch?.packaging_status || (packagedWeightLbs > 0 ? 'en_envasado' : 'pendiente')}</b></div>
+                                            {Number(stagesModal.data?.batch?.packaging_efficiency_pct) > 0 ? (
                                                 <div className="text-[11px] font-bold text-emerald-700">
                                                     Eficiencia: {stagesModal.data.batch.packaging_efficiency_pct}%
                                                 </div>
-                                            )}
+                                            ) : null}
                                         </div>
                                     </div>
                                     <div className="mt-4 flex flex-col gap-1.5">
@@ -607,6 +632,61 @@ const EggBatchStagesModal = ({
                                     </div>
                                 ) : (
                                     <p className="text-xs text-slate-400 italic">No se han registrado mermas extraordinarias para este lote.</p>
+                                )}
+                            </div>
+
+                            {/* REGISTROS DE ENVASADO COMERCIAL */}
+                            <div className="border border-slate-200 rounded-xl p-4 bg-white space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                                        <Boxes size={14} className="text-purple-600" />
+                                        Registros de Envasado del Lote ({packagingList.length})
+                                    </h4>
+                                    <span className="text-[11px] font-bold text-purple-700">
+                                        Total: {packagedWeightLbs.toLocaleString()} Lbs • {packagingList.reduce((acc, p) => acc + (parseInt(p.units_packaged, 10) || 0), 0)} Unidades
+                                    </span>
+                                </div>
+                                {packagingList.length > 0 ? (
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-left text-xs">
+                                            <thead>
+                                                <tr className="border-b border-slate-100 text-slate-500 font-bold uppercase text-[10px]">
+                                                    <th className="py-1.5">Lote Empaque</th>
+                                                    <th className="py-1.5">Presentación</th>
+                                                    <th className="py-1.5 text-center">Unidades</th>
+                                                    <th className="py-1.5 text-right">Peso Unit.</th>
+                                                    <th className="py-1.5 text-right">Peso Total (Lbs)</th>
+                                                    <th className="py-1.5 text-center">Zona / Temp</th>
+                                                    <th className="py-1.5 text-center">Calidad</th>
+                                                    <th className="py-1.5">Fecha</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100">
+                                                {(Array.isArray(packagingList) ? packagingList : []).map(p => (
+                                                    <tr key={p.id} className="hover:bg-slate-50">
+                                                        <td className="py-2 font-mono font-bold text-purple-700">{p.lot_code}</td>
+                                                        <td className="py-2 capitalize font-medium">{p.presentation || p.product_type}</td>
+                                                        <td className="py-2 text-center font-bold text-slate-900">{p.units_packaged} u.</td>
+                                                        <td className="py-2 text-right text-slate-600">{parseFloat(p.weight_per_unit_lbs || 0).toFixed(1)} Lbs</td>
+                                                        <td className="py-2 text-right font-black text-purple-800">{parseFloat(p.total_batch_weight_lbs || 0).toLocaleString()} Lbs</td>
+                                                        <td className="py-2 text-center">
+                                                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-slate-100 text-slate-700">
+                                                                {p.warehouse_zone || 'COOLER'} ({p.product_state || 'líquido'})
+                                                            </span>
+                                                        </td>
+                                                        <td className="py-2 text-center">
+                                                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${p.quality_status === 'liberado' ? 'bg-emerald-100 text-emerald-800' : p.quality_status === 'bloqueado_haccp' ? 'bg-rose-100 text-rose-800' : 'bg-amber-100 text-amber-800'}`}>
+                                                                {p.quality_status || 'pendiente'}
+                                                            </span>
+                                                        </td>
+                                                        <td className="py-2 text-slate-500 text-[11px]">{p.created_at ? formatDate(p.created_at) : '-'}</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                ) : (
+                                    <p className="text-xs text-slate-400 italic">No hay registros de envasado comercial para este lote todavía.</p>
                                 )}
                             </div>
                         </>

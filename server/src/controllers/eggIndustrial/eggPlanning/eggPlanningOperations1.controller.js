@@ -213,8 +213,14 @@ const getScheduledProductions = async (req, res) => {
             params.push(end_date);
         }
         if (status) {
-            sql += ' AND p.status = ?';
-            params.push(status);
+            if (status.includes(',')) {
+                const statusList = status.split(',').map(s => s.trim()).filter(Boolean);
+                sql += ` AND p.status IN (${statusList.map(() => '?').join(',')})`;
+                params.push(...statusList);
+            } else {
+                sql += ' AND p.status = ?';
+                params.push(status);
+            }
         }
         if (product_profile) {
             sql += ' AND p.product_profile = ?';

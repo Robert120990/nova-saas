@@ -155,9 +155,11 @@ const getProductionBatches = async (req, res) => {
         let rows = [];
         try {
             const [queriedRows] = await pool.query(
-                `SELECT b.*, esp.lot_code as scheduled_lot_code, esp.production_date as scheduled_production_date
+                `SELECT b.*, esp.lot_code as scheduled_lot_code, esp.production_date as scheduled_production_date,
+                        pb.batch_code_display as parent_batch_code, pb.product_type as parent_product_type
                  FROM egg_production_batches b
                  LEFT JOIN egg_scheduled_productions esp ON b.scheduled_production_id = esp.id
+                 LEFT JOIN egg_production_batches pb ON b.parent_batch_id = pb.id
                  WHERE b.company_id = ?
                  ORDER BY b.started_at DESC`,
                 [companyId]

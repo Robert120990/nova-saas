@@ -20,7 +20,7 @@ import { getJulianDayInfo } from '../../../utils/julianDate';
 
 
 export default function ProductionIsNewBatchModalOpenModal({ model, open = model.isNewBatchModalOpen, onClose = () => { model.setIsNewBatchModalOpen(false); model.setEditingBatch(null); }, onSave = (e) => model.handleCreateBatch(e, true) }) {
-    const { scheduledProductions, selectedScheduledProd, setScannerModalOpen, rawMaterials, availableRemanentes, setAvailableRemanentes, showAllRemanentes, setShowAllRemanentes, setActiveTab, batchForm, setBatchForm, isSubmitting, cipBlockedError, setCipBlockedError, isNewBatchModalOpen, setIsNewBatchModalOpen, canManageLots, editingBatch, setEditingBatch, handleMarkRemanenteUsed, handleReactivateRemanente, handleSelectScheduledProduction, handleAddSpecificTarimaToRm, handleLoadAllAvailableTarimas, handleUpdateTarimaBoxesInRm, handleUpdateTarimaLbsInRm, handleRemoveTarimaFromRm, isCurrentSeparation, recommendedLot, recommendationReason, nonAALotSelectedForSeparation, nonAALotObj, handleApplyRecommendedLot, handleCreateBatch, handleQuickSanitize } = model;
+    const { scheduledProductions, selectedScheduledProd, setScannerModalOpen, rawMaterials, availableRemanentes, setAvailableRemanentes, showAllRemanentes, setShowAllRemanentes, setActiveTab, batchForm, setBatchForm, isSubmitting, cipBlockedError, setCipBlockedError, isNewBatchModalOpen, setIsNewBatchModalOpen, canManageLots, editingBatch, setEditingBatch, handleMarkRemanenteUsed, handleReactivateRemanente, handleSelectScheduledProduction, batches, handleAddSpecificTarimaToRm, handleLoadAllAvailableTarimas, handleUpdateTarimaBoxesInRm, handleUpdateTarimaLbsInRm, handleRemoveTarimaFromRm, isCurrentSeparation, recommendedLot, recommendationReason, nonAALotSelectedForSeparation, nonAALotObj, handleApplyRecommendedLot, handleCreateBatch, handleQuickSanitize, handleAddSecondaryBatch, handleRemoveSecondaryBatch, handleUpdateSecondaryBatch } = model;
     if (!open) return null;
     return (<>{isNewBatchModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
@@ -125,7 +125,8 @@ export default function ProductionIsNewBatchModalOpenModal({ model, open = model
                                     <option value="">-- Iniciar Producción Libre / Sin Programación Previa --</option>
                                     {(Array.isArray(scheduledProductions) ? scheduledProductions : []).map(p => (
                                         <option key={p.id} value={p.id}>
-                                            Lote: {p.lot_code} | {p.product_profile} ({parseFloat(p.target_quantity_lbs || 0).toLocaleString()} Lbs) - {p.production_date?.split('T')[0]} ({p.priority || 'media'})
+                                            {p.status === 'en_proceso' || p.batch_id ? '🔄 [En Proceso / Co-Producto] ' : '📅 '}
+                                            Lote: {p.lot_code} | {p.product_profile} ({parseFloat(p.target_quantity_lbs || 0).toLocaleString()} Lbs) - {p.production_date?.split('T')[0]} ({p.status || p.priority || 'media'})
                                         </option>
                                     ))}
                                 </select>
@@ -144,6 +145,61 @@ export default function ProductionIsNewBatchModalOpenModal({ model, open = model
                                     </p>
                                 )}
                             </div>
+
+                            {/* Banner y selector de Segundo Lote / Co-Producto */}
+                            {(batchForm.parent_batch_id || batchForm.is_coproduct) ? (
+                                <div className="bg-gradient-to-r from-teal-50 via-emerald-50 to-teal-50 border border-teal-300 rounded-2xl p-4 space-y-2 text-teal-950 shadow-xs">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-xs font-black uppercase tracking-wide flex items-center gap-1.5 text-teal-900">
+                                            <Layers className="w-4 h-4 text-teal-600" />
+                                            <span>Segundo Lote / Co-Producto (Materia Prima Compartida)</span>
+                                        </span>
+                                        <button
+                                            type="button"
+                                            onClick={() => setBatchForm(prev => ({ ...prev, parent_batch_id: null, is_coproduct: false }))}
+                                            className="text-[11px] font-bold text-rose-600 hover:text-rose-800 underline transition-colors"
+                                        >
+                                            Desvincular Co-Producto
+                                        </button>
+                                    </div>
+                                    <p className="text-xs text-teal-900 leading-relaxed">
+                                        🌿 <strong>Corrida compartida:</strong> Este lote utilizará la misma materia prima quebrada del lote principal <strong>{(() => {
+                                            const pb = (batches || []).find(b => b.id === batchForm.parent_batch_id);
+                                            return pb ? `${pb.batch_code_display || pb.batch_uuid} (${pb.product_type})` : `#${batchForm.parent_batch_id}`;
+                                        })()}</strong>.
+                                        Ideal para quebraje simultáneo (ej. clara y yema separadas frente a huevo entero no separado). El inventario en bodega <strong>no se descontará dos veces</strong>.
+                                    </p>
+                                </div>
+                            ) : (
+                                <div className="bg-slate-100 p-1.5 rounded-2xl flex flex-col sm:flex-row gap-2 border border-slate-200">
+                                    <button
+                                        type="button"
+                                        onClick={() => setBatchForm(prev => ({ ...prev, enable_secondary_batch: false, secondary_batches: [] }))}
+                                        className={`flex-1 py-2.5 px-4 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${
+                                            !batchForm.enable_secondary_batch
+                                                ? 'bg-white text-indigo-700 shadow-sm border border-slate-200'
+                                                : 'text-slate-600 hover:text-slate-900'
+                                        }`}
+                                    >
+                                        <span>🥚 Corrida Individual (1 Lote)</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            if ((batchForm.secondary_batches || []).length === 0) {
+                                                handleAddSecondaryBatch();
+                                            }
+                                        }}
+                                        className={`flex-1 py-2.5 px-4 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${
+                                            batchForm.enable_secondary_batch
+                                                ? 'bg-teal-600 text-white shadow-md border border-teal-700'
+                                                : 'text-slate-600 hover:text-teal-700'
+                                        }`}
+                                    >
+                                        <span>⚡ Quebrado Multi-Lote / Co-Productos ({(batchForm.secondary_batches?.length || 0) > 0 ? `${1 + batchForm.secondary_batches.length} Lotes` : '2+ Lotes'})</span>
+                                    </button>
+                                </div>
+                            )}
 
                             {/* Identificadores de Lote (Solo edición con permiso especial) */}
                             {editingBatch && (
@@ -198,7 +254,8 @@ export default function ProductionIsNewBatchModalOpenModal({ model, open = model
                                 </div>
                             )}
 
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            {!batchForm.enable_secondary_batch ? (
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                 <div>
                                     <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">Corrida del Día</label>
                                     <input
@@ -295,6 +352,228 @@ export default function ProductionIsNewBatchModalOpenModal({ model, open = model
                                     </div>
                                 </div>
                             </div>
+                            ) : (
+                                <div className="space-y-4">
+                                    <div className="bg-teal-50/80 border border-teal-300 rounded-2xl p-3.5 text-xs text-teal-950 flex items-center justify-between">
+                                        <div className="flex items-center gap-2 font-bold">
+                                            <span className="p-1.5 bg-teal-200 text-teal-800 rounded-xl">⚡</span>
+                                            <span>Configuración de Quebrado Multi-Lote: Se crearán {1 + (batchForm.secondary_batches?.length || 1)} lotes simultáneos con la misma materia prima quebrada.</span>
+                                        </div>
+                                        <span className="text-[10px] font-black uppercase tracking-wider bg-teal-100 text-teal-800 border border-teal-200 px-2.5 py-1 rounded-full">
+                                            Materia Prima Compartida
+                                        </span>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                        {/* TARJETA LOTE 1 (PRINCIPAL) */}
+                                        <div className="bg-indigo-50/50 border-2 border-indigo-300 rounded-2xl p-4 space-y-3">
+                                            <div className="flex items-center justify-between border-b border-indigo-200 pb-2">
+                                                <span className="text-xs font-black uppercase text-indigo-900 flex items-center gap-1.5">
+                                                    <span>🥚 Lote 1 (Principal)</span>
+                                                </span>
+                                                <span className="font-mono text-xs font-bold bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded-lg">
+                                                    {batchForm.batch_code_display || `LOTE ${String(batchForm.run_number || 1).padStart(2, '0')}-${getJulianDayInfo().dayOfYearStr}-${getJulianDayInfo().year2Digit}`}
+                                                </span>
+                                            </div>
+
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                                <div>
+                                                    <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">Corrida Lote 1</label>
+                                                    <input
+                                                        type="number"
+                                                        min="1"
+                                                        value={batchForm.run_number}
+                                                        onChange={(e) => {
+                                                            const newRun = e.target.value;
+                                                            const dayInfo = getJulianDayInfo();
+                                                            const runStr = String(newRun || 1).padStart(2, '0');
+                                                            const autoCode = `LOTE ${runStr}-${dayInfo.dayOfYearStr}-${dayInfo.year2Digit}`;
+                                                            setBatchForm(prev => ({
+                                                                ...prev,
+                                                                run_number: newRun,
+                                                                batch_code_display: autoCode
+                                                            }));
+                                                        }}
+                                                        className="w-full px-3 py-1.5 bg-white border border-indigo-200 rounded-xl text-xs font-bold"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">Producto Lote 1 *</label>
+                                                    <select
+                                                        value={batchForm.product_type}
+                                                        onChange={(e) => setBatchForm({ ...batchForm, product_type: e.target.value })}
+                                                        className="w-full px-3 py-1.5 bg-white border border-indigo-200 rounded-xl text-xs font-semibold"
+                                                    >
+                                                        <option value="clara">Clara Pasteurizada</option>
+                                                        <option value="clara ppg">Clara PPG</option>
+                                                        <option value="huevo entero">Huevo Entero Pasteurizado</option>
+                                                        <option value="huevo rapido">Huevo Entero Rápido</option>
+                                                        <option value="yema salada">Yema Líquida Salada (10% sal)</option>
+                                                        <option value="yema azucarada">Yema Líquida Azucarada (10% azúcar)</option>
+                                                        <option value="fórmula especial">Fórmula Especial / HE Plus</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+
+                                            <div>
+                                                <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">Presentaciones Lote 1</label>
+                                                <div className="flex flex-wrap gap-1 p-1 bg-white border border-indigo-200 rounded-xl">
+                                                    {[
+                                                        { id: 'cubeta 30LB', label: 'Cubeta 30 Lbs' },
+                                                        { id: 'cubeta 32LB', label: 'Cubeta 32 Lbs' },
+                                                        { id: 'galón 8LB', label: 'Galón 8 Lbs' },
+                                                        { id: 'medio galón 4LB', label: 'Medio Galón 4 Lbs' },
+                                                        { id: 'litro 2LB', label: 'Litro 2 Lbs' },
+                                                        { id: 'bolsa 5LB', label: 'Bolsa 5 Lbs' }
+                                                    ].map(p => {
+                                                        const currentSelected = Array.isArray(batchForm.presentations)
+                                                            ? batchForm.presentations
+                                                            : (batchForm.presentation ? batchForm.presentation.split(',').map(s => s.trim()) : ['cubeta 30LB']);
+                                                        const isSelected = currentSelected.includes(p.id);
+                                                        return (
+                                                            <button
+                                                                key={p.id}
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    let updated;
+                                                                    if (isSelected) {
+                                                                        if (currentSelected.length === 1) return toast.info('Mantenga al menos una presentación.');
+                                                                        updated = currentSelected.filter(x => x !== p.id);
+                                                                    } else {
+                                                                        updated = [...currentSelected, p.id];
+                                                                    }
+                                                                    setBatchForm({ ...batchForm, presentations: updated, presentation: updated.join(', ') });
+                                                                }}
+                                                                className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition-all border ${isSelected ? 'bg-indigo-600 text-white border-indigo-700' : 'bg-slate-50 text-slate-600 border-slate-200'}`}
+                                                            >
+                                                                {p.label}
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* TARJETAS DINÁMICAS LOTES CO-PRODUCTOS */}
+                                        {((batchForm.secondary_batches && batchForm.secondary_batches.length > 0)
+                                            ? batchForm.secondary_batches
+                                            : [{
+                                                run_number: batchForm.second_run_number || 2,
+                                                batch_code_display: batchForm.second_batch_code_display,
+                                                product_type: batchForm.second_product_type || 'clara',
+                                                presentation: batchForm.second_presentation || 'cubeta 30LB',
+                                                presentations: batchForm.second_presentations?.length ? batchForm.second_presentations : ['cubeta 30LB']
+                                            }]
+                                        ).map((secBatch, sIdx) => {
+                                            const lotNum = sIdx + 2;
+                                            const codeDisplay = secBatch.batch_code_display || `LOTE ${String(secBatch.run_number || lotNum).padStart(2, '0')}-${getJulianDayInfo().dayOfYearStr}-${getJulianDayInfo().year2Digit}`;
+                                            const currentPres = Array.isArray(secBatch.presentations) && secBatch.presentations.length > 0
+                                                ? secBatch.presentations
+                                                : (secBatch.presentation ? secBatch.presentation.split(',').map(s => s.trim()) : ['cubeta 30LB']);
+
+                                            return (
+                                                <div key={secBatch.id || sIdx} className="bg-teal-50/50 border-2 border-teal-300 rounded-2xl p-4 space-y-3">
+                                                    <div className="flex items-center justify-between border-b border-teal-200 pb-2">
+                                                        <span className="text-xs font-black uppercase text-teal-900 flex items-center gap-1.5">
+                                                            <Sparkles className="w-3.5 h-3.5 text-teal-600" />
+                                                            <span>🔗 Lote {lotNum} (Co-Producto)</span>
+                                                        </span>
+                                                        <div className="flex items-center gap-1.5">
+                                                            <span className="font-mono text-xs font-bold bg-teal-100 text-teal-800 px-2 py-0.5 rounded-lg">
+                                                                {codeDisplay}
+                                                            </span>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleRemoveSecondaryBatch(sIdx)}
+                                                                className="p-1 rounded text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                                                                title={`Quitar Lote ${lotNum}`}
+                                                            >
+                                                                <Trash2 className="w-3.5 h-3.5" />
+                                                            </button>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                                        <div>
+                                                            <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">Corrida / Código Lote {lotNum}</label>
+                                                            <input
+                                                                type="text"
+                                                                value={secBatch.batch_code_display || ''}
+                                                                onChange={(e) => handleUpdateSecondaryBatch(sIdx, 'batch_code_display', e.target.value)}
+                                                                className="w-full px-3 py-1.5 bg-white border border-teal-200 rounded-xl text-xs font-bold"
+                                                                placeholder={`Ej: LOTE 0${lotNum}-${getJulianDayInfo().dayOfYearStr}-${getJulianDayInfo().year2Digit}`}
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">Producto Lote {lotNum} *</label>
+                                                            <select
+                                                                value={secBatch.product_type || 'clara'}
+                                                                onChange={(e) => handleUpdateSecondaryBatch(sIdx, 'product_type', e.target.value)}
+                                                                className="w-full px-3 py-1.5 bg-white border border-teal-200 rounded-xl text-xs font-semibold"
+                                                            >
+                                                                <option value="huevo entero">Huevo Entero Pasteurizado</option>
+                                                                <option value="huevo rapido">Huevo Entero Rápido</option>
+                                                                <option value="clara">Clara Pasteurizada</option>
+                                                                <option value="clara ppg">Clara PPG</option>
+                                                                <option value="yema salada">Yema Líquida Salada (10% sal)</option>
+                                                                <option value="yema azucarada">Yema Líquida Azucarada (10% azúcar)</option>
+                                                                <option value="fórmula especial">Fórmula Especial / HE Plus</option>
+                                                            </select>
+                                                        </div>
+                                                    </div>
+
+                                                    <div>
+                                                        <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">Presentaciones Lote {lotNum}</label>
+                                                        <div className="flex flex-wrap gap-1 p-1 bg-white border border-teal-200 rounded-xl">
+                                                            {[
+                                                                { id: 'cubeta 30LB', label: 'Cubeta 30 Lbs' },
+                                                                { id: 'cubeta 32LB', label: 'Cubeta 32 Lbs' },
+                                                                { id: 'galón 8LB', label: 'Galón 8 Lbs' },
+                                                                { id: 'medio galón 4LB', label: 'Medio Galón 4 Lbs' },
+                                                                { id: 'litro 2LB', label: 'Litro 2 Lbs' },
+                                                                { id: 'bolsa 5LB', label: 'Bolsa 5 Lbs' }
+                                                            ].map(p => {
+                                                                const isSelected = currentPres.includes(p.id);
+                                                                return (
+                                                                    <button
+                                                                        key={p.id}
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                            let updated;
+                                                                            if (isSelected) {
+                                                                                if (currentPres.length === 1) return toast.info('Mantenga al menos una presentación.');
+                                                                                updated = currentPres.filter(x => x !== p.id);
+                                                                            } else {
+                                                                                updated = [...currentPres, p.id];
+                                                                            }
+                                                                            handleUpdateSecondaryBatch(sIdx, 'presentations', updated);
+                                                                        }}
+                                                                        className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition-all border ${isSelected ? 'bg-teal-600 text-white border-teal-700' : 'bg-slate-50 text-slate-600 border-slate-200'}`}
+                                                                    >
+                                                                        {p.label}
+                                                                    </button>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+
+                                    {/* Botón para agregar más lotes co-productos */}
+                                    <div className="flex justify-end pt-1">
+                                        <button
+                                            type="button"
+                                            onClick={handleAddSecondaryBatch}
+                                            className="px-3.5 py-2 rounded-xl border border-dashed border-teal-400 hover:border-teal-600 bg-teal-50/70 hover:bg-teal-100 text-teal-800 text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs"
+                                        >
+                                            <Sparkles className="w-3.5 h-3.5 text-teal-600" />
+                                            <span>+ Agregar Lote Co-Producto Adicional ({1 + (batchForm.secondary_batches?.length || 1) + 1})</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
 
                             {/* Materias Primas con Desglose de Tarimas y Cantidades */}
                             <div className="space-y-4 bg-slate-50/80 p-4 rounded-2xl border border-slate-200">
@@ -325,6 +604,15 @@ export default function ProductionIsNewBatchModalOpenModal({ model, open = model
                                         </div>
                                     </div>
                                 </div>
+
+                                {batchForm.is_coproduct && (
+                                    <div className="p-3 bg-teal-50 border border-teal-200 rounded-xl text-xs text-teal-900 flex items-center gap-2">
+                                        <span className="w-2.5 h-2.5 rounded-full bg-teal-500 shrink-0 animate-pulse"></span>
+                                        <span>
+                                            <strong>Materias primas vinculadas a corrida compartida:</strong> Estas tarimas y libras corresponden a la corrida del lote principal. No se descontará inventario adicional en bodega.
+                                        </span>
+                                    </div>
+                                )}
 
                                 {/* Banner de recomendación inteligente: FIFO y Grado AA para Separación */}
                                 {recommendedLot && (
@@ -913,11 +1201,19 @@ export default function ProductionIsNewBatchModalOpenModal({ model, open = model
                                 <button
                                     type="submit"
                                     disabled={isSubmitting}
-                                    className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm"
+                                    className={`px-5 py-2 text-white rounded-xl text-xs font-bold transition-all shadow-sm ${
+                                        (batchForm.enable_secondary_batch || batchForm.is_coproduct)
+                                            ? 'bg-teal-600 hover:bg-teal-700'
+                                            : 'bg-indigo-600 hover:bg-indigo-700'
+                                    }`}
                                 >
                                     {isSubmitting
                                         ? (editingBatch ? 'Guardando Cambios...' : 'Iniciando...')
-                                        : (editingBatch ? 'Actualizar Lote' : 'Iniciar Lote')}
+                                        : (editingBatch
+                                            ? 'Actualizar Lote'
+                                            : (batchForm.enable_secondary_batch
+                                                ? 'Iniciar Producción Dual (Lote 1 y Lote 2)'
+                                                : (batchForm.is_coproduct ? 'Iniciar Segundo Lote / Co-Producto' : 'Iniciar Lote')))}
                                 </button>
                             </div>
                         </form>

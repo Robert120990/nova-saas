@@ -14,13 +14,14 @@ import {
     Download,
     Scale,
     FlaskConical,
-    MoreVertical
+    MoreVertical,
+    Split
 } from 'lucide-react';
 
 
 export default function ProductionBatchesTab({ model }) {
     const [openActionMenuId, setOpenActionMenuId] = useState(null);
-    const { setQualityModal, loading, searchTerm, setSearchTerm, activeTab, setSelectedBatchForPasteurize, setIsPasteurizeModalOpen, canEditProduction, canDeleteProduction, canManageLots, setDeleteConfirmBatch, handleOpenStagesModal, handleOpenClosePasteurization, handleReopenPasteurization, handleOpenBalanceModal, handleOpenWastesModal, handleOpenEditBatch, handleExportSummary, getBatchStatusBadge, filteredBatches } = model;
+    const { setQualityModal, loading, searchTerm, setSearchTerm, activeTab, setSelectedBatchForPasteurize, setIsPasteurizeModalOpen, canEditProduction, canDeleteProduction, canManageLots, setDeleteConfirmBatch, handleOpenStagesModal, handleOpenClosePasteurization, handleReopenPasteurization, handleOpenBalanceModal, handleOpenWastesModal, handleOpenEditBatch, handleExportSummary, getBatchStatusBadge, filteredBatches, handleCreateCoproductBatch } = model;
 
     return (<>{activeTab === 'batches' && (
                 <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
@@ -99,8 +100,14 @@ export default function ProductionBatchesTab({ model }) {
                                                 </div>
                                             </td>
                                             <td className="px-3 py-2.5">
-                                                <div className="font-bold text-slate-900 text-xs capitalize flex items-center gap-1.5">
+                                                <div className="font-bold text-slate-900 text-xs capitalize flex items-center gap-1.5 flex-wrap">
                                                     <span>{b.product_type}</span>
+                                                    {Boolean(b.is_coproduct) && (
+                                                        <span className="bg-teal-50 border border-teal-200 text-teal-800 font-bold text-[9px] px-1.5 py-0.5 rounded flex items-center gap-1" title="Segundo lote / co-producto derivado del mismo quebrado de huevo">
+                                                            <span>🔗 Co-Producto</span>
+                                                            {b.parent_batch_code && <span className="font-mono text-teal-600">({b.parent_batch_code})</span>}
+                                                        </span>
+                                                    )}
                                                     {b.scheduled_lot_code && (
                                                         <span className="bg-indigo-50 border border-indigo-200 text-indigo-700 font-mono text-[9px] font-bold px-1.5 py-0.2 rounded" title="Originado en Calendario de Producción">
                                                             Prog: {b.scheduled_lot_code}
@@ -266,7 +273,21 @@ export default function ProductionBatchesTab({ model }) {
                                                                         </button>
                                                                     </div>
 
-                                                                    <div className="h-px bg-slate-100 my-0.5" />
+                                                                    {/* Crear Segundo Lote (Co-producto) */}
+                                                                    {canManageLots && (
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => {
+                                                                                if (handleCreateCoproductBatch) handleCreateCoproductBatch(b);
+                                                                                setOpenActionMenuId(null);
+                                                                            }}
+                                                                            className="flex items-center gap-2 px-2 py-1.5 hover:bg-teal-50 rounded-lg text-xs font-bold text-teal-800 w-full transition-colors text-left"
+                                                                            title="Crear un segundo lote (ej. Huevo Entero o Yema) compartiendo el mismo quebrado de huevo y materia prima"
+                                                                        >
+                                                                            <Split size={13} className="text-teal-600 shrink-0" />
+                                                                            <span>+ Segundo Lote (Co-prod)</span>
+                                                                        </button>
+                                                                    )}
 
                                                                     {/* Mermas */}
                                                                     <button

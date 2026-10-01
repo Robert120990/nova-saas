@@ -70,27 +70,56 @@ const createScheduledProduction = async (req, res) => {
         const scheduledId = result.insertId;
 
         // Guardar tareas y asignación de roles de fábrica
-        if (Array.isArray(tasks) && tasks.length > 0) {
+        const insertTasks = async (targetSchedId) => {
+            if (!Array.isArray(tasks) || tasks.length === 0) return;
             for (const task of tasks) {
-                if (task.task_description && task.task_description.trim() !== '') {
+                if (task.task_description?.trim()) {
                     await connection.query(
-                        `INSERT INTO egg_scheduled_tasks (
-                            company_id, scheduled_production_id, user_id, user_name,
-                            factory_role, task_description, checklist_status, notes
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-                        [
-                            company_id,
-                            scheduledId,
-                            task.user_id || null,
-                            task.user_name || 'Operario de Planta',
-                            task.factory_role || 'General',
-                            task.task_description,
-                            task.checklist_status || 'pendiente',
-                            task.notes || null
-                        ]
+                        `INSERT INTO egg_scheduled_tasks (company_id, scheduled_production_id, user_id, user_name, factory_role, task_description, checklist_status, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+                        [company_id, targetSchedId, task.user_id || null, task.user_name || 'Operario de Planta', task.factory_role || 'General', task.task_description, task.checklist_status || 'pendiente', task.notes || null]
                     );
                 }
             }
+        };
+        await insertTasks(scheduledId);
+
+        // Guardar lotes secundarios / co-productos si se solicitaron corridas múltiples
+        const secList = Array.isArray(req.body.secondary_productions) && req.body.secondary_productions.length > 0
+            ? req.body.secondary_productions
+            : (req.body.secondary_production ? [req.body.secondary_production] : (req.body.enable_secondary_batch ? [{}] : []));
+
+        const createdSecondaryIds = [];
+        let secIdx = 2;
+        for (const sec of secList) {
+            let secLotCode = sec.lot_code;
+            if (!secLotCode || secLotCode.trim() === '') {
+                secLotCode = computeJulianLotCode(production_date, secIdx);
+            }
+            secIdx++;
+            const secProfile = sec.product_profile || 'Clara Líquida Pasteurizada';
+            const secPresentation = sec.presentation || presentation || 'cubeta 30LB';
+            const secQty = parseFloat(sec.target_quantity_lbs) || 6000.00;
+            const secSolids = parseFloat(sec.target_solids_pct) || (secProfile.toLowerCase().includes('clara') ? 11.50 : 21.50);
+
+            const [secResult] = await connection.query(
+                `INSERT INTO egg_scheduled_productions (
+                    company_id, branch_id, production_date, start_time, end_time,
+                    lot_code, product_profile, presentation, target_quantity_lbs,
+                    target_solids_pct, status, priority, mix_formula_json,
+                    assigned_operator_id, assigned_operator_name, suggestion_source,
+                    parent_production_id, is_coproduct, notes, created_by
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [
+                    company_id, branch_id, production_date, start_time || '06:00:00', end_time || '14:00:00',
+                    secLotCode, secProfile, secPresentation, secQty, secSolids, status || 'programado', priority || 'media',
+                    JSON.stringify(sec.mix_formula_json || mix_formula_json || {}), assigned_operator_id || null, assigned_operator_name || null,
+                    'co-producto', scheduledId, 1, sec.notes || `Co-producto en corrida multi-lote con ${finalLotCode}.`,
+                    req.user?.nombre || req.user?.username || 'Sistema'
+                ]
+            );
+            const secId = secResult.insertId;
+            createdSecondaryIds.push(secId);
+            await insertTasks(secId);
         }
 
         await connection.query(
@@ -105,7 +134,15 @@ const createScheduledProduction = async (req, res) => {
         );
 
         await connection.commit();
-        res.status(201).json({ id: scheduledId, lot_code: finalLotCode, message: 'Producción programada exitosamente.' });
+        res.status(201).json({
+            id: scheduledId,
+            secondary_id: createdSecondaryIds[0] || null,
+            secondary_ids: createdSecondaryIds,
+            lot_code: finalLotCode,
+            message: createdSecondaryIds.length > 0
+                ? `Producción programada exitosamente (${1 + createdSecondaryIds.length} lotes vinculados).`
+                : 'Producción programada exitosamente.'
+        });
     } catch (error) {
         await connection.rollback();
         console.error('Error al crear producción programada:', error);

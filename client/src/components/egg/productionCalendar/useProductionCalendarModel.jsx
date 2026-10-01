@@ -190,7 +190,14 @@ export default function useProductionCalendarModel() {
         assigned_operator_id: '',
         assigned_operator_name: '',
         notes: '',
-        tasks: []
+        tasks: [],
+        enable_secondary_batch: false,
+        secondary_lots: [],
+        second_lot_code: '',
+        second_product_profile: 'Clara de Huevo Pasteurizada',
+        second_presentation: 'cubeta 30LB',
+        second_target_quantity_lbs: 6000,
+        second_target_solids_pct: 11.5
     });
 
     // Temporary task state inside form
@@ -428,6 +435,7 @@ export default function useProductionCalendarModel() {
     const handleOpenCreateModal = (suggestedDate = null, defaultRunData = null) => {
         const targetDate = suggestedDate || getTodayString(new Date());
         const julianLot = generateJulianLotCode(targetDate, 1, julianFormat);
+        const secondJulianLot = generateJulianLotCode(targetDate, 2, julianFormat);
 
         if (defaultRunData) {
             setFormData({
@@ -451,7 +459,14 @@ export default function useProductionCalendarModel() {
                     user_name: 'Operario de Planta',
                     task_description: t.task_description || '',
                     checklist_status: 'pendiente'
-                }))
+                })),
+                enable_secondary_batch: false,
+                secondary_lots: [],
+                second_lot_code: secondJulianLot,
+                second_product_profile: 'Clara de Huevo Pasteurizada',
+                second_presentation: 'cubeta 30LB',
+                second_target_quantity_lbs: 6000,
+                second_target_solids_pct: 11.5
             });
         } else {
             const defaultMix = recalculateMixFormula('Huevo Entero Pasteurizado', 12000);
@@ -477,7 +492,14 @@ export default function useProductionCalendarModel() {
                     { factory_role: 'Pasteurización HACCP', user_name: 'Operador Pasteurizador', task_description: 'Pasteurizar a 64.5°C por 210s CCP-1', checklist_status: 'pendiente' },
                     { factory_role: 'Control de Calidad LAB-004', user_name: 'Analista LAB', task_description: 'Medir Brix 23.5% y pH de línea', checklist_status: 'pendiente' },
                     { factory_role: 'Empaque y Cuarto Frío', user_name: 'Empacador', task_description: 'Alistar 400 cubetas de 30 Lb sanitizadas con liner', checklist_status: 'pendiente' }
-                ]
+                ],
+                enable_secondary_batch: false,
+                secondary_lots: [],
+                second_lot_code: secondJulianLot,
+                second_product_profile: 'Clara de Huevo Pasteurizada',
+                second_presentation: 'cubeta 30LB',
+                second_target_quantity_lbs: 6000,
+                second_target_solids_pct: 11.5
             });
         }
 
@@ -486,6 +508,17 @@ export default function useProductionCalendarModel() {
 
     // Open modal to edit existing production
     const handleOpenEditModal = (prod) => {
+        const companions = (Array.isArray(productions) ? productions : []).filter(
+            p => p.id !== prod.id && (p.parent_production_id === prod.id || (prod.parent_production_id && (p.id === prod.parent_production_id || p.parent_production_id === prod.parent_production_id)))
+        );
+        const mappedSec = companions.map(c => ({
+            id: c.id,
+            lot_code: c.lot_code,
+            product_profile: c.product_profile,
+            presentation: c.presentation,
+            target_quantity_lbs: c.target_quantity_lbs || 6000
+        }));
+
         setFormData({
             id: prod.id,
             production_date: prod.production_date ? getTodayString(new Date(prod.production_date)) : '',
@@ -502,9 +535,62 @@ export default function useProductionCalendarModel() {
             assigned_operator_id: prod.assigned_operator_id || '',
             assigned_operator_name: prod.assigned_operator_name || '',
             notes: prod.notes || '',
-            tasks: prod.tasks || []
+            tasks: prod.tasks || [],
+            enable_secondary_batch: mappedSec.length > 0,
+            secondary_lots: mappedSec,
+            second_lot_code: mappedSec[0]?.lot_code || '',
+            second_product_profile: mappedSec[0]?.product_profile || 'Clara de Huevo Pasteurizada',
+            second_presentation: mappedSec[0]?.presentation || 'cubeta 30LB',
+            second_target_quantity_lbs: mappedSec[0]?.target_quantity_lbs || 6000,
+            second_target_solids_pct: 11.5,
+            is_coproduct: Boolean(prod.is_coproduct),
+            parent_production_id: prod.parent_production_id || null
         });
         setIsFormModalOpen(true);
+    };
+
+    // Handlers for adding, removing and updating secondary co-product lots
+    const handleAddSecondaryLot = () => {
+        const count = (formData.secondary_lots || []).length;
+        const nextIdx = count + 2;
+        const nextLot = generateJulianLotCode(formData.production_date, nextIdx, julianFormat);
+        const defaultProfiles = ['Clara de Huevo Pasteurizada', 'Yema Azucarada', 'Yema Salada', 'Huevo Entero Pasteurizado'];
+        const prof = defaultProfiles[count % defaultProfiles.length] || 'Clara de Huevo Pasteurizada';
+        setFormData(prev => ({
+            ...prev,
+            enable_secondary_batch: true,
+            secondary_lots: [
+                ...(prev.secondary_lots || []),
+                {
+                    id: `sec-${Date.now()}-${nextIdx}`,
+                    lot_code: nextLot,
+                    product_profile: prof,
+                    presentation: 'cubeta 30LB',
+                    target_quantity_lbs: 6000
+                }
+            ]
+        }));
+    };
+
+    const handleRemoveSecondaryLot = (idx) => {
+        setFormData(prev => {
+            const updated = (prev.secondary_lots || []).filter((_, i) => i !== idx);
+            return {
+                ...prev,
+                enable_secondary_batch: updated.length > 0,
+                secondary_lots: updated
+            };
+        });
+    };
+
+    const handleUpdateSecondaryLot = (idx, field, value) => {
+        setFormData(prev => {
+            const updated = [...(prev.secondary_lots || [])];
+            if (updated[idx]) {
+                updated[idx] = { ...updated[idx], [field]: value };
+            }
+            return { ...prev, secondary_lots: updated };
+        });
     };
 
     // Handle Profile Change in Form
@@ -566,8 +652,27 @@ export default function useProductionCalendarModel() {
                 await axios.put(`/api/egg-industrial/calendar/${formData.id}`, formData);
                 toast.success('Producción actualizada exitosamente.');
             } else {
-                await axios.post('/api/egg-industrial/calendar', formData);
-                toast.success('Producción programada exitosamente.');
+                const secLots = formData.secondary_lots || [];
+                const secProductionsPayload = secLots.map(sl => ({
+                    lot_code: sl.lot_code,
+                    product_profile: sl.product_profile,
+                    presentation: sl.presentation,
+                    target_quantity_lbs: parseFloat(sl.target_quantity_lbs) || 6000,
+                    target_solids_pct: (sl.product_profile || '').toLowerCase().includes('clara') ? 11.5 : 21.5,
+                    mix_formula_json: recalculateMixFormula(sl.product_profile, sl.target_quantity_lbs)
+                }));
+
+                const payload = {
+                    ...formData,
+                    enable_secondary_batch: secLots.length > 0,
+                    secondary_productions: secProductionsPayload,
+                    secondary_production: secProductionsPayload[0] || null
+                };
+                await axios.post('/api/egg-industrial/calendar', payload);
+                toast.success(secLots.length > 0
+                    ? `Producción multi-lote (${1 + secLots.length} lotes vinculados) programada exitosamente.`
+                    : 'Producción programada exitosamente.'
+                );
             }
             setIsFormModalOpen(false);
             fetchProductions();
@@ -861,5 +966,5 @@ export default function useProductionCalendarModel() {
     }, [filteredProductions]);
 
 
- return { PRODUCT_PROFILES, FACTORY_ROLES, DEFAULT_PRESETS_BY_ROLE, PRESENTATIONS, _findAgreementForProduct, user, navigate, companyId, calendarView, setCalendarView, currentDate, setCurrentDate, productions, setProductions, loading, setLoading, factoryUsers, setFactoryUsers, suggestionsData, setSuggestionsData, loadingSuggestions, setLoadingSuggestions, customerOrders, setCustomerOrders, searchTerm, setSearchTerm, statusFilter, setStatusFilter, profileFilter, setProfileFilter, isFormModalOpen, setIsFormModalOpen, isSuggestionsDrawerOpen, setIsSuggestionsDrawerOpen, isOrdersModalOpen, setIsOrdersModalOpen, isPlannerModalOpen, setIsPlannerModalOpen, isSubmitting, setIsSubmitting, isCustomerOrderModalOpen, setIsCustomerOrderModalOpen, selectedOrderToEdit, setSelectedOrderToEdit, alterDateItem, setAlterDateItem, newAlteredDate, setNewAlteredDate, isAlteringDate, setIsAlteringDate, suggestionsTab, setSuggestionsTab, monthlyPlanData, setMonthlyPlanData, loadingMonthlyPlan, setLoadingMonthlyPlan, applyingPlan, setApplyingPlan, selectedPlanRuns, setSelectedPlanRuns, julianFormat, setJulianFormat, hoverPreview, setHoverPreview, suggestionStartDate, setSuggestionStartDate, suggestionEndDate, setSuggestionEndDate, preventPastSuggestions, setPreventPastSuggestions, draggedItem, setDraggedItem, dragOverDate, setDragOverDate, formData, setFormData, newTaskRole, setNewTaskRole, newTaskUser, setNewTaskUser, newTaskDesc, setNewTaskDesc, fetchProductions, fetchFactoryUsers, fetchSuggestions, fetchOrders, fetchMonthlyPlan, handleConvertLotToJulian, handleApplyMonthlyPlan, recalculateMixFormula, handleOpenCreateModal, handleOpenEditModal, handleProfileChange, handleQuantityChange, handleAddTask, handleRemoveTask, handleSaveProduction, handleDeleteProduction, _handleStartBatchInPlant, handleToggleTask, handleDragStart, handleDragOver, handleDragLeave, handleDrop, handleDeleteOrder, handleOpenAlterDateModal, handleSaveAlteredDate, filteredProductions, calendarMonthDays, getProductionsForDate, getProfileBadgeStyle, monthNames, todayStr, totalScheduledLbs, totalTasksCount };
+ return { PRODUCT_PROFILES, FACTORY_ROLES, DEFAULT_PRESETS_BY_ROLE, PRESENTATIONS, _findAgreementForProduct, user, navigate, companyId, calendarView, setCalendarView, currentDate, setCurrentDate, productions, setProductions, loading, setLoading, factoryUsers, setFactoryUsers, suggestionsData, setSuggestionsData, loadingSuggestions, setLoadingSuggestions, customerOrders, setCustomerOrders, searchTerm, setSearchTerm, statusFilter, setStatusFilter, profileFilter, setProfileFilter, isFormModalOpen, setIsFormModalOpen, isSuggestionsDrawerOpen, setIsSuggestionsDrawerOpen, isOrdersModalOpen, setIsOrdersModalOpen, isPlannerModalOpen, setIsPlannerModalOpen, isSubmitting, setIsSubmitting, isCustomerOrderModalOpen, setIsCustomerOrderModalOpen, selectedOrderToEdit, setSelectedOrderToEdit, alterDateItem, setAlterDateItem, newAlteredDate, setNewAlteredDate, isAlteringDate, setIsAlteringDate, suggestionsTab, setSuggestionsTab, monthlyPlanData, setMonthlyPlanData, loadingMonthlyPlan, setLoadingMonthlyPlan, applyingPlan, setApplyingPlan, selectedPlanRuns, setSelectedPlanRuns, julianFormat, setJulianFormat, hoverPreview, setHoverPreview, suggestionStartDate, setSuggestionStartDate, suggestionEndDate, setSuggestionEndDate, preventPastSuggestions, setPreventPastSuggestions, draggedItem, setDraggedItem, dragOverDate, setDragOverDate, formData, setFormData, newTaskRole, setNewTaskRole, newTaskUser, setNewTaskUser, newTaskDesc, setNewTaskDesc, fetchProductions, fetchFactoryUsers, fetchSuggestions, fetchOrders, fetchMonthlyPlan, handleConvertLotToJulian, handleApplyMonthlyPlan, recalculateMixFormula, handleOpenCreateModal, handleOpenEditModal, handleProfileChange, handleQuantityChange, handleAddTask, handleRemoveTask, handleSaveProduction, handleDeleteProduction, _handleStartBatchInPlant, handleToggleTask, handleDragStart, handleDragOver, handleDragLeave, handleDrop, handleDeleteOrder, handleOpenAlterDateModal, handleSaveAlteredDate, filteredProductions, calendarMonthDays, getProductionsForDate, getProfileBadgeStyle, monthNames, todayStr, totalScheduledLbs, totalTasksCount, handleAddSecondaryLot, handleRemoveSecondaryLot, handleUpdateSecondaryLot };
 }

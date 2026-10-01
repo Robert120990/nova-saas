@@ -1,5 +1,6 @@
 import { unwrapList } from '../../../utils/apiUtils';
 import { getNowDateTimeLocal } from '../../../utils/dateUtils';
+import { getJulianDayInfo } from '../../../utils/julianDate';
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../../context/AuthContext';
@@ -43,6 +44,15 @@ export default function useProductionModel() {
         presentations: ['cubeta 30LB'],
         run_number: 1,
         scheduled_production_id: null,
+        parent_batch_id: null,
+        is_coproduct: false,
+        enable_secondary_batch: false,
+        secondary_batches: [],
+        second_run_number: 2,
+        second_batch_code_display: '',
+        second_product_type: 'huevo entero',
+        second_presentation: 'cubeta 30LB',
+        second_presentations: ['cubeta 30LB'],
         raw_materials: [],
         remanente_ids: [],
         ingredients: {
@@ -76,7 +86,17 @@ export default function useProductionModel() {
         holding_time_seconds: '210',
         pressure_psi: '48.0',
         flow_rate_gpm: '12.5',
-        operator_name: user?.nombre || ''
+        operator_name: user?.nombre || '',
+        pasteurization_lot: ''
+    });
+
+    const [secondPasteurizeForm, setSecondPasteurizeForm] = useState({
+        temperature_c: '64.5',
+        holding_time_seconds: '210',
+        pressure_psi: '48.0',
+        flow_rate_gpm: '12.5',
+        operator_name: user?.nombre || '',
+        pasteurization_lot: ''
     });
 
     const [selectedBatchForComplete, setSelectedBatchForComplete] = useState(null);
@@ -939,7 +959,7 @@ export default function useProductionModel() {
     const fetchScheduledProductions = async () => {
         try {
             const res = await axios.get('/api/egg-industrial/calendar', {
-                params: { status: 'programado' }
+                params: { status: 'programado,en_proceso' }
             });
             setScheduledProductions(Array.isArray(res.data) ? res.data : (res.data?.data || []));
         } catch (err) {
@@ -962,17 +982,87 @@ export default function useProductionModel() {
         }
     }, [location.state]);
 
+    const handleCreateCoproductBatch = (parentBatch) => {
+        if (!parentBatch) return;
+
+        // Determinar producto secundario sugerido
+        const currentProd = (parentBatch.product_type || '').toLowerCase();
+        let suggestedProd = 'huevo entero';
+        if (currentProd.includes('clara')) {
+            suggestedProd = 'huevo entero';
+        } else if (currentProd.includes('entero')) {
+            suggestedProd = 'clara';
+        } else if (currentProd.includes('yema')) {
+            suggestedProd = 'huevo entero';
+        }
+
+        // Sugerir código de corrida secundaria (ej. LOTE 01B-265-26)
+        let suggestedCode = '';
+        if (parentBatch.batch_code_display) {
+            const raw = parentBatch.batch_code_display.trim();
+            if (raw.includes('-')) {
+                const parts = raw.split('-');
+                if (parts.length === 3) {
+                    const runPart = parts[0];
+                    if (!runPart.endsWith('B') && !runPart.endsWith('C')) {
+                        suggestedCode = `${runPart}B-${parts[1]}-${parts[2]}`;
+                    }
+                }
+            }
+        }
+
+        // Clonar materias primas del lote padre para asociarlas a la corrida compartida sin re-escanear
+        const clonedMaterials = (parentBatch.raw_materials || []).map(m => ({
+            raw_material_id: m.raw_material_id,
+            quantity_lbs: m.quantity_lbs,
+            boxes_count: m.boxes_count || 0,
+            tarimas: m.tarimas || [],
+            egg_type: m.egg_type,
+            provider_lot: m.provider_lot
+        }));
+
+        const matchingSchedule = scheduledProductions.find(p => p.id === parentBatch.scheduled_production_id || p.batch_id === parentBatch.id);
+        setSelectedScheduledProd(matchingSchedule || null);
+
+        setBatchForm(prev => ({
+            ...prev,
+            parent_batch_id: parentBatch.id,
+            is_coproduct: true,
+            scheduled_production_id: parentBatch.scheduled_production_id || null,
+            product_type: suggestedProd,
+            presentation: parentBatch.presentation || 'cubeta 30LB',
+            presentations: parentBatch.presentation ? (parentBatch.presentation.includes(',') ? parentBatch.presentation.split(',').map(s => s.trim()) : [parentBatch.presentation]) : ['cubeta 30LB'],
+            run_number: parentBatch.run_number || prev.run_number || 1,
+            batch_code_display: suggestedCode || prev.batch_code_display,
+            raw_materials: clonedMaterials.length > 0 ? clonedMaterials : prev.raw_materials,
+            notes: `Segundo lote derivado de la corrida compartida ${parentBatch.batch_code_display || parentBatch.id} (${parentBatch.product_type}).`
+        }));
+
+        setIsNewBatchModalOpen(true);
+        toast.info(`Configurando segundo lote / co-producto derivado de ${parentBatch.batch_code_display || parentBatch.id}. Materia prima compartida.`);
+    };
+
     const handleSelectScheduledProduction = (sched) => {
         if (!sched) {
             setSelectedScheduledProd(null);
             setBatchForm(prev => ({
                 ...prev,
-                scheduled_production_id: null
+                scheduled_production_id: null,
+                parent_batch_id: null,
+                is_coproduct: false
             }));
             return;
         }
 
         setSelectedScheduledProd(sched);
+
+        // Si la orden ya cuenta con un lote iniciado o en proceso, cargar como segundo lote / co-producto
+        if (sched.batch_id || sched.status === 'en_proceso') {
+            const existingBatch = batches.find(b => b.id === sched.batch_id || b.scheduled_production_id === sched.id);
+            if (existingBatch) {
+                return handleCreateCoproductBatch(existingBatch);
+            }
+        }
 
         const p = (sched.product_profile || '').toLowerCase();
         let pType = 'huevo entero';
@@ -1000,12 +1090,57 @@ export default function useProductionModel() {
                 : (sched.mix_formula_json || {});
         } catch (e) { formula = {}; }
 
+        // Detectar si la actividad programada tiene co-productos secundarios programados simultáneamente
+        const companions = (Array.isArray(scheduledProductions) ? scheduledProductions : []).filter(
+            p => p.id !== sched.id && (p.parent_production_id === sched.id || (sched.parent_production_id && (p.id === sched.parent_production_id || p.parent_production_id === sched.parent_production_id)))
+        );
+
+        const mappedSecondaryBatches = companions.map((comp, idx) => {
+            const sp = (comp.product_profile || '').toLowerCase();
+            let cPType = 'clara';
+            if (sp.includes('clara')) cPType = 'clara';
+            else if (sp.includes('azucar') || sp.includes('azúcar')) cPType = 'yema azucarada';
+            else if (sp.includes('sal')) cPType = 'yema salada';
+            else if (sp.includes('plus') || sp.includes('formulado') || sp.includes('separaci')) cPType = 'fórmula especial';
+            else cPType = 'huevo entero';
+
+            const spres = (comp.presentation || '').toLowerCase();
+            let cPresType = 'cubeta 30LB';
+            if (spres.includes('30')) cPresType = 'cubeta 30LB';
+            else if (spres.includes('32')) cPresType = 'cubeta 32LB';
+            else if (spres.includes('medio')) cPresType = 'medio galón 4LB';
+            else if (spres.includes('gal')) cPresType = 'galón 8LB';
+            else if (spres.includes('litro')) cPresType = 'litro 2LB';
+
+            return {
+                id: comp.id,
+                run_number: runNum + idx + 1,
+                batch_code_display: comp.lot_code || '',
+                product_type: cPType,
+                presentation: cPresType,
+                presentations: [cPresType]
+            };
+        });
+
+        const hasSecondary = mappedSecondaryBatches.length > 0;
+        const firstSec = mappedSecondaryBatches[0];
+
         setBatchForm(prev => ({
             ...prev,
             scheduled_production_id: sched.id,
+            parent_batch_id: null,
+            is_coproduct: Boolean(sched.is_coproduct),
             product_type: pType,
             presentation: presType,
+            presentations: [presType],
             run_number: runNum,
+            batch_code_display: sched.lot_code || prev.batch_code_display,
+            enable_secondary_batch: hasSecondary,
+            secondary_batches: mappedSecondaryBatches,
+            second_product_type: firstSec?.product_type || 'clara',
+            second_presentation: firstSec?.presentation || 'cubeta 30LB',
+            second_presentations: firstSec?.presentations || ['cubeta 30LB'],
+            second_batch_code_display: firstSec?.batch_code_display || '',
             ingredients: {
                 boxes_count: formula.raw_egg_boxes || prev.ingredients.boxes_count || '',
                 water_bottles: formula.water_bottles || (formula.water_h2o_lbs ? Math.round(formula.water_h2o_lbs / 41.8) : '') || prev.ingredients.water_bottles || '',
@@ -1017,7 +1152,82 @@ export default function useProductionModel() {
             }
         }));
 
-        toast.success(`Producción programada cargada: ${sched.lot_code} (${sched.product_profile})`);
+        toast.success(hasSecondary
+            ? `Producción multi-lote programada cargada: ${sched.lot_code} con ${mappedSecondaryBatches.length} co-producto(s)`
+            : `Producción programada cargada: ${sched.lot_code} (${sched.product_profile})`
+        );
+    };
+
+    const handleAddSecondaryBatch = () => {
+        const count = (batchForm.secondary_batches || []).length;
+        const baseRun = parseInt(batchForm.run_number) || 1;
+        const nextRun = baseRun + count + 1;
+        const dayInfo = getJulianDayInfo();
+        const nextCode = `LOTE ${String(nextRun).padStart(2, '0')}-${dayInfo.dayOfYearStr}-${dayInfo.year2Digit}`;
+        const defaultTypes = ['clara', 'yema azucarada', 'yema salada', 'huevo entero'];
+        const pType = defaultTypes[count % defaultTypes.length] || 'clara';
+        setBatchForm(prev => {
+            const nextBatches = [
+                ...(prev.secondary_batches || []),
+                {
+                    id: `sec-${Date.now()}-${nextRun}`,
+                    run_number: nextRun,
+                    batch_code_display: nextCode,
+                    product_type: pType,
+                    presentation: 'cubeta 30LB',
+                    presentations: ['cubeta 30LB']
+                }
+            ];
+            return {
+                ...prev,
+                enable_secondary_batch: true,
+                secondary_batches: nextBatches,
+                second_run_number: nextBatches[0].run_number,
+                second_batch_code_display: nextBatches[0].batch_code_display,
+                second_product_type: nextBatches[0].product_type,
+                second_presentation: nextBatches[0].presentation,
+                second_presentations: nextBatches[0].presentations
+            };
+        });
+    };
+
+    const handleRemoveSecondaryBatch = (idx) => {
+        setBatchForm(prev => {
+            const updated = (prev.secondary_batches || []).filter((_, i) => i !== idx);
+            return {
+                ...prev,
+                enable_secondary_batch: updated.length > 0,
+                secondary_batches: updated,
+                second_run_number: updated[0]?.run_number || 2,
+                second_batch_code_display: updated[0]?.batch_code_display || '',
+                second_product_type: updated[0]?.product_type || 'huevo entero',
+                second_presentation: updated[0]?.presentation || 'cubeta 30LB',
+                second_presentations: updated[0]?.presentations || ['cubeta 30LB']
+            };
+        });
+    };
+
+    const handleUpdateSecondaryBatch = (idx, field, value) => {
+        setBatchForm(prev => {
+            const updated = [...(prev.secondary_batches || [])];
+            if (updated[idx]) {
+                updated[idx] = { ...updated[idx], [field]: value };
+                if (field === 'presentations' && Array.isArray(value)) {
+                    updated[idx].presentation = value.join(', ');
+                }
+            }
+            return {
+                ...prev,
+                secondary_batches: updated,
+                ...(idx === 0 ? {
+                    second_run_number: updated[0].run_number,
+                    second_batch_code_display: updated[0].batch_code_display,
+                    second_product_type: updated[0].product_type,
+                    second_presentation: updated[0].presentation,
+                    second_presentations: updated[0].presentations
+                } : {})
+            };
+        });
     };
 
     // Funciones de gestión de tarimas vinculadas a recepción y escáner
@@ -1405,17 +1615,46 @@ export default function useProductionModel() {
             const shouldBypass = forceBypass || Boolean(batchForm.bypass_cip_check);
             const exceptionReason = shouldBypass ? window.prompt('Motivo de la excepción CIP autorizada:') : null;
             if (shouldBypass && !exceptionReason?.trim()) return;
+
+            const secBatchesList = (batchForm.secondary_batches || []).map((sb, idx) => ({
+                run_number: parseInt(sb.run_number) || (parseInt(batchForm.run_number) + idx + 1),
+                batch_code_display: sb.batch_code_display,
+                product_type: sb.product_type || 'huevo entero',
+                presentation: Array.isArray(sb.presentations) && sb.presentations.length > 0
+                    ? sb.presentations.join(', ')
+                    : (sb.presentation || 'cubeta 30LB')
+            }));
+
+            if (secBatchesList.length === 0 && batchForm.enable_secondary_batch && batchForm.second_product_type) {
+                secBatchesList.push({
+                    run_number: parseInt(batchForm.second_run_number) || (parseInt(batchForm.run_number) + 1),
+                    batch_code_display: batchForm.second_batch_code_display,
+                    product_type: batchForm.second_product_type || 'huevo entero',
+                    presentation: Array.isArray(batchForm.second_presentations) && batchForm.second_presentations.length > 0
+                        ? batchForm.second_presentations.join(', ')
+                        : (batchForm.second_presentation || 'cubeta 30LB')
+                });
+            }
+
             await axios.post('/api/egg-industrial/batches', {
                 ...batchForm,
+                parent_batch_id: batchForm.parent_batch_id || undefined,
+                is_coproduct: Boolean(batchForm.is_coproduct || batchForm.parent_batch_id),
                 presentation: resolvedPres,
                 run_number: parseInt(batchForm.run_number) || 1,
                 raw_materials: batchForm.raw_materials,
                 remanente_ids: batchForm.remanente_ids || [],
                 ingredients: batchForm.ingredients,
                 bypass_cip_check: shouldBypass,
-                cip_exception_reason: exceptionReason
+                cip_exception_reason: exceptionReason,
+                secondary_batches: secBatchesList.length > 0 ? secBatchesList : undefined,
+                secondary_batch: secBatchesList[0] || undefined
             });
-            toast.success(shouldBypass ? 'Lote de producción iniciado bajo excepción de sanitización.' : 'Lote de producción iniciado exitosamente.');
+            toast.success(shouldBypass
+                ? 'Lote de producción iniciado bajo excepción de sanitización.'
+                : (secBatchesList.length > 0
+                    ? `Lotes de producción iniciados con éxito (${1 + secBatchesList.length} lotes con materia prima compartida).`
+                    : (batchForm.is_coproduct ? 'Segundo lote / co-producto iniciado exitosamente.' : 'Lote de producción iniciado exitosamente.')));
             setSelectedScheduledProd(null);
             fetchScheduledProductions();
             setBatchForm({
@@ -1424,6 +1663,15 @@ export default function useProductionModel() {
                 presentations: ['cubeta 30LB'],
                 run_number: 1,
                 scheduled_production_id: null,
+                parent_batch_id: null,
+                is_coproduct: false,
+                enable_secondary_batch: false,
+                secondary_batches: [],
+                second_run_number: 2,
+                second_batch_code_display: '',
+                second_product_type: 'huevo entero',
+                second_presentation: 'cubeta 30LB',
+                second_presentations: ['cubeta 30LB'],
                 raw_materials: [],
                 remanente_ids: [],
                 ingredients: {
@@ -1564,6 +1812,51 @@ export default function useProductionModel() {
         }
     };
 
+    const handlePasteurizeDual = async (primaryBatchId, secondaryBatchId) => {
+        setIsSubmitting(true);
+        setHaccpViolationAlert(null);
+        try {
+            const res1 = await axios.post('/api/egg-industrial/pasteurize', {
+                batch_id: parseInt(primaryBatchId),
+                temperature_c: parseFloat(pasteurizeForm.temperature_c),
+                holding_time_seconds: parseInt(pasteurizeForm.holding_time_seconds),
+                pressure_psi: parseFloat(pasteurizeForm.pressure_psi),
+                flow_rate_gpm: parseFloat(pasteurizeForm.flow_rate_gpm),
+                operator_name: pasteurizeForm.operator_name,
+                pasteurization_lot: pasteurizeForm.pasteurization_lot
+            });
+
+            const res2 = await axios.post('/api/egg-industrial/pasteurize', {
+                batch_id: parseInt(secondaryBatchId),
+                temperature_c: parseFloat(secondPasteurizeForm.temperature_c),
+                holding_time_seconds: parseInt(secondPasteurizeForm.holding_time_seconds),
+                pressure_psi: parseFloat(secondPasteurizeForm.pressure_psi),
+                flow_rate_gpm: parseFloat(secondPasteurizeForm.flow_rate_gpm),
+                operator_name: secondPasteurizeForm.operator_name,
+                pasteurization_lot: secondPasteurizeForm.pasteurization_lot
+            });
+
+            const fail1 = !res1.data.haccp_compliant;
+            const fail2 = !res2.data.haccp_compliant;
+
+            if (fail1 || fail2) {
+                const msg = [fail1 ? `Lote Principal: ${res1.data.deviation_description}` : null, fail2 ? `Segundo Lote: ${res2.data.deviation_description}` : null].filter(Boolean).join(' | ');
+                setHaccpViolationAlert(msg);
+                toast.error('ALERTA HACCP: Se detectó desviación en al menos uno de los lotes.', { duration: 10000 });
+            } else {
+                toast.success('Monitoreo HACCP validado para ambos lotes con éxito.');
+                setSelectedBatchForPasteurize('');
+                setIsPasteurizeModalOpen(false);
+            }
+            fetchData();
+        } catch (error) {
+            console.error('Error in dual pasteurization:', error);
+            toast.error(error.response?.data?.message || 'Error al guardar pasteurización dual.');
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
     // Handle complete / balance batch
     const handleCompleteBatch = async (e) => {
         e.preventDefault();
@@ -1626,5 +1919,5 @@ export default function useProductionModel() {
     });
 
 
- return { getNowDateTimeLocal, user, navigate, location, companyId, scheduledProductions, setScheduledProductions, selectedScheduledProd, setSelectedScheduledProd, scannerModalOpen, setScannerModalOpen, tarimaPickerModal, setTarimaPickerModal, tarimaSearchPickerOpen, setTarimaSearchPickerOpen, qualityModal, setQualityModal, batches, setBatches, rawMaterials, setRawMaterials, availableRemanentes, setAvailableRemanentes, showAllRemanentes, setShowAllRemanentes, openExportMenuId, setOpenExportMenuId, cipLogs, setCipLogs, loading, setLoading, searchTerm, setSearchTerm, activeTab, setActiveTab, batchForm, setBatchForm, cipForm, setCipForm, selectedBatchForPasteurize, setSelectedBatchForPasteurize, pasteurizeForm, setPasteurizeForm, selectedBatchForComplete, setSelectedBatchForComplete, completeForm, setCompleteForm, isSubmitting, setIsSubmitting, cipBlockedError, setCipBlockedError, haccpViolationAlert, setHaccpViolationAlert, isNewBatchModalOpen, setIsNewBatchModalOpen, isPasteurizeModalOpen, setIsPasteurizeModalOpen, productConfig, setProductConfig, userPermissions, isAdmin, canEditProduction, canDeleteProduction, canManageLots, stagesModal, setStagesModal, closePasteurizationModal, setClosePasteurizationModal, scannerContext, setScannerContext, editingBatch, setEditingBatch, addTarimasModal, setAddTarimasModal, remanenteModal, setRemanenteModal, wastesModal, setWastesModal, editBatchModal, setEditBatchModal, deleteConfirmBatch, setDeleteConfirmBatch, handleOpenStagesModal, handleOpenClosePasteurization, handleConfirmClosePasteurization, handleReopenPasteurization, handleReopenBatchPackaging, handleOpenBalanceModal, handleOpenWastesModal, handleOpenEditWaste, handleCreateWaste, handleDeleteWaste, handleOpenEditRemanente, handleDeleteRemanente, handleOpenEditBatch, handleMarkRemanenteUsed, handleReactivateRemanente, handleAddSpecificTarimaToAddModal, handleLoadAllAvailableTarimasToAddModal, handleUpdateTarimaBoxesInAddModal, handleUpdateTarimaLbsInAddModal, handleRemoveTarimaFromAddModal, handleManualTarimaDigitize, handleAddTarimasSubmit, handleRemanenteSubmit, _handleEditBatchSubmit, handleDeleteBatchConfirm, handleExportSummary, fetchData, fetchScheduledProductions, handleSelectScheduledProduction, handleAddSpecificTarimaToRm, handleLoadAllAvailableTarimas, handleUpdateTarimaBoxesInRm, handleUpdateTarimaLbsInRm, handleRemoveTarimaFromRm, handleScanTarimaResult, isSeparationProduct, availableRawLots, oldestFifoLot, oldestAALot, isCurrentSeparation, recommendedLot, recommendationReason, nonAALotSelectedForSeparation, nonAALotObj, handleApplyRecommendedLot, handleCreateBatch, handleQuickSanitize, handleCreateCip, handleDeleteCip, handlePasteurize, handleCompleteBatch, getBatchStatusBadge, filteredBatches };
+ return { getNowDateTimeLocal, user, navigate, location, companyId, scheduledProductions, setScheduledProductions, selectedScheduledProd, setSelectedScheduledProd, scannerModalOpen, setScannerModalOpen, tarimaPickerModal, setTarimaPickerModal, tarimaSearchPickerOpen, setTarimaSearchPickerOpen, qualityModal, setQualityModal, batches, setBatches, rawMaterials, setRawMaterials, availableRemanentes, setAvailableRemanentes, showAllRemanentes, setShowAllRemanentes, openExportMenuId, setOpenExportMenuId, cipLogs, setCipLogs, loading, setLoading, searchTerm, setSearchTerm, activeTab, setActiveTab, batchForm, setBatchForm, cipForm, setCipForm, selectedBatchForPasteurize, setSelectedBatchForPasteurize, pasteurizeForm, setPasteurizeForm, secondPasteurizeForm, setSecondPasteurizeForm, selectedBatchForComplete, setSelectedBatchForComplete, completeForm, setCompleteForm, isSubmitting, setIsSubmitting, cipBlockedError, setCipBlockedError, haccpViolationAlert, setHaccpViolationAlert, isNewBatchModalOpen, setIsNewBatchModalOpen, isPasteurizeModalOpen, setIsPasteurizeModalOpen, productConfig, setProductConfig, userPermissions, isAdmin, canEditProduction, canDeleteProduction, canManageLots, stagesModal, setStagesModal, closePasteurizationModal, setClosePasteurizationModal, scannerContext, setScannerContext, editingBatch, setEditingBatch, addTarimasModal, setAddTarimasModal, remanenteModal, setRemanenteModal, wastesModal, setWastesModal, editBatchModal, setEditBatchModal, deleteConfirmBatch, setDeleteConfirmBatch, handleOpenStagesModal, handleOpenClosePasteurization, handleConfirmClosePasteurization, handleReopenPasteurization, handleReopenBatchPackaging, handleOpenBalanceModal, handleOpenWastesModal, handleOpenEditWaste, handleCreateWaste, handleDeleteWaste, handleOpenEditRemanente, handleDeleteRemanente, handleOpenEditBatch, handleMarkRemanenteUsed, handleReactivateRemanente, handleAddSpecificTarimaToAddModal, handleLoadAllAvailableTarimasToAddModal, handleUpdateTarimaBoxesInAddModal, handleUpdateTarimaLbsInAddModal, handleRemoveTarimaFromAddModal, handleManualTarimaDigitize, handleAddTarimasSubmit, handleRemanenteSubmit, _handleEditBatchSubmit, handleDeleteBatchConfirm, handleExportSummary, fetchData, fetchScheduledProductions, handleSelectScheduledProduction, handleCreateCoproductBatch, handleAddSpecificTarimaToRm, handleLoadAllAvailableTarimas, handleUpdateTarimaBoxesInRm, handleUpdateTarimaLbsInRm, handleRemoveTarimaFromRm, handleScanTarimaResult, isSeparationProduct, availableRawLots, oldestFifoLot, oldestAALot, isCurrentSeparation, recommendedLot, recommendationReason, nonAALotSelectedForSeparation, nonAALotObj, handleApplyRecommendedLot, handleCreateBatch, handleQuickSanitize, handleCreateCip, handleDeleteCip, handlePasteurize, handlePasteurizeDual, handleCompleteBatch, getBatchStatusBadge, filteredBatches, handleAddSecondaryBatch, handleRemoveSecondaryBatch, handleUpdateSecondaryBatch };
 }

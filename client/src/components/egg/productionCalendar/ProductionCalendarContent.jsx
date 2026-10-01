@@ -119,6 +119,14 @@ export default function ProductionCalendarContent({ model }) {
                                                             >
                                                                 J-{getJulianDayInfo(prod.production_date).dayOfYearStr}
                                                             </span>
+                                                            {Boolean(prod.is_coproduct) && (
+                                                                <span
+                                                                    className="text-[8px] font-black px-1.5 py-0.2 rounded bg-amber-100 text-amber-900 border border-amber-300 shrink-0"
+                                                                    title="Co-Producto / Lote Secundario Simultáneo"
+                                                                >
+                                                                    🔗 Co-Prod
+                                                                </span>
+                                                            )}
                                                             {isFinished && (
                                                                 <span className="px-1.5 py-0.2 rounded text-[8px] font-black bg-emerald-600 text-white uppercase tracking-wider flex items-center gap-0.5 shadow-2xs shrink-0">
                                                                     <CheckCircle2 className="w-2.5 h-2.5" /> FINALIZADO
