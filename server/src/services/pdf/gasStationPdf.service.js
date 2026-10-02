@@ -13,14 +13,14 @@ const {
 
 // --- CIERRES, COMBUSTIBLES Y LUBRICANTES DE ESTACIÓN DE SERVICIO ---
 const generateCloseoutDetailPDF = async (data) => {
-    const { doc, getBuffer } = reportPdfHelper.createPdfDocument('landscape');
+    const { doc, getBuffer } = reportPdfHelper.createPdfDocument('portrait');
     const company = await resolveCompanyInfo(data);
     const title = `DETALLE DE ${data.tipo_nombre?.toUpperCase() || data.tipo_reporte?.toUpperCase() || 'CIERRE'}`;
     const periodText = `DEL ${reportPdfHelper.formatDate(data.start_date)} AL ${reportPdfHelper.formatDate(data.end_date)}`;
     const subtitle = `SUCURSAL: ${data.branch_name || 'TODAS'}`;
 
     const startX = 30;
-    const pageW = 732;
+    const pageW = 552;
 
     const rawCols = data.columns || [];
     const rawSum = rawCols.reduce((s, c) => s + (c.w || 100), 0);
@@ -51,14 +51,28 @@ const generateCloseoutDetailPDF = async (data) => {
         return y + 15;
     };
 
-    let currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
-    currentY = drawTableHeader(currentY);
+    let currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'portrait', subtitle);
+
+    const rowsCount = data.rows?.length || 0;
+    doc.rect(startX, currentY, pageW, 14).fill('#0f172a');
+    doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#ffffff');
+    doc.text(`ANEXO OPERATIVO: ${(data.tipo_nombre || data.tipo_reporte || 'DETALLE').toUpperCase()} (${rowsCount} registro${rowsCount === 1 ? '' : 's'})`, startX + 6, currentY + 3.5);
+    currentY += 15;
+
+    if (rowsCount === 0) {
+        doc.rect(startX, currentY, pageW, 22).fill('#f8fafc');
+        doc.fontSize(7.5).font('Helvetica-Oblique').fillColor('#64748b');
+        doc.text('No se registraron movimientos en este anexo durante el período seleccionado.', startX + 12, currentY + 7);
+        currentY += 30;
+    } else {
+        currentY = drawTableHeader(currentY);
+    }
 
     let rowIndex = 0;
     const renderRow = (row) => {
-        if (currentY > 515) {
+        if (currentY > 700) {
             doc.addPage();
-            currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+            currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'portrait', subtitle);
             currentY = drawTableHeader(currentY);
         }
 
@@ -93,9 +107,9 @@ const generateCloseoutDetailPDF = async (data) => {
     };
 
     const renderGroupHeader = (group) => {
-        if (currentY > 515) {
+        if (currentY > 700) {
             doc.addPage();
-            currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+            currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'portrait', subtitle);
             currentY = drawTableHeader(currentY);
         }
 
@@ -127,9 +141,9 @@ const generateCloseoutDetailPDF = async (data) => {
         (data.rows || []).forEach(renderRow);
     }
 
-    if (currentY > 510) {
+    if (currentY > 700) {
         doc.addPage();
-        currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+        currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'portrait', subtitle);
     }
 
     // Totales
@@ -2155,15 +2169,15 @@ const generateVentasLecturasAnalyticsPDF = async (data) => {
 };
 
 const generateCloseoutConsolidatedAnnexesPDF = async (data) => {
-    const { doc, getBuffer } = reportPdfHelper.createPdfDocument('landscape');
+    const { doc, getBuffer } = reportPdfHelper.createPdfDocument('portrait');
     const company = await resolveCompanyInfo(data);
     const c = data.closeout || {};
     const title = 'DETALLE DE CIERRE DE TURNO - ANEXOS OPERATIVOS';
-    const periodText = `TURNO #${c.numero_turno ?? '—'}    |    FECHA: ${reportPdfHelper.formatDate(c.fecha_turno)}`;
+    const periodText = data.periodTextOverride || `TURNO #${c.numero_turno ?? '—'}    |    FECHA: ${reportPdfHelper.formatDate(c.fecha_turno)}`;
     const subtitle = `SUCURSAL: ${c.branch_name || data.branch_name || 'TODAS'}    |    BOMBERO/CAJERO: ${c.vendedor_nombre || '—'}    |    ESTADO: ${(c.estado || 'CERRADO').toUpperCase()}`;
 
     const startX = 30;
-    const pageW = 732;
+    const pageW = 552;
 
     const sections = [
         {
@@ -2172,10 +2186,10 @@ const generateCloseoutConsolidatedAnnexesPDF = async (data) => {
             items: data.remesas || [],
             sumField: 'monto',
             columns: [
-                { label: 'DOCUMENTO', w: 130, getValue: it => it.documento || '—' },
-                { label: 'DESPACHADOR', w: 240, getValue: it => it.despachador || it.despachador_descripcion || '—' },
-                { label: 'TIPO DE OPERACIÓN', w: 212, getValue: it => it.tipo_operacion || '—' },
-                { label: 'MONTO', w: 150, getValue: it => it.monto, format: 'money', align: 'right' }
+                { label: 'DOCUMENTO', w: 100, getValue: it => it.documento || '—' },
+                { label: 'DESPACHADOR', w: 180, getValue: it => it.despachador || it.despachador_descripcion || '—' },
+                { label: 'TIPO DE OPERACIÓN', w: 172, getValue: it => it.tipo_operacion || '—' },
+                { label: 'MONTO', w: 100, getValue: it => it.monto, format: 'money', align: 'right' }
             ]
         },
         {
@@ -2184,12 +2198,12 @@ const generateCloseoutConsolidatedAnnexesPDF = async (data) => {
             items: data.gastos || [],
             sumField: 'valor',
             columns: [
-                { label: 'RUBRO', w: 120, getValue: it => it.rubro_nombre || it.rubro || '—' },
-                { label: 'DOCUMENTO', w: 100, getValue: it => it.documento || '—' },
-                { label: 'PROVEEDOR', w: 140, getValue: it => it.proveedor || it.proveedor_nombre || '—' },
-                { label: 'DESPACHADOR', w: 130, getValue: it => it.despachador || it.despachador_descripcion || '—' },
-                { label: 'DESCRIPCIÓN / COMENTARIO', w: 142, getValue: it => it.comentario || it.descripcion || '—' },
-                { label: 'VALOR', w: 100, getValue: it => it.valor, format: 'money', align: 'right' }
+                { label: 'RUBRO', w: 90, getValue: it => it.rubro_nombre || it.rubro || '—' },
+                { label: 'DOCUMENTO', w: 75, getValue: it => it.documento || '—' },
+                { label: 'PROVEEDOR', w: 105, getValue: it => it.proveedor || it.proveedor_nombre || '—' },
+                { label: 'DESPACHADOR', w: 95, getValue: it => it.despachador || it.despachador_descripcion || '—' },
+                { label: 'DESCRIPCIÓN / COMENTARIO', w: 112, getValue: it => it.comentario || it.descripcion || '—' },
+                { label: 'VALOR', w: 75, getValue: it => it.valor, format: 'money', align: 'right' }
             ]
         },
         {
@@ -2198,13 +2212,13 @@ const generateCloseoutConsolidatedAnnexesPDF = async (data) => {
             items: data.creditos || [],
             sumField: 'monto',
             columns: [
-                { label: 'DOCUMENTO', w: 90, getValue: it => it.documento || it.comprobante || '—' },
-                { label: 'CLIENTE', w: 210, getValue: it => it.cliente || it.cliente_nombre || it.cliente_nombre_db || '—' },
-                { label: 'COMBUSTIBLE / PRODUCTO', w: 120, getValue: it => it.producto || it.producto_descripcion || it.producto_nombre_db || '—' },
-                { label: 'DESPACHADOR', w: 130, getValue: it => it.despachador || it.despachador_descripcion || '—' },
-                { label: 'GALONES', w: 55, getValue: it => it.cantidad || it.galones || 0, format: 'qty', align: 'right' },
-                { label: 'PRECIO', w: 45, getValue: it => it.precio || 0, format: 'money', align: 'right' },
-                { label: 'TOTAL', w: 82, getValue: it => it.monto || 0, format: 'money', align: 'right' }
+                { label: 'DOCUMENTO', w: 70, getValue: it => it.documento || it.comprobante || '—' },
+                { label: 'CLIENTE', w: 162, getValue: it => it.cliente || it.cliente_nombre || it.cliente_nombre_db || '—' },
+                { label: 'COMBUSTIBLE / PRODUCTO', w: 90, getValue: it => it.producto || it.producto_descripcion || it.producto_nombre_db || '—' },
+                { label: 'DESPACHADOR', w: 95, getValue: it => it.despachador || it.despachador_descripcion || '—' },
+                { label: 'GALONES', w: 42, getValue: it => it.cantidad || it.galones || 0, format: 'qty', align: 'right' },
+                { label: 'PRECIO', w: 38, getValue: it => it.precio || 0, format: 'money', align: 'right' },
+                { label: 'TOTAL', w: 55, getValue: it => it.monto || 0, format: 'money', align: 'right' }
             ]
         },
         {
@@ -2213,11 +2227,11 @@ const generateCloseoutConsolidatedAnnexesPDF = async (data) => {
             items: data.cupones || [],
             sumField: 'monto',
             columns: [
-                { label: 'NO. CUPÓN', w: 110, getValue: it => it.cupon || '—' },
-                { label: 'DISTRIBUIDORA', w: 170, getValue: it => it.distribuidora || it.distribuidora_nombre || '—' },
-                { label: 'PRODUCTO', w: 160, getValue: it => it.producto || it.producto_descripcion || it.producto_nombre || '—' },
-                { label: 'DESPACHADOR', w: 152, getValue: it => it.despachador || it.despachador_descripcion || '—' },
-                { label: 'MONTO', w: 140, getValue: it => it.monto || 0, format: 'money', align: 'right' }
+                { label: 'NO. CUPÓN', w: 85, getValue: it => it.cupon || '—' },
+                { label: 'DISTRIBUIDORA', w: 130, getValue: it => it.distribuidora || it.distribuidora_nombre || '—' },
+                { label: 'PRODUCTO', w: 120, getValue: it => it.producto || it.producto_descripcion || it.producto_nombre || '—' },
+                { label: 'DESPACHADOR', w: 127, getValue: it => it.despachador || it.despachador_descripcion || '—' },
+                { label: 'MONTO', w: 90, getValue: it => it.monto || 0, format: 'money', align: 'right' }
             ]
         },
         {
@@ -2226,13 +2240,13 @@ const generateCloseoutConsolidatedAnnexesPDF = async (data) => {
             items: data.descuentos || [],
             sumField: 'total',
             columns: [
-                { label: 'DOCUMENTO', w: 100, getValue: it => it.documento || '—' },
-                { label: 'CLIENTE', w: 190, getValue: it => it.cliente || it.cliente_nombre || it.cliente_nombre_db || '—' },
-                { label: 'PRODUCTO', w: 140, getValue: it => it.producto || it.producto_descripcion || it.producto_nombre_db || '—' },
-                { label: 'DESPACHADOR', w: 130, getValue: it => it.despachador || it.despachador_descripcion || '—' },
-                { label: 'GALONES', w: 55, getValue: it => it.cantidad || 0, format: 'qty', align: 'right' },
-                { label: 'DESC./GALÓN', w: 55, getValue: it => it.valor || 0, format: 'money', align: 'right' },
-                { label: 'TOTAL', w: 62, getValue: it => it.total || 0, format: 'money', align: 'right' }
+                { label: 'DOCUMENTO', w: 75, getValue: it => it.documento || '—' },
+                { label: 'CLIENTE', w: 147, getValue: it => it.cliente || it.cliente_nombre || it.cliente_nombre_db || '—' },
+                { label: 'PRODUCTO', w: 105, getValue: it => it.producto || it.producto_descripcion || it.producto_nombre_db || '—' },
+                { label: 'DESPACHADOR', w: 95, getValue: it => it.despachador || it.despachador_descripcion || '—' },
+                { label: 'GALONES', w: 40, getValue: it => it.cantidad || 0, format: 'qty', align: 'right' },
+                { label: 'DESC./GALÓN', w: 40, getValue: it => it.valor || 0, format: 'money', align: 'right' },
+                { label: 'TOTAL', w: 50, getValue: it => it.total || 0, format: 'money', align: 'right' }
             ]
         },
         {
@@ -2241,9 +2255,9 @@ const generateCloseoutConsolidatedAnnexesPDF = async (data) => {
             items: data.adelantos || [],
             sumField: 'monto',
             columns: [
-                { label: 'EMPLEADO', w: 290, getValue: it => it.empleado || '—' },
-                { label: 'DESPACHADOR', w: 282, getValue: it => it.despachador || it.despachador_descripcion || '—' },
-                { label: 'MONTO', w: 160, getValue: it => it.monto || 0, format: 'money', align: 'right' }
+                { label: 'EMPLEADO', w: 220, getValue: it => it.empleado || '—' },
+                { label: 'DESPACHADOR', w: 212, getValue: it => it.despachador || it.despachador_descripcion || '—' },
+                { label: 'MONTO', w: 120, getValue: it => it.monto || 0, format: 'money', align: 'right' }
             ]
         },
         {
@@ -2252,11 +2266,11 @@ const generateCloseoutConsolidatedAnnexesPDF = async (data) => {
             items: data.tarjetas || [],
             sumField: 'monto',
             columns: [
-                { label: 'TIPO POS', w: 130, getValue: it => it.tipo_pos || it.tipo_pos_nombre || '—' },
-                { label: 'NO. TARJETA', w: 120, getValue: it => it.num_tarjeta || it.numero_tarjeta || '—' },
-                { label: 'AUTORIZACIÓN', w: 110, getValue: it => it.num_autorizacion || it.numero_autorizacion || '—' },
-                { label: 'DESPACHADOR', w: 232, getValue: it => it.despachador || it.despachador_descripcion || '—' },
-                { label: 'MONTO', w: 140, getValue: it => it.monto || 0, format: 'money', align: 'right' }
+                { label: 'TIPO POS', w: 95, getValue: it => it.tipo_pos || it.tipo_pos_nombre || '—' },
+                { label: 'NO. TARJETA', w: 90, getValue: it => it.num_tarjeta || it.numero_tarjeta || '—' },
+                { label: 'AUTORIZACIÓN', w: 85, getValue: it => it.num_autorizacion || it.numero_autorizacion || '—' },
+                { label: 'DESPACHADOR', w: 182, getValue: it => it.despachador || it.despachador_descripcion || '—' },
+                { label: 'MONTO', w: 100, getValue: it => it.monto || 0, format: 'money', align: 'right' }
             ]
         },
         {
@@ -2265,14 +2279,14 @@ const generateCloseoutConsolidatedAnnexesPDF = async (data) => {
             items: data.vales || [],
             sumField: 'monto',
             columns: [
-                { label: 'DOCUMENTO', w: 75, getValue: it => it.documento || '—' },
-                { label: 'CLIENTE', w: 180, getValue: it => it.cliente || it.cliente_nombre || it.cliente_nombre_db || '—' },
-                { label: 'PRODUCTO', w: 115, getValue: it => it.producto || it.producto_descripcion || it.producto_nombre_db || '—' },
-                { label: 'DESPACHADOR', w: 115, getValue: it => it.despachador || it.despachador_descripcion || '—' },
-                { label: 'PLACA', w: 65, getValue: it => it.placa || '—' },
-                { label: 'CANTIDAD', w: 55, getValue: it => it.cantidad || 0, format: 'qty', align: 'right' },
-                { label: 'PRECIO', w: 55, getValue: it => it.precio || 0, format: 'money', align: 'right' },
-                { label: 'TOTAL', w: 72, getValue: it => it.monto || 0, format: 'money', align: 'right' }
+                { label: 'DOCUMENTO', w: 60, getValue: it => it.documento || '—' },
+                { label: 'CLIENTE', w: 135, getValue: it => it.cliente || it.cliente_nombre || it.cliente_nombre_db || '—' },
+                { label: 'PRODUCTO', w: 85, getValue: it => it.producto || it.producto_descripcion || it.producto_nombre_db || '—' },
+                { label: 'DESPACHADOR', w: 85, getValue: it => it.despachador || it.despachador_descripcion || '—' },
+                { label: 'PLACA', w: 52, getValue: it => it.placa || '—' },
+                { label: 'CANTIDAD', w: 40, getValue: it => it.cantidad || 0, format: 'qty', align: 'right' },
+                { label: 'PRECIO', w: 40, getValue: it => it.precio || 0, format: 'money', align: 'right' },
+                { label: 'TOTAL', w: 55, getValue: it => it.monto || 0, format: 'money', align: 'right' }
             ]
         },
         {
@@ -2281,14 +2295,14 @@ const generateCloseoutConsolidatedAnnexesPDF = async (data) => {
             items: data.anticipos_desp || data.anticiposDesp || [],
             sumField: 'monto',
             columns: [
-                { label: 'DOCUMENTO', w: 75, getValue: it => it.documento || '—' },
-                { label: 'CLIENTE', w: 180, getValue: it => it.cliente || it.cliente_nombre || it.cliente_nombre_db || '—' },
-                { label: 'PRODUCTO', w: 115, getValue: it => it.producto || it.producto_descripcion || it.producto_nombre_db || '—' },
-                { label: 'DESPACHADOR', w: 115, getValue: it => it.despachador || it.despachador_descripcion || '—' },
-                { label: 'PLACA', w: 65, getValue: it => it.placa || '—' },
-                { label: 'CANTIDAD', w: 55, getValue: it => it.cantidad || 0, format: 'qty', align: 'right' },
-                { label: 'PRECIO', w: 55, getValue: it => it.precio || 0, format: 'money', align: 'right' },
-                { label: 'TOTAL', w: 72, getValue: it => it.monto || 0, format: 'money', align: 'right' }
+                { label: 'DOCUMENTO', w: 60, getValue: it => it.documento || '—' },
+                { label: 'CLIENTE', w: 135, getValue: it => it.cliente || it.cliente_nombre || it.cliente_nombre_db || '—' },
+                { label: 'PRODUCTO', w: 85, getValue: it => it.producto || it.producto_descripcion || it.producto_nombre_db || '—' },
+                { label: 'DESPACHADOR', w: 85, getValue: it => it.despachador || it.despachador_descripcion || '—' },
+                { label: 'PLACA', w: 52, getValue: it => it.placa || '—' },
+                { label: 'CANTIDAD', w: 40, getValue: it => it.cantidad || 0, format: 'qty', align: 'right' },
+                { label: 'PRECIO', w: 40, getValue: it => it.precio || 0, format: 'money', align: 'right' },
+                { label: 'TOTAL', w: 55, getValue: it => it.monto || 0, format: 'money', align: 'right' }
             ]
         },
         {
@@ -2301,26 +2315,30 @@ const generateCloseoutConsolidatedAnnexesPDF = async (data) => {
             }),
             sumField: 'total',
             columns: [
-                { label: 'CÓDIGO', w: 70, getValue: it => it.codigo || it.producto_codigo || '—' },
-                { label: 'DESCRIPCIÓN', w: 212, getValue: it => it.producto || it.producto_descripcion || '—' },
-                { label: 'LECT. ANT.', w: 65, getValue: it => it.stock_inicial || it.lectura_inicial || 0, format: 'qty', align: 'right' },
-                { label: 'RECARGA', w: 55, getValue: it => it.recarga || 0, format: 'qty', align: 'right' },
-                { label: 'LECT. ACT.', w: 65, getValue: it => it.stock_final || it.lectura_final || 0, format: 'qty', align: 'right' },
-                { label: 'VENTAS', w: 65, getValue: it => it.cantidad || it.ventas || 0, format: 'qty', align: 'right' },
-                { label: 'PRECIO', w: 80, getValue: it => it.precio || 0, format: 'money', align: 'right' },
-                { label: 'TOTAL', w: 120, getValue: it => it.total || 0, format: 'money', align: 'right' }
+                { label: 'CÓDIGO', w: 55, getValue: it => it.codigo || it.producto_codigo || '—' },
+                { label: 'DESCRIPCIÓN', w: 162, getValue: it => it.producto || it.producto_descripcion || '—' },
+                { label: 'LECT. ANT.', w: 47, getValue: it => it.stock_inicial || it.lectura_inicial || 0, format: 'qty', align: 'right' },
+                { label: 'RECARGA', w: 40, getValue: it => it.recarga || 0, format: 'qty', align: 'right' },
+                { label: 'LECT. ACT.', w: 47, getValue: it => it.stock_final || it.lectura_final || 0, format: 'qty', align: 'right' },
+                { label: 'VENTAS', w: 46, getValue: it => it.cantidad || it.ventas || 0, format: 'qty', align: 'right' },
+                { label: 'PRECIO', w: 55, getValue: it => it.precio || 0, format: 'money', align: 'right' },
+                { label: 'TOTAL', w: 100, getValue: it => it.total || 0, format: 'money', align: 'right' }
             ]
         }
     ];
 
-    let currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+    let currentY = 0;
 
     const summaryRows = [];
     let grandTotalMonto = 0;
     let totalItemsGlobal = 0;
     let renderedSectionsCount = 0;
 
-    for (const sec of sections) {
+    const activeSections = data.sectionFilter
+        ? sections.filter(s => s.key === data.sectionFilter || s.key === data.sectionFilter.replace(/s$/, '') || (data.sectionFilter === 'anticipos' && s.key === 'anticipos_desp') || s.title.toLowerCase().includes(data.sectionFilter.toLowerCase()))
+        : sections;
+
+    for (const sec of activeSections) {
         const secTotal = sec.items.reduce((s, it) => s + (parseFloat(it[sec.sumField]) || 0), 0);
         summaryRows.push({ title: sec.title.replace(/^\d+\.\s*/, ''), count: sec.items.length, total: secTotal });
         grandTotalMonto += secTotal;
@@ -2332,9 +2350,12 @@ const generateCloseoutConsolidatedAnnexesPDF = async (data) => {
 
         renderedSectionsCount++;
 
-        if (currentY > 460) {
+        // CADA ANEXO SE IMPRIME EN SU PROPIA PÁGINA (SOLICITUD CONTABILIDAD)
+        if (renderedSectionsCount === 1) {
+            currentY = reportPdfHelper.renderHeader(doc, company, `DETALLE DE CIERRE — ${sec.title}`, periodText, 'portrait', subtitle);
+        } else {
             doc.addPage();
-            currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+            currentY = reportPdfHelper.renderHeader(doc, company, `DETALLE DE CIERRE — ${sec.title}`, periodText, 'portrait', subtitle);
         }
 
         // Section Banner
@@ -2359,9 +2380,9 @@ const generateCloseoutConsolidatedAnnexesPDF = async (data) => {
 
         let rowIdx = 0;
         for (const item of sec.items) {
-            if (currentY > 510) {
+            if (currentY > 700) {
                 doc.addPage();
-                currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+                currentY = reportPdfHelper.renderHeader(doc, company, `DETALLE DE CIERRE — ${sec.title} (CONTINUACIÓN)`, periodText, 'portrait', subtitle);
                 doc.rect(startX, currentY, pageW, 14).fill('#0f172a');
                 doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#ffffff');
                 doc.text(`${sec.title} (Continuación)`, startX + 6, currentY + 3.5);
@@ -2420,17 +2441,31 @@ const generateCloseoutConsolidatedAnnexesPDF = async (data) => {
         currentY += 19;
     }
 
+    if (data.sectionFilter) {
+        if (renderedSectionsCount === 0) {
+            const filterSec = activeSections[0];
+            currentY = reportPdfHelper.renderHeader(doc, company, `DETALLE DE CIERRE — ${filterSec?.title || 'ANEXO OPERATIVO'}`, periodText, 'portrait', subtitle);
+            doc.rect(startX, currentY, pageW, 22).fill('#f8fafc');
+            doc.fontSize(7.5).font('Helvetica-Oblique').fillColor('#64748b');
+            doc.text('No se registraron movimientos en este anexo durante este turno.', startX + 12, currentY + 7);
+            currentY += 30;
+        }
+        reportPdfHelper.renderClosingFooter(doc, startX, currentY, totalItemsGlobal, 'Registros');
+        reportPdfHelper.renderPageNumbers(doc);
+        doc.end();
+        return await getBuffer();
+    }
+
     if (renderedSectionsCount === 0) {
+        currentY = reportPdfHelper.renderHeader(doc, company, 'DETALLE DE CIERRE DE TURNO - ANEXOS OPERATIVOS', periodText, 'portrait', subtitle);
         doc.rect(startX, currentY, pageW, 22).fill('#f8fafc');
         doc.fontSize(7.5).font('Helvetica-Oblique').fillColor('#64748b');
         doc.text('No se registraron movimientos en los anexos u operaciones detalladas durante este turno.', startX + 12, currentY + 7);
         currentY += 30;
-    }
-
-    // Grand Summary Box at the end
-    if (currentY > 380) {
+    } else {
+        // Grand Summary Box en su propia página final
         doc.addPage();
-        currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+        currentY = reportPdfHelper.renderHeader(doc, company, 'DETALLE DE CIERRE — RESUMEN CONSOLIDADO DE ANEXOS', periodText, 'portrait', subtitle);
     }
 
     doc.rect(startX, currentY, pageW, 15).fill('#334155');

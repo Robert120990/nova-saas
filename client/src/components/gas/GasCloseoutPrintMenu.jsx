@@ -113,11 +113,21 @@ const GasCloseoutPrintMenu = ({
 
         try {
             setLoadingKey(annexKey);
-            const { data } = await axios.get(`/api/gas-station/closeouts/${closeoutId}/print-full`);
-            printCloseoutAnnex(data, annexKey);
+            const res = await axios.get(`/api/gas-station/closeouts/${closeoutId}/annexes-pdf`, {
+                params: { tipo: annexKey },
+                responseType: 'blob'
+            });
+            const blob = new Blob([res.data], { type: 'application/pdf' });
+            const url = URL.createObjectURL(blob);
+            window.open(url, '_blank');
         } catch (error) {
             console.error(`Error al imprimir anexo ${annexKey}:`, error);
-            toast.error(error.message || 'Error al imprimir anexo del turno');
+            try {
+                const { data } = await axios.get(`/api/gas-station/closeouts/${closeoutId}/print-full`);
+                printCloseoutAnnex(data, annexKey);
+            } catch (fbErr) {
+                toast.error('Error al generar PDF del anexo');
+            }
         } finally {
             setLoadingKey(null);
         }

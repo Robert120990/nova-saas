@@ -10,8 +10,10 @@ import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
 import ReportLayout from '../components/ui/ReportLayout';
 import { getTodayString, getFirstDayOfMonth } from '../utils/dateUtils';
+import { unwrapList } from '../utils/apiUtils';
 
 const reportTypes = [
+    { value: 'todos', label: 'Todos los Anexos (Por Página)' },
     { value: 'remesas', label: 'Remesas' },
     { value: 'gastos', label: 'Gastos' },
     { value: 'creditos', label: 'Créditos' },
@@ -34,7 +36,7 @@ const GasCloseoutDetailReport = () => {
         start_date: firstDayOfMonth,
         end_date: today,
         branch_id: user?.branch_id || 'all',
-        tipo_reporte: 'remesas'
+        tipo_reporte: 'todos'
     });
 
     const [isGenerating, setIsGenerating] = useState(false);
@@ -42,7 +44,7 @@ const GasCloseoutDetailReport = () => {
 
     const { data: branches = [] } = useQuery({
         queryKey: ['branches'],
-        queryFn: async () => (await axios.get('/api/branches')).data
+        queryFn: async () => unwrapList(await axios.get('/api/branches'))
     });
 
     const handleFilterChange = (e) => {
@@ -150,7 +152,7 @@ const GasCloseoutDetailReport = () => {
                     onChange={handleFilterChange}
                 >
                     <option value="all">Todas las sucursales</option>
-                    {branches.map(b => (
+                    {(Array.isArray(branches) ? branches : []).map(b => (
                         <option key={b.id} value={b.id}>{b.nombre}</option>
                     ))}
                 </select>

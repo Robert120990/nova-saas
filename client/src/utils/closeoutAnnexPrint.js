@@ -157,11 +157,11 @@ export function buildCloseoutAnnexPrintHtml(data, annexKey) {
                 : items.map((cr, i) => `
                     <tr>
                         <td class="center mono">${i + 1}</td>
-                        <td class="mono font-bold">${escHtml(cr.comprobante || '—')}</td>
-                        <td class="font-bold">${escHtml(cr.cliente_nombre_db || cr.cliente || '—')}</td>
-                        <td>${escHtml(cr.producto_nombre_db || cr.producto || '—')}</td>
-                        <td>${escHtml(cr.despachador_descripcion || '—')}</td>
-                        <td class="right mono">${fmtQty(cr.galones, 3)} gal</td>
+                        <td class="mono font-bold">${escHtml(cr.documento || cr.comprobante || '—')}</td>
+                        <td class="font-bold">${escHtml(cr.cliente_nombre || cr.cliente_nombre_db || cr.cliente || '—')}</td>
+                        <td>${escHtml(cr.producto_descripcion || cr.producto_nombre_db || cr.producto || '—')}</td>
+                        <td>${escHtml(cr.despachador_descripcion || cr.despachador_codigo || '—')}</td>
+                        <td class="right mono">${fmtQty(cr.cantidad ?? cr.galones, 3)} gal</td>
                         <td class="right mono font-bold">${fmtMoney(cr.monto)}</td>
                     </tr>
                 `).join('');
@@ -177,8 +177,8 @@ export function buildCloseoutAnnexPrintHtml(data, annexKey) {
                         <td class="center mono">${i + 1}</td>
                         <td class="mono font-bold">${escHtml(cp.cupon || '—')}</td>
                         <td>${escHtml(cp.distribuidora_nombre || cp.distribuidora || '—')}</td>
-                        <td>${escHtml(cp.producto_nombre || cp.producto || '—')}</td>
-                        <td>${escHtml(cp.despachador_descripcion || '—')}</td>
+                        <td>${escHtml(cp.producto_descripcion || cp.producto_nombre || cp.producto || '—')}</td>
+                        <td>${escHtml(cp.despachador_descripcion || cp.despachador_codigo || '—')}</td>
                         <td class="right mono font-bold">${fmtMoney(cp.monto)}</td>
                     </tr>
                 `).join('');
@@ -193,9 +193,9 @@ export function buildCloseoutAnnexPrintHtml(data, annexKey) {
                     <tr>
                         <td class="center mono">${i + 1}</td>
                         <td class="mono">${escHtml(d.documento || '—')}</td>
-                        <td>${escHtml(d.cliente_nombre_db || d.cliente || '—')}</td>
-                        <td>${escHtml(d.producto_nombre_db || d.producto || '—')}</td>
-                        <td>${escHtml(d.despachador_descripcion || '—')}</td>
+                        <td>${escHtml(d.cliente_nombre || d.cliente_nombre_db || d.cliente || '—')}</td>
+                        <td>${escHtml(d.producto_descripcion || d.producto_nombre_db || d.producto || '—')}</td>
+                        <td>${escHtml(d.despachador_descripcion || d.despachador_codigo || '—')}</td>
                         <td class="right mono">${fmtQty(d.cantidad, 2)}</td>
                         <td class="right mono">${fmtMoney(d.valor)}</td>
                         <td class="right mono font-bold">${fmtMoney(d.total)}</td>
@@ -212,7 +212,7 @@ export function buildCloseoutAnnexPrintHtml(data, annexKey) {
                     <tr>
                         <td class="center mono">${i + 1}</td>
                         <td class="font-bold">${escHtml(a.empleado || '—')}</td>
-                        <td>${escHtml(a.despachador_descripcion || '—')}</td>
+                        <td>${escHtml(a.despachador_descripcion || a.despachador_codigo || '—')}</td>
                         <td class="right mono font-bold">${fmtMoney(a.monto)}</td>
                     </tr>
                 `).join('');
@@ -226,10 +226,10 @@ export function buildCloseoutAnnexPrintHtml(data, annexKey) {
                 : items.map((t, i) => `
                     <tr>
                         <td class="center mono">${i + 1}</td>
-                        <td class="mono font-bold">${escHtml(t.numero_tarjeta || '—')}</td>
-                        <td class="mono">${escHtml(t.numero_autorizacion || '—')}</td>
+                        <td class="mono font-bold">${escHtml(t.num_tarjeta || t.numero_tarjeta || '—')}</td>
+                        <td class="mono">${escHtml(t.num_autorizacion || t.numero_autorizacion || '—')}</td>
                         <td>${escHtml(t.tipo_pos_nombre || t.pos_tipo || '—')}</td>
-                        <td>${escHtml(t.despachador_descripcion || '—')}</td>
+                        <td>${escHtml(t.despachador_descripcion || t.despachador_codigo || '—')}</td>
                         <td>${escHtml(t.tipo_operacion || 'Venta')}</td>
                         <td class="right mono font-bold">${fmtMoney(t.monto)}</td>
                     </tr>
@@ -245,9 +245,9 @@ export function buildCloseoutAnnexPrintHtml(data, annexKey) {
                     <tr>
                         <td class="center mono">${i + 1}</td>
                         <td class="mono font-bold">${escHtml(v.documento || '—')}</td>
-                        <td>${escHtml(v.cliente_nombre_db || v.cliente || '—')}</td>
-                        <td>${escHtml(v.producto_nombre_db || v.producto || '—')}</td>
-                        <td>${escHtml(v.despachador_descripcion || '—')}</td>
+                        <td>${escHtml(v.cliente_nombre || v.cliente_nombre_db || v.cliente || '—')}</td>
+                        <td>${escHtml(v.producto_descripcion || v.producto_nombre_db || v.producto || '—')}</td>
+                        <td>${escHtml(v.despachador_descripcion || v.despachador_codigo || '—')}</td>
                         <td class="mono">${escHtml(v.placa || '—')}</td>
                         <td class="right mono">${fmtQty(v.cantidad, 2)}</td>
                         <td class="right mono">${fmtMoney(v.precio)}</td>
@@ -265,9 +265,9 @@ export function buildCloseoutAnnexPrintHtml(data, annexKey) {
                     <tr>
                         <td class="center mono">${i + 1}</td>
                         <td class="mono font-bold">${escHtml(a.documento || '—')}</td>
-                        <td>${escHtml(a.cliente_nombre_db || a.cliente || '—')}</td>
-                        <td>${escHtml(a.producto_nombre_db || a.producto || '—')}</td>
-                        <td>${escHtml(a.despachador_descripcion || '—')}</td>
+                        <td>${escHtml(a.cliente_nombre || a.cliente_nombre_db || a.cliente || '—')}</td>
+                        <td>${escHtml(a.producto_descripcion || a.producto_nombre_db || a.producto || '—')}</td>
+                        <td>${escHtml(a.despachador_descripcion || a.despachador_codigo || '—')}</td>
                         <td class="mono">${escHtml(a.placa || '—')}</td>
                         <td class="right mono">${fmtQty(a.cantidad, 2)}</td>
                         <td class="right mono">${fmtMoney(a.precio)}</td>

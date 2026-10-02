@@ -3,6 +3,7 @@ const pdfService = require('../../services/pdf.service');
 const excelService = require('../../services/excel.service');
 const reportPdfHelper = require('../../utils/reportPdfHelper');
 const { tipoNombres, fuelTypeLabels } = require('./gasReportConstants');
+const { handleCloseoutDetailTodos } = require('../../services/gasStationCloseoutDetail.service');
 
 exports.getFuelInventoryPDF = async (req, res) => {
     const { start_date, end_date, tipo_combustible, branch_id } = req.query;
@@ -305,6 +306,10 @@ exports.getCloseoutDetailPDF = async (req, res) => {
         if (!start_date || !end_date) return res.status(400).json({ message: 'Rango de fechas requerido' });
         if (!tipo_reporte || !tipoNombres[tipo_reporte]) return res.status(400).json({ message: 'Tipo de reporte inválido' });
 
+        if (tipo_reporte === 'todos') {
+            return await handleCloseoutDetailTodos(req, res);
+        }
+
         const [companyRows] = await pool.query('SELECT razon_social, nit, nrc FROM companies WHERE id = ?', [companyId]);
         const companyInfo = companyRows[0] || { razon_social: 'Empresa', nit: '', nrc: '' };
 
@@ -333,12 +338,12 @@ exports.getCloseoutDetailPDF = async (req, res) => {
                 `;
                 params = [companyId, start_date, end_date, ...branchParams];
                 columns = [
-                    { label: 'Turno', w: 50, accessor: 'numero_turno', align: 'center' },
-                    { label: 'Fecha', w: 80, accessor: 'fecha_turno', format: 'date', align: 'center' },
-                    { label: 'Documento', w: 120, accessor: 'documento' },
-                    { label: 'Despachador', w: 150, accessor: 'despachador' },
-                    { label: 'Tipo Operación', w: 170, accessor: 'tipo_operacion' },
-                    { label: 'Monto', w: 100, accessor: 'monto', format: 'money', align: 'right' }
+                    { label: 'Turno', w: 40, accessor: 'numero_turno', align: 'center' },
+                    { label: 'Fecha', w: 65, accessor: 'fecha_turno', format: 'date', align: 'center' },
+                    { label: 'Documento', w: 100, accessor: 'documento' },
+                    { label: 'Despachador', w: 145, accessor: 'despachador' },
+                    { label: 'Tipo Operación', w: 122, accessor: 'tipo_operacion' },
+                    { label: 'Monto', w: 80, accessor: 'monto', format: 'money', align: 'right' }
                 ];
                 break;
             }
@@ -346,9 +351,13 @@ exports.getCloseoutDetailPDF = async (req, res) => {
                 sql = `
                     SELECT g.fecha_turno, g.numero_turno, 
                            e.rubro as rubro_nombre,
-                           e.documento, COALESCE(NULLIF(cd.nombre, ''), d.descripcion, d.codigo, '—') as despachador, e.valor, e.comentario
+                           e.documento,
+                           COALESCE(p.nombre, e.proveedor, '—') as proveedor,
+                           COALESCE(NULLIF(cd.nombre, ''), d.descripcion, d.codigo, '—') as despachador,
+                           e.comentario, e.valor
                     FROM gas_station_closeout_expenses e
                     JOIN gas_station_closeouts g ON e.closeout_id = g.id
+                    LEFT JOIN providers p ON e.provider_id = p.id
                     LEFT JOIN gas_station_despachadores d ON e.despachador_id = d.id
                     LEFT JOIN gas_station_closeout_despachadores cd ON cd.closeout_id = e.closeout_id AND cd.despachador_id = e.despachador_id
                     WHERE g.company_id = ? AND g.fecha_turno BETWEEN ? AND ? ${branchFilter}
@@ -356,20 +365,27 @@ exports.getCloseoutDetailPDF = async (req, res) => {
                 `;
                 params = [companyId, start_date, end_date, ...branchParams];
                 columns = [
-                    { label: 'Turno', w: 50, accessor: 'numero_turno', align: 'center' },
-                    { label: 'Fecha', w: 80, accessor: 'fecha_turno', format: 'date', align: 'center' },
-                    { label: 'Rubro', w: 140, accessor: 'rubro_nombre' },
-                    { label: 'Documento', w: 140, accessor: 'documento' },
-                    { label: 'Despachador', w: 140, accessor: 'despachador' },
-                    { label: 'Comentario', w: 100, accessor: 'comentario' },
-                    { label: 'Valor', w: 90, accessor: 'valor', format: 'money', align: 'right' }
+                    { label: 'Turno', w: 35, accessor: 'numero_turno', align: 'center' },
+                    { label: 'Fecha', w: 60, accessor: 'fecha_turno', format: 'date', align: 'center' },
+                    { label: 'Rubro', w: 75, accessor: 'rubro_nombre' },
+                    { label: 'Documento', w: 65, accessor: 'documento' },
+                    { label: 'Proveedor', w: 85, accessor: 'proveedor' },
+                    { label: 'Despachador', w: 82, accessor: 'despachador' },
+                    { label: 'Comentario', w: 85, accessor: 'comentario' },
+                    { label: 'Valor', w: 65, accessor: 'valor', format: 'money', align: 'right' }
                 ];
                 break;
             }
             case 'creditos': {
                 sql = `
-                    SELECT g.fecha_turno, g.numero_turno, c.cliente_nombre as cliente,
-                           COALESCE(NULLIF(cd.nombre, ''), d.descripcion, d.codigo, '—') as despachador, c.monto
+                    SELECT g.fecha_turno, g.numero_turno,
+                           COALESCE(NULLIF(c.documento, ''), '—') as documento,
+                           COALESCE(c.cliente_nombre, '—') as cliente,
+                           COALESCE(c.producto_descripcion, c.producto_codigo, '—') as producto,
+                           COALESCE(NULLIF(cd.nombre, ''), d.descripcion, d.codigo, '—') as despachador,
+                           COALESCE(c.cantidad, 0) as cantidad,
+                           COALESCE(c.precio, 0) as precio,
+                           COALESCE(c.monto, 0) as monto
                     FROM gas_station_closeout_creditos c
                     JOIN gas_station_closeouts g ON c.closeout_id = g.id
                     LEFT JOIN gas_station_despachadores d ON c.despachador_id = d.id
@@ -379,18 +395,25 @@ exports.getCloseoutDetailPDF = async (req, res) => {
                 `;
                 params = [companyId, start_date, end_date, ...branchParams];
                 columns = [
-                    { label: 'Turno', w: 50, accessor: 'numero_turno', align: 'center' },
-                    { label: 'Fecha', w: 80, accessor: 'fecha_turno', format: 'date', align: 'center' },
-                    { label: 'Cliente', w: 250, accessor: 'cliente' },
-                    { label: 'Despachador', w: 200, accessor: 'despachador' },
-                    { label: 'Monto', w: 100, accessor: 'monto', format: 'money', align: 'right' }
+                    { label: 'Turno', w: 35, accessor: 'numero_turno', align: 'center' },
+                    { label: 'Fecha', w: 60, accessor: 'fecha_turno', format: 'date', align: 'center' },
+                    { label: 'Documento', w: 65, accessor: 'documento' },
+                    { label: 'Cliente', w: 132, accessor: 'cliente' },
+                    { label: 'Producto', w: 80, accessor: 'producto' },
+                    { label: 'Despachador', w: 75, accessor: 'despachador' },
+                    { label: 'Galones', w: 35, accessor: 'cantidad', format: 'qty', align: 'right' },
+                    { label: 'Precio', w: 35, accessor: 'precio', format: 'money', noTotal: true, align: 'right' },
+                    { label: 'Total', w: 35, accessor: 'monto', format: 'money', align: 'right' }
                 ];
                 break;
             }
             case 'cupones': {
                 sql = `
-                    SELECT g.fecha_turno, g.numero_turno, c.cupon, c.distribuidora_nombre as distribuidora,
-                           c.producto_descripcion as producto, COALESCE(NULLIF(cd.nombre, ''), d.descripcion, d.codigo, '—') as despachador, c.monto
+                    SELECT g.fecha_turno, g.numero_turno, c.cupon,
+                           COALESCE(c.distribuidora_nombre, '—') as distribuidora,
+                           COALESCE(c.producto_descripcion, c.producto_codigo, '—') as producto,
+                           COALESCE(NULLIF(cd.nombre, ''), d.descripcion, d.codigo, '—') as despachador,
+                           c.monto
                     FROM gas_station_closeout_cupones c
                     JOIN gas_station_closeouts g ON c.closeout_id = g.id
                     LEFT JOIN gas_station_despachadores d ON c.despachador_id = d.id
@@ -400,19 +423,22 @@ exports.getCloseoutDetailPDF = async (req, res) => {
                 `;
                 params = [companyId, start_date, end_date, ...branchParams];
                 columns = [
-                    { label: 'Turno', w: 45, accessor: 'numero_turno', align: 'center' },
-                    { label: 'Fecha', w: 70, accessor: 'fecha_turno', format: 'date', align: 'center' },
-                    { label: 'Cupón', w: 100, accessor: 'cupon' },
-                    { label: 'Distribuidora', w: 150, accessor: 'distribuidora' },
-                    { label: 'Producto', w: 140, accessor: 'producto' },
-                    { label: 'Despachador', w: 130, accessor: 'despachador' },
-                    { label: 'Monto', w: 80, accessor: 'monto', format: 'money', align: 'right' }
+                    { label: 'Turno', w: 35, accessor: 'numero_turno', align: 'center' },
+                    { label: 'Fecha', w: 60, accessor: 'fecha_turno', format: 'date', align: 'center' },
+                    { label: 'Cupón', w: 75, accessor: 'cupon' },
+                    { label: 'Distribuidora', w: 115, accessor: 'distribuidora' },
+                    { label: 'Producto', w: 105, accessor: 'producto' },
+                    { label: 'Despachador', w: 92, accessor: 'despachador' },
+                    { label: 'Monto', w: 70, accessor: 'monto', format: 'money', align: 'right' }
                 ];
                 break;
             }
             case 'descuentos': {
                 sql = `
-                    SELECT g.fecha_turno, g.numero_turno, d.cliente_nombre as cliente,
+                    SELECT g.fecha_turno, g.numero_turno,
+                           COALESCE(NULLIF(d.documento, ''), '—') as documento,
+                           COALESCE(d.cliente_nombre, '—') as cliente,
+                           COALESCE(d.producto_descripcion, d.producto_codigo, '—') as producto,
                            COALESCE(NULLIF(cd.nombre, ''), desp.descripcion, desp.codigo, '—') as despachador,
                            COALESCE(d.cantidad, 0) as cantidad,
                            COALESCE(d.valor, 0) as valor,
@@ -426,13 +452,15 @@ exports.getCloseoutDetailPDF = async (req, res) => {
                 `;
                 params = [companyId, start_date, end_date, ...branchParams];
                 columns = [
-                    { label: 'Turno', w: 45, accessor: 'numero_turno', align: 'center' },
-                    { label: 'Fecha', w: 70, accessor: 'fecha_turno', format: 'date', align: 'center' },
-                    { label: 'Cliente', w: 210, accessor: 'cliente' },
-                    { label: 'Despachador', w: 145, accessor: 'despachador' },
-                    { label: 'Galonaje', w: 80, accessor: 'cantidad', format: 'qty', align: 'right' },
-                    { label: 'Desc. x Galón', w: 85, accessor: 'valor', format: 'money', noTotal: true, align: 'right' },
-                    { label: 'Total', w: 90, accessor: 'total', format: 'money', align: 'right' }
+                    { label: 'Turno', w: 35, accessor: 'numero_turno', align: 'center' },
+                    { label: 'Fecha', w: 60, accessor: 'fecha_turno', format: 'date', align: 'center' },
+                    { label: 'Documento', w: 65, accessor: 'documento' },
+                    { label: 'Cliente', w: 120, accessor: 'cliente' },
+                    { label: 'Producto', w: 85, accessor: 'producto' },
+                    { label: 'Despachador', w: 75, accessor: 'despachador' },
+                    { label: 'Galones', w: 37, accessor: 'cantidad', format: 'qty', align: 'right' },
+                    { label: 'Desc./Gal', w: 37, accessor: 'valor', format: 'money', noTotal: true, align: 'right' },
+                    { label: 'Total', w: 38, accessor: 'total', format: 'money', align: 'right' }
                 ];
                 break;
             }
@@ -440,6 +468,8 @@ exports.getCloseoutDetailPDF = async (req, res) => {
                 sql = `
                     SELECT g.fecha_turno, g.numero_turno,
                            COALESCE(pt.nombre, 'SIN TIPO') as tipo_pos,
+                           COALESCE(NULLIF(t.num_tarjeta, ''), '—') as num_tarjeta,
+                           COALESCE(NULLIF(t.num_autorizacion, ''), '—') as num_autorizacion,
                            COALESCE(NULLIF(cd.nombre, ''), d.descripcion, d.codigo, '—') as despachador,
                            t.monto
                     FROM gas_station_closeout_tarjetas t
@@ -452,11 +482,13 @@ exports.getCloseoutDetailPDF = async (req, res) => {
                 `;
                 params = [companyId, start_date, end_date, ...branchParams];
                 columns = [
-                    { label: 'Tipo POS', w: 110, accessor: 'tipo_pos' },
-                    { label: 'Turno', w: 80, accessor: 'numero_turno', align: 'center' },
-                    { label: 'Fecha', w: 120, accessor: 'fecha_turno', format: 'date', align: 'center' },
-                    { label: 'Despachador', w: 250, accessor: 'despachador' },
-                    { label: 'Monto', w: 120, accessor: 'monto', format: 'money', align: 'right' }
+                    { label: 'Turno', w: 35, accessor: 'numero_turno', align: 'center' },
+                    { label: 'Fecha', w: 60, accessor: 'fecha_turno', format: 'date', align: 'center' },
+                    { label: 'Tipo POS', w: 75, accessor: 'tipo_pos' },
+                    { label: 'No. Tarjeta', w: 75, accessor: 'num_tarjeta' },
+                    { label: 'Autorización', w: 70, accessor: 'num_autorizacion' },
+                    { label: 'Despachador', w: 147, accessor: 'despachador' },
+                    { label: 'Monto', w: 90, accessor: 'monto', format: 'money', align: 'right' }
                 ];
                 break;
             }
@@ -468,6 +500,7 @@ exports.getCloseoutDetailPDF = async (req, res) => {
                            COALESCE(NULLIF(r.cliente_nombre, ''), NULLIF(c.nombre, ''), '—') as cliente,
                            COALESCE(NULLIF(r.producto_descripcion, ''), NULLIF(r.producto_codigo, ''), '—') as producto,
                            COALESCE(NULLIF(cd.nombre, ''), d.descripcion, d.codigo, '—') as despachador,
+                           COALESCE(NULLIF(r.placa, ''), '—') as placa,
                            COALESCE(r.cantidad, 0) as cantidad,
                            COALESCE(r.precio, 0) as precio,
                            COALESCE(r.monto, 0) as monto
@@ -481,15 +514,16 @@ exports.getCloseoutDetailPDF = async (req, res) => {
                 `;
                 params = [companyId, start_date, end_date, ...branchParams];
                 columns = [
-                    { label: 'Turno', w: 45, accessor: 'numero_turno', align: 'center' },
-                    { label: 'Fecha', w: 70, accessor: 'fecha_turno', format: 'date', align: 'center' },
-                    { label: 'Documento', w: 65, accessor: 'documento' },
-                    { label: 'Cliente', w: 170, accessor: 'cliente' },
-                    { label: 'Producto', w: 95, accessor: 'producto' },
-                    { label: 'Despachador', w: 105, accessor: 'despachador' },
-                    { label: 'Cantidad', w: 65, accessor: 'cantidad', format: 'qty', align: 'right' },
-                    { label: 'Precio', w: 50, accessor: 'precio', format: 'money', noTotal: true, align: 'right' },
-                    { label: 'Monto', w: 65, accessor: 'monto', format: 'money', align: 'right' }
+                    { label: 'Turno', w: 35, accessor: 'numero_turno', align: 'center' },
+                    { label: 'Fecha', w: 60, accessor: 'fecha_turno', format: 'date', align: 'center' },
+                    { label: 'Documento', w: 55, accessor: 'documento' },
+                    { label: 'Cliente', w: 115, accessor: 'cliente' },
+                    { label: 'Producto', w: 75, accessor: 'producto' },
+                    { label: 'Despachador', w: 75, accessor: 'despachador' },
+                    { label: 'Placa', w: 47, accessor: 'placa' },
+                    { label: 'Cantidad', w: 30, accessor: 'cantidad', format: 'qty', align: 'right' },
+                    { label: 'Precio', w: 30, accessor: 'precio', format: 'money', noTotal: true, align: 'right' },
+                    { label: 'Total', w: 30, accessor: 'monto', format: 'money', align: 'right' }
                 ];
                 break;
             }
@@ -501,6 +535,7 @@ exports.getCloseoutDetailPDF = async (req, res) => {
                            COALESCE(NULLIF(r.cliente_nombre, ''), NULLIF(c.nombre, ''), '—') as cliente,
                            COALESCE(NULLIF(r.producto_descripcion, ''), NULLIF(r.producto_codigo, ''), '—') as producto,
                            COALESCE(NULLIF(cd.nombre, ''), d.descripcion, d.codigo, '—') as despachador,
+                           COALESCE(NULLIF(r.placa, ''), '—') as placa,
                            COALESCE(r.cantidad, 0) as cantidad,
                            COALESCE(r.precio, 0) as precio,
                            COALESCE(r.monto, 0) as monto
@@ -514,15 +549,16 @@ exports.getCloseoutDetailPDF = async (req, res) => {
                 `;
                 params = [companyId, start_date, end_date, ...branchParams];
                 columns = [
-                    { label: 'Turno', w: 45, accessor: 'numero_turno', align: 'center' },
-                    { label: 'Fecha', w: 70, accessor: 'fecha_turno', format: 'date', align: 'center' },
-                    { label: 'Documento', w: 65, accessor: 'documento' },
-                    { label: 'Cliente', w: 170, accessor: 'cliente' },
-                    { label: 'Producto', w: 95, accessor: 'producto' },
-                    { label: 'Despachador', w: 105, accessor: 'despachador' },
-                    { label: 'Cantidad', w: 65, accessor: 'cantidad', format: 'qty', align: 'right' },
-                    { label: 'Precio', w: 50, accessor: 'precio', format: 'money', noTotal: true, align: 'right' },
-                    { label: 'Monto', w: 65, accessor: 'monto', format: 'money', align: 'right' }
+                    { label: 'Turno', w: 35, accessor: 'numero_turno', align: 'center' },
+                    { label: 'Fecha', w: 60, accessor: 'fecha_turno', format: 'date', align: 'center' },
+                    { label: 'Documento', w: 55, accessor: 'documento' },
+                    { label: 'Cliente', w: 115, accessor: 'cliente' },
+                    { label: 'Producto', w: 75, accessor: 'producto' },
+                    { label: 'Despachador', w: 75, accessor: 'despachador' },
+                    { label: 'Placa', w: 47, accessor: 'placa' },
+                    { label: 'Cantidad', w: 30, accessor: 'cantidad', format: 'qty', align: 'right' },
+                    { label: 'Precio', w: 30, accessor: 'precio', format: 'money', noTotal: true, align: 'right' },
+                    { label: 'Total', w: 30, accessor: 'monto', format: 'money', align: 'right' }
                 ];
                 break;
             }
@@ -542,17 +578,19 @@ exports.getCloseoutDetailPDF = async (req, res) => {
                 `;
                 params = [companyId, start_date, end_date, ...branchParams];
                 columns = [
-                    { label: 'Turno', w: 60, accessor: 'numero_turno', align: 'center' },
-                    { label: 'Fecha', w: 90, accessor: 'fecha_turno', format: 'date', align: 'center' },
-                    { label: 'Empleado', w: 220, accessor: 'empleado' },
-                    { label: 'Despachador', w: 220, accessor: 'despachador' },
-                    { label: 'Monto', w: 140, accessor: 'monto', format: 'money', align: 'right' }
+                    { label: 'Turno', w: 40, accessor: 'numero_turno', align: 'center' },
+                    { label: 'Fecha', w: 65, accessor: 'fecha_turno', format: 'date', align: 'center' },
+                    { label: 'Empleado', w: 175, accessor: 'empleado' },
+                    { label: 'Despachador', w: 172, accessor: 'despachador' },
+                    { label: 'Monto', w: 100, accessor: 'monto', format: 'money', align: 'right' }
                 ];
                 break;
             }
             case 'lubricantes': {
                 sql = `
-                    SELECT g.fecha_turno, g.numero_turno, l.producto_descripcion as producto,
+                    SELECT g.fecha_turno, g.numero_turno,
+                           COALESCE(l.producto_codigo, '—') as codigo,
+                           COALESCE(l.producto_descripcion, '—') as producto,
                            COALESCE(l.lectura_inicial, 0) as stock_inicial,
                            COALESCE(l.recarga, 0) as recarga,
                            COALESCE(l.lectura_final, 0) as stock_final,
@@ -568,15 +606,16 @@ exports.getCloseoutDetailPDF = async (req, res) => {
                 `;
                 params = [companyId, start_date, end_date, ...branchParams];
                 columns = [
-                    { label: 'Turno', w: 45, accessor: 'numero_turno', align: 'center' },
-                    { label: 'Fecha', w: 70, accessor: 'fecha_turno', format: 'date', align: 'center' },
-                    { label: 'Producto', w: 200, accessor: 'producto' },
-                    { label: 'Stock Inicial', w: 65, accessor: 'stock_inicial', format: 'qty', noTotal: true, align: 'right' },
-                    { label: 'Recarga', w: 55, accessor: 'recarga', format: 'qty', noTotal: true, align: 'right' },
-                    { label: 'Stock Final', w: 65, accessor: 'stock_final', format: 'qty', noTotal: true, align: 'right' },
-                    { label: 'Cantidad', w: 60, accessor: 'cantidad', format: 'qty', align: 'right' },
-                    { label: 'Precio', w: 60, accessor: 'precio', format: 'money', noTotal: true, align: 'right' },
-                    { label: 'Total', w: 70, accessor: 'total', format: 'money', align: 'right' }
+                    { label: 'Turno', w: 35, accessor: 'numero_turno', align: 'center' },
+                    { label: 'Fecha', w: 60, accessor: 'fecha_turno', format: 'date', align: 'center' },
+                    { label: 'Código', w: 45, accessor: 'codigo' },
+                    { label: 'Descripción', w: 140, accessor: 'producto' },
+                    { label: 'Lect. Ant', w: 40, accessor: 'stock_inicial', format: 'qty', noTotal: true, align: 'right' },
+                    { label: 'Recarga', w: 36, accessor: 'recarga', format: 'qty', noTotal: true, align: 'right' },
+                    { label: 'Lect. Act', w: 40, accessor: 'stock_final', format: 'qty', noTotal: true, align: 'right' },
+                    { label: 'Ventas', w: 36, accessor: 'cantidad', format: 'qty', align: 'right' },
+                    { label: 'Precio', w: 45, accessor: 'precio', format: 'money', noTotal: true, align: 'right' },
+                    { label: 'Total', w: 75, accessor: 'total', format: 'money', align: 'right' }
                 ];
                 break;
             }

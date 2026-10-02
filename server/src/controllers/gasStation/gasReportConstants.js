@@ -3,6 +3,7 @@
  */
 
 const tipoNombres = {
+    todos: 'Todos los Anexos (Por Página)',
     remesas: 'Remesas',
     gastos: 'Gastos',
     creditos: 'Créditos',
