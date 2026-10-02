@@ -110,6 +110,7 @@ const GasCloseout = () => {
     const [despachadorSelectValue, setDespachadorSelectValue] = useState('');
     const [showReadingsModal, setShowReadingsModal] = useState(false);
     const [editAnterior, setEditAnterior] = useState(false);
+    const [editPrecio, setEditPrecio] = useState(false);
     const [showGastosModal, setShowGastosModal] = useState(false);
     const [gastos, setGastos] = useState([]);
     const [expenseCategories, setExpenseCategories] = useState([]);
@@ -201,6 +202,18 @@ const GasCloseout = () => {
                         toast.info('Modo SuperAdmin: Edición de lecturas anteriores activada');
                     } else {
                         toast.info('Edición de lecturas anteriores desactivada');
+                    }
+                    return next;
+                });
+            }
+            if (e.ctrlKey && e.altKey && e.key?.toLowerCase() === 'p') {
+                e.preventDefault();
+                setEditPrecio(prev => {
+                    const next = !prev;
+                    if (next) {
+                        toast.info('Edición de precios por pistola activada');
+                    } else {
+                        toast.info('Edición de precios desactivada');
                     }
                     return next;
                 });
@@ -547,7 +560,8 @@ const GasCloseout = () => {
                             calibracion: res.data.calibracion,
                             lectura_anterior: res.data.lectura_anterior,
                             diferencia: res.data.diferencia,
-                            monto: res.data.monto
+                            monto: res.data.monto,
+                            precio: res.data.precio !== undefined ? res.data.precio : r.precio
                         };
                     }
                     return r;
@@ -567,7 +581,7 @@ const GasCloseout = () => {
             const updated = res.data.readings;
             setReadings(prev => prev.map(r => {
                 const u = updated.find(x => x.id === r.id);
-                if (u) return { ...r, lectura_actual: u.lectura_actual, diferencia: u.diferencia, monto: u.monto };
+                if (u) return { ...r, lectura_actual: u.lectura_actual, diferencia: u.diferencia, monto: u.monto, precio: u.precio !== undefined ? u.precio : r.precio };
                 return r;
             }));
             if (res.data.fusion_shift_id) {
@@ -1973,9 +1987,10 @@ const GasCloseout = () => {
             const numActual = parseFloat(field === 'lectura_actual' ? value : updated.lectura_actual) || 0;
             const numAnt = parseFloat(field === 'lectura_anterior' ? value : updated.lectura_anterior) || 0;
             const numCalib = parseFloat(field === 'calibracion' ? value : updated.calibracion) || 0;
+            const numPrecio = parseFloat(field === 'precio' ? value : updated.precio) || 0;
             const diff = Math.round((numActual - numAnt - numCalib) * 1000) / 1000;
             updated.diferencia = diff;
-            updated.monto = Math.round(diff * (parseFloat(updated.precio) || 0) * 100) / 100;
+            updated.monto = Math.round(diff * numPrecio * 100) / 100;
             return updated;
         }));
     };
@@ -1990,6 +2005,9 @@ const GasCloseout = () => {
         if (isSuperAdmin && editAnterior) {
             payload.lectura_anterior = parseFloat(r.lectura_anterior) || 0;
         }
+        if (editPrecio) {
+            payload.precio = parseFloat(r.precio) || 0;
+        }
         updateMutation.mutate({
             readingId,
             data: payload
@@ -2001,6 +2019,16 @@ const GasCloseout = () => {
             e.preventDefault();
             const currentReading = readings[index];
             if (!currentReading) return;
+
+            if (field === 'precio') {
+                const nextReading = readings[index + 1];
+                if (nextReading) {
+                    const nextKey = `precio-${nextReading.nozzle_id}`;
+                    const nextEl = inputRefs.current[nextKey];
+                    if (nextEl) nextEl.focus();
+                }
+                return;
+            }
 
             if (field === 'lectura_anterior') {
                 const actualKey = `lectura_actual-${currentReading.nozzle_id}`;
@@ -2772,7 +2800,7 @@ const GasCloseout = () => {
                                             <button
                                                 key={btn.key}
                                                 onClick={() => {
-                                                    if (isLectura) { setShowReadingsModal(true); setEditAnterior(false); }
+                                                    if (isLectura) { setShowReadingsModal(true); setEditAnterior(false); setEditPrecio(false); }
                                                     if (isGastos) handleOpenGastos();
                                                     if (btn.key === 'tanques') handleOpenTanques();
                                                     if (isRemesas) handleOpenRemesas();
@@ -2810,10 +2838,12 @@ const GasCloseout = () => {
 
                 <GasReadingsModal
                     isOpen={showReadingsModal}
-                    onClose={() => { setShowReadingsModal(false); setEditAnterior(false); }}
+                    onClose={() => { setShowReadingsModal(false); setEditAnterior(false); setEditPrecio(false); }}
                     estado={estado}
                     isSuperAdmin={isSuperAdmin}
                     editAnterior={editAnterior}
+                    editPrecio={editPrecio}
+                    setEditPrecio={setEditPrecio}
                     fileInputRef={fileInputRef}
                     importing={importing}
                     handleImportExcel={handleImportExcel}

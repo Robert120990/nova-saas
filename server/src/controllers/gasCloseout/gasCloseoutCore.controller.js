@@ -723,7 +723,7 @@ exports.updateReading = async (req, res) => {
 
         const isSuperAdmin = req.user?.role === 'SuperAdmin' || req.user?.role?.toLowerCase() === 'superadmin';
         const lectura_anterior = (newAnterior !== undefined && isSuperAdmin) ? parseFloat(newAnterior) : parseFloat(current[0].lectura_anterior);
-        const precio = parseFloat(current[0].precio);
+        const precio = (req.body.precio !== undefined) ? parseFloat(req.body.precio) : parseFloat(current[0].precio);
         const newLectura = lectura_actual !== undefined ? parseFloat(lectura_actual) : undefined;
         const newCalibracion = calibracion !== undefined ? parseFloat(calibracion) : undefined;
 
@@ -734,11 +734,11 @@ exports.updateReading = async (req, res) => {
 
         await pool.query(`
             UPDATE gas_station_closeout_readings
-            SET lectura_actual = ?, calibracion = ?, lectura_anterior = ?, diferencia = ?, monto = ?
+            SET lectura_actual = ?, calibracion = ?, lectura_anterior = ?, precio = ?, diferencia = ?, monto = ?
             WHERE id = ? AND closeout_id = ?
-        `, [finalLectura, finalCalibracion, lectura_anterior, diferencia, monto, id, closeoutId]);
+        `, [finalLectura, finalCalibracion, lectura_anterior, precio, diferencia, monto, id, closeoutId]);
 
-        res.json({ id: parseInt(id), lectura_actual: finalLectura, calibracion: finalCalibracion, lectura_anterior, diferencia, monto });
+        res.json({ id: parseInt(id), lectura_actual: finalLectura, calibracion: finalCalibracion, lectura_anterior, precio, diferencia, monto });
     } catch (error) {
         console.error('Error updateReading:', error);
         res.status(500).json({ message: 'Error al actualizar lectura' });
@@ -777,7 +777,7 @@ exports.batchUpdateReadings = async (req, res) => {
             if (current.length === 0) continue;
 
             const lectura_anterior = parseFloat(current[0].lectura_anterior);
-            const precio = parseFloat(current[0].precio);
+            const precio = r.precio !== undefined ? parseFloat(r.precio) : parseFloat(current[0].precio);
             const calibracion = parseFloat(current[0].calibracion);
             const lectura_actual = parseFloat(r.lectura_actual);
             const diferencia = Math.round((lectura_actual - lectura_anterior - calibracion) * 1000) / 1000;
@@ -785,11 +785,11 @@ exports.batchUpdateReadings = async (req, res) => {
 
             await pool.query(`
                 UPDATE gas_station_closeout_readings
-                SET lectura_actual = ?, diferencia = ?, monto = ?
+                SET lectura_actual = ?, precio = ?, diferencia = ?, monto = ?
                 WHERE id = ? AND closeout_id = ?
-            `, [lectura_actual, diferencia, monto, r.readingId, closeoutId]);
+            `, [lectura_actual, precio, diferencia, monto, r.readingId, closeoutId]);
 
-            updated.push({ id: parseInt(r.readingId), lectura_actual, diferencia, monto });
+            updated.push({ id: parseInt(r.readingId), lectura_actual, precio, diferencia, monto });
         }
 
         const { fusion_shift_id, fusion_sales_amount, fusion_sales_volume } = req.body;

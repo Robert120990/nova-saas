@@ -34,7 +34,8 @@ const batchReadingsSchema = z.object({
 const singleReadingUpdateSchema = z.object({
     lectura_actual: z.coerce.number().optional(),
     calibracion: z.coerce.number().optional(),
-    lectura_anterior: z.coerce.number().optional()
+    lectura_anterior: z.coerce.number().optional(),
+    precio: z.coerce.number().optional()
 }).passthrough();
 
 const singleTankReadingUpdateSchema = z.object({

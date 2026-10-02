@@ -1,3 +1,4 @@
+import React, { forwardRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 
 const Money = ({ value, amount, className = '', digits = 2 }) => {
@@ -20,7 +21,7 @@ const Money = ({ value, amount, className = '', digits = 2 }) => {
   );
 };
 
-export const MoneyInput = ({ value, onChange, className = '', readOnly = false, step = '0.01', min = '0', placeholder = '0.00', ...props }) => {
+export const MoneyInput = forwardRef(({ value, onChange, className = '', readOnly = false, step = '0.01', min = '0', placeholder = '0.00', ...props }, ref) => {
   const { user } = useAuth();
   const isSuperAdmin = user?.role === 'SuperAdmin';
   const permisos = Array.isArray(user?.permissions) ? user.permissions : [];
@@ -36,6 +37,7 @@ export const MoneyInput = ({ value, onChange, className = '', readOnly = false, 
 
   return (
     <input
+      ref={ref}
       type="number"
       step={step}
       min={min}
@@ -48,6 +50,8 @@ export const MoneyInput = ({ value, onChange, className = '', readOnly = false, 
       {...props}
     />
   );
-};
+});
+
+MoneyInput.displayName = 'MoneyInput';
 
 export default Money;

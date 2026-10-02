@@ -181,8 +181,10 @@ describe('Gas Station Module Validation', () => {
             assert.equal(batchReadingsSchema.safeParse(batch).success, true);
             assert.equal(batchReadingsSchema.safeParse({ readings: [] }).success, false);
 
-            const single = { lectura_actual: 120.4, calibracion: 1.5 };
+            const single = { lectura_actual: 120.4, calibracion: 1.5, precio: 4.85 };
             assert.equal(singleReadingUpdateSchema.safeParse(single).success, true);
+            const parsedSingle = singleReadingUpdateSchema.parse(single);
+            assert.equal(parsedSingle.precio, 4.85);
 
             const changeDate = { fecha_turno: '2026-09-24' };
             assert.equal(closeoutFechaTurnoSchema.safeParse(changeDate).success, true);

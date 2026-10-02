@@ -34,6 +34,20 @@ const SHORTCUTS = [
         tags: ['gasolinera', 'cierre', 'lecturas', 'surtidores', 'mangueras', 'anterior', 'superadmin']
     },
     {
+        id: 'gas-edit-precio',
+        keys: ['Ctrl', 'Alt', 'P'],
+        category: 'gas',
+        isSecret: false,
+        badgeType: 'action',
+        badgeLabel: '⚡ Atajo Operativo',
+        title: 'Desbloqueo de Edición de Precios por Pistola',
+        module: 'Gasolinera > Cierre de Turno',
+        path: '/gas-station/cierre-lecturas',
+        description: 'Permite editar directamente el precio unitario del combustible por pistola/manguera cuando ocurre un cambio de precio durante el transcurso del día o turno.',
+        instructions: 'Presiona Ctrl + Alt + P dentro del formulario de Cierre de Lecturas o en la ventana flotante "Lecturas por Pistola". La columna "Precio" se volverá editable y actualizará automáticamente los montos facturados en dinero.',
+        tags: ['gasolinera', 'cierre', 'lecturas', 'pistolas', 'mangueras', 'precio', 'combustible', 'atajo']
+    },
+    {
         id: 'gas-superadmin-tanks',
         keys: ['5 Clics', 'Badge Estado'],
         category: 'gas',
