@@ -165,39 +165,19 @@ exports.getCloseoutPrintData = async (req, res) => {
         );
 
         const [remesas] = await pool.query(
-            `SELECT r.*, d.codigo as despachador_codigo, COALESCE(NULLIF(cd.nombre, ''), d.descripcion, '') as despachador_descripcion
-             FROM gas_station_closeout_remesas r
-             LEFT JOIN gas_station_despachadores d ON r.despachador_id = d.id
-             LEFT JOIN gas_station_closeout_despachadores cd ON cd.closeout_id = r.closeout_id AND cd.despachador_id = r.despachador_id
-             WHERE r.closeout_id = ? ORDER BY r.id ASC`, [id]
+            `SELECT * FROM gas_station_closeout_remesas WHERE closeout_id = ? ORDER BY id ASC`, [id]
         );
 
         const [cupones] = await pool.query(
-            `SELECT cp.*, dist.nombre as distribuidora_nombre, p.nombre as producto_nombre, d.codigo as despachador_codigo, COALESCE(NULLIF(cd.nombre, ''), d.descripcion, '') as despachador_descripcion
-             FROM gas_station_closeout_cupones cp
-             LEFT JOIN gas_station_distributors dist ON cp.distribuidora_id = dist.id
-             LEFT JOIN products p ON cp.producto_id = p.id
-             LEFT JOIN gas_station_despachadores d ON cp.despachador_id = d.id
-             LEFT JOIN gas_station_closeout_despachadores cd ON cd.closeout_id = cp.closeout_id AND cd.despachador_id = cp.despachador_id
-             WHERE cp.closeout_id = ? ORDER BY cp.id ASC`, [id]
+            `SELECT * FROM gas_station_closeout_cupones WHERE closeout_id = ? ORDER BY id ASC`, [id]
         );
 
         const [descuentos] = await pool.query(
-            `SELECT desc_t.*, COALESCE(cust.nombre, '') as cliente_nombre_db, COALESCE(p.nombre, '') as producto_nombre_db, d.codigo as despachador_codigo, COALESCE(NULLIF(cd.nombre, ''), d.descripcion, '') as despachador_descripcion
-             FROM gas_station_closeout_descuentos desc_t
-             LEFT JOIN customers cust ON desc_t.cliente_id = cust.id
-             LEFT JOIN products p ON desc_t.producto_id = p.id
-             LEFT JOIN gas_station_despachadores d ON desc_t.despachador_id = d.id
-             LEFT JOIN gas_station_closeout_despachadores cd ON cd.closeout_id = desc_t.closeout_id AND cd.despachador_id = desc_t.despachador_id
-             WHERE desc_t.closeout_id = ? ORDER BY desc_t.id ASC`, [id]
+            `SELECT * FROM gas_station_closeout_descuentos WHERE closeout_id = ? ORDER BY id ASC`, [id]
         );
 
         const [adelantos] = await pool.query(
-            `SELECT a.*, d.codigo as despachador_codigo, COALESCE(NULLIF(cd.nombre, ''), d.descripcion, '') as despachador_descripcion
-             FROM gas_station_closeout_adelantos a
-             LEFT JOIN gas_station_despachadores d ON a.despachador_id = d.id
-             LEFT JOIN gas_station_closeout_despachadores cd ON cd.closeout_id = a.closeout_id AND cd.despachador_id = a.despachador_id
-             WHERE a.closeout_id = ? ORDER BY a.id ASC`, [id]
+            `SELECT * FROM gas_station_closeout_adelantos WHERE closeout_id = ? ORDER BY id ASC`, [id]
         );
 
         const [lubricantes] = await pool.query(
@@ -205,46 +185,24 @@ exports.getCloseoutPrintData = async (req, res) => {
         );
 
         const [tarjetas] = await pool.query(
-            `SELECT t.*, pt.nombre as tipo_pos_nombre, d.codigo as despachador_codigo, COALESCE(NULLIF(cd.nombre, ''), d.descripcion, '') as despachador_descripcion
+            `SELECT t.*, pt.nombre as tipo_pos_nombre
              FROM gas_station_closeout_tarjetas t
              LEFT JOIN gas_station_pos_types pt ON t.pos_type_id = pt.id
-             LEFT JOIN gas_station_despachadores d ON t.despachador_id = d.id
-             LEFT JOIN gas_station_closeout_despachadores cd ON cd.closeout_id = t.closeout_id AND cd.despachador_id = t.despachador_id
              WHERE t.closeout_id = ? ORDER BY t.id ASC`, [id]
         );
 
         const [creditos] = await pool.query(
-            `SELECT c.*, COALESCE(cust.nombre, '') as cliente_nombre_db, COALESCE(p.nombre, '') as producto_nombre_db, d.codigo as despachador_codigo, COALESCE(NULLIF(cd.nombre, ''), d.descripcion, '') as despachador_descripcion
-             FROM gas_station_closeout_creditos c
-             LEFT JOIN customers cust ON c.cliente_id = cust.id
-             LEFT JOIN products p ON c.producto_id = p.id
-             LEFT JOIN gas_station_despachadores d ON c.despachador_id = d.id
-             LEFT JOIN gas_station_closeout_despachadores cd ON cd.closeout_id = c.closeout_id AND cd.despachador_id = c.despachador_id
-             WHERE c.closeout_id = ? ORDER BY c.id ASC`, [id]
+            `SELECT * FROM gas_station_closeout_creditos WHERE closeout_id = ? ORDER BY id ASC`, [id]
         );
 
         const [vales] = await pool.query(
-            `SELECT v.*, COALESCE(cust.nombre, '') as cliente_nombre_db, COALESCE(p.nombre, '') as producto_nombre_db, d.codigo as despachador_codigo, COALESCE(NULLIF(cd.nombre, ''), d.descripcion, '') as despachador_descripcion
-             FROM gas_station_closeout_vales v
-             LEFT JOIN customers cust ON v.cliente_id = cust.id
-             LEFT JOIN products p ON v.producto_id = p.id
-             LEFT JOIN gas_station_despachadores d ON v.despachador_id = d.id
-             LEFT JOIN gas_station_closeout_despachadores cd ON cd.closeout_id = v.closeout_id AND cd.despachador_id = v.despachador_id
-             WHERE v.closeout_id = ? ORDER BY v.id ASC`, [id]
+            `SELECT * FROM gas_station_closeout_vales WHERE closeout_id = ? ORDER BY id ASC`, [id]
         );
 
         const [anticiposDesp] = await pool.query(
             `SELECT ad.*,
-                    COALESCE(cust.nombre, '') as cliente_nombre_db,
-                    COALESCE(p.nombre, '') as producto_nombre_db,
-                    d.codigo as despachador_codigo,
-                    COALESCE(NULLIF(cd.nombre, ''), d.descripcion, '') as despachador_descripcion,
                     COALESCE(ga.total_disponible, 0) AS saldo_disponible
              FROM gas_station_closeout_anticipos_despachados ad
-             LEFT JOIN customers cust ON ad.cliente_id = cust.id
-             LEFT JOIN products p ON ad.producto_id = p.id
-             LEFT JOIN gas_station_despachadores d ON ad.despachador_id = d.id
-             LEFT JOIN gas_station_closeout_despachadores cd ON cd.closeout_id = ad.closeout_id AND cd.despachador_id = ad.despachador_id
              LEFT JOIN (
                  SELECT cliente_id, COALESCE(SUM(monto_disponible), 0) AS total_disponible
                  FROM gas_station_advances
@@ -1002,7 +960,10 @@ exports.getCloseoutAnnexesPDF = async (req, res) => {
         const closeout = closeouts[0];
 
         const [remesas] = await pool.query(
-            `SELECT r.*, d.codigo as despachador_codigo, COALESCE(NULLIF(cd.nombre, ''), d.descripcion, '') as despachador_descripcion
+            `SELECT r.documento,
+                    COALESCE(NULLIF(cd.nombre, ''), d.descripcion, d.codigo, '—') as despachador,
+                    r.tipo_operacion,
+                    r.monto
              FROM gas_station_closeout_remesas r
              LEFT JOIN gas_station_despachadores d ON r.despachador_id = d.id
              LEFT JOIN gas_station_closeout_despachadores cd ON cd.closeout_id = r.closeout_id AND cd.despachador_id = r.despachador_id
@@ -1010,7 +971,12 @@ exports.getCloseoutAnnexesPDF = async (req, res) => {
         );
 
         const [gastos] = await pool.query(
-            `SELECT e.*, p.nombre as proveedor_nombre, d.codigo as despachador_codigo, COALESCE(NULLIF(cd.nombre, ''), d.descripcion, '') as despachador_descripcion
+            `SELECT e.rubro as rubro_nombre,
+                    e.documento,
+                    COALESCE(p.nombre, e.proveedor, '—') as proveedor,
+                    COALESCE(NULLIF(cd.nombre, ''), d.descripcion, d.codigo, '—') as despachador,
+                    e.comentario,
+                    e.valor
              FROM gas_station_closeout_expenses e
              LEFT JOIN providers p ON e.provider_id = p.id
              LEFT JOIN gas_station_despachadores d ON e.despachador_id = d.id
@@ -1019,49 +985,74 @@ exports.getCloseoutAnnexesPDF = async (req, res) => {
         );
 
         const [creditos] = await pool.query(
-            `SELECT c.*, COALESCE(cust.nombre, '') as cliente_nombre_db, COALESCE(p.nombre, '') as producto_nombre_db, d.codigo as despachador_codigo, COALESCE(NULLIF(cd.nombre, ''), d.descripcion, '') as despachador_descripcion
+            `SELECT c.documento,
+                    COALESCE(c.cliente_nombre, '—') as cliente,
+                    COALESCE(c.producto_descripcion, c.producto_codigo, '—') as producto,
+                    COALESCE(NULLIF(cd.nombre, ''), d.descripcion, d.codigo, '—') as despachador,
+                    COALESCE(c.cantidad, 0) as cantidad,
+                    COALESCE(c.precio, 0) as precio,
+                    COALESCE(c.monto, 0) as monto
              FROM gas_station_closeout_creditos c
-             LEFT JOIN customers cust ON c.cliente_id = cust.id
-             LEFT JOIN products p ON c.producto_id = p.id
              LEFT JOIN gas_station_despachadores d ON c.despachador_id = d.id
              LEFT JOIN gas_station_closeout_despachadores cd ON cd.closeout_id = c.closeout_id AND cd.despachador_id = c.despachador_id
              WHERE c.closeout_id = ? ORDER BY c.id ASC`, [id]
         );
 
         const [cupones] = await pool.query(
-            `SELECT cp.*, dist.nombre as distribuidora_nombre, p.nombre as producto_nombre, d.codigo as despachador_codigo, COALESCE(NULLIF(cd.nombre, ''), d.descripcion, '') as despachador_descripcion
-             FROM gas_station_closeout_cupones cp
-             LEFT JOIN gas_station_distributors dist ON cp.distribuidora_id = dist.id
-             LEFT JOIN products p ON cp.producto_id = p.id
-             LEFT JOIN gas_station_despachadores d ON cp.despachador_id = d.id
-             LEFT JOIN gas_station_closeout_despachadores cd ON cd.closeout_id = cp.closeout_id AND cd.despachador_id = cp.despachador_id
-             WHERE cp.closeout_id = ? ORDER BY cp.id ASC`, [id]
+            `SELECT c.cupon,
+                    COALESCE(c.distribuidora_nombre, '—') as distribuidora,
+                    COALESCE(c.producto_descripcion, c.producto_codigo, '—') as producto,
+                    COALESCE(NULLIF(cd.nombre, ''), d.descripcion, d.codigo, '—') as despachador,
+                    c.monto
+             FROM gas_station_closeout_cupones c
+             LEFT JOIN gas_station_despachadores d ON c.despachador_id = d.id
+             LEFT JOIN gas_station_closeout_despachadores cd ON cd.closeout_id = c.closeout_id AND cd.despachador_id = c.despachador_id
+             WHERE c.closeout_id = ? ORDER BY c.id ASC`, [id]
         );
 
         const [descuentos] = await pool.query(
-            `SELECT desc_t.*, COALESCE(cust.nombre, '') as cliente_nombre_db, COALESCE(p.nombre, '') as producto_nombre_db, d.codigo as despachador_codigo, COALESCE(NULLIF(cd.nombre, ''), d.descripcion, '') as despachador_descripcion
-             FROM gas_station_closeout_descuentos desc_t
-             LEFT JOIN customers cust ON desc_t.cliente_id = cust.id
-             LEFT JOIN products p ON desc_t.producto_id = p.id
-             LEFT JOIN gas_station_despachadores d ON desc_t.despachador_id = d.id
-             LEFT JOIN gas_station_closeout_despachadores cd ON cd.closeout_id = desc_t.closeout_id AND cd.despachador_id = desc_t.despachador_id
-             WHERE desc_t.closeout_id = ? ORDER BY desc_t.id ASC`, [id]
+            `SELECT d.documento,
+                    COALESCE(d.cliente_nombre, '—') as cliente,
+                    COALESCE(d.producto_descripcion, d.producto_codigo, '—') as producto,
+                    COALESCE(NULLIF(cd.nombre, ''), desp.descripcion, desp.codigo, '—') as despachador,
+                    COALESCE(d.cantidad, 0) as cantidad,
+                    COALESCE(d.valor, 0) as valor,
+                    COALESCE(d.total, 0) as total
+             FROM gas_station_closeout_descuentos d
+             LEFT JOIN gas_station_despachadores desp ON d.despachador_id = desp.id
+             LEFT JOIN gas_station_closeout_despachadores cd ON cd.closeout_id = d.closeout_id AND cd.despachador_id = d.despachador_id
+             WHERE d.closeout_id = ? ORDER BY d.id ASC`, [id]
         );
 
         const [adelantos] = await pool.query(
-            `SELECT a.*, d.codigo as despachador_codigo, COALESCE(NULLIF(cd.nombre, ''), d.descripcion, '') as despachador_descripcion
-             FROM gas_station_closeout_adelantos a
-             LEFT JOIN gas_station_despachadores d ON a.despachador_id = d.id
-             LEFT JOIN gas_station_closeout_despachadores cd ON cd.closeout_id = a.closeout_id AND cd.despachador_id = a.despachador_id
-             WHERE a.closeout_id = ? ORDER BY a.id ASC`, [id]
+            `SELECT COALESCE(r.empleado, '—') as empleado,
+                    COALESCE(NULLIF(cd.nombre, ''), d.descripcion, d.codigo, '—') as despachador,
+                    r.monto
+             FROM gas_station_closeout_adelantos r
+             LEFT JOIN gas_station_despachadores d ON r.despachador_id = d.id
+             LEFT JOIN gas_station_closeout_despachadores cd ON cd.closeout_id = r.closeout_id AND cd.despachador_id = r.despachador_id
+             WHERE r.closeout_id = ? ORDER BY r.id ASC`, [id]
         );
 
         const [lubricantes] = await pool.query(
-            `SELECT * FROM gas_station_closeout_lubricant_readings WHERE closeout_id = ? ORDER BY id ASC`, [id]
+            `SELECT COALESCE(l.producto_codigo, '—') as codigo,
+                    COALESCE(l.producto_descripcion, '—') as producto,
+                    COALESCE(l.lectura_inicial, 0) as stock_inicial,
+                    COALESCE(l.recarga, 0) as recarga,
+                    COALESCE(l.lectura_final, 0) as stock_final,
+                    COALESCE(l.ventas, 0) as cantidad,
+                    COALESCE(l.precio, 0) as precio,
+                    COALESCE(l.total, 0) as total
+             FROM gas_station_closeout_lubricant_readings l
+             WHERE l.closeout_id = ? ORDER BY l.id ASC`, [id]
         );
 
         const [tarjetas] = await pool.query(
-            `SELECT t.*, pt.nombre as tipo_pos_nombre, d.codigo as despachador_codigo, COALESCE(NULLIF(cd.nombre, ''), d.descripcion, '') as despachador_descripcion
+            `SELECT COALESCE(pt.nombre, 'SIN TIPO') as tipo_pos,
+                    COALESCE(NULLIF(t.num_tarjeta, ''), '—') as num_tarjeta,
+                    COALESCE(NULLIF(t.num_autorizacion, ''), '—') as num_autorizacion,
+                    COALESCE(NULLIF(cd.nombre, ''), d.descripcion, d.codigo, '—') as despachador,
+                    t.monto
              FROM gas_station_closeout_tarjetas t
              LEFT JOIN gas_station_pos_types pt ON t.pos_type_id = pt.id
              LEFT JOIN gas_station_despachadores d ON t.despachador_id = d.id
@@ -1070,35 +1061,33 @@ exports.getCloseoutAnnexesPDF = async (req, res) => {
         );
 
         const [vales] = await pool.query(
-            `SELECT v.*, COALESCE(cust.nombre, '') as cliente_nombre_db, COALESCE(p.nombre, '') as producto_nombre_db, d.codigo as despachador_codigo, COALESCE(NULLIF(cd.nombre, ''), d.descripcion, '') as despachador_descripcion
-             FROM gas_station_closeout_vales v
-             LEFT JOIN customers cust ON v.cliente_id = cust.id
-             LEFT JOIN products p ON v.producto_id = p.id
-             LEFT JOIN gas_station_despachadores d ON v.despachador_id = d.id
-             LEFT JOIN gas_station_closeout_despachadores cd ON cd.closeout_id = v.closeout_id AND cd.despachador_id = v.despachador_id
-             WHERE v.closeout_id = ? ORDER BY v.id ASC`, [id]
+            `SELECT COALESCE(NULLIF(r.documento, ''), '—') as documento,
+                    COALESCE(NULLIF(r.cliente_nombre, ''), '—') as cliente,
+                    COALESCE(NULLIF(r.producto_descripcion, ''), NULLIF(r.producto_codigo, ''), '—') as producto,
+                    COALESCE(NULLIF(cd.nombre, ''), d.descripcion, d.codigo, '—') as despachador,
+                    COALESCE(NULLIF(r.placa, ''), '—') as placa,
+                    COALESCE(r.cantidad, 0) as cantidad,
+                    COALESCE(r.precio, 0) as precio,
+                    COALESCE(r.monto, 0) as monto
+             FROM gas_station_closeout_vales r
+             LEFT JOIN gas_station_despachadores d ON r.despachador_id = d.id
+             LEFT JOIN gas_station_closeout_despachadores cd ON cd.closeout_id = r.closeout_id AND cd.despachador_id = r.despachador_id
+             WHERE r.closeout_id = ? ORDER BY r.id ASC`, [id]
         );
 
         const [anticiposDesp] = await pool.query(
-            `SELECT ad.*,
-                    COALESCE(cust.nombre, '') as cliente_nombre_db,
-                    COALESCE(p.nombre, '') as producto_nombre_db,
-                    d.codigo as despachador_codigo,
-                    COALESCE(NULLIF(cd.nombre, ''), d.descripcion, '') as despachador_descripcion,
-                    COALESCE(ga.total_disponible, 0) AS saldo_disponible
-             FROM gas_station_closeout_anticipos_despachados ad
-             LEFT JOIN customers cust ON ad.cliente_id = cust.id
-             LEFT JOIN products p ON ad.producto_id = p.id
-             LEFT JOIN gas_station_despachadores d ON ad.despachador_id = d.id
-             LEFT JOIN gas_station_closeout_despachadores cd ON cd.closeout_id = ad.closeout_id AND cd.despachador_id = ad.despachador_id
-             LEFT JOIN (
-                 SELECT cliente_id, COALESCE(SUM(monto_disponible), 0) AS total_disponible
-                 FROM gas_station_advances
-                 WHERE company_id = ? AND monto_disponible > 0
-                 GROUP BY cliente_id
-             ) ga ON ga.cliente_id = ad.cliente_id
-             WHERE ad.closeout_id = ?
-             ORDER BY ad.id ASC`, [req.company_id, id]
+            `SELECT COALESCE(NULLIF(r.documento, ''), '—') as documento,
+                    COALESCE(NULLIF(r.cliente_nombre, ''), '—') as cliente,
+                    COALESCE(NULLIF(r.producto_descripcion, ''), NULLIF(r.producto_codigo, ''), '—') as producto,
+                    COALESCE(NULLIF(cd.nombre, ''), d.descripcion, d.codigo, '—') as despachador,
+                    COALESCE(NULLIF(r.placa, ''), '—') as placa,
+                    COALESCE(r.cantidad, 0) as cantidad,
+                    COALESCE(r.precio, 0) as precio,
+                    COALESCE(r.monto, 0) as monto
+             FROM gas_station_closeout_anticipos_despachados r
+             LEFT JOIN gas_station_despachadores d ON r.despachador_id = d.id
+             LEFT JOIN gas_station_closeout_despachadores cd ON cd.closeout_id = r.closeout_id AND cd.despachador_id = r.despachador_id
+             WHERE r.closeout_id = ? ORDER BY r.id ASC`, [id]
         );
 
         const pdfService = require('../../services/pdf');
@@ -1122,8 +1111,9 @@ exports.getCloseoutAnnexesPDF = async (req, res) => {
             lubricantes
         });
 
+        const fechaStr = closeout.fecha_turno ? new Date(closeout.fecha_turno).toISOString().slice(0, 10) : 'fecha';
         res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', `inline; filename="Detalle_Cierre_Turno_${closeout.numero_turno}_${closeout.fecha_turno}.pdf"`);
+        res.setHeader('Content-Disposition', `inline; filename="Detalle_Cierre_Turno_${closeout.numero_turno}_${fechaStr}.pdf"`);
         res.send(pdfBuffer);
     } catch (error) {
         console.error('Error en getCloseoutAnnexesPDF:', error);
