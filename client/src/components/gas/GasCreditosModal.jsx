@@ -23,9 +23,32 @@ const GasCreditosModal = ({
 }) => {
     if (!isOpen) return null;
 
-    return (
+    const handleRowEnter = (index) => {
+        if (estado === 'cerrado') return;
+        if (index === creditos.length - 1) {
+            handleAddCreditoRow();
+            setTimeout(() => {
+                const inputs = document.querySelectorAll('[data-credito-first="true"]');
+                const target = inputs[inputs.length - 1];
+                if (target) {
+                    target.focus();
+                    target.select?.();
+                    target.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+                }
+            }, 60);
+        } else {
+            const inputs = document.querySelectorAll('[data-credito-first="true"]');
+            const target = inputs[index + 1];
+            if (target) {
+                target.focus();
+                target.select?.();
+                target.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+            }
+        }
+    };
 
-                    <div className="fixed inset-0 z-50 flex items-start justify-center pt-8 pb-8">
+    return (
+        <div className="fixed inset-0 z-50 flex items-start justify-center pt-8 pb-8">
                         <div className="fixed inset-0 bg-black/40" onClick={onClose} />
                         <div className="relative bg-white rounded-2xl shadow-2xl w-[95%] max-w-6xl min-h-[50vh] max-h-[95vh] flex flex-col">
                             <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 shrink-0">
@@ -82,12 +105,13 @@ const GasCreditosModal = ({
                                                 </td>
                                             </tr>
                                         )}
-                                        {creditos.map(c => {
+                                        {creditos.map((c, index) => {
                                             return (
                                                 <tr key={c.id} className="hover:bg-slate-50 transition-colors">
                                                     <td className="px-1.5 py-1" data-label="Documento">
                                                         <input
                                                             type="text"
+                                                            data-credito-first="true"
                                                             value={c.documento}
                                                             placeholder="Documento"
                                                             onChange={(e) => handleCreditoChange(c.id, 'documento', e.target.value)}
@@ -168,6 +192,15 @@ const GasCreditosModal = ({
                                                                 const monto = parseFloat(c.monto) || 0;
                                                                 handleCreditoChange(c.id, 'precio', cant > 0 ? monto / cant : 0);
                                                             }}
+                                                            onFocus={(e) => e.target.select()}
+                                                            onKeyDown={(e) => {
+                                                                if (e.key === 'Enter') {
+                                                                    e.preventDefault();
+                                                                    const next = e.currentTarget.closest('tr')?.querySelector('[data-credito-monto="true"]');
+                                                                    next?.focus();
+                                                                    next?.select?.();
+                                                                }
+                                                            }}
                                                             disabled={estado === 'cerrado'}
                                                             className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20 text-right font-mono"
                                                         />
@@ -177,6 +210,7 @@ const GasCreditosModal = ({
                                                     </td>
                                                     <td className="px-1.5 py-1" data-label="Monto">
                                                     <MoneyInput
+                                                        data-credito-monto="true"
                                                         step="0.01"
                                                         min="0"
                                                         value={c.monto}
@@ -186,6 +220,15 @@ const GasCreditosModal = ({
                                                             const cant = parseFloat(c.cantidad) || 0;
                                                             handleCreditoChange(c.id, 'precio', cant > 0 ? monto / cant : 0);
                                                         }}
+                                                        onFocus={(e) => e.target.select()}
+                                                        onKeyDown={(e) => {
+                                                            if (e.key === 'Enter') {
+                                                                e.preventDefault();
+                                                                if (e.ctrlKey || e.metaKey) return handleRowEnter(index);
+                                                                const next = e.currentTarget.closest('tr')?.querySelector('[data-credito-placa="true"]');
+                                                                next?.focus(); next?.select?.();
+                                                            }
+                                                        }}
                                                         disabled={estado === 'cerrado'}
                                                         className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20 text-right font-mono"
                                                     />
@@ -193,9 +236,19 @@ const GasCreditosModal = ({
                                                     <td className="px-1.5 py-1" data-label="Placa">
                                                         <input
                                                             type="text"
+                                                            data-credito-placa="true"
                                                             value={c.placa}
                                                             placeholder="Placa"
                                                             onChange={(e) => handleCreditoChange(c.id, 'placa', e.target.value)}
+                                                            onFocus={(e) => e.target.select()}
+                                                            onKeyDown={(e) => {
+                                                                if (e.key === 'Enter') {
+                                                                    e.preventDefault();
+                                                                    if (e.ctrlKey || e.metaKey) return handleRowEnter(index);
+                                                                    const next = e.currentTarget.closest('tr')?.querySelector('[data-credito-km="true"]');
+                                                                    next?.focus(); next?.select?.();
+                                                                }
+                                                            }}
                                                             disabled={estado === 'cerrado'}
                                                             className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
                                                         />
@@ -203,9 +256,17 @@ const GasCreditosModal = ({
                                                     <td className="px-1.5 py-1" data-label="Kilometraje">
                                                         <input
                                                             type="text"
+                                                            data-credito-km="true"
                                                             value={c.kilometraje}
                                                             placeholder="KM"
                                                             onChange={(e) => handleCreditoChange(c.id, 'kilometraje', e.target.value)}
+                                                            onFocus={(e) => e.target.select()}
+                                                            onKeyDown={(e) => {
+                                                                if (e.key === 'Enter') {
+                                                                    e.preventDefault();
+                                                                    handleRowEnter(index);
+                                                                }
+                                                            }}
                                                             disabled={estado === 'cerrado'}
                                                             className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
                                                         />

@@ -20,9 +20,32 @@ const GasValesModal = ({
 }) => {
     if (!isOpen) return null;
 
-    return (
+    const handleRowEnter = (index) => {
+        if (estado === 'cerrado') return;
+        if (index === vales.length - 1) {
+            handleAddValeRow();
+            setTimeout(() => {
+                const inputs = document.querySelectorAll('[data-vale-first="true"]');
+                const target = inputs[inputs.length - 1];
+                if (target) {
+                    target.focus();
+                    target.select?.();
+                    target.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+                }
+            }, 60);
+        } else {
+            const inputs = document.querySelectorAll('[data-vale-first="true"]');
+            const target = inputs[index + 1];
+            if (target) {
+                target.focus();
+                target.select?.();
+                target.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+            }
+        }
+    };
 
-                    <div className="fixed inset-0 z-50 flex items-start justify-center pt-8 pb-8">
+    return (
+        <div className="fixed inset-0 z-50 flex items-start justify-center pt-8 pb-8">
                         <div className="fixed inset-0 bg-black/40" onClick={onClose} />
                         <div className="relative bg-white rounded-2xl shadow-2xl w-[95%] max-w-6xl min-h-[50vh] max-h-[95vh] flex flex-col">
                             <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 shrink-0">
@@ -70,12 +93,13 @@ const GasValesModal = ({
                                                 </td>
                                             </tr>
                                         )}
-                                        {vales.map(v => {
+                                        {vales.map((v, index) => {
                                             return (
                                                 <tr key={v.id} className="hover:bg-slate-50 transition-colors">
                                                     <td className="px-1.5 py-1" data-label="Documento">
                                                         <input
                                                             type="text"
+                                                            data-vale-first="true"
                                                             value={v.documento}
                                                             placeholder="Documento"
                                                             onChange={(e) => handleValeChange(v.id, 'documento', e.target.value)}
@@ -156,6 +180,15 @@ const GasValesModal = ({
                                                                 const monto = parseFloat(v.monto) || 0;
                                                                 handleValeChange(v.id, 'precio', cant > 0 ? monto / cant : 0);
                                                             }}
+                                                            onFocus={(e) => e.target.select()}
+                                                            onKeyDown={(e) => {
+                                                                if (e.key === 'Enter') {
+                                                                    e.preventDefault();
+                                                                    const next = e.currentTarget.closest('tr')?.querySelector('[data-vale-monto="true"]');
+                                                                    next?.focus();
+                                                                    next?.select?.();
+                                                                }
+                                                            }}
                                                             disabled={estado === 'cerrado'}
                                                             className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20 text-right font-mono"
                                                         />
@@ -165,6 +198,7 @@ const GasValesModal = ({
                                                     </td>
                                                     <td className="px-1.5 py-1" data-label="Monto">
                                                     <MoneyInput
+                                                        data-vale-monto="true"
                                                         step="0.01"
                                                         min="0"
                                                         value={v.monto}
@@ -174,6 +208,15 @@ const GasValesModal = ({
                                                             const cant = parseFloat(v.cantidad) || 0;
                                                             handleValeChange(v.id, 'precio', cant > 0 ? monto / cant : 0);
                                                         }}
+                                                        onFocus={(e) => e.target.select()}
+                                                        onKeyDown={(e) => {
+                                                            if (e.key === 'Enter') {
+                                                                e.preventDefault();
+                                                                if (e.ctrlKey || e.metaKey) return handleRowEnter(index);
+                                                                const next = e.currentTarget.closest('tr')?.querySelector('[data-vale-placa="true"]');
+                                                                next?.focus(); next?.select?.();
+                                                            }
+                                                        }}
                                                         disabled={estado === 'cerrado'}
                                                         className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20 text-right font-mono"
                                                     />
@@ -181,9 +224,19 @@ const GasValesModal = ({
                                                     <td className="px-1.5 py-1" data-label="Placa">
                                                         <input
                                                             type="text"
+                                                            data-vale-placa="true"
                                                             value={v.placa}
                                                             placeholder="Placa"
                                                             onChange={(e) => handleValeChange(v.id, 'placa', e.target.value)}
+                                                            onFocus={(e) => e.target.select()}
+                                                            onKeyDown={(e) => {
+                                                                if (e.key === 'Enter') {
+                                                                    e.preventDefault();
+                                                                    if (e.ctrlKey || e.metaKey) return handleRowEnter(index);
+                                                                    const next = e.currentTarget.closest('tr')?.querySelector('[data-vale-km="true"]');
+                                                                    next?.focus(); next?.select?.();
+                                                                }
+                                                            }}
                                                             disabled={estado === 'cerrado'}
                                                             className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
                                                         />
@@ -191,9 +244,17 @@ const GasValesModal = ({
                                                     <td className="px-1.5 py-1" data-label="Kilometraje">
                                                         <input
                                                             type="text"
+                                                            data-vale-km="true"
                                                             value={v.kilometraje}
                                                             placeholder="KM"
                                                             onChange={(e) => handleValeChange(v.id, 'kilometraje', e.target.value)}
+                                                            onFocus={(e) => e.target.select()}
+                                                            onKeyDown={(e) => {
+                                                                if (e.key === 'Enter') {
+                                                                    e.preventDefault();
+                                                                    handleRowEnter(index);
+                                                                }
+                                                            }}
                                                             disabled={estado === 'cerrado'}
                                                             className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
                                                         />

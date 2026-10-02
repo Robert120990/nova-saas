@@ -19,6 +19,30 @@ const GasTarjetasModal = ({
 }) => {
     if (!isOpen) return null;
 
+    const handleRowEnter = (index) => {
+        if (estado === 'cerrado') return;
+        if (index === tarjetas.length - 1) {
+            handleAddTarjetaRow();
+            setTimeout(() => {
+                const inputs = document.querySelectorAll('[data-tarjeta-first="true"]');
+                const target = inputs[inputs.length - 1];
+                if (target) {
+                    target.focus();
+                    target.select?.();
+                    target.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+                }
+            }, 60);
+        } else {
+            const inputs = document.querySelectorAll('[data-tarjeta-first="true"]');
+            const target = inputs[index + 1];
+            if (target) {
+                target.focus();
+                target.select?.();
+                target.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+            }
+        }
+    };
+
     return (
 
                     <div className="fixed inset-0 z-50 flex items-start justify-center pt-8 pb-8">
@@ -65,12 +89,13 @@ const GasTarjetasModal = ({
                                                 </td>
                                             </tr>
                                         )}
-                                        {tarjetas.map(t => {
+                                        {tarjetas.map((t, index) => {
                                             return (
                                                 <tr key={t.id} className="hover:bg-slate-50 transition-colors">
                                                     <td className="px-1.5 py-1" data-label="No. Tarjeta">
                                                         <input
                                                             type="text"
+                                                            data-tarjeta-first="true"
                                                             value={t.num_tarjeta}
                                                             placeholder="-0000"
                                                             onChange={(e) => {
@@ -140,6 +165,13 @@ const GasTarjetasModal = ({
                                                         min="0"
                                                         value={t.monto}
                                                         onChange={(e) => handleTarjetaChange(t.id, 'monto', parseFloat(e.target.value) || 0)}
+                                                        onFocus={(e) => e.target.select()}
+                                                        onKeyDown={(e) => {
+                                                            if (e.key === 'Enter') {
+                                                                e.preventDefault();
+                                                                handleRowEnter(index);
+                                                            }
+                                                        }}
                                                         disabled={estado === 'cerrado'}
                                                         className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20 text-right font-mono"
                                                     />

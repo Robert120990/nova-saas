@@ -20,6 +20,30 @@ const GasDescuentosModal = ({
 }) => {
     if (!isOpen) return null;
 
+    const handleRowEnter = (index) => {
+        if (estado === 'cerrado') return;
+        if (index === descuentos.length - 1) {
+            handleAddDescuentoRow();
+            setTimeout(() => {
+                const inputs = document.querySelectorAll('[data-descuento-first="true"]');
+                const target = inputs[inputs.length - 1];
+                if (target) {
+                    target.focus();
+                    target.select?.();
+                    target.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+                }
+            }, 60);
+        } else {
+            const inputs = document.querySelectorAll('[data-descuento-first="true"]');
+            const target = inputs[index + 1];
+            if (target) {
+                target.focus();
+                target.select?.();
+                target.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+            }
+        }
+    };
+
     return (
 
                     <div className="fixed inset-0 z-50 flex items-start justify-center pt-8 pb-8">
@@ -67,11 +91,12 @@ const GasDescuentosModal = ({
                                                 </td>
                                             </tr>
                                         )}
-                                        {descuentos.map(d => (
+                                        {descuentos.map((d, index) => (
                                             <tr key={d.id} className="text-[11px] hover:bg-slate-50 transition-colors">
                                                 <td className="px-1.5 py-1" data-label="Documento">
                                                     <input
                                                         type="text"
+                                                        data-descuento-first="true"
                                                         value={d.documento}
                                                         onChange={(e) => handleDescuentoChange(d.id, 'documento', e.target.value)}
                                                         disabled={estado === 'cerrado'}
@@ -136,6 +161,14 @@ const GasDescuentosModal = ({
                                                         value={d.cantidad || ''}
                                                         onChange={(e) => handleDescuentoChange(d.id, 'cantidad', e.target.value)}
                                                         onFocus={(e) => e.target.select()}
+                                                        onKeyDown={(e) => {
+                                                            if (e.key === 'Enter') {
+                                                                e.preventDefault();
+                                                                const next = e.currentTarget.closest('tr')?.querySelector('[data-descuento-valor="true"]');
+                                                                next?.focus();
+                                                                next?.select?.();
+                                                            }
+                                                        }}
                                                         disabled={estado === 'cerrado'}
                                                         placeholder="0"
                                                         className="w-full text-right bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20 font-mono"
@@ -143,10 +176,17 @@ const GasDescuentosModal = ({
                                                 </td>
                                                 <td className="px-1.5 py-1 text-right" data-label="Valor">
                                                     <MoneyInput
+                                                        data-descuento-valor="true"
                                                         step="0.01"
                                                         value={d.valor ?? ''}
                                                         onChange={(e) => handleDescuentoChange(d.id, 'valor', e.target.value)}
                                                         onFocus={(e) => e.target.select()}
+                                                        onKeyDown={(e) => {
+                                                            if (e.key === 'Enter') {
+                                                                e.preventDefault();
+                                                                handleRowEnter(index);
+                                                            }
+                                                        }}
                                                         disabled={estado === 'cerrado'}
                                                         placeholder="0.00"
                                                         className="w-full text-right bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20 font-mono"
