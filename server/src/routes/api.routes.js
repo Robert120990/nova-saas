@@ -978,8 +978,9 @@ router.get('/gas-station/closeouts/:id/trupput-desp', gasCloseoutController.getT
 router.post('/gas-station/closeouts/:id/trupput-desp', validate(closeoutTrupputDespSchema), gasCloseoutController.saveTrupputDesp);
 router.delete('/gas-station/closeouts/:id/trupput-desp/:despachoId', gasCloseoutController.deleteTrupputDesp);
 
-// Print full closeout data
+// Print full closeout data & consolidated annexes PDF
 router.get('/gas-station/closeouts/:id/print-full', gasCloseoutController.getCloseoutPrintData);
+router.get('/gas-station/closeouts/:id/annexes-pdf', gasCloseoutController.getCloseoutAnnexesPDF);
 
 // Send closeout to RRS external database
 router.post('/gas-station/closeouts/:id/send-to-rrs', gasCloseoutController.sendToRrs);

@@ -16,4 +16,6 @@ export { default as GasTrupputModal } from './GasTrupputModal';
 export { default as GasFusionPeriodsModal } from './GasFusionPeriodsModal';
 export { default as GasFusionAgentModal } from './GasFusionAgentModal';
 export { default as GasFusionAgentFiles } from './GasFusionAgentFiles';
+export { default as GasCloseoutPrintMenu } from './GasCloseoutPrintMenu';
+export { default as GasCloseoutSuccessModal } from './GasCloseoutSuccessModal';
 export * from './orders';

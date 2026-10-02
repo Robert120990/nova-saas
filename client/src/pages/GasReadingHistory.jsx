@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { downloadCloseoutPdf } from '../utils/closeoutPdf';
+import { GasCloseoutPrintMenu } from '../components/gas';
 import Money from '../components/ui/Money';
 
 const GasReadingHistory = () => {
@@ -755,13 +756,12 @@ const GasReadingHistory = () => {
                                             </button>
                                         </>
                                     )}
-                                    <button
-                                        onClick={() => handlePdf(c)}
-                                        className="p-1 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
-                                        title="Descargar PDF"
-                                    >
-                                        <Printer size={15} />
-                                    </button>
+                                    <GasCloseoutPrintMenu
+                                        closeoutId={c.id}
+                                        estado={c.estado}
+                                        onPrintFull={() => handlePdf(c)}
+                                        compact
+                                    />
                                     {c.estado === 'cerrado' && (
                                         <button
                                             onClick={() => setRrsModal(c)}

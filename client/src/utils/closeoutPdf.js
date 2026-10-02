@@ -57,3 +57,5 @@ export async function generateCloseoutPdfBlob(data) {
     const url = URL.createObjectURL(blob);
     return url;
 }
+
+export { buildCloseoutAnnexPrintHtml, printCloseoutAnnex } from './closeoutAnnexPrint';

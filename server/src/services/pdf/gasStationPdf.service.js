@@ -2154,6 +2154,332 @@ const generateVentasLecturasAnalyticsPDF = async (data) => {
     return await getBuffer();
 };
 
+const generateCloseoutConsolidatedAnnexesPDF = async (data) => {
+    const { doc, getBuffer } = reportPdfHelper.createPdfDocument('landscape');
+    const company = await resolveCompanyInfo(data);
+    const c = data.closeout || {};
+    const title = 'DETALLE DE CIERRE DE TURNO - ANEXOS OPERATIVOS';
+    const periodText = `TURNO #${c.numero_turno ?? '—'}    |    FECHA: ${reportPdfHelper.formatDate(c.fecha_turno)}`;
+    const subtitle = `SUCURSAL: ${c.branch_name || data.branch_name || 'TODAS'}    |    BOMBERO/CAJERO: ${c.vendedor_nombre || '—'}    |    ESTADO: ${(c.estado || 'CERRADO').toUpperCase()}`;
+
+    const startX = 30;
+    const pageW = 732;
+
+    const sections = [
+        {
+            key: 'remesas',
+            title: '1. REMESAS BANCARIAS',
+            items: data.remesas || [],
+            sumField: 'monto',
+            columns: [
+                { label: 'DOCUMENTO', w: 130, getValue: it => it.documento || '—' },
+                { label: 'DESPACHADOR', w: 240, getValue: it => it.despachador || it.despachador_descripcion || '—' },
+                { label: 'TIPO DE OPERACIÓN', w: 212, getValue: it => it.tipo_operacion || '—' },
+                { label: 'MONTO', w: 150, getValue: it => it.monto, format: 'money', align: 'right' }
+            ]
+        },
+        {
+            key: 'gastos',
+            title: '2. GASTOS DE TURNO',
+            items: data.gastos || [],
+            sumField: 'valor',
+            columns: [
+                { label: 'RUBRO', w: 120, getValue: it => it.rubro_nombre || it.rubro || '—' },
+                { label: 'DOCUMENTO', w: 100, getValue: it => it.documento || '—' },
+                { label: 'PROVEEDOR', w: 140, getValue: it => it.proveedor || it.proveedor_nombre || '—' },
+                { label: 'DESPACHADOR', w: 130, getValue: it => it.despachador || it.despachador_descripcion || '—' },
+                { label: 'DESCRIPCIÓN / COMENTARIO', w: 142, getValue: it => it.comentario || it.descripcion || '—' },
+                { label: 'VALOR', w: 100, getValue: it => it.valor, format: 'money', align: 'right' }
+            ]
+        },
+        {
+            key: 'creditos',
+            title: '3. VENTAS A CRÉDITO',
+            items: data.creditos || [],
+            sumField: 'monto',
+            columns: [
+                { label: 'DOCUMENTO', w: 90, getValue: it => it.documento || it.comprobante || '—' },
+                { label: 'CLIENTE', w: 210, getValue: it => it.cliente || it.cliente_nombre || it.cliente_nombre_db || '—' },
+                { label: 'COMBUSTIBLE / PRODUCTO', w: 120, getValue: it => it.producto || it.producto_descripcion || it.producto_nombre_db || '—' },
+                { label: 'DESPACHADOR', w: 130, getValue: it => it.despachador || it.despachador_descripcion || '—' },
+                { label: 'GALONES', w: 55, getValue: it => it.cantidad || it.galones || 0, format: 'qty', align: 'right' },
+                { label: 'PRECIO', w: 45, getValue: it => it.precio || 0, format: 'money', align: 'right' },
+                { label: 'TOTAL', w: 82, getValue: it => it.monto || 0, format: 'money', align: 'right' }
+            ]
+        },
+        {
+            key: 'cupones',
+            title: '4. CUPONES',
+            items: data.cupones || [],
+            sumField: 'monto',
+            columns: [
+                { label: 'NO. CUPÓN', w: 110, getValue: it => it.cupon || '—' },
+                { label: 'DISTRIBUIDORA', w: 170, getValue: it => it.distribuidora || it.distribuidora_nombre || '—' },
+                { label: 'PRODUCTO', w: 160, getValue: it => it.producto || it.producto_descripcion || it.producto_nombre || '—' },
+                { label: 'DESPACHADOR', w: 152, getValue: it => it.despachador || it.despachador_descripcion || '—' },
+                { label: 'MONTO', w: 140, getValue: it => it.monto || 0, format: 'money', align: 'right' }
+            ]
+        },
+        {
+            key: 'descuentos',
+            title: '5. DESCUENTOS',
+            items: data.descuentos || [],
+            sumField: 'total',
+            columns: [
+                { label: 'DOCUMENTO', w: 100, getValue: it => it.documento || '—' },
+                { label: 'CLIENTE', w: 190, getValue: it => it.cliente || it.cliente_nombre || it.cliente_nombre_db || '—' },
+                { label: 'PRODUCTO', w: 140, getValue: it => it.producto || it.producto_descripcion || it.producto_nombre_db || '—' },
+                { label: 'DESPACHADOR', w: 130, getValue: it => it.despachador || it.despachador_descripcion || '—' },
+                { label: 'GALONES', w: 55, getValue: it => it.cantidad || 0, format: 'qty', align: 'right' },
+                { label: 'DESC./GALÓN', w: 55, getValue: it => it.valor || 0, format: 'money', align: 'right' },
+                { label: 'TOTAL', w: 62, getValue: it => it.total || 0, format: 'money', align: 'right' }
+            ]
+        },
+        {
+            key: 'adelantos',
+            title: '6. ADELANTOS DE EMPLEADOS',
+            items: data.adelantos || [],
+            sumField: 'monto',
+            columns: [
+                { label: 'EMPLEADO', w: 290, getValue: it => it.empleado || '—' },
+                { label: 'DESPACHADOR', w: 282, getValue: it => it.despachador || it.despachador_descripcion || '—' },
+                { label: 'MONTO', w: 160, getValue: it => it.monto || 0, format: 'money', align: 'right' }
+            ]
+        },
+        {
+            key: 'tarjetas',
+            title: '7. PAGOS CON TARJETAS (POS)',
+            items: data.tarjetas || [],
+            sumField: 'monto',
+            columns: [
+                { label: 'TIPO POS', w: 130, getValue: it => it.tipo_pos || it.tipo_pos_nombre || '—' },
+                { label: 'NO. TARJETA', w: 120, getValue: it => it.num_tarjeta || it.numero_tarjeta || '—' },
+                { label: 'AUTORIZACIÓN', w: 110, getValue: it => it.num_autorizacion || it.numero_autorizacion || '—' },
+                { label: 'DESPACHADOR', w: 232, getValue: it => it.despachador || it.despachador_descripcion || '—' },
+                { label: 'MONTO', w: 140, getValue: it => it.monto || 0, format: 'money', align: 'right' }
+            ]
+        },
+        {
+            key: 'vales',
+            title: '8. VALES Y ÓRDENES DE DESPACHO',
+            items: data.vales || [],
+            sumField: 'monto',
+            columns: [
+                { label: 'DOCUMENTO', w: 75, getValue: it => it.documento || '—' },
+                { label: 'CLIENTE', w: 180, getValue: it => it.cliente || it.cliente_nombre || it.cliente_nombre_db || '—' },
+                { label: 'PRODUCTO', w: 115, getValue: it => it.producto || it.producto_descripcion || it.producto_nombre_db || '—' },
+                { label: 'DESPACHADOR', w: 115, getValue: it => it.despachador || it.despachador_descripcion || '—' },
+                { label: 'PLACA', w: 65, getValue: it => it.placa || '—' },
+                { label: 'CANTIDAD', w: 55, getValue: it => it.cantidad || 0, format: 'qty', align: 'right' },
+                { label: 'PRECIO', w: 55, getValue: it => it.precio || 0, format: 'money', align: 'right' },
+                { label: 'TOTAL', w: 72, getValue: it => it.monto || 0, format: 'money', align: 'right' }
+            ]
+        },
+        {
+            key: 'anticipos_desp',
+            title: '9. ANTICIPOS DESPACHADOS',
+            items: data.anticipos_desp || data.anticiposDesp || [],
+            sumField: 'monto',
+            columns: [
+                { label: 'DOCUMENTO', w: 75, getValue: it => it.documento || '—' },
+                { label: 'CLIENTE', w: 180, getValue: it => it.cliente || it.cliente_nombre || it.cliente_nombre_db || '—' },
+                { label: 'PRODUCTO', w: 115, getValue: it => it.producto || it.producto_descripcion || it.producto_nombre_db || '—' },
+                { label: 'DESPACHADOR', w: 115, getValue: it => it.despachador || it.despachador_descripcion || '—' },
+                { label: 'PLACA', w: 65, getValue: it => it.placa || '—' },
+                { label: 'CANTIDAD', w: 55, getValue: it => it.cantidad || 0, format: 'qty', align: 'right' },
+                { label: 'PRECIO', w: 55, getValue: it => it.precio || 0, format: 'money', align: 'right' },
+                { label: 'TOTAL', w: 72, getValue: it => it.monto || 0, format: 'money', align: 'right' }
+            ]
+        },
+        {
+            key: 'lubricantes',
+            title: '10. VENTAS Y LECTURAS DE LUBRICANTES',
+            items: data.lubricantes || [],
+            sumField: 'total',
+            columns: [
+                { label: 'CÓDIGO', w: 70, getValue: it => it.codigo || it.producto_codigo || '—' },
+                { label: 'DESCRIPCIÓN', w: 212, getValue: it => it.producto || it.producto_descripcion || '—' },
+                { label: 'LECT. ANT.', w: 65, getValue: it => it.stock_inicial || it.lectura_inicial || 0, format: 'qty', align: 'right' },
+                { label: 'RECARGA', w: 55, getValue: it => it.recarga || 0, format: 'qty', align: 'right' },
+                { label: 'LECT. ACT.', w: 65, getValue: it => it.stock_final || it.lectura_final || 0, format: 'qty', align: 'right' },
+                { label: 'VENTAS', w: 65, getValue: it => it.cantidad || it.ventas || 0, format: 'qty', align: 'right' },
+                { label: 'PRECIO', w: 80, getValue: it => it.precio || 0, format: 'money', align: 'right' },
+                { label: 'TOTAL', w: 120, getValue: it => it.total || 0, format: 'money', align: 'right' }
+            ]
+        }
+    ];
+
+    let currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+
+    const summaryRows = [];
+    let grandTotalMonto = 0;
+    let totalItemsGlobal = 0;
+    let renderedSectionsCount = 0;
+
+    for (const sec of sections) {
+        const secTotal = sec.items.reduce((s, it) => s + (parseFloat(it[sec.sumField]) || 0), 0);
+        summaryRows.push({ title: sec.title.replace(/^\d+\.\s*/, ''), count: sec.items.length, total: secTotal });
+        grandTotalMonto += secTotal;
+        totalItemsGlobal += sec.items.length;
+
+        // Si la sección no tiene registros, se omite la grilla detallada para no malgastar páginas vacías,
+        // pero se consolida limpiamente en la tabla resumen al final.
+        if (sec.items.length === 0) continue;
+
+        renderedSectionsCount++;
+
+        if (currentY > 460) {
+            doc.addPage();
+            currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+        }
+
+        // Section Banner
+        doc.rect(startX, currentY, pageW, 14).fill('#0f172a');
+        doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#ffffff');
+        doc.text(`${sec.title} (${sec.items.length} registro${sec.items.length === 1 ? '' : 's'})`, startX + 6, currentY + 3.5);
+        currentY += 15;
+
+        // Table Header
+        doc.rect(startX, currentY, pageW, 13).fill('#f1f5f9');
+        doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#0f172a');
+        let hx = startX;
+        sec.columns.forEach(col => {
+            const align = col.align || 'left';
+            const padX = align === 'right' ? hx : hx + 2;
+            const w = align === 'right' ? col.w - 2 : col.w - 4;
+            doc.text(col.label, padX, currentY + 3, { width: w, align });
+            hx += col.w;
+        });
+        doc.strokeColor('#cbd5e1').lineWidth(0.5).moveTo(startX, currentY + 13).lineTo(startX + pageW, currentY + 13).stroke();
+        currentY += 14;
+
+        let rowIdx = 0;
+        for (const item of sec.items) {
+            if (currentY > 510) {
+                doc.addPage();
+                currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+                doc.rect(startX, currentY, pageW, 14).fill('#0f172a');
+                doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#ffffff');
+                doc.text(`${sec.title} (Continuación)`, startX + 6, currentY + 3.5);
+                currentY += 15;
+
+                doc.rect(startX, currentY, pageW, 13).fill('#f1f5f9');
+                doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#0f172a');
+                let rhx = startX;
+                sec.columns.forEach(col => {
+                    const align = col.align || 'left';
+                    const padX = align === 'right' ? rhx : rhx + 2;
+                    const w = align === 'right' ? col.w - 2 : col.w - 4;
+                    doc.text(col.label, padX, currentY + 3, { width: w, align });
+                    rhx += col.w;
+                });
+                doc.strokeColor('#cbd5e1').lineWidth(0.5).moveTo(startX, currentY + 13).lineTo(startX + pageW, currentY + 13).stroke();
+                currentY += 14;
+            }
+
+            if (rowIdx % 2 === 1) {
+                doc.rect(startX, currentY - 1, pageW, 11).fill('#f8fafc');
+            }
+            rowIdx++;
+
+            doc.fontSize(6.5).font('Helvetica').fillColor('#1e293b');
+            let rx = startX;
+            sec.columns.forEach(col => {
+                const rawVal = col.getValue ? col.getValue(item) : item[col.accessor];
+                const align = col.align || 'left';
+                const padX = align === 'right' ? rx : rx + 2;
+                const w = align === 'right' ? col.w - 2 : col.w - 4;
+
+                if (col.format === 'money') {
+                    doc.text(reportPdfHelper.fmt(rawVal), padX, currentY + 1, { width: w, align: 'right' });
+                } else if (col.format === 'qty') {
+                    const qStr = Number(rawVal || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                    doc.text(qStr, padX, currentY + 1, { width: w, align: 'right' });
+                } else {
+                    const textStr = reportPdfHelper.fitText(doc, String(rawVal ?? '—'), w);
+                    doc.text(textStr, padX, currentY + 1, { width: w, align, lineBreak: false });
+                }
+                rx += col.w;
+            });
+
+            doc.strokeColor('#f1f5f9').lineWidth(0.5).moveTo(startX, currentY + 10).lineTo(startX + pageW, currentY + 10).stroke();
+            currentY += 11;
+        }
+
+        // Section Subtotal row
+        doc.rect(startX, currentY, pageW, 13).fill('#f1f5f9');
+        doc.strokeColor('#cbd5e1').lineWidth(0.5).moveTo(startX, currentY).lineTo(startX + pageW, currentY).stroke();
+        doc.font('Helvetica-Bold').fontSize(6.5).fillColor('#0f172a');
+        doc.text(`TOTAL ${sec.title}:`, startX + 6, currentY + 3);
+        doc.text(reportPdfHelper.fmt(secTotal), startX, currentY + 3, { width: pageW - 4, align: 'right' });
+        doc.strokeColor('#cbd5e1').lineWidth(0.5).moveTo(startX, currentY + 13).lineTo(startX + pageW, currentY + 13).stroke();
+        currentY += 19;
+    }
+
+    if (renderedSectionsCount === 0) {
+        doc.rect(startX, currentY, pageW, 22).fill('#f8fafc');
+        doc.fontSize(7.5).font('Helvetica-Oblique').fillColor('#64748b');
+        doc.text('No se registraron movimientos en los anexos u operaciones detalladas durante este turno.', startX + 12, currentY + 7);
+        currentY += 30;
+    }
+
+    // Grand Summary Box at the end
+    if (currentY > 380) {
+        doc.addPage();
+        currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'landscape', subtitle);
+    }
+
+    doc.rect(startX, currentY, pageW, 15).fill('#334155');
+    doc.fontSize(8).font('Helvetica-Bold').fillColor('#ffffff');
+    doc.text('RESUMEN CONSOLIDADO DE ANEXOS LIQUIDADOS DEL TURNO', startX + 6, currentY + 3.5);
+    currentY += 16;
+
+    const colW = (pageW - 10) / 2;
+    const midIdx = Math.ceil(summaryRows.length / 2);
+    const leftCol = summaryRows.slice(0, midIdx);
+    const rightCol = summaryRows.slice(midIdx);
+
+    const renderSummaryTable = (rows, originX) => {
+        let sy = currentY;
+        doc.rect(originX, sy, colW, 12).fill('#f1f5f9');
+        doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#0f172a');
+        doc.text('CONCEPTO', originX + 4, sy + 2.5);
+        doc.text('REG.', originX + colW - 90, sy + 2.5, { width: 30, align: 'center' });
+        doc.text('TOTAL', originX + colW - 55, sy + 2.5, { width: 50, align: 'right' });
+        sy += 13;
+
+        rows.forEach((r, idx) => {
+            if (idx % 2 === 1) doc.rect(originX, sy - 1, colW, 11).fill('#f8fafc');
+            doc.fontSize(6.5).font('Helvetica').fillColor('#1e293b');
+            doc.text(r.title, originX + 4, sy + 1, { width: colW - 100, lineBreak: false });
+            doc.text(String(r.count), originX + colW - 90, sy + 1, { width: 30, align: 'center' });
+            doc.font('Helvetica-Bold').text(reportPdfHelper.fmt(r.total), originX + colW - 55, sy + 1, { width: 50, align: 'right' });
+            doc.font('Helvetica');
+            doc.strokeColor('#f1f5f9').lineWidth(0.5).moveTo(originX, sy + 10).lineTo(originX + colW, sy + 10).stroke();
+            sy += 11;
+        });
+        return sy;
+    };
+
+    const leftEndY = renderSummaryTable(leftCol, startX);
+    const rightEndY = renderSummaryTable(rightCol, startX + colW + 10);
+    currentY = Math.max(leftEndY, rightEndY) + 4;
+
+    // Grand total row
+    doc.rect(startX, currentY, pageW, 15).fill('#e2e8f0');
+    doc.strokeColor('#0f172a').lineWidth(1).moveTo(startX, currentY).lineTo(startX + pageW, currentY).stroke();
+    doc.font('Helvetica-Bold').fontSize(8).fillColor('#0f172a');
+    doc.text(`TOTAL GENERAL DE ANEXOS / DESCARGOS (${totalItemsGlobal} REGISTROS TOTALES):`, startX + 6, currentY + 3.5);
+    doc.text(reportPdfHelper.fmt(grandTotalMonto), startX, currentY + 3.5, { width: pageW - 8, align: 'right' });
+    doc.strokeColor('#0f172a').lineWidth(1).moveTo(startX, currentY + 15).lineTo(startX + pageW, currentY + 15).stroke();
+    currentY += 24;
+
+    reportPdfHelper.renderClosingFooter(doc, startX, currentY, totalItemsGlobal, 'Registros Totales');
+    reportPdfHelper.renderPageNumbers(doc);
+
+    doc.end();
+    return await getBuffer();
+};
 
 module.exports = {
     generateCloseoutDetailPDF,
@@ -2163,5 +2489,6 @@ module.exports = {
     generateLubricantsSoldPDF,
     generateComplementariasPDF,
     generateArqueosReportPDF,
-    generateVentasLecturasAnalyticsPDF
+    generateVentasLecturasAnalyticsPDF,
+    generateCloseoutConsolidatedAnnexesPDF
 };

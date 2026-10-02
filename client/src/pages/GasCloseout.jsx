@@ -32,7 +32,9 @@ import {
     GasValesModal,
     GasDiferenciasModal,
     GasAnticiposModal,
-    GasTrupputModal
+    GasTrupputModal,
+    GasCloseoutPrintMenu,
+    GasCloseoutSuccessModal
 } from '../components/gas';
 
 const parseDecimal = (value) => {
@@ -110,6 +112,7 @@ const GasCloseout = () => {
     const [despachadorSelectValue, setDespachadorSelectValue] = useState('');
     const [showReadingsModal, setShowReadingsModal] = useState(false);
     const [editAnterior, setEditAnterior] = useState(false);
+    const [closedSummaryData, setClosedSummaryData] = useState(null);
     const handleSyncFuelPricesRef = useRef(null);
     const [showGastosModal, setShowGastosModal] = useState(false);
     const [gastos, setGastos] = useState([]);
@@ -208,6 +211,10 @@ const GasCloseout = () => {
             }
             if (e.ctrlKey && e.altKey && e.key?.toLowerCase() === 'p') {
                 e.preventDefault();
+                if (!isSuperAdmin) {
+                    toast.error('Solo los usuarios con rol SuperAdmin pueden sincronizar los precios');
+                    return;
+                }
                 if (handleSyncFuelPricesRef.current) {
                     handleSyncFuelPricesRef.current();
                 }
@@ -625,6 +632,10 @@ const GasCloseout = () => {
     });
 
     const handleSyncFuelPrices = () => {
+        if (!isSuperAdmin) {
+            toast.error('Solo los usuarios con rol SuperAdmin pueden sincronizar los precios');
+            return;
+        }
         if (!closeoutId) {
             toast.error('No hay un turno seleccionado');
             return;
@@ -741,6 +752,11 @@ const GasCloseout = () => {
             queryClient.invalidateQueries({ queryKey: ['gas-last-turno'] });
             queryClient.invalidateQueries({ queryKey: ['gas-closeouts'] });
             toast.success(res.data?.message || 'Cierre cerrado exitosamente');
+            setClosedSummaryData({
+                id: closeoutId,
+                numero_turno: numeroTurno,
+                fecha_turno: fechaTurno
+            });
         },
         onError: (error) => toast.error(error.response?.data?.message || 'Error al cerrar')
     });
@@ -2344,13 +2360,11 @@ const GasCloseout = () => {
                                 {estado === 'cerrado' ? <Lock size={12} /> : estado === 'reabierto' ? <LockOpen size={12} /> : <Unlock size={12} />}
                                 {estado === 'cerrado' ? 'Cerrado' : estado === 'reabierto' ? 'Reabierto' : 'Abierto'}
                             </span>
-                            <button
-                                onClick={handlePdf}
-                                className="p-2 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"
-                                title="Descargar PDF"
-                            >
-                                <Printer size={16} />
-                            </button>
+                            <GasCloseoutPrintMenu
+                                closeoutId={closeoutId}
+                                estado={estado}
+                                onPrintFull={handlePdf}
+                            />
                             {(estado === 'abierto' || estado === 'reabierto') && (
                                 <button
                                     onClick={async () => {
@@ -2860,8 +2874,6 @@ const GasCloseout = () => {
                     estado={estado}
                     isSuperAdmin={isSuperAdmin}
                     editAnterior={editAnterior}
-                    onSyncFuelPrices={handleSyncFuelPrices}
-                    syncingFuelPrices={syncFuelPricesMutation.isPending}
                     fileInputRef={fileInputRef}
                     importing={importing}
                     handleImportExcel={handleImportExcel}
@@ -3282,6 +3294,14 @@ const GasCloseout = () => {
                 allDespachadores={allDespachadores}
                 onSave={handleModalSave}
                 closeoutId={closeoutId}
+            />
+            <GasCloseoutSuccessModal
+                isOpen={Boolean(closedSummaryData)}
+                onClose={() => setClosedSummaryData(null)}
+                closeoutId={closedSummaryData?.id}
+                numeroTurno={closedSummaryData?.numero_turno}
+                fechaTurno={closedSummaryData?.fecha_turno}
+                onPrintSummary={handlePdf}
             />
         </div>
     );
