@@ -1846,11 +1846,11 @@ const GasCloseout = () => {
                     total_monto: 0
                 };
             }
-            const diferencia = (parseFloat(r.lectura_actual) || 0) - (parseFloat(r.lectura_anterior) || 0) - (parseFloat(r.calibracion) || 0);
+            const diferencia = Math.round(((parseFloat(r.lectura_actual) || 0) - (parseFloat(r.lectura_anterior) || 0) - (parseFloat(r.calibracion) || 0)) * 1000) / 1000;
             const rowMonto = (r.monto !== undefined && r.monto !== null && !isNaN(parseFloat(r.monto)))
                 ? parseFloat(r.monto)
                 : Math.round(diferencia * (parseFloat(r.precio) || 0) * 100) / 100;
-            map[key].total_lectura += diferencia;
+            map[key].total_lectura = Math.round((map[key].total_lectura + diferencia) * 1000) / 1000;
             map[key].total_monto += rowMonto;
         });
         return Object.values(map);
@@ -1860,7 +1860,7 @@ const GasCloseout = () => {
         let totalLectura = 0;
         let totalMonto = 0;
         readings.forEach(r => {
-            const diff = (parseFloat(r.lectura_actual) || 0) - (parseFloat(r.lectura_anterior) || 0) - (parseFloat(r.calibracion) || 0);
+            const diff = Math.round(((parseFloat(r.lectura_actual) || 0) - (parseFloat(r.lectura_anterior) || 0) - (parseFloat(r.calibracion) || 0)) * 1000) / 1000;
             totalLectura += diff;
             const rowMonto = (r.monto !== undefined && r.monto !== null && !isNaN(parseFloat(r.monto)))
                 ? parseFloat(r.monto)
@@ -1868,7 +1868,7 @@ const GasCloseout = () => {
             totalMonto += rowMonto;
         });
         return {
-            totalLectura,
+            totalLectura: Math.round(totalLectura * 1000) / 1000,
             totalMonto: Math.round(totalMonto * 100) / 100
         };
     }, [readings]);
@@ -1969,8 +1969,11 @@ const GasCloseout = () => {
         if (field === 'lectura_anterior' && !isSuperAdmin) return;
         setReadings(prev => prev.map(r => {
             if (r.nozzle_id !== nozzleId) return r;
-            const updated = { ...r, [field]: parseFloat(value) || 0 };
-            const diff = (parseFloat(updated.lectura_actual) || 0) - (parseFloat(updated.lectura_anterior) || 0) - (parseFloat(updated.calibracion) || 0);
+            const updated = { ...r, [field]: value };
+            const numActual = parseFloat(field === 'lectura_actual' ? value : updated.lectura_actual) || 0;
+            const numAnt = parseFloat(field === 'lectura_anterior' ? value : updated.lectura_anterior) || 0;
+            const numCalib = parseFloat(field === 'calibracion' ? value : updated.calibracion) || 0;
+            const diff = Math.round((numActual - numAnt - numCalib) * 1000) / 1000;
             updated.diferencia = diff;
             updated.monto = Math.round(diff * (parseFloat(updated.precio) || 0) * 100) / 100;
             return updated;
@@ -1981,11 +1984,11 @@ const GasCloseout = () => {
         const r = readings.find(x => x.nozzle_id === nozzleId);
         if (!r) return;
         const payload = {
-            lectura_actual: r.lectura_actual,
-            calibracion: r.calibracion
+            lectura_actual: parseFloat(r.lectura_actual) || 0,
+            calibracion: parseFloat(r.calibracion) || 0
         };
         if (isSuperAdmin && editAnterior) {
-            payload.lectura_anterior = r.lectura_anterior;
+            payload.lectura_anterior = parseFloat(r.lectura_anterior) || 0;
         }
         updateMutation.mutate({
             readingId,
@@ -2387,7 +2390,7 @@ const GasCloseout = () => {
                                                     <td className="px-3 py-1.5 font-mono font-bold text-slate-800">{p.codigo_producto}</td>
                                                     <td className="px-3 py-1.5 text-slate-600">{p.descripcion_producto}</td>
                                                     <td className="px-3 py-1.5 text-right font-mono text-slate-700"><Money value={p.precio} /></td>
-                                                    <td className="px-3 py-1.5 text-right font-mono font-bold text-indigo-600">{p.total_lectura.toFixed(5)}</td>
+                                                    <td className="px-3 py-1.5 text-right font-mono font-bold text-indigo-600">{p.total_lectura.toFixed(3)}</td>
                                                     <td className="px-3 py-1.5 text-right font-mono font-bold text-slate-900"><Money value={p.total_monto} /></td>
                                                 </tr>
                                             ))}
@@ -2395,7 +2398,7 @@ const GasCloseout = () => {
                                         <tfoot className="bg-slate-50 border-t border-slate-100 text-xs font-bold">
                                             <tr>
                                                 <td colSpan={3} className="px-3 py-1.5 text-right text-slate-600 uppercase tracking-wider">Totales</td>
-                                                <td className="px-3 py-1.5 text-right font-mono text-indigo-600">{totals.totalLectura.toFixed(5)}</td>
+                                                <td className="px-3 py-1.5 text-right font-mono text-indigo-600">{totals.totalLectura.toFixed(3)}</td>
                                                 <td className="px-3 py-1.5 text-right font-mono text-slate-900"><Money value={totals.totalMonto} /></td>
                                             </tr>
                                         </tfoot>

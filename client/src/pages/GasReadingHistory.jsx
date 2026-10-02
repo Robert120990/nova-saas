@@ -676,7 +676,7 @@ const GasReadingHistory = () => {
                                     {c.estado}
                                 </span>
                             </td>
-                            <td className="px-3 py-1 text-xs font-mono font-bold text-indigo-600">{parseFloat(c.total_diferencia).toFixed(5)}</td>
+                            <td className="px-3 py-1 text-xs font-mono font-bold text-indigo-600">{parseFloat(c.total_diferencia || 0).toFixed(3)}</td>
                             <td className="px-3 py-1 text-xs font-mono font-bold text-slate-900">
                                 <div><Money value={c.total_monto} /></div>
                             </td>

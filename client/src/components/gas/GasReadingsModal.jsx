@@ -110,8 +110,8 @@ const GasReadingsModal = ({
                                     </thead>
                                     <tbody className="divide-y divide-slate-50">
                                         {readings.map((r, idx) => {
-                                            const diferencia = r.lectura_actual - r.lectura_anterior - r.calibracion;
-                                            const monto = diferencia * r.precio;
+                                            const diferencia = Math.round(((parseFloat(r.lectura_actual) || 0) - (parseFloat(r.lectura_anterior) || 0) - (parseFloat(r.calibracion) || 0)) * 1000) / 1000;
+                                            const monto = Math.round(diferencia * (parseFloat(r.precio) || 0) * 100) / 100;
                                             return (
                                                 <tr key={r.nozzle_id} className={`${idx % 2 === 0 ? 'bg-white' : 'bg-indigo-50'} hover:bg-indigo-100 transition-colors text-[11px]`}>
                                                     <td className="px-1.5 py-0.5 font-bold text-slate-900 whitespace-nowrap" data-label="Pistola">{r.codigo_pistola}</td>
@@ -125,7 +125,7 @@ const GasReadingsModal = ({
                                                             <input
                                                                 ref={el => { inputRefs.current[`anterior-${r.nozzle_id}`] = el; }}
                                                                 type="number"
-                                                                step="0.00001"
+                                                                step="0.001"
                                                                 value={r.lectura_anterior || ''}
                                                                 onChange={(e) => handleReadingChange(r.nozzle_id, 'lectura_anterior', e.target.value)}
                                                                 onBlur={() => handleReadingBlur(r.id, r.nozzle_id)}
@@ -135,14 +135,14 @@ const GasReadingsModal = ({
                                                                 className={`${estado === 'cerrado' ? inputDisabledCls : inputCls} ml-auto`}
                                                             />
                                                     ) : (
-                                                        <span className="font-mono text-slate-500 whitespace-nowrap">{r.lectura_anterior.toFixed(5)}</span>
+                                                        <span className="font-mono text-slate-500 whitespace-nowrap">{r.lectura_anterior != null && !isNaN(parseFloat(r.lectura_anterior)) ? parseFloat(r.lectura_anterior).toFixed(3) : '0.000'}</span>
                                                         )}
                                                     </td>
                                                     <td className="px-1.5 py-0.5 text-right" data-label="Lect. Actual">
                                                         <input
                                                             ref={el => { inputRefs.current[`lectura_actual-${r.nozzle_id}`] = el; }}
                                                             type="number"
-                                                            step="0.00001"
+                                                            step="0.001"
                                                             value={r.lectura_actual || ''}
                                                             onChange={(e) => handleReadingChange(r.nozzle_id, 'lectura_actual', e.target.value)}
                                                             onBlur={() => handleReadingBlur(r.id, r.nozzle_id)}
@@ -157,7 +157,7 @@ const GasReadingsModal = ({
                                                         <input
                                                             ref={el => { inputRefs.current[`calibracion-${r.nozzle_id}`] = el; }}
                                                             type="number"
-                                                            step="0.00001"
+                                                            step="0.001"
                                                             value={r.calibracion || ''}
                                                             onChange={(e) => handleReadingChange(r.nozzle_id, 'calibracion', e.target.value)}
                                                             onBlur={() => handleReadingBlur(r.id, r.nozzle_id)}
@@ -168,7 +168,7 @@ const GasReadingsModal = ({
                                                             className={`${estado === 'cerrado' ? inputCalibDisabledCls : inputCalibCls} ml-auto`}
                                                         />
                                                     </td>
-                                                    <td className="px-1.5 py-0.5 text-right font-mono font-bold text-indigo-600 whitespace-nowrap" data-label="Difer.">{diferencia.toFixed(5)}</td>
+                                                    <td className="px-1.5 py-0.5 text-right font-mono font-bold text-indigo-600 whitespace-nowrap" data-label="Difer.">{diferencia.toFixed(3)}</td>
                                                     <td className="px-1.5 py-0.5 text-right font-mono font-bold text-slate-900 whitespace-nowrap" data-label="Monto"><Money value={monto} /></td>
                                                 </tr>
                                             );

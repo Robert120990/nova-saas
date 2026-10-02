@@ -729,7 +729,7 @@ exports.updateReading = async (req, res) => {
 
         const finalLectura = newLectura !== undefined ? newLectura : parseFloat(current[0].lectura_actual);
         const finalCalibracion = newCalibracion !== undefined ? newCalibracion : parseFloat(current[0].calibracion);
-        const diferencia = finalLectura - lectura_anterior - finalCalibracion;
+        const diferencia = Math.round((finalLectura - lectura_anterior - finalCalibracion) * 1000) / 1000;
         const monto = Math.round(diferencia * precio * 100) / 100;
 
         await pool.query(`
@@ -780,7 +780,7 @@ exports.batchUpdateReadings = async (req, res) => {
             const precio = parseFloat(current[0].precio);
             const calibracion = parseFloat(current[0].calibracion);
             const lectura_actual = parseFloat(r.lectura_actual);
-            const diferencia = lectura_actual - lectura_anterior - calibracion;
+            const diferencia = Math.round((lectura_actual - lectura_anterior - calibracion) * 1000) / 1000;
             const monto = Math.round(diferencia * precio * 100) / 100;
 
             await pool.query(`

@@ -209,7 +209,7 @@ export function buildCloseoutPrintHtml(data) {
         return '$ ' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     };
 
-    const fmtQty = (val, dec = 5) => {
+    const fmtQty = (val, dec = 3) => {
         const n = parseFloat(val) || 0;
         return n.toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec });
     };
