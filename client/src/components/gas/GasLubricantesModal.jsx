@@ -1,5 +1,7 @@
-import { Droplets, ShieldCheck, Loader2, RefreshCw, X } from 'lucide-react';
+import { useState } from 'react';
+import { Droplets, ShieldCheck, Loader2, RefreshCw, X, Plus, Trash2 } from 'lucide-react';
 import Money from '../ui/Money';
+import GasAddLubricantModal from './GasAddLubricantModal';
 
 const defaultInputCls = "w-28 px-1.5 py-0.5 bg-white border border-slate-200 rounded outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-[11px] text-right font-mono";
 const defaultInputDisabledCls = "w-28 px-1.5 py-0.5 bg-slate-100 border border-slate-200 rounded text-[11px] text-right font-mono text-slate-500 cursor-not-allowed";
@@ -19,8 +21,14 @@ const GasLubricantesModal = ({
     lubricantInputRefs,
     lubricantTotal = 0,
     inputCls = defaultInputCls,
-    inputDisabledCls = defaultInputDisabledCls
+    inputDisabledCls = defaultInputDisabledCls,
+    onAddProduct,
+    onRemoveProduct,
+    branchId,
+    closeoutId
 }) => {
+    const [showAddModal, setShowAddModal] = useState(false);
+
     if (!isOpen) return null;
 
     return (
@@ -49,7 +57,17 @@ const GasLubricantesModal = ({
                             </button>
                         )}
                     </h3>
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-2">
+                        {estado !== 'cerrado' && (
+                            <button
+                                type="button"
+                                onClick={() => setShowAddModal(true)}
+                                className="flex items-center gap-1.5 px-3 py-1 text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-xl transition-all shadow-sm"
+                            >
+                                <Plus size={13} />
+                                Agregar Lubricante
+                            </button>
+                        )}
                         <button
                             onClick={handleRecargarLubricantes}
                             disabled={lubricantLoading}
@@ -70,6 +88,7 @@ const GasLubricantesModal = ({
                         </button>
                     </div>
                 </div>
+
                 <div className="overflow-auto px-4 pb-4 flex-1 relative">
                     <table className="w-full text-left border-separate border-spacing-0 table-cards">
                         <thead className="sticky top-0 z-20">
@@ -84,13 +103,16 @@ const GasLubricantesModal = ({
                                 <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 text-right w-28">Ventas</th>
                                 <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 text-right w-24">Precio</th>
                                 <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 text-right w-28">Total</th>
+                                {estado !== 'cerrado' && (
+                                    <th className="px-1 py-1 bg-slate-50 border-b border-slate-100 text-center w-8"></th>
+                                )}
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-50">
                             {lubricantReadings.length === 0 && (
                                 <tr>
-                                    <td colSpan={8} className="px-3 py-8 text-center text-xs text-slate-400">
-                                        No hay productos de lubricantes configurados.
+                                    <td colSpan={estado !== 'cerrado' ? 9 : 8} className="px-3 py-8 text-center text-xs text-slate-400">
+                                        No hay productos de lubricantes con existencia en este turno.
                                     </td>
                                 </tr>
                             )}
@@ -184,21 +206,55 @@ const GasLubricantesModal = ({
                                         <td className="px-1.5 py-0.5 text-right font-mono font-bold text-slate-900" data-label="Total">
                                             <Money value={total} />
                                         </td>
+                                        {estado !== 'cerrado' && (
+                                            <td className="px-1 py-0.5 text-center">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => onRemoveProduct && onRemoveProduct(r.producto_id)}
+                                                    title="Quitar producto de este turno"
+                                                    className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors"
+                                                >
+                                                    <Trash2 size={13} />
+                                                </button>
+                                            </td>
+                                        )}
                                     </tr>
                                 );
                             })}
                         </tbody>
                         <tfoot className="bg-slate-50 border-t border-slate-100 text-xs font-bold">
                             <tr>
-                                <td colSpan={7} className="px-3 py-1.5 text-right text-slate-600 uppercase tracking-wider">Total Lubricantes</td>
+                                <td colSpan={estado !== 'cerrado' ? 8 : 7} className="px-3 py-1.5 text-right text-slate-600 uppercase tracking-wider">Total Lubricantes</td>
                                 <td className="px-3 py-1.5 text-right font-mono text-indigo-600">
                                     <Money value={lubricantTotal} />
                                 </td>
                             </tr>
                         </tfoot>
                     </table>
+
+                    {estado !== 'cerrado' && (
+                        <div className="mt-3 flex items-center justify-between">
+                            <button
+                                type="button"
+                                onClick={() => setShowAddModal(true)}
+                                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-xl transition-all"
+                            >
+                                <Plus size={14} />
+                                Agregar Lubricante sin Existencia Anterior
+                            </button>
+                        </div>
+                    )}
                 </div>
             </div>
+
+            <GasAddLubricantModal
+                isOpen={showAddModal}
+                onClose={() => setShowAddModal(false)}
+                onSelect={(product) => onAddProduct && onAddProduct(product)}
+                existingProductIds={lubricantReadings.map(r => r.producto_id)}
+                branchId={branchId}
+                closeoutId={closeoutId}
+            />
         </div>
     );
 };

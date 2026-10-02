@@ -278,6 +278,7 @@ exports.initCloseout = async (req, res) => {
 
                     for (const p of lubProducts) {
                         const inicial = lastMap[p.id] || 0;
+                        if (inicial <= 0) continue;
                         const [lubResult] = await pool.query(`
                             INSERT INTO gas_station_closeout_lubricant_readings
                             (closeout_id, producto_id, producto_codigo, producto_descripcion, lectura_inicial, recarga, lectura_final, ventas, precio, total)
@@ -586,7 +587,10 @@ exports.getCloseout = async (req, res) => {
         );
 
         const [lubricantes] = await pool.query(
-            `SELECT * FROM gas_station_closeout_lubricant_readings WHERE closeout_id = ? ORDER BY id ASC`, [id]
+            `SELECT * FROM gas_station_closeout_lubricant_readings 
+             WHERE closeout_id = ? 
+               AND (COALESCE(lectura_inicial, 0) > 0 OR COALESCE(recarga, 0) > 0 OR COALESCE(lectura_final, 0) > 0 OR COALESCE(ventas, 0) > 0)
+             ORDER BY id ASC`, [id]
         );
 
         const [trupputDesp] = await pool.query(

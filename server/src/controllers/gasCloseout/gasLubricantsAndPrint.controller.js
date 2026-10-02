@@ -30,7 +30,10 @@ exports.getLubricantReadings = async (req, res) => {
     try {
         const { id } = req.params;
         const [rows] = await pool.query(
-            `SELECT * FROM gas_station_closeout_lubricant_readings WHERE closeout_id = ? ORDER BY id ASC`,
+            `SELECT * FROM gas_station_closeout_lubricant_readings 
+             WHERE closeout_id = ? 
+               AND (COALESCE(lectura_inicial, 0) > 0 OR COALESCE(recarga, 0) > 0 OR COALESCE(lectura_final, 0) > 0 OR COALESCE(ventas, 0) > 0)
+             ORDER BY id ASC`,
             [id]
         );
         res.json(rows);
@@ -181,7 +184,10 @@ exports.getCloseoutPrintData = async (req, res) => {
         );
 
         const [lubricantes] = await pool.query(
-            `SELECT * FROM gas_station_closeout_lubricant_readings WHERE closeout_id = ? ORDER BY id ASC`, [id]
+            `SELECT * FROM gas_station_closeout_lubricant_readings 
+             WHERE closeout_id = ? 
+               AND (COALESCE(lectura_final, 0) > 0 OR COALESCE(ventas, 0) > 0)
+             ORDER BY id ASC`, [id]
         );
 
         const [tarjetas] = await pool.query(
@@ -883,7 +889,8 @@ exports.getAccumulatedDayPrintData = async (req, res) => {
         const cupones = await aggregateRows('gas_station_closeout_cupones');
         const descuentos = await aggregateRows('gas_station_closeout_descuentos');
         const adelantos = await aggregateRows('gas_station_closeout_adelantos');
-        const lubricantes = await aggregateRows('gas_station_closeout_lubricant_readings');
+        const rawLubricantes = await aggregateRows('gas_station_closeout_lubricant_readings');
+        const lubricantes = rawLubricantes.filter(l => (parseFloat(l.lectura_final) || 0) > 0 || (parseFloat(l.ventas) || 0) > 0);
         const tarjetas = await aggregateRows('gas_station_closeout_tarjetas');
         const creditos = await aggregateRows('gas_station_closeout_creditos');
         const vales = await aggregateRows('gas_station_closeout_vales');
@@ -1044,7 +1051,9 @@ exports.getCloseoutAnnexesPDF = async (req, res) => {
                     COALESCE(l.precio, 0) as precio,
                     COALESCE(l.total, 0) as total
              FROM gas_station_closeout_lubricant_readings l
-             WHERE l.closeout_id = ? ORDER BY l.id ASC`, [id]
+             WHERE l.closeout_id = ? 
+               AND (COALESCE(l.lectura_final, 0) > 0 OR COALESCE(l.ventas, 0) > 0)
+             ORDER BY l.id ASC`, [id]
         );
 
         const [tarjetas] = await pool.query(

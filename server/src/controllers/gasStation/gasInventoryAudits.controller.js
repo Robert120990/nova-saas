@@ -561,7 +561,9 @@ exports.getCloseoutDetailPDF = async (req, res) => {
                            COALESCE(l.total, 0) as total
                     FROM gas_station_closeout_lubricant_readings l
                     JOIN gas_station_closeouts g ON l.closeout_id = g.id
-                    WHERE g.company_id = ? AND g.fecha_turno BETWEEN ? AND ? ${branchFilter}
+                    WHERE g.company_id = ? AND g.fecha_turno BETWEEN ? AND ?
+                      AND (COALESCE(l.lectura_final, 0) > 0 OR COALESCE(l.ventas, 0) > 0)
+                      ${branchFilter}
                     ORDER BY g.fecha_turno, g.numero_turno, l.id
                 `;
                 params = [companyId, start_date, end_date, ...branchParams];

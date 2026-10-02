@@ -1,4 +1,4 @@
-import React, { forwardRef } from 'react';
+import { forwardRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 
 const Money = ({ value, amount, className = '', digits = 2 }) => {

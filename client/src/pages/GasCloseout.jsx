@@ -4,7 +4,7 @@ import axios from 'axios';
 import {
     Calculator, Lock, Unlock, Loader2, User, Calendar, Hash, X,
     Fuel, Receipt, CreditCard, Gift, Percent, Truck, Droplets,
-    FlaskConical, Banknote, ArrowLeft, UserCheck, Printer, BarChart3, LockOpen, ShieldCheck
+    FlaskConical, Banknote, ArrowLeft, UserCheck, BarChart3, LockOpen, ShieldCheck
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useSearchParams, useNavigate } from 'react-router-dom';
@@ -299,7 +299,13 @@ const GasCloseout = () => {
             setFechaTurno(editData.fecha_turno?.split('T')[0] || editData.fecha_turno);
             setNumeroTurno(editData.numero_turno);
             setTankReadings(editData.tankReadings || []);
-            setLubricantReadings(editData.lubricantReadings || []);
+            const initialLubricants = (editData.lubricantReadings || []).filter(r => 
+                (parseFloat(r.lectura_inicial) || 0) > 0 ||
+                (parseFloat(r.recarga) || 0) > 0 ||
+                (parseFloat(r.lectura_final) || 0) > 0 ||
+                (parseFloat(r.ventas) || 0) > 0
+            );
+            setLubricantReadings(initialLubricants);
             setCloseoutDespachadores(editData.despachadores || []);
             setDespachadorNozzleAssignments(editData.despachadorNozzleAssignments || []);
             const cleanLoadedGastos = (editData.gastos || []).map(e => ({ ...e, fecha: toDateStr(e.fecha) }));
@@ -2199,20 +2205,22 @@ const GasCloseout = () => {
             const res = await axios.get(`/api/products/lubricants?branch_id=${branch}&closeout_id=${closeoutId || ''}`);
             const products = res.data;
             if (products.length > 0) {
-                const mapped = products.map(p => {
-                    const inicial = parseFloat(p.lectura_inicial) || 0;
-                    return {
-                        producto_id: p.id,
-                        producto_codigo: p.codigo,
-                        producto_descripcion: p.descripcion,
-                        lectura_inicial: inicial,
-                        recarga: 0,
-                        lectura_final: inicial,
-                        ventas: 0,
-                        precio: parseFloat(p.precio_unitario) || 0,
-                        total: 0,
-                    };
-                });
+                const mapped = products
+                    .filter(p => (parseFloat(p.lectura_inicial) || 0) > 0)
+                    .map(p => {
+                        const inicial = parseFloat(p.lectura_inicial) || 0;
+                        return {
+                            producto_id: p.id,
+                            producto_codigo: p.codigo,
+                            producto_descripcion: p.descripcion,
+                            lectura_inicial: inicial,
+                            recarga: 0,
+                            lectura_final: inicial,
+                            ventas: 0,
+                            precio: parseFloat(p.precio_unitario) || 0,
+                            total: 0,
+                        };
+                    });
                 setLubricantReadings(mapped);
                 return mapped;
             }
@@ -2234,6 +2242,32 @@ const GasCloseout = () => {
         setEditAnterior(false);
     };
 
+    const handleAddLubricant = (product) => {
+        const newRow = {
+            producto_id: product.id,
+            producto_codigo: product.codigo,
+            producto_descripcion: product.descripcion,
+            lectura_inicial: 0,
+            recarga: 0,
+            lectura_final: 0,
+            ventas: 0,
+            precio: parseFloat(product.precio_unitario) || 0,
+            total: 0,
+            isManual: true
+        };
+        const updated = [...lubricantReadings, newRow];
+        setLubricantReadings(updated);
+        saveLubricantesMutation.mutate(updated);
+        toast.success(`Lubricante agregado: ${product.codigo} - ${product.descripcion}`);
+    };
+
+    const handleRemoveLubricant = async (productId) => {
+        const updated = lubricantReadings.filter(r => r.producto_id !== productId);
+        setLubricantReadings(updated);
+        saveLubricantesMutation.mutate(updated);
+        toast.info('Producto retirado de la lista del turno');
+    };
+
     const handleRecargarLubricantes = async () => {
         const ok = await confirm({
             title: 'Reinicializar Lubricantes',
@@ -2245,7 +2279,7 @@ const GasCloseout = () => {
         if (!ok) return;
         const mapped = await fetchLubricantInitials();
         if (mapped.length === 0) {
-            toast.info('No hay productos de lubricantes configurados');
+            toast.info('No hay productos de lubricantes con existencia en el turno anterior');
             return;
         }
         if (estado !== 'cerrado') {
@@ -3014,6 +3048,10 @@ const GasCloseout = () => {
                     lubricantTotal={lubricantTotal}
                     inputCls={inputCls}
                     inputDisabledCls={inputDisabledCls}
+                    onAddProduct={handleAddLubricant}
+                    onRemoveProduct={handleRemoveLubricant}
+                    branchId={closeoutBranchId || editData?.branch_id || user?.branch_id}
+                    closeoutId={closeoutId}
                 />
 
                 <GasTankReadingsModal

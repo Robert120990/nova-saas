@@ -100,13 +100,15 @@ export function buildCloseoutAnnexPrintHtml(data, annexKey) {
     }
 
     const c = data.closeout || {};
-    const items = data[config.dataKey] || [];
+    let items = data[config.dataKey] || [];
+    if (annexKey === 'lubricantes') {
+        items = items.filter(l => (parseFloat(l.lectura_final) || 0) > 0 || (parseFloat(l.ventas) || 0) > 0);
+    }
     const fecha = c.fecha_turno ? formatDate(c.fecha_turno) : '—';
     const emision = formatDateTime(new Date());
 
     let rowsHtml = '';
     let totalMonto = 0;
-    let totalCantidad = 0;
 
     switch (annexKey) {
         case 'remesas': {
@@ -150,7 +152,6 @@ export function buildCloseoutAnnexPrintHtml(data, annexKey) {
 
         case 'creditos': {
             totalMonto = items.reduce((s, cr) => s + (parseFloat(cr.monto) || 0), 0);
-            totalCantidad = items.reduce((s, cr) => s + (parseFloat(cr.galones) || 0), 0);
             rowsHtml = items.length === 0
                 ? `<tr><td colspan="7" class="empty">No se registraron ventas a crédito en este turno</td></tr>`
                 : items.map((cr, i) => `
@@ -186,7 +187,6 @@ export function buildCloseoutAnnexPrintHtml(data, annexKey) {
 
         case 'descuentos': {
             totalMonto = items.reduce((s, d) => s + (parseFloat(d.total) || 0), 0);
-            totalCantidad = items.reduce((s, d) => s + (parseFloat(d.cantidad) || 0), 0);
             rowsHtml = items.length === 0
                 ? `<tr><td colspan="8" class="empty">No se registraron descuentos en este turno</td></tr>`
                 : items.map((d, i) => `
@@ -239,7 +239,6 @@ export function buildCloseoutAnnexPrintHtml(data, annexKey) {
 
         case 'vales': {
             totalMonto = items.reduce((s, v) => s + (parseFloat(v.monto) || 0), 0);
-            totalCantidad = items.reduce((s, v) => s + (parseFloat(v.cantidad) || 0), 0);
             rowsHtml = items.length === 0
                 ? `<tr><td colspan="9" class="empty">No se registraron vales en este turno</td></tr>`
                 : items.map((v, i) => `
@@ -260,7 +259,6 @@ export function buildCloseoutAnnexPrintHtml(data, annexKey) {
 
         case 'anticipos': {
             totalMonto = items.reduce((s, a) => s + (parseFloat(a.monto) || 0), 0);
-            totalCantidad = items.reduce((s, a) => s + (parseFloat(a.cantidad) || 0), 0);
             rowsHtml = items.length === 0
                 ? `<tr><td colspan="9" class="empty">No se registraron anticipos despachados en este turno</td></tr>`
                 : items.map((a, i) => `
@@ -281,7 +279,6 @@ export function buildCloseoutAnnexPrintHtml(data, annexKey) {
 
         case 'lubricantes': {
             totalMonto = items.reduce((s, l) => s + (parseFloat(l.total) || 0), 0);
-            totalCantidad = items.reduce((s, l) => s + (parseFloat(l.ventas) || 0), 0);
             rowsHtml = items.length === 0
                 ? `<tr><td colspan="9" class="empty">No se registraron lecturas de lubricantes en este turno</td></tr>`
                 : items.map((l, i) => `

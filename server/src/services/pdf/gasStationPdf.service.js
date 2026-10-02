@@ -2294,7 +2294,11 @@ const generateCloseoutConsolidatedAnnexesPDF = async (data) => {
         {
             key: 'lubricantes',
             title: '10. VENTAS Y LECTURAS DE LUBRICANTES',
-            items: data.lubricantes || [],
+            items: (data.lubricantes || []).filter(it => {
+                const stockFinal = parseFloat(it.stock_final ?? it.lectura_final ?? 0) || 0;
+                const ventas = parseFloat(it.cantidad ?? it.ventas ?? 0) || 0;
+                return stockFinal > 0 || ventas > 0;
+            }),
             sumField: 'total',
             columns: [
                 { label: 'CÓDIGO', w: 70, getValue: it => it.codigo || it.producto_codigo || '—' },

@@ -1,10 +1,10 @@
-import React, { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import Table from '../components/ui/Table';
 import Modal from '../components/ui/Modal';
 import Pagination from '../components/ui/Pagination';
-import { History, Eye, Lock, Unlock, Search, Pencil, Trash2, Loader2, AlertTriangle, Printer, Database, CheckCircle, XCircle, LockOpen, Calendar, Hash, FileEdit, PlusCircle } from 'lucide-react';
+import { History, Eye, Lock, Unlock, Search, Pencil, Trash2, Loader2, AlertTriangle, Database, CheckCircle, XCircle, LockOpen, Calendar, Hash, FileEdit, PlusCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -29,7 +29,7 @@ const GasReadingHistory = () => {
     const clickTimerRef = useRef(null);
     const clickCountsRef = useRef({});
 
-    React.useEffect(() => {
+    useEffect(() => {
         const timer = setTimeout(() => {
             setDebouncedSearch(searchTerm);
             setPage(1);
