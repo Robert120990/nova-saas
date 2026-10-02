@@ -120,14 +120,15 @@ const getCustomerStatement = async (req, res) => {
             SELECT 
                 h.id as doc_id,
                 h.fecha_emision as fecha,
-                h.tipo_documento as tipo,
+                COALESCE(cat.description, h.tipo_documento) as tipo,
                 COALESCE(${dteLatestColSql('h', 'numero_control')}, h.id) as numero,
                 h.total_pagar as cargo,
                 0 as abono,
-                'VENTA' as concepto,
+                CASE WHEN h.tipo_documento = '00' OR h.observaciones LIKE '%SALDO INICIAL%' THEN 'SALDO INICIAL' ELSE 'VENTA' END as concepto,
                 COALESCE(c.nombre, h.cliente_nombre, CONCAT('CLIENTE #', c.id)) as cliente_nombre
             FROM sales_headers h
             JOIN customers c ON h.customer_id = c.id
+            LEFT JOIN cat_002_tipo_dte cat ON h.tipo_documento = cat.code
             WHERE h.company_id = ? AND h.branch_id = ? AND h.customer_id = ? 
             AND (h.payment_condition = 2 OR h.condicion_operacion = 2)
             AND h.estado != 'ANULADO'
@@ -718,9 +719,11 @@ const exportStatementPDF = async (req, res) => {
         const { active: gasActive, desdeFecha } = await getCreditosAfectanCxcConfig(company_id, branch_id);
 
         const [sales] = await pool.query(`
-            SELECT h.fecha_emision as fecha, h.tipo_documento as tipo, COALESCE(${dteLatestColSql('h', 'numero_control')}, h.id) as numero,
-                   h.total_pagar as cargo, 0 as abono, 'VENTA' as concepto
+            SELECT h.fecha_emision as fecha, COALESCE(cat.description, h.tipo_documento) as tipo, COALESCE(${dteLatestColSql('h', 'numero_control')}, h.id) as numero,
+                   h.total_pagar as cargo, 0 as abono,
+                   CASE WHEN h.tipo_documento = '00' OR h.observaciones LIKE '%SALDO INICIAL%' THEN 'SALDO INICIAL' ELSE 'VENTA' END as concepto
             FROM sales_headers h
+            LEFT JOIN cat_002_tipo_dte cat ON h.tipo_documento = cat.code
             WHERE h.company_id = ? AND h.branch_id = ? AND h.customer_id = ? 
             AND (h.payment_condition = 2 OR h.condicion_operacion = 2) AND h.estado != 'ANULADO'
             AND ${dteValidoExistsSql('h')}
