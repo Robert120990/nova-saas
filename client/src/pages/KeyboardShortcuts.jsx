@@ -37,15 +37,15 @@ const SHORTCUTS = [
         id: 'gas-sync-precio',
         keys: ['Ctrl', 'Alt', 'P'],
         category: 'gas',
-        isSecret: false,
-        badgeType: 'action',
-        badgeLabel: '⚡ Atajo Operativo',
+        isSecret: true,
+        badgeType: 'admin',
+        badgeLabel: '🔒 Exclusivo SuperAdmin',
         title: 'Actualizar Precios de Combustible',
         module: 'Gasolinera > Cierre de Turno',
         path: '/gas-station/cierre-lecturas',
         description: 'Actualiza automáticamente los precios de combustible de todas las pistolas en el turno con los últimos precios registrados en Ventas > Precios de Combustible.',
-        instructions: 'Presiona Ctrl + Alt + P dentro del formulario de Cierre de Lecturas o en la ventana flotante "Lecturas por Pistola" (o presiona el botón "Actualizar Precios") para sincronizar con los últimos precios vigentes en Ventas y recalcular los montos facturados.',
-        tags: ['gasolinera', 'cierre', 'lecturas', 'pistolas', 'mangueras', 'precio', 'combustible', 'ventas', 'actualizar']
+        instructions: 'Solo disponible para usuarios con rol SuperAdmin. Presiona Ctrl + Alt + P dentro del formulario de Cierre de Lecturas o en la ventana flotante "Lecturas por Pistola" para sincronizar con los últimos precios vigentes en Ventas y recalcular los montos facturados.',
+        tags: ['gasolinera', 'cierre', 'lecturas', 'pistolas', 'mangueras', 'precio', 'combustible', 'ventas', 'actualizar', 'superadmin']
     },
     {
         id: 'gas-superadmin-tanks',

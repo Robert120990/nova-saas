@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Fuel, ShieldCheck, Upload, Loader2, X, Zap, Info, RefreshCw } from 'lucide-react';
+import { Fuel, ShieldCheck, Upload, Loader2, X, Zap, Info } from 'lucide-react';
 import Money from '../ui/Money';
 import GasFusionPeriodsModal from './GasFusionPeriodsModal';
 
@@ -9,8 +9,6 @@ const GasReadingsModal = ({
     estado,
     isSuperAdmin,
     editAnterior,
-    onSyncFuelPrices,
-    syncingFuelPrices = false,
     fileInputRef,
     importing,
     handleImportExcel,
@@ -55,21 +53,6 @@ const GasReadingsModal = ({
                         <div className="flex items-center gap-2">
                             {estado !== 'cerrado' && (
                                 <>
-                                    {onSyncFuelPrices && (
-                                        <button
-                                            type="button"
-                                            onClick={onSyncFuelPrices}
-                                            disabled={syncingFuelPrices}
-                                            className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-xl transition-all disabled:opacity-50"
-                                            title="Actualizar precios con los últimos vigentes en Ventas > Precios de Combustible (Ctrl+Alt+P)"
-                                        >
-                                            <RefreshCw size={12} className={`text-emerald-600 ${syncingFuelPrices ? 'animate-spin' : ''}`} />
-                                            {syncingFuelPrices ? 'Actualizando...' : 'Actualizar Precios'}
-                                            <kbd className="hidden sm:inline-block ml-1 px-1 py-0.2 bg-white/70 rounded text-[8px] font-mono border border-emerald-300">
-                                                Ctrl+Alt+P
-                                            </kbd>
-                                        </button>
-                                    )}
                                     {handleImportFusion && (
                                         <button
                                             type="button"

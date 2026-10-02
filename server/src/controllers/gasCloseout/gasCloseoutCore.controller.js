@@ -1253,6 +1253,11 @@ exports.getNextTurno = async (req, res) => {
 
 exports.syncCloseoutFuelPrices = async (req, res) => {
     try {
+        const role = (req.user?.role || '').toLowerCase();
+        if (role !== 'superadmin') {
+            return res.status(403).json({ message: 'Solo los usuarios con rol SuperAdmin pueden sincronizar los precios' });
+        }
+
         const { id } = req.params;
         const [closeouts] = await pool.query(
             `SELECT id, branch_id, estado FROM gas_station_closeouts WHERE id = ? AND company_id = ?`,
