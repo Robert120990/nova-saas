@@ -117,13 +117,8 @@ export default function ProductionBatchesTab({ model }) {
                                                 {b.raw_materials && b.raw_materials.length > 0 && (
                                                     <div className="text-[10px] text-slate-500 mt-0.5 space-y-0.5">
                                                         {(Array.isArray(b.raw_materials) ? b.raw_materials : []).map((m, mi) => (
-                                                            <div key={mi}>
+                                                            <div key={mi} title={Array.isArray(m.tarimas) && m.tarimas.length > 0 ? `Tarimas: ${m.tarimas.map(t => `#${t.tarima_number || 1} (${t.boxes_count || 0}cjs - ${parseFloat(t.quantity_lbs || 0).toFixed(0)}Lbs)`).join(', ')}` : undefined}>
                                                                 <span>{m.egg_type} - {parseFloat(m.quantity_lbs).toFixed(0)} Lbs{m.boxes_count > 0 ? ` (${m.boxes_count} cjs)` : ''}</span>
-                                                                {Array.isArray(m.tarimas) && m.tarimas.length > 0 && (
-                                                                    <div className="text-[9px] text-indigo-600 font-medium pl-1">
-                                                                        Tarimas: {(Array.isArray(m.tarimas) ? m.tarimas : []).map(t => `#${t.tarima_number || 1} (${t.boxes_count || 0}cjs - ${parseFloat(t.quantity_lbs || 0).toFixed(0)}Lbs)`).join(', ')}
-                                                                    </div>
-                                                                )}
                                                             </div>
                                                         ))}
                                                     </div>
