@@ -831,9 +831,9 @@ router.delete('/gas-station/nozzles/:id', nozzleController.deleteNozzle);
 
 // Gas Station - Tanks
 router.get('/gas-station/tanks', tankController.getTanks);
-router.post('/gas-station/tanks', validate(gasTankSchema), tankController.createTank);
-router.put('/gas-station/tanks/:id', validate(gasTankUpdateSchema), tankController.updateTank);
-router.delete('/gas-station/tanks/:id', tankController.deleteTank);
+router.post('/gas-station/tanks', checkPermission('manage_gas_tanks'), validate(gasTankSchema), tankController.createTank);
+router.put('/gas-station/tanks/:id', checkPermission('manage_gas_tanks'), validate(gasTankUpdateSchema), tankController.updateTank);
+router.delete('/gas-station/tanks/:id', checkPermission('manage_gas_tanks'), tankController.deleteTank);
 
 // Gas Station - Closeouts (Cierre de Lecturas)
 router.post('/gas-station/closeouts/init', validate(initCloseoutSchema), gasCloseoutController.initCloseout);

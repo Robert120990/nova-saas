@@ -27,6 +27,10 @@ const Tanks = () => {
         return () => clearTimeout(timer);
     }, [searchTerm]);
 
+    const permissions = user?.permissions || [];
+    const isSuperAdmin = user?.role === 'SuperAdmin';
+    const canManageTanks = isSuperAdmin || permissions.includes('manage_gas_tanks');
+
     const { data: response = { data: [], total: 0, totalPages: 0 }, isLoading } = useQuery({
         queryKey: ['gas-tanks', debouncedSearch, page, user?.branch_id],
         queryFn: async () => (await axios.get('/api/gas-station/tanks', { params: { search: debouncedSearch, page } })).data
@@ -53,13 +57,20 @@ const Tanks = () => {
         onSuccess: () => {
             queryClient.invalidateQueries(['gas-tanks']);
             toast.success('Tanque eliminado');
+        },
+        onError: (error) => {
+            toast.error(error.response?.data?.message || 'Error al eliminar tanque');
         }
     });
 
     const handleDelete = async (id) => {
+        if (!canManageTanks) {
+            toast.error('No tiene privilegios para eliminar tanques');
+            return;
+        }
         const ok = await confirm({
             title: '¿Eliminar tanque?',
-            message: 'Este tanque será eliminado permanentemente.',
+            message: 'Este tanque será eliminado permanentemente. Si existen turnos abiertos, se desvinculará automáticamente.',
             confirmLabel: 'Sí, eliminar',
             variant: 'danger',
         });
@@ -68,6 +79,10 @@ const Tanks = () => {
 
     const handleSubmit = (e) => {
         e.preventDefault();
+        if (!canManageTanks) {
+            toast.error('No tiene privilegios para gestionar tanques');
+            return;
+        }
         const formData = new FormData(e.target);
         const data = Object.fromEntries(formData);
         mutation.mutate(data);
@@ -96,13 +111,15 @@ const Tanks = () => {
                     <h2 className="text-xl font-bold text-slate-900">Tanques</h2>
                     <p className="text-slate-500 text-[11px] font-medium">Gasolinera — Catálogos</p>
                 </div>
-                <button
-                    onClick={() => { setSelectedItem(null); setIsModalOpen(true); }}
-                    className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-1.5 rounded-xl font-bold text-sm transition-all shadow-lg shadow-indigo-600/20 active:scale-95"
-                >
-                    <Plus size={20}/>
-                    <span>Nuevo Tanque</span>
-                </button>
+                {canManageTanks && (
+                    <button
+                        onClick={() => { setSelectedItem(null); setIsModalOpen(true); }}
+                        className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-1.5 rounded-xl font-bold text-sm transition-all shadow-lg shadow-indigo-600/20 active:scale-95"
+                    >
+                        <Plus size={20}/>
+                        <span>Nuevo Tanque</span>
+                    </button>
+                )}
             </div>
 
             <div className="relative max-w-sm">
@@ -134,8 +151,14 @@ const Tanks = () => {
                             <td className="px-3 py-1 text-xs font-medium text-slate-700">{parseFloat(item.reserva).toFixed(2)}</td>
                             <td className="px-3 py-1 text-xs font-medium text-slate-700">{getFuelTypeLabel(item.tipo_combustible)}</td>
                             <td className="px-3 py-1 flex gap-1">
-                                <button onClick={() => handleEdit(item)} className="p-1 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Edit size={15}/></button>
-                                <button onClick={() => handleDelete(item.id)} className="p-1 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={15}/></button>
+                                {canManageTanks ? (
+                                    <>
+                                        <button onClick={() => handleEdit(item)} className="p-1 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" title="Editar tanque"><Edit size={15}/></button>
+                                        <button onClick={() => handleDelete(item.id)} className="p-1 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Eliminar tanque"><Trash2 size={15}/></button>
+                                    </>
+                                ) : (
+                                    <span className="text-slate-300 text-xs">—</span>
+                                )}
                             </td>
                         </tr>
                     )}

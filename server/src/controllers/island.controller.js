@@ -27,7 +27,8 @@ exports.getIslands = async (req, res) => {
 
 exports.createIsland = async (req, res) => {
     try {
-        const data = { ...req.body, company_id: req.company_id, branch_id: req.user.branch_id };
+        const branchId = req.body.branch_id || (req.headers['x-branch-id'] ? parseInt(req.headers['x-branch-id']) : null) || req.branch_id || req.user?.branch_id || null;
+        const data = { ...req.body, company_id: req.company_id, branch_id: branchId };
         const [result] = await pool.query(`INSERT INTO ${TABLE} SET ?`, [data]);
         res.status(201).json({ id: result.insertId, ...data });
     } catch (error) {
@@ -39,7 +40,17 @@ exports.createIsland = async (req, res) => {
 exports.updateIsland = async (req, res) => {
     try {
         const { id } = req.params;
-        await pool.query(`UPDATE ${TABLE} SET ? WHERE id = ? AND company_id = ? AND branch_id = ?`, [req.body, id, req.company_id, req.user.branch_id]);
+        const isSuperAdmin = req.user?.role === 'SuperAdmin' || req.user?.role?.toLowerCase() === 'superadmin';
+        let where = 'WHERE id = ? AND company_id = ?';
+        let params = [req.body, id, req.company_id];
+        if (!isSuperAdmin) {
+            const targetBranchId = req.headers['x-branch-id'] ? parseInt(req.headers['x-branch-id']) : (req.branch_id || req.user?.branch_id);
+            if (targetBranchId) {
+                where += ' AND (branch_id = ? OR branch_id IS NULL)';
+                params.push(targetBranchId);
+            }
+        }
+        await pool.query(`UPDATE ${TABLE} SET ? ${where}`, params);
         res.json({ message: 'Isla actualizada' });
     } catch (error) {
         if (error.code === 'ER_DUP_ENTRY') return res.status(400).json({ message: 'Ya existe una isla con ese código' });
@@ -50,7 +61,17 @@ exports.updateIsland = async (req, res) => {
 exports.deleteIsland = async (req, res) => {
     try {
         const { id } = req.params;
-        await pool.query(`DELETE FROM ${TABLE} WHERE id = ? AND company_id = ? AND branch_id = ?`, [id, req.company_id, req.user.branch_id]);
+        const isSuperAdmin = req.user?.role === 'SuperAdmin' || req.user?.role?.toLowerCase() === 'superadmin';
+        let where = 'WHERE id = ? AND company_id = ?';
+        let params = [id, req.company_id];
+        if (!isSuperAdmin) {
+            const targetBranchId = req.headers['x-branch-id'] ? parseInt(req.headers['x-branch-id']) : (req.branch_id || req.user?.branch_id);
+            if (targetBranchId) {
+                where += ' AND (branch_id = ? OR branch_id IS NULL)';
+                params.push(targetBranchId);
+            }
+        }
+        await pool.query(`DELETE FROM ${TABLE} ${where}`, params);
         res.json({ message: 'Isla eliminada' });
     } catch (error) {
         res.status(500).json({ message: 'Error al eliminar isla' });

@@ -461,10 +461,10 @@ REGLAS DE MULTI-TENENCIA:
 ### gas_station_closeout_readings (Lecturas de pistolas en cierre)
 - id, closeout_id, nozzle_id, product_id
 - codigo_pistola, codigo_producto, descripcion_producto, precio DECIMAL
-- lectura_anterior, lectura_actual, calibracion, diferencia, monto DECIMAL
+- lectura_anterior, lectura_actual, calibracion, diferencia DECIMAL(14,3), monto DECIMAL(12,2)
 
 ### gas_station_closeout_tank_readings (Lecturas de tanques)
-- id, closeout_id, tank_id
+- id, closeout_id, tank_id (nullable)
 - codigo_tanque, descripcion_tanque
 - lectura_anterior, recarga, lectura_actual, diferencia DECIMAL
 
