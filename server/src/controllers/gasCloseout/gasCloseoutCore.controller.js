@@ -1251,5 +1251,80 @@ exports.getNextTurno = async (req, res) => {
     }
 };
 
-// === Print Full Closeout Data ===
+exports.syncCloseoutFuelPrices = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const [closeouts] = await pool.query(
+            `SELECT id, branch_id, estado FROM gas_station_closeouts WHERE id = ? AND company_id = ?`,
+            [id, req.company_id]
+        );
+        if (closeouts.length === 0) {
+            return res.status(404).json({ message: 'Cierre no encontrado' });
+        }
+        const closeout = closeouts[0];
+        if (closeout.estado === 'cerrado') {
+            return res.status(400).json({ message: 'No se pueden actualizar los precios de un turno cerrado' });
+        }
+
+        const branchId = closeout.branch_id || req.user?.branch_id || null;
+
+        // Obtener lecturas del cierre junto con el último precio vigente ingresado en Ventas > Precios de Combustible
+        const [readings] = await pool.query(`
+            SELECT r.id, r.nozzle_id, r.product_id, r.codigo_pistola, r.codigo_producto,
+                   r.lectura_actual, r.lectura_anterior, r.calibracion,
+                   r.precio as precio_anterior,
+                   COALESCE(pbp.precio_unitario, 0) as nuevo_precio
+            FROM gas_station_closeout_readings r
+            LEFT JOIN product_branch_prices pbp ON r.product_id = pbp.product_id AND pbp.branch_id = ?
+            WHERE r.closeout_id = ?
+            ORDER BY CAST(r.codigo_pistola AS UNSIGNED), r.codigo_pistola ASC
+        `, [branchId, id]);
+
+        if (readings.length === 0) {
+            return res.status(404).json({ message: 'No hay lecturas registradas para este turno' });
+        }
+
+        const updatedReadings = [];
+        let changedCount = 0;
+
+        for (const r of readings) {
+            const nuevoPrecio = parseFloat(r.nuevo_precio) || 0;
+            const numActual = parseFloat(r.lectura_actual) || 0;
+            const numAnt = parseFloat(r.lectura_anterior) || 0;
+            const numCalib = parseFloat(r.calibracion) || 0;
+            const diferencia = Math.round((numActual - numAnt - numCalib) * 1000) / 1000;
+            const nuevoMonto = Math.round(diferencia * nuevoPrecio * 100) / 100;
+
+            if (parseFloat(r.precio_anterior) !== nuevoPrecio) {
+                changedCount++;
+            }
+
+            await pool.query(`
+                UPDATE gas_station_closeout_readings
+                SET precio = ?, diferencia = ?, monto = ?
+                WHERE id = ? AND closeout_id = ?
+            `, [nuevoPrecio, diferencia, nuevoMonto, r.id, id]);
+
+            updatedReadings.push({
+                id: r.id,
+                nozzle_id: r.nozzle_id,
+                product_id: r.product_id,
+                precio: nuevoPrecio,
+                diferencia,
+                monto: nuevoMonto
+            });
+        }
+
+        res.json({
+            message: changedCount > 0
+                ? `Precios actualizados con éxito desde Ventas: ${changedCount} pistola(s) sincronizada(s)`
+                : 'Los precios de las pistolas ya coinciden con los últimos vigentes en Ventas',
+            changedCount,
+            readings: updatedReadings
+        });
+    } catch (error) {
+        console.error('Error in syncCloseoutFuelPrices:', error);
+        res.status(500).json({ message: 'Error al sincronizar precios de combustible' });
+    }
+};
 

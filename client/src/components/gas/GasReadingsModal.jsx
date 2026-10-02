@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { Fuel, ShieldCheck, Upload, Loader2, X, Zap, Info, DollarSign } from 'lucide-react';
-import Money, { MoneyInput } from '../ui/Money';
+import { Fuel, ShieldCheck, Upload, Loader2, X, Zap, Info, RefreshCw } from 'lucide-react';
+import Money from '../ui/Money';
 import GasFusionPeriodsModal from './GasFusionPeriodsModal';
 
 const GasReadingsModal = ({
@@ -9,8 +9,8 @@ const GasReadingsModal = ({
     estado,
     isSuperAdmin,
     editAnterior,
-    editPrecio = false,
-    setEditPrecio,
+    onSyncFuelPrices,
+    syncingFuelPrices = false,
     fileInputRef,
     importing,
     handleImportExcel,
@@ -51,24 +51,23 @@ const GasReadingsModal = ({
                                     <ShieldCheck size={11} /> Edición inicial (SuperAdmin)
                                 </span>
                             )}
-                            {editPrecio && (
-                                <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 border border-emerald-300 px-2 py-0.5 rounded-full flex items-center gap-1">
-                                    <DollarSign size={11} /> Edición de precios
-                                </span>
-                            )}
                         </h3>
                         <div className="flex items-center gap-2">
                             {estado !== 'cerrado' && (
                                 <>
-                                    {setEditPrecio && (
+                                    {onSyncFuelPrices && (
                                         <button
                                             type="button"
-                                            onClick={() => setEditPrecio(prev => !prev)}
-                                            className={`flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold rounded-xl border transition-all ${editPrecio ? 'bg-emerald-100 text-emerald-800 border-emerald-300 shadow-sm' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border-emerald-200'}`}
-                                            title="Editar precios por pistola (Ctrl+Alt+P)"
+                                            onClick={onSyncFuelPrices}
+                                            disabled={syncingFuelPrices}
+                                            className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-xl transition-all disabled:opacity-50"
+                                            title="Actualizar precios con los últimos vigentes en Ventas > Precios de Combustible (Ctrl+Alt+P)"
                                         >
-                                            <DollarSign size={12} className={editPrecio ? 'text-emerald-700' : 'text-emerald-600'} />
-                                            {editPrecio ? 'Precios (Activo)' : 'Cambiar Precios'}
+                                            <RefreshCw size={12} className={`text-emerald-600 ${syncingFuelPrices ? 'animate-spin' : ''}`} />
+                                            {syncingFuelPrices ? 'Actualizando...' : 'Actualizar Precios'}
+                                            <kbd className="hidden sm:inline-block ml-1 px-1 py-0.2 bg-white/70 rounded text-[8px] font-mono border border-emerald-300">
+                                                Ctrl+Alt+P
+                                            </kbd>
                                         </button>
                                     )}
                                     {handleImportFusion && (
@@ -111,7 +110,7 @@ const GasReadingsModal = ({
                                         <tr className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">
                                             <th className="px-1.5 py-1 w-16 bg-slate-50 border-b border-slate-100">Pistola</th>
                                             <th className="px-1.5 py-1 max-w-[120px] bg-slate-50 border-b border-slate-100">Producto</th>
-                                            <th className={`px-1.5 py-1 text-right w-20 bg-slate-50 border-b border-slate-100 ${editPrecio ? 'text-emerald-700' : ''}`}>Precio{editPrecio && '*'}</th>
+                                            <th className="px-1.5 py-1 text-right w-16 bg-slate-50 border-b border-slate-100">Precio</th>
                                             <th className={`px-1.5 py-1 text-right w-32 bg-slate-50 border-b border-slate-100 ${editAnterior && isSuperAdmin ? 'text-amber-600' : ''}`}>Lect. Ant{editAnterior && isSuperAdmin && '*'}</th>
                                             <th className="px-1.5 py-1 text-right w-32 bg-slate-50 border-b border-slate-100">Lect. Actual</th>
                                             <th className="px-1.5 py-1 text-right w-24 bg-slate-50 border-b border-slate-100">Calibr</th>
@@ -130,22 +129,7 @@ const GasReadingsModal = ({
                                                         <span className="font-medium text-slate-800">{r.codigo_producto}</span>
                                                         <span className="text-[10px] text-slate-400 ml-1">— {r.descripcion_producto}</span>
                                                     </td>
-                                                    <td className="px-1.5 py-0.5 text-right font-mono" data-label="Precio">
-                                                        {editPrecio && estado !== 'cerrado' ? (
-                                                            <MoneyInput
-                                                                ref={el => { if (inputRefs?.current) inputRefs.current[`precio-${r.nozzle_id}`] = el; }}
-                                                                step="0.001"
-                                                                value={r.precio ?? ''}
-                                                                onChange={(e) => handleReadingChange(r.nozzle_id, 'precio', e.target.value)}
-                                                                onBlur={() => handleReadingBlur(r.id, r.nozzle_id)}
-                                                                onKeyDown={(e) => handleKeyDown(e, idx, 'precio')}
-                                                                onFocus={(e) => e.target.select()}
-                                                                className={`${inputCls} ml-auto w-16 text-right font-mono font-bold text-emerald-700 bg-emerald-50/70 border-emerald-300`}
-                                                            />
-                                                        ) : (
-                                                            <span className="text-slate-700 whitespace-nowrap"><Money value={r.precio} /></span>
-                                                        )}
-                                                    </td>
+                                                    <td className="px-1.5 py-0.5 text-right font-mono text-slate-700 whitespace-nowrap" data-label="Precio"><Money value={r.precio} /></td>
                                                     <td className="px-1.5 py-0.5 text-right" data-label="Lect. Ant.">
                                                         {editAnterior && isSuperAdmin ? (
                                                             <input

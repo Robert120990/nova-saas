@@ -110,7 +110,7 @@ const GasCloseout = () => {
     const [despachadorSelectValue, setDespachadorSelectValue] = useState('');
     const [showReadingsModal, setShowReadingsModal] = useState(false);
     const [editAnterior, setEditAnterior] = useState(false);
-    const [editPrecio, setEditPrecio] = useState(false);
+    const handleSyncFuelPricesRef = useRef(null);
     const [showGastosModal, setShowGastosModal] = useState(false);
     const [gastos, setGastos] = useState([]);
     const [expenseCategories, setExpenseCategories] = useState([]);
@@ -208,15 +208,9 @@ const GasCloseout = () => {
             }
             if (e.ctrlKey && e.altKey && e.key?.toLowerCase() === 'p') {
                 e.preventDefault();
-                setEditPrecio(prev => {
-                    const next = !prev;
-                    if (next) {
-                        toast.info('Edición de precios por pistola activada');
-                    } else {
-                        toast.info('Edición de precios desactivada');
-                    }
-                    return next;
-                });
+                if (handleSyncFuelPricesRef.current) {
+                    handleSyncFuelPricesRef.current();
+                }
             }
         };
         window.addEventListener('keydown', handler);
@@ -604,6 +598,44 @@ const GasCloseout = () => {
             toast.error(error.response?.data?.message || 'Error al importar lecturas');
         }
     });
+
+    const syncFuelPricesMutation = useMutation({
+        mutationFn: () => axios.post(`/api/gas-station/closeouts/${closeoutId}/sync-fuel-prices`),
+        onSuccess: (res) => {
+            if (res.data?.readings) {
+                setReadings(prev => prev.map(r => {
+                    const u = res.data.readings.find(x => x.id === r.id);
+                    if (u) {
+                        return {
+                            ...r,
+                            precio: u.precio,
+                            diferencia: u.diferencia,
+                            monto: u.monto
+                        };
+                    }
+                    return r;
+                }));
+            }
+            queryClient.invalidateQueries({ queryKey: ['gas-closeouts'] });
+            toast.success(res.data?.message || 'Precios actualizados con éxito desde Ventas');
+        },
+        onError: (error) => {
+            toast.error(error.response?.data?.message || 'Error al actualizar precios de combustible');
+        }
+    });
+
+    const handleSyncFuelPrices = () => {
+        if (!closeoutId) {
+            toast.error('No hay un turno seleccionado');
+            return;
+        }
+        if (estado === 'cerrado') {
+            toast.error('No se pueden actualizar precios en un turno cerrado');
+            return;
+        }
+        syncFuelPricesMutation.mutate();
+    };
+    handleSyncFuelPricesRef.current = handleSyncFuelPrices;
 
     const handleImportExcel = (file) => {
         if (!file) return;
@@ -1987,10 +2019,9 @@ const GasCloseout = () => {
             const numActual = parseFloat(field === 'lectura_actual' ? value : updated.lectura_actual) || 0;
             const numAnt = parseFloat(field === 'lectura_anterior' ? value : updated.lectura_anterior) || 0;
             const numCalib = parseFloat(field === 'calibracion' ? value : updated.calibracion) || 0;
-            const numPrecio = parseFloat(field === 'precio' ? value : updated.precio) || 0;
             const diff = Math.round((numActual - numAnt - numCalib) * 1000) / 1000;
             updated.diferencia = diff;
-            updated.monto = Math.round(diff * numPrecio * 100) / 100;
+            updated.monto = Math.round(diff * (parseFloat(updated.precio) || 0) * 100) / 100;
             return updated;
         }));
     };
@@ -2005,9 +2036,6 @@ const GasCloseout = () => {
         if (isSuperAdmin && editAnterior) {
             payload.lectura_anterior = parseFloat(r.lectura_anterior) || 0;
         }
-        if (editPrecio) {
-            payload.precio = parseFloat(r.precio) || 0;
-        }
         updateMutation.mutate({
             readingId,
             data: payload
@@ -2019,16 +2047,6 @@ const GasCloseout = () => {
             e.preventDefault();
             const currentReading = readings[index];
             if (!currentReading) return;
-
-            if (field === 'precio') {
-                const nextReading = readings[index + 1];
-                if (nextReading) {
-                    const nextKey = `precio-${nextReading.nozzle_id}`;
-                    const nextEl = inputRefs.current[nextKey];
-                    if (nextEl) nextEl.focus();
-                }
-                return;
-            }
 
             if (field === 'lectura_anterior') {
                 const actualKey = `lectura_actual-${currentReading.nozzle_id}`;
@@ -2800,7 +2818,7 @@ const GasCloseout = () => {
                                             <button
                                                 key={btn.key}
                                                 onClick={() => {
-                                                    if (isLectura) { setShowReadingsModal(true); setEditAnterior(false); setEditPrecio(false); }
+                                                    if (isLectura) { setShowReadingsModal(true); setEditAnterior(false); }
                                                     if (isGastos) handleOpenGastos();
                                                     if (btn.key === 'tanques') handleOpenTanques();
                                                     if (isRemesas) handleOpenRemesas();
@@ -2838,12 +2856,12 @@ const GasCloseout = () => {
 
                 <GasReadingsModal
                     isOpen={showReadingsModal}
-                    onClose={() => { setShowReadingsModal(false); setEditAnterior(false); setEditPrecio(false); }}
+                    onClose={() => { setShowReadingsModal(false); setEditAnterior(false); }}
                     estado={estado}
                     isSuperAdmin={isSuperAdmin}
                     editAnterior={editAnterior}
-                    editPrecio={editPrecio}
-                    setEditPrecio={setEditPrecio}
+                    onSyncFuelPrices={handleSyncFuelPrices}
+                    syncingFuelPrices={syncFuelPricesMutation.isPending}
                     fileInputRef={fileInputRef}
                     importing={importing}
                     handleImportExcel={handleImportExcel}
