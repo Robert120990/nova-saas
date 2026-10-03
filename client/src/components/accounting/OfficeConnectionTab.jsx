@@ -3,20 +3,28 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { Save, CheckCircle2, XCircle, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useDirtyTracker } from '../../hooks/useDirtyTracker';
+import { useAuth } from '../../context/AuthContext';
 
 const inputCls = "w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all";
 const labelCls = "text-[11px] font-bold text-slate-500 uppercase block mb-2";
 
 const OfficeConnectionTab = () => {
+    const { user } = useAuth();
+    const companyId = user?.company_id;
+    const headers = { 'x-company-id': companyId };
     const queryClient = useQueryClient();
     const dirty = useRef(false);
+    const [hasDraft, setHasDraft] = useState(false);
+    useDirtyTracker('accounting-office', hasDraft);
     const [showPassword, setShowPassword] = useState(false);
     const [testResult, setTestResult] = useState(null);
     const [form, setForm] = useState({ host: '', port: '3306', user: '', password: '', database: '' });
 
-    const { data: config, isLoading } = useQuery({
-        queryKey: ['office-connection'],
-        queryFn: async () => (await axios.get('/api/accounting/office/connection')).data,
+    const { data: config, isLoading, isError } = useQuery({
+        queryKey: ['office-connection', companyId],
+        queryFn: async ({ signal }) => (await axios.get('/api/accounting/office/connection', { headers, signal })).data,
+        enabled: !!companyId,
     });
 
     useEffect(() => {
@@ -31,12 +39,13 @@ const OfficeConnectionTab = () => {
         }
     }, [config]);
 
-    const set = (key) => (e) => { dirty.current = true; setForm({ ...form, [key]: e.target.value }); };
+    const set = (key) => (e) => { dirty.current = true; setHasDraft(true); setForm({ ...form, [key]: e.target.value }); };
 
     const saveMutation = useMutation({
-        mutationFn: (data) => axios.post('/api/accounting/office/connection', data),
+        mutationFn: (data) => axios.post('/api/accounting/office/connection', data, { headers }),
         onSuccess: async () => {
             dirty.current = false;
+            setHasDraft(false);
             await queryClient.invalidateQueries({ queryKey: ['office-connection'] });
             toast.success('Configuración de conexión guardada');
         },
@@ -44,7 +53,7 @@ const OfficeConnectionTab = () => {
     });
 
     const testMutation = useMutation({
-        mutationFn: (data) => axios.post('/api/accounting/office/test', data),
+        mutationFn: (data) => axios.post('/api/accounting/office/test', data, { headers }),
         onSuccess: (res) => {
             setTestResult({ success: true, message: res.data.message });
             toast.success(res.data.message);
@@ -57,6 +66,7 @@ const OfficeConnectionTab = () => {
     });
 
     const handleSave = () => {
+        if (isLoading || isError || saveMutation.isPending) return;
         if (!form.host || !form.user || !form.database) {
             toast.error('Servidor, usuario y nombre de base de datos son obligatorios');
             return;
@@ -70,7 +80,7 @@ const OfficeConnectionTab = () => {
     };
 
     return (
-        <fieldset disabled={saveMutation.isPending} className="bg-white rounded-2xl border shadow-sm p-6 space-y-6">
+        <fieldset disabled={isLoading || isError || saveMutation.isPending} className="bg-white rounded-2xl border shadow-sm p-6 space-y-6">
             <div>
                 <span className="text-[10px] font-black uppercase text-slate-400 block mb-1">Conexión a Oficina</span>
                 <p className="text-[11px] text-slate-500">
@@ -79,7 +89,9 @@ const OfficeConnectionTab = () => {
                 </p>
             </div>
 
-            {isLoading ? (
+            {isError && !config ? (
+                <p className="text-sm text-rose-600">No se pudo cargar la conexión guardada. Recarga antes de editar.</p>
+            ) : isLoading ? (
                 <div className="text-center py-10 text-slate-400">Cargando configuración...</div>
             ) : (
                 <>

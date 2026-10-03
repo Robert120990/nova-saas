@@ -3,36 +3,50 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { Settings, SlidersHorizontal, BookOpen, Database } from 'lucide-react';
 import { toast } from 'sonner';
-import { OfficeConnectionTab, AccountingGeneralTab, AccountingDefaultAccountsTab } from '../components/accounting';
+import { OfficeConnectionTab, AccountingGeneralTab, AccountingDefaultAccountsTab, AccountingSettingsConflict } from '../components/accounting';
 import { unwrapList } from '../utils/apiUtils';
 import { useDirtyTracker } from '../hooks/useDirtyTracker';
+import { useAuth } from '../context/AuthContext';
 const RESERVED_KEYS = ['resultado_ejercicio_id', 'contador_nombre', 'contador_dui', 'auditor_nombre', 'auditor_dui', 'oficina_db_host', 'oficina_db_port', 'oficina_db_user', 'oficina_db_password', 'oficina_db_name'];
+const GENERAL_KEYS = RESERVED_KEYS.slice(0, 5);
 const AccountingSettings = () => {
+    const { user } = useAuth();
+    const companyId = user?.company_id;
+    const headers = { 'x-company-id': companyId };
     const queryClient = useQueryClient();
     const [activeTab, setActiveTab] = useState('general');
+    const [officeVisited, setOfficeVisited] = useState(false);
     const generalDirty = useRef(false);
     const defaultsDirty = useRef(false);
+    const generalSnapshot = useRef({});
+    const defaultsSnapshot = useRef({});
+    const generalRevision = useRef(0);
+    const defaultsRevision = useRef(0);
     const [dirty, setDirty] = useState(false);
+    const [settingsConflict, setSettingsConflict] = useState(null);
     useDirtyTracker('accounting-settings', dirty);
 
     const { data: settings, isLoading, isError } = useQuery({
-        queryKey: ['accounting-settings'],
-        queryFn: async () => (await axios.get('/api/accounting/settings')).data,
+        queryKey: ['accounting-settings', companyId],
+        queryFn: async ({ signal }) => (await axios.get('/api/accounting/settings', { headers, signal })).data,
+        enabled: !!companyId,
     });
 
     const { data: accounts = [] } = useQuery({
-        queryKey: ['accounts'],
-        queryFn: async () => unwrapList(await axios.get('/api/accounting/accounts')),
+        queryKey: ['accounts', companyId],
+        queryFn: async ({ signal }) => unwrapList(await axios.get('/api/accounting/accounts', { headers, signal })),
+        enabled: !!companyId,
     });
 
     const [form, setFormState] = useState({ resultado_ejercicio_id: '', contador_nombre: '', contador_dui: '', auditor_nombre: '', auditor_dui: '' });
     const [defaultAccounts, setDefaultAccountsState] = useState([]);
     const [initialKeys, setInitialKeys] = useState([]);
-    const setForm = (next) => { generalDirty.current = true; setDirty(true); setFormState(next); };
-    const setDefaultAccounts = (next) => { defaultsDirty.current = true; setDirty(true); setDefaultAccountsState(next); };
+    const setForm = (next) => { generalRevision.current += 1; generalDirty.current = true; setDirty(true); setFormState(next); };
+    const setDefaultAccounts = (next) => { defaultsRevision.current += 1; defaultsDirty.current = true; setDirty(true); setDefaultAccountsState(next); };
 
     useEffect(() => {
         if (settings && !generalDirty.current) {
+            generalSnapshot.current = Object.fromEntries(GENERAL_KEYS.map(key => [key, settings[key] ?? null]));
             setFormState({
                 resultado_ejercicio_id: settings.resultado_ejercicio_id || '',
                 contador_nombre: settings.contador_nombre || '',
@@ -46,34 +60,44 @@ const AccountingSettings = () => {
     useEffect(() => {
         if (!settings || defaultsDirty.current) return;
         const rows = Object.entries(settings)
-            .filter(([k]) => !RESERVED_KEYS.includes(k) && !/^PARTIDA_(VENTAS|COMPRAS|CXC|CXP)_/.test(k))
+            .filter(([k]) => !RESERVED_KEYS.includes(k) && !/^PARTIDA_(VENTAS|COMPRAS|CXC|CXP|CIERRE|APERTURA)_/i.test(k))
             .map(([key, value]) => ({ key, account_id: String(value || '') }));
         setDefaultAccountsState(rows);
+        defaultsSnapshot.current = Object.fromEntries(rows.map(row => [row.key, settings[row.key]]));
         setInitialKeys(rows.map(r => r.key));
     }, [settings]);
 
     const saveMutation = useMutation({
-        mutationFn: (data) => axios.post('/api/accounting/settings', { settings: data }),
-        onSuccess: async () => {
-            generalDirty.current = false;
-            setDirty(defaultsDirty.current);
+        mutationFn: ({ revision: _revision, ...data }) => axios.post('/api/accounting/settings', data, { headers }),
+        onSuccess: async (_response, payload) => {
+            generalSnapshot.current = { ...payload.settings };
+            generalDirty.current = generalRevision.current !== payload.revision;
+            setDirty(generalDirty.current || defaultsDirty.current);
             await queryClient.invalidateQueries({ queryKey: ['accounting-settings'] });
             await queryClient.invalidateQueries({ queryKey: ['accounting-generation-config'] });
             toast.success('Configuración guardada');
         },
-        onError: (err) => toast.error(err.response?.data?.message || 'Error'),
+        onError: (err) => {
+            if (err.response?.status === 409) setSettingsConflict({ scope: 'general', items: unwrapList(err.response.data.conflicts) });
+            toast.error(err.response?.data?.message || 'Error');
+        },
     });
 
     const saveDefaultsMutation = useMutation({
-        mutationFn: (data) => axios.post('/api/accounting/settings', data),
-        onSuccess: async () => {
-            defaultsDirty.current = false;
-            setDirty(generalDirty.current);
+        mutationFn: ({ revision: _revision, ...data }) => axios.post('/api/accounting/settings', data, { headers }),
+        onSuccess: async (_response, payload) => {
+            defaultsSnapshot.current = { ...payload.settings };
+            setInitialKeys(Object.keys(payload.settings));
+            defaultsDirty.current = defaultsRevision.current !== payload.revision;
+            setDirty(generalDirty.current || defaultsDirty.current);
             await queryClient.invalidateQueries({ queryKey: ['accounting-settings'] });
             await queryClient.invalidateQueries({ queryKey: ['accounting-generation-config'] });
             toast.success('Cuentas por defecto guardadas');
         },
-        onError: (err) => toast.error(err.response?.data?.message || 'Error'),
+        onError: (err) => {
+            if (err.response?.status === 409) setSettingsConflict({ scope: 'defaults', items: unwrapList(err.response.data.conflicts) });
+            toast.error(err.response?.data?.message || 'Error');
+        },
     });
 
     const patrimAccounts = (Array.isArray(accounts) ? accounts : []).filter(a => a.type_name?.toLowerCase().includes('patrimonio'));
@@ -95,7 +119,7 @@ const AccountingSettings = () => {
         for (const row of defaultAccounts) {
             const k = row.key.trim();
             if (!k) return 'La clave no puede estar vacía';
-            if (RESERVED_KEYS.includes(k) || /^PARTIDA_(VENTAS|COMPRAS|CXC|CXP)_/.test(k)) return `La clave ${k} está reservada`;
+            if (RESERVED_KEYS.includes(k) || /^PARTIDA_(VENTAS|COMPRAS|CXC|CXP|CIERRE|APERTURA)_/i.test(k)) return `La clave ${k} está reservada`;
             if (keys.has(k)) return `Clave duplicada: ${k}`;
             keys.add(k);
             if (!row.account_id) return `Debe seleccionar una cuenta para la clave ${k}`;
@@ -104,13 +128,45 @@ const AccountingSettings = () => {
     };
 
     const saveDefaultAccounts = () => {
+        if (settingsConflict?.scope === 'defaults' || saveDefaultsMutation.isPending) return;
         const error = validateRows();
         if (error) { toast.error(error); return; }
         const currentKeys = defaultAccounts.map(r => r.key.trim());
         const settingsObj = {};
         defaultAccounts.forEach(r => { settingsObj[r.key.trim()] = r.account_id; });
         const remove = initialKeys.filter(k => !currentKeys.includes(k));
-        saveDefaultsMutation.mutate({ settings: settingsObj, remove });
+        const expected = Object.fromEntries([...new Set([...currentKeys, ...remove])].map(key => [key, defaultsSnapshot.current[key] ?? null]));
+        saveDefaultsMutation.mutate({ settings: settingsObj, remove, expected_settings: expected, revision: defaultsRevision.current });
+    };
+
+    const saveGeneralSettings = () => {
+        if (settingsConflict?.scope === 'general' || saveMutation.isPending) return;
+        saveMutation.mutate({ settings: { ...form }, expected_settings: { ...generalSnapshot.current }, revision: generalRevision.current });
+    };
+
+    const resolveSettingsConflict = (discard) => {
+        const general = settingsConflict.scope === 'general';
+        const snapshot = general ? generalSnapshot : defaultsSnapshot;
+        const latest = { ...snapshot.current };
+        settingsConflict.items.forEach(item => {
+            if (item.current === null && !general) delete latest[item.key];
+            else latest[item.key] = item.current;
+        });
+        snapshot.current = latest;
+        if (discard) {
+            if (general) {
+                setFormState(Object.fromEntries(GENERAL_KEYS.map(key => [key, latest[key] ?? ''])));
+                generalDirty.current = false;
+                generalRevision.current += 1;
+            } else {
+                setDefaultAccountsState(Object.entries(latest).map(([key, value]) => ({ key, account_id: String(value ?? '') })));
+                setInitialKeys(Object.keys(latest));
+                defaultsDirty.current = false;
+                defaultsRevision.current += 1;
+            }
+            setDirty(generalDirty.current || defaultsDirty.current);
+        }
+        setSettingsConflict(null);
     };
 
     const tabs = [
@@ -131,7 +187,7 @@ const AccountingSettings = () => {
                     <button
                         key={t.id}
                         type="button"
-                        onClick={() => setActiveTab(t.id)}
+                        onClick={() => { setActiveTab(t.id); if (t.id === 'oficina') setOfficeVisited(true); }}
                         className={`px-6 md:px-8 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${
                             activeTab === t.id ? 'bg-white text-indigo-600 shadow-xl scale-[1.02]' : 'text-slate-400 hover:text-slate-600'
                         }`}
@@ -142,13 +198,18 @@ const AccountingSettings = () => {
                 ))}
             </div>
 
-            {isError ? <p className="text-rose-600">No se pudo cargar la configuración. Recarga la pantalla antes de editar.</p> : isLoading ? (
+            <AccountingSettingsConflict conflict={settingsConflict} accounts={accounts}
+                draft={settingsConflict?.scope === 'general' ? form : Object.fromEntries(defaultAccounts.map(row => [row.key.trim(), row.account_id]))}
+                onDiscard={() => resolveSettingsConflict(true)} onKeep={() => resolveSettingsConflict(false)} />
+
+            {isError && settings && <p className="text-rose-600">No se pudo actualizar la configuración. Se conservaron tus cambios pendientes.</p>}
+            {isError && !settings ? <p className="text-rose-600">No se pudo cargar la configuración. Recarga la pantalla antes de editar.</p> : isLoading ? (
                 <div className="text-center py-12 text-slate-400">Cargando...</div>
             ) : (
                 <>
-                    {activeTab === 'general' && <AccountingGeneralTab form={form} setForm={setForm} patrimAccounts={patrimAccounts} saveMutation={saveMutation} />}
+                    {activeTab === 'general' && <AccountingGeneralTab form={form} setForm={setForm} patrimAccounts={patrimAccounts} saveMutation={saveMutation} onSave={saveGeneralSettings} />}
 {activeTab === 'cuentas' && <AccountingDefaultAccountsTab defaultAccounts={defaultAccounts} setDefaultAccounts={setDefaultAccounts} updateRow={updateRow} removeRow={removeRow} accounts={accounts} addRow={addRow} saveDefaultAccounts={saveDefaultAccounts} saveDefaultsMutation={saveDefaultsMutation} />}
-{activeTab === 'oficina' && <OfficeConnectionTab />}
+{officeVisited && <div hidden={activeTab !== 'oficina'}><OfficeConnectionTab /></div>}
                 </>
             )}
         </div>

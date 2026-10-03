@@ -9,6 +9,7 @@ import { useDirtyTracker } from '../../../hooks/useDirtyTracker';
 
 import { getTodayString } from '../../../utils/dateUtils';
 import { unwrapList } from '../../../utils/apiUtils';
+import { useAuth } from '../../../context/AuthContext';
 
 const KEY_LABELS = {
     CUENTA_CAJA: 'Caja General',
@@ -42,6 +43,9 @@ const AccountPicker = ({ value, onChange, accounts }) => (
 const KIND_LABELS = { ventas: 'Ventas', compras: 'Compras', cxc: 'CxC', cxp: 'CxP' };
 
 const AccountingGenerationTab = ({ kind, onBusyChange }) => {
+    const { user } = useAuth();
+    const companyId = user?.company_id;
+    const headers = { 'x-company-id': companyId };
     const queryClient = useQueryClient();
     const [date, setDate] = useState(getTodayString);
     const [detailCredit, setDetailCredit] = useState(false);
@@ -49,19 +53,21 @@ const AccountingGenerationTab = ({ kind, onBusyChange }) => {
     const [lines, setLines] = useState([]);
 
     const previewContext = useRef();
-    previewContext.current = { kind, date, detail_credit: detailCredit };
-    useEffect(() => { setPreviewData(null); setLines([]); }, [kind]);
+    previewContext.current = { companyId, kind, date, detail_credit: detailCredit };
+    useEffect(() => { setPreviewData(null); setLines([]); }, [kind, companyId]);
 
-    useDirtyTracker('generar', lines.length > 0 && previewData);
+    useDirtyTracker('generar', lines.length > 0 && !!previewData && !previewData.already_generated);
 
     const { data: config } = useQuery({
-        queryKey: ['accounting-generation-config'],
-        queryFn: async () => (await axios.get('/api/accounting/generation/config')).data,
+        queryKey: ['accounting-generation-config', companyId],
+        queryFn: async ({ signal }) => (await axios.get('/api/accounting/generation/config', { headers, signal })).data,
+        enabled: !!companyId,
     });
 
     const { data: accounts = [] } = useQuery({
-        queryKey: ['accounts'],
-        queryFn: async () => unwrapList(await axios.get('/api/accounting/accounts')),
+        queryKey: ['accounts', companyId],
+        queryFn: async ({ signal }) => unwrapList(await axios.get('/api/accounting/accounts', { headers, signal })),
+        enabled: !!companyId,
     });
     const entryAccounts = useMemo(() =>
         accounts.filter(a => (a.allows_entries === 1 || a.allows_entries === true) && a.active !== 0)
@@ -69,7 +75,7 @@ const AccountingGenerationTab = ({ kind, onBusyChange }) => {
     [accounts]);
 
     const previewMutation = useMutation({
-        mutationFn: (payload) => axios.post('/api/accounting/generation/preview', payload),
+        mutationFn: ({ companyId: requestCompany, ...payload }) => axios.post('/api/accounting/generation/preview', payload, { headers: { 'x-company-id': requestCompany } }),
         onSuccess: ({ data }, payload) => {
             if (JSON.stringify(payload) !== JSON.stringify(previewContext.current)) return;
             setPreviewData(data);
@@ -80,14 +86,13 @@ const AccountingGenerationTab = ({ kind, onBusyChange }) => {
     });
 
     const generateMutation = useMutation({
-        mutationFn: () => axios.post('/api/accounting/generation/generate', {
-            kind: previewData.kind, date: previewData.date, lines: (Array.isArray(lines) ? lines : []).map(l => ({ account_id: Number(l.account_id), description: l.description, debit: l.debit, credit: l.credit }))
-        }),
-        onSuccess: ({ data }) => {
+        mutationFn: ({ companyId: requestCompany, ...payload }) => axios.post('/api/accounting/generation/generate', payload, { headers: { 'x-company-id': requestCompany } }),
+        onSuccess: ({ data }, payload) => {
+            if (payload.companyId !== previewContext.current.companyId) return;
             toast.success(`Partida ${data.number} generada`);
             queryClient.invalidateQueries({ queryKey: ['entries'] });
             queryClient.invalidateQueries({ queryKey: ['accounting-correlativos'] });
-            setPreviewData(prev => prev ? { ...prev, already_generated: true } : null);
+            setPreviewData(prev => prev?.kind === payload.kind && prev?.date === payload.date ? { ...prev, already_generated: true } : prev);
         },
         onError: (err) => toast.error(err.response?.data?.message || 'Error al generar'),
     });
@@ -97,7 +102,7 @@ const AccountingGenerationTab = ({ kind, onBusyChange }) => {
         lines.forEach(l => { debit += parseFloat(l.debit) || 0; credit += parseFloat(l.credit) || 0; });
         debit = Math.round(debit * 100) / 100;
         credit = Math.round(credit * 100) / 100;
-        return { debit, credit, balanced: Math.abs(debit - credit) <= 0.01 && debit > 0 };
+        return { debit, credit, balanced: debit === credit && debit > 0 };
     }, [lines]);
 
     const updateLine = (idx, patch) => setLines(rows => rows.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
@@ -115,7 +120,7 @@ const AccountingGenerationTab = ({ kind, onBusyChange }) => {
     const canGenerate = !!previewData && previewData.kind === kind && previewData.date === date && totals.balanced && !busy && !previewData?.already_generated && !!entryTypeId && !generateMutation.isPending;
 
     return (
-        <div className="space-y-6">
+        <fieldset disabled={busy} className="space-y-6 min-w-0">
             {missingForKind.length > 0 && (
                 <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-2xl p-4">
                     <AlertTriangle size={18} className="text-amber-500 shrink-0 mt-0.5" />
@@ -169,7 +174,7 @@ const AccountingGenerationTab = ({ kind, onBusyChange }) => {
                         </span>
                     </label>
                     <button
-                        onClick={() => previewMutation.mutate({ kind, date, detail_credit: detailCredit })}
+                        onClick={() => previewMutation.mutate({ companyId, kind, date, detail_credit: detailCredit })}
                         disabled={busy}
                         className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white px-6 py-2.5 rounded-xl font-bold transition-all text-sm active:scale-95 flex items-center justify-center gap-2"
                     >
@@ -208,7 +213,7 @@ const AccountingGenerationTab = ({ kind, onBusyChange }) => {
                             </span>
                         </div>
                         <div className="overflow-x-auto">
-                            <table className="w-full min-w-[760px]">
+                            <table className="w-full md:min-w-[760px] table-cards">
                                 <thead>
                                     <tr className="bg-slate-50 border-b border-slate-100">
                                         <th className="px-3 py-2.5 text-left text-[9px] font-black uppercase text-slate-400 w-[26%]">Cuenta</th>
@@ -219,22 +224,22 @@ const AccountingGenerationTab = ({ kind, onBusyChange }) => {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {lines.map((l, idx) => (
+                                    {(Array.isArray(lines) ? lines : []).map((l, idx) => (
                                         <tr key={idx} className="border-b border-slate-50 hover:bg-slate-50/60 transition-colors">
-                                            <td className="px-3 py-2">
+                                            <td data-label="Cuenta" className="px-3 py-2">
                                                 <AccountPicker value={l.account_id} onChange={(v) => updateLine(idx, { account_id: v })} accounts={entryAccounts} />
                                             </td>
-                                            <td className="px-3 py-2">
+                                            <td data-label="Descripción" className="px-3 py-2">
                                                 <input value={l.description} onChange={(e) => updateLine(idx, { description: e.target.value.toUpperCase() })} className={inputCls} />
                                             </td>
-                                            <td className="px-3 py-2">
+                                            <td data-label="Debe" className="px-3 py-2">
                                                 <MoneyInput value={l.debit} onChange={(e) => updateLine(idx, { debit: parseFloat(e.target.value) || 0, credit: 0 })} className={inputCls} />
                                             </td>
-                                            <td className="px-3 py-2">
+                                            <td data-label="Haber" className="px-3 py-2">
                                                 <MoneyInput value={l.credit} onChange={(e) => updateLine(idx, { credit: parseFloat(e.target.value) || 0, debit: 0 })} className={inputCls} />
                                             </td>
-                                            <td className="px-3 py-2 text-center">
-                                                <button onClick={() => removeLine(idx)} className="p-1.5 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={15} /></button>
+                                            <td data-label="Acciones" className="px-3 py-2 text-center">
+                                                <button aria-label="Eliminar línea" onClick={() => removeLine(idx)} className="p-1.5 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={15} /></button>
                                             </td>
                                         </tr>
                                     ))}
@@ -262,7 +267,7 @@ const AccountingGenerationTab = ({ kind, onBusyChange }) => {
                             Limpiar
                         </button>
                         <button
-                            onClick={() => generateMutation.mutate()}
+                            onClick={() => generateMutation.mutate({ companyId, kind: previewData.kind, date: previewData.date, lines: (Array.isArray(lines) ? lines : []).map(l => ({ account_id: Number(l.account_id), description: l.description, debit: l.debit, credit: l.credit })) })}
                             disabled={!canGenerate}
                             title={!totals.balanced ? 'El débito y crédito no cuadran' : undefined}
                             className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-8 py-3 rounded-xl font-black uppercase text-sm transition-all active:scale-95 flex items-center justify-center gap-2"
@@ -272,7 +277,7 @@ const AccountingGenerationTab = ({ kind, onBusyChange }) => {
                     </div>
                 </>
             )}
-        </div>
+        </fieldset>
     );
 };
 

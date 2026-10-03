@@ -46,7 +46,7 @@ const AccountingEntryModal = ({ open, onClose, onSubmit, editingEntry, entryType
                                     className="w-full px-2 py-2 bg-white border border-indigo-200 rounded-xl text-[11px] font-bold font-mono outline-none focus:ring-2 focus:ring-indigo-500/20"
                                     onChange={(e) => {
                                         setAccountSearch(e.target.value);
-                                        if (!e.target.value) setSelectedAccountId('');
+                                        setSelectedAccountId('');
                                     }}
                                     onKeyDown={(e) => {
                                         if (e.key === 'Escape') { setAccountSearch(''); setSelectedAccountId(''); }
@@ -104,7 +104,7 @@ const AccountingEntryModal = ({ open, onClose, onSubmit, editingEntry, entryType
                                 const credit = document.getElementById('quick-credit')?.value || '';
                                 if (!acct) return toast.error('Seleccione una cuenta');
                                 if ((!debit || isNaN(parseFloat(debit))) && (!credit || isNaN(parseFloat(credit)))) return toast.error('Ingrese débito o crédito');
-                                setLines([...lines, { account_id: acct, description: desc, debit: debit || '', credit: credit || '' }]);
+                                setLines(rows => [...rows, { account_id: acct, description: desc, debit: debit || '', credit: credit || '' }]);
                                 setSelectedAccountId('');
                                 document.getElementById('quick-account').value = '';
                                 document.getElementById('quick-desc').value = '';

@@ -1,14 +1,18 @@
 const pool = require('../../config/db');
+const numeric = (value) => parseFloat(value) || 0;
 const round2 = (n) => Math.round((parseFloat(n) || 0) * 100) / 100;
 
 function buildLine(lines, accountId, description, amount, side) {
     const amt = round2(Math.abs(amount));
     if (!accountId || amt < 0.005) return;
-    const existing = lines.find(l => l.account_id === accountId && l.description === description);
+    // Las devoluciones revierten el movimiento, sin perder el signo del saldo.
+    const actualSide = amount < 0 ? (side === 'debit' ? 'credit' : 'debit') : side;
+    const oppositeSide = actualSide === 'debit' ? 'credit' : 'debit';
+    const existing = lines.find(l => l.account_id === Number(accountId) && l.description === description && !l[oppositeSide]);
     if (existing) {
-        existing[side] = round2(existing[side] + amt);
+        existing[actualSide] = round2(existing[actualSide] + amt);
     } else {
-        lines.push({ account_id: parseInt(accountId, 10), description, debit: side === 'debit' ? amt : 0, credit: side === 'credit' ? amt : 0 });
+        lines.push({ account_id: parseInt(accountId, 10), description, debit: actualSide === 'debit' ? amt : 0, credit: actualSide === 'credit' ? amt : 0 });
     }
 }
 
@@ -16,7 +20,7 @@ function balanceLines(lines) {
     let debit = 0; let credit = 0;
     lines.forEach(l => { debit += l.debit; credit += l.credit; });
     debit = round2(debit); credit = round2(credit);
-    return { debit, credit, diff: round2(debit - credit), balanced: Math.abs(debit - credit) <= 0.01 };
+    return { debit, credit, diff: round2(debit - credit), balanced: debit === credit };
 }
 
 async function buildVentasPreview(companyId, date, detailCredit, settings) {
@@ -24,7 +28,7 @@ async function buildVentasPreview(companyId, date, detailCredit, settings) {
         `SELECT h.id, h.customer_id, c.nombre AS customer_nombre, c.nrc AS customer_nrc, c.account_id AS customer_account_id,
                 h.tipo_documento, h.condicion_operacion,
                 h.total_gravado, h.total_exento, h.total_nosujetas, h.total_iva,
-                h.fovial, h.cotrans, h.iva_percibido, h.total_pagar
+                h.fovial, h.cotrans, h.iva_percibido, h.iva_retenido, h.total_pagar
          FROM sales_headers h
          LEFT JOIN customers c ON c.id = h.customer_id
          WHERE h.company_id = ? AND DATE(h.fecha_emision) = ? AND UPPER(h.estado) <> 'ANULADO'`,
@@ -56,16 +60,16 @@ async function buildVentasPreview(companyId, date, detailCredit, settings) {
     const totales = { gravadasNetas: 0, exentas: 0, nosujetas: 0, iva: 0, fovial: 0, cotrans: 0, percibido: 0, retenido: 0 };
     headers.forEach(h => {
         const sign = h.tipo_documento === '05' ? -1 : 1;
-        totales.gravadasNetas += sign * parseFloat(h.total_gravado);
-        totales.exentas += sign * parseFloat(h.total_exento);
-        totales.nosujetas += sign * parseFloat(h.total_nosujetas);
-        totales.iva += sign * parseFloat(h.total_iva);
-        totales.fovial += sign * parseFloat(h.fovial);
-        totales.cotrans += sign * parseFloat(h.cotrans);
-        totales.percibido += sign * parseFloat(h.iva_percibido);
-        totales.retenido += sign * parseFloat(h.iva_retenido || 0);
-        if (h.condicion_operacion === 2) {
-            const monto = sign * parseFloat(h.total_pagar);
+        totales.gravadasNetas += sign * numeric(h.total_gravado);
+        totales.exentas += sign * numeric(h.total_exento);
+        totales.nosujetas += sign * numeric(h.total_nosujetas);
+        totales.iva += sign * numeric(h.total_iva);
+        totales.fovial += sign * numeric(h.fovial);
+        totales.cotrans += sign * numeric(h.cotrans);
+        totales.percibido += sign * numeric(h.iva_percibido);
+        totales.retenido += sign * numeric(h.iva_retenido);
+        if (String(h.condicion_operacion) === '2') {
+            const monto = sign * numeric(h.total_pagar);
             creditosTotal += monto;
             if (detailCredit) {
                 const key = h.customer_id || 0;
@@ -99,12 +103,12 @@ async function buildVentasPreview(companyId, date, detailCredit, settings) {
     buildLine(lines, settings.CUENTA_FOVIAL_POR_PAGAR, 'FOVIAL del día', totales.fovial, 'credit');
     buildLine(lines, settings.CUENTA_COTRANS_POR_PAGAR, 'COTRANS del día', totales.cotrans, 'credit');
     buildLine(lines, settings.CUENTA_IVA_PERCIBIDO, 'IVA percibido del día', totales.percibido, 'credit');
-    if (totales.retenido > 0) {
+    if (totales.retenido !== 0) {
         buildLine(lines, settings.CUENTA_IVA_RETENIDO || settings.CUENTA_CLIENTES_CXC, 'IVA retenido por clientes', totales.retenido, 'debit');
     }
 
     const { diff } = balanceLines(lines);
-    if (Math.abs(diff) > 0.01) {
+    if (diff !== 0) {
         buildLine(lines, settings.CUENTA_VENTAS_GRAVADAS, 'Ajuste descuentos/redondeos del día', Math.abs(diff), diff < 0 ? 'debit' : 'credit');
     }
 
@@ -134,13 +138,13 @@ async function buildComprasPreview(companyId, date, detailCredit, settings) {
     const totales = { gravada: 0, exenta: 0, iva: 0, fovial: 0, cotrans: 0 };
     headers.forEach(p => {
         const sign = (p.tipo_documento_id === '05' || p.tipo_documento_id === '06') ? -1 : 1;
-        totales.gravada += sign * parseFloat(p.total_gravada);
-        totales.exenta += sign * (parseFloat(p.total_exenta) + parseFloat(p.total_nosujeta));
-        totales.iva += sign * (parseFloat(p.iva) + parseFloat(p.percepcion));
-        totales.fovial += sign * parseFloat(p.fovial);
-        totales.cotrans += sign * parseFloat(p.cotrans);
-        retenciones += sign * parseFloat(p.retencion);
-        const neto = sign * parseFloat(p.monto_total);
+        totales.gravada += sign * numeric(p.total_gravada);
+        totales.exenta += sign * (numeric(p.total_exenta) + numeric(p.total_nosujeta));
+        totales.iva += sign * (numeric(p.iva) + numeric(p.percepcion));
+        totales.fovial += sign * numeric(p.fovial);
+        totales.cotrans += sign * numeric(p.cotrans);
+        retenciones += sign * numeric(p.retencion);
+        const neto = sign * numeric(p.monto_total);
         if (String(p.condicion_operacion_id) === '2') {
             const key = p.provider_id || 0;
             const prev = porProveedor.get(key) || {
@@ -178,7 +182,7 @@ async function buildComprasPreview(companyId, date, detailCredit, settings) {
     buildLine(lines, settings.CUENTA_IVA_RETENIDO, 'IVA retenido por proveedores', retenciones, 'credit');
 
     const { diff } = balanceLines(lines);
-    if (Math.abs(diff) > 0.01) {
+    if (diff !== 0) {
         buildLine(lines, settings.CUENTA_COMPRAS_GRAVADAS, 'Ajuste redondeos del día', Math.abs(diff), diff < 0 ? 'debit' : 'credit');
     }
 

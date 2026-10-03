@@ -86,12 +86,69 @@ describe('Integridad de contabilidad', () => {
 
     it('impide modificar los marcadores internos desde ajustes', async () => {
         const db = database(async () => { throw new Error('No se debe escribir'); });
+        for (const key of ['PARTIDA_VENTAS_2026-10-01', 'partida_ventas_2026-10-01']) {
+            const result = await invoke(controller('accounting/accountingSettings.controller.js', db).saveSettings, {
+                body: { settings: {}, remove: [key] }
+            });
+            assert.equal(result.statusCode, 400);
+            assert.match(result.body.message, /marcadores/);
+        }
+        assert.ok(!db.calls.some(call => call.sql.startsWith('DELETE')));
+    });
+
+    it('un segundo usuario no sobreescribe un ajuste que cambió después de cargarlo', async () => {
+        let value = '10';
+        const db = database(async (sql, params) => {
+            if (sql.startsWith('SELECT')) return [[{ setting_key: 'CUENTA_CAJA', setting_value: value }]];
+            if (sql.startsWith('INSERT')) value = params[2];
+            return [{ affectedRows: 1 }];
+        });
+        const save = controller('accounting/accountingSettings.controller.js', db).saveSettings;
+        const first = await invoke(save, { body: { settings: { CUENTA_CAJA: 20 }, expected_settings: { CUENTA_CAJA: '10' } } });
+        const writes = db.calls.filter(call => call.sql.startsWith('INSERT')).length;
+        const second = await invoke(save, { body: { settings: { CUENTA_CAJA: 30 }, expected_settings: { CUENTA_CAJA: '10' } } });
+        assert.equal(first.statusCode, 200);
+        assert.equal(second.statusCode, 409);
+        assert.equal(second.body.conflicts[0].key, 'CUENTA_CAJA');
+        assert.equal(second.body.conflicts[0].current, '20');
+        assert.equal(second.body.conflicts[0].expected, '10');
+        assert.equal(value, '20');
+        assert.equal(db.calls.filter(call => call.sql.startsWith('INSERT')).length, writes);
+        assert.ok(db.calls.some(call => call.sql.includes('FOR UPDATE') && call.params[0] === 7));
+        assert.equal(db.calls.at(-1).sql, 'ROLLBACK');
+    });
+
+    it('detecta creaciones y eliminaciones concurrentes sin borrar ajustes nuevos', async () => {
+        const db = database(async () => [[{ setting_key: 'CUENTA_CAJA', setting_value: '20' }]]);
+        const save = controller('accounting/accountingSettings.controller.js', db).saveSettings;
+        for (const body of [
+            { settings: { CUENTA_CAJA: 10 }, expected_settings: { CUENTA_CAJA: null } },
+            { settings: {}, remove: ['CUENTA_CAJA'], expected_settings: { CUENTA_CAJA: '10' } }
+        ]) {
+            assert.equal((await invoke(save, { body })).statusCode, 409);
+        }
+        assert.ok(!db.calls.some(call => call.sql.startsWith('DELETE') || call.sql.startsWith('INSERT')));
+    });
+
+    it('compara solo claves del lote y permite guardar una clave nueva sin conflictos ajenos', async () => {
+        const db = database(async sql => [sql.startsWith('SELECT') ? [] : { affectedRows: 1 }]);
         const result = await invoke(controller('accounting/accountingSettings.controller.js', db).saveSettings, {
-            body: { settings: {}, remove: ['PARTIDA_VENTAS_2026-10-01'] }
+            body: { settings: { CUENTA_CAJA: 10 }, expected_settings: { CUENTA_CAJA: null, contador_nombre: 'Anterior' } }
+        });
+        assert.equal(result.statusCode, 200);
+        const check = db.calls.find(call => call.sql.startsWith('SELECT'));
+        assert.equal(check.params[0], 7);
+        assert.deepEqual(Array.from(check.params[1]), ['CUENTA_CAJA']);
+        assert.equal(db.calls.at(-1).sql, 'COMMIT');
+    });
+
+    it('rechaza snapshots incompletos antes de modificar la configuración', async () => {
+        const db = database(async () => { throw new Error('No se debe escribir'); });
+        const result = await invoke(controller('accounting/accountingSettings.controller.js', db).saveSettings, {
+            body: { settings: { CUENTA_CAJA: 10 }, expected_settings: {} }
         });
         assert.equal(result.statusCode, 400);
-        assert.match(result.body.message, /marcadores/);
-        assert.ok(!db.calls.some(call => call.sql.startsWith('DELETE')));
+        assert.ok(!db.calls.some(call => call.sql.startsWith('INSERT')));
     });
 
     it('revierte las asignaciones auxiliares previas si otra cuenta no pertenece a la empresa', async () => {

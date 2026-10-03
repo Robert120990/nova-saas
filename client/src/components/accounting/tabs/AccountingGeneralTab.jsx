@@ -4,7 +4,7 @@ const inputCls = "w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-x
 const labelCls = "text-[10px] font-black uppercase text-slate-400 block mb-2";
 
 
-const AccountingGeneralTab = ({ form, setForm, patrimAccounts, saveMutation }) => (
+const AccountingGeneralTab = ({ form, setForm, patrimAccounts, saveMutation, onSave }) => (
                         <fieldset disabled={saveMutation.isPending} className="bg-white rounded-2xl border shadow-sm p-6 space-y-6">
                             <div>
                                 <label className={labelCls}>
@@ -43,7 +43,7 @@ const AccountingGeneralTab = ({ form, setForm, patrimAccounts, saveMutation }) =
                             </div>
 
                             <button
-                                onClick={() => saveMutation.mutate(form)}
+                                onClick={onSave}
                                 disabled={saveMutation.isPending}
                                 className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-4 rounded-2xl font-black uppercase text-sm flex items-center justify-center gap-2 disabled:opacity-50"
                             >

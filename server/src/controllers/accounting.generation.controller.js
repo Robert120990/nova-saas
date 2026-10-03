@@ -73,6 +73,7 @@ const preview = async (req, res) => {
         }
         const numericSettings = {};
         required.forEach(k => { numericSettings[k] = parseInt(settings[k], 10); });
+        if (settings.CUENTA_IVA_RETENIDO) numericSettings.CUENTA_IVA_RETENIDO = parseInt(settings.CUENTA_IVA_RETENIDO, 10);
 
         const data = kind === 'ventas'
             ? await buildVentasPreview(req.company_id, date, !!detail_credit, numericSettings)
@@ -108,6 +109,7 @@ const generate = async (req, res) => {
 
         await conn.beginTransaction();
         try {
+            await conn.query('SELECT id FROM companies WHERE id = ? FOR UPDATE', [req.company_id]);
             const { totalDebit, totalCredit } = await validateEntryLines(conn, req.company_id, lines);
             // La clave única serializa también el primer intento de generación del día.
             await conn.query(

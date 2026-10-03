@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { Plus, Eye, Ban, Edit, FileText, Search } from 'lucide-react';
@@ -12,8 +12,12 @@ import Pagination from '../components/ui/Pagination';
 import Money from '../components/ui/Money';
 import { matchesQuery, matchScore } from '../utils/fuzzySearch';
 import { useDirtyTracker } from '../hooks/useDirtyTracker';
+import { useAuth } from '../context/AuthContext';
 
 const AccountingEntries = () => {
+    const { user } = useAuth();
+    const companyId = user?.company_id;
+    const headers = { 'x-company-id': companyId };
     const queryClient = useQueryClient();
     const confirm = useConfirm();
     const [page, setPage] = useState(1);
@@ -26,12 +30,16 @@ const AccountingEntries = () => {
     const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
     const [accountModalSearch, setAccountModalSearch] = useState('');
     const [lines, setLines] = useState([]);
+    const editRequest = useRef(0);
+    const viewRequest = useRef(0);
+    useEffect(() => () => { editRequest.current += 1; viewRequest.current += 1; }, []);
 
     useDirtyTracker('partidas', lines.length > 0);
 
     const { data: entriesData, isLoading } = useQuery({
-        queryKey: ['entries', page],
-        queryFn: async () => (await axios.get(`/api/accounting/entries?page=${page}&limit=15`)).data,
+        queryKey: ['entries', companyId, page],
+        queryFn: async ({ signal }) => (await axios.get(`/api/accounting/entries?page=${page}&limit=15`, { headers, signal })).data,
+        enabled: !!companyId,
     });
 
     const entries = unwrapList(entriesData);
@@ -46,34 +54,46 @@ const AccountingEntries = () => {
     }, [entries, search]);
 
     const { data: entryTypes = [] } = useQuery({
-        queryKey: ['entryTypes'], queryFn: async () => unwrapList(await axios.get('/api/accounting/entry-types')),
+        queryKey: ['entryTypes', companyId], queryFn: async ({ signal }) => unwrapList(await axios.get('/api/accounting/entry-types', { headers, signal })), enabled: !!companyId,
     });
     const { data: accounts = [] } = useQuery({
-        queryKey: ['accounts'], queryFn: async () => unwrapList(await axios.get('/api/accounting/accounts')),
+        queryKey: ['accounts', companyId], queryFn: async ({ signal }) => unwrapList(await axios.get('/api/accounting/accounts', { headers, signal })), enabled: !!companyId,
     });
 
     const createMutation = useMutation({
-        mutationFn: (data) => axios.post('/api/accounting/entries', data),
+        mutationFn: (data) => axios.post('/api/accounting/entries', data, { headers }),
         onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['entries'] }); setIsModalOpen(false); resetForm(); toast.success('Partida registrada'); },
         onError: (err) => toast.error(err.response?.data?.message || 'Error'),
     });
 
     const voidMutation = useMutation({
-        mutationFn: (id) => axios.put(`/api/accounting/entries/${id}/void`),
+        mutationFn: (id) => axios.put(`/api/accounting/entries/${id}/void`, {}, { headers }),
         onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['entries'] }); toast.success('Partida anulada'); },
     });
 
     const updateMutation = useMutation({
-        mutationFn: ({ id, ...data }) => axios.put(`/api/accounting/entries/${id}`, data),
+        mutationFn: ({ id, ...data }) => axios.put(`/api/accounting/entries/${id}`, data, { headers }),
         onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['entries'] }); setIsModalOpen(false); setEditingEntry(null); resetForm(); toast.success('Partida actualizada'); },
         onError: (err) => toast.error(err.response?.data?.message || 'Error'),
     });
 
-    const resetForm = () => setLines([]);
+    const resetForm = () => {
+        editRequest.current += 1;
+        setLines([]);
+        setAccountSearch('');
+        setSelectedAccountId('');
+        setIsAccountModalOpen(false);
+        setAccountModalSearch('');
+    };
 
     const handleEdit = async (entry) => {
+        if (createMutation.isPending || updateMutation.isPending) return;
+        const request = ++editRequest.current;
         try {
-            const { data } = await axios.get(`/api/accounting/entries/${entry.id}`);
+            const { data } = await axios.get(`/api/accounting/entries/${entry.id}`, { headers });
+            if (request !== editRequest.current) return;
+            setAccountSearch('');
+            setSelectedAccountId('');
             setEditingEntry(data);
             setLines(unwrapList(data.lines).map(l => ({
                 account_id: l.account_id,
@@ -83,11 +103,21 @@ const AccountingEntries = () => {
             })));
             setIsModalOpen(true);
         } catch (e) {
-            toast.error('Error al cargar partida');
+            if (request === editRequest.current) toast.error('Error al cargar partida');
         }
     };
 
-    const removeLine = (idx) => setLines(lines.filter((_, i) => i !== idx));
+    const removeLine = (idx) => setLines(rows => rows.filter((_, i) => i !== idx));
+
+    const handleView = async (entry) => {
+        const request = ++viewRequest.current;
+        try {
+            const { data } = await axios.get(`/api/accounting/entries/${entry.id}`, { headers });
+            if (request === viewRequest.current) setViewEntry(data);
+        } catch {
+            if (request === viewRequest.current) toast.error('Error al cargar partida');
+        }
+    };
 
     const totalDebit = lines.reduce((s, l) => s + parseFloat(l.debit || 0), 0);
     const totalCredit = lines.reduce((s, l) => s + parseFloat(l.credit || 0), 0);
@@ -95,6 +125,7 @@ const AccountingEntries = () => {
 
     const handleSubmit = (e) => {
         e.preventDefault();
+        if (createMutation.isPending || updateMutation.isPending) return;
         const fd = new FormData(e.target);
         if (!balanced) return toast.error('El débito y crédito no cuadran');
         const entryData = {
@@ -157,7 +188,8 @@ const AccountingEntries = () => {
 
     const handleSelectAccountModal = (account) => {
         setSelectedAccountId(account.id);
-        document.getElementById('quick-account').value = account.code;
+        const quickAccount = document.getElementById('quick-account');
+        if (quickAccount) quickAccount.value = account.code;
         setAccountSearch('');
         setIsAccountModalOpen(false);
         setAccountModalSearch('');
@@ -166,9 +198,9 @@ const AccountingEntries = () => {
 
     return (
         <div className="max-w-6xl mx-auto p-4 md:p-8 space-y-6 animate-in fade-in pb-20">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
-                    <h1 className="text-3xl font-black text-slate-900 flex items-center gap-3"><FileText size={28} className="text-indigo-600" />Partidas Contables</h1>
+                    <h1 className="text-2xl md:text-3xl font-black text-slate-900 flex items-center gap-3"><FileText size={28} className="text-indigo-600 shrink-0" />Partidas Contables</h1>
                     <p className="text-slate-500 font-medium">Registro de asientos contables</p>
                 </div>
                 <button onClick={() => { setEditingEntry(null); resetForm(); setIsModalOpen(true); }} className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-3 rounded-2xl font-black uppercase text-xs flex items-center gap-2">
@@ -193,8 +225,8 @@ const AccountingEntries = () => {
                         <td className="px-6 py-1.5"><span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${e.status === 'posted' ? 'bg-emerald-50 text-emerald-600' : e.status === 'voided' ? 'bg-rose-50 text-rose-600' : 'bg-amber-50 text-amber-600'}`}>{e.status === 'posted' ? 'Contabilizado' : e.status === 'voided' ? 'Anulado' : 'Borrador'}</span></td>
                         <td className="px-6 py-1.5">
                             <div className="flex gap-2">
-                                <button onClick={async () => { const { data } = await axios.get(`/api/accounting/entries/${e.id}`); setViewEntry(data); }} className="p-1.5 text-slate-600 hover:text-indigo-600"><Eye size={14} /></button>
-                                <button onClick={() => handleEdit(e)} className="p-1.5 text-slate-600 hover:text-amber-600"><Edit size={14} /></button>
+                                <button aria-label="Ver partida" onClick={() => handleView(e)} className="p-1.5 text-slate-600 hover:text-indigo-600"><Eye size={14} /></button>
+                                <button aria-label="Editar partida" onClick={() => handleEdit(e)} className="p-1.5 text-slate-600 hover:text-amber-600"><Edit size={14} /></button>
                                 {e.status === 'posted' && <button onClick={async () => { const ok = await confirm({ title: 'Anular Partida', message: '¿Anular esta partida contable?', confirmLabel: 'Anular' }); if (ok) voidMutation.mutate(e.id); }} className="p-1.5 text-slate-600 hover:text-rose-600"><Ban size={14} /></button>}
                             </div>
                         </td>
@@ -205,7 +237,7 @@ const AccountingEntries = () => {
             {entriesData && <Pagination page={page} totalPages={entriesData.totalPages || 1} onPageChange={setPage} />}
 
             <AccountingEntryModal open={isModalOpen} onClose={() => { if (createMutation.isPending || updateMutation.isPending) return; setIsModalOpen(false); setEditingEntry(null); resetForm(); }} onSubmit={handleSubmit} editingEntry={editingEntry} entryTypes={entryTypes} accountSearch={accountSearch} setAccountSearch={setAccountSearch} selectedAccountId={selectedAccountId} setSelectedAccountId={setSelectedAccountId} accountResults={accountResults} accounts={accounts} lines={lines} setLines={setLines} removeLine={removeLine} balanced={balanced} totalDebit={totalDebit} totalCredit={totalCredit} saving={createMutation.isPending || updateMutation.isPending} />
-            <AccountingEntryViewModal open={!!viewEntry} onClose={() => setViewEntry(null)} entry={viewEntry} />
+            <AccountingEntryViewModal open={!!viewEntry} onClose={() => { viewRequest.current += 1; setViewEntry(null); }} entry={viewEntry} />
             <AccountingAccountSearchModal open={isAccountModalOpen} onClose={() => { setIsAccountModalOpen(false); setAccountModalSearch(''); }} accountModalSearch={accountModalSearch} setAccountModalSearch={setAccountModalSearch} accountModalResults={accountModalResults} onSelect={handleSelectAccountModal} />
         </div>
     );
