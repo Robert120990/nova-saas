@@ -127,8 +127,12 @@ const InventoryAdjustments = () => {
         onSuccess: () => {
             toast.success('Movimiento registrado correctamente');
             resetForm();
-            queryClient.invalidateQueries(['inventory']);
-            queryClient.invalidateQueries(['inventory-adjustments']);
+            queryClient.invalidateQueries({ queryKey: ['inventory'] });
+            queryClient.invalidateQueries({ queryKey: ['inventory-adjustments'] });
+            queryClient.invalidateQueries({ queryKey: ['products'] });
+            queryClient.invalidateQueries({ queryKey: ['terminal-products'] });
+            queryClient.invalidateQueries({ queryKey: ['inventory-stock'] });
+            queryClient.invalidateQueries({ queryKey: ['kardex'] });
             setActiveTab('historial');
         },
         onError: (err) => {
@@ -270,8 +274,12 @@ const InventoryAdjustments = () => {
         mutationFn: (id) => axios.post(`/api/inventory/adjustments/${id}/void`),
         onSuccess: () => {
             toast.success('Movimiento anulado correctamente');
-            queryClient.invalidateQueries(['inventory-adjustments']);
-            queryClient.invalidateQueries(['inventory']);
+            queryClient.invalidateQueries({ queryKey: ['inventory-adjustments'] });
+            queryClient.invalidateQueries({ queryKey: ['inventory'] });
+            queryClient.invalidateQueries({ queryKey: ['products'] });
+            queryClient.invalidateQueries({ queryKey: ['terminal-products'] });
+            queryClient.invalidateQueries({ queryKey: ['inventory-stock'] });
+            queryClient.invalidateQueries({ queryKey: ['kardex'] });
         },
         onError: (err) => toast.error(err.response?.data?.message || 'Error al anular')
     });

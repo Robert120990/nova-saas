@@ -104,8 +104,12 @@ const Transfers = () => {
             toast.success(data.message || 'Traslado completado correctamente');
             resetForm();
             setActiveTab('historial');
-            queryClient.invalidateQueries(['inventory']);
-            queryClient.invalidateQueries(['transfers']);
+            queryClient.invalidateQueries({ queryKey: ['inventory'] });
+            queryClient.invalidateQueries({ queryKey: ['transfers'] });
+            queryClient.invalidateQueries({ queryKey: ['products'] });
+            queryClient.invalidateQueries({ queryKey: ['terminal-products'] });
+            queryClient.invalidateQueries({ queryKey: ['inventory-stock'] });
+            queryClient.invalidateQueries({ queryKey: ['kardex'] });
         },
         onError: (err) => {
             toast.error(err.response?.data?.message || 'Error al procesar el traslado');
@@ -116,8 +120,12 @@ const Transfers = () => {
         mutationFn: (id) => axios.delete(`/api/inventory/transfers/${id}`),
         onSuccess: () => {
             toast.success('Traslado anulado correctamente');
-            queryClient.invalidateQueries(['inventory']);
-            queryClient.invalidateQueries(['transfers']);
+            queryClient.invalidateQueries({ queryKey: ['inventory'] });
+            queryClient.invalidateQueries({ queryKey: ['transfers'] });
+            queryClient.invalidateQueries({ queryKey: ['products'] });
+            queryClient.invalidateQueries({ queryKey: ['terminal-products'] });
+            queryClient.invalidateQueries({ queryKey: ['inventory-stock'] });
+            queryClient.invalidateQueries({ queryKey: ['kardex'] });
         },
         onError: (err) => {
             toast.error(err.response?.data?.message || 'Error al anular el traslado');

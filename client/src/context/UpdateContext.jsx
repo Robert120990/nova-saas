@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
 import UpdateAvailableModal from '../components/ui/UpdateAvailableModal';
+import { isAnyDirty, getDirtyPages } from '../store/dirtyState';
 
 const UpdateContext = createContext(null);
 
@@ -103,6 +104,15 @@ export const UpdateProvider = ({ children }) => {
     // Ejecutar actualización ÚNICAMENTE cuando el usuario presiona "Actualizar Ahora"
     const applyUpdate = useCallback(async () => {
         if (isUpdatingRef.current) return;
+
+        if (isAnyDirty()) {
+            const pages = getDirtyPages().join(', ');
+            const proceed = window.confirm(`Hay datos pendientes de guardar en las pantallas: ${pages}.\nLos borradores activos están preservados, pero se recomienda completar o guardar antes de recargar.\n\n¿Desea continuar con la actualización ahora?`);
+            if (!proceed) {
+                return;
+            }
+        }
+
         isUpdatingRef.current = true;
         setIsUpdating(true);
 

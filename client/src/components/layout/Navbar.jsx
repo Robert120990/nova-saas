@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useUpdate } from '../../context/UpdateContext';
+import { useSafeNavigate } from '../../hooks/useSafeNavigate';
 import { LogOut, Building2, GitBranch, ChevronRight, ChevronDown, Check, X, Save, Eye, EyeOff, Menu, Sparkles } from 'lucide-react';
 import NotificationBell from '../ui/NotificationBell';
 import { useQuery } from '@tanstack/react-query';
@@ -10,6 +11,7 @@ import { toast } from 'sonner';
 const Navbar = ({ onToggleMobileMenu }) => {
     const { logout, user, selectContext, updateUser } = useAuth();
     const { updateAvailable, updateInfo, openModal } = useUpdate();
+    const { confirmAction } = useSafeNavigate();
     console.log('Navbar user object:', user);
     const [isMenuOpen, setIsMenuOpen] = useState(false);
 
@@ -79,6 +81,14 @@ const Navbar = ({ onToggleMobileMenu }) => {
     }, [access, user?.company_id, user?.enabled_modules]);
 
     const handleSwitch = async (companyId, branchId) => {
+        const confirmed = await confirmAction(null, {
+            title: '¿Cambiar de empresa o sucursal?',
+            message: 'Tienes información ingresada en esta pantalla que aún no ha sido guardada. Si cambias de empresa o sucursal, estos datos se perderán.',
+            confirmLabel: 'Descartar y cambiar',
+            cancelLabel: 'Permanecer aquí'
+        });
+        if (!confirmed) return;
+
         try {
             const company = access.find(c => c.id === companyId);
             const branch = company?.branches.find(b => b.id === branchId);
@@ -224,7 +234,14 @@ const Navbar = ({ onToggleMobileMenu }) => {
                         </div>
                     </button>
                     <button
-                        onClick={logout}
+                        onClick={async () => {
+                            await confirmAction(() => logout(), {
+                                title: '¿Cerrar sesión?',
+                                message: 'Tienes información ingresada en esta pantalla que aún no ha sido guardada. Si cierras sesión ahora, estos datos se perderán.',
+                                confirmLabel: 'Descartar y cerrar sesión',
+                                cancelLabel: 'Permanecer aquí'
+                            });
+                        }}
                         className="w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all group shrink-0"
                         title="Cerrar Sesión"
                     >

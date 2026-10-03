@@ -203,7 +203,8 @@ const Customers = () => {
             return axios.post('/api/customers', data);
         },
         onSuccess: () => {
-            queryClient.invalidateQueries(['customers']);
+            queryClient.invalidateQueries({ queryKey: ['customers'] });
+            queryClient.invalidateQueries({ queryKey: ['terminal-customers'] });
             setIsModalOpen(false);
             setSelectedCustomer(null);
             toast.success(selectedCustomer ? 'Cliente actualizado' : 'Cliente registrado');
@@ -217,7 +218,8 @@ const Customers = () => {
     const deleteMutation = useMutation({
         mutationFn: (id) => axios.delete(`/api/customers/${id}`),
         onSuccess: () => {
-            queryClient.invalidateQueries(['customers']);
+            queryClient.invalidateQueries({ queryKey: ['customers'] });
+            queryClient.invalidateQueries({ queryKey: ['terminal-customers'] });
             toast.success('Cliente eliminado');
         }
     });
@@ -256,7 +258,8 @@ const Customers = () => {
     const deleteBatchMutation = useMutation({
         mutationFn: (ids) => axios.delete('/api/customers/batch', { data: { ids } }),
         onSuccess: (res) => {
-            queryClient.invalidateQueries(['customers']);
+            queryClient.invalidateQueries({ queryKey: ['customers'] });
+            queryClient.invalidateQueries({ queryKey: ['terminal-customers'] });
             setSelectedIds(new Set());
             toast.success(res.data.message || 'Clientes eliminados');
         },

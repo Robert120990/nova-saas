@@ -51,49 +51,132 @@ const SalesTerminal = () => {
     const { user } = useAuth();
     const [activeView, setActiveView] = useState('pos'); // 'pos' o 'pago'
     
+    // Claves de persistencia de borrador y sesión de vendedor por usuario, empresa y sucursal
+    const DRAFT_KEY = `sipe_pos_sale_draft_${user?.id || '0'}_${user?.company_id || '0'}_${user?.branch_id || '0'}`;
+    const SELLER_KEY = `sipe_pos_seller_session_${user?.id || '0'}_${user?.company_id || '0'}_${user?.branch_id || '0'}`;
+
     // Logistic/Seller Auth State
-    const [sellerSession, setSellerSession] = useState(null);
-    const [isAuthModalOpen, setIsAuthModalOpen] = useState(true);
+    const [sellerSession, setSellerSession] = useState(() => {
+        try {
+            const raw = sessionStorage.getItem(SELLER_KEY);
+            if (!raw) return null;
+            const parsed = JSON.parse(raw);
+            if (Number(parsed.branch_id) === Number(user?.branch_id)) {
+                return parsed;
+            }
+        } catch {}
+        return null;
+    });
+    const [isAuthModalOpen, setIsAuthModalOpen] = useState(() => {
+        try {
+            const raw = sessionStorage.getItem(SELLER_KEY);
+            if (!raw) return true;
+            const parsed = JSON.parse(raw);
+            return Number(parsed.branch_id) !== Number(user?.branch_id);
+        } catch {}
+        return true;
+    });
     const [authPassword, setAuthPassword] = useState('');
     
     // Header State
-    const [customerId, setCustomerId] = useState('');
-    const [customerBranchId, setCustomerBranchId] = useState('');
-    const [sellerId, setSellerId] = useState('');
-    const [tipoDte, setTipoDte] = useState('01'); // 01, 03, 04, 05, 07, 11
-    const [condicionPago, setCondicionPago] = useState('1'); // 1=Contado, 2=Crédito
+    const [customerId, setCustomerId] = useState(() => {
+        try {
+            const raw = localStorage.getItem(DRAFT_KEY);
+            return raw ? (JSON.parse(raw).customerId || '') : '';
+        } catch { return ''; }
+    });
+    const [customerBranchId, setCustomerBranchId] = useState(() => {
+        try {
+            const raw = localStorage.getItem(DRAFT_KEY);
+            return raw ? (JSON.parse(raw).customerBranchId || '') : '';
+        } catch { return ''; }
+    });
+    const [sellerId, setSellerId] = useState(() => {
+        try {
+            const rawSeller = sessionStorage.getItem(SELLER_KEY);
+            if (rawSeller) {
+                const parsed = JSON.parse(rawSeller);
+                if (Number(parsed.branch_id) === Number(user?.branch_id)) return parsed.seller_id || '';
+            }
+            const rawDraft = localStorage.getItem(DRAFT_KEY);
+            return rawDraft ? (JSON.parse(rawDraft).sellerId || '') : '';
+        } catch { return ''; }
+    });
+    const [tipoDte, setTipoDte] = useState(() => {
+        try {
+            const raw = localStorage.getItem(DRAFT_KEY);
+            return raw ? (JSON.parse(raw).tipoDte || '01') : '01';
+        } catch { return '01'; }
+    });
+    const [condicionPago, setCondicionPago] = useState(() => {
+        try {
+            const raw = localStorage.getItem(DRAFT_KEY);
+            return raw ? (JSON.parse(raw).condicionPago || '1') : '1';
+        } catch { return '1'; }
+    });
+    const [manualCustomerName, setManualCustomerName] = useState(() => {
+        try {
+            const raw = localStorage.getItem(DRAFT_KEY);
+            return raw ? (JSON.parse(raw).manualCustomerName || '') : '';
+        } catch { return ''; }
+    });
     
     // Linked Documents (NC, NR)
-    const [linkedDocs, setLinkedDocs] = useState([]);
+    const [linkedDocs, setLinkedDocs] = useState(() => {
+        try {
+            const raw = localStorage.getItem(DRAFT_KEY);
+            return raw ? (JSON.parse(raw).linkedDocs || []) : [];
+        } catch { return []; }
+    });
     const [isLinkedDocModalOpen, setIsLinkedDocModalOpen] = useState(false);
     const [isSuccessModalOpen, setIsSuccessModalOpen] = useState(false);
     const [saleResult, setSaleResult] = useState(null);
 
     // Export Data (FEX)
-    // itemType como número (CAT-011): 1=Bienes, 2=Servicios, 3=Bienes y Servicios
-    // tipoRegimen se fija automáticamente en '48' (exportación definitiva) en el servidor
-    const [fexData, setFexData] = useState({
-        itemType: 1,
-        enclosure: '',
-        country: ''
+    const [fexData, setFexData] = useState(() => {
+        try {
+            const raw = localStorage.getItem(DRAFT_KEY);
+            return raw && JSON.parse(raw).fexData ? JSON.parse(raw).fexData : { itemType: 1, enclosure: '', country: '' };
+        } catch { return { itemType: 1, enclosure: '', country: '' }; }
     });
 
     // Remission Data (NR)
-    const [nrData, setNrData] = useState({
-        type: '02', // Traslado de bienes
-        transporterName: '',
-        vehiclePlate: ''
+    const [nrData, setNrData] = useState(() => {
+        try {
+            const raw = localStorage.getItem(DRAFT_KEY);
+            return raw && JSON.parse(raw).nrData ? JSON.parse(raw).nrData : { type: '02', transporterName: '', vehiclePlate: '' };
+        } catch { return { type: '02', transporterName: '', vehiclePlate: '' }; }
     });
     
     // Items State
-    const [cart, setCart] = useState([]);
-    const [generalDiscount, setGeneralDiscount] = useState(0);
-    const [generalDiscountPercentage, setGeneralDiscountPercentage] = useState(null);
+    const [cart, setCart] = useState(() => {
+        try {
+            const raw = localStorage.getItem(DRAFT_KEY);
+            return raw && Array.isArray(JSON.parse(raw).cart) ? JSON.parse(raw).cart : [];
+        } catch { return []; }
+    });
+    const [generalDiscount, setGeneralDiscount] = useState(() => {
+        try {
+            const raw = localStorage.getItem(DRAFT_KEY);
+            return raw ? (JSON.parse(raw).generalDiscount || 0) : 0;
+        } catch { return 0; }
+    });
+    const [generalDiscountPercentage, setGeneralDiscountPercentage] = useState(() => {
+        try {
+            const raw = localStorage.getItem(DRAFT_KEY);
+            return raw ? (JSON.parse(raw).generalDiscountPercentage ?? null) : null;
+        } catch { return null; }
+    });
     const [isGeneralDiscountModalOpen, setIsGeneralDiscountModalOpen] = useState(false);
     const [selectedDiscountItem, setSelectedDiscountItem] = useState(null);
 
     // Payment State
-    const [payments, setPayments] = useState([]);
+    const [payments, setPayments] = useState(() => {
+        try {
+            const raw = localStorage.getItem(DRAFT_KEY);
+            return raw && Array.isArray(JSON.parse(raw).payments) ? JSON.parse(raw).payments : [];
+        } catch { return []; }
+    });
     const [currentPayment, setCurrentPayment] = useState({
         metodo_pago: '01',
         monto: '',
@@ -101,7 +184,12 @@ const SalesTerminal = () => {
         num_cheque: '',
         last_digits: ''
     });
-    const [entregado, setEntregado] = useState('');
+    const [entregado, setEntregado] = useState(() => {
+        try {
+            const raw = localStorage.getItem(DRAFT_KEY);
+            return raw ? (JSON.parse(raw).entregado || '') : '';
+        } catch { return ''; }
+    });
     
     // UI State
     const [isProductModalOpen, setIsProductModalOpen] = useState(false);
@@ -136,7 +224,6 @@ const SalesTerminal = () => {
     const [selectedDistrito, setSelectedDistrito] = useState('');
     const [selectedActivity, setSelectedActivity] = useState('');
     const [selectedPais, setSelectedPais] = useState('9579');
-    const [manualCustomerName, setManualCustomerName] = useState('');
 
     // Customer Search Modal State
     const [isCustomerSearchOpen, setIsCustomerSearchOpen] = useState(false);
@@ -171,6 +258,54 @@ const SalesTerminal = () => {
     const quickAddFocusRef = useRef(false);
 
     useDirtyTracker('terminal', cart.length > 0 || customerId || linkedDocs.length > 0 || entregado);
+
+    // Auto-guardado dinámico de borrador de venta en localStorage
+    useEffect(() => {
+        if (!user?.id || !user?.company_id) return;
+        const hasData = (cart && cart.length > 0) || customerId || (linkedDocs && linkedDocs.length > 0) || manualCustomerName || (payments && payments.length > 0);
+        if (hasData) {
+            try {
+                const draft = {
+                    cart,
+                    customerId,
+                    customerBranchId,
+                    manualCustomerName,
+                    sellerId,
+                    tipoDte,
+                    condicionPago,
+                    linkedDocs,
+                    fexData,
+                    nrData,
+                    generalDiscount,
+                    generalDiscountPercentage,
+                    payments,
+                    entregado,
+                    savedAt: Date.now()
+                };
+                localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+            } catch (e) {
+                console.warn('Error guardando borrador de venta:', e);
+            }
+        } else {
+            localStorage.removeItem(DRAFT_KEY);
+        }
+    }, [cart, customerId, customerBranchId, manualCustomerName, sellerId, tipoDte, condicionPago, linkedDocs, fexData, nrData, generalDiscount, generalDiscountPercentage, payments, entregado, DRAFT_KEY, user?.id, user?.company_id]);
+
+    // Notificar al montar si se recuperó un borrador previo
+    useEffect(() => {
+        try {
+            const raw = localStorage.getItem(DRAFT_KEY);
+            if (raw) {
+                const parsed = JSON.parse(raw);
+                if ((parsed.cart && parsed.cart.length > 0) || parsed.customerId) {
+                    toast.info('Borrador de venta recuperado automáticamente', {
+                        id: 'pos-draft-restored',
+                        duration: 3500
+                    });
+                }
+            }
+        } catch {}
+    }, []);
 
     // Queries
     const { data: currentCompany } = useQuery({
@@ -992,7 +1127,8 @@ const SalesTerminal = () => {
                 setCustomerId(res.data.id); // Auto-select new customer
                 setCustomersCache(prev => ({ ...prev, [res.data.id]: res.data }));
             }
-            queryClient.invalidateQueries(['customers']);
+            queryClient.invalidateQueries({ queryKey: ['customers'] });
+            queryClient.invalidateQueries({ queryKey: ['terminal-customers'] });
             setIsCustomerModalOpen(false);
         } catch (error) {
             toast.error(error.response?.data?.message || 'Error al guardar cliente');
@@ -1363,7 +1499,18 @@ const SalesTerminal = () => {
             setIsSuccessModalOpen(true);
             
             // Note: We don't reset cart/customer here, we'll do it when closing success modal
-            queryClient.invalidateQueries(['sales']);
+            localStorage.removeItem(DRAFT_KEY);
+            queryClient.invalidateQueries({ queryKey: ['sales'] });
+            queryClient.invalidateQueries({ queryKey: ['products'] });
+            queryClient.invalidateQueries({ queryKey: ['terminal-products'] });
+            queryClient.invalidateQueries({ queryKey: ['inventory'] });
+            queryClient.invalidateQueries({ queryKey: ['inventory-stock'] });
+            queryClient.invalidateQueries({ queryKey: ['kardex'] });
+            queryClient.invalidateQueries({ queryKey: ['cash-closing'] });
+            queryClient.invalidateQueries({ queryKey: ['shiftDtes'] });
+            queryClient.invalidateQueries({ queryKey: ['dashboard-general-stats'] });
+            queryClient.invalidateQueries({ queryKey: ['dashboard-tienda-stats'] });
+            queryClient.invalidateQueries({ queryKey: ['dashboard-dte-stats'] });
         },
         onError: (error) => {
             const data = error.response?.data;
@@ -1396,6 +1543,22 @@ const SalesTerminal = () => {
         setSellerId('');
         setReferencingSale(null);
         setIsAuthModalOpen(true);
+        localStorage.removeItem(DRAFT_KEY);
+        sessionStorage.removeItem(SELLER_KEY);
+    };
+
+    const handleDiscardDraft = () => {
+        setCart([]);
+        setGeneralDiscount(0);
+        setGeneralDiscountPercentage(null);
+        setCustomerId('');
+        setCustomerBranchId('');
+        setManualCustomerName('');
+        setLinkedDocs([]);
+        setPayments([]);
+        setEntregado('');
+        localStorage.removeItem(DRAFT_KEY);
+        toast.info('Borrador descartado correctamente');
     };
 
     const handlePrintTicket = async (sale) => {
@@ -2435,6 +2598,9 @@ const SalesTerminal = () => {
             setSellerId(data.seller_id);
             setIsAuthModalOpen(false);
             setAuthPassword('');
+            try {
+                sessionStorage.setItem(SELLER_KEY, JSON.stringify(data));
+            } catch {}
             toast.success(`Bienvenido, ${data.seller_name}`);
         } catch (error) {
             console.error('[DEBUG-AUTH-DETAILED]', {
@@ -2882,7 +3048,18 @@ const SalesTerminal = () => {
                                             <th className="px-4 py-4 text-right">Precio</th>
                                             <th className="px-4 py-4 text-right">Desc.</th>
                                             <th className="px-4 py-4 text-right">Subtotal</th>
-                                            <th className="pr-6 py-4"></th>
+                                            <th className="pr-6 py-4 text-right">
+                                                {cart.length > 0 && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleDiscardDraft}
+                                                        className="text-[9px] font-bold text-rose-500 hover:text-rose-700 uppercase tracking-wider transition-colors hover:underline"
+                                                        title="Limpiar carrito y descartar borrador"
+                                                    >
+                                                        Limpiar
+                                                    </button>
+                                                )}
+                                            </th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-50">

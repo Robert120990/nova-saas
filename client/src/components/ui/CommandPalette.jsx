@@ -1,15 +1,15 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { Search, CornerDownLeft } from 'lucide-react';
 import { useMenuItems, GROUP_MODULE_MAP, ITEM_MODULE_MAP } from '../../hooks/useMenuItems';
 import { useAuth } from '../../context/AuthContext';
+import { useSafeNavigate } from '../../hooks/useSafeNavigate';
 
 const CommandPalette = ({ isOpen, onClose }) => {
     const [search, setSearch] = useState('');
     const [selectedIndex, setSelectedIndex] = useState(0);
     const inputRef = useRef(null);
     const listRef = useRef(null);
-    const navigate = useNavigate();
+    const { safeNavigate } = useSafeNavigate();
     const { user } = useAuth();
     const { flatItems } = useMenuItems();
 
@@ -131,6 +131,11 @@ const CommandPalette = ({ isOpen, onClose }) => {
         }
     }, [isOpen]);
 
+    const handleSelectItem = (path) => {
+        onClose();
+        safeNavigate(path);
+    };
+
     useEffect(() => {
         if (!isOpen) return;
 
@@ -151,8 +156,7 @@ const CommandPalette = ({ isOpen, onClose }) => {
                 case 'Enter':
                     e.preventDefault();
                     if (filteredItems[selectedIndex]) {
-                        navigate(filteredItems[selectedIndex].path);
-                        onClose();
+                        handleSelectItem(filteredItems[selectedIndex].path);
                     }
                     break;
                 case 'Escape':
@@ -164,7 +168,7 @@ const CommandPalette = ({ isOpen, onClose }) => {
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [isOpen, filteredItems, selectedIndex, navigate, onClose]);
+    }, [isOpen, filteredItems, selectedIndex, onClose]);
 
     useEffect(() => {
         if (listRef.current) {
@@ -234,10 +238,7 @@ const CommandPalette = ({ isOpen, onClose }) => {
                                     )}
                                     <button
                                         data-index={index}
-                                        onClick={() => {
-                                            navigate(item.path);
-                                            onClose();
-                                        }}
+                                        onClick={() => handleSelectItem(item.path)}
                                         className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 text-left ${
                                             index === selectedIndex
                                                 ? 'bg-indigo-600/20 text-indigo-400 border border-indigo-600/30'

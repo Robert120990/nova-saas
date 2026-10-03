@@ -200,13 +200,14 @@ import Layout from './components/layout/Layout';
 const queryClient = new QueryClient({
     defaultOptions: {
         queries: {
-            staleTime: 1000 * 60 * 5, // 5 minutes
-            gcTime: 1000 * 60 * 30,    // 30 minutes
+            staleTime: 1000 * 15,      // 15 seconds: keeps navigation instantaneous from memory cache while auto-revalidating in background
+            gcTime: 1000 * 60 * 30,    // 30 minutes in memory
             retry: (failureCount, error) => {
                 if (error?.response?.status === 401) return false;
                 return failureCount < 1;
             },
             refetchOnWindowFocus: false,
+            refetchOnReconnect: true,
         },
     },
 });

@@ -77,25 +77,37 @@ const Purchases = () => {
     const { user } = useAuth();
     const queryClient = useQueryClient();
     const confirm = useConfirm();
-    const [activeTab, setActiveTab] = useState('historial');
+    const DRAFT_KEY = `sipe_purchase_draft_${user?.id || '0'}_${user?.company_id || '0'}_${user?.branch_id || '0'}`;
+
+    const getInitialDraft = () => {
+        try {
+            const raw = localStorage.getItem(DRAFT_KEY);
+            if (!raw) return null;
+            return JSON.parse(raw);
+        } catch { return null; }
+    };
+    const initialDraft = getInitialDraft();
+    const hasInitialDraft = Boolean(initialDraft && ((initialDraft.selectedItems && initialDraft.selectedItems.length > 0) || initialDraft.providerId || initialDraft.numeroDoc));
+
+    const [activeTab, setActiveTab] = useState(hasInitialDraft ? 'nuevo' : 'historial');
     const [isEditing, setIsEditing] = useState(false);
     const [editingId, setEditingId] = useState(null);
     
     // Header State
-    const [branchId, setBranchId] = useState(user?.branch_id ? String(user.branch_id) : '');
-    const [providerId, setProviderId] = useState('');
+    const [branchId, setBranchId] = useState(() => initialDraft?.branchId || (user?.branch_id ? String(user.branch_id) : ''));
+    const [providerId, setProviderId] = useState(() => initialDraft?.providerId || '');
     const [isProviderModalOpen, setIsProviderModalOpen] = useState(false);
     const [editingProvider, setEditingProvider] = useState(null);
-    const [tipoDocId, setTipoDocId] = useState('03'); // Default CCF
-    const [condicionId, setCondicionId] = useState('1'); // Default Contado
-    const [numeroDoc, setNumeroDoc] = useState('');
-    const [numControl, setNumControl] = useState('');
-    const [selloRecepcion, setSelloRecepcion] = useState('');
-    const [fecha, setFecha] = useState(getTodayString());
-    const [periodYear, setPeriodYear] = useState(new Date().getFullYear());
-    const [periodMonth, setPeriodMonth] = useState(new Date().getMonth() + 1);
-    const [observaciones, setObservaciones] = useState('');
-    const [numQuedan, setNumQuedan] = useState('');
+    const [tipoDocId, setTipoDocId] = useState(() => initialDraft?.tipoDocId || '03'); // Default CCF
+    const [condicionId, setCondicionId] = useState(() => initialDraft?.condicionId || '1'); // Default Contado
+    const [numeroDoc, setNumeroDoc] = useState(() => initialDraft?.numeroDoc || '');
+    const [numControl, setNumControl] = useState(() => initialDraft?.numControl || '');
+    const [selloRecepcion, setSelloRecepcion] = useState(() => initialDraft?.selloRecepcion || '');
+    const [fecha, setFecha] = useState(() => initialDraft?.fecha || getTodayString());
+    const [periodYear, setPeriodYear] = useState(() => initialDraft?.periodYear || new Date().getFullYear());
+    const [periodMonth, setPeriodMonth] = useState(() => initialDraft?.periodMonth || (new Date().getMonth() + 1));
+    const [observaciones, setObservaciones] = useState(() => initialDraft?.observaciones || '');
+    const [numQuedan, setNumQuedan] = useState(() => initialDraft?.numQuedan || '');
 
     const handleFechaChange = (e) => {
         const val = e.target.value;
@@ -114,15 +126,15 @@ const Purchases = () => {
     };
 
     // Credit Note Specific
-    const [docAfectado, setDocAfectado] = useState('');
-    const [fechaAfectada, setFechaAfectada] = useState('');
+    const [docAfectado, setDocAfectado] = useState(() => initialDraft?.docAfectado || '');
+    const [fechaAfectada, setFechaAfectada] = useState(() => initialDraft?.fechaAfectada || '');
 
     // Credit Terms
-    const [diasCredito, setDiasCredito] = useState(0);
-    const [fechaVencimiento, setFechaVencimiento] = useState('');
+    const [diasCredito, setDiasCredito] = useState(() => initialDraft?.diasCredito || 0);
+    const [fechaVencimiento, setFechaVencimiento] = useState(() => initialDraft?.fechaVencimiento || '');
 
     // Items State
-    const [selectedItems, setSelectedItems] = useState([]);
+    const [selectedItems, setSelectedItems] = useState(() => (initialDraft && Array.isArray(initialDraft.selectedItems) ? initialDraft.selectedItems : []));
     
     // Quick Add State
     const [quickBarcode, setQuickBarcode] = useState('');
@@ -208,6 +220,51 @@ const Purchases = () => {
     }, [pdfUrl]);
 
     useDirtyTracker('compras', selectedItems.length > 0 || providerId || numeroDoc || numControl || selloRecepcion || numQuedan);
+
+    // Auto-guardado de borrador de compra en localStorage
+    useEffect(() => {
+        if (!user?.id || !user?.company_id || isEditing) return;
+        const hasData = (selectedItems && selectedItems.length > 0) || providerId || numeroDoc || numControl || selloRecepcion || numQuedan;
+        if (hasData) {
+            try {
+                const draft = {
+                    branchId,
+                    providerId,
+                    tipoDocId,
+                    condicionId,
+                    numeroDoc,
+                    numControl,
+                    selloRecepcion,
+                    fecha,
+                    periodYear,
+                    periodMonth,
+                    observaciones,
+                    numQuedan,
+                    docAfectado,
+                    fechaAfectada,
+                    diasCredito,
+                    fechaVencimiento,
+                    selectedItems,
+                    savedAt: Date.now()
+                };
+                localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+            } catch (e) {
+                console.warn('Error guardando borrador de compra:', e);
+            }
+        } else {
+            localStorage.removeItem(DRAFT_KEY);
+        }
+    }, [selectedItems, providerId, numeroDoc, numControl, selloRecepcion, numQuedan, branchId, tipoDocId, condicionId, fecha, periodYear, periodMonth, observaciones, docAfectado, fechaAfectada, diasCredito, fechaVencimiento, DRAFT_KEY, user?.id, user?.company_id, isEditing]);
+
+    // Notificar al montar si se restauró borrador de compra
+    useEffect(() => {
+        if (hasInitialDraft) {
+            toast.info('Borrador de compra recuperado automáticamente', {
+                id: 'purchase-draft-restored',
+                duration: 3500
+            });
+        }
+    }, []);
 
     // Queries
     const { data: currentCompany } = useQuery({
@@ -501,10 +558,15 @@ const Purchases = () => {
             toast.success('Compra registrada correctamente');
             resetForm();
             setActiveTab('historial');
-            queryClient.invalidateQueries(['purchases']);
-            queryClient.invalidateQueries(['inventory']);
-            queryClient.invalidateQueries(['products']);
-            queryClient.invalidateQueries(['purchase-products']);
+            try { localStorage.removeItem(DRAFT_KEY); } catch {}
+            queryClient.invalidateQueries({ queryKey: ['purchases'] });
+            queryClient.invalidateQueries({ queryKey: ['inventory'] });
+            queryClient.invalidateQueries({ queryKey: ['products'] });
+            queryClient.invalidateQueries({ queryKey: ['terminal-products'] });
+            queryClient.invalidateQueries({ queryKey: ['purchase-products'] });
+            queryClient.invalidateQueries({ queryKey: ['inventory-stock'] });
+            queryClient.invalidateQueries({ queryKey: ['kardex'] });
+            queryClient.invalidateQueries({ queryKey: ['cxp'] });
         },
         onError: (err) => toast.error(err.response?.data?.message || 'Error al procesar')
     });
@@ -515,10 +577,15 @@ const Purchases = () => {
             toast.success('Compra actualizada correctamente');
             resetForm();
             setActiveTab('historial');
-            queryClient.invalidateQueries(['purchases']);
-            queryClient.invalidateQueries(['inventory']);
-            queryClient.invalidateQueries(['products']);
-            queryClient.invalidateQueries(['purchase-products']);
+            try { localStorage.removeItem(DRAFT_KEY); } catch {}
+            queryClient.invalidateQueries({ queryKey: ['purchases'] });
+            queryClient.invalidateQueries({ queryKey: ['inventory'] });
+            queryClient.invalidateQueries({ queryKey: ['products'] });
+            queryClient.invalidateQueries({ queryKey: ['terminal-products'] });
+            queryClient.invalidateQueries({ queryKey: ['purchase-products'] });
+            queryClient.invalidateQueries({ queryKey: ['inventory-stock'] });
+            queryClient.invalidateQueries({ queryKey: ['kardex'] });
+            queryClient.invalidateQueries({ queryKey: ['cxp'] });
         },
         onError: (err) => toast.error(err.response?.data?.message || 'Error al actualizar')
     });
@@ -527,8 +594,14 @@ const Purchases = () => {
         mutationFn: (id) => axios.post(`/api/purchases/${id}/void`),
         onSuccess: () => {
             toast.success('Compra anulada correctamente');
-            queryClient.invalidateQueries(['purchases']);
-            queryClient.invalidateQueries(['inventory']);
+            queryClient.invalidateQueries({ queryKey: ['purchases'] });
+            queryClient.invalidateQueries({ queryKey: ['inventory'] });
+            queryClient.invalidateQueries({ queryKey: ['products'] });
+            queryClient.invalidateQueries({ queryKey: ['terminal-products'] });
+            queryClient.invalidateQueries({ queryKey: ['purchase-products'] });
+            queryClient.invalidateQueries({ queryKey: ['inventory-stock'] });
+            queryClient.invalidateQueries({ queryKey: ['kardex'] });
+            queryClient.invalidateQueries({ queryKey: ['cxp'] });
         },
         onError: (err) => toast.error(err.response?.data?.message || 'Error al anular')
     });
@@ -754,6 +827,7 @@ const Purchases = () => {
         setPeriodYear(y);
         setPeriodMonth(m);
         setIsEditing(false); setEditingId(null);
+        try { localStorage.removeItem(DRAFT_KEY); } catch {}
     };
 
     const handleFileChange = async (e) => {

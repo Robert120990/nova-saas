@@ -129,7 +129,11 @@ const Products = () => {
             return axios.post('/api/products', data);
         },
         onSuccess: () => {
-            queryClient.invalidateQueries(['products']);
+            queryClient.invalidateQueries({ queryKey: ['products'] });
+            queryClient.invalidateQueries({ queryKey: ['terminal-products'] });
+            queryClient.invalidateQueries({ queryKey: ['purchase-products'] });
+            queryClient.invalidateQueries({ queryKey: ['inventory-stock'] });
+            queryClient.invalidateQueries({ queryKey: ['kardex'] });
             setIsModalOpen(false);
             setSelectedProduct(null);
             toast.success(selectedProduct ? 'Producto actualizado' : 'Producto creado');
@@ -144,7 +148,11 @@ const Products = () => {
     const deleteMutation = useMutation({
         mutationFn: (id) => axios.delete(`/api/products/${id}`),
         onSuccess: (res) => {
-            queryClient.invalidateQueries(['products']);
+            queryClient.invalidateQueries({ queryKey: ['products'] });
+            queryClient.invalidateQueries({ queryKey: ['terminal-products'] });
+            queryClient.invalidateQueries({ queryKey: ['purchase-products'] });
+            queryClient.invalidateQueries({ queryKey: ['inventory-stock'] });
+            queryClient.invalidateQueries({ queryKey: ['kardex'] });
             toast.success(res.data.message || 'Producto procesado');
         }
     });

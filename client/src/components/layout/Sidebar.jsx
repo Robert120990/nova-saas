@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
-import { NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from "../../context/AuthContext";
 import { ChevronDown, ChevronRight, ChevronLeft, Menu, Search, X } from 'lucide-react';
 import axios from 'axios';
 import { useQuery } from '@tanstack/react-query';
 import { useMenuItems, GROUP_MODULE_MAP, ITEM_MODULE_MAP } from "../../hooks/useMenuItems";
+import { useSafeNavigate } from "../../hooks/useSafeNavigate";
 
 const Sidebar = ({ onOpenSearch, isMobileOpen = false, onCloseMobile }) => {
     const { user } = useAuth();
@@ -36,7 +37,7 @@ const Sidebar = ({ onOpenSearch, isMobileOpen = false, onCloseMobile }) => {
     const isSuperAdmin = user?.role === 'SuperAdmin';
 
     const location = useLocation();
-    const navigate = useNavigate();
+    const { handleSafeLinkClick, safeNavigate } = useSafeNavigate();
 
     // Initialize groups as collapsed
     const [expandedGroups, setExpandedGroups] = useState({});
@@ -51,12 +52,12 @@ const Sidebar = ({ onOpenSearch, isMobileOpen = false, onCloseMobile }) => {
         }));
     };
 
-    const handleGroupClick = (group, children) => {
+    const handleGroupClick = async (group, children) => {
         if (effectiveCollapsed) return;
         toggleGroup(group.id);
         if (children.length === 1 && children[0].path) {
-            navigate(children[0].path);
-            if (isMobileOpen && onCloseMobile) onCloseMobile();
+            const ok = await safeNavigate(children[0].path);
+            if (ok && isMobileOpen && onCloseMobile) onCloseMobile();
         }
     };
 
@@ -278,8 +279,10 @@ const Sidebar = ({ onOpenSearch, isMobileOpen = false, onCloseMobile }) => {
                                         key={child.path}
                                         to={child.path}
                                         end
-                                        onClick={() => {
-                                            if (onCloseMobile) onCloseMobile();
+                                        onClick={(e) => {
+                                            handleSafeLinkClick(e, child.path, () => {
+                                                if (onCloseMobile) onCloseMobile();
+                                            });
                                         }}
                                         className={({ isActive }) =>
                                             `flex items-center gap-3 pl-12 pr-4 py-1.5 rounded-xl transition-all duration-200 ${
@@ -339,9 +342,11 @@ const Sidebar = ({ onOpenSearch, isMobileOpen = false, onCloseMobile }) => {
                 key={item.path || item.id}
                 to={item.path}
                 end
-                onClick={() => {
-                    setHoveredItem(null);
-                    if (onCloseMobile) onCloseMobile();
+                onClick={(e) => {
+                    handleSafeLinkClick(e, item.path, () => {
+                        setHoveredItem(null);
+                        if (onCloseMobile) onCloseMobile();
+                    });
                 }}
                 title={effectiveCollapsed ? item.label : ""}
                 className={({ isActive }) =>
@@ -432,6 +437,11 @@ const Sidebar = ({ onOpenSearch, isMobileOpen = false, onCloseMobile }) => {
                     <NavLink
                         to="/changelog"
                         title="Ver Historial de Cambios"
+                        onClick={(e) => {
+                            handleSafeLinkClick(e, '/changelog', () => {
+                                if (onCloseMobile) onCloseMobile();
+                            });
+                        }}
                         className="text-[11px] font-mono text-indigo-400/80 hover:text-indigo-300 font-semibold tracking-wide flex items-center gap-1.5 transition-colors group"
                     >
                         <span>Versión:</span>
@@ -530,9 +540,11 @@ const Sidebar = ({ onOpenSearch, isMobileOpen = false, onCloseMobile }) => {
                                             key={child.path}
                                             to={child.path}
                                             end
-                                            onClick={() => {
-                                                setHoveredItem(null);
-                                                if (onCloseMobile) onCloseMobile();
+                                            onClick={(e) => {
+                                                handleSafeLinkClick(e, child.path, () => {
+                                                    setHoveredItem(null);
+                                                    if (onCloseMobile) onCloseMobile();
+                                                });
                                             }}
                                             className={({ isActive }) =>
                                                 `flex items-center gap-2.5 px-3 py-2 rounded-xl transition-all duration-150 ${
