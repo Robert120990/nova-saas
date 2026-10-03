@@ -1,11 +1,12 @@
 import EmployeeSearchModal from '../../rh/EmployeeSearchModal';
 import PlanillaReportModal from '../../rh/PlanillaReportModal';
 import PlanillaExportModal from '../../rh/PlanillaExportModal';
+import PlanillaConflictModal from './PlanillaConflictModal';
 
 
 const PlanillaModals = ({ model }) => {
     const { isEmpModalOpen, setIsEmpModalOpen, handleSelectEmployee, previewPeriodo, setPreviewPeriodo, exportModalConfig, setExportModalConfig, handleConfirmExport } = model;
-    return (<><EmployeeSearchModal
+    return (<><PlanillaConflictModal open={!!model.conflict} onClose={() => model.setConflict(null)} onSave={model.resolveConflict} current={model.conflict?.data} details={model.detalles} busy={model.guardandoManual} /><EmployeeSearchModal
                 isOpen={isEmpModalOpen}
                 onClose={() => setIsEmpModalOpen(false)}
                 onSelect={handleSelectEmployee}

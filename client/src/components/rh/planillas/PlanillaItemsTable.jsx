@@ -4,7 +4,7 @@ import { Users, Loader2, Save } from 'lucide-react';
 
 import { calcularTarifaDetalle } from './planillaUtils';
 const PlanillaItemsTable = ({ model }) => {
-    const { autoSaveRef, empleadoData, saveCurrentEmployee, guardandoManual, savingRef, sinEmpleado, detalles, handleValorChange } = model;
+    const { unsaved, empleadoData, saveCurrentEmployee, guardandoManual, savingRef, sinEmpleado, detalles, handleValorChange } = model;
     return (<div className="lg:col-span-8 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                             <div className="px-4 py-2 bg-slate-50/80 border-b border-slate-200 flex items-center justify-between">
                                 <div>
@@ -12,8 +12,8 @@ const PlanillaItemsTable = ({ model }) => {
                                     <span className="text-[10px] text-slate-400">Conceptos de percepciones y deducciones</span>
                                 </div>
                                 <div className="flex flex-wrap items-center gap-2">
-                                    {autoSaveRef.current && (
-                                        <span className="text-[10px] text-indigo-600 font-medium animate-pulse">Guardando cambios...</span>
+                                    {unsaved && (
+                                        <span className="text-[10px] text-indigo-600 font-medium">{guardandoManual ? 'Guardando cambios...' : 'Cambios pendientes'}</span>
                                     )}
                                     {empleadoData?.id && (
                                         <button
@@ -100,6 +100,7 @@ const PlanillaItemsTable = ({ model }) => {
                                                                     type="number"
                                                                     step={d.tipo_valor === 'dias' ? '1' : (d.tipo_valor === 'horas' ? '0.5' : '0.01')}
                                                                     min="0"
+                                                                    max={d.codigo === '01' && d.tipo_valor === 'dias' ? 15 : undefined}
                                                                     value={d.cantidad !== undefined ? d.cantidad : ''}
                                                                     onChange={e => handleValorChange(i, e.target.value)}
                                                                     placeholder="0"

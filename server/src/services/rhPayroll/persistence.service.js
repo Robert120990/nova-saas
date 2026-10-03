@@ -2,6 +2,7 @@ const { cargarCuentasPorDefecto } = require('./defaults.service');
 const { recalculateSavedPlanilla } = require('./calculation.service');
 const { readRevision, ensureExpectedRevision } = require('./revision.service');
 const { validateDetails } = require('./saveValidation.service');
+const { releasePayrollCommissions } = require('./commissionPayroll.service');
 
 async function replaceDetails(connection, id, details) {
     if (details === undefined) return;
@@ -110,6 +111,8 @@ const deletePlanilla = async (req, res, connection) => {
     );
     if (!rows.length) return res.status(404).json({ message: 'Planilla no encontrada' });
     if (rows[0].estado === 'pagada') return res.status(400).json({ message: 'No se puede eliminar individualmente una planilla pagada y cerrada.' });
+    if (!await ensureExpectedRevision(connection, id, req.company_id, req.body?.expected_revision, res)) return;
+    await releasePayrollCommissions(connection, req.company_id, [id]);
     await connection.query('DELETE FROM rh_planillas WHERE id = ? AND company_id = ?', [id, req.company_id]);
     res.json({ message: 'Planilla eliminada' });
 };

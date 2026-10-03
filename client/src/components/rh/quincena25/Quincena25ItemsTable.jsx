@@ -8,7 +8,7 @@ const Quincena25ItemsTable = ({ model }) => {
             {/* Tabla de Detalle de Nómina */}
             <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
                 <div className="overflow-x-auto">
-                    <table className="w-full text-left text-xs text-slate-700 border-collapse">
+                    <table className="table-cards w-full text-left text-xs text-slate-700 border-collapse">
                         <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider text-[11px]">
                             <tr>
                                 <th className="py-3 px-3 w-12 text-center">Nº</th>
@@ -52,16 +52,16 @@ const Quincena25ItemsTable = ({ model }) => {
                                                 esExcluido ? 'bg-slate-50/50 opacity-75' : ''
                                             }`}
                                         >
-                                            <td className="py-3 px-3 text-center text-slate-400 font-medium">
+                                            <td data-label="Nº" className="py-3 px-3 text-center text-slate-400 font-medium">
                                                 {idx + 1}
                                             </td>
-                                            <td className="py-3 px-3 font-bold text-slate-800">
+                                            <td data-label="Código" className="py-3 px-3 font-bold text-slate-800">
                                                 {item.codigo}
                                             </td>
-                                            <td className="py-3 px-3 font-semibold text-slate-900">
+                                            <td data-label="Empleado" className="py-3 px-3 font-semibold text-slate-900">
                                                 {item.nombres} {item.apellidos}
                                             </td>
-                                            <td className="py-3 px-3 text-slate-600">
+                                            <td data-label="Cargo / Depto" className="py-3 px-3 text-slate-600">
                                                 <div className="truncate max-w-[150px] font-medium">
                                                     {item.cargo_nombre || 'GENERAL'}
                                                 </div>
@@ -69,16 +69,16 @@ const Quincena25ItemsTable = ({ model }) => {
                                                     {item.departamento_nombre || 'GENERAL'}
                                                 </div>
                                             </td>
-                                            <td className="py-3 px-3 text-right font-bold text-slate-800">
+                                            <td data-label="Sueldo Base" className="py-3 px-3 text-right font-bold text-slate-800">
                                                 <Money value={sueldo} />
                                             </td>
-                                            <td className="py-3 px-3 text-center text-slate-600 font-medium text-[11px]">
+                                            <td data-label="Antigüedad" className="py-3 px-3 text-center text-slate-600 font-medium text-[11px]">
                                                 {item.dias_laborados_anio || 0} días
                                             </td>
-                                            <td className="py-3 px-3 text-center">
+                                            <td data-label="Condición" className="py-3 px-3 text-center">
                                                 {esExcluido ? (
                                                     <span className="inline-block px-2 py-0.5 text-[10px] font-bold text-slate-600 bg-slate-100 border border-slate-200 rounded-full">
-                                                        Excluido (&gt; $1,500)
+                                                        Excluido (&gt; <Money value={1500} />)
                                                     </span>
                                                 ) : item.es_proporcional ? (
                                                     <span className="inline-block px-2 py-0.5 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-full">
@@ -90,10 +90,10 @@ const Quincena25ItemsTable = ({ model }) => {
                                                     </span>
                                                 )}
                                             </td>
-                                            <td className="py-3 px-3 text-right font-medium text-slate-700">
+                                            <td data-label="Monto Q25" className="py-3 px-3 text-right font-medium text-slate-700">
                                                 <Money value={montoQ25} />
                                             </td>
-                                            <td className="py-3 px-3 text-right">
+                                            <td data-label="Ajuste" className="py-3 px-3 text-right">
                                                 {esPagada || esExcluido ? (
                                                     <Money value={parseFloat(item.ajuste || 0)} />
                                                 ) : (
@@ -104,10 +104,10 @@ const Quincena25ItemsTable = ({ model }) => {
                                                     />
                                                 )}
                                             </td>
-                                            <td className="py-3 px-3 text-right font-black text-indigo-700 text-sm">
+                                            <td data-label="Total Pagar" className="py-3 px-3 text-right font-black text-indigo-700 text-sm">
                                                 <Money value={netoRecibir} />
                                             </td>
-                                            <td className="py-3 px-3">
+                                            <td data-label="Observaciones" className="py-3 px-3">
                                                 {esPagada || esExcluido ? (
                                                     <span className="text-[11px] text-slate-500 truncate block max-w-[150px]">
                                                         {item.observaciones || '—'}
@@ -122,7 +122,7 @@ const Quincena25ItemsTable = ({ model }) => {
                                                     />
                                                 )}
                                             </td>
-                                            <td className="py-3 px-3 text-center">
+                                            <td data-label="Recibo" className="py-3 px-3 text-center">
                                                 {!esExcluido && netoRecibir > 0 && (
                                                     <button
                                                         onClick={() => setPreviewPeriodo({

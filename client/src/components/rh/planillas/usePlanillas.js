@@ -1,13 +1,14 @@
 import { useAuth } from '../../../context/AuthContext';
 import { unwrapList } from '../../../utils/apiUtils';
 import { createPayrollSaveQueue } from './payrollSaveQueue';
+import { normalizarDetallesGuardados } from './planillaDetails';
 import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { useConfirm } from '../../../context/ConfirmContext';
 import { toast } from 'sonner';
 import { useDirtyTracker } from '../../../hooks/useDirtyTracker';
-import { yearNow, monthNow, months, calcularTarifaDetalle, calcularMontoDetalle } from './planillaUtils';
+import { yearNow, monthNow, months, calcularMontoDetalle } from './planillaUtils';
 export default function usePlanillas() {
 
     const queryClient = useQueryClient();
@@ -48,8 +49,13 @@ export default function usePlanillas() {
     const [unsaved, setUnsaved] = useState(false);
     const [saveError, setSaveError] = useState('');
     const [loadingEmployee, setLoadingEmployee] = useState(false);
+    const [hasConflict, setHasConflict] = useState(false);
+    const [conflict, setConflict] = useState(null);
     const autoSaveRef = useRef(false);
     const savingRef = useRef(false);
+    const operationRef = useRef(false);
+    const mountedRef = useRef(true);
+    const draftStorageWarning = useRef(false);
     const selectedRef = useRef(null);
 
     const diasTrabajadosRef = useRef(15);
@@ -69,16 +75,22 @@ export default function usePlanillas() {
     const setQuincena = value => { quincenaRef.current = value; setQuincenaState(value); };
     const hayOtraAbiertaRef = useRef(false);
 
-    const contextKey = () => [companyId, empleadoIdRef.current, periodoAnioRef.current, periodoMesRef.current, quincenaRef.current].join(':');
+    const contextKey = () => [companyId, empleadoIdRef.current, periodoAnioRef.current, periodoMesRef.current, quincenaRef.current, mountedRef.current].join(':');
     const persistDraft = () => {
         if (!empleadoIdRef.current) return;
-        sessionStorage.setItem(draftKey, JSON.stringify({
+        try { sessionStorage.setItem(draftKey, JSON.stringify({
             empleado_id: empleadoIdRef.current, periodo_anio: periodoAnioRef.current,
             periodo_mes: periodoMesRef.current, quincena: quincenaRef.current,
             dias_trabajados: diasTrabajadosRef.current, detalles: detallesRef.current,
             id: selectedRef.current?.id, expected_revision: revisionRef.current
-        }));
+        })); } catch {
+            if (!draftStorageWarning.current) {
+                draftStorageWarning.current = true;
+                toast.warning('El navegador no permite conservar un borrador local. Guarde sus cambios antes de salir.');
+            }
+        }
     };
+    const clearDraft = () => { try { sessionStorage.removeItem(draftKey); } catch { /* El guardado en el servidor ya está confirmado. */ } };
     const markDirty = () => {
         editRevisionRef.current++;
         autoSaveRef.current = true;
@@ -88,9 +100,10 @@ export default function usePlanillas() {
         persistDraft();
     };
     useEffect(() => {
+        mountedRef.current = true;
         const beforeUnload = event => { if (autoSaveRef.current || savingRef.current) { event.preventDefault(); event.returnValue = ''; } };
         window.addEventListener('beforeunload', beforeUnload);
-        return () => { window.removeEventListener('beforeunload', beforeUnload); loadSequenceRef.current++; };
+        return () => { mountedRef.current = false; window.removeEventListener('beforeunload', beforeUnload); loadSequenceRef.current++; };
     }, []);
 
     useDirtyTracker('planillas', activeTab === 'nuevo' && (unsaved || guardandoManual));
@@ -99,7 +112,7 @@ export default function usePlanillas() {
         const handleKeyDown = (e) => {
             if (e.key === 'F3') {
                 e.preventDefault();
-                if (activeTab === 'nuevo' && !loadingEmployee && !generando && !guardandoManual) {
+                if (activeTab === 'nuevo' && !operationRef.current && !loadingEmployee && !generando && !guardandoManual) {
                     setIsEmpModalOpen(true);
                 }
             }
@@ -182,10 +195,14 @@ export default function usePlanillas() {
                 autoSaveRef.current = false;
                 setUnsaved(false);
                 setSaveError('');
-                sessionStorage.removeItem(draftKey);
+                clearDraft();
+                setHasConflict(false);
+            } else {
+                // If the next request fails, recovery must use the revision just saved.
+                persistDraft();
             }
         },
-        onBusy: busy => { savingRef.current = busy; setGuardandoManual(busy); }
+        onBusy: busy => { savingRef.current = busy; if (mountedRef.current) setGuardandoManual(busy); }
     });
     const saveCurrentEmployee = async ({ silent = false } = {}) => {
         try {
@@ -195,11 +212,54 @@ export default function usePlanillas() {
         } catch (error) {
             const message = error.response?.data?.message || 'No se pudieron guardar los cambios. El borrador sigue en pantalla; reintente guardar.';
             setSaveError(message);
+            setHasConflict([409, 404].includes(error.response?.status) || (error.response?.status === 400 && /cerrad|pagad/i.test(message)));
             toast.error(message, { id: 'planilla-save-error' });
             throw error;
         }
     };
 
+
+    const reviewConflict = async () => {
+        const key = contextKey();
+        try {
+            const { data } = await axios.get(`/api/rh/planillas/empleado/${empleadoIdRef.current}`, { params: {
+                periodo_anio: periodoAnioRef.current, periodo_mes: periodoMesRef.current, quincena: quincenaRef.current
+            } });
+            if (key !== contextKey()) return;
+            setConflict({ key, data });
+        } catch { toast.error('No se pudieron consultar los datos guardados. Su borrador se conserva.'); }
+    };
+
+    const resolveConflict = async mode => {
+        if (!conflict || conflict.key !== contextKey()) return;
+        const { data } = conflict;
+        if (mode === 'local' && data.totales?.estado === 'pagada') return;
+        setConflict(null);
+        setSelected(data.planilla_id ? { id: data.planilla_id, empleado_id: empleadoIdRef.current } : null);
+        revisionRef.current = data.revision;
+        setEmpleadoData(data);
+        if (mode === 'local') {
+            markDirty();
+            try { await saveCurrentEmployee(); } catch { /* A further change requires another review. */ }
+        } else {
+            if (!data.planilla_id) {
+                clearDraft();
+                resetForm();
+                setActiveTab('historial');
+                return;
+            }
+            setDetalles(normalizarDetallesGuardados(unwrapList(data.detalles), data.sueldo_base, cuentasActivas));
+            setDiasTrabajados(Number(data.dias_trabajados ?? 15));
+            setCalculo(data.totales);
+            setEmpleadoData(data);
+            editRevisionRef.current++;
+            autoSaveRef.current = false;
+            setUnsaved(false);
+            setSaveError('');
+            setHasConflict(false);
+            clearDraft();
+        }
+    };
 
     // Only the latest employee/period/edit can update the displayed calculation.
     useEffect(() => {
@@ -208,6 +268,7 @@ export default function usePlanillas() {
         const key = contextKey();
         const revision = editRevisionRef.current;
         const timer = setTimeout(async () => {
+            if (disposed || operationRef.current || contextKey() !== key) return;
             setCalculando(true);
             try {
                 if (autoSaveRef.current && !hayOtraAbiertaRef.current) {
@@ -234,26 +295,29 @@ export default function usePlanillas() {
             return toast.error(`No puede generar esta planilla. El período ${mesNom} ${otraAbiertaItem.periodo_anio} (${qNom}) aún está abierto. Debe cerrarlo antes de crear uno nuevo.`);
         }
 
+        if (operationRef.current) return;
+        const snapshot = {
+            periodo_anio: periodoAnioRef.current, periodo_mes: periodoMesRef.current,
+            quincena: quincenaRef.current
+        };
+        const key = contextKey();
+        const headers = { Authorization: axios.defaults.headers.common.Authorization, 'x-company-id': String(companyId) };
+        operationRef.current = true;
+        setGenerando(true);
         try {
+            if (autoSaveRef.current || savingRef.current) await saveCurrentEmployee({ silent: true });
             const check = await axios.get('/api/rh/planillas/grupos', {
-                params: { anio: periodoAnio, mes: periodoMes, quincena, limit: 1 }
+                params: { anio: snapshot.periodo_anio, mes: snapshot.periodo_mes, quincena: snapshot.quincena, limit: 1 }, headers
             });
             if (check.data.total > 0) {
                 toast.error('Este período ya existe. Abra la planilla y use Sincronizar para conservar los valores digitados.');
                 return;
             }
-        } catch (error) {
-            toast.error(error.response?.data?.message || 'No se pudo verificar el período. Reintente.');
-            return;
-        }
-
-        setGenerando(true);
-        try {
-            const res = await axios.post('/api/rh/planillas/generar', {
-                periodo_anio: periodoAnio,
-                periodo_mes: periodoMes,
-                quincena
-            });
+            if (contextKey() !== key) return;
+            const res = await axios.post('/api/rh/planillas/generar', snapshot, { headers });
+            queryClient.invalidateQueries({ queryKey: ['rh-planillas-grupos'] });
+            queryClient.invalidateQueries({ queryKey: ['rh-planillas-abiertas'] });
+            if (contextKey() !== key) return;
             toast.success(`Planilla generada para ${res.data.total} empleados`);
             setPeriodoBloqueado(true);
 
@@ -263,11 +327,10 @@ export default function usePlanillas() {
             setEmpleadoData(null);
             setCodigoInput('');
             setSelected(null);
-            queryClient.invalidateQueries({ queryKey: ['rh-planillas-grupos'] });
-            queryClient.invalidateQueries({ queryKey: ['rh-planillas-abiertas'] });
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Error al generar planilla');
+            toast.error(error.response?.data?.message || 'No se pudo generar la planilla. Los datos se conservan.');
         } finally {
+            operationRef.current = false;
             setGenerando(false);
         }
     };
@@ -297,42 +360,7 @@ export default function usePlanillas() {
             if (data.planilla_id) {
                 setSelected({ id: data.planilla_id, empleado_id: id });
                 setDiasTrabajados(data.dias_trabajados !== undefined && data.dias_trabajados !== null ? parseInt(data.dias_trabajados) : 15);
-                const sueldoBase = parseFloat(data.sueldo_base || 0);
-                const sueldoDiario = sueldoBase / 30;
-
-                const parsedDetalles = unwrapList(data.detalles).map(d => {
-                    let cantidad = 0;
-                    if (d.cantidad !== undefined) {
-                        cantidad = d.cantidad;
-                    } else if (d.valor_base !== null && d.valor_base !== undefined && parseFloat(d.valor_base) > 0) {
-                        cantidad = parseFloat(d.valor_base);
-                    } else {
-                        if (d.tipo_valor === 'dias') {
-                            cantidad = sueldoDiario > 0 ? Math.round(parseFloat(d.valor_ingresado || 0) / sueldoDiario) : 0;
-                        } else if (d.tipo_valor === 'horas') {
-                            const tarifa = calcularTarifaDetalle(d, sueldoBase);
-                            const val = parseFloat(d.valor_ingresado || 0);
-                            if (val > 0 && val <= 40 && tarifa > 0 && Math.abs(val - Math.round(val * tarifa * 100) / 100) > 0.01) {
-                                cantidad = val;
-                            } else if (tarifa > 0) {
-                                cantidad = Math.round((val / tarifa) * 100) / 100;
-                            } else {
-                                cantidad = val;
-                            }
-                        } else if (d.tipo_valor === 'porcentaje') {
-                            cantidad = sueldoBase > 0 ? Math.round((parseFloat(d.valor_ingresado || 0) / sueldoBase) * 10000) / 100 : 0;
-                        } else {
-                            cantidad = parseFloat(d.valor_ingresado || 0);
-                        }
-                    }
-                    const monto = calcularMontoDetalle(d, cantidad, sueldoBase);
-                    return {
-                        ...d,
-                        cantidad: cantidad,
-                        valor_base: cantidad,
-                        valor_ingresado: monto
-                    };
-                });
+                const parsedDetalles = normalizarDetallesGuardados(unwrapList(data.detalles), data.sueldo_base, cuentasActivas);
 
                 setDetalles(parsedDetalles);
                 const tot = data.totales;
@@ -356,9 +384,15 @@ export default function usePlanillas() {
             } else {
                 setSelected(null);
                 setCalculo(null);
-                const initialDias = data.en_vacaciones === 1 || data.incapacitado === 1 ? 0 : 15;
+                const absent = Number(data.en_vacaciones) === 1 || Number(data.incapacitado) === 1;
+                const initialDias = absent ? 0 : Number(data.dias_trabajados ?? 15);
                 setDiasTrabajados(initialDias);
-                buildDetalles(data, initialDias);
+                const defaults = normalizarDetallesGuardados(unwrapList(data.detalles), data.sueldo_base, cuentasActivas);
+                if (defaults.length) {
+                    setDetalles(absent ? defaults.map(d => ({ ...d, cantidad: 0, valor_base: 0, valor_ingresado: 0 })) : defaults);
+                } else {
+                    buildDetalles(data, initialDias);
+                }
             }
             setPeriodoBloqueado(true);
             return true;
@@ -375,7 +409,7 @@ export default function usePlanillas() {
         const sueldoBase = parseFloat(emp?.sueldo_base || 0);
         const bonificacionFija = parseFloat(emp?.bonificacion_fija || 0);
         const diasToUse = forcedDias !== null ? forcedDias : diasTrabajados;
-        const esAusente = emp?.en_vacaciones === 1 || emp?.incapacitado === 1;
+        const esAusente = Number(emp?.en_vacaciones) === 1 || Number(emp?.incapacitado) === 1;
 
         const activeDiscounts = unwrapList(emp?.descuentos_programados).filter(d => {
             const q = d.quincena || d.aplicar_en;
@@ -394,7 +428,7 @@ export default function usePlanillas() {
                     cantidad = diasToUse;
                 } else {
                     // Check if account matches any active scheduled discount
-                    const matchDiscount = activeDiscounts.find(d => {
+                    const matchingDiscounts = activeDiscounts.filter(d => {
                         if (d.cuenta_id && Number(d.cuenta_id) === Number(c.id)) return true;
                         if (d.cuenta_codigo && d.cuenta_codigo === c.codigo) return true;
                         const desc = (c.descripcion || '').toLowerCase();
@@ -406,8 +440,8 @@ export default function usePlanillas() {
                         return false;
                     });
 
-                    if (matchDiscount) {
-                        cantidad = parseFloat(matchDiscount.valor !== undefined ? matchDiscount.valor : (matchDiscount.monto_cuota || 0));
+                    if (matchingDiscounts.length) {
+                        cantidad = matchingDiscounts.reduce((sum, discount) => sum + Number(discount.valor ?? discount.monto_cuota ?? 0), 0);
                     } else if (c.tipo_valor === 'valor' || c.tipo_valor === 'porcentaje' || c.tipo_valor === 'horas') {
                         cantidad = parseFloat(c.valor_base || 0);
                     }
@@ -501,6 +535,9 @@ export default function usePlanillas() {
         },
         onError: (error) => {
             toast.error(error.response?.data?.message || 'Error al sincronizar planilla');
+        },
+        onSettled: () => {
+            operationRef.current = false;
         }
     });
 
@@ -513,6 +550,7 @@ export default function usePlanillas() {
             variant: 'primary'
         });
         if (ok) {
+            operationRef.current = true;
             sincronizarMutation.mutate({
                 periodo_anio: periodoAnio,
                 periodo_mes: periodoMes,
@@ -533,6 +571,7 @@ export default function usePlanillas() {
         if (!ok) return;
 
         try {
+            operationRef.current = true;
             setSyncingHuevo(true);
             const res = await axios.post('/api/rh/planillas/sincronizar-comisiones-huevo', {
                 periodo_anio: periodoAnio,
@@ -553,13 +592,20 @@ export default function usePlanillas() {
         } catch (error) {
             toast.error(error.response?.data?.message || 'Error al sincronizar comisiones de huevo');
         } finally {
+            operationRef.current = false;
             setSyncingHuevo(false);
         }
     };
 
     const excluirMutation = useMutation({
-        mutationFn: (id) => axios.delete(`/api/rh/planillas/${id}`),
+        mutationFn: ({ id, revision }) => axios.delete(`/api/rh/planillas/${id}`, { data: { expected_revision: revision } }),
         onSuccess: () => {
+            autoSaveRef.current = false;
+            setUnsaved(false);
+            setSaveError('');
+            revisionRef.current = null;
+            editRevisionRef.current++;
+            clearDraft();
             toast.success('Empleado excluido de esta planilla quincenal');
             queryClient.invalidateQueries({ queryKey: ['rh-planillas-grupos'] });
             queryClient.invalidateQueries({ queryKey: ['rh-planillas-abiertas'] });
@@ -572,7 +618,17 @@ export default function usePlanillas() {
             setCodigoInput('');
         },
         onError: (error) => {
-            toast.error(error.response?.data?.message || 'Error al excluir empleado');
+            const message = error.response?.data?.message || 'Error al excluir empleado';
+            toast.error(message);
+            if (error.response?.status === 409) {
+                setSaveError(message);
+                setHasConflict(true);
+            }
+            // Keep every field and the recovery draft if the deletion failed.
+            setDetalles([...detallesRef.current]);
+        },
+        onSettled: () => {
+            operationRef.current = false;
         }
     });
 
@@ -586,10 +642,8 @@ export default function usePlanillas() {
         });
         if (ok) {
             try { if (savingRef.current) await saveCurrentEmployee({ silent: true }); } catch { return; }
-            autoSaveRef.current = false;
-            setUnsaved(false);
-            setDetalles([]);
-            excluirMutation.mutate(selected.id);
+            operationRef.current = true;
+            excluirMutation.mutate({ id: selectedRef.current?.id, revision: revisionRef.current });
         }
     };
 
@@ -706,8 +760,10 @@ export default function usePlanillas() {
             queryClient.invalidateQueries({ queryKey: ['rh-planillas-grupos'] });
             queryClient.invalidateQueries({ queryKey: ['rh-planillas-abiertas'] });
             toast.success(res.data.message);
+            if (empleadoIdRef.current) loadEmpleado(empleadoIdRef.current);
         },
-        onError: (error) => { toast.error(error.response?.data?.message || 'Error al cerrar periodo'); }
+        onError: (error) => { toast.error(error.response?.data?.message || 'Error al cerrar periodo'); },
+        onSettled: () => { operationRef.current = false; }
     });
 
     const handleCerrarPeriodo = async (item) => {
@@ -719,6 +775,7 @@ export default function usePlanillas() {
             variant: 'primary'
         });
         if (ok) {
+            operationRef.current = true;
             cerrarMutation.mutate({
                 periodo_anio: item.periodo_anio,
                 periodo_mes: item.periodo_mes,
@@ -754,7 +811,7 @@ export default function usePlanillas() {
     };
 
     const handleVerPlanillaActual = async () => {
-        if (autoSaveRef.current && empleadoIdRef.current) {
+        if ((autoSaveRef.current || savingRef.current) && empleadoIdRef.current) {
             try {
                 await saveCurrentEmployee({ silent: true });
             } catch (e) {
@@ -771,11 +828,11 @@ export default function usePlanillas() {
     };
 
     const handleVerRecibosActual = async () => {
-        if (autoSaveRef.current && empleadoIdRef.current) {
+        if ((autoSaveRef.current || savingRef.current) && empleadoIdRef.current) {
             try {
                 await saveCurrentEmployee({ silent: true });
             } catch (e) {
-                console.error('Error saving before preview:', e);
+                return;
             }
         }
 
@@ -801,6 +858,8 @@ export default function usePlanillas() {
         loadSequenceRef.current++;
         editRevisionRef.current++;
         revisionRef.current = null;
+        setHasConflict(false);
+        setConflict(null);
         setLoadingEmployee(false);
         setCalculando(false);
         setUnsaved(false);
@@ -881,5 +940,5 @@ const changePeriod = async (field, value) => {
         setQuincena(field === 'quincena' ? value : previous.quincena);
     };
     
-return { activeTab, changePeriod, unsaved, saveError, loadingEmployee, handleNuevaPlanillaClick, tieneAbiertas, primeraAbierta, handleVerDetalle, handleCerrarPeriodo, filterAnio, setFilterAnio, setPage, filterMes, setFilterMes, filterQuincena, setFilterQuincena, items, isLoading, handleEliminarPeriodo, setExportModalConfig, page, response, handleVolverListado, periodoBloqueado, periodoMes, periodoAnio, quincena, handleVerPlanillaActual, handleVerRecibosActual, esEstePeriodoAbierto, cerrarMutation, setPeriodoAnio, setPeriodoMes, setQuincena, diasTrabajados, handleDiasTrabajadosChange, handleSincronizar, sincronizarMutation, handleSincronizarComisionesHuevo, syncingHuevo, setPeriodoBloqueado, handleGenerar, generando, hayOtraAbierta, employeeInputRef, codigoInput, setCodigoInput, handleCodigoSearch, setIsEmpModalOpen, empleadoData, saveCurrentEmployee, guardandoManual, savingRef, selected, handleExcluirEmpleado, excluirMutation, handleAgregarEmpleado, autoSaveRef, sinEmpleado, detalles, handleValorChange, sueldoQuincActual, ingresosAdicActual, percTotal, calculando, calculo, otrasDedActual, otraAbiertaItem, isEmpModalOpen, handleSelectEmployee, previewPeriodo, setPreviewPeriodo, exportModalConfig, handleConfirmExport };
+return { hasConflict, conflict, setConflict, reviewConflict, resolveConflict, activeTab, changePeriod, unsaved, saveError, loadingEmployee, handleNuevaPlanillaClick, tieneAbiertas, primeraAbierta, handleVerDetalle, handleCerrarPeriodo, filterAnio, setFilterAnio, setPage, filterMes, setFilterMes, filterQuincena, setFilterQuincena, items, isLoading, handleEliminarPeriodo, setExportModalConfig, page, response, handleVolverListado, periodoBloqueado, periodoMes, periodoAnio, quincena, handleVerPlanillaActual, handleVerRecibosActual, esEstePeriodoAbierto, cerrarMutation, setPeriodoAnio, setPeriodoMes, setQuincena, diasTrabajados, handleDiasTrabajadosChange, handleSincronizar, sincronizarMutation, handleSincronizarComisionesHuevo, syncingHuevo, setPeriodoBloqueado, handleGenerar, generando, hayOtraAbierta, employeeInputRef, codigoInput, setCodigoInput, handleCodigoSearch, setIsEmpModalOpen, empleadoData, saveCurrentEmployee, guardandoManual, savingRef, selected, handleExcluirEmpleado, excluirMutation, handleAgregarEmpleado, autoSaveRef, sinEmpleado, detalles, handleValorChange, sueldoQuincActual, ingresosAdicActual, percTotal, calculando, calculo, otrasDedActual, otraAbiertaItem, isEmpModalOpen, handleSelectEmployee, previewPeriodo, setPreviewPeriodo, exportModalConfig, handleConfirmExport };
 }

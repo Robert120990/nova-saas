@@ -1,4 +1,5 @@
 const { pool } = require('./shared');
+const { assertPayrollPeriodEditable, applyCommissionToPayroll } = require('../../services/rhPayroll/commissionPayroll.service');
 
 const transferCommissionToPayroll = async (req, res) => {
     const connection = await pool.getConnection();
@@ -6,7 +7,11 @@ const transferCommissionToPayroll = async (req, res) => {
         await connection.beginTransaction();
         const companyId = req.company_id || req.user?.company_id;
         const { commission_id, seller_id, year, month, quincena = 'segunda' } = req.body;
-
+        const [companies] = await connection.query('SELECT id FROM companies WHERE id = ? FOR UPDATE', [companyId]);
+        if (!companies.length) {
+            await connection.rollback();
+            return res.status(404).json({ message: 'Empresa no encontrada' });
+        }
         // Mismo orden de bloqueo que el cálculo: vendedor, luego liquidación.
         let lockSellerId = seller_id;
         if (commission_id) {
@@ -36,11 +41,9 @@ const transferCommissionToPayroll = async (req, res) => {
             return res.status(404).json({ message: 'No se encontró la liquidación de comisión especificada.' });
         }
 
-        if (['transferido_planilla', 'pagado'].includes(comm.status)) {
+        if (comm.status === 'pagado' || (comm.status === 'transferido_planilla' && comm.transferred_to_planilla_id)) {
             await connection.commit(); return res.json({ success: true, already_transferred: true, planilla_id: comm.transferred_to_planilla_id });
         }
-        const [other] = await connection.query("SELECT id FROM egg_seller_commissions WHERE company_id = ? AND seller_id = ? AND period_year = ? AND period_month = ? AND id != ? AND status IN ('transferido_planilla', 'pagado')", [companyId, comm.seller_id, comm.period_year, comm.period_month, comm.id]);
-        if (other.length) { await connection.rollback(); return res.status(409).json({ message: 'Este mes ya tiene una comisión transferida. Concilie la liquidación existente.' }); }
         if (!comm.employee_id) {
             await connection.rollback();
             return res.status(400).json({
@@ -53,6 +56,8 @@ const transferCommissionToPayroll = async (req, res) => {
             await connection.rollback();
             return res.status(400).json({ message: 'El monto de la comisión es $0.00. No hay saldo para transferir.' });
         }
+        const payrollQuincena = comm.quincena === 'mensual' ? 'segunda' : comm.quincena;
+        await assertPayrollPeriodEditable(connection, companyId, comm.period_year, comm.period_month, payrollQuincena);
 
         // 2. Localizar o asegurar cuenta de COMISIONES (código '07') en rh_cuentas_planillas
         const [cuentaRows] = await connection.query(
@@ -72,94 +77,7 @@ const transferCommissionToPayroll = async (req, res) => {
             cuentaComisiones = { id: newCuenta.insertId, codigo: '07', descripcion: 'COMISIONES', operacion: 'sumar' };
         }
 
-        // 3. Buscar planilla abierta para este empleado en el período indicado
-        const [planillaRows] = await connection.query(
-            `SELECT * FROM rh_planillas
-             WHERE company_id = ? AND empleado_id = ? AND periodo_anio = ? AND periodo_mes = ? AND quincena = ? FOR UPDATE`,
-            [companyId, comm.employee_id, comm.period_year, comm.period_month, comm.quincena]
-        );
-
-        let planillaId;
-        if (planillaRows.length > 0) {
-            if (planillaRows[0].estado === 'pagada') {
-                await connection.rollback();
-                return res.status(400).json({ message: 'La planilla para este período ya fue PAGADA y CERRADA. No se puede modificar.' });
-            }
-            planillaId = planillaRows[0].id;
-        } else {
-            // Obtener sueldo base del empleado
-            const [emp] = await connection.query(
-                `SELECT sueldo_base, bonificacion_fija FROM rh_empleados WHERE id = ? AND company_id = ?`,
-                [comm.employee_id, companyId]
-            );
-            const sueldoBase = parseFloat(emp[0]?.sueldo_base || 0);
-            const bonifFija = parseFloat(emp[0]?.bonificacion_fija || 0);
-
-            const [newPlanilla] = await connection.query(
-                `INSERT INTO rh_planillas
-                    (company_id, empleado_id, periodo_anio, periodo_mes, quincena, dias_trabajados, sueldo_base, bonificacion_fija, estado)
-                 VALUES (?, ?, ?, ?, ?, 15, ?, ?, 'pendiente')`,
-                [companyId, comm.employee_id, comm.period_year, comm.period_month, comm.quincena, sueldoBase, bonifFija]
-            );
-            planillaId = newPlanilla.insertId;
-        }
-
-        // 4. Inyectar o actualizar detalle de comisión en rh_planilla_detalles
-        const [existingDetail] = await connection.query(
-            `SELECT id FROM rh_planilla_detalles WHERE planilla_id = ? AND cuenta_id = ?`,
-            [planillaId, cuentaComisiones.id]
-        );
-
-        if (existingDetail.length > 0) {
-            await connection.query(
-                `UPDATE rh_planilla_detalles
-                 SET valor_ingresado = ?, valor_base = ?
-                 WHERE id = ?`,
-                [commissionAmount, commissionAmount, existingDetail[0].id]
-            );
-        } else {
-            await connection.query(
-                `INSERT INTO rh_planilla_detalles
-                    (planilla_id, cuenta_id, codigo, descripcion, operacion, tipo_valor, valor_base, valor_ingresado, orden)
-                 VALUES (?, ?, ?, ?, 'sumar', 'valor', ?, ?, 7)`,
-                [planillaId, cuentaComisiones.id, cuentaComisiones.codigo, cuentaComisiones.descripcion, commissionAmount, commissionAmount]
-            );
-        }
-
-        // 5. Recalcular percepciones y total de la planilla
-        const [detalles] = await connection.query(
-            `SELECT operacion, valor_ingresado FROM rh_planilla_detalles WHERE planilla_id = ?`,
-            [planillaId]
-        );
-
-        let percepciones = 0;
-        let deducciones = 0;
-        detalles.forEach(d => {
-            const val = parseFloat(d.valor_ingresado || 0);
-            if (d.operacion === 'sumar') percepciones += val;
-            else deducciones += val;
-        });
-
-        const [pInfo] = await connection.query(`SELECT sueldo_base FROM rh_planillas WHERE id = ?`, [planillaId]);
-        const sBaseQuincena = (parseFloat(pInfo[0]?.sueldo_base || 0) / 2);
-        const totalPercepciones = Math.round((sBaseQuincena + percepciones) * 100) / 100;
-        const totalDeducciones = Math.round(deducciones * 100) / 100;
-        const montoRecibir = Math.max(0, Math.round((totalPercepciones - totalDeducciones) * 100) / 100);
-
-        await connection.query(
-            `UPDATE rh_planillas
-             SET total_percepciones = ?, total_deducciones = ?, monto_recibir = ?, updated_at = NOW()
-             WHERE id = ?`,
-            [totalPercepciones, totalDeducciones, montoRecibir, planillaId]
-        );
-
-        // 6. Actualizar estado en egg_seller_commissions
-        await connection.query(
-            `UPDATE egg_seller_commissions
-             SET status = 'transferido_planilla', transferred_to_planilla_id = ?, transferred_at = NOW()
-             WHERE id = ?`,
-            [planillaId, comm.id]
-        );
+        const planillaId = await applyCommissionToPayroll(connection, companyId, comm, cuentaComisiones, payrollQuincena);
 
         await connection.commit();
 
@@ -172,7 +90,7 @@ const transferCommissionToPayroll = async (req, res) => {
     } catch (error) {
         await connection.rollback();
         console.error('[EggCommissions] Error in transferCommissionToPayroll:', error);
-        res.status(500).json({ message: error.message });
+        res.status(error.statusCode || 500).json({ message: error.message });
     } finally {
         connection.release();
     }

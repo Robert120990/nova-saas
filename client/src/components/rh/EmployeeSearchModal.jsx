@@ -3,6 +3,8 @@ import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
 import { Search, X, Users, Briefcase, Building2, ChevronRight, Loader2 } from 'lucide-react';
 import Money from '../ui/Money';
+import { useAuth } from '../../context/AuthContext';
+import { unwrapList } from '../../utils/apiUtils';
 
 const getInitials = (nombres = '', apellidos = '') => {
     const first = nombres.trim().charAt(0) || '';
@@ -23,6 +25,7 @@ const getAvatarColor = (id = 0) => {
 };
 
 const EmployeeSearchModal = ({ isOpen, onClose, onSelect, showSalary = true }) => {
+    const { user } = useAuth();
     const [search, setSearch] = useState('');
     const [debouncedSearch, setDebouncedSearch] = useState('');
     const [selectedDepto, setSelectedDepto] = useState('todos');
@@ -55,22 +58,23 @@ const EmployeeSearchModal = ({ isOpen, onClose, onSelect, showSalary = true }) =
 
     // Fetch employees
     const { data: empResponse = { data: [] }, isLoading } = useQuery({
-        queryKey: ['rh-empleados-catalog', debouncedSearch],
-        queryFn: async () => {
+        queryKey: ['rh-empleados-catalog', user?.company_id, debouncedSearch],
+        queryFn: async ({ signal }) => {
             const res = await axios.get('/api/rh/empleados', {
+                signal,
                 params: {
                     search: debouncedSearch,
                     limit: 150,
                     solo_activos: 1
                 }
             });
-            return res.data;
+            return unwrapList(res);
         },
         enabled: isOpen,
-        staleTime: 1000 * 60 * 2
+        staleTime: 0
     });
 
-    const employees = empResponse.data || [];
+    const employees = unwrapList(empResponse);
 
     // Unique departments for filter chips
     const deptos = useMemo(() => {
@@ -210,7 +214,7 @@ const EmployeeSearchModal = ({ isOpen, onClose, onSelect, showSalary = true }) =
                             >
                                 Todos ({employees.length})
                             </button>
-                            {deptos.map(d => (
+                            {(Array.isArray(deptos) ? deptos : []).map(d => (
                                 <button
                                     key={d}
                                     type="button"
@@ -249,7 +253,7 @@ const EmployeeSearchModal = ({ isOpen, onClose, onSelect, showSalary = true }) =
                         </div>
                     ) : (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-                            {filteredEmployees.map((emp, index) => {
+                            {(Array.isArray(filteredEmployees) ? filteredEmployees : []).map((emp, index) => {
                                 const isHighlighted = selectedIndex === index;
                                 const avatarColor = getAvatarColor(emp.id || index);
 

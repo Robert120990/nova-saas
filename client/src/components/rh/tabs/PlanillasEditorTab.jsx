@@ -6,13 +6,16 @@ import { months } from '../planillas/planillaUtils';
 const PlanillasEditorTab = ({ model }) => {
     const { hayOtraAbierta, otraAbiertaItem, handleVerDetalle, loadingEmployee, saveError, unsaved, guardandoManual, sincronizarMutation, syncingHuevo, generando, cerrarMutation, excluirMutation } = model;
     const busy = loadingEmployee || sincronizarMutation.isPending || syncingHuevo || generando || cerrarMutation.isPending || excluirMutation.isPending;
+    const closed = model.empleadoData?.totales?.estado === 'pagada';
     return (<div className="space-y-4">
-        {saveError && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{saveError} Los cambios pendientes se conservan en este navegador.</div>}
+        {saveError && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{saveError} Los cambios pendientes se conservan en este navegador. {model.hasConflict && <button type="button" onClick={model.reviewConflict} className="font-bold underline ml-2">Revisar datos guardados</button>}</div>}
         {loadingEmployee && <p role="status" className="text-sm text-indigo-700">Cargando empleado...</p>}
         {unsaved && !guardandoManual && !saveError && <p role="status" className="text-xs text-amber-700">Cambios pendientes de guardar</p>}
         <fieldset disabled={busy} className="min-w-0 space-y-4">
                     {/* Form Top Navigation Bar */}
                     <PlanillaActionBar model={model} />
+                    {closed && <p className="text-sm text-slate-600">Planilla cerrada. Los datos están disponibles para consulta.</p>}
+                    <fieldset disabled={closed} className="min-w-0 space-y-4">
 
                     {/* Blocking Warning Banner if another period is open */}
                     {hayOtraAbierta && otraAbiertaItem && (
@@ -54,6 +57,7 @@ const PlanillasEditorTab = ({ model }) => {
                         {/* Summary Panel (Right) */}
                         <PlanillaTotalsSidebar model={model} />
                     </div>
+                    </fieldset>
                 </fieldset></div>);
 };
 export default PlanillasEditorTab;

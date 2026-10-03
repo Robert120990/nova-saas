@@ -145,6 +145,10 @@ const getEmpleadoData = async (req, res, pool) => {
 
         res.json({
             ...emp,
+            empleado_sueldo_base: emp.sueldo_base,
+            empleado_bonificacion_fija: emp.bonificacion_fija,
+            sueldo_base: pRows[0]?.sueldo_base ?? emp.sueldo_base,
+            bonificacion_fija: pRows[0]?.bonificacion_fija ?? emp.bonificacion_fija,
             planilla_id: planillaId,
             revision: pRows.length ? payrollRevision(pRows[0], detalles) : null,
             dias_trabajados: diasTrabajadosVal,

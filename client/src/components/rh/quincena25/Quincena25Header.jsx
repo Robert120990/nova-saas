@@ -1,4 +1,5 @@
 import { Sparkles } from 'lucide-react';
+import Money from '../../ui/Money';
 
 const Quincena25Header = ({ model }) => {
     const { selectedYear, tabActiva, setTabActiva } = model;
@@ -27,7 +28,7 @@ const Quincena25Header = ({ model }) => {
                             )}
                         </div>
                         <p className="text-xs text-slate-500 font-medium mt-0.5">
-                            Prestación económica extraordinaria anual del 50 % de salario mensual para empleados con sueldo nominal $\le \$1,500.00$.
+                            Prestación económica extraordinaria anual del 50 % de salario mensual para empleados con sueldo nominal menor o igual a <Money value={1500} />.
                         </p>
                     </div>
                 </div>

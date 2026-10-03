@@ -4,7 +4,7 @@ const vm = require('node:vm');
 const root = path.resolve(__dirname, '../..');
 const clone = value => JSON.parse(JSON.stringify(value));
 
-function loadPayroll(db) {
+function loadPayroll(db, entry = 'src/controllers/rhPlanilla.controller.js') {
     const cache = new Map();
     const mocks = {
         'src/config/db.js': db,
@@ -29,7 +29,7 @@ function loadPayroll(db) {
         }, { filename: absolute });
         return module.exports;
     }
-    return read(path.join(root, 'src/controllers/rhPlanilla.controller.js'));
+    return read(path.join(root, entry));
 }
 
 function database(options = {}) {
@@ -41,6 +41,7 @@ function database(options = {}) {
                 descuento_renta: 0, monto_recibir: 300, estado: 'pendiente' }]),
             details: clone(options.details ?? [{ id: 1, planilla_id: 1, cuenta_id: 20, codigo: '01', descripcion: 'SUELDO',
                 operacion: 'sumar', tipo_valor: 'dias', valor_base: 15, valor_ingresado: 300, orden: 1 }]),
+            commissions: clone(options.commissions ?? []),
             cuotas: options.cuotas ?? 2, activo: 1
         }, calls: [], lock: Promise.resolve(), released: 0
     };
@@ -49,12 +50,20 @@ function database(options = {}) {
         let unlock;
         const conn = {
             async beginTransaction() { db.calls.push('BEGIN'); },
-            async commit() { db.calls.push('COMMIT'); db.state = working; unlock?.(); },
+            async commit() {
+                db.calls.push('COMMIT');
+                if (options.failCommit) throw new Error('Fallo simulado de COMMIT');
+                db.state = working; unlock?.();
+            },
             async rollback() { db.calls.push('ROLLBACK'); unlock?.(); },
             release() { db.released++; },
             async query(rawSql, params = []) {
                 const sql = rawSql.replace(/\s+/g, ' ').trim();
                 db.calls.push({ sql, params: clone(params) });
+                const parameterFor = field => {
+                    const match = sql.match(new RegExp(`(?:\\b\\w+\\.)?\\b${field} = \\?`));
+                    return match ? params[(sql.slice(0, match.index).match(/\?/g) || []).length] : undefined;
+                };
                 if (sql.includes('FROM companies') && sql.includes('FOR UPDATE')) {
                     const previous = db.lock;
                     db.lock = new Promise(resolve => { unlock = resolve; });
@@ -63,28 +72,100 @@ function database(options = {}) {
                     return [[{ id: 7 }]];
                 }
                 if (options.fail?.(sql, params)) throw new Error('Fallo simulado de persistencia');
-                if (sql.includes('FROM rh_cuentas_planillas')) {
-                    return [params.length > 1 ? params[1].map(id => ({ id })) : [{ id: 20, codigo: '01', descripcion: 'SUELDO',
-                        operacion: 'sumar', tipo_valor: 'dias', orden: 1 }]];
+                if (sql.includes('FROM information_schema.TABLES')) return [options.commissionsInstalled === false ? [] : [{ installed: 1 }]];
+                if (sql.includes('FROM sellers')) return [clone(options.sellers ?? [...new Set(working.commissions.map(c => c.seller_id))].map(id => ({ id })))];
+                if (sql.startsWith('SELECT') && sql.includes('FROM egg_seller_commissions')) {
+                    let rows = working.commissions.filter(c => c.company_id === Number(parameterFor('company_id')));
+                    if (sql.includes('AS amount')) return [[{ amount: rows.filter(c => c.employee_id === Number(params[1]) &&
+                        c.transferred_to_planilla_id === Number(params[2]) && c.id !== Number(params[3]) &&
+                        ['transferido_planilla', 'pagado'].includes(c.status)).reduce((sum, c) => sum + Number(c.capped_commission_amount), 0) }]];
+                    for (const field of ['id', 'seller_id', 'period_year', 'period_month']) {
+                        const value = parameterFor(field);
+                        if (value !== undefined) rows = rows.filter(c => c[field] === Number(value));
+                    }
+                    const selectedQuincena = parameterFor('quincena');
+                    if (selectedQuincena !== undefined) rows = rows.filter(c => c.quincena === selectedQuincena ||
+                        (sql.includes("c.quincena = 'mensual'") && c.quincena === 'mensual' && selectedQuincena === 'segunda'));
+                    if (sql.includes('id != ?')) rows = rows.filter(c => c.id !== Number(params[4]));
+                    if (sql.includes("status IN ('transferido_planilla', 'pagado')")) rows = rows.filter(c => ['transferido_planilla', 'pagado'].includes(c.status));
+                    return [clone(rows)];
                 }
+                if (sql.startsWith('UPDATE egg_seller_commissions')) {
+                    if (sql.includes("status = 'aprobado'")) {
+                        working.commissions.filter(c => c.company_id === Number(params[0]) &&
+                            params[1].map(Number).includes(c.transferred_to_planilla_id) && c.status === 'transferido_planilla').forEach(c => {
+                            c.status = 'aprobado'; c.transferred_to_planilla_id = null; c.transferred_at = null;
+                        });
+                        return [{ affectedRows: 1 }];
+                    }
+                    const commission = working.commissions.find(c => c.id === Number(params[1]));
+                    commission.status = 'transferido_planilla'; commission.transferred_to_planilla_id = Number(params[0]);
+                    return [{ affectedRows: 1 }];
+                }
+                if (sql.includes('FROM rh_cuentas_planillas')) {
+                    let accounts = clone(options.accounts ?? [{ id: 20, codigo: '01', descripcion: 'SUELDO',
+                        operacion: 'sumar', tipo_valor: 'dias', orden: 1 }]);
+                    if (sql.includes("codigo = '07'")) accounts = accounts.filter(c => c.codigo === '07');
+                    else if (params.length > 1) accounts = params[1].map(id => ({ id }));
+                    return [accounts];
+                }
+                if (sql.includes('FROM rh_isss_tasas')) return [clone(options.isss ?? [])];
+                if (sql.includes('FROM rh_afp_tasas')) return [clone(options.afp ?? [])];
                 if (sql.startsWith('SELECT') && (sql.includes('FROM rh_isss_tasas') || sql.includes('FROM rh_renta_config') ||
                     sql.includes('FROM rh_afp_tasas') || sql.includes('FROM rh_empleado_descuentos'))) return [[]];
-                if (sql.includes('FROM rh_empleados')) return [clone(options.employees ?? [{ id: 11, sueldo_base: 600,
-                    bonificacion_fija: 0, es_activo: 1, es_jubilado: 1, aplica_renta: 0, en_vacaciones: 0, incapacitado: 0 }])];
+                if (sql.includes('FROM rh_empleados')) {
+                    let employees = clone(options.employees ?? [{ id: 11, sueldo_base: 600,
+                        bonificacion_fija: 0, es_activo: 1, es_jubilado: 1, aplica_renta: 0, en_vacaciones: 0, incapacitado: 0 }]);
+                    if (sql.includes('WHERE id = ?') || sql.includes('WHERE e.id = ?')) employees = employees.filter(e => e.id === Number(params[0]));
+                    return [employees];
+                }
                 if (sql.startsWith('SELECT') && sql.includes('FROM rh_planilla_detalles')) {
-                    return [clone(working.details.filter(d => d.planilla_id === Number(params[0])))];
+                    return [clone(working.details.filter(d => d.planilla_id === Number(params[0]) &&
+                        (!sql.includes('cuenta_id = ?') || d.cuenta_id === Number(params[1]))))];
                 }
                 if (sql.startsWith('SELECT') && sql.includes('FROM rh_planillas')) {
                     let rows = working.headers.filter(p => p.company_id === 7);
                     if (sql.includes('p.id = ?') || sql.includes('WHERE id = ?')) rows = rows.filter(p => p.id === Number(params[0]));
                     else if (sql.includes('empleado_id = ?')) rows = rows.filter(p => p.empleado_id === Number(params[1]));
+                    const year = parameterFor('periodo_anio');
+                    const month = parameterFor('periodo_mes');
+                    const quincena = parameterFor('quincena');
+                    if (year !== undefined) rows = rows.filter(p => {
+                        const matches = p.periodo_anio === Number(year) && p.periodo_mes === Number(month) && p.quincena === quincena;
+                        return sql.includes('AND NOT (') ? !matches : matches;
+                    });
+                    if (sql.includes("quincena = 'primera'")) rows = rows.filter(p => p.quincena === 'primera');
                     if (sql.includes("estado = 'pagada'")) rows = rows.filter(p => p.estado === 'pagada');
                     if (sql.includes("estado != 'pagada'")) rows = rows.filter(p => p.estado !== 'pagada');
-                    if (sql.includes('AND NOT (')) rows = [];
-                    return [clone(rows.map(p => ({ ...p, es_jubilado: 1, aplica_renta: 0 })))];
+                    return [clone(rows.map(p => {
+                        const row = { ...p, es_jubilado: 1, aplica_renta: 0 };
+                        if (sql.includes('JOIN rh_empleados e')) {
+                            const employee = options.employees?.find(e => e.id === p.empleado_id);
+                            for (const field of ['afp_id', 'es_jubilado', 'aplica_renta']) {
+                                if (employee && sql.includes(`e.${field}`)) row[field] = employee[field];
+                            }
+                            for (const field of ['sueldo_base', 'bonificacion_fija']) {
+                                if (!employee || !sql.includes(`e.${field}`)) continue;
+                                const alias = sql.match(new RegExp(`e\\.${field}\\s+as\\s+(\\w+)`, 'i'));
+                                row[alias ? alias[1] : field] = employee[field];
+                            }
+                        }
+                        return row;
+                    }))];
                 }
                 if (sql.startsWith('DELETE FROM rh_planilla_detalles')) {
                     working.details = working.details.filter(d => d.planilla_id !== Number(params[0]));
+                    return [{ affectedRows: 1 }];
+                }
+                if (sql.startsWith('UPDATE rh_planilla_detalles')) {
+                    if (sql.includes('WHERE planilla_id = ?')) {
+                        working.details.filter(d => d.planilla_id === Number(params[0])).forEach(d => {
+                            d.valor_base = 0; d.valor_ingresado = 0;
+                        });
+                    } else {
+                        const row = working.details.find(d => d.id === Number(params[2]));
+                        row.valor_ingresado = params[0]; row.valor_base = params[1];
+                    }
                     return [{ affectedRows: 1 }];
                 }
                 if (sql.startsWith('INSERT INTO rh_planilla_detalles')) {

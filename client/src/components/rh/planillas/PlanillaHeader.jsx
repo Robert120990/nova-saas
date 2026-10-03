@@ -57,7 +57,7 @@ const PlanillaHeader = ({ model }) => {
                                     <div className="w-full flex flex-wrap items-center justify-between gap-2 bg-slate-50 text-slate-700 px-3 py-2 rounded-xl text-xs font-semibold border border-slate-200">
                                         <div className="flex flex-wrap items-center gap-2">
                                             <span className="flex items-center gap-1 text-emerald-600 font-bold">
-                                                <CheckCircle size={14} /> Activa
+                                                <CheckCircle size={14} /> {model.empleadoData?.totales?.estado === 'pagada' ? 'Cerrada' : 'Activa'}
                                             </span>
                                             <button
                                                 type="button"

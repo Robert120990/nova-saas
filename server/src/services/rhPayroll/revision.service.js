@@ -27,7 +27,9 @@ async function readRevision(connection, id, companyId) {
 }
 
 async function ensureExpectedRevision(connection, id, companyId, expectedRevision, response) {
-    if (expectedRevision === undefined || expectedRevision === null) return true;
+    // null significa que el cliente cargó un empleado aún sin planilla.
+    // Si otra sesión la creó después, su contenido también debe conservarse.
+    if (expectedRevision === undefined) return true;
     const revision = await readRevision(connection, id, companyId);
     if (revision === expectedRevision) return true;
     response.status(409).json({

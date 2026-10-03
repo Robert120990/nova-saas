@@ -1,4 +1,5 @@
 const { TABLE, LABEL } = require('./shared');
+const { releasePayrollCommissions } = require('./commissionPayroll.service');
 
 const descontarCuotas = async (companyId, empleadoIds, quincena, pool) => {
     if (!empleadoIds || empleadoIds.length === 0) return;
@@ -92,6 +93,12 @@ const eliminarPeriodo = async (req, res, pool) => {
         if (pagadas.length > 0) {
             return res.status(400).json({ message: 'No se puede eliminar un período que contiene planillas pagadas. Se debe conservar el historial de pagos.' });
         }
+
+        const [payrolls] = await pool.query(
+            `SELECT id FROM ${TABLE} WHERE company_id = ? AND periodo_anio = ? AND periodo_mes = ? AND quincena = ?`,
+            [req.company_id, periodo_anio, periodo_mes, quincena]
+        );
+        await releasePayrollCommissions(pool, req.company_id, payrolls.map(payroll => payroll.id));
 
         const [result] = await pool.query(
             `DELETE FROM ${TABLE} WHERE company_id = ? AND periodo_anio = ? AND periodo_mes = ? AND quincena = ?`,

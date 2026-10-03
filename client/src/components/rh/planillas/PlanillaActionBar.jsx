@@ -47,7 +47,7 @@ const PlanillaActionBar = ({ model }) => {
                                     <span>Ver Recibos</span>
                                 </button>
                             )}
-                            {esEstePeriodoAbierto && (
+                            {esEstePeriodoAbierto && model.empleadoData?.totales?.estado !== 'pagada' && (
                                 <button
                                     type="button"
                                     onClick={() => handleCerrarPeriodo({ periodo_anio: periodoAnio, periodo_mes: periodoMes, quincena })}

@@ -27,7 +27,7 @@ const Quincena25SummaryCards = ({ model }) => {
                 {/* Tarjeta 2: Elegibles */}
                 <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm flex items-center justify-between">
                     <div>
-                        <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Elegibles ($\le \$1,500$)</p>
+                        <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Elegibles (≤ <Money value={1500} />)</p>
                         <h3 className="text-xl font-black text-emerald-700 mt-1">
                             {metricas.totalElegibles} <span className="text-xs font-medium text-slate-500">/ {metricas.totalEmpleados}</span>
                         </h3>
@@ -43,7 +43,7 @@ const Quincena25SummaryCards = ({ model }) => {
                 {/* Tarjeta 3: Excluidos por Ley */}
                 <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm flex items-center justify-between">
                     <div>
-                        <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Excluidos ($&gt; \$1,500$)</p>
+                        <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Excluidos (&gt; <Money value={1500} />)</p>
                         <h3 className="text-xl font-black text-amber-600 mt-1">
                             {metricas.totalExcluidos}
                         </h3>

@@ -1,6 +1,7 @@
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 const { loadPayroll, database, invoke } = require('./rhPayrollTestHelpers.cjs');
+const { payrollRevision } = require('../../src/services/rhPayroll/revision.service');
 
 const detail = amount => ({ cuenta_id: 20, codigo: '01', descripcion: 'SUELDO', operacion: 'sumar',
     tipo_valor: 'dias', valor_base: 15, valor_ingresado: amount, orden: 1 });
@@ -16,6 +17,17 @@ describe('Persistencia y concurrencia de planillas', () => {
         assert.deepEqual(db.state, before);
         assert.equal(db.calls.includes('ROLLBACK'), true);
         assert.equal(db.calls.includes('COMMIT'), false);
+        assert.equal(db.released, 1);
+    });
+
+    it('responde con error y conserva los registros si COMMIT falla después de calcular', async () => {
+        const db = database({ failCommit: true });
+        const before = structuredClone(db.state);
+        const result = await invoke(loadPayroll(db).updatePlanilla, { params: { id: 1 }, body: { detalles: [detail(475)] } });
+        assert.equal(result.statusCode, 500);
+        assert.match(result.body.message, /COMMIT/);
+        assert.deepEqual(db.state, before);
+        assert.equal(db.calls.includes('ROLLBACK'), true);
         assert.equal(db.released, 1);
     });
 
@@ -51,6 +63,39 @@ describe('Persistencia y concurrencia de planillas', () => {
         assert.notEqual(first.body.revision, original.body.revision);
     });
 
+    it('mantiene la revisión del sueldo guardado después de cambios en el expediente', async () => {
+        const db = database({ employees: [{ id: 11, sueldo_base: 1200, bonificacion_fija: 100, es_jubilado: 1, aplica_renta: 0 }] });
+        const api = loadPayroll(db);
+        const expected = payrollRevision(db.state.headers[0], db.state.details);
+        const loaded = await invoke(api.getPlanilla, { params: { id: 1 } });
+        assert.equal(loaded.statusCode, 200);
+        assert.equal(loaded.body.sueldo_base, 600);
+        assert.equal(loaded.body.empleado_sueldo_base, 1200);
+        assert.equal(loaded.body.revision, expected);
+        const employeeLoaded = await invoke(api.getEmpleadoData, { params: { id: 11 }, query: period });
+        assert.equal(employeeLoaded.statusCode, 200);
+        assert.equal(employeeLoaded.body.sueldo_base, 600);
+        assert.equal(employeeLoaded.body.bonificacion_fija, 0);
+        assert.equal(employeeLoaded.body.empleado_sueldo_base, 1200);
+        assert.equal(employeeLoaded.body.revision, expected);
+        const saved = await invoke(api.updatePlanilla, { params: { id: 1 }, body: {
+            detalles: [detail(350)], expected_revision: loaded.body.revision
+        } });
+        assert.equal(saved.statusCode, 200);
+        assert.equal(db.state.headers[0].sueldo_base, 600);
+    });
+
+    it('entrega en empleado la misma revisión que valida el guardado', async () => {
+        const db = database(); const api = loadPayroll(db);
+        const loaded = await invoke(api.getEmpleadoData, { params: { id: 11 }, query: period });
+        assert.equal(loaded.statusCode, 200);
+        assert.equal(loaded.body.revision, payrollRevision(db.state.headers[0], db.state.details));
+        const saved = await invoke(api.updatePlanilla, { params: { id: loaded.body.planilla_id }, body: {
+            detalles: [detail(375)], expected_revision: loaded.body.revision
+        } });
+        assert.equal(saved.statusCode, 200);
+    });
+
     it('serializa dos guardados simultáneos de la misma revisión y rechaza el segundo', async () => {
         const db = database(); const api = loadPayroll(db);
         const original = await invoke(api.getPlanilla, { params: { id: 1 } });
@@ -59,6 +104,17 @@ describe('Persistencia y concurrencia de planillas', () => {
         })));
         assert.deepEqual(results.map(result => result.statusCode).sort(), [200, 409]);
         assert.equal(db.state.headers[0].monto_recibir, 400);
+    });
+
+    it('no reemplaza la planilla creada por otra sesión después de cargar un empleado sin registro', async () => {
+        const db = database({ headers: [], details: [] }); const api = loadPayroll(db);
+        const results = await Promise.all([400, 500].map(amount => invoke(api.createPlanilla, { body: {
+            ...period, empleado_id: 11, dias_trabajados: 15, detalles: [detail(amount)], expected_revision: null
+        } })));
+        assert.deepEqual(results.map(result => result.statusCode).sort(), [201, 409]);
+        assert.equal(db.state.headers.length, 1);
+        assert.equal(db.state.headers[0].monto_recibir, 400);
+        assert.equal(db.state.details[0].valor_ingresado, 400);
     });
 
     it('recalcula desde detalles guardados e ignora totales de cliente obsoletos', async () => {
@@ -98,6 +154,20 @@ describe('Persistencia y concurrencia de planillas', () => {
         const invalid = await invoke(api.updatePlanilla, { params: { id: 1 }, body: { detalles: [] } });
         assert.equal(invalid.statusCode, 400);
         assert.deepEqual(db.state, before);
+    });
+
+    it('rechaza excluir desde una pestaña obsoleta y funciona sin módulo de comisiones instalado', async () => {
+        const db = database({ commissionsInstalled: false }); const api = loadPayroll(db);
+        const loaded = await invoke(api.getPlanilla, { params: { id: 1 } });
+        await invoke(api.updatePlanilla, { params: { id: 1 }, body: { detalles: [detail(450)] } });
+        const before = structuredClone(db.state);
+        const obsolete = await invoke(api.deletePlanilla, { params: { id: 1 }, body: { expected_revision: loaded.body.revision } });
+        assert.equal(obsolete.statusCode, 409);
+        assert.deepEqual(db.state, before);
+        const removed = await invoke(api.deletePlanilla, { params: { id: 1 } });
+        assert.equal(removed.statusCode, 200);
+        assert.equal(db.state.headers.length, 0);
+        assert.equal(db.calls.some(call => call.sql?.startsWith('UPDATE egg_seller_commissions')), false);
     });
 
     it('protege planillas pagadas frente a cálculo, guardado y eliminación', async () => {

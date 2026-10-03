@@ -60,7 +60,7 @@ export const calcularMontoDetalle = (d, cantidad, sueldoBase) => {
     }
 
     if (d.tipo_valor === 'porcentaje') {
-        const pct = qty > 0 ? qty : parseFloat(d.valor_base_config || d.valor_base || 0);
+        const pct = parseFloat(cantidad ?? d.valor_base_config ?? d.valor_base ?? 0) || 0;
         return Math.round(sueldo * (pct / 100) * 100) / 100;
     }
 
