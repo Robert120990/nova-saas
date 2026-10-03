@@ -87,12 +87,14 @@ exports.saveRemesas = async (req, res) => {
             if (invalid.length > 0) {
                 return res.status(400).json({ message: 'Todas las remesas deben tener un despachador asignado' });
             }
+            const usedCodigos = new Set();
             const values = remesas.map((r, index) => {
                 const prev = existingData[r.id] || {};
                 let codigo = r.codigo || prev.codigo || null;
-                if (!codigo) {
-                    codigo = `REM-${id}-${index + 1}`;
+                if (!codigo || usedCodigos.has(codigo)) {
+                    codigo = `REM-${id}-${index + 1}-${Date.now().toString(36).slice(-4)}`;
                 }
+                usedCodigos.add(codigo);
                 const entregada = (r.entregada !== undefined) ? r.entregada : (prev.entregada || 0);
                 const entregaId = (r.entrega_id !== undefined) ? r.entrega_id : (prev.entrega_id || null);
 
@@ -108,10 +110,27 @@ exports.saveRemesas = async (req, res) => {
                     entregaId
                 ];
             });
-            await pool.query(
-                `INSERT INTO gas_station_closeout_remesas (closeout_id, codigo, documento, descripcion, despachador_id, tipo_operacion, monto, entregada, entrega_id) VALUES ?`,
-                [values]
-            );
+            try {
+                await pool.query(
+                    `INSERT INTO gas_station_closeout_remesas (closeout_id, codigo, documento, descripcion, despachador_id, tipo_operacion, monto, entregada, entrega_id) VALUES ?`,
+                    [values]
+                );
+            } catch (insertErr) {
+                if (insertErr.code === 'ER_DUP_ENTRY') {
+                    // Retry with guaranteed unique timestamped codes
+                    const fallbackValues = values.map((v, idx) => {
+                        const copy = [...v];
+                        copy[1] = `REM-${id}-${idx + 1}-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+                        return copy;
+                    });
+                    await pool.query(
+                        `INSERT INTO gas_station_closeout_remesas (closeout_id, codigo, documento, descripcion, despachador_id, tipo_operacion, monto, entregada, entrega_id) VALUES ?`,
+                        [fallbackValues]
+                    );
+                } else {
+                    throw insertErr;
+                }
+            }
         }
 
         const [remaining] = await pool.query(`

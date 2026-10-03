@@ -44,6 +44,15 @@ const singleTankReadingUpdateSchema = z.object({
     lectura_anterior: z.coerce.number().optional()
 }).passthrough();
 
+const batchTankReadingsSchema = z.object({
+    readings: z.array(z.object({
+        id: z.coerce.number().int().positive({ message: 'ID de lectura de tanque es requerido' }),
+        lectura_actual: z.coerce.number().optional(),
+        recarga: z.coerce.number().optional(),
+        lectura_anterior: z.coerce.number().optional()
+    }).passthrough()).min(1, { message: 'El arreglo de lecturas de tanque es requerido' })
+}).passthrough();
+
 const closeoutFechaTurnoSchema = z.object({
     fecha_turno: z.string({ message: 'La fecha de turno es requerida' }).min(1, { message: 'La fecha de turno es requerida' }),
     numero_turno: z.coerce.number().int().positive().optional()
@@ -233,6 +242,7 @@ module.exports = {
     batchReadingsSchema,
     singleReadingUpdateSchema,
     singleTankReadingUpdateSchema,
+    batchTankReadingsSchema,
     closeoutFechaTurnoSchema,
     closeoutExpensesSchema,
     closeoutRemesasSchema,

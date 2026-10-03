@@ -141,6 +141,7 @@ const {
     batchReadingsSchema,
     singleReadingUpdateSchema,
     singleTankReadingUpdateSchema,
+    batchTankReadingsSchema,
     closeoutFechaTurnoSchema,
     closeoutExpensesSchema,
     closeoutRemesasSchema,
@@ -847,6 +848,7 @@ router.get('/gas-station/closeouts/:id/changes', gasCloseoutController.getCloseo
 router.patch('/gas-station/closeouts/:closeoutId/readings/batch', validate(batchReadingsSchema), gasCloseoutController.batchUpdateReadings);
 router.patch('/gas-station/closeouts/:closeoutId/readings/:id', validate(singleReadingUpdateSchema), gasCloseoutController.updateReading);
 router.post('/gas-station/closeouts/:id/sync-fuel-prices', gasCloseoutController.syncCloseoutFuelPrices);
+router.patch('/gas-station/closeouts/:closeoutId/tank-readings/batch', validate(batchTankReadingsSchema), gasCloseoutController.batchUpdateTankReadings);
 router.patch('/gas-station/closeouts/:closeoutId/tank-readings/:id', validate(singleTankReadingUpdateSchema), gasCloseoutController.updateTankReading);
 router.post('/gas-station/closeouts/:id/close', gasCloseoutController.closeCloseout);
 router.post('/gas-station/closeouts/:id/reopen', checkPermission('manage_gas_closeout_reopen'), gasCloseoutController.reopenCloseout);

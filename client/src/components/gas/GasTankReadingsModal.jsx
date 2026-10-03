@@ -1,4 +1,4 @@
-import { FlaskConical, ShieldCheck, X } from 'lucide-react';
+import { FlaskConical, ShieldCheck, X, Save, Loader2 } from 'lucide-react';
 
 const defaultInputCls = "w-28 px-1.5 py-0.5 bg-white border border-slate-200 rounded outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-[11px] text-right font-mono";
 const defaultInputDisabledCls = "w-28 px-1.5 py-0.5 bg-slate-100 border border-slate-200 rounded text-[11px] text-right font-mono text-slate-500 cursor-not-allowed";
@@ -20,7 +20,9 @@ const GasTankReadingsModal = ({
     inputCls = defaultInputCls,
     inputDisabledCls = defaultInputDisabledCls,
     inputCalibCls = defaultInputCalibCls,
-    inputCalibDisabledCls = defaultInputCalibDisabledCls
+    inputCalibDisabledCls = defaultInputCalibDisabledCls,
+    onSave,
+    isSaving = false
 }) => {
     if (!isOpen) return null;
 
@@ -155,6 +157,31 @@ const GasTankReadingsModal = ({
                             )}
                         </tbody>
                     </table>
+                </div>
+                <div className="px-5 py-3 border-t border-slate-100 flex items-center justify-between bg-slate-50 rounded-b-2xl shrink-0">
+                    <div className="text-xs text-slate-500 font-medium">
+                        {tankReadings.length} {tankReadings.length === 1 ? 'tanque configurado' : 'tanques configurados'}
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={onClose}
+                            className="px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-200 rounded-xl transition-colors"
+                        >
+                            Cerrar
+                        </button>
+                        {!tankLocked && (
+                            <button
+                                type="button"
+                                onClick={() => onSave && onSave(tankReadings)}
+                                disabled={isSaving}
+                                className="flex items-center gap-1.5 px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm disabled:opacity-50"
+                            >
+                                {isSaving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+                                {isSaving ? 'Guardando...' : 'Guardar Lecturas de Tanque'}
+                            </button>
+                        )}
+                    </div>
                 </div>
             </div>
         </div>

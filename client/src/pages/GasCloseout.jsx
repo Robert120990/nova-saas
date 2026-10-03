@@ -61,7 +61,7 @@ const parseDecimal = (value) => {
 const GasCloseout = () => {
     const queryClient = useQueryClient();
     const navigate = useNavigate();
-    const [searchParams] = useSearchParams();
+    const [searchParams, setSearchParams] = useSearchParams();
     const { user } = useAuth();
     const confirm = useConfirm();
     const editId = searchParams.get('editId');
@@ -285,9 +285,32 @@ const GasCloseout = () => {
         queryKey: ['gas-closeout-edit', editId],
         queryFn: async () => (await axios.get(`/api/gas-station/closeouts/${editId}`)).data,
         enabled: !!editId,
-        staleTime: Infinity,
+        staleTime: 0,
         refetchOnWindowFocus: false,
     });
+
+    // Detectar automáticamente si ya existe un turno abierto para la sucursal actual cuando no hay editId en URL
+    const { data: openCloseoutsData } = useQuery({
+        queryKey: ['gas-closeout-open', user?.branch_id],
+        queryFn: async () => {
+            const res = await axios.get('/api/gas-station/closeouts', {
+                params: { estado: 'abierto', limit: 1 }
+            });
+            return res.data;
+        },
+        enabled: !editId && !!user?.branch_id,
+        staleTime: 3000,
+        refetchOnWindowFocus: false,
+    });
+
+    useEffect(() => {
+        if (!editId && openCloseoutsData?.data?.length > 0) {
+            const openCloseout = openCloseoutsData.data[0];
+            if (openCloseout?.id) {
+                setSearchParams({ editId: String(openCloseout.id) }, { replace: true });
+            }
+        }
+    }, [editId, openCloseoutsData, setSearchParams]);
 
     useEffect(() => {
         if (editData) {
@@ -549,6 +572,9 @@ const GasCloseout = () => {
             if (res.data.despachadorNozzleAssignments) setDespachadorNozzleAssignments(res.data.despachadorNozzleAssignments);
             queryClient.invalidateQueries({ queryKey: ['gas-last-turno'] });
             queryClient.invalidateQueries({ queryKey: ['gas-closeouts'] });
+            queryClient.invalidateQueries({ queryKey: ['gas-closeout-edit'] });
+            queryClient.invalidateQueries({ queryKey: ['gas-closeout-open'] });
+            setSearchParams({ editId: String(res.data.id) }, { replace: true });
             toast.success('Cierre de lecturas iniciado');
         },
         onError: (error) => toast.error(error.response?.data?.message || 'Error al iniciar')
@@ -574,6 +600,7 @@ const GasCloseout = () => {
                     return r;
                 }));
             }
+            queryClient.invalidateQueries({ queryKey: ['gas-closeout-edit'] });
             queryClient.invalidateQueries({ queryKey: ['gas-closeouts'] });
         },
         onError: (error) => toast.error(error.response?.data?.message || 'Error al guardar')
@@ -600,6 +627,7 @@ const GasCloseout = () => {
             if (res.data.fusion_sales_volume !== undefined && res.data.fusion_sales_volume !== null) {
                 setFusionSalesVolume(parseFloat(res.data.fusion_sales_volume));
             }
+            queryClient.invalidateQueries({ queryKey: ['gas-closeout-edit'] });
             queryClient.invalidateQueries({ queryKey: ['gas-closeouts'] });
             queryClient.invalidateQueries({ queryKey: ['gas-fusion-periods'] });
             setImportResult(null);
@@ -629,6 +657,7 @@ const GasCloseout = () => {
                     return r;
                 }));
             }
+            queryClient.invalidateQueries({ queryKey: ['gas-closeout-edit'] });
             queryClient.invalidateQueries({ queryKey: ['gas-closeouts'] });
             toast.success(res.data?.message || 'Precios actualizados con éxito desde Ventas');
         },
@@ -757,6 +786,8 @@ const GasCloseout = () => {
             setEditAnterior(false);
             queryClient.invalidateQueries({ queryKey: ['gas-last-turno'] });
             queryClient.invalidateQueries({ queryKey: ['gas-closeouts'] });
+            queryClient.invalidateQueries({ queryKey: ['gas-closeout-edit'] });
+            queryClient.invalidateQueries({ queryKey: ['gas-closeout-open'] });
             toast.success(res.data?.message || 'Cierre cerrado exitosamente');
             setClosedSummaryData({
                 id: closeoutId,
@@ -785,7 +816,8 @@ const GasCloseout = () => {
                     return saved ? { ...p, nombre: saved.nombre } : p;
                 }));
             }
-            queryClient.invalidateQueries({ queryKey: ['gas-closeout-edit', closeoutId] });
+            queryClient.invalidateQueries({ queryKey: ['gas-closeout-edit'] });
+            queryClient.invalidateQueries({ queryKey: ['gas-closeouts'] });
         },
         onError: (error) => toast.error(error.response?.data?.message || 'Error al guardar despachadores')
     });
@@ -794,6 +826,8 @@ const GasCloseout = () => {
         mutationFn: (assignments) => axios.put(`/api/gas-station/closeouts/${closeoutId}/despachador-nozzles`, { assignments }),
         onSuccess: (res) => {
             setDespachadorNozzleAssignments(res.data);
+            queryClient.invalidateQueries({ queryKey: ['gas-closeout-edit'] });
+            queryClient.invalidateQueries({ queryKey: ['gas-closeouts'] });
             toast.success('Asignaciones de mangueras actualizadas');
         },
         onError: (error) => toast.error(error.response?.data?.message || 'Error al guardar asignaciones')
@@ -802,8 +836,33 @@ const GasCloseout = () => {
     const updateTankMutation = useMutation({
         mutationFn: ({ readingId, data }) =>
             axios.patch(`/api/gas-station/closeouts/${closeoutId}/tank-readings/${readingId}`, data),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['gas-closeout-edit'] });
+            queryClient.invalidateQueries({ queryKey: ['gas-closeouts'] });
+        },
         onError: (error) => toast.error(error.response?.data?.message || 'Error al guardar lectura de tanque')
     });
+
+    const batchUpdateTankMutation = useMutation({
+        mutationFn: (readings) =>
+            axios.patch(`/api/gas-station/closeouts/${closeoutId}/tank-readings/batch`, { readings }),
+        onSuccess: (res) => {
+            if (res.data?.tankReadings) {
+                setTankReadings(res.data.tankReadings);
+            }
+            queryClient.invalidateQueries({ queryKey: ['gas-closeout-edit'] });
+            queryClient.invalidateQueries({ queryKey: ['gas-closeouts'] });
+            toast.success('Lecturas de tanques guardadas exitosamente');
+            setShowTankReadingsModal(false);
+            setEditAnterior(false);
+        },
+        onError: (error) => toast.error(error.response?.data?.message || 'Error al guardar lecturas de tanque')
+    });
+
+    const handleSaveAllTanks = (readingsToSave) => {
+        if (!closeoutId || estado === 'cerrado') return;
+        batchUpdateTankMutation.mutate(readingsToSave || tankReadings);
+    };
 
     const saveExpensesMutation = useMutation({
         mutationFn: (expenses) => axios.post(`/api/gas-station/closeouts/${closeoutId}/expenses`, {
@@ -816,7 +875,7 @@ const GasCloseout = () => {
             const clean = res.data.map(e => ({ ...e, fecha: toDateStr(e.fecha) }));
             setGastos(clean);
             if (modalSnapshotsRef.current) modalSnapshotsRef.current.gastos = JSON.stringify(clean);
-            queryClient.invalidateQueries({ queryKey: ['gas-closeout-expenses', closeoutId] });
+            queryClient.invalidateQueries({ queryKey: ['gas-closeout-edit'] });
             queryClient.invalidateQueries({ queryKey: ['gas-closeouts'] });
             setShowGastosModal(false);
             if (isAutoSavingRef.current) {
@@ -834,7 +893,7 @@ const GasCloseout = () => {
         onSuccess: (res) => {
             setRemesas(res.data);
             if (modalSnapshotsRef.current) modalSnapshotsRef.current.remesas = JSON.stringify(res.data);
-            queryClient.invalidateQueries({ queryKey: ['gas-closeout-remesas', closeoutId] });
+            queryClient.invalidateQueries({ queryKey: ['gas-closeout-edit'] });
             queryClient.invalidateQueries({ queryKey: ['gas-closeouts'] });
             setShowRemesasModal(false);
             if (isAutoSavingRef.current) {
@@ -860,7 +919,7 @@ const GasCloseout = () => {
         onSuccess: (res) => {
             setCupones(res.data);
             if (modalSnapshotsRef.current) modalSnapshotsRef.current.cupones = JSON.stringify(res.data);
-            queryClient.invalidateQueries({ queryKey: ['gas-closeout-cupones', closeoutId] });
+            queryClient.invalidateQueries({ queryKey: ['gas-closeout-edit'] });
             queryClient.invalidateQueries({ queryKey: ['gas-closeouts'] });
             setShowCuponesModal(false);
             if (isAutoSavingRef.current) {
@@ -882,7 +941,7 @@ const GasCloseout = () => {
         onSuccess: (res) => {
             setDescuentos(res.data);
             if (modalSnapshotsRef.current) modalSnapshotsRef.current.descuentos = JSON.stringify(res.data);
-            queryClient.invalidateQueries({ queryKey: ['gas-closeout-descuentos', closeoutId] });
+            queryClient.invalidateQueries({ queryKey: ['gas-closeout-edit'] });
             queryClient.invalidateQueries({ queryKey: ['gas-closeouts'] });
             setShowDescuentosModal(false);
             if (isAutoSavingRef.current) {
@@ -904,7 +963,7 @@ const GasCloseout = () => {
         onSuccess: (res) => {
             setAdelantos(res.data);
             if (modalSnapshotsRef.current) modalSnapshotsRef.current.adelantos = JSON.stringify(res.data);
-            queryClient.invalidateQueries({ queryKey: ['gas-closeout-adelantos', closeoutId] });
+            queryClient.invalidateQueries({ queryKey: ['gas-closeout-edit'] });
             queryClient.invalidateQueries({ queryKey: ['gas-closeouts'] });
             setShowAdelantosModal(false);
             if (isAutoSavingRef.current) {
@@ -987,7 +1046,7 @@ const GasCloseout = () => {
         onSuccess: (res) => {
             setTarjetas(res.data);
             if (modalSnapshotsRef.current) modalSnapshotsRef.current.tarjetas = JSON.stringify(res.data);
-            queryClient.invalidateQueries({ queryKey: ['gas-closeout-tarjetas', closeoutId] });
+            queryClient.invalidateQueries({ queryKey: ['gas-closeout-edit'] });
             queryClient.invalidateQueries({ queryKey: ['gas-closeouts'] });
             setShowTarjetasModal(false);
             if (isAutoSavingRef.current) {
@@ -1005,7 +1064,7 @@ const GasCloseout = () => {
         onSuccess: (res) => {
             setCreditos(res.data);
             if (modalSnapshotsRef.current) modalSnapshotsRef.current.creditos = JSON.stringify(res.data);
-            queryClient.invalidateQueries({ queryKey: ['gas-closeout-creditos', closeoutId] });
+            queryClient.invalidateQueries({ queryKey: ['gas-closeout-edit'] });
             queryClient.invalidateQueries({ queryKey: ['gas-closeouts'] });
             setShowCreditosModal(false);
             if (isAutoSavingRef.current) {
@@ -1023,7 +1082,7 @@ const GasCloseout = () => {
         onSuccess: (res) => {
             setVales(res.data);
             if (modalSnapshotsRef.current) modalSnapshotsRef.current.vales = JSON.stringify(res.data);
-            queryClient.invalidateQueries({ queryKey: ['gas-closeout-vales', closeoutId] });
+            queryClient.invalidateQueries({ queryKey: ['gas-closeout-edit'] });
             queryClient.invalidateQueries({ queryKey: ['gas-closeouts'] });
             setShowValesModal(false);
             if (isAutoSavingRef.current) {
@@ -1041,7 +1100,7 @@ const GasCloseout = () => {
         onSuccess: (res) => {
             setAnticiposDesp(res.data);
             if (modalSnapshotsRef.current) modalSnapshotsRef.current.anticipos = JSON.stringify(res.data);
-            queryClient.invalidateQueries({ queryKey: ['gas-closeout-anticipos-desp', closeoutId] });
+            queryClient.invalidateQueries({ queryKey: ['gas-closeout-edit'] });
             queryClient.invalidateQueries({ queryKey: ['gas-closeouts'] });
             setShowAnticiposModal(false);
             if (isAutoSavingRef.current) {
@@ -1059,7 +1118,7 @@ const GasCloseout = () => {
         onSuccess: (res) => {
             setTrupputDesp(res.data);
             if (modalSnapshotsRef.current) modalSnapshotsRef.current.trupput = JSON.stringify(res.data);
-            queryClient.invalidateQueries({ queryKey: ['gas-closeout-trupput-desp', closeoutId] });
+            queryClient.invalidateQueries({ queryKey: ['gas-closeout-edit'] });
             queryClient.invalidateQueries({ queryKey: ['gas-closeouts'] });
             setShowTrupputModal(false);
             if (isAutoSavingRef.current) {
@@ -1397,7 +1456,9 @@ const GasCloseout = () => {
         mutationFn: (readings) => axios.post(`/api/gas-station/closeouts/${closeoutId}/lubricantes`, { readings }),
         onSuccess: (res) => {
             setLubricantReadings(res.data);
+            queryClient.invalidateQueries({ queryKey: ['gas-closeout-edit'] });
             queryClient.invalidateQueries({ queryKey: ['gas-closeouts'] });
+            toast.success('Lecturas de lubricantes guardadas');
         },
         onError: (error) => toast.error(error.response?.data?.message || 'Error al guardar lubricantes')
     });
@@ -3070,6 +3131,8 @@ const GasCloseout = () => {
                     inputDisabledCls={inputDisabledCls}
                     inputCalibCls={inputCalibCls}
                     inputCalibDisabledCls={inputCalibDisabledCls}
+                    onSave={handleSaveAllTanks}
+                    isSaving={batchUpdateTankMutation.isPending}
                 />
 
                 <GasCreditosModal

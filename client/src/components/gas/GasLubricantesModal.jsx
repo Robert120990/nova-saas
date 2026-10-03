@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Droplets, ShieldCheck, Loader2, RefreshCw, X, Plus, Trash2 } from 'lucide-react';
+import { Droplets, ShieldCheck, Loader2, RefreshCw, X, Plus, Trash2, Save } from 'lucide-react';
 import Money from '../ui/Money';
 import GasAddLubricantModal from './GasAddLubricantModal';
 
@@ -244,6 +244,34 @@ const GasLubricantesModal = ({
                             </button>
                         </div>
                     )}
+                </div>
+
+                <div className="px-5 py-3 border-t border-slate-100 flex items-center justify-between bg-slate-50 rounded-b-2xl shrink-0">
+                    <div className="text-xs text-slate-500 font-medium">
+                        Total: <span className="font-bold text-slate-800"><Money value={lubricantTotal} /></span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={onClose}
+                            className="px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-200 rounded-xl transition-colors"
+                        >
+                            Cerrar
+                        </button>
+                        {estado !== 'cerrado' && (
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    handleLubricantBlur();
+                                    onClose();
+                                }}
+                                className="flex items-center gap-1.5 px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm"
+                            >
+                                <Save size={13} />
+                                Guardar y Salir
+                            </button>
+                        )}
+                    </div>
                 </div>
             </div>
 
