@@ -163,6 +163,12 @@ const GasCloseout = () => {
     const badgeTapTimerRef = useRef(null);
     const lubricantInputRefs = useRef({});
     const lastDespachadorRef = useRef(null);
+    const loadedEditIdRef = useRef(null);
+    const lubricantMutationSeqRef = useRef(0);
+    const latestLubricantFinishedSeqRef = useRef(0);
+    const activeLubricantSavePromiseRef = useRef(null);
+    const lastLubricantPayloadKeyRef = useRef('');
+    const lubricantReadingsRef = useRef([]);
 
     const modalSnapshotsRef = useRef({
         gastos: '[]',
@@ -305,58 +311,146 @@ const GasCloseout = () => {
 
     useEffect(() => {
         if (!editId && openCloseoutsData?.data?.length > 0) {
-            const openCloseout = openCloseoutsData.data[0];
+            const openCloseout = openCloseoutsData.data.find(c => c.estado === 'abierto');
             if (openCloseout?.id) {
                 setSearchParams({ editId: String(openCloseout.id) }, { replace: true });
             }
         }
     }, [editId, openCloseoutsData, setSearchParams]);
 
+    const activeModalsRef = useRef({});
+    activeModalsRef.current = {
+        readings: showReadingsModal,
+        tanks: showTankReadingsModal,
+        lubricantes: showLubricantesModal,
+        nozzles: showNozzleAssignModal,
+        gastos: showGastosModal,
+        remesas: showRemesasModal,
+        cupones: showCuponesModal,
+        descuentos: showDescuentosModal,
+        adelantos: showAdelantosModal,
+        tarjetas: showTarjetasModal,
+        creditos: showCreditosModal,
+        vales: showValesModal,
+        anticipos: showAnticiposModal,
+        trupput: showTrupputModal,
+    };
+
+    const currentSectionsRef = useRef({});
+    currentSectionsRef.current = {
+        gastos,
+        remesas,
+        cupones,
+        descuentos,
+        adelantos,
+        tarjetas,
+        creditos,
+        vales,
+        anticipos: anticiposDesp,
+        trupput: trupputDesp
+    };
+
     useEffect(() => {
-        if (editData) {
+        if (!editData) return;
+
+        const isInitialLoad = loadedEditIdRef.current !== editData.id;
+        if (isInitialLoad) {
+            loadedEditIdRef.current = editData.id;
             setCloseoutId(editData.id);
-            setReadings(editData.readings);
-            setEstado(editData.estado);
-            setSellerId(editData.seller_id);
-            setSellerName(editData.seller_name);
-            setFechaTurno(editData.fecha_turno?.split('T')[0] || editData.fecha_turno);
-            setNumeroTurno(editData.numero_turno);
+        }
+
+        setEstado(editData.estado);
+        setSellerId(editData.seller_id);
+        setSellerName(editData.seller_name);
+        setFechaTurno(editData.fecha_turno?.split('T')[0] || editData.fecha_turno);
+        setNumeroTurno(editData.numero_turno);
+        setFusionShiftId(editData.fusion_shift_id || null);
+        setFusionSalesAmount(editData.fusion_sales_amount !== null && editData.fusion_sales_amount !== undefined ? parseFloat(editData.fusion_sales_amount) : null);
+        setFusionSalesVolume(editData.fusion_sales_volume !== null && editData.fusion_sales_volume !== undefined ? parseFloat(editData.fusion_sales_volume) : null);
+
+        if (isInitialLoad || !activeModalsRef.current.readings) {
+            setReadings(editData.readings || []);
+        }
+        if (isInitialLoad || !activeModalsRef.current.tanks) {
             setTankReadings(editData.tankReadings || []);
-            const initialLubricants = (editData.lubricantReadings || []).filter(r => 
-                (parseFloat(r.lectura_inicial) || 0) > 0 ||
-                (parseFloat(r.recarga) || 0) > 0 ||
-                (parseFloat(r.lectura_final) || 0) > 0 ||
-                (parseFloat(r.ventas) || 0) > 0
-            );
-            setLubricantReadings(initialLubricants);
+        }
+        if (isInitialLoad || !activeModalsRef.current.lubricantes) {
+            setLubricantReadings(editData.lubricantReadings || []);
+            lubricantReadingsRef.current = editData.lubricantReadings || [];
+        }
+        if (isInitialLoad || !activeModalsRef.current.nozzles) {
             setCloseoutDespachadores(editData.despachadores || []);
             setDespachadorNozzleAssignments(editData.despachadorNozzleAssignments || []);
-            const cleanLoadedGastos = (editData.gastos || []).map(e => ({ ...e, fecha: toDateStr(e.fecha) }));
-            setGastos(cleanLoadedGastos);
-            setRemesas(editData.remesas || []);
-            setCupones(editData.cupones || []);
-            setDescuentos(editData.descuentos || []);
-            setAdelantos(editData.adelantos || []);
-            setTarjetas(editData.tarjetas || []);
-            setCreditos(editData.creditos || []);
-            setVales(editData.vales || []);
-            setAnticiposDesp(editData.anticipos_despachadores || []);
-            setTrupputDesp(editData.trupput_despachos || []);
-            setFusionShiftId(editData.fusion_shift_id || null);
-            setFusionSalesAmount(editData.fusion_sales_amount !== null && editData.fusion_sales_amount !== undefined ? parseFloat(editData.fusion_sales_amount) : null);
-            setFusionSalesVolume(editData.fusion_sales_volume !== null && editData.fusion_sales_volume !== undefined ? parseFloat(editData.fusion_sales_volume) : null);
-            modalSnapshotsRef.current = {
-                gastos: JSON.stringify(cleanLoadedGastos),
-                remesas: JSON.stringify(editData.remesas || []),
-                cupones: JSON.stringify(editData.cupones || []),
-                descuentos: JSON.stringify(editData.descuentos || []),
-                adelantos: JSON.stringify(editData.adelantos || []),
-                tarjetas: JSON.stringify(editData.tarjetas || []),
-                creditos: JSON.stringify(editData.creditos || []),
-                vales: JSON.stringify(editData.vales || []),
-                anticipos: JSON.stringify(editData.anticipos_despachadores || []),
-                trupput: JSON.stringify(editData.trupput_despachos || [])
-            };
+        }
+
+        const isSectionUnmodified = (key, currentVal) => {
+            if (isInitialLoad) return true;
+            if (activeModalsRef.current[key]) return false;
+            const snap = modalSnapshotsRef.current?.[key] || '[]';
+            return JSON.stringify(currentVal || []) === snap;
+        };
+
+        const cleanGastos = (editData.gastos || []).map(e => ({ ...e, fecha: toDateStr(e.fecha) }));
+        if (isSectionUnmodified('gastos', currentSectionsRef.current.gastos)) {
+            setGastos(cleanGastos);
+            if (modalSnapshotsRef.current) modalSnapshotsRef.current.gastos = JSON.stringify(cleanGastos);
+        }
+
+        const cleanRemesas = editData.remesas || [];
+        if (isSectionUnmodified('remesas', currentSectionsRef.current.remesas)) {
+            setRemesas(cleanRemesas);
+            if (modalSnapshotsRef.current) modalSnapshotsRef.current.remesas = JSON.stringify(cleanRemesas);
+        }
+
+        const cleanCupones = editData.cupones || [];
+        if (isSectionUnmodified('cupones', currentSectionsRef.current.cupones)) {
+            setCupones(cleanCupones);
+            if (modalSnapshotsRef.current) modalSnapshotsRef.current.cupones = JSON.stringify(cleanCupones);
+        }
+
+        const cleanDescuentos = editData.descuentos || [];
+        if (isSectionUnmodified('descuentos', currentSectionsRef.current.descuentos)) {
+            setDescuentos(cleanDescuentos);
+            if (modalSnapshotsRef.current) modalSnapshotsRef.current.descuentos = JSON.stringify(cleanDescuentos);
+        }
+
+        const cleanAdelantos = editData.adelantos || [];
+        if (isSectionUnmodified('adelantos', currentSectionsRef.current.adelantos)) {
+            setAdelantos(cleanAdelantos);
+            if (modalSnapshotsRef.current) modalSnapshotsRef.current.adelantos = JSON.stringify(cleanAdelantos);
+        }
+
+        const cleanTarjetas = editData.tarjetas || [];
+        if (isSectionUnmodified('tarjetas', currentSectionsRef.current.tarjetas)) {
+            setTarjetas(cleanTarjetas);
+            if (modalSnapshotsRef.current) modalSnapshotsRef.current.tarjetas = JSON.stringify(cleanTarjetas);
+        }
+
+        const cleanCreditos = editData.creditos || [];
+        if (isSectionUnmodified('creditos', currentSectionsRef.current.creditos)) {
+            setCreditos(cleanCreditos);
+            if (modalSnapshotsRef.current) modalSnapshotsRef.current.creditos = JSON.stringify(cleanCreditos);
+        }
+
+        const cleanVales = editData.vales || [];
+        if (isSectionUnmodified('vales', currentSectionsRef.current.vales)) {
+            setVales(cleanVales);
+            if (modalSnapshotsRef.current) modalSnapshotsRef.current.vales = JSON.stringify(cleanVales);
+        }
+
+        const cleanAnticipos = editData.anticipos_despachadores || [];
+        if (isSectionUnmodified('anticipos', currentSectionsRef.current.anticipos)) {
+            setAnticiposDesp(cleanAnticipos);
+            if (modalSnapshotsRef.current) modalSnapshotsRef.current.anticipos = JSON.stringify(cleanAnticipos);
+        }
+
+        const cleanTrupput = editData.trupput_despachos || [];
+        if (isSectionUnmodified('trupput', currentSectionsRef.current.trupput)) {
+            setTrupputDesp(cleanTrupput);
+            if (modalSnapshotsRef.current) modalSnapshotsRef.current.trupput = JSON.stringify(cleanTrupput);
+        }
+
+        if (isInitialLoad) {
             const firstWithDesp = [editData.gastos, editData.remesas, editData.cupones, editData.descuentos, editData.adelantos, editData.tarjetas, editData.creditos, editData.vales, editData.anticipos_despachadores, editData.trupput_despachos]
                 .flat()
                 .find(r => r && r.despachador_id);
@@ -366,6 +460,7 @@ const GasCloseout = () => {
 
     useEffect(() => {
         if (!editId) {
+            loadedEditIdRef.current = null;
             setCloseoutId(null);
             setReadings([]);
             setEstado(null);
@@ -564,6 +659,7 @@ const GasCloseout = () => {
     const initMutation = useMutation({
         mutationFn: (data) => axios.post('/api/gas-station/closeouts/init', data),
         onSuccess: (res) => {
+            loadedEditIdRef.current = res.data.id;
             setCloseoutId(res.data.id);
             setReadings(res.data.readings.map(r => ({ ...r, lectura_actual: r.lectura_anterior })));
             setTankReadings(res.data.tankReadings?.map(r => ({ ...r, lectura_actual: r.lectura_anterior })) || []);
@@ -583,24 +679,70 @@ const GasCloseout = () => {
     const updateMutation = useMutation({
         mutationFn: ({ readingId, data }) =>
             axios.patch(`/api/gas-station/closeouts/${closeoutId}/readings/${readingId}`, data),
-        onSuccess: (res) => {
+        onSuccess: (res, variables) => {
             if (res.data) {
+                const sent = variables?.data || {};
                 setReadings(prev => prev.map(r => {
                     if (r.id === res.data.id) {
+                        const lectura_actual = (sent.lectura_actual !== undefined && (parseFloat(r.lectura_actual) || 0) === (parseFloat(sent.lectura_actual) || 0))
+                            ? res.data.lectura_actual
+                            : r.lectura_actual;
+                        const calibracion = (sent.calibracion !== undefined && (parseFloat(r.calibracion) || 0) === (parseFloat(sent.calibracion) || 0))
+                            ? res.data.calibracion
+                            : r.calibracion;
+                        const lectura_anterior = (sent.lectura_anterior !== undefined && (parseFloat(r.lectura_anterior) || 0) === (parseFloat(sent.lectura_anterior) || 0))
+                            ? res.data.lectura_anterior
+                            : r.lectura_anterior;
+                        const act = parseFloat(lectura_actual) || 0;
+                        const cal = parseFloat(calibracion) || 0;
+                        const ant = parseFloat(lectura_anterior) || 0;
+                        const precio = res.data.precio !== undefined ? res.data.precio : (parseFloat(r.precio) || 0);
+                        const diferencia = Math.round((act - ant - cal) * 1000) / 1000;
+                        const monto = Math.round(diferencia * precio * 100) / 100;
                         return {
                             ...r,
-                            lectura_actual: res.data.lectura_actual,
-                            calibracion: res.data.calibracion,
-                            lectura_anterior: res.data.lectura_anterior,
-                            diferencia: res.data.diferencia,
-                            monto: res.data.monto,
-                            precio: res.data.precio !== undefined ? res.data.precio : r.precio
+                            lectura_actual,
+                            calibracion,
+                            lectura_anterior,
+                            diferencia,
+                            monto,
+                            precio
                         };
                     }
                     return r;
                 }));
+                if (editId) {
+                    queryClient.setQueryData(['gas-closeout-edit', editId], (old) => {
+                        if (!old) return old;
+                        return {
+                            ...old,
+                            readings: (old.readings || []).map(r => {
+                                if (r.id === res.data.id) {
+                                    const lectura_actual = sent.lectura_actual !== undefined ? res.data.lectura_actual : r.lectura_actual;
+                                    const calibracion = sent.calibracion !== undefined ? res.data.calibracion : r.calibracion;
+                                    const lectura_anterior = sent.lectura_anterior !== undefined ? res.data.lectura_anterior : r.lectura_anterior;
+                                    const act = parseFloat(lectura_actual) || 0;
+                                    const cal = parseFloat(calibracion) || 0;
+                                    const ant = parseFloat(lectura_anterior) || 0;
+                                    const precio = res.data.precio !== undefined ? res.data.precio : (parseFloat(r.precio) || 0);
+                                    const diferencia = Math.round((act - ant - cal) * 1000) / 1000;
+                                    const monto = Math.round(diferencia * precio * 100) / 100;
+                                    return {
+                                        ...r,
+                                        lectura_actual,
+                                        calibracion,
+                                        lectura_anterior,
+                                        diferencia,
+                                        monto,
+                                        precio
+                                    };
+                                }
+                                return r;
+                            })
+                        };
+                    });
+                }
             }
-            queryClient.invalidateQueries({ queryKey: ['gas-closeout-edit'] });
             queryClient.invalidateQueries({ queryKey: ['gas-closeouts'] });
         },
         onError: (error) => toast.error(error.response?.data?.message || 'Error al guardar')
@@ -627,7 +769,21 @@ const GasCloseout = () => {
             if (res.data.fusion_sales_volume !== undefined && res.data.fusion_sales_volume !== null) {
                 setFusionSalesVolume(parseFloat(res.data.fusion_sales_volume));
             }
-            queryClient.invalidateQueries({ queryKey: ['gas-closeout-edit'] });
+            if (editId) {
+                queryClient.setQueryData(['gas-closeout-edit', editId], (old) => {
+                    if (!old) return old;
+                    return {
+                        ...old,
+                        readings: (old.readings || []).map(r => {
+                            const u = updated.find(x => x.id === r.id);
+                            return u ? { ...r, ...u } : r;
+                        }),
+                        fusion_shift_id: res.data.fusion_shift_id || old.fusion_shift_id,
+                        fusion_sales_amount: res.data.fusion_sales_amount ?? old.fusion_sales_amount,
+                        fusion_sales_volume: res.data.fusion_sales_volume ?? old.fusion_sales_volume
+                    };
+                });
+            }
             queryClient.invalidateQueries({ queryKey: ['gas-closeouts'] });
             queryClient.invalidateQueries({ queryKey: ['gas-fusion-periods'] });
             setImportResult(null);
@@ -815,8 +971,16 @@ const GasCloseout = () => {
                     const saved = res.data.despachadores.find(s => s.despachador_id === p.despachador_id);
                     return saved ? { ...p, nombre: saved.nombre } : p;
                 }));
+                if (editId) {
+                    queryClient.setQueryData(['gas-closeout-edit', editId], (old) => {
+                        if (!old) return old;
+                        return {
+                            ...old,
+                            despachadores: res.data.despachadores
+                        };
+                    });
+                }
             }
-            queryClient.invalidateQueries({ queryKey: ['gas-closeout-edit'] });
             queryClient.invalidateQueries({ queryKey: ['gas-closeouts'] });
         },
         onError: (error) => toast.error(error.response?.data?.message || 'Error al guardar despachadores')
@@ -826,7 +990,15 @@ const GasCloseout = () => {
         mutationFn: (assignments) => axios.put(`/api/gas-station/closeouts/${closeoutId}/despachador-nozzles`, { assignments }),
         onSuccess: (res) => {
             setDespachadorNozzleAssignments(res.data);
-            queryClient.invalidateQueries({ queryKey: ['gas-closeout-edit'] });
+            if (editId) {
+                queryClient.setQueryData(['gas-closeout-edit', editId], (old) => {
+                    if (!old) return old;
+                    return {
+                        ...old,
+                        despachadorNozzleAssignments: res.data
+                    };
+                });
+            }
             queryClient.invalidateQueries({ queryKey: ['gas-closeouts'] });
             toast.success('Asignaciones de mangueras actualizadas');
         },
@@ -836,8 +1008,62 @@ const GasCloseout = () => {
     const updateTankMutation = useMutation({
         mutationFn: ({ readingId, data }) =>
             axios.patch(`/api/gas-station/closeouts/${closeoutId}/tank-readings/${readingId}`, data),
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['gas-closeout-edit'] });
+        onSuccess: (res, variables) => {
+            if (res.data) {
+                const sent = variables?.data || {};
+                setTankReadings(prev => prev.map(t => {
+                    if (t.id === res.data.id) {
+                        const lectura_actual = (sent.lectura_actual !== undefined && (parseFloat(t.lectura_actual) || 0) === (parseFloat(sent.lectura_actual) || 0))
+                            ? res.data.lectura_actual
+                            : t.lectura_actual;
+                        const recarga = (sent.recarga !== undefined && (parseFloat(t.recarga) || 0) === (parseFloat(sent.recarga) || 0))
+                            ? res.data.recarga
+                            : t.recarga;
+                        const lectura_anterior = (sent.lectura_anterior !== undefined && (parseFloat(t.lectura_anterior) || 0) === (parseFloat(sent.lectura_anterior) || 0))
+                            ? res.data.lectura_anterior
+                            : t.lectura_anterior;
+                        const act = parseFloat(lectura_actual) || 0;
+                        const rec = parseFloat(recarga) || 0;
+                        const ant = parseFloat(lectura_anterior) || 0;
+                        const diferencia = Math.round((ant + rec - act) * 100000) / 100000;
+                        return {
+                            ...t,
+                            lectura_actual,
+                            recarga,
+                            lectura_anterior,
+                            diferencia
+                        };
+                    }
+                    return t;
+                }));
+                if (editId) {
+                    queryClient.setQueryData(['gas-closeout-edit', editId], (old) => {
+                        if (!old) return old;
+                        return {
+                            ...old,
+                            tankReadings: (old.tankReadings || []).map(t => {
+                                if (t.id === res.data.id) {
+                                    const lectura_actual = sent.lectura_actual !== undefined ? res.data.lectura_actual : t.lectura_actual;
+                                    const recarga = sent.recarga !== undefined ? res.data.recarga : t.recarga;
+                                    const lectura_anterior = sent.lectura_anterior !== undefined ? res.data.lectura_anterior : t.lectura_anterior;
+                                    const act = parseFloat(lectura_actual) || 0;
+                                    const rec = parseFloat(recarga) || 0;
+                                    const ant = parseFloat(lectura_anterior) || 0;
+                                    const diferencia = Math.round((ant + rec - act) * 100000) / 100000;
+                                    return {
+                                        ...t,
+                                        lectura_actual,
+                                        recarga,
+                                        lectura_anterior,
+                                        diferencia
+                                    };
+                                }
+                                return t;
+                            })
+                        };
+                    });
+                }
+            }
             queryClient.invalidateQueries({ queryKey: ['gas-closeouts'] });
         },
         onError: (error) => toast.error(error.response?.data?.message || 'Error al guardar lectura de tanque')
@@ -849,6 +1075,15 @@ const GasCloseout = () => {
         onSuccess: (res) => {
             if (res.data?.tankReadings) {
                 setTankReadings(res.data.tankReadings);
+                if (editId) {
+                    queryClient.setQueryData(['gas-closeout-edit', editId], (old) => {
+                        if (!old) return old;
+                        return {
+                            ...old,
+                            tankReadings: res.data.tankReadings
+                        };
+                    });
+                }
             }
             queryClient.invalidateQueries({ queryKey: ['gas-closeout-edit'] });
             queryClient.invalidateQueries({ queryKey: ['gas-closeouts'] });
@@ -875,6 +1110,12 @@ const GasCloseout = () => {
             const clean = res.data.map(e => ({ ...e, fecha: toDateStr(e.fecha) }));
             setGastos(clean);
             if (modalSnapshotsRef.current) modalSnapshotsRef.current.gastos = JSON.stringify(clean);
+            if (editId) {
+                queryClient.setQueryData(['gas-closeout-edit', editId], (old) => {
+                    if (!old) return old;
+                    return { ...old, gastos: clean };
+                });
+            }
             queryClient.invalidateQueries({ queryKey: ['gas-closeout-edit'] });
             queryClient.invalidateQueries({ queryKey: ['gas-closeouts'] });
             setShowGastosModal(false);
@@ -893,6 +1134,12 @@ const GasCloseout = () => {
         onSuccess: (res) => {
             setRemesas(res.data);
             if (modalSnapshotsRef.current) modalSnapshotsRef.current.remesas = JSON.stringify(res.data);
+            if (editId) {
+                queryClient.setQueryData(['gas-closeout-edit', editId], (old) => {
+                    if (!old) return old;
+                    return { ...old, remesas: res.data };
+                });
+            }
             queryClient.invalidateQueries({ queryKey: ['gas-closeout-edit'] });
             queryClient.invalidateQueries({ queryKey: ['gas-closeouts'] });
             setShowRemesasModal(false);
@@ -919,6 +1166,12 @@ const GasCloseout = () => {
         onSuccess: (res) => {
             setCupones(res.data);
             if (modalSnapshotsRef.current) modalSnapshotsRef.current.cupones = JSON.stringify(res.data);
+            if (editId) {
+                queryClient.setQueryData(['gas-closeout-edit', editId], (old) => {
+                    if (!old) return old;
+                    return { ...old, cupones: res.data };
+                });
+            }
             queryClient.invalidateQueries({ queryKey: ['gas-closeout-edit'] });
             queryClient.invalidateQueries({ queryKey: ['gas-closeouts'] });
             setShowCuponesModal(false);
@@ -941,6 +1194,12 @@ const GasCloseout = () => {
         onSuccess: (res) => {
             setDescuentos(res.data);
             if (modalSnapshotsRef.current) modalSnapshotsRef.current.descuentos = JSON.stringify(res.data);
+            if (editId) {
+                queryClient.setQueryData(['gas-closeout-edit', editId], (old) => {
+                    if (!old) return old;
+                    return { ...old, descuentos: res.data };
+                });
+            }
             queryClient.invalidateQueries({ queryKey: ['gas-closeout-edit'] });
             queryClient.invalidateQueries({ queryKey: ['gas-closeouts'] });
             setShowDescuentosModal(false);
@@ -963,6 +1222,12 @@ const GasCloseout = () => {
         onSuccess: (res) => {
             setAdelantos(res.data);
             if (modalSnapshotsRef.current) modalSnapshotsRef.current.adelantos = JSON.stringify(res.data);
+            if (editId) {
+                queryClient.setQueryData(['gas-closeout-edit', editId], (old) => {
+                    if (!old) return old;
+                    return { ...old, adelantos: res.data };
+                });
+            }
             queryClient.invalidateQueries({ queryKey: ['gas-closeout-edit'] });
             queryClient.invalidateQueries({ queryKey: ['gas-closeouts'] });
             setShowAdelantosModal(false);
@@ -1046,6 +1311,12 @@ const GasCloseout = () => {
         onSuccess: (res) => {
             setTarjetas(res.data);
             if (modalSnapshotsRef.current) modalSnapshotsRef.current.tarjetas = JSON.stringify(res.data);
+            if (editId) {
+                queryClient.setQueryData(['gas-closeout-edit', editId], (old) => {
+                    if (!old) return old;
+                    return { ...old, tarjetas: res.data };
+                });
+            }
             queryClient.invalidateQueries({ queryKey: ['gas-closeout-edit'] });
             queryClient.invalidateQueries({ queryKey: ['gas-closeouts'] });
             setShowTarjetasModal(false);
@@ -1064,6 +1335,12 @@ const GasCloseout = () => {
         onSuccess: (res) => {
             setCreditos(res.data);
             if (modalSnapshotsRef.current) modalSnapshotsRef.current.creditos = JSON.stringify(res.data);
+            if (editId) {
+                queryClient.setQueryData(['gas-closeout-edit', editId], (old) => {
+                    if (!old) return old;
+                    return { ...old, creditos: res.data };
+                });
+            }
             queryClient.invalidateQueries({ queryKey: ['gas-closeout-edit'] });
             queryClient.invalidateQueries({ queryKey: ['gas-closeouts'] });
             setShowCreditosModal(false);
@@ -1082,6 +1359,12 @@ const GasCloseout = () => {
         onSuccess: (res) => {
             setVales(res.data);
             if (modalSnapshotsRef.current) modalSnapshotsRef.current.vales = JSON.stringify(res.data);
+            if (editId) {
+                queryClient.setQueryData(['gas-closeout-edit', editId], (old) => {
+                    if (!old) return old;
+                    return { ...old, vales: res.data };
+                });
+            }
             queryClient.invalidateQueries({ queryKey: ['gas-closeout-edit'] });
             queryClient.invalidateQueries({ queryKey: ['gas-closeouts'] });
             setShowValesModal(false);
@@ -1100,6 +1383,12 @@ const GasCloseout = () => {
         onSuccess: (res) => {
             setAnticiposDesp(res.data);
             if (modalSnapshotsRef.current) modalSnapshotsRef.current.anticipos = JSON.stringify(res.data);
+            if (editId) {
+                queryClient.setQueryData(['gas-closeout-edit', editId], (old) => {
+                    if (!old) return old;
+                    return { ...old, anticipos_despachadores: res.data };
+                });
+            }
             queryClient.invalidateQueries({ queryKey: ['gas-closeout-edit'] });
             queryClient.invalidateQueries({ queryKey: ['gas-closeouts'] });
             setShowAnticiposModal(false);
@@ -1118,6 +1407,12 @@ const GasCloseout = () => {
         onSuccess: (res) => {
             setTrupputDesp(res.data);
             if (modalSnapshotsRef.current) modalSnapshotsRef.current.trupput = JSON.stringify(res.data);
+            if (editId) {
+                queryClient.setQueryData(['gas-closeout-edit', editId], (old) => {
+                    if (!old) return old;
+                    return { ...old, trupput_despachos: res.data };
+                });
+            }
             queryClient.invalidateQueries({ queryKey: ['gas-closeout-edit'] });
             queryClient.invalidateQueries({ queryKey: ['gas-closeouts'] });
             setShowTrupputModal(false);
@@ -1453,10 +1748,83 @@ const GasCloseout = () => {
     [lubricantReadings]);
 
     const saveLubricantesMutation = useMutation({
-        mutationFn: (readings) => axios.post(`/api/gas-station/closeouts/${closeoutId}/lubricantes`, { readings }),
-        onSuccess: (res) => {
-            setLubricantReadings(res.data);
-            queryClient.invalidateQueries({ queryKey: ['gas-closeout-edit'] });
+        mutationFn: async (readings) => {
+            const seq = ++lubricantMutationSeqRef.current;
+            const res = await axios.post(`/api/gas-station/closeouts/${closeoutId}/lubricantes`, { readings });
+            return { data: res.data, seq };
+        },
+        onSuccess: ({ data, seq }, variables) => {
+            if (seq < latestLubricantFinishedSeqRef.current) {
+                return;
+            }
+            latestLubricantFinishedSeqRef.current = seq;
+
+            setLubricantReadings(prev => {
+                if (!prev || prev.length === 0) {
+                    lubricantReadingsRef.current = data || [];
+                    if (editId) {
+                        queryClient.setQueryData(['gas-closeout-edit', editId], (old) => {
+                            if (!old) return old;
+                            return { ...old, lubricantReadings: data || [] };
+                        });
+                    }
+                    return data || [];
+                }
+
+                const serverMap = new Map((data || []).map(r => [r.producto_id, r]));
+                const sentMap = new Map((variables || []).map(r => [r.producto_id, r]));
+
+                const merged = prev.map(p => {
+                    const serverItem = serverMap.get(p.producto_id);
+                    const sentItem = sentMap.get(p.producto_id);
+                    if (!serverItem) return p;
+
+                    const lectura_inicial = (sentItem && (parseFloat(p.lectura_inicial) || 0) === (parseFloat(sentItem.lectura_inicial) || 0))
+                        ? serverItem.lectura_inicial
+                        : p.lectura_inicial;
+
+                    const recarga = (sentItem && (parseFloat(p.recarga) || 0) === (parseFloat(sentItem.recarga) || 0))
+                        ? serverItem.recarga
+                        : p.recarga;
+
+                    const lectura_final = (sentItem && (parseFloat(p.lectura_final) || 0) === (parseFloat(sentItem.lectura_final) || 0))
+                        ? serverItem.lectura_final
+                        : p.lectura_final;
+
+                    const ini = parseFloat(lectura_inicial || 0);
+                    const rec = parseFloat(recarga || 0);
+                    const fin = parseFloat(lectura_final || 0);
+                    const prc = parseFloat(p.precio || serverItem.precio || 0);
+                    const ventas = parseFloat((ini + rec - fin).toFixed(5));
+                    const total = parseFloat((ventas * prc).toFixed(2));
+
+                    return {
+                        ...p,
+                        id: serverItem.id || p.id,
+                        lectura_inicial,
+                        recarga,
+                        lectura_final,
+                        ventas,
+                        total,
+                        precio: prc
+                    };
+                });
+
+                lubricantReadingsRef.current = merged;
+
+                if (editId) {
+                    queryClient.setQueryData(['gas-closeout-edit', editId], (old) => {
+                        if (!old) return old;
+                        return {
+                            ...old,
+                            lubricantReadings: merged
+                        };
+                    });
+                }
+
+                return merged;
+            });
+
             queryClient.invalidateQueries({ queryKey: ['gas-closeouts'] });
             toast.success('Lecturas de lubricantes guardadas');
         },
@@ -2109,15 +2477,18 @@ const GasCloseout = () => {
         }));
     };
 
-    const handleReadingBlur = (readingId, nozzleId) => {
+    const handleReadingBlur = (readingId, nozzleId, field) => {
         const r = readings.find(x => x.nozzle_id === nozzleId);
         if (!r) return;
-        const payload = {
-            lectura_actual: parseFloat(r.lectura_actual) || 0,
-            calibracion: parseFloat(r.calibracion) || 0
-        };
-        if (isSuperAdmin && editAnterior) {
-            payload.lectura_anterior = parseFloat(r.lectura_anterior) || 0;
+        const payload = {};
+        if (field) {
+            payload[field] = parseFloat(r[field]) || 0;
+        } else {
+            payload.lectura_actual = parseFloat(r.lectura_actual) || 0;
+            payload.calibracion = parseFloat(r.calibracion) || 0;
+            if (isSuperAdmin && editAnterior) {
+                payload.lectura_anterior = parseFloat(r.lectura_anterior) || 0;
+            }
         }
         updateMutation.mutate({
             readingId,
@@ -2165,12 +2536,22 @@ const GasCloseout = () => {
         ));
     };
 
-    const handleTankReadingBlur = (readingId, tankId) => {
+    const handleTankReadingBlur = (readingId, tankId, field) => {
         const r = tankReadings.find(x => x.tank_id === tankId);
         if (!r) return;
+        const payload = {};
+        if (field) {
+            payload[field] = parseFloat(r[field]) || 0;
+        } else {
+            payload.lectura_actual = parseFloat(r.lectura_actual) || 0;
+            payload.recarga = parseFloat(r.recarga) || 0;
+            if (isSuperAdmin && editAnterior) {
+                payload.lectura_anterior = parseFloat(r.lectura_anterior) || 0;
+            }
+        }
         updateTankMutation.mutate({
             readingId,
-            data: { lectura_actual: r.lectura_actual, recarga: r.recarga, lectura_anterior: r.lectura_anterior }
+            data: payload
         });
     };
 
@@ -2232,19 +2613,77 @@ const GasCloseout = () => {
         }
     };
 
-    const handleLubricantBlur = () => {
-        const updated = lubricantReadings.map(r => {
+    const handleLubricantChange = (productoId, field, value) => {
+        setLubricantReadings(prev => {
+            const next = prev.map(x =>
+                x.producto_id === productoId
+                    ? { ...x, [field]: value }
+                    : x
+            );
+            lubricantReadingsRef.current = next;
+            return next;
+        });
+    };
+
+    const handleSaveLubricantes = async ({ closeAfter = false } = {}) => {
+        const current = (lubricantReadingsRef.current && lubricantReadingsRef.current.length > 0)
+            ? lubricantReadingsRef.current
+            : lubricantReadings;
+
+        const updated = current.map(r => {
             const ventas = parseFloat(r.lectura_inicial || 0) + parseFloat(r.recarga || 0) - parseFloat(r.lectura_final || 0);
             const total = ventas * parseFloat(r.precio || 0);
             return {
                 ...r,
+                lectura_inicial: parseFloat(r.lectura_inicial) || 0,
                 recarga: parseFloat(r.recarga) || 0,
                 lectura_final: parseFloat(r.lectura_final) || 0,
                 ventas: parseFloat(ventas.toFixed(5)),
                 total: parseFloat(total.toFixed(2)),
             };
         });
-        saveLubricantesMutation.mutate(updated);
+
+        const payloadKey = JSON.stringify(updated.map(u => ({
+            id: u.producto_id,
+            ini: u.lectura_inicial,
+            rec: u.recarga,
+            fin: u.lectura_final
+        })));
+
+        if (activeLubricantSavePromiseRef.current && lastLubricantPayloadKeyRef.current === payloadKey) {
+            if (closeAfter) {
+                try {
+                    await activeLubricantSavePromiseRef.current;
+                    setShowLubricantesModal(false);
+                    setEditAnterior(false);
+                } catch {
+                    // Handled in onError
+                }
+            }
+            return;
+        }
+
+        lastLubricantPayloadKeyRef.current = payloadKey;
+        const savePromise = saveLubricantesMutation.mutateAsync(updated);
+        activeLubricantSavePromiseRef.current = savePromise;
+
+        try {
+            await savePromise;
+            if (closeAfter) {
+                setShowLubricantesModal(false);
+                setEditAnterior(false);
+            }
+        } catch {
+            // Handled in onError
+        } finally {
+            if (activeLubricantSavePromiseRef.current === savePromise) {
+                activeLubricantSavePromiseRef.current = null;
+            }
+        }
+    };
+
+    const handleLubricantBlur = () => {
+        handleSaveLubricantes({ closeAfter: false });
     };
 
     const handleOpenTanques = async () => {
@@ -2283,6 +2722,7 @@ const GasCloseout = () => {
                         };
                     });
                 setLubricantReadings(mapped);
+                lubricantReadingsRef.current = mapped;
                 return mapped;
             }
             return [];
@@ -2318,6 +2758,7 @@ const GasCloseout = () => {
         };
         const updated = [...lubricantReadings, newRow];
         setLubricantReadings(updated);
+        lubricantReadingsRef.current = updated;
         saveLubricantesMutation.mutate(updated);
         toast.success(`Lubricante agregado: ${product.codigo} - ${product.descripcion}`);
     };
@@ -2325,6 +2766,7 @@ const GasCloseout = () => {
     const handleRemoveLubricant = async (productId) => {
         const updated = lubricantReadings.filter(r => r.producto_id !== productId);
         setLubricantReadings(updated);
+        lubricantReadingsRef.current = updated;
         saveLubricantesMutation.mutate(updated);
         toast.info('Producto retirado de la lista del turno');
     };
@@ -3103,7 +3545,10 @@ const GasCloseout = () => {
                     lubricantLoading={lubricantLoading}
                     lubricantReadings={lubricantReadings}
                     setLubricantReadings={setLubricantReadings}
+                    handleLubricantChange={handleLubricantChange}
                     handleLubricantBlur={handleLubricantBlur}
+                    handleSaveLubricantes={handleSaveLubricantes}
+                    isSaving={saveLubricantesMutation.isPending}
                     handleLubricantKeyDown={handleLubricantKeyDown}
                     lubricantInputRefs={lubricantInputRefs}
                     lubricantTotal={lubricantTotal}

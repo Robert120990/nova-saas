@@ -121,7 +121,7 @@ const GasReadingsModal = ({
                                                                 step="0.001"
                                                                 value={r.lectura_anterior || ''}
                                                                 onChange={(e) => handleReadingChange(r.nozzle_id, 'lectura_anterior', e.target.value)}
-                                                                onBlur={() => handleReadingBlur(r.id, r.nozzle_id)}
+                                                                onBlur={() => handleReadingBlur(r.id, r.nozzle_id, 'lectura_anterior')}
                                                                 onKeyDown={(e) => handleKeyDown(e, idx, 'lectura_anterior')}
                                                                 onFocus={(e) => e.target.select()}
                                                                 disabled={estado === 'cerrado'}
@@ -138,7 +138,7 @@ const GasReadingsModal = ({
                                                             step="0.001"
                                                             value={r.lectura_actual || ''}
                                                             onChange={(e) => handleReadingChange(r.nozzle_id, 'lectura_actual', e.target.value)}
-                                                            onBlur={() => handleReadingBlur(r.id, r.nozzle_id)}
+                                                            onBlur={() => handleReadingBlur(r.id, r.nozzle_id, 'lectura_actual')}
                                                             onKeyDown={(e) => handleKeyDown(e, idx, 'lectura_actual')}
                                                             onFocus={(e) => e.target.select()}
                                                             onWheel={(e) => e.target.blur()}
@@ -153,7 +153,7 @@ const GasReadingsModal = ({
                                                             step="0.001"
                                                             value={r.calibracion || ''}
                                                             onChange={(e) => handleReadingChange(r.nozzle_id, 'calibracion', e.target.value)}
-                                                            onBlur={() => handleReadingBlur(r.id, r.nozzle_id)}
+                                                            onBlur={() => handleReadingBlur(r.id, r.nozzle_id, 'calibracion')}
                                                             onKeyDown={(e) => handleKeyDown(e, idx, 'calibracion')}
                                                             onFocus={(e) => e.target.select()}
                                                             onWheel={(e) => e.target.blur()}
@@ -168,6 +168,29 @@ const GasReadingsModal = ({
                                         })}
                                     </tbody>
                                 </table>
+                            </div>
+                            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-5 py-3 border-t border-slate-100 bg-slate-50/50 shrink-0 rounded-b-2xl">
+                                <div className="flex flex-wrap items-center gap-4 text-xs font-medium text-slate-600">
+                                    <span>Pistolas: <strong className="text-slate-800 font-mono">{readings.length}</strong></span>
+                                    <span>Galones: <strong className="text-indigo-600 font-mono">
+                                        {readings.reduce((sum, r) => sum + Math.max(0, Math.round(((parseFloat(r.lectura_actual) || 0) - (parseFloat(r.lectura_anterior) || 0) - (parseFloat(r.calibracion) || 0)) * 1000) / 1000), 0).toFixed(3)}
+                                    </strong></span>
+                                    <span>Monto: <strong className="text-emerald-600 font-mono">
+                                        <Money value={readings.reduce((sum, r) => {
+                                            const diff = Math.round(((parseFloat(r.lectura_actual) || 0) - (parseFloat(r.lectura_anterior) || 0) - (parseFloat(r.calibracion) || 0)) * 1000) / 1000;
+                                            return sum + Math.round(diff * (parseFloat(r.precio) || 0) * 100) / 100;
+                                        }, 0)} />
+                                    </strong></span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={onClose}
+                                        className="px-4 py-2 text-xs font-bold text-slate-700 bg-white hover:bg-slate-100 border border-slate-300 rounded-xl transition-colors shadow-sm"
+                                    >
+                                        Cerrar
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>

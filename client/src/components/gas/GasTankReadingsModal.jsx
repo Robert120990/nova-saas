@@ -98,7 +98,7 @@ const GasTankReadingsModal = ({
                                                     step="0.00001"
                                                     value={r.lectura_anterior || ''}
                                                     onChange={(e) => handleTankReadingChange(r.tank_id, 'lectura_anterior', e.target.value)}
-                                                    onBlur={() => handleTankReadingBlur(r.id, r.tank_id)}
+                                                    onBlur={() => handleTankReadingBlur(r.id, r.tank_id, 'lectura_anterior')}
                                                     onKeyDown={(e) => handleTankKeyDown(e, idx, 'lectura_anterior')}
                                                     onFocus={(e) => e.target.select()}
                                                     disabled={tankLocked}
@@ -119,7 +119,7 @@ const GasTankReadingsModal = ({
                                                 step="0.00001"
                                                 value={r.recarga || ''}
                                                 onChange={(e) => handleTankReadingChange(r.tank_id, 'recarga', e.target.value)}
-                                                onBlur={() => handleTankReadingBlur(r.id, r.tank_id)}
+                                                onBlur={() => handleTankReadingBlur(r.id, r.tank_id, 'recarga')}
                                                 onKeyDown={(e) => handleTankKeyDown(e, idx, 'recarga')}
                                                 onFocus={(e) => e.target.select()}
                                                 disabled={tankLocked}
@@ -137,7 +137,7 @@ const GasTankReadingsModal = ({
                                                 step="0.00001"
                                                 value={r.lectura_actual || ''}
                                                 onChange={(e) => handleTankReadingChange(r.tank_id, 'lectura_actual', e.target.value)}
-                                                onBlur={() => handleTankReadingBlur(r.id, r.tank_id)}
+                                                onBlur={() => handleTankReadingBlur(r.id, r.tank_id, 'lectura_actual')}
                                                 onKeyDown={(e) => handleTankKeyDown(e, idx, 'lectura_actual')}
                                                 onFocus={(e) => e.target.select()}
                                                 disabled={tankLocked}

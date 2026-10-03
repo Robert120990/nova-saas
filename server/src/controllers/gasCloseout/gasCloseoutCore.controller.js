@@ -386,15 +386,20 @@ exports.initTankReadings = async (req, res) => {
 
 exports.getCloseouts = async (req, res) => {
     try {
-        const { search, page = 1, limit = 15 } = req.query;
+        const { search, estado, branch_id, page = 1, limit = 15 } = req.query;
         const offset = (page - 1) * limit;
         let where = 'WHERE c.company_id = ?';
         let params = [req.company_id];
 
-        const targetBranchId = req.user.branch_id || req.query.branch_id;
+        const targetBranchId = branch_id || req.user.branch_id;
         if (targetBranchId) {
             where += ' AND c.branch_id = ?';
             params.push(targetBranchId);
+        }
+
+        if (estado) {
+            where += ' AND c.estado = ?';
+            params.push(estado);
         }
 
         if (search) {
@@ -589,7 +594,6 @@ exports.getCloseout = async (req, res) => {
         const [lubricantes] = await pool.query(
             `SELECT * FROM gas_station_closeout_lubricant_readings 
              WHERE closeout_id = ? 
-               AND (COALESCE(lectura_inicial, 0) > 0 OR COALESCE(recarga, 0) > 0 OR COALESCE(lectura_final, 0) > 0 OR COALESCE(ventas, 0) > 0)
              ORDER BY id ASC`, [id]
         );
 
@@ -703,53 +707,97 @@ exports.getCloseoutChanges = async (req, res) => {
 };
 
 exports.updateReading = async (req, res) => {
+    let connection;
     try {
         const { closeoutId, id } = req.params;
-        const { lectura_actual, calibracion, lectura_anterior: newAnterior } = req.body;
+        const { lectura_actual, calibracion, lectura_anterior: newAnterior, precio: newPrecio } = req.body;
 
-        const [closeouts] = await pool.query(
+        connection = await pool.getConnection();
+        await connection.beginTransaction();
+
+        const [closeouts] = await connection.query(
             `SELECT * FROM gas_station_closeouts WHERE id = ? AND company_id = ?`,
             [closeoutId, req.company_id]
         );
-        if (closeouts.length === 0) return res.status(404).json({ message: 'Cierre no encontrado' });
+        if (closeouts.length === 0) {
+            await connection.rollback();
+            return res.status(404).json({ message: 'Cierre no encontrado' });
+        }
         if (closeouts[0].estado === 'cerrado' || closeouts[0].estado === 'reabierto') {
+            await connection.rollback();
             return res.status(400).json({ message: 'El cierre no se puede modificar en este estado' });
         }
         if (req.user.branch_id && closeouts[0].branch_id != req.user.branch_id) {
+            await connection.rollback();
             return res.status(404).json({ message: 'Cierre no encontrado' });
         }
 
-        const [current] = await pool.query(
-            `SELECT lectura_anterior, precio FROM gas_station_closeout_readings WHERE id = ? AND closeout_id = ?`,
+        const [current] = await connection.query(
+            `SELECT lectura_actual, calibracion, lectura_anterior, precio FROM gas_station_closeout_readings WHERE id = ? AND closeout_id = ? FOR UPDATE`,
             [id, closeoutId]
         );
-        if (current.length === 0) return res.status(404).json({ message: 'Lectura no encontrada' });
+        if (current.length === 0) {
+            await connection.rollback();
+            return res.status(404).json({ message: 'Lectura no encontrada' });
+        }
 
         const isSuperAdmin = req.user?.role === 'SuperAdmin' || req.user?.role?.toLowerCase() === 'superadmin';
-        const lectura_anterior = (newAnterior !== undefined && isSuperAdmin) ? parseFloat(newAnterior) : parseFloat(current[0].lectura_anterior);
-        const precio = (req.body.precio !== undefined) ? parseFloat(req.body.precio) : parseFloat(current[0].precio);
-        const newLectura = lectura_actual !== undefined ? parseFloat(lectura_actual) : undefined;
-        const newCalibracion = calibracion !== undefined ? parseFloat(calibracion) : undefined;
+        const parsedAnterior = (newAnterior !== undefined && !isNaN(parseFloat(newAnterior)) && isSuperAdmin)
+            ? parseFloat(newAnterior)
+            : parseFloat(current[0].lectura_anterior);
+        const parsedPrecio = (newPrecio !== undefined && !isNaN(parseFloat(newPrecio)))
+            ? parseFloat(newPrecio)
+            : ((req.body.precio !== undefined && !isNaN(parseFloat(req.body.precio))) ? parseFloat(req.body.precio) : parseFloat(current[0].precio));
+        const newLectura = (lectura_actual !== undefined && !isNaN(parseFloat(lectura_actual))) ? parseFloat(lectura_actual) : undefined;
+        const newCalibracion = (calibracion !== undefined && !isNaN(parseFloat(calibracion))) ? parseFloat(calibracion) : undefined;
 
         const finalLectura = newLectura !== undefined ? newLectura : parseFloat(current[0].lectura_actual);
         const finalCalibracion = newCalibracion !== undefined ? newCalibracion : parseFloat(current[0].calibracion);
-        const diferencia = Math.round((finalLectura - lectura_anterior - finalCalibracion) * 1000) / 1000;
-        const monto = Math.round(diferencia * precio * 100) / 100;
+        const diferencia = Math.round((finalLectura - parsedAnterior - finalCalibracion) * 1000) / 1000;
+        const monto = Math.round(diferencia * parsedPrecio * 100) / 100;
 
-        await pool.query(`
+        const setClauses = ['diferencia = ?', 'monto = ?'];
+        const setParams = [diferencia, monto];
+
+        if (newLectura !== undefined) {
+            setClauses.push('lectura_actual = ?');
+            setParams.push(finalLectura);
+        }
+        if (newCalibracion !== undefined) {
+            setClauses.push('calibracion = ?');
+            setParams.push(finalCalibracion);
+        }
+        if (newAnterior !== undefined && !isNaN(parseFloat(newAnterior)) && isSuperAdmin) {
+            setClauses.push('lectura_anterior = ?');
+            setParams.push(parsedAnterior);
+        }
+        if ((newPrecio !== undefined || req.body.precio !== undefined) && !isNaN(parsedPrecio)) {
+            setClauses.push('precio = ?');
+            setParams.push(parsedPrecio);
+        }
+
+        setParams.push(id, closeoutId);
+
+        await connection.query(`
             UPDATE gas_station_closeout_readings
-            SET lectura_actual = ?, calibracion = ?, lectura_anterior = ?, precio = ?, diferencia = ?, monto = ?
+            SET ${setClauses.join(', ')}
             WHERE id = ? AND closeout_id = ?
-        `, [finalLectura, finalCalibracion, lectura_anterior, precio, diferencia, monto, id, closeoutId]);
+        `, setParams);
 
-        res.json({ id: parseInt(id), lectura_actual: finalLectura, calibracion: finalCalibracion, lectura_anterior, precio, diferencia, monto });
+        await connection.commit();
+
+        res.json({ id: parseInt(id), lectura_actual: finalLectura, calibracion: finalCalibracion, lectura_anterior: parsedAnterior, precio: parsedPrecio, diferencia, monto });
     } catch (error) {
+        if (connection) await connection.rollback();
         console.error('Error updateReading:', error);
         res.status(500).json({ message: 'Error al actualizar lectura' });
+    } finally {
+        if (connection) connection.release();
     }
 };
 
 exports.batchUpdateReadings = async (req, res) => {
+    let connection;
     try {
         const { closeoutId } = req.params;
         const { readings } = req.body;
@@ -758,15 +806,23 @@ exports.batchUpdateReadings = async (req, res) => {
             return res.status(400).json({ message: 'El arreglo de lecturas es requerido' });
         }
 
-        const [closeouts] = await pool.query(
+        connection = await pool.getConnection();
+        await connection.beginTransaction();
+
+        const [closeouts] = await connection.query(
             `SELECT * FROM gas_station_closeouts WHERE id = ? AND company_id = ?`,
             [closeoutId, req.company_id]
         );
-        if (closeouts.length === 0) return res.status(404).json({ message: 'Cierre no encontrado' });
+        if (closeouts.length === 0) {
+            await connection.rollback();
+            return res.status(404).json({ message: 'Cierre no encontrado' });
+        }
         if (closeouts[0].estado === 'cerrado' || closeouts[0].estado === 'reabierto') {
+            await connection.rollback();
             return res.status(400).json({ message: 'El cierre no se puede modificar en este estado' });
         }
         if (req.user.branch_id && closeouts[0].branch_id != req.user.branch_id) {
+            await connection.rollback();
             return res.status(404).json({ message: 'Cierre no encontrado' });
         }
 
@@ -774,37 +830,39 @@ exports.batchUpdateReadings = async (req, res) => {
         for (const r of readings) {
             if (!r.readingId || r.lectura_actual === undefined) continue;
 
-            const [current] = await pool.query(
-                `SELECT lectura_anterior, precio, calibracion FROM gas_station_closeout_readings WHERE id = ? AND closeout_id = ?`,
+            const [current] = await connection.query(
+                `SELECT lectura_anterior, precio, calibracion FROM gas_station_closeout_readings WHERE id = ? AND closeout_id = ? FOR UPDATE`,
                 [r.readingId, closeoutId]
             );
             if (current.length === 0) continue;
 
             const lectura_anterior = parseFloat(current[0].lectura_anterior);
-            const precio = r.precio !== undefined ? parseFloat(r.precio) : parseFloat(current[0].precio);
-            const calibracion = parseFloat(current[0].calibracion);
+            const precio = (r.precio !== undefined && !isNaN(parseFloat(r.precio))) ? parseFloat(r.precio) : parseFloat(current[0].precio);
+            const calibracion = (r.calibracion !== undefined && !isNaN(parseFloat(r.calibracion))) ? parseFloat(r.calibracion) : parseFloat(current[0].calibracion);
             const lectura_actual = parseFloat(r.lectura_actual);
             const diferencia = Math.round((lectura_actual - lectura_anterior - calibracion) * 1000) / 1000;
             const monto = Math.round(diferencia * precio * 100) / 100;
 
-            await pool.query(`
+            await connection.query(`
                 UPDATE gas_station_closeout_readings
-                SET lectura_actual = ?, precio = ?, diferencia = ?, monto = ?
+                SET lectura_actual = ?, calibracion = ?, precio = ?, diferencia = ?, monto = ?
                 WHERE id = ? AND closeout_id = ?
-            `, [lectura_actual, precio, diferencia, monto, r.readingId, closeoutId]);
+            `, [lectura_actual, calibracion, precio, diferencia, monto, r.readingId, closeoutId]);
 
-            updated.push({ id: parseInt(r.readingId), lectura_actual, precio, diferencia, monto });
+            updated.push({ id: parseInt(r.readingId), lectura_actual, calibracion, precio, diferencia, monto });
         }
 
         const { fusion_shift_id, fusion_sales_amount, fusion_sales_volume } = req.body;
         if (fusion_shift_id !== undefined && fusion_shift_id !== null) {
-            await pool.query(
+            await connection.query(
                 `UPDATE gas_station_closeouts 
                  SET fusion_shift_id = ?, fusion_sales_amount = ?, fusion_sales_volume = ?, fusion_imported_at = NOW() 
                  WHERE id = ?`,
                 [fusion_shift_id, fusion_sales_amount || null, fusion_sales_volume || null, closeoutId]
             );
         }
+
+        await connection.commit();
 
         res.json({
             updated: updated.length,
@@ -814,12 +872,16 @@ exports.batchUpdateReadings = async (req, res) => {
             fusion_sales_volume: fusion_sales_volume || null
         });
     } catch (error) {
+        if (connection) await connection.rollback();
         console.error('Error batchUpdateReadings:', error);
         res.status(500).json({ message: 'Error al actualizar lecturas' });
+    } finally {
+        if (connection) connection.release();
     }
 };
 
 exports.batchUpdateTankReadings = async (req, res) => {
+    let connection;
     try {
         const { closeoutId } = req.params;
         const { readings } = req.body;
@@ -828,48 +890,65 @@ exports.batchUpdateTankReadings = async (req, res) => {
             return res.status(400).json({ message: 'El arreglo de lecturas de tanque es requerido' });
         }
 
-        const [closeouts] = await pool.query(
+        connection = await pool.getConnection();
+        await connection.beginTransaction();
+
+        const [closeouts] = await connection.query(
             `SELECT * FROM gas_station_closeouts WHERE id = ? AND company_id = ?`,
             [closeoutId, req.company_id]
         );
-        if (closeouts.length === 0) return res.status(404).json({ message: 'Cierre no encontrado' });
+        if (closeouts.length === 0) {
+            await connection.rollback();
+            return res.status(404).json({ message: 'Cierre no encontrado' });
+        }
         const closeout = closeouts[0];
         if (closeout.estado === 'cerrado') {
+            await connection.rollback();
             return res.status(400).json({ message: 'El cierre no se puede modificar en este estado' });
         }
         if (closeout.estado === 'reabierto' && req.user.role !== 'SuperAdmin') {
+            await connection.rollback();
             return res.status(403).json({ message: 'Solo un SuperAdmin puede editar lecturas de tanque de un turno reabierto' });
         }
         if (req.user.branch_id && closeout.branch_id != req.user.branch_id) {
+            await connection.rollback();
             return res.status(404).json({ message: 'Cierre no encontrado' });
         }
+
+        const reabiertoTanksToRecalc = [];
 
         for (const r of readings) {
             const readingId = r.id;
             if (!readingId) continue;
-            const [current] = await pool.query(
-                `SELECT * FROM gas_station_closeout_tank_readings WHERE id = ? AND closeout_id = ?`,
+            const [current] = await connection.query(
+                `SELECT * FROM gas_station_closeout_tank_readings WHERE id = ? AND closeout_id = ? FOR UPDATE`,
                 [readingId, closeoutId]
             );
             if (current.length === 0) continue;
 
-            const lectura_anterior = r.lectura_anterior !== undefined ? parseFloat(r.lectura_anterior) : parseFloat(current[0].lectura_anterior);
-            const finalLectura = r.lectura_actual !== undefined ? parseFloat(r.lectura_actual) : parseFloat(current[0].lectura_actual);
-            const finalRecarga = r.recarga !== undefined ? parseFloat(r.recarga) : parseFloat(current[0].recarga);
-            const diferencia = lectura_anterior + finalRecarga - finalLectura;
+            const lectura_anterior = (r.lectura_anterior !== undefined && !isNaN(parseFloat(r.lectura_anterior)))
+                ? parseFloat(r.lectura_anterior)
+                : parseFloat(current[0].lectura_anterior);
+            const finalLectura = (r.lectura_actual !== undefined && !isNaN(parseFloat(r.lectura_actual)))
+                ? parseFloat(r.lectura_actual)
+                : parseFloat(current[0].lectura_actual);
+            const finalRecarga = (r.recarga !== undefined && !isNaN(parseFloat(r.recarga)))
+                ? parseFloat(r.recarga)
+                : parseFloat(current[0].recarga);
+            const diferencia = Math.round((lectura_anterior + finalRecarga - finalLectura) * 100000) / 100000;
 
-            await pool.query(`
+            await connection.query(`
                 UPDATE gas_station_closeout_tank_readings
                 SET lectura_actual = ?, recarga = ?, lectura_anterior = ?, diferencia = ?
                 WHERE id = ? AND closeout_id = ?
             `, [finalLectura, finalRecarga, lectura_anterior, diferencia, readingId, closeoutId]);
 
             if (closeout.estado === 'reabierto') {
-                await recalcularTanquesPosteriores(req, closeout, { tank_id: current[0].tank_id }, finalLectura);
+                reabiertoTanksToRecalc.push({ tank_id: current[0].tank_id, finalLectura });
             }
         }
 
-        const [updatedTanks] = await pool.query(`
+        const [updatedTanks] = await connection.query(`
             SELECT tr.*, t.capacidad, t.tipo_combustible
             FROM gas_station_closeout_tank_readings tr
             JOIN gas_station_tanks t ON tr.tank_id = t.id
@@ -877,53 +956,102 @@ exports.batchUpdateTankReadings = async (req, res) => {
             ORDER BY tr.codigo_tanque ASC
         `, [closeoutId]);
 
+        await connection.commit();
+        connection.release();
+        connection = null;
+
+        if (closeout.estado === 'reabierto') {
+            for (const item of reabiertoTanksToRecalc) {
+                await recalcularTanquesPosteriores(req, closeout, { tank_id: item.tank_id }, item.finalLectura);
+            }
+        }
+
         res.json({ message: 'Lecturas de tanque guardadas exitosamente', tankReadings: updatedTanks });
     } catch (error) {
+        if (connection) await connection.rollback();
         console.error('Error batchUpdateTankReadings:', error);
         res.status(500).json({ message: 'Error al actualizar lecturas de tanques' });
+    } finally {
+        if (connection) connection.release();
     }
 };
 
 exports.updateTankReading = async (req, res) => {
+    let connection;
     try {
         const { closeoutId, id } = req.params;
         const { lectura_actual, recarga, lectura_anterior: newAnterior } = req.body;
 
-        const [closeouts] = await pool.query(
+        connection = await pool.getConnection();
+        await connection.beginTransaction();
+
+        const [closeouts] = await connection.query(
             `SELECT * FROM gas_station_closeouts WHERE id = ? AND company_id = ?`,
             [closeoutId, req.company_id]
         );
-        if (closeouts.length === 0) return res.status(404).json({ message: 'Cierre no encontrado' });
+        if (closeouts.length === 0) {
+            await connection.rollback();
+            return res.status(404).json({ message: 'Cierre no encontrado' });
+        }
         const closeout = closeouts[0];
         if (closeout.estado === 'cerrado') {
+            await connection.rollback();
             return res.status(400).json({ message: 'El cierre no se puede modificar en este estado' });
         }
         if (closeout.estado === 'reabierto' && req.user.role !== 'SuperAdmin') {
+            await connection.rollback();
             return res.status(403).json({ message: 'Solo un SuperAdmin puede editar lecturas de tanque de un turno reabierto' });
         }
         if (req.user.branch_id && closeout.branch_id != req.user.branch_id) {
+            await connection.rollback();
             return res.status(404).json({ message: 'Cierre no encontrado' });
         }
 
-        const [current] = await pool.query(
-            `SELECT * FROM gas_station_closeout_tank_readings WHERE id = ? AND closeout_id = ?`,
+        const [current] = await connection.query(
+            `SELECT * FROM gas_station_closeout_tank_readings WHERE id = ? AND closeout_id = ? FOR UPDATE`,
             [id, closeoutId]
         );
-        if (current.length === 0) return res.status(404).json({ message: 'Lectura de tanque no encontrada' });
+        if (current.length === 0) {
+            await connection.rollback();
+            return res.status(404).json({ message: 'Lectura de tanque no encontrada' });
+        }
 
-        const lectura_anterior = newAnterior !== undefined ? parseFloat(newAnterior) : parseFloat(current[0].lectura_anterior);
-        const newLectura = lectura_actual !== undefined ? parseFloat(lectura_actual) : undefined;
-        const newRecarga = recarga !== undefined ? parseFloat(recarga) : undefined;
+        const newAnteriorVal = (newAnterior !== undefined && !isNaN(parseFloat(newAnterior))) ? parseFloat(newAnterior) : undefined;
+        const newLectura = (lectura_actual !== undefined && !isNaN(parseFloat(lectura_actual))) ? parseFloat(lectura_actual) : undefined;
+        const newRecarga = (recarga !== undefined && !isNaN(parseFloat(recarga))) ? parseFloat(recarga) : undefined;
 
+        const lectura_anterior = newAnteriorVal !== undefined ? newAnteriorVal : parseFloat(current[0].lectura_anterior);
         const finalLectura = newLectura !== undefined ? newLectura : parseFloat(current[0].lectura_actual);
         const finalRecarga = newRecarga !== undefined ? newRecarga : parseFloat(current[0].recarga);
-        const diferencia = lectura_anterior + finalRecarga - finalLectura;
+        const diferencia = Math.round((lectura_anterior + finalRecarga - finalLectura) * 100000) / 100000;
 
-        await pool.query(`
+        const setClauses = ['diferencia = ?'];
+        const setParams = [diferencia];
+
+        if (newLectura !== undefined) {
+            setClauses.push('lectura_actual = ?');
+            setParams.push(finalLectura);
+        }
+        if (newRecarga !== undefined) {
+            setClauses.push('recarga = ?');
+            setParams.push(finalRecarga);
+        }
+        if (newAnteriorVal !== undefined) {
+            setClauses.push('lectura_anterior = ?');
+            setParams.push(lectura_anterior);
+        }
+
+        setParams.push(id, closeoutId);
+
+        await connection.query(`
             UPDATE gas_station_closeout_tank_readings
-            SET lectura_actual = ?, recarga = ?, lectura_anterior = ?, diferencia = ?
+            SET ${setClauses.join(', ')}
             WHERE id = ? AND closeout_id = ?
-        `, [finalLectura, finalRecarga, lectura_anterior, diferencia, id, closeoutId]);
+        `, setParams);
+
+        await connection.commit();
+        connection.release();
+        connection = null;
 
         if (closeout.estado === 'reabierto') {
             await logCloseoutChange(req, closeout.id, 'tanques', 'edit',
@@ -945,8 +1073,11 @@ exports.updateTankReading = async (req, res) => {
 
         res.json({ id: parseInt(id), lectura_actual: finalLectura, recarga: finalRecarga, lectura_anterior, diferencia });
     } catch (error) {
+        if (connection) await connection.rollback();
         console.error('Error updateTankReading:', error);
         res.status(500).json({ message: 'Error al actualizar lectura de tanque' });
+    } finally {
+        if (connection) connection.release();
     }
 };
 

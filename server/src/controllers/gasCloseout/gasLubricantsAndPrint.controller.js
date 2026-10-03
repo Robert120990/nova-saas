@@ -32,7 +32,6 @@ exports.getLubricantReadings = async (req, res) => {
         const [rows] = await pool.query(
             `SELECT * FROM gas_station_closeout_lubricant_readings 
              WHERE closeout_id = ? 
-               AND (COALESCE(lectura_inicial, 0) > 0 OR COALESCE(recarga, 0) > 0 OR COALESCE(lectura_final, 0) > 0 OR COALESCE(ventas, 0) > 0)
              ORDER BY id ASC`,
             [id]
         );
@@ -44,19 +43,28 @@ exports.getLubricantReadings = async (req, res) => {
 };
 
 exports.saveLubricantReadings = async (req, res) => {
+    let connection;
     try {
         const { id } = req.params;
         const { readings } = req.body;
 
-        const [closeouts] = await pool.query(
+        connection = await pool.getConnection();
+        await connection.beginTransaction();
+
+        const [closeouts] = await connection.query(
             `SELECT id, estado, branch_id, fecha_turno, numero_turno FROM gas_station_closeouts WHERE id = ? AND company_id = ?`,
             [id, req.company_id]
         );
-        if (closeouts.length === 0) return res.status(404).json({ message: 'Cierre no encontrado' });
+        if (closeouts.length === 0) {
+            await connection.rollback();
+            return res.status(404).json({ message: 'Cierre no encontrado' });
+        }
         if (closeouts[0].estado === 'cerrado') {
+            await connection.rollback();
             return res.status(400).json({ message: 'El cierre ya está cerrado' });
         }
         if (req.user.branch_id && closeouts[0].branch_id != req.user.branch_id) {
+            await connection.rollback();
             return res.status(404).json({ message: 'Cierre no encontrado' });
         }
 
@@ -64,7 +72,7 @@ exports.saveLubricantReadings = async (req, res) => {
         let beforeRows = [];
         if (isReabierto) beforeRows = await getSectionRows(id, 'lubricantes');
 
-        await pool.query(`DELETE FROM gas_station_closeout_lubricant_readings WHERE closeout_id = ?`, [id]);
+        await connection.query(`DELETE FROM gas_station_closeout_lubricant_readings WHERE closeout_id = ?`, [id]);
 
         if (readings && readings.length > 0) {
             const values = readings.map(r => [
@@ -79,17 +87,21 @@ exports.saveLubricantReadings = async (req, res) => {
                 parseFloat(r.precio) || 0,
                 parseFloat(r.total) || 0
             ]);
-            await pool.query(
+            await connection.query(
                 `INSERT INTO gas_station_closeout_lubricant_readings 
                  (closeout_id, producto_id, producto_codigo, producto_descripcion, lectura_inicial, recarga, lectura_final, ventas, precio, total) VALUES ?`,
                 [values]
             );
         }
 
-        const [remaining] = await pool.query(
+        const [remaining] = await connection.query(
             `SELECT * FROM gas_station_closeout_lubricant_readings WHERE closeout_id = ? ORDER BY id ASC`,
             [id]
         );
+
+        await connection.commit();
+        connection.release();
+        connection = null;
 
         if (isReabierto) {
             await logSectionChange(req, id, 'lubricantes', beforeRows, readings);
@@ -99,8 +111,11 @@ exports.saveLubricantReadings = async (req, res) => {
 
         res.json(remaining);
     } catch (error) {
+        if (connection) await connection.rollback();
         console.error('Error saveLubricantReadings:', error);
         res.status(500).json({ message: 'Error al guardar lecturas de lubricantes' });
+    } finally {
+        if (connection) connection.release();
     }
 };
 

@@ -16,7 +16,10 @@ const GasLubricantesModal = ({
     lubricantLoading = false,
     lubricantReadings = [],
     setLubricantReadings,
+    handleLubricantChange,
     handleLubricantBlur,
+    handleSaveLubricantes,
+    isSaving = false,
     handleLubricantKeyDown,
     lubricantInputRefs,
     lubricantTotal = 0,
@@ -33,7 +36,7 @@ const GasLubricantesModal = ({
 
     return (
         <div className="fixed inset-0 z-50 flex items-start justify-center pt-8 pb-8">
-            <div className="fixed inset-0 bg-black/40" onClick={onClose} />
+            <div className="fixed inset-0 bg-black/40" onClick={isSaving ? undefined : onClose} />
             <div className="relative bg-white rounded-2xl shadow-2xl w-[95%] max-w-5xl min-h-[50vh] max-h-[90vh] flex flex-col">
                 <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 shrink-0">
                     <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
@@ -82,7 +85,8 @@ const GasLubricantesModal = ({
                         </button>
                         <button
                             onClick={onClose}
-                            className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors"
+                            disabled={isSaving}
+                            className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors disabled:opacity-50"
                         >
                             <X size={16} className="text-slate-400" />
                         </button>
@@ -137,11 +141,15 @@ const GasLubricantesModal = ({
                                                     }}
                                                     value={r.lectura_inicial ?? ''}
                                                     onChange={(e) => {
-                                                        setLubricantReadings(prev => prev.map(x =>
-                                                            x.producto_id === r.producto_id
-                                                                ? { ...x, lectura_inicial: e.target.value }
-                                                                : x
-                                                        ));
+                                                        if (handleLubricantChange) {
+                                                            handleLubricantChange(r.producto_id, 'lectura_inicial', e.target.value);
+                                                        } else {
+                                                            setLubricantReadings(prev => prev.map(x =>
+                                                                x.producto_id === r.producto_id
+                                                                    ? { ...x, lectura_inicial: e.target.value }
+                                                                    : x
+                                                            ));
+                                                        }
                                                     }}
                                                     onFocus={(e) => e.target.select()}
                                                     onBlur={handleLubricantBlur}
@@ -164,11 +172,15 @@ const GasLubricantesModal = ({
                                                 }}
                                                 value={r.recarga ?? ''}
                                                 onChange={(e) => {
-                                                    setLubricantReadings(prev => prev.map(x =>
-                                                        x.producto_id === r.producto_id
-                                                            ? { ...x, recarga: e.target.value }
-                                                            : x
-                                                    ));
+                                                    if (handleLubricantChange) {
+                                                        handleLubricantChange(r.producto_id, 'recarga', e.target.value);
+                                                    } else {
+                                                        setLubricantReadings(prev => prev.map(x =>
+                                                            x.producto_id === r.producto_id
+                                                                ? { ...x, recarga: e.target.value }
+                                                                : x
+                                                        ));
+                                                    }
                                                 }}
                                                 onFocus={(e) => e.target.select()}
                                                 onBlur={handleLubricantBlur}
@@ -188,11 +200,15 @@ const GasLubricantesModal = ({
                                                 }}
                                                 value={r.lectura_final ?? ''}
                                                 onChange={(e) => {
-                                                    setLubricantReadings(prev => prev.map(x =>
-                                                        x.producto_id === r.producto_id
-                                                            ? { ...x, lectura_final: e.target.value }
-                                                            : x
-                                                    ));
+                                                    if (handleLubricantChange) {
+                                                        handleLubricantChange(r.producto_id, 'lectura_final', e.target.value);
+                                                    } else {
+                                                        setLubricantReadings(prev => prev.map(x =>
+                                                            x.producto_id === r.producto_id
+                                                                ? { ...x, lectura_final: e.target.value }
+                                                                : x
+                                                        ));
+                                                    }
                                                 }}
                                                 onFocus={(e) => e.target.select()}
                                                 onBlur={handleLubricantBlur}
@@ -254,21 +270,32 @@ const GasLubricantesModal = ({
                         <button
                             type="button"
                             onClick={onClose}
-                            className="px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-200 rounded-xl transition-colors"
+                            disabled={isSaving}
+                            className="px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-200 rounded-xl transition-colors disabled:opacity-50"
                         >
                             Cerrar
                         </button>
                         {estado !== 'cerrado' && (
                             <button
                                 type="button"
+                                disabled={isSaving}
+                                onMouseDown={(e) => e.preventDefault()}
                                 onClick={() => {
-                                    handleLubricantBlur();
-                                    onClose();
+                                    if (handleSaveLubricantes) {
+                                        handleSaveLubricantes({ closeAfter: true });
+                                    } else {
+                                        handleLubricantBlur();
+                                        onClose();
+                                    }
                                 }}
-                                className="flex items-center gap-1.5 px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm"
+                                className="flex items-center gap-1.5 px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm disabled:opacity-50"
                             >
-                                <Save size={13} />
-                                Guardar y Salir
+                                {isSaving ? (
+                                    <Loader2 size={13} className="animate-spin" />
+                                ) : (
+                                    <Save size={13} />
+                                )}
+                                {isSaving ? 'Guardando...' : 'Guardar y Salir'}
                             </button>
                         )}
                     </div>
