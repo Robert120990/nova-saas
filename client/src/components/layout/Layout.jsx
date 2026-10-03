@@ -5,6 +5,7 @@ import Navbar from './Navbar';
 import AIAssistant from '../ui/AIAssistant';
 import CommandPalette from '../ui/CommandPalette';
 import ErrorBoundary from '../ui/ErrorBoundary';
+import { useAuth } from '../../context/AuthContext';
 
 const PageLoader = () => (
     <div className="flex flex-col items-center justify-center min-h-[300px] p-8 space-y-3">
@@ -17,6 +18,7 @@ const PageLoader = () => (
 
 const Layout = () => {
     const location = useLocation();
+    const { user } = useAuth();
     const [paletteOpen, setPaletteOpen] = useState(false);
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -52,7 +54,7 @@ const Layout = () => {
             <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
                 <Navbar onToggleMobileMenu={toggleMobileMenu} />
                 <main className="flex-1 overflow-y-auto p-3 sm:p-6 md:p-8">
-                    <div className="max-w-7xl mx-auto" key={location.pathname}>
+                    <div className="max-w-7xl mx-auto" key={`${user?.id}:${user?.company_id}:${user?.branch_id}:${location.pathname}`}>
                         <ErrorBoundary showDetails>
                             <Suspense fallback={<PageLoader />}>
                                 <Outlet />

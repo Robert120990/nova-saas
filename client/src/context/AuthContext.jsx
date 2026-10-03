@@ -132,12 +132,14 @@ export const AuthProvider = ({ children }) => {
                 company_id: companyId, 
                 branch_id: branchId 
             });
+            // Old requests must not populate the new company context with cached data.
+            await queryClient.cancelQueries();
+            queryClient.clear();
             setUser(data.user);
             localStorage.setItem('user', JSON.stringify(data.user));
             localStorage.setItem('token', data.token);
             axios.defaults.headers.common['Authorization'] = `Bearer ${data.token}`;
             isLoggingOutRef.current = false;
-            queryClient.invalidateQueries();
             navigate('/dashboard');
         } catch (error) {
             throw error;
