@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { Save, CheckCircle2, XCircle, Eye, EyeOff, Loader2 } from 'lucide-react';
@@ -9,6 +9,7 @@ const labelCls = "text-[11px] font-bold text-slate-500 uppercase block mb-2";
 
 const OfficeConnectionTab = () => {
     const queryClient = useQueryClient();
+    const dirty = useRef(false);
     const [showPassword, setShowPassword] = useState(false);
     const [testResult, setTestResult] = useState(null);
     const [form, setForm] = useState({ host: '', port: '3306', user: '', password: '', database: '' });
@@ -19,7 +20,7 @@ const OfficeConnectionTab = () => {
     });
 
     useEffect(() => {
-        if (config && Object.keys(config).length > 0) {
+        if (config && !dirty.current) {
             setForm({
                 host: config.host || '',
                 port: String(config.port || '3306'),
@@ -30,12 +31,13 @@ const OfficeConnectionTab = () => {
         }
     }, [config]);
 
-    const set = (key) => (e) => setForm({ ...form, [key]: e.target.value });
+    const set = (key) => (e) => { dirty.current = true; setForm({ ...form, [key]: e.target.value }); };
 
     const saveMutation = useMutation({
         mutationFn: (data) => axios.post('/api/accounting/office/connection', data),
-        onSuccess: () => {
-            queryClient.invalidateQueries(['office-connection']);
+        onSuccess: async () => {
+            dirty.current = false;
+            await queryClient.invalidateQueries({ queryKey: ['office-connection'] });
             toast.success('Configuración de conexión guardada');
         },
         onError: (err) => toast.error(err.response?.data?.message || 'Error al guardar configuración'),
@@ -68,7 +70,7 @@ const OfficeConnectionTab = () => {
     };
 
     return (
-        <div className="bg-white rounded-2xl border shadow-sm p-6 space-y-6">
+        <fieldset disabled={saveMutation.isPending} className="bg-white rounded-2xl border shadow-sm p-6 space-y-6">
             <div>
                 <span className="text-[10px] font-black uppercase text-slate-400 block mb-1">Conexión a Oficina</span>
                 <p className="text-[11px] text-slate-500">
@@ -148,7 +150,7 @@ const OfficeConnectionTab = () => {
                     </div>
                 </>
             )}
-        </div>
+        </fieldset>
     );
 };
 

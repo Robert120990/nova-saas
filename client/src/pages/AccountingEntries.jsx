@@ -1,11 +1,13 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
-import { Plus, Eye, Ban, Edit, FileText, Trash2, Search } from 'lucide-react';
+import { Plus, Eye, Ban, Edit, FileText, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { useConfirm } from '../context/ConfirmContext';
 import Table from '../components/ui/Table';
-import Modal from '../components/ui/Modal';
+import { AccountingEntryModal, AccountingEntryViewModal, AccountingAccountSearchModal } from '../components/accounting';
+import { unwrapList } from '../utils/apiUtils';
+import { formatDate } from '../utils/dateUtils';
 import Pagination from '../components/ui/Pagination';
 import Money from '../components/ui/Money';
 import { matchesQuery, matchScore } from '../utils/fuzzySearch';
@@ -32,7 +34,7 @@ const AccountingEntries = () => {
         queryFn: async () => (await axios.get(`/api/accounting/entries?page=${page}&limit=15`)).data,
     });
 
-    const entries = entriesData?.data || [];
+    const entries = unwrapList(entriesData);
     const filteredEntries = useMemo(() => {
         if (!search) return entries;
         const q = search.toLowerCase();
@@ -44,26 +46,26 @@ const AccountingEntries = () => {
     }, [entries, search]);
 
     const { data: entryTypes = [] } = useQuery({
-        queryKey: ['entryTypes'], queryFn: async () => (await axios.get('/api/accounting/entry-types')).data,
+        queryKey: ['entryTypes'], queryFn: async () => unwrapList(await axios.get('/api/accounting/entry-types')),
     });
     const { data: accounts = [] } = useQuery({
-        queryKey: ['accounts'], queryFn: async () => (await axios.get('/api/accounting/accounts')).data,
+        queryKey: ['accounts'], queryFn: async () => unwrapList(await axios.get('/api/accounting/accounts')),
     });
 
     const createMutation = useMutation({
         mutationFn: (data) => axios.post('/api/accounting/entries', data),
-        onSuccess: () => { queryClient.invalidateQueries(['entries']); setIsModalOpen(false); resetForm(); toast.success('Partida registrada'); },
+        onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['entries'] }); setIsModalOpen(false); resetForm(); toast.success('Partida registrada'); },
         onError: (err) => toast.error(err.response?.data?.message || 'Error'),
     });
 
     const voidMutation = useMutation({
         mutationFn: (id) => axios.put(`/api/accounting/entries/${id}/void`),
-        onSuccess: () => { queryClient.invalidateQueries(['entries']); toast.success('Partida anulada'); },
+        onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['entries'] }); toast.success('Partida anulada'); },
     });
 
     const updateMutation = useMutation({
         mutationFn: ({ id, ...data }) => axios.put(`/api/accounting/entries/${id}`, data),
-        onSuccess: () => { queryClient.invalidateQueries(['entries']); setIsModalOpen(false); setEditingEntry(null); resetForm(); toast.success('Partida actualizada'); },
+        onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['entries'] }); setIsModalOpen(false); setEditingEntry(null); resetForm(); toast.success('Partida actualizada'); },
         onError: (err) => toast.error(err.response?.data?.message || 'Error'),
     });
 
@@ -72,8 +74,8 @@ const AccountingEntries = () => {
     const handleEdit = async (entry) => {
         try {
             const { data } = await axios.get(`/api/accounting/entries/${entry.id}`);
-            setEditingEntry(entry);
-            setLines(data.lines.map(l => ({
+            setEditingEntry(data);
+            setLines(unwrapList(data.lines).map(l => ({
                 account_id: l.account_id,
                 description: l.description || '',
                 debit: l.debit ? parseFloat(l.debit).toFixed(2) : '',
@@ -105,6 +107,7 @@ const AccountingEntries = () => {
         };
         if (editingEntry) {
             entryData.description = fd.get('description') || editingEntry.description;
+            entryData.expected_version = editingEntry.version;
             updateMutation.mutate({ id: editingEntry.id, ...entryData });
         } else {
             entryData.entry_type_id = fd.get('entry_type_id');
@@ -182,7 +185,7 @@ const AccountingEntries = () => {
                 renderRow={(e) => (
                     <tr key={e.id} className="border-b border-slate-50 hover:bg-slate-50/50">
                         <td className="px-6 py-1.5 font-mono font-bold text-xs">{e.number}</td>
-                        <td className="px-6 py-1.5 text-xs">{e.date ? e.date.split('T')[0].split('-').reverse().join('/') : '—'}</td>
+                        <td className="px-6 py-1.5 text-xs">{formatDate(e.date)}</td>
                         <td className="px-6 py-1.5 text-xs">{e.entry_type_name}</td>
                         <td className="px-6 py-1.5 text-xs text-slate-600 max-w-xs truncate">{e.description}</td>
                         <td className="px-6 py-1.5 font-bold text-xs text-emerald-600"><Money value={e.total_debit} /></td>
@@ -201,252 +204,9 @@ const AccountingEntries = () => {
 
             {entriesData && <Pagination page={page} totalPages={entriesData.totalPages || 1} onPageChange={setPage} />}
 
-            {/* New Entry Modal */}
-            <Modal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); setEditingEntry(null); }} title={editingEntry ? 'Editar Partida' : 'Nueva Partida Contable'} maxWidth="max-w-3xl">
-                <form onSubmit={handleSubmit} className="space-y-4 pt-4">
-                    <div className="space-y-3">
-                        {!editingEntry && (
-                        <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="text-[10px] font-black uppercase text-slate-400 ml-1 block mb-1">Tipo de Partida</label>
-                            <select name="entry_type_id" required className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold">
-                                {entryTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                            </select>
-                        </div>
-                        <div>
-                            <label className="text-[10px] font-black uppercase text-slate-400 ml-1 block mb-1">Fecha</label>
-                            <input name="date" type="date" defaultValue={new Date().toISOString().split('T')[0]} required className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm" />
-                        </div>
-                        </div>
-                        )}
-                        <div>
-                            <label className="text-[10px] font-black uppercase text-slate-400 ml-1 block mb-1">Descripción</label>
-                            <input name="description" placeholder="Concepto de la partida" required defaultValue={editingEntry?.description || ''} onChange={(e) => { e.target.value = e.target.value.toUpperCase(); }} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm uppercase" />
-                        </div>
-                    </div>
-
-                    <div className="border-t pt-4">
-                        <span className="text-[10px] font-black uppercase text-slate-400 mb-3 block">Líneas de la Partida</span>
-                        
-                        {/* Quick-add bar */}
-                        <div className="mb-4 bg-indigo-50/50 p-3 rounded-2xl border border-indigo-100 space-y-2">
-                            <div className="flex gap-2 items-end">
-                            <div className="w-[110px] relative">
-                                <label className="text-[8px] font-black text-slate-400 uppercase ml-1 block mb-1">Cuenta (F3)</label>
-                                <input
-                                    id="quick-account"
-                                    autoComplete="off"
-                                    placeholder="Código..."
-                                    className="w-full px-2 py-2 bg-white border border-indigo-200 rounded-xl text-[11px] font-bold font-mono outline-none focus:ring-2 focus:ring-indigo-500/20"
-                                    onChange={(e) => {
-                                        setAccountSearch(e.target.value);
-                                        if (!e.target.value) setSelectedAccountId('');
-                                    }}
-                                    onKeyDown={(e) => {
-                                        if (e.key === 'Escape') { setAccountSearch(''); setSelectedAccountId(''); }
-                                        if (e.key === 'Enter') {
-                                            e.preventDefault();
-                                            const first = accountResults[0];
-                                            if (first) {
-                                                setSelectedAccountId(first.id);
-                                                document.getElementById('quick-account').value = first.code;
-                                                setAccountSearch('');
-                                            }
-                                        }
-                                    }}
-                                />
-                                {accountSearch && (
-                                    <div className="absolute top-full left-0 z-20 bg-white border border-slate-200 rounded-xl shadow-lg w-80 max-w-[calc(100vw-32px)] max-h-48 overflow-y-auto mt-1">
-                                        {accountResults.length === 0 ? (
-                                            <div className="px-3 py-2 text-[10px] text-slate-400">Sin resultados</div>
-                                        ) : (
-                                            accountResults.map(a => (
-                                                <div key={a.id}
-                                                    className="px-3 py-2 text-[10px] font-bold hover:bg-indigo-50 cursor-pointer border-b border-slate-50 flex justify-between"
-                                                    onClick={() => {
-                                                        setSelectedAccountId(a.id);
-                                                        document.getElementById('quick-account').value = a.code;
-                                                        setAccountSearch('');
-                                                    }}
-                                                >
-                                                    <span className="font-mono text-indigo-500">{a.code}</span>
-                                                    <span className="flex-1 ml-2 truncate">{a.name}</span>
-                                                </div>
-                                            ))
-                                        )}
-                                    </div>
-                                )}
-                            </div>
-                            <div className="flex-1">
-                                <label className="text-[8px] font-black text-slate-400 uppercase ml-1 block mb-1">Detalle</label>
-                                <input id="quick-desc" placeholder="Descripción" onChange={(e) => { e.target.value = e.target.value.toUpperCase(); }} className="w-full px-3 py-2 bg-white border border-indigo-200 rounded-xl text-[11px] outline-none uppercase" />
-                            </div>
-                            <div className="w-[110px]">
-                                <label className="text-[8px] font-black text-emerald-500 uppercase ml-1 block mb-1">Débito</label>
-                                <input id="quick-debit" type="number" step="0.01" placeholder="0.00" className="w-full px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-xl text-[11px] font-bold text-emerald-700 outline-none"
-                                    onChange={(e) => { if (e.target.value) document.getElementById('quick-credit').value = ''; }} />
-                            </div>
-                            <div className="w-[110px]">
-                                <label className="text-[8px] font-black text-rose-500 uppercase ml-1 block mb-1">Crédito</label>
-                                <input id="quick-credit" type="number" step="0.01" placeholder="0.00" className="w-full px-3 py-2 bg-rose-50 border border-rose-200 rounded-xl text-[11px] font-bold text-rose-700 outline-none"
-                                    onChange={(e) => { if (e.target.value) document.getElementById('quick-debit').value = ''; }} />
-                            </div>
-                            <button type="button" onClick={() => {
-                                const acct = selectedAccountId;
-                                const desc = document.getElementById('quick-desc').value;
-                                const debit = document.getElementById('quick-debit').value;
-                                const credit = document.getElementById('quick-credit').value;
-                                if (!acct) return toast.error('Seleccione una cuenta');
-                                if ((!debit || isNaN(parseFloat(debit))) && (!credit || isNaN(parseFloat(credit)))) return toast.error('Ingrese débito o crédito');
-                                setLines([...lines, { account_id: acct, description: desc, debit: debit || '', credit: credit || '' }]);
-                                setSelectedAccountId('');
-                                document.getElementById('quick-account').value = '';
-                                document.getElementById('quick-desc').value = '';
-                                document.getElementById('quick-debit').value = '';
-                                document.getElementById('quick-credit').value = '';
-                                document.getElementById('quick-account').focus();
-                            }} className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl font-black text-xs transition-all shrink-0">
-                                + Agregar
-                            </button>
-                            </div>
-                            {selectedAccountId && (
-                                <div className="text-[10px] font-bold text-indigo-600 bg-white/80 px-3 py-1 rounded-lg">
-                                    {accounts.find(a => a.id == selectedAccountId)?.code} — {accounts.find(a => a.id == selectedAccountId)?.name}
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Lines table */}
-                        {lines.length === 0 ? (
-                            <p className="text-center py-6 text-slate-300 text-xs">Sin líneas. Use la barra superior para agregar.</p>
-                        ) : (
-                            <table className="w-full text-left border rounded-xl overflow-hidden">
-                                <thead>
-                                    <tr className="bg-slate-50 border-b text-[10px] font-black text-slate-400 uppercase tracking-wider">
-                                        <th className="px-3 py-2 w-8">#</th>
-                                        <th className="px-3 py-2">Cuenta</th>
-                                        <th className="px-3 py-2">Detalle</th>
-                                        <th className="px-3 py-2 text-right w-28">Débito</th>
-                                        <th className="px-3 py-2 text-right w-28">Crédito</th>
-                                        <th className="px-3 py-2 w-8"></th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {lines.map((line, idx) => (
-                                        <tr key={idx} className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors">
-                                            <td className="px-3 py-2 text-[10px] text-slate-400">{idx + 1}</td>
-                                            <td className="px-3 py-2 text-[10px] font-bold">
-                                                <span className="font-mono text-indigo-500">{accounts.find(a => a.id == line.account_id)?.code || '?'}</span>
-                                                <span className="ml-2 text-slate-700">{accounts.find(a => a.id == line.account_id)?.name || '?'}</span>
-                                            </td>
-                                            <td className="px-3 py-2 text-[10px] text-slate-500">{line.description}</td>
-                                            <td className="px-3 py-2 text-[10px] font-bold text-emerald-600 text-right">{line.debit ? <Money value={line.debit} /> : ''}</td>
-                                            <td className="px-3 py-2 text-[10px] font-bold text-rose-600 text-right">{line.credit ? <Money value={line.credit} /> : ''}</td>
-                                            <td className="px-3 py-2">
-                                                <button type="button" onClick={() => removeLine(idx)} className="p-1 text-rose-300 hover:text-rose-600"><Trash2 size={14} /></button>
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        )}
-                        <div className="flex justify-between text-xs font-bold mt-3 pt-3 border-t">
-                            <span className={balanced ? 'text-emerald-600' : 'text-rose-600'}>{balanced ? '✓ Cuadra' : '✗ No cuadra'}</span>
-                            <span>Débito: <b className="text-emerald-600"><Money value={totalDebit} /></b> | Crédito: <b className="text-rose-600"><Money value={totalCredit} /></b></span>
-                        </div>
-                    </div>
-
-                    <div className="flex gap-3 pt-4">
-                        <button type="button" onClick={() => { setIsModalOpen(false); setEditingEntry(null); }} className="flex-1 py-3 text-xs font-black uppercase text-slate-400">Cancelar</button>
-                        <button type="submit" disabled={!balanced || createMutation.isPending || updateMutation.isPending} className="flex-1 bg-indigo-600 text-white py-3 rounded-xl font-black uppercase text-xs disabled:opacity-50">
-                            {createMutation.isPending || updateMutation.isPending ? 'Guardando...' : editingEntry ? 'Actualizar Partida' : 'Registrar Partida'}
-                        </button>
-                    </div>
-                </form>
-            </Modal>
-
-            {/* View Entry Modal */}
-            <Modal isOpen={!!viewEntry} onClose={() => setViewEntry(null)} title={`Partida ${viewEntry?.number}`} maxWidth="max-w-2xl">
-                {viewEntry && (
-                    <div className="space-y-4 pt-4">
-                        <div className="grid grid-cols-3 gap-4 text-sm">
-                            <div><span className="text-[10px] font-black uppercase text-slate-400">Tipo</span><p className="font-bold">{viewEntry.entry_type_name}</p></div>
-                            <div><span className="text-[10px] font-black uppercase text-slate-400">Fecha</span><p className="font-bold">{viewEntry.date ? viewEntry.date.split('T')[0].split('-').reverse().join('/') : '—'}</p></div>
-                            <div><span className="text-[10px] font-black uppercase text-slate-400">Estado</span><p className="font-bold">{viewEntry.status === 'posted' ? 'Contabilizado' : viewEntry.status === 'voided' ? 'Anulado' : 'Borrador'}</p></div>
-                        </div>
-                        <p className="text-sm text-slate-600">{viewEntry.description}</p>
-                        <table className="w-full text-left border-t">
-                            <thead><tr className="border-b"><th className="py-2 text-[10px] uppercase text-slate-400">Cuenta</th><th className="py-2 text-[10px] uppercase text-slate-400">Detalle</th><th className="py-2 text-[10px] uppercase text-slate-400 text-right">Débito</th><th className="py-2 text-[10px] uppercase text-slate-400 text-right">Crédito</th></tr></thead>
-                            <tbody>
-                                {viewEntry.lines?.map((l, i) => (
-                                    <tr key={i} className="border-b border-slate-50">
-                                        <td className="py-2 text-xs font-bold">{l.account_code} - {l.account_name}</td>
-                                        <td className="py-2 text-xs text-slate-500">{l.description}</td>
-                                        <td className="py-2 text-xs font-bold text-emerald-600 text-right"><Money value={l.debit} /></td>
-                                        <td className="py-2 text-xs font-bold text-rose-600 text-right"><Money value={l.credit} /></td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                            <tfoot><tr className="font-bold text-xs"><td colSpan={2} className="pt-2">Totales</td><td className="pt-2 text-emerald-600 text-right"><Money value={viewEntry.total_debit} /></td><td className="pt-2 text-rose-600 text-right"><Money value={viewEntry.total_credit} /></td></tr></tfoot>
-                        </table>
-                    </div>
-                )}
-            </Modal>
-
-            {/* Account Search Modal (F3) */}
-            <Modal isOpen={isAccountModalOpen} onClose={() => { setIsAccountModalOpen(false); setAccountModalSearch(''); }} title="Seleccionar Cuenta" maxWidth="max-w-3xl">
-                <div className="space-y-4 pt-4">
-                    <div className="relative">
-                        <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                        <input
-                            autoFocus
-                            type="text"
-                            placeholder="Buscar por código o nombre..."
-                            value={accountModalSearch}
-                            onChange={e => setAccountModalSearch(e.target.value)}
-                            className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all"
-                        />
-                    </div>
-                    <div className="text-[11px] text-slate-500 bg-slate-50 border border-slate-100 rounded-xl px-4 py-2.5 flex items-center gap-2">
-                        <Search size={13} className="text-slate-400 shrink-0" />
-                        <span>Se muestra el catálogo completo. Solo se pueden seleccionar cuentas de <b>detalle</b>.</span>
-                    </div>
-                    <div className="max-h-[50vh] overflow-y-auto border border-slate-100 rounded-2xl divide-y divide-slate-50">
-                        {accountModalResults.length === 0 ? (
-                            <div className="py-12 text-center text-slate-400">
-                                <Search size={40} className="mx-auto opacity-20 mb-2" />
-                                <p className="font-black uppercase tracking-widest text-xs italic">No se encontraron cuentas</p>
-                            </div>
-                        ) : (
-                            accountModalResults.map(a => {
-                                const isDetail = a.allows_entries === 1;
-                                return (
-                                    <div
-                                        key={a.id}
-                                        role="button"
-                                        tabIndex={isDetail ? 0 : -1}
-                                        onClick={isDetail ? () => handleSelectAccountModal(a) : undefined}
-                                        onKeyDown={isDetail ? (e) => { if (e.key === 'Enter') handleSelectAccountModal(a); } : undefined}
-                                        className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors ${
-                                            isDetail ? 'cursor-pointer hover:bg-indigo-50/50' : 'opacity-50 cursor-not-allowed'
-                                        }`}
-                                    >
-                                        <span className={`font-mono text-[11px] font-bold shrink-0 w-28 truncate ${isDetail ? 'text-indigo-500' : 'text-slate-400'}`}>{a.code}</span>
-                                        <span className={`flex-1 min-w-0 truncate text-[13px] font-bold ${isDetail ? 'text-slate-700' : 'text-slate-400'}`}>{a.name}</span>
-                                        {a.type_name && <span className="text-[10px] text-slate-400 shrink-0 w-24 truncate hidden sm:block">{a.type_name}</span>}
-                                        <span className="text-xs shrink-0 w-10 text-center" title={isDetail ? 'Permite asientos' : 'Solo agrupación'}>
-                                            {isDetail ? '✅' : '❌'}
-                                        </span>
-                                    </div>
-                                );
-                            })
-                        )}
-                    </div>
-                    <div className="text-center">
-                        <span className="text-[10px] text-slate-400 font-medium">Presione <kbd className="bg-slate-200 px-1.5 py-0.5 rounded text-[9px] font-bold text-slate-600">F3</kbd> para abrir esta ventana desde el formulario</span>
-                    </div>
-                </div>
-            </Modal>
+            <AccountingEntryModal open={isModalOpen} onClose={() => { if (createMutation.isPending || updateMutation.isPending) return; setIsModalOpen(false); setEditingEntry(null); resetForm(); }} onSubmit={handleSubmit} editingEntry={editingEntry} entryTypes={entryTypes} accountSearch={accountSearch} setAccountSearch={setAccountSearch} selectedAccountId={selectedAccountId} setSelectedAccountId={setSelectedAccountId} accountResults={accountResults} accounts={accounts} lines={lines} setLines={setLines} removeLine={removeLine} balanced={balanced} totalDebit={totalDebit} totalCredit={totalCredit} saving={createMutation.isPending || updateMutation.isPending} />
+            <AccountingEntryViewModal open={!!viewEntry} onClose={() => setViewEntry(null)} entry={viewEntry} />
+            <AccountingAccountSearchModal open={isAccountModalOpen} onClose={() => { setIsAccountModalOpen(false); setAccountModalSearch(''); }} accountModalSearch={accountModalSearch} setAccountModalSearch={setAccountModalSearch} accountModalResults={accountModalResults} onSelect={handleSelectAccountModal} />
         </div>
     );
 };

@@ -1,192 +1,39 @@
 import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
-import { Settings, Save, Plus, Trash2, SlidersHorizontal, BookOpen, Search, Database, Users2 } from 'lucide-react';
+import { Settings, SlidersHorizontal, BookOpen, Database } from 'lucide-react';
 import { toast } from 'sonner';
-import OfficeConnectionTab from '../components/accounting/OfficeConnectionTab';
-import { matchesQuery, matchScore } from '../utils/fuzzySearch';
-
+import { OfficeConnectionTab, AccountingGeneralTab, AccountingDefaultAccountsTab } from '../components/accounting';
+import { unwrapList } from '../utils/apiUtils';
+import { useDirtyTracker } from '../hooks/useDirtyTracker';
 const RESERVED_KEYS = ['resultado_ejercicio_id', 'contador_nombre', 'contador_dui', 'auditor_nombre', 'auditor_dui', 'oficina_db_host', 'oficina_db_port', 'oficina_db_user', 'oficina_db_password', 'oficina_db_name'];
-
-const normalizeKey = (val) => val.toUpperCase().replace(/[^A-Z0-9_]/g, '').slice(0, 50);
-
-const inputCls = "w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all";
-const labelCls = "text-[10px] font-black uppercase text-slate-400 block mb-2";
-
-const AccountSelect = ({ value, onChange, accounts, placeholder = 'Seleccionar cuenta...' }) => {
-    const [open, setOpen] = useState(false);
-    const [query, setQuery] = useState('');
-    const ref = useRef(null);
-
-    useEffect(() => {
-        const handler = (e) => {
-            if (ref.current && !ref.current.contains(e.target)) setOpen(false);
-        };
-        document.addEventListener('mousedown', handler);
-        return () => document.removeEventListener('mousedown', handler);
-    }, []);
-
-    const filtered = accounts
-        .filter(a => !query || matchesQuery(`${a.code} ${a.name} ${a.type_name || ''}`, query))
-        .map(a => ({ a, score: query ? matchScore(`${a.code} ${a.name} ${a.type_name || ''}`, query) : 0 }))
-        .sort((x, y) => x.score - y.score)
-        .map(x => x.a);
-    const selected = accounts.find(a => a.id == value);
-
-    return (
-        <div ref={ref} className="relative">
-            <div className="relative">
-                <input
-                    value={open ? query : (selected ? `${selected.code} - ${selected.name}` : '')}
-                    onChange={e => { setQuery(e.target.value); setOpen(true); }}
-                    onFocus={() => setOpen(true)}
-                    placeholder={placeholder}
-                    className={`${inputCls} pr-10`}
-                />
-                <Search size={15} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-            </div>
-            {open && (
-                <div className="absolute z-20 mt-1 w-full max-h-60 overflow-y-auto bg-white border border-slate-200 rounded-xl shadow-xl">
-                    {filtered.length === 0 && (
-                        <div className="px-4 py-4 text-xs text-slate-400 font-medium">Sin resultados</div>
-                    )}
-                    {filtered.map(a => (
-                        <button
-                            key={a.id}
-                            type="button"
-                            onClick={() => { onChange(String(a.id)); setOpen(false); setQuery(''); }}
-                            className={`w-full text-left px-4 py-2.5 flex items-center gap-2 hover:bg-indigo-50 transition-colors ${a.id == value ? 'bg-indigo-50 text-indigo-700' : 'text-slate-700'}`}
-                        >
-                            <span className="font-mono text-[11px] font-bold shrink-0">{a.code}</span>
-                            <span className="flex-1 truncate text-[13px] font-medium">{a.name}</span>
-                            {a.type_name && <span className="text-[10px] text-slate-400 shrink-0">{a.type_name}</span>}
-                        </button>
-                    ))}
-                </div>
-            )}
-        </div>
-    );
-};
-
-const AuxiliaresSection = ({ accounts }) => {
-    const queryClient = useQueryClient();
-    const [entityType, setEntityType] = useState('cliente');
-    const [search, setSearch] = useState('');
-    const [debounced, setDebounced] = useState('');
-    const [edits, setEdits] = useState({});
-
-    useEffect(() => {
-        const t = setTimeout(() => setDebounced(search), 400);
-        return () => clearTimeout(t);
-    }, [search]);
-
-    useEffect(() => { setEdits({}); }, [entityType]);
-
-    const { data: entities = [], isFetching } = useQuery({
-        queryKey: ['entity-accounts', entityType, debounced],
-        queryFn: async () => (await axios.get(`/api/accounting/generation/entity-accounts?type=${entityType}&search=${encodeURIComponent(debounced)}`)).data,
-    });
-
-    const saveMutation = useMutation({
-        mutationFn: (items) => axios.post('/api/accounting/generation/entity-accounts', { type: entityType, items }),
-        onSuccess: () => {
-            toast.success('Asignaciones guardadas');
-            setEdits({});
-            queryClient.invalidateQueries({ queryKey: ['entity-accounts'] });
-        },
-        onError: (err) => toast.error(err.response?.data?.message || 'Error'),
-    });
-
-    const pendingItems = Object.entries(edits).map(([id, account_id]) => ({
-        id: Number(id),
-        account_id: account_id ? Number(account_id) : null
-    }));
-    const entryAccounts = accounts.filter(a => a.allows_entries === 1 || a.allows_entries === true);
-
-    return (
-        <div className="border-t pt-5 space-y-4">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-                <div>
-                    <span className="text-[10px] font-black uppercase text-slate-400 block mb-1 flex items-center gap-1.5"><Users2 size={13} /> Cuentas Auxiliares por Cliente / Proveedor</span>
-                    <p className="text-[11px] text-slate-500">
-                        Asigna una cuenta contable por NRC para detallar el crédito en las partidas automáticas de Contabilizar.
-                        Los sin cuenta asignada usarán la cuenta genérica CxC/CxP.
-                    </p>
-                </div>
-                <select value={entityType} onChange={(e) => setEntityType(e.target.value)} className="w-full md:w-auto px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:border-indigo-400">
-                    <option value="cliente">Clientes</option>
-                    <option value="proveedor">Proveedores</option>
-                </select>
-            </div>
-
-            <div className="relative">
-                <input
-                    value={search}
-                    onChange={e => setSearch(e.target.value)}
-                    placeholder="Buscar por nombre o NRC..."
-                    className={inputCls}
-                />
-                <Search size={15} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-            </div>
-
-            <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
-                {entities.length === 0 && !isFetching && (
-                    <p className="text-[11px] text-slate-500 bg-slate-50 border border-dashed border-slate-200 rounded-xl px-4 py-6 text-center">
-                        Sin resultados para esta búsqueda.
-                    </p>
-                )}
-                {entities.map((ent) => (
-                    <div key={ent.id} className="grid grid-cols-1 sm:grid-cols-[auto_1fr_1.3fr] gap-2 items-center bg-slate-50/50 border border-slate-100 rounded-xl p-2.5">
-                        <div className="sm:w-28 shrink-0">
-                            <span className="block text-[9px] font-black uppercase text-slate-400">NRC</span>
-                            <span className="font-mono text-[12px] font-bold text-indigo-600">{ent.nrc || '—'}</span>
-                        </div>
-                        <div className="min-w-0">
-                            <span className="block text-[9px] font-black uppercase text-slate-400">Nombre</span>
-                            <span className="block truncate text-[12px] font-bold text-slate-700">{ent.nombre}</span>
-                        </div>
-                        <AccountSelect
-                            value={edits[ent.id] !== undefined ? edits[ent.id] : String(ent.account_id || '')}
-                            onChange={(v) => setEdits(prev => ({ ...prev, [ent.id]: v }))}
-                            accounts={entryAccounts}
-                            placeholder="Cuenta auxiliar..."
-                        />
-                    </div>
-                ))}
-            </div>
-
-            <button
-                onClick={() => saveMutation.mutate(pendingItems)}
-                disabled={saveMutation.isPending || pendingItems.length === 0}
-                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-4 rounded-2xl font-black uppercase text-sm flex items-center justify-center gap-2 disabled:opacity-50"
-            >
-                <Save size={18} /> {saveMutation.isPending ? 'Guardando...' : `Guardar Cambios${pendingItems.length ? ` (${pendingItems.length})` : ''}`}
-            </button>
-        </div>
-    );
-};
-
 const AccountingSettings = () => {
     const queryClient = useQueryClient();
     const [activeTab, setActiveTab] = useState('general');
+    const generalDirty = useRef(false);
+    const defaultsDirty = useRef(false);
+    const [dirty, setDirty] = useState(false);
+    useDirtyTracker('accounting-settings', dirty);
 
-    const { data: settings = {}, isLoading } = useQuery({
+    const { data: settings, isLoading, isError } = useQuery({
         queryKey: ['accounting-settings'],
         queryFn: async () => (await axios.get('/api/accounting/settings')).data,
     });
 
     const { data: accounts = [] } = useQuery({
         queryKey: ['accounts'],
-        queryFn: async () => (await axios.get('/api/accounting/accounts')).data,
+        queryFn: async () => unwrapList(await axios.get('/api/accounting/accounts')),
     });
 
-    const [form, setForm] = useState({ resultado_ejercicio_id: '' });
-    const [defaultAccounts, setDefaultAccounts] = useState([]);
+    const [form, setFormState] = useState({ resultado_ejercicio_id: '', contador_nombre: '', contador_dui: '', auditor_nombre: '', auditor_dui: '' });
+    const [defaultAccounts, setDefaultAccountsState] = useState([]);
     const [initialKeys, setInitialKeys] = useState([]);
+    const setForm = (next) => { generalDirty.current = true; setDirty(true); setFormState(next); };
+    const setDefaultAccounts = (next) => { defaultsDirty.current = true; setDirty(true); setDefaultAccountsState(next); };
 
     useEffect(() => {
-        if (settings && Object.keys(settings).length > 0) {
-            setForm({
+        if (settings && !generalDirty.current) {
+            setFormState({
                 resultado_ejercicio_id: settings.resultado_ejercicio_id || '',
                 contador_nombre: settings.contador_nombre || '',
                 contador_dui: settings.contador_dui || '',
@@ -197,27 +44,39 @@ const AccountingSettings = () => {
     }, [settings]);
 
     useEffect(() => {
-        if (!settings) return;
+        if (!settings || defaultsDirty.current) return;
         const rows = Object.entries(settings)
-            .filter(([k]) => !RESERVED_KEYS.includes(k))
+            .filter(([k]) => !RESERVED_KEYS.includes(k) && !/^PARTIDA_(VENTAS|COMPRAS|CXC|CXP)_/.test(k))
             .map(([key, value]) => ({ key, account_id: String(value || '') }));
-        setDefaultAccounts(rows);
+        setDefaultAccountsState(rows);
         setInitialKeys(rows.map(r => r.key));
     }, [settings]);
 
     const saveMutation = useMutation({
         mutationFn: (data) => axios.post('/api/accounting/settings', { settings: data }),
-        onSuccess: () => { queryClient.invalidateQueries(['accounting-settings']); toast.success('Configuración guardada'); },
+        onSuccess: async () => {
+            generalDirty.current = false;
+            setDirty(defaultsDirty.current);
+            await queryClient.invalidateQueries({ queryKey: ['accounting-settings'] });
+            await queryClient.invalidateQueries({ queryKey: ['accounting-generation-config'] });
+            toast.success('Configuración guardada');
+        },
         onError: (err) => toast.error(err.response?.data?.message || 'Error'),
     });
 
     const saveDefaultsMutation = useMutation({
         mutationFn: (data) => axios.post('/api/accounting/settings', data),
-        onSuccess: () => { queryClient.invalidateQueries(['accounting-settings']); toast.success('Cuentas por defecto guardadas'); },
+        onSuccess: async () => {
+            defaultsDirty.current = false;
+            setDirty(generalDirty.current);
+            await queryClient.invalidateQueries({ queryKey: ['accounting-settings'] });
+            await queryClient.invalidateQueries({ queryKey: ['accounting-generation-config'] });
+            toast.success('Cuentas por defecto guardadas');
+        },
         onError: (err) => toast.error(err.response?.data?.message || 'Error'),
     });
 
-    const patrimAccounts = accounts.filter(a => a.type_name?.toLowerCase().includes('patrimonio'));
+    const patrimAccounts = (Array.isArray(accounts) ? accounts : []).filter(a => a.type_name?.toLowerCase().includes('patrimonio'));
 
     const updateRow = (index, patch) => {
         setDefaultAccounts(rows => rows.map((r, i) => (i === index ? { ...r, ...patch } : r)));
@@ -236,6 +95,7 @@ const AccountingSettings = () => {
         for (const row of defaultAccounts) {
             const k = row.key.trim();
             if (!k) return 'La clave no puede estar vacía';
+            if (RESERVED_KEYS.includes(k) || /^PARTIDA_(VENTAS|COMPRAS|CXC|CXP)_/.test(k)) return `La clave ${k} está reservada`;
             if (keys.has(k)) return `Clave duplicada: ${k}`;
             keys.add(k);
             if (!row.account_id) return `Debe seleccionar una cuenta para la clave ${k}`;
@@ -282,165 +142,13 @@ const AccountingSettings = () => {
                 ))}
             </div>
 
-            {isLoading ? (
+            {isError ? <p className="text-rose-600">No se pudo cargar la configuración. Recarga la pantalla antes de editar.</p> : isLoading ? (
                 <div className="text-center py-12 text-slate-400">Cargando...</div>
             ) : (
                 <>
-                    {activeTab === 'general' && (
-                        <div className="bg-white rounded-2xl border shadow-sm p-6 space-y-6">
-                            <div>
-                                <label className={labelCls}>
-                                    Cuenta "Resultado del Ejercicio"
-                                </label>
-                                <p className="text-[11px] text-slate-500 mb-3">
-                                    Usada por el Cierre Anual para saldar ingresos y gastos. Debe ser tipo <b>Patrimonio</b>.
-                                </p>
-                                <AccountSelect
-                                    value={form.resultado_ejercicio_id}
-                                    onChange={v => setForm({ ...form, resultado_ejercicio_id: v })}
-                                    accounts={patrimAccounts}
-                                    placeholder="Buscar cuenta de patrimonio..."
-                                />
-                                {form.resultado_ejercicio_id && (
-                                    <p className="text-[10px] text-emerald-600 mt-1 font-bold">
-                                        ✓ {patrimAccounts.find(a => a.id == form.resultado_ejercicio_id)?.name || 'Cuenta seleccionada'}
-                                    </p>
-                                )}
-                            </div>
-
-                            <div className="border-t pt-4">
-                                <span className="text-[10px] font-black uppercase text-slate-400 mb-3 block">Firmantes de Reportes</span>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                    <div className="space-y-3">
-                                        <label className="text-[9px] font-bold text-slate-500 uppercase">Contador</label>
-                                        <input value={form.contador_nombre} onChange={e => setForm({...form, contador_nombre: e.target.value})} placeholder="Nombre del contador" className={inputCls} />
-                                        <input value={form.contador_dui} onChange={e => setForm({...form, contador_dui: e.target.value})} placeholder="DUI 00000000-0" className={`${inputCls} font-mono`} />
-                                    </div>
-                                    <div className="space-y-3">
-                                        <label className="text-[9px] font-bold text-slate-500 uppercase">Auditor</label>
-                                        <input value={form.auditor_nombre} onChange={e => setForm({...form, auditor_nombre: e.target.value})} placeholder="Nombre del auditor" className={inputCls} />
-                                        <input value={form.auditor_dui} onChange={e => setForm({...form, auditor_dui: e.target.value})} placeholder="DUI 00000000-0" className={`${inputCls} font-mono`} />
-                                    </div>
-                                </div>
-                            </div>
-
-                            <button
-                                onClick={() => saveMutation.mutate(form)}
-                                disabled={saveMutation.isPending}
-                                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-4 rounded-2xl font-black uppercase text-sm flex items-center justify-center gap-2 disabled:opacity-50"
-                            >
-                                <Save size={18} /> {saveMutation.isPending ? 'Guardando...' : 'Guardar Configuración'}
-                            </button>
-                        </div>
-                    )}
-
-                    {activeTab === 'cuentas' && (
-                        <div className="bg-white rounded-2xl border shadow-sm p-6 space-y-5">
-                            <div>
-                                <span className="text-[10px] font-black uppercase text-slate-400 block mb-1">Cuentas por Defecto</span>
-                                <p className="text-[11px] text-slate-500">
-                                    Define cuentas del catálogo bajo una clave personalizada. La clave solo acepta <b>mayúsculas, números y guion bajo</b>.
-                                    Usa las claves sugeridas de <b>Contabilizar</b> para agregarlas con un clic.
-                                </p>
-                            </div>
-
-                            <div className="border border-indigo-100 bg-indigo-50/40 rounded-xl p-4 space-y-3">
-                                <span className="text-[10px] font-black uppercase text-indigo-400 block">Claves Sugeridas — Contabilizar <span className="normal-case font-medium text-slate-400">(clic para agregar)</span></span>
-                                {[
-                                    { grupo: 'Partida de Ventas', keys: ['CUENTA_CAJA', 'CUENTA_BANCOS', 'CUENTA_CLIENTES_CXC', 'CUENTA_VENTAS_GRAVADAS', 'CUENTA_VENTAS_EXENTAS', 'CUENTA_VENTAS_NOSUJETAS', 'CUENTA_IVA_DEBITO', 'CUENTA_IVA_PERCIBIDO', 'CUENTA_FOVIAL_POR_PAGAR', 'CUENTA_COTRANS_POR_PAGAR'] },
-                                    { grupo: 'Partida de Compras', keys: ['CUENTA_COMPRAS_GRAVADAS', 'CUENTA_COMPRAS_EXENTAS', 'CUENTA_IVA_CREDITO', 'CUENTA_PROVEEDORES_CXP', 'CUENTA_IVA_RETENIDO'] },
-                                ].map(g => (
-                                    <div key={g.grupo} className="space-y-1.5">
-                                        <span className="block text-[9px] font-black uppercase text-slate-400">{g.grupo}</span>
-                                        <div className="flex flex-wrap gap-1.5">
-                                            {g.keys.map(key => {
-                                                const added = defaultAccounts.some(r => r.key === key);
-                                                return (
-                                                    <button
-                                                        key={key}
-                                                        type="button"
-                                                        onClick={() => {
-                                                            if (added) { toast.info(`${key} ya está agregada`); return; }
-                                                            setDefaultAccounts(rows => [...rows, { key, account_id: '' }]);
-                                                        }}
-                                                        title={added ? 'Ya agregada' : `Agregar ${key}`}
-                                                        className={`px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold border transition-all ${
-                                                            added
-                                                                ? 'bg-emerald-50 border-emerald-200 text-emerald-600 cursor-default'
-                                                                : 'bg-white border-slate-200 text-slate-600 hover:border-indigo-400 hover:text-indigo-600 hover:bg-indigo-50'
-                                                        }`}
-                                                    >
-                                                        {added ? '✓ ' : '+ '}{key}
-                                                    </button>
-                                                );
-                                            })}
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-
-                            {defaultAccounts.length === 0 && (
-                                <p className="text-[11px] text-slate-500 bg-slate-50 border border-dashed border-slate-200 rounded-xl px-4 py-6 text-center">
-                                    Aún no hay cuentas por defecto configuradas. Presiona "Agregar" para crear la primera.
-                                </p>
-                            )}
-
-                            <div className="space-y-4">
-                                {defaultAccounts.map((row, index) => (
-                                    <div key={index} className="grid grid-cols-1 md:grid-cols-[1fr_1.6fr_auto] gap-3 md:items-end bg-slate-50/50 border border-slate-100 rounded-xl p-3">
-                                        <div className="space-y-1">
-                                            <label className="text-[10px] font-black uppercase text-slate-400 block">Clave</label>
-                                            <input
-                                                value={row.key}
-                                                onChange={e => updateRow(index, { key: normalizeKey(e.target.value) })}
-                                                placeholder="CUENTA_IVA"
-                                                maxLength={50}
-                                                className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-mono font-bold uppercase tracking-wider outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all"
-                                            />
-                                        </div>
-                                        <div className="space-y-1">
-                                            <label className="text-[10px] font-black uppercase text-slate-400 block">Cuenta</label>
-                                            <AccountSelect
-                                                value={row.account_id}
-                                                onChange={v => updateRow(index, { account_id: v })}
-                                                accounts={accounts}
-                                                placeholder="Buscar cuenta..."
-                                            />
-                                        </div>
-                                        <button
-                                            type="button"
-                                            onClick={() => removeRow(index)}
-                                            title="Eliminar"
-                                            className="flex md:flex-none items-center justify-center gap-2 text-rose-500 hover:text-rose-700 hover:bg-rose-50 border border-rose-200 md:border-0 rounded-xl px-4 py-3 transition-colors"
-                                        >
-                                            <Trash2 size={16} />
-                                            <span className="md:hidden text-[10px] font-black uppercase">Eliminar</span>
-                                        </button>
-                                    </div>
-                                ))}
-                            </div>
-
-                            <button
-                                type="button"
-                                onClick={addRow}
-                                className="w-full border-2 border-dashed border-indigo-200 hover:border-indigo-400 hover:bg-indigo-50/50 text-indigo-600 py-3.5 rounded-2xl font-black uppercase text-xs flex items-center justify-center gap-2 transition-all"
-                            >
-                                <Plus size={16} /> Agregar Cuenta por Defecto
-                            </button>
-
-                            <button
-                                onClick={saveDefaultAccounts}
-                                disabled={saveDefaultsMutation.isPending}
-                                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-4 rounded-2xl font-black uppercase text-sm flex items-center justify-center gap-2 disabled:opacity-50"
-                            >
-                                <Save size={18} /> {saveDefaultsMutation.isPending ? 'Guardando...' : 'Guardar Cuentas por Defecto'}
-                            </button>
-
-                            <AuxiliaresSection accounts={accounts} />
-                        </div>
-                    )}
-
-                    {activeTab === 'oficina' && <OfficeConnectionTab />}
+                    {activeTab === 'general' && <AccountingGeneralTab form={form} setForm={setForm} patrimAccounts={patrimAccounts} saveMutation={saveMutation} />}
+{activeTab === 'cuentas' && <AccountingDefaultAccountsTab defaultAccounts={defaultAccounts} setDefaultAccounts={setDefaultAccounts} updateRow={updateRow} removeRow={removeRow} accounts={accounts} addRow={addRow} saveDefaultAccounts={saveDefaultAccounts} saveDefaultsMutation={saveDefaultsMutation} />}
+{activeTab === 'oficina' && <OfficeConnectionTab />}
                 </>
             )}
         </div>
