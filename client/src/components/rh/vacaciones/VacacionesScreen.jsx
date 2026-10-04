@@ -296,7 +296,15 @@ const VacacionesScreen = ({ companyId }) => {
             if (request.isCurrent()) { setIsModalOpen(false); resetForm(); }
             toast.success(id ? 'Planilla actualizada' : 'Planilla creada');
         },
-        onError: (error) => toast.error(error.response?.data?.message || error.message || 'Error al guardar'),
+        onError: (error) => {
+            if (error?.response?.status === 404) {
+                toast.error('El registro de vacación ya no existe o fue eliminado en el servidor');
+                setIsModalOpen(false);
+                resetForm();
+            } else {
+                toast.error(error.response?.data?.message || error.message || 'Error al guardar');
+            }
+        },
         onSettled: () => { savingRef.current = false; }
     });
 
@@ -316,7 +324,15 @@ const VacacionesScreen = ({ companyId }) => {
             queryClient.invalidateQueries({ queryKey: ['rh-vacaciones-elegibles'] });
             toast.success('Planilla eliminada');
         },
-        onError: (error) => { toast.error(error.response?.data?.message || 'Error al eliminar'); }
+        onError: (error) => {
+            if (error?.response?.status === 404) {
+                toast.error('El registro de vacación ya no existe o ya fue eliminado');
+                queryClient.invalidateQueries({ queryKey: ['rh-planilla-vacaciones'] });
+                queryClient.invalidateQueries({ queryKey: ['rh-vacaciones-elegibles'] });
+            } else {
+                toast.error(error.response?.data?.message || 'Error al eliminar');
+            }
+        }
     });
 
     const handleDownloadPDF = async (id) => {

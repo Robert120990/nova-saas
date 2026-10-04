@@ -69,12 +69,30 @@ const AccountingEntries = () => {
     const voidMutation = useMutation({
         mutationFn: (id) => axios.put(`/api/accounting/entries/${id}/void`, {}, { headers }),
         onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['entries'] }); toast.success('Partida anulada'); },
+        onError: (err) => {
+            if (err?.response?.status === 404) {
+                toast.error('La partida seleccionada ya no existe o fue eliminada');
+                queryClient.invalidateQueries({ queryKey: ['entries'] });
+            } else {
+                toast.error(err?.response?.data?.message || 'Error al anular partida');
+            }
+        },
     });
 
     const updateMutation = useMutation({
         mutationFn: ({ id, ...data }) => axios.put(`/api/accounting/entries/${id}`, data, { headers }),
         onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['entries'] }); setIsModalOpen(false); setEditingEntry(null); resetForm(); toast.success('Partida actualizada'); },
-        onError: (err) => toast.error(err.response?.data?.message || 'Error'),
+        onError: (err) => {
+            if (err?.response?.status === 404) {
+                toast.error('La partida ya no existe o fue eliminada en el servidor');
+                setIsModalOpen(false);
+                setEditingEntry(null);
+                resetForm();
+                queryClient.invalidateQueries({ queryKey: ['entries'] });
+            } else {
+                toast.error(err?.response?.data?.message || 'Error al actualizar partida');
+            }
+        },
     });
 
     const resetForm = () => {
@@ -103,7 +121,14 @@ const AccountingEntries = () => {
             })));
             setIsModalOpen(true);
         } catch (e) {
-            if (request === editRequest.current) toast.error('Error al cargar partida');
+            if (request === editRequest.current) {
+                if (e?.response?.status === 404) {
+                    toast.error('La partida seleccionada ya no existe o fue eliminada');
+                    queryClient.invalidateQueries({ queryKey: ['entries'] });
+                } else {
+                    toast.error('Error al cargar partida');
+                }
+            }
         }
     };
 
@@ -114,8 +139,15 @@ const AccountingEntries = () => {
         try {
             const { data } = await axios.get(`/api/accounting/entries/${entry.id}`, { headers });
             if (request === viewRequest.current) setViewEntry(data);
-        } catch {
-            if (request === viewRequest.current) toast.error('Error al cargar partida');
+        } catch (e) {
+            if (request === viewRequest.current) {
+                if (e?.response?.status === 404) {
+                    toast.error('La partida seleccionada ya no existe o fue eliminada');
+                    queryClient.invalidateQueries({ queryKey: ['entries'] });
+                } else {
+                    toast.error('Error al cargar partida');
+                }
+            }
         }
     };
 

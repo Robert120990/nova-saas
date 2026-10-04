@@ -204,6 +204,7 @@ const queryClient = new QueryClient({
             gcTime: 1000 * 60 * 30,    // 30 minutes in memory
             retry: (failureCount, error) => {
                 if (error?.response?.status === 401) return false;
+                if (error?.response?.status === 404) return false;
                 return failureCount < 1;
             },
             refetchOnWindowFocus: false,

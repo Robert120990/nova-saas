@@ -276,7 +276,15 @@ const LiquidacionesScreen = ({ companyId }) => {
             if (request.isCurrent()) { setIsModalOpen(false); resetForm(); }
             toast.success(id ? 'Liquidación actualizada' : 'Liquidación creada');
         },
-        onError: (error) => toast.error(error.response?.data?.message || error.message || 'Error al guardar'),
+        onError: (error) => {
+            if (error?.response?.status === 404) {
+                toast.error('El registro de liquidación ya no existe o fue eliminado en el servidor');
+                setIsModalOpen(false);
+                resetForm();
+            } else {
+                toast.error(error.response?.data?.message || error.message || 'Error al guardar');
+            }
+        },
         onSettled: () => { savingRef.current = false; }
     });
 
@@ -292,7 +300,14 @@ const LiquidacionesScreen = ({ companyId }) => {
     const deleteMutation = useMutation({
         mutationFn: (id) => axios.delete(`/api/rh/planilla-liquidaciones/${id}`, { headers }),
         onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['rh-planilla-liquidaciones'] }); toast.success('Liquidacion eliminada'); },
-        onError: (error) => { toast.error(error.response?.data?.message || 'Error al eliminar'); }
+        onError: (error) => {
+            if (error?.response?.status === 404) {
+                toast.error('El registro de liquidación ya no existe o ya fue eliminado');
+                queryClient.invalidateQueries({ queryKey: ['rh-planilla-liquidaciones'] });
+            } else {
+                toast.error(error.response?.data?.message || 'Error al eliminar');
+            }
+        }
     });
 
     const resetForm = () => {

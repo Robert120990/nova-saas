@@ -60,7 +60,14 @@ const AguinaldosScreen = ({ companyId }) => {
             return axios.delete('/api/rh/planilla-aguinaldos/periodo', { params, headers });
         },
         onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['rh-planilla-aguinaldos-resumen'] }); toast.success('Planilla eliminada'); },
-        onError: (error) => toast.error(error.response?.data?.message || 'Error al eliminar')
+        onError: (error) => {
+            if (error?.response?.status === 404) {
+                toast.error('El período o registro de aguinaldo ya no existe o fue eliminado');
+                queryClient.invalidateQueries({ queryKey: ['rh-planilla-aguinaldos-resumen'] });
+            } else {
+                toast.error(error.response?.data?.message || 'Error al eliminar');
+            }
+        }
     });
 
     const saveMutation = useMutation({
@@ -70,7 +77,13 @@ const AguinaldosScreen = ({ companyId }) => {
             if (request.isCurrent()) setYaExiste(true);
             toast.success('Planilla guardada');
         },
-        onError: (error) => toast.error(error.response?.data?.message || 'Error al guardar')
+        onError: (error) => {
+            if (error?.response?.status === 404) {
+                toast.error('El registro o período de aguinaldo ya no existe o fue eliminado');
+            } else {
+                toast.error(error.response?.data?.message || 'Error al guardar');
+            }
+        }
     });
 
     const handleDelete = async (r) => {

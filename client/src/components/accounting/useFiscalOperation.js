@@ -38,7 +38,13 @@ export default function useFiscalOperation(operation) {
             ]);
             toast.success(`${opening ? 'Apertura' : 'Cierre'} generado: partida #${result.entry_id}`);
         },
-        onError: error => toast.error(error.response?.data?.message || 'No se pudo guardar la partida fiscal')
+        onError: error => {
+            if (error?.response?.status === 404) {
+                toast.error('El catálogo de cuentas o período fiscal no fue encontrado en el servidor');
+            } else {
+                toast.error(error.response?.data?.message || 'No se pudo guardar la partida fiscal');
+            }
+        }
     });
     const changeYear = value => {
         setYear(value);

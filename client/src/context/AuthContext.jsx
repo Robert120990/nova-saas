@@ -64,6 +64,12 @@ export const AuthProvider = ({ children }) => {
                         toast.error('Sesión expirada. Por favor, inicie sesión de nuevo.', { id: 'session-expired' });
                         logout();
                     }
+                } else if (error.response?.status === 404) {
+                    if (!error.response.data || typeof error.response.data === 'string') {
+                        error.response.data = { message: 'El registro solicitado no fue encontrado o ya fue eliminado en el servidor.' };
+                    } else if (!error.response.data.message || error.response.data.message.startsWith('Cannot ')) {
+                        error.response.data.message = 'El registro solicitado no fue encontrado o ya fue eliminado en el servidor.';
+                    }
                 }
                 return Promise.reject(error);
             }

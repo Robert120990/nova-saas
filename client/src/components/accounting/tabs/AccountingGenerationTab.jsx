@@ -82,7 +82,13 @@ const AccountingGenerationTab = ({ kind, onBusyChange }) => {
             setLines(unwrapList(data.lines).map(l => ({ ...l })));
             if (!unwrapList(data.lines).length) toast.info('No hay documentos de ese tipo en la fecha seleccionada');
         },
-        onError: (err) => toast.error(err.response?.data?.message || 'Error al calcular'),
+        onError: (err) => {
+            if (err?.response?.status === 404) {
+                toast.error('No se encontraron transacciones o cuentas para la fecha seleccionada');
+            } else {
+                toast.error(err?.response?.data?.message || 'Error al calcular');
+            }
+        },
     });
 
     const generateMutation = useMutation({
@@ -94,7 +100,13 @@ const AccountingGenerationTab = ({ kind, onBusyChange }) => {
             queryClient.invalidateQueries({ queryKey: ['accounting-correlativos'] });
             setPreviewData(prev => prev?.kind === payload.kind && prev?.date === payload.date ? { ...prev, already_generated: true } : prev);
         },
-        onError: (err) => toast.error(err.response?.data?.message || 'Error al generar'),
+        onError: (err) => {
+            if (err?.response?.status === 404) {
+                toast.error('El período contable o configuración no fue encontrada en el servidor');
+            } else {
+                toast.error(err?.response?.data?.message || 'Error al generar');
+            }
+        },
     });
 
     const totals = useMemo(() => {

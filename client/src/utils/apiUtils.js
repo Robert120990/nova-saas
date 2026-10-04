@@ -34,3 +34,30 @@ export const unwrapPagination = (res) => {
         totalPages: payload?.totalPages || 1
     };
 };
+
+/**
+ * Determina si un error de axios corresponde a un recurso no encontrado (404).
+ * 
+ * @param {any} error 
+ * @returns {boolean}
+ */
+export const isNotFoundError = (error) => {
+    return error?.response?.status === 404;
+};
+
+/**
+ * Retorna un mensaje amigable cuando un registro fue eliminado o no existe (404),
+ * o el mensaje de error por defecto.
+ * 
+ * @param {any} error 
+ * @param {string} defaultMsg 
+ * @param {string} notFoundMsg 
+ * @returns {string}
+ */
+export const getApiErrorMessage = (error, defaultMsg = 'Ocurrió un error inesperado', notFoundMsg = 'El registro ya no existe o fue eliminado en el servidor') => {
+    if (isNotFoundError(error)) {
+        return error?.response?.data?.message || notFoundMsg;
+    }
+    return error?.response?.data?.message || defaultMsg;
+};
+

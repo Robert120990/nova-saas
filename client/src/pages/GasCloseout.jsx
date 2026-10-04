@@ -4,7 +4,7 @@ import axios from 'axios';
 import {
     Calculator, Lock, Unlock, Loader2, User, Calendar, Hash, X,
     Fuel, Receipt, CreditCard, Gift, Percent, Truck, Droplets,
-    FlaskConical, Banknote, ArrowLeft, UserCheck, BarChart3, LockOpen, ShieldCheck
+    FlaskConical, Banknote, ArrowLeft, UserCheck, BarChart3, LockOpen, ShieldCheck, AlertTriangle
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useSearchParams, useNavigate } from 'react-router-dom';
@@ -98,6 +98,8 @@ const GasCloseout = () => {
     const shiftEstado = (s) => (s?.status === 'open' ? 'ABIERTO' : 'CERRADO');
 
     const [closeoutId, setCloseoutId] = useState(null);
+    const [deletedCloseoutModal, setDeletedCloseoutModal] = useState(false);
+    const [deletedCloseoutId, setDeletedCloseoutId] = useState(null);
     const [estado, setEstado] = useState(null);
     const [readings, setReadings] = useState([]);
     const [sellerId, setSellerId] = useState('');
@@ -287,13 +289,29 @@ const GasCloseout = () => {
         }
     };
 
-    const { data: editData, isLoading: editLoading } = useQuery({
+    const handleCloseoutNotFound = (err) => {
+        if (err?.response?.status === 404) {
+            setDeletedCloseoutId(closeoutId || editId);
+            setDeletedCloseoutModal(true);
+            return true;
+        }
+        return false;
+    };
+
+    const { data: editData, isLoading: editLoading, error: editError, isError: isEditError } = useQuery({
         queryKey: ['gas-closeout-edit', editId],
         queryFn: async () => (await axios.get(`/api/gas-station/closeouts/${editId}`)).data,
         enabled: !!editId,
         staleTime: 0,
         refetchOnWindowFocus: false,
     });
+
+    useEffect(() => {
+        if (isEditError && editError?.response?.status === 404) {
+            setDeletedCloseoutId(editId);
+            setDeletedCloseoutModal(true);
+        }
+    }, [isEditError, editError, editId]);
 
     // Detectar automáticamente si ya existe un turno abierto para la sucursal actual cuando no hay editId en URL
     const { data: openCloseoutsData } = useQuery({
@@ -304,7 +322,7 @@ const GasCloseout = () => {
             });
             return res.data;
         },
-        enabled: !editId && !!user?.branch_id,
+        enabled: !editId && !deletedCloseoutModal && !!user?.branch_id,
         staleTime: 3000,
         refetchOnWindowFocus: false,
     });
@@ -745,7 +763,10 @@ const GasCloseout = () => {
             }
             queryClient.invalidateQueries({ queryKey: ['gas-closeouts'] });
         },
-        onError: (error) => toast.error(error.response?.data?.message || 'Error al guardar')
+        onError: (error) => {
+            if (handleCloseoutNotFound(error)) return;
+            toast.error(error.response?.data?.message || 'Error al guardar');
+        }
     });
 
     const batchUpdateMutation = useMutation({
@@ -792,6 +813,7 @@ const GasCloseout = () => {
         },
         onError: (error) => {
             setImporting(false);
+            if (handleCloseoutNotFound(error)) return;
             toast.error(error.response?.data?.message || 'Error al importar lecturas');
         }
     });
@@ -818,6 +840,7 @@ const GasCloseout = () => {
             toast.success(res.data?.message || 'Precios actualizados con éxito desde Ventas');
         },
         onError: (error) => {
+            if (handleCloseoutNotFound(error)) return;
             toast.error(error.response?.data?.message || 'Error al actualizar precios de combustible');
         }
     });
@@ -951,7 +974,10 @@ const GasCloseout = () => {
                 fecha_turno: fechaTurno
             });
         },
-        onError: (error) => toast.error(error.response?.data?.message || 'Error al cerrar')
+        onError: (error) => {
+            if (handleCloseoutNotFound(error)) return;
+            toast.error(error.response?.data?.message || 'Error al cerrar');
+        }
     });
 
     const handlePdf = async () => {
@@ -983,7 +1009,10 @@ const GasCloseout = () => {
             }
             queryClient.invalidateQueries({ queryKey: ['gas-closeouts'] });
         },
-        onError: (error) => toast.error(error.response?.data?.message || 'Error al guardar despachadores')
+        onError: (error) => {
+            if (handleCloseoutNotFound(error)) return;
+            toast.error(error.response?.data?.message || 'Error al guardar despachadores');
+        }
     });
 
     const updateNozzleAssignmentsMutation = useMutation({
@@ -1002,7 +1031,10 @@ const GasCloseout = () => {
             queryClient.invalidateQueries({ queryKey: ['gas-closeouts'] });
             toast.success('Asignaciones de mangueras actualizadas');
         },
-        onError: (error) => toast.error(error.response?.data?.message || 'Error al guardar asignaciones')
+        onError: (error) => {
+            if (handleCloseoutNotFound(error)) return;
+            toast.error(error.response?.data?.message || 'Error al guardar asignaciones');
+        }
     });
 
     const updateTankMutation = useMutation({
@@ -1066,7 +1098,10 @@ const GasCloseout = () => {
             }
             queryClient.invalidateQueries({ queryKey: ['gas-closeouts'] });
         },
-        onError: (error) => toast.error(error.response?.data?.message || 'Error al guardar lectura de tanque')
+        onError: (error) => {
+            if (handleCloseoutNotFound(error)) return;
+            toast.error(error.response?.data?.message || 'Error al guardar lectura de tanque');
+        }
     });
 
     const batchUpdateTankMutation = useMutation({
@@ -1091,7 +1126,10 @@ const GasCloseout = () => {
             setShowTankReadingsModal(false);
             setEditAnterior(false);
         },
-        onError: (error) => toast.error(error.response?.data?.message || 'Error al guardar lecturas de tanque')
+        onError: (error) => {
+            if (handleCloseoutNotFound(error)) return;
+            toast.error(error.response?.data?.message || 'Error al guardar lecturas de tanque');
+        }
     });
 
     const handleSaveAllTanks = (readingsToSave) => {
@@ -1126,7 +1164,10 @@ const GasCloseout = () => {
                 toast.success('Gastos guardados');
             }
         },
-        onError: (error) => toast.error(error.response?.data?.message || 'Error al guardar gastos')
+        onError: (error) => {
+            if (handleCloseoutNotFound(error)) return;
+            toast.error(error.response?.data?.message || 'Error al guardar gastos');
+        }
     });
 
     const saveRemesasMutation = useMutation({
@@ -1150,7 +1191,10 @@ const GasCloseout = () => {
                 toast.success('Remesas guardadas');
             }
         },
-        onError: (error) => toast.error(error.response?.data?.message || 'Error al guardar remesas')
+        onError: (error) => {
+            if (handleCloseoutNotFound(error)) return;
+            toast.error(error.response?.data?.message || 'Error al guardar remesas');
+        }
     });
 
     const gastosTotal = useMemo(() =>
@@ -1182,7 +1226,10 @@ const GasCloseout = () => {
                 toast.success('Cupones guardados');
             }
         },
-        onError: (error) => toast.error(error.response?.data?.message || 'Error al guardar cupones')
+        onError: (error) => {
+            if (handleCloseoutNotFound(error)) return;
+            toast.error(error.response?.data?.message || 'Error al guardar cupones');
+        }
     });
 
     const cuponesTotal = useMemo(() =>
@@ -1210,7 +1257,10 @@ const GasCloseout = () => {
                 toast.success('Descuentos guardados');
             }
         },
-        onError: (error) => toast.error(error.response?.data?.message || 'Error al guardar descuentos')
+        onError: (error) => {
+            if (handleCloseoutNotFound(error)) return;
+            toast.error(error.response?.data?.message || 'Error al guardar descuentos');
+        }
     });
 
     const descuentosTotal = useMemo(() =>
@@ -1238,7 +1288,10 @@ const GasCloseout = () => {
                 toast.success('Adelantos guardados');
             }
         },
-        onError: (error) => toast.error(error.response?.data?.message || 'Error al guardar adelantos')
+        onError: (error) => {
+            if (handleCloseoutNotFound(error)) return;
+            toast.error(error.response?.data?.message || 'Error al guardar adelantos');
+        }
     });
 
     const adelantosTotal = useMemo(() =>
@@ -1327,7 +1380,10 @@ const GasCloseout = () => {
                 toast.success('Tarjetas guardadas');
             }
         },
-        onError: (error) => toast.error(error.response?.data?.message || 'Error al guardar tarjetas')
+        onError: (error) => {
+            if (handleCloseoutNotFound(error)) return;
+            toast.error(error.response?.data?.message || 'Error al guardar tarjetas');
+        }
     });
 
     const saveCreditosMutation = useMutation({
@@ -1351,7 +1407,10 @@ const GasCloseout = () => {
                 toast.success('Créditos guardados');
             }
         },
-        onError: (error) => toast.error(error.response?.data?.message || 'Error al guardar créditos')
+        onError: (error) => {
+            if (handleCloseoutNotFound(error)) return;
+            toast.error(error.response?.data?.message || 'Error al guardar créditos');
+        }
     });
 
     const saveValesMutation = useMutation({
@@ -1375,7 +1434,10 @@ const GasCloseout = () => {
                 toast.success('Vales guardados');
             }
         },
-        onError: (error) => toast.error(error.response?.data?.message || 'Error al guardar vales')
+        onError: (error) => {
+            if (handleCloseoutNotFound(error)) return;
+            toast.error(error.response?.data?.message || 'Error al guardar vales');
+        }
     });
 
     const saveAnticiposDespMutation = useMutation({
@@ -1399,7 +1461,10 @@ const GasCloseout = () => {
                 toast.success('Anticipos despachados guardados');
             }
         },
-        onError: (error) => toast.error(error.response?.data?.message || 'Error al guardar anticipos despachados')
+        onError: (error) => {
+            if (handleCloseoutNotFound(error)) return;
+            toast.error(error.response?.data?.message || 'Error al guardar anticipos despachados');
+        }
     });
 
     const saveTrupputDespMutation = useMutation({
@@ -1423,7 +1488,10 @@ const GasCloseout = () => {
                 toast.success('Despachos Trupput guardados');
             }
         },
-        onError: (error) => toast.error(error.response?.data?.message || 'Error al guardar despachos Trupput')
+        onError: (error) => {
+            if (handleCloseoutNotFound(error)) return;
+            toast.error(error.response?.data?.message || 'Error al guardar despachos Trupput');
+        }
     });
 
     const sectionConfig = {
@@ -1711,7 +1779,10 @@ const GasCloseout = () => {
             setShowDiferenciasModal(false);
             setShowConfirmComplementaria(false);
         },
-        onError: (error) => toast.error(error.response?.data?.message || 'Error al generar complementaria')
+        onError: (error) => {
+            if (handleCloseoutNotFound(error)) return;
+            toast.error(error.response?.data?.message || 'Error al generar complementaria');
+        }
     });
 
     const dayStr = closeoutId ? String(editData?.fecha_turno || fechaTurno || '').split('T')[0] : null;
@@ -1733,7 +1804,10 @@ const GasCloseout = () => {
                 }
             })
             .catch((error) => {
-                if (active) toast.error(error.response?.data?.message || 'Error al obtener datos de comparacion');
+                if (active) {
+                    if (handleCloseoutNotFound(error)) return;
+                    toast.error(error.response?.data?.message || 'Error al obtener datos de comparacion');
+                }
             })
             .finally(() => {
                 if (active) setDiferenciasLoading(false);
@@ -1828,7 +1902,10 @@ const GasCloseout = () => {
             queryClient.invalidateQueries({ queryKey: ['gas-closeouts'] });
             toast.success('Lecturas de lubricantes guardadas');
         },
-        onError: (error) => toast.error(error.response?.data?.message || 'Error al guardar lubricantes')
+        onError: (error) => {
+            if (handleCloseoutNotFound(error)) return;
+            toast.error(error.response?.data?.message || 'Error al guardar lubricantes');
+        }
     });
 
     // Carga remota para SearchableSelect (clientes/proveedores pueden ser miles)
@@ -2855,6 +2932,49 @@ const GasCloseout = () => {
             <div className="flex items-center justify-center py-20">
                 <Loader2 size={24} className="animate-spin text-indigo-600" />
                 <span className="ml-3 text-sm font-medium text-slate-500">Cargando cierre...</span>
+            </div>
+        );
+    }
+
+    if (deletedCloseoutModal) {
+        return (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm animate-fadeIn">
+                <div className="bg-white rounded-2xl shadow-2xl border border-rose-100 max-w-md w-full p-6 text-center animate-scaleIn">
+                    <div className="w-16 h-16 bg-rose-50 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-4 border border-rose-100">
+                        <AlertTriangle size={36} />
+                    </div>
+                    <h3 className="text-lg font-black text-slate-900 mb-2">
+                        Turno no encontrado o eliminado
+                    </h3>
+                    <p className="text-xs font-medium text-slate-600 mb-6 leading-relaxed">
+                        El turno actual {deletedCloseoutId ? <span className="font-bold text-slate-800">(Turno #{deletedCloseoutId})</span> : ''} ya no existe en el sistema. Ha sido eliminado en otra sesión o por un administrador. Para proteger la integridad de los datos, no es posible seguir digitando en este registro.
+                    </p>
+                    <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setDeletedCloseoutModal(false);
+                                setDeletedCloseoutId(null);
+                                setSearchParams({}, { replace: true });
+                                window.location.href = '/gasolinera/cierre';
+                            }}
+                            className="px-5 py-2.5 text-xs font-black uppercase tracking-wider text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-all shadow-md hover:shadow-indigo-500/20"
+                        >
+                            Iniciar Nuevo Cierre
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setDeletedCloseoutModal(false);
+                                setDeletedCloseoutId(null);
+                                navigate('/gas-station/historial-lecturas');
+                            }}
+                            className="px-5 py-2.5 text-xs font-black uppercase tracking-wider text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors"
+                        >
+                            Ver Historial
+                        </button>
+                    </div>
+                </div>
             </div>
         );
     }

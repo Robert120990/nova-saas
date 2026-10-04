@@ -210,7 +210,10 @@ export default function usePlanillas() {
             if (!silent && id) toast.success('Cambios guardados con éxito');
             return id;
         } catch (error) {
-            const message = error.response?.data?.message || 'No se pudieron guardar los cambios. El borrador sigue en pantalla; reintente guardar.';
+            const isNotFound = error.response?.status === 404;
+            const message = isNotFound
+                ? 'El registro de planilla o período ya no existe en el servidor (fue eliminado).'
+                : (error.response?.data?.message || 'No se pudieron guardar los cambios. El borrador sigue en pantalla; reintente guardar.');
             setSaveError(message);
             setHasConflict([409, 404].includes(error.response?.status) || (error.response?.status === 400 && /cerrad|pagad/i.test(message)));
             toast.error(message, { id: 'planilla-save-error' });
@@ -396,8 +399,14 @@ export default function usePlanillas() {
             }
             setPeriodoBloqueado(true);
             return true;
-        } catch {
-            if (sequence === loadSequenceRef.current) toast.error('Error al cargar datos del empleado');
+        } catch (error) {
+            if (sequence === loadSequenceRef.current) {
+                if (error?.response?.status === 404) {
+                    toast.error('El empleado o período de planilla ya no existe o fue eliminado', { id: 'rh-emp-not-found' });
+                } else {
+                    toast.error('Error al cargar datos del empleado');
+                }
+            }
         } finally {
             if (sequence === loadSequenceRef.current) { setLoadingEmployee(false); setCalculando(false); }
         }
@@ -534,7 +543,12 @@ export default function usePlanillas() {
             }
         },
         onError: (error) => {
-            toast.error(error.response?.data?.message || 'Error al sincronizar planilla');
+            if (error?.response?.status === 404) {
+                toast.error('El período de planilla no fue encontrado o fue eliminado');
+                queryClient.invalidateQueries({ queryKey: ['rh-planillas-grupos'] });
+            } else {
+                toast.error(error.response?.data?.message || 'Error al sincronizar planilla');
+            }
         },
         onSettled: () => {
             operationRef.current = false;
@@ -618,11 +632,17 @@ export default function usePlanillas() {
             setCodigoInput('');
         },
         onError: (error) => {
-            const message = error.response?.data?.message || 'Error al excluir empleado';
-            toast.error(message);
-            if (error.response?.status === 409) {
-                setSaveError(message);
-                setHasConflict(true);
+            if (error?.response?.status === 404) {
+                toast.error('El registro del empleado ya no existe en la planilla');
+                queryClient.invalidateQueries({ queryKey: ['rh-planillas-grupos'] });
+                if (empleadoIdRef.current) loadEmpleado(empleadoIdRef.current);
+            } else {
+                const message = error.response?.data?.message || 'Error al excluir empleado';
+                toast.error(message);
+                if (error.response?.status === 409) {
+                    setSaveError(message);
+                    setHasConflict(true);
+                }
             }
             // Keep every field and the recovery draft if the deletion failed.
             setDetalles([...detallesRef.current]);
@@ -762,7 +782,15 @@ export default function usePlanillas() {
             toast.success(res.data.message);
             if (empleadoIdRef.current) loadEmpleado(empleadoIdRef.current);
         },
-        onError: (error) => { toast.error(error.response?.data?.message || 'Error al cerrar periodo'); },
+        onError: (error) => {
+            if (error?.response?.status === 404) {
+                toast.error('El período que intenta cerrar ya no existe o fue eliminado');
+                queryClient.invalidateQueries({ queryKey: ['rh-planillas-grupos'] });
+                queryClient.invalidateQueries({ queryKey: ['rh-planillas-abiertas'] });
+            } else {
+                toast.error(error.response?.data?.message || 'Error al cerrar periodo');
+            }
+        },
         onSettled: () => { operationRef.current = false; }
     });
 
@@ -791,7 +819,15 @@ export default function usePlanillas() {
             queryClient.invalidateQueries({ queryKey: ['rh-planillas-abiertas'] });
             toast.success(res.data.message);
         },
-        onError: (error) => { toast.error(error.response?.data?.message || 'Error al eliminar periodo'); }
+        onError: (error) => {
+            if (error?.response?.status === 404) {
+                toast.error('El período ya no existe o ya fue eliminado');
+                queryClient.invalidateQueries({ queryKey: ['rh-planillas-grupos'] });
+                queryClient.invalidateQueries({ queryKey: ['rh-planillas-abiertas'] });
+            } else {
+                toast.error(error.response?.data?.message || 'Error al eliminar periodo');
+            }
+        }
     });
 
     const handleEliminarPeriodo = async (item) => {

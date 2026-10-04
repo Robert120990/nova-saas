@@ -149,7 +149,13 @@ export const useQuincena25 = (companyId) => {
             setDraftContext(null);
             toast.success('Planilla 25 guardada exitosamente');
         },
-        onError: (err) => toast.error(err.response?.data?.message || 'Error al guardar planilla')
+        onError: (err) => {
+            if (err?.response?.status === 404) {
+                toast.error('El período o registro de Quincena 25 ya no existe o fue eliminado');
+            } else {
+                toast.error(err?.response?.data?.message || 'Error al guardar planilla');
+            }
+        }
     });
 
     const handleGuardar = () => {
@@ -171,7 +177,13 @@ export const useQuincena25 = (companyId) => {
             queryClient.invalidateQueries({ queryKey: ['rh-quincena25-resumen'] });
             toast.success(res.data.message);
         },
-        onError: (err) => toast.error(err.response?.data?.message || 'Error al cerrar período')
+        onError: (err) => {
+            if (err?.response?.status === 404) {
+                toast.error('El período que intenta cerrar ya no existe o fue eliminado');
+            } else {
+                toast.error(err?.response?.data?.message || 'Error al cerrar período');
+            }
+        }
     });
 
     const handleCerrarPeriodo = async () => {
@@ -194,7 +206,13 @@ export const useQuincena25 = (companyId) => {
             queryClient.invalidateQueries({ queryKey: ['rh-quincena25-resumen'] });
             toast.success(res.data.message);
         },
-        onError: (err) => toast.error(err.response?.data?.message || 'Error al reabrir período')
+        onError: (err) => {
+            if (err?.response?.status === 404) {
+                toast.error('El período que intenta reabrir ya no existe o fue eliminado');
+            } else {
+                toast.error(err?.response?.data?.message || 'Error al reabrir período');
+            }
+        }
     });
 
     const handleReabrirPeriodo = async () => {
