@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { Search, ChevronDown, Check, X, Loader2 } from 'lucide-react';
 import { matchScore } from '../../utils/fuzzySearch';
 
@@ -38,6 +39,8 @@ const SearchableSelect = ({
     const [focusIdx, setFocusIdx] = useState(-1);
     const containerRef = useRef(null);
     const triggerRef = useRef(null);
+    const dropdownRef = useRef(null);
+    const searchInputRef = useRef(null);
     const listRef = useRef(null);
 
     const [remoteOptions, setRemoteOptions] = useState([]);
@@ -137,15 +140,61 @@ const SearchableSelect = ({
     const computePanelPos = useCallback(() => {
         const rect = triggerRef.current?.getBoundingClientRect();
         if (!rect) return null;
-        const w = Math.min(dropdownWidth, window.innerWidth - 16);
+
+        // Si el elemento está completamente fuera del viewport o invisible
+        if (rect.bottom < 0 || rect.top > window.innerHeight || rect.right < 0 || rect.left > window.innerWidth) {
+            return null;
+        }
+
+        const viewportWidth = window.innerWidth;
+        const viewportHeight = window.innerHeight;
+
+        const targetWidth = dropdownWidth ? Math.max(dropdownWidth, rect.width) : Math.max(rect.width, 220);
+        const width = Math.min(targetWidth, viewportWidth - 16);
+
         let left = rect.left;
-        if (left + w > window.innerWidth - 8) left = Math.max(8, window.innerWidth - w - 8);
-        return { top: rect.bottom + 4, left, width: w };
+        if (left + width > viewportWidth - 8) {
+            left = Math.max(8, viewportWidth - width - 8);
+        }
+        if (left < 8) left = 8;
+
+        const spaceBelow = viewportHeight - rect.bottom;
+        const spaceAbove = rect.top;
+
+        const preferredHeight = 320;
+        const minHeight = 140;
+
+        // Desplegar hacia arriba si no hay espacio suficiente abajo y hay más espacio arriba
+        const openUp = spaceBelow < 260 && spaceAbove > spaceBelow;
+
+        if (openUp) {
+            const availableHeight = spaceAbove - 12;
+            const maxHeight = Math.min(preferredHeight, Math.max(minHeight, availableHeight));
+            return {
+                bottom: viewportHeight - rect.top + 4,
+                left,
+                width,
+                maxHeight,
+                placement: 'top'
+            };
+        } else {
+            const availableHeight = spaceBelow - 12;
+            const maxHeight = Math.min(preferredHeight, Math.max(minHeight, availableHeight));
+            return {
+                top: rect.bottom + 4,
+                left,
+                width,
+                maxHeight,
+                placement: 'bottom'
+            };
+        }
     }, [dropdownWidth]);
 
     useEffect(() => {
         const handleClickOutside = (event) => {
-            if (containerRef.current && !containerRef.current.contains(event.target)) {
+            const inContainer = containerRef.current && containerRef.current.contains(event.target);
+            const inDropdown = dropdownRef.current && dropdownRef.current.contains(event.target);
+            if (!inContainer && !inDropdown) {
                 setIsOpen(false);
             }
         };
@@ -168,17 +217,45 @@ const SearchableSelect = ({
         return () => clearTimeout(timer);
     }, [search, isOpen, loadRemotePage, debounceMs]);
 
-    // Reposicionar panel ancho al hacer scroll/resize
+    // Reposicionar panel dinámicamente al hacer scroll o resize
     useEffect(() => {
-        if (!isOpen || !dropdownWidth) return;
-        const onScrollResize = () => setPanelPos(computePanelPos());
+        if (!isOpen) return;
+        const onScrollResize = () => {
+            const pos = computePanelPos();
+            if (pos) {
+                setPanelPos(pos);
+            } else {
+                setIsOpen(false);
+            }
+        };
+        onScrollResize();
         window.addEventListener('scroll', onScrollResize, true);
         window.addEventListener('resize', onScrollResize);
         return () => {
             window.removeEventListener('scroll', onScrollResize, true);
             window.removeEventListener('resize', onScrollResize);
         };
-    }, [isOpen, dropdownWidth, computePanelPos]);
+    }, [isOpen, computePanelPos]);
+
+    // Autofocus en el input de búsqueda al abrir
+    useEffect(() => {
+        if (isOpen) {
+            const timer = setTimeout(() => {
+                searchInputRef.current?.focus();
+            }, 20);
+            return () => clearTimeout(timer);
+        }
+    }, [isOpen]);
+
+    // Scroll automático del item enfocado con teclado
+    useEffect(() => {
+        if (focusIdx >= 0 && listRef.current) {
+            const el = listRef.current.children[focusIdx];
+            if (el && typeof el.scrollIntoView === 'function') {
+                el.scrollIntoView({ block: 'nearest' });
+            }
+        }
+    }, [focusIdx]);
 
     const toggleOpen = () => {
         if (disabled) return;
@@ -191,7 +268,7 @@ const SearchableSelect = ({
                 skipDebounceRef.current = true;
                 loadRemotePage('', 1, false);
             }
-            if (dropdownWidth) setPanelPos(computePanelPos());
+            setPanelPos(computePanelPos());
         }
     };
 
@@ -247,6 +324,92 @@ const SearchableSelect = ({
         return String(value) === String(opt[valueKey]);
     };
 
+    const pos = panelPos || computePanelPos();
+    const isTop = pos?.placement === 'top';
+
+    const dropdownPanel = (isOpen && pos) ? (
+        <div 
+            ref={dropdownRef}
+            className={`z-[9999] bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden flex flex-col animate-in fade-in duration-150 ${
+                isTop ? 'slide-in-from-bottom-2' : 'slide-in-from-top-2'
+            }`}
+            style={{
+                position: 'fixed',
+                left: `${pos.left}px`,
+                width: `${pos.width}px`,
+                maxHeight: `${pos.maxHeight}px`,
+                ...(isTop ? { bottom: `${pos.bottom}px` } : { top: `${pos.top}px` })
+            }}
+        >
+            <div className="p-2 border-b border-slate-100 bg-slate-50 flex items-center gap-2 shrink-0">
+                <Search size={14} className="text-slate-400 ml-2" />
+                <input 
+                    ref={searchInputRef}
+                    autoFocus
+                    type="text"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value.toUpperCase())}
+                    onKeyDown={handleKeyDown}
+                    placeholder="Buscar..."
+                    className="w-full bg-transparent border-none outline-none py-1 text-sm text-slate-700 placeholder:text-slate-400 focus:ring-0 uppercase"
+                    onClick={(e) => e.stopPropagation()}
+                />
+                {search && (
+                    <button onClick={() => setSearch('')} className="p-1 hover:text-slate-600 rounded text-slate-400 transition-colors">
+                        <X size={14} />
+                    </button>
+                )}
+                {loadOptions && remoteLoading && (
+                    <Loader2 size={14} className="text-indigo-500 animate-spin shrink-0" />
+                )}
+            </div>
+            <div ref={listRef} onScroll={handleListScroll} className="flex-1 min-h-0 overflow-y-auto">
+                {filteredOptions.length > 0 ? (
+                    filteredOptions.map((opt, i) => {
+                        const optCode = getOptionCode(opt);
+                        const optLabel = getOptionLabel(opt);
+                        return (
+                            <div 
+                                key={opt[valueKey] || opt.id || i}
+                                onClick={() => handleSelect(opt)}
+                                onMouseEnter={() => setFocusIdx(i)}
+                                className={`px-4 py-2.5 text-sm cursor-pointer flex items-center justify-between hover:bg-indigo-50 transition-colors ${
+                                    focusIdx === i ? 'bg-indigo-50' : ''
+                                } ${
+                                    isSelected(opt) ? 'text-indigo-700 font-bold' : 'text-slate-600'
+                                }`}
+                            >
+                                <div className="flex items-center justify-between w-full min-w-0">
+                                    <div className="flex flex-col flex-1 min-w-0 pr-2">
+                                        {optCode ? (
+                                            <span className="text-[9px] font-mono text-slate-400 uppercase">{codeLabel}: {optCode}</span>
+                                        ) : null}
+                                        <span className="truncate text-[10px] font-bold text-slate-700">{optLabel}</span>
+                                    </div>
+                                    {opt.precio_unitario !== undefined && opt.precio_unitario !== null && (
+                                        <span className="text-[11px] font-bold text-emerald-600 font-mono shrink-0 ml-2">
+                                            ${parseFloat(opt.precio_unitario || 0).toFixed(2)}
+                                        </span>
+                                    )}
+                                    {isSelected(opt) && <Check size={14} className="text-indigo-600 shrink-0 ml-2" />}
+                                </div>
+                            </div>
+                        );
+                    })
+                ) : (
+                    <div className="px-4 py-8 text-center text-slate-400 text-sm italic">
+                        {remoteLoading && loadOptions ? 'Cargando...' : 'No se encontraron resultados'}
+                    </div>
+                )}
+            </div>
+            {loadOptions && !remoteLoading && remoteHasMore && (
+                <div className="p-1.5 border-t border-slate-100 text-center text-[9px] font-bold text-slate-400 uppercase tracking-widest shrink-0 bg-slate-50/50">
+                    Deslice para cargar más...
+                </div>
+            )}
+        </div>
+    ) : null;
+
     return (
         <div className="relative" ref={containerRef}>
             <div 
@@ -286,79 +449,8 @@ const SearchableSelect = ({
                 </div>
             </div>
 
-            {isOpen && (
-                <div 
-                    className={`z-[100] bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-1 duration-200 ${
-                        dropdownWidth ? 'fixed' : 'absolute mt-1 w-full'
-                    }`}
-                    style={dropdownWidth ? (panelPos || computePanelPos()) : undefined}
-                >
-                    <div className="p-2 border-b border-slate-100 bg-slate-50 flex items-center gap-2">
-                        <Search size={14} className="text-slate-400 ml-2" />
-                        <input 
-                            autoFocus
-                            type="text"
-                            value={search}
-                            onChange={(e) => setSearch(e.target.value.toUpperCase())}
-                            placeholder="Buscar..."
-                            className="w-full bg-transparent border-none outline-none py-1 text-sm text-slate-700 placeholder:text-slate-400 focus:ring-0 uppercase"
-                            onClick={(e) => e.stopPropagation()}
-                        />
-                        {search && (
-                            <button onClick={() => setSearch('')} className="p-1 hover:text-slate-600 rounded text-slate-400 transition-colors">
-                                <X size={14} />
-                            </button>
-                        )}
-                        {loadOptions && remoteLoading && (
-                            <Loader2 size={14} className="text-indigo-500 animate-spin shrink-0" />
-                        )}
-                    </div>
-                    <div ref={listRef} onScroll={handleListScroll} className="max-h-60 overflow-y-auto">
-                        {filteredOptions.length > 0 ? (
-                            filteredOptions.map((opt, i) => {
-                                const optCode = getOptionCode(opt);
-                                const optLabel = getOptionLabel(opt);
-                                return (
-                                    <div 
-                                        key={opt[valueKey] || opt.id || i}
-                                        onClick={() => handleSelect(opt)}
-                                        onMouseEnter={() => setFocusIdx(i)}
-                                        className={`px-4 py-2.5 text-sm cursor-pointer flex items-center justify-between hover:bg-indigo-50 transition-colors ${
-                                            focusIdx === i ? 'bg-indigo-50' : ''
-                                        } ${
-                                            isSelected(opt) ? 'text-indigo-700 font-bold' : 'text-slate-600'
-                                        }`}
-                                    >
-                                        <div className="flex items-center justify-between w-full min-w-0">
-                                            <div className="flex flex-col flex-1 min-w-0 pr-2">
-                                                {optCode ? (
-                                                    <span className="text-[9px] font-mono text-slate-400 uppercase">{codeLabel}: {optCode}</span>
-                                                ) : null}
-                                                <span className="truncate text-[10px] font-bold text-slate-700">{optLabel}</span>
-                                            </div>
-                                            {opt.precio_unitario !== undefined && opt.precio_unitario !== null && (
-                                                <span className="text-[11px] font-bold text-emerald-600 font-mono shrink-0 ml-2">
-                                                    ${parseFloat(opt.precio_unitario || 0).toFixed(2)}
-                                                </span>
-                                            )}
-                                            {isSelected(opt) && <Check size={14} className="text-indigo-600 shrink-0 ml-2" />}
-                                        </div>
-                                    </div>
-                                );
-                            })
-                        ) : (
-                            <div className="px-4 py-8 text-center text-slate-400 text-sm italic">
-                                {remoteLoading && loadOptions ? 'Cargando...' : 'No se encontraron resultados'}
-                            </div>
-                        )}
-                    </div>
-                    {loadOptions && !remoteLoading && remoteHasMore && (
-                        <div className="p-1.5 border-t border-slate-100 text-center text-[9px] font-bold text-slate-400 uppercase tracking-widest">
-                            Deslice para cargar más...
-                        </div>
-                    )}
-                </div>
-            )}
+            {typeof document !== 'undefined' && dropdownPanel && createPortal(dropdownPanel, document.body)}
+
             <input type="hidden" name={name} value={value || ''} />
         </div>
     );
