@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { formatDate } from '../../../utils/dateUtils';
 import {
     FileText,
@@ -20,6 +21,7 @@ import {
 
 
 export default function ReceptionFiltersBar({ model }) {
+    const [printMenuPos, setPrintMenuPos] = useState(null);
     const { user, loading, searchTerm, setSearchTerm, setViewingReception, setVoidConfirmId, canDeleteReception, setDeleteConfirmRm, getQualityBadgeClass, printingPdfId, openPrintMenuId, setOpenPrintMenuId, handlePrintLab001, handleDownloadLab001Docx, handlePrintOriginCert, handleDownloadOriginCertDocx, handleOpenQualityModal, handleOpenPrintTarima, handleEdit, handlePrintReceptionSummary, filteredMaterials, getStatusBadge, getStatusIcon, getStatusLabel, handleQuickApprove } = model;
 
     return (<div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
@@ -226,7 +228,22 @@ export default function ReceptionFiltersBar({ model }) {
                                                         <div className="relative">
                                                             <button
                                                                 type="button"
-                                                                onClick={() => setOpenPrintMenuId(openPrintMenuId === rm.id ? null : rm.id)}
+                                                                onClick={(e) => {
+                                                                    if (openPrintMenuId === rm.id) {
+                                                                        setOpenPrintMenuId(null);
+                                                                        setPrintMenuPos(null);
+                                                                    } else {
+                                                                        const rect = e.currentTarget.getBoundingClientRect();
+                                                                        const spaceBelow = window.innerHeight - rect.bottom;
+                                                                        const spaceAbove = rect.top;
+                                                                        const dir = spaceBelow < 280 && spaceAbove > spaceBelow ? 'up' : 'down';
+                                                                        const right = Math.max(8, document.documentElement.clientWidth - rect.right);
+                                                                        const top = dir === 'down' ? rect.bottom + 4 : undefined;
+                                                                        const bottom = dir === 'up' ? window.innerHeight - rect.top + 4 : undefined;
+                                                                        setPrintMenuPos({ top, bottom, right, dir });
+                                                                        setOpenPrintMenuId(rm.id);
+                                                                    }
+                                                                }}
                                                                 disabled={printingPdfId === rm.id}
                                                                 className={`inline-flex items-center gap-1 px-2 py-1 text-[11px] font-bold rounded-lg border transition-all shadow-xs ${
                                                                     openPrintMenuId === rm.id
@@ -244,16 +261,24 @@ export default function ReceptionFiltersBar({ model }) {
                                                                 <ChevronDown size={10} className={`transition-transform duration-150 ${openPrintMenuId === rm.id ? 'rotate-180' : ''}`} />
                                                             </button>
 
-                                                            {openPrintMenuId === rm.id && (
+                                                            {openPrintMenuId === rm.id && printMenuPos && (
                                                                 <>
                                                                     {/* Overlay transparente para cerrar al hacer clic afuera */}
                                                                     <div
-                                                                        className="fixed inset-0 z-30"
-                                                                        onClick={() => setOpenPrintMenuId(null)}
+                                                                        className="fixed inset-0 z-40"
+                                                                        onClick={() => { setOpenPrintMenuId(null); setPrintMenuPos(null); }}
                                                                     />
 
                                                                     {/* Menú Desplegable */}
-                                                                    <div className="absolute right-0 top-full mt-1.5 w-60 bg-white border border-slate-200 rounded-xl shadow-xl py-1.5 z-40 text-left divide-y divide-slate-100 animate-in fade-in-50 zoom-in-95">
+                                                                    <div 
+                                                                        className={`fixed z-50 w-60 bg-white border border-slate-200 rounded-xl shadow-2xl py-1.5 text-left divide-y divide-slate-100 animate-in fade-in-50 ${
+                                                                            printMenuPos.dir === 'up' ? 'slide-in-from-bottom-2' : 'slide-in-from-top-2'
+                                                                        }`}
+                                                                        style={{
+                                                                            right: `${printMenuPos.right}px`,
+                                                                            ...(printMenuPos.dir === 'up' ? { bottom: `${printMenuPos.bottom}px` } : { top: `${printMenuPos.top}px` })
+                                                                        }}
+                                                                    >
                                                                         <div className="px-3 py-1 text-[10px] font-black uppercase tracking-wider text-slate-400">
                                                                             Formatos Oficiales
                                                                         </div>

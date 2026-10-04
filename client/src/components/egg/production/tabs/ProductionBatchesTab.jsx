@@ -21,6 +21,7 @@ import {
 
 export default function ProductionBatchesTab({ model }) {
     const [openActionMenuId, setOpenActionMenuId] = useState(null);
+    const [actionMenuPos, setActionMenuPos] = useState(null);
     const { setQualityModal, loading, searchTerm, setSearchTerm, activeTab, setSelectedBatchForPasteurize, setIsPasteurizeModalOpen, canEditProduction, canDeleteProduction, canManageLots, setDeleteConfirmBatch, handleOpenStagesModal, handleOpenClosePasteurization, handleReopenPasteurization, handleOpenBalanceModal, handleOpenWastesModal, handleOpenEditBatch, handleExportSummary, getBatchStatusBadge, filteredBatches, handleCreateCoproductBatch } = model;
 
     return (<>{activeTab === 'batches' && (
@@ -216,20 +217,43 @@ export default function ProductionBatchesTab({ model }) {
                                                     <div className="relative inline-block text-left">
                                                         <button
                                                             type="button"
-                                                            onClick={() => setOpenActionMenuId(openActionMenuId === b.id ? null : b.id)}
+                                                            onClick={(e) => {
+                                                                if (openActionMenuId === b.id) {
+                                                                    setOpenActionMenuId(null);
+                                                                    setActionMenuPos(null);
+                                                                } else {
+                                                                    const rect = e.currentTarget.getBoundingClientRect();
+                                                                    const spaceBelow = window.innerHeight - rect.bottom;
+                                                                    const spaceAbove = rect.top;
+                                                                    const dir = spaceBelow < 220 && spaceAbove > spaceBelow ? 'up' : 'down';
+                                                                    const right = Math.max(8, document.documentElement.clientWidth - rect.right);
+                                                                    const top = dir === 'down' ? rect.bottom + 4 : undefined;
+                                                                    const bottom = dir === 'up' ? window.innerHeight - rect.top + 4 : undefined;
+                                                                    setActionMenuPos({ top, bottom, right, dir });
+                                                                    setOpenActionMenuId(b.id);
+                                                                }
+                                                            }}
                                                             className="p-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-lg border border-slate-300 transition-colors shadow-xs flex items-center"
                                                             title="Más opciones del lote"
                                                         >
                                                             <MoreVertical size={14} />
                                                         </button>
 
-                                                        {openActionMenuId === b.id && (
+                                                        {openActionMenuId === b.id && actionMenuPos && (
                                                             <>
                                                                 <div
-                                                                    className="fixed inset-0 z-30"
-                                                                    onClick={() => setOpenActionMenuId(null)}
+                                                                    className="fixed inset-0 z-40"
+                                                                    onClick={() => { setOpenActionMenuId(null); setActionMenuPos(null); }}
                                                                 />
-                                                                <div className="absolute right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl p-1.5 z-40 flex flex-col gap-1 min-w-[170px] text-left animate-in fade-in duration-100">
+                                                                <div 
+                                                                    className={`fixed z-50 bg-white border border-slate-200 rounded-xl shadow-2xl p-1.5 flex flex-col gap-1 min-w-[170px] text-left animate-in fade-in duration-100 ${
+                                                                        actionMenuPos.dir === 'up' ? 'slide-in-from-bottom-2' : 'slide-in-from-top-2'
+                                                                    }`}
+                                                                    style={{
+                                                                        right: `${actionMenuPos.right}px`,
+                                                                        ...(actionMenuPos.dir === 'up' ? { bottom: `${actionMenuPos.bottom}px` } : { top: `${actionMenuPos.top}px` })
+                                                                    }}
+                                                                >
                                                                     {/* Exportar Resumen */}
                                                                     <div className="px-2 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100 flex items-center justify-between">
                                                                         <span>Exportar</span>
