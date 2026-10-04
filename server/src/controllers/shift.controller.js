@@ -534,6 +534,60 @@ const closeShift = async (req, res) => {
             const hasArqueoData = actual_cash !== undefined && actual_cash !== null && actual_cash !== '';
             if (hasArqueoData) {
                 summary = await saveArqueoData(conn, shift, { actual_cash, expenses, incomes, remesas, puntos });
+            } else {
+                // Si el cajero cerró sin desglose físico de arqueo, calcular y persistir ventas reales del turno desde sales_headers
+                const [salesTotals] = await conn.query(`
+                    SELECT 
+                        SUM(CASE WHEN a.metodo_pago = '01' THEN GREATEST(0, COALESCE(a.total_pagar, 0) - a.non_cash) ELSE 0 END) as cash,
+                        SUM(CASE WHEN a.metodo_pago = '01' THEN GREATEST(0, COALESCE(a.total_pagar, 0) - a.non_cash) ELSE a.sum_monto END) as total,
+                        SUM(CASE WHEN a.metodo_pago IN ('02', '03') THEN a.sum_monto ELSE 0 END) as card,
+                        SUM(CASE WHEN a.metodo_pago = '05' THEN a.sum_monto ELSE 0 END) as transfer,
+                        SUM(CASE WHEN a.metodo_pago NOT IN ('01', '02', '03', '05', '99') THEN a.sum_monto ELSE 0 END) as other
+                    FROM (
+                        SELECT 
+                            h.id,
+                            h.total_pagar,
+                            h.non_cash,
+                            p.metodo_pago,
+                            SUM(p.monto) as sum_monto
+                        FROM (
+                            SELECT 
+                                h.id, 
+                                h.total_pagar,
+                                COALESCE(SUM(CASE WHEN p.metodo_pago != '01' THEN p.monto ELSE 0 END), 0) as non_cash
+                            FROM sales_headers h
+                            JOIN sales_payments p ON p.sale_id = h.id
+                            WHERE h.shift_id = ? AND h.estado = 'emitido'
+                            AND NOT EXISTS (SELECT 1 FROM dtes WHERE venta_id = h.id AND status = 'INVALIDADO')
+                            GROUP BY h.id
+                        ) h
+                        JOIN sales_payments p ON p.sale_id = h.id
+                        GROUP BY h.id, h.total_pagar, h.non_cash, p.metodo_pago
+                    ) a
+                `, [id]);
+
+                const totals = salesTotals[0] || {};
+                const totalSales = parseFloat(totals.total || 0);
+                const cashSales = parseFloat(totals.cash || 0);
+                const cardSales = parseFloat(totals.card || 0);
+                const transferSales = parseFloat(totals.transfer || 0);
+                const otherSales = parseFloat(totals.other || 0);
+                const opening = parseFloat(shift.opening_balance || 0);
+                const expectedCash = opening + cashSales;
+
+                await conn.query(`
+                    UPDATE pos_shifts SET 
+                        total_sales = ?,
+                        cash_sales = ?,
+                        card_sales = ?,
+                        transfer_sales = ?,
+                        other_sales = ?,
+                        expected_cash = ?,
+                        actual_cash = CASE WHEN actual_cash = 0 OR actual_cash IS NULL THEN ? ELSE actual_cash END,
+                        difference = CASE WHEN actual_cash = 0 OR actual_cash IS NULL THEN 0 ELSE actual_cash - ? END,
+                        arqueado = 1
+                    WHERE id = ?
+                `, [totalSales, cashSales, cardSales, transferSales, otherSales, expectedCash, expectedCash, expectedCash, id]);
             }
 
             // Finalizar el turno (el arqueo no es requisito)
