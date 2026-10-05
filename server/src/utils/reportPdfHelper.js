@@ -171,21 +171,44 @@ function renderClosingFooter(doc, startX, y, count, entityName = 'Registros') {
 }
 
 /**
- * Numeración de páginas centrada en pie de página (Página X de Y).
+ * Numeración de páginas centrada en pie de página (Página X de Y),
+ * y opcionalmente número de Folio correlativo en el encabezado superior derecho.
  */
-function renderPageNumbers(doc) {
+function renderPageNumbers(doc, initialFolio = null) {
     const range = doc.bufferedPageRange();
+    const hasFolio = initialFolio !== null && initialFolio !== undefined && String(initialFolio).trim() !== '' && !isNaN(parseInt(initialFolio, 10));
+    const startFolio = hasFolio ? parseInt(initialFolio, 10) : null;
+
     for (let i = range.start; i < range.start + range.count; i++) {
         doc.switchToPage(i);
         const oldBottom = doc.page.margins.bottom;
+        const oldTop = doc.page.margins.top;
         doc.page.margins.bottom = 0;
+        doc.page.margins.top = 0;
+
+        // 1. Pie de página: Página X de Y
         doc.fontSize(7).font('Helvetica').fillColor('#94a3b8');
         doc.text(`Página ${i + 1} de ${range.count}`, 30, doc.page.height - 20, {
             align: 'center',
             width: doc.page.width - 60,
             lineBreak: false
         });
+
+        // 2. Encabezado superior derecho: Folio correlativo que incrementa por página
+        if (startFolio !== null) {
+            const pageOffset = i - range.start;
+            const currentFolio = startFolio + pageOffset;
+            const folioText = `FOLIO No. ${String(currentFolio).padStart(4, '0')}`;
+            doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#0f172a');
+            doc.text(folioText, doc.page.width - 180, 20, {
+                align: 'right',
+                width: 150,
+                lineBreak: false
+            });
+        }
+
         doc.page.margins.bottom = oldBottom;
+        doc.page.margins.top = oldTop;
     }
 }
 

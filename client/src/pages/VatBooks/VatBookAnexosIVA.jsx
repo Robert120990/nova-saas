@@ -22,6 +22,7 @@ const VatBookAnexosIVA = () => {
     const [debouncedSearch, setDebouncedSearch] = useState('');
     const [page, setPage] = useState(1);
     const [limit, setLimit] = useState(15);
+    const [folio, setFolio] = useState('1');
     const [isExporting, setIsExporting] = useState(null);
 
     React.useEffect(() => {
@@ -71,7 +72,8 @@ const VatBookAnexosIVA = () => {
                 fecha_fin: fechaFin || undefined,
                 tipo_dte: tipoDte || undefined,
                 branch_id: branchId || undefined,
-                search: debouncedSearch || undefined
+                search: debouncedSearch || undefined,
+                folio: folio || undefined
             };
             const res = await axios.get(endpoint, { params, responseType: 'blob' });
             const contentType = res.headers['content-type'] || '';
@@ -217,7 +219,7 @@ const EstadoBadge = ({ estado }) => {
                     </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
                     <div className="space-y-1">
                         <label className={labelCls}>Sucursal Específica</label>
                         <select
@@ -252,6 +254,17 @@ const EstadoBadge = ({ estado }) => {
                                     <option key={t.code} value={t.code}>{t.description?.toUpperCase()}</option>
                                 ))}
                         </select>
+                    </div>
+                    <div className="space-y-1">
+                        <label className={labelCls}>Folio Inicial</label>
+                        <input
+                            type="number"
+                            min="1"
+                            value={folio}
+                            onChange={(e) => setFolio(e.target.value)}
+                            placeholder="1"
+                            className={inputCls}
+                        />
                     </div>
                     <div className="space-y-1">
                         <label className={labelCls}>Buscar</label>

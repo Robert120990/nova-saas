@@ -4,7 +4,8 @@ import axios from 'axios';
 import { 
     GitBranch, 
     Calendar,
-    Building2
+    Building2,
+    FileText
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../../context/AuthContext';
@@ -19,7 +20,8 @@ const VatBookSalesConsumers = () => {
     const [filters, setFilters] = useState({
         year: currentYear.toString(),
         month: currentMonth.toString(),
-        branch_id: user?.branch_id || 'all'
+        branch_id: user?.branch_id || 'all',
+        folio: '1'
     });
 
     const [isGenerating, setIsGenerating] = useState(false);
@@ -223,6 +225,22 @@ const VatBookSalesConsumers = () => {
                         <option key={y} value={y}>{y}</option>
                     ))}
                 </select>
+            </div>
+
+            {/* Folio Inicial */}
+            <div className="space-y-2">
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                    <FileText size={12} className="text-indigo-500" /> Folio Inicial
+                </label>
+                <input 
+                    type="number"
+                    min="1"
+                    name="folio"
+                    placeholder="1"
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-xs font-black text-slate-700 outline-none focus:ring-4 focus:ring-indigo-500/5 transition-all"
+                    value={filters.folio || '1'}
+                    onChange={(e) => handleFilterChange('folio', e.target.value)}
+                />
             </div>
 
             {/* Toggle Resumen / Detalle */}

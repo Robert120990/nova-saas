@@ -50,6 +50,7 @@ const VatBookLiquidation = () => {
     const [year, setYear] = useState(currentYear);
     const [month, setMonth] = useState(currentMonth);
     const [branchId, setBranchId] = useState('all');
+    const [folio, setFolio] = useState('1');
 
     // Parámetros modificables de la declaración
     const [remanenteAnterior, setRemanenteAnterior] = useState(0);
@@ -111,7 +112,7 @@ const VatBookLiquidation = () => {
             const filename = `Liquidacion_IVA_F07_${scopeSlug}_${year}_${month}.${extension}`;
 
             const res = await axios.get(endpoint, {
-                params: queryParams,
+                params: { ...queryParams, folio },
                 responseType: 'blob'
             });
 
@@ -257,7 +258,7 @@ const VatBookLiquidation = () => {
                     </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
                     <div>
                         <label className={labelCls}>Año Fiscal</label>
                         <div className="relative">
@@ -310,6 +311,18 @@ const VatBookLiquidation = () => {
                             </select>
                             <GitBranch size={16} className="absolute right-3 top-2.5 text-slate-400 pointer-events-none" />
                         </div>
+                    </div>
+
+                    <div>
+                        <label className={labelCls}>Folio Inicial</label>
+                        <input
+                            type="number"
+                            min="1"
+                            value={folio}
+                            onChange={(e) => setFolio(e.target.value)}
+                            placeholder="1"
+                            className={inputCls}
+                        />
                     </div>
 
                     <div className="flex items-end">

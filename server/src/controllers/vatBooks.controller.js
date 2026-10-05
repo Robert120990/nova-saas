@@ -65,8 +65,15 @@ const drawPdfSummaryBox = (doc, x, y, totals, title = 'RESUMEN') => {
     try {
         const hasNc = (totals.nc_total && totals.nc_total > 0) || (totals.nc_grav && totals.nc_grav > 0);
         const hasAnticipo = totals.anticipo_cuenta && totals.anticipo_cuenta > 0;
+        const hasNoSujeta = totals.no_sujeta !== undefined && (totals.no_sujeta > 0 || hasNc);
+        const hasFovialCotrans = totals.fovial > 0 || totals.cotrans > 0;
         const boxWidth = 260;
-        const boxHeight = (hasNc ? 165 : 140) + (hasAnticipo ? 13 : 0);
+        let rowsCount = 5;
+        if (hasNc) rowsCount += 2;
+        if (hasNoSujeta) rowsCount += 1;
+        if (hasFovialCotrans) rowsCount += 2;
+        if (hasAnticipo) rowsCount += 1;
+        const boxHeight = 28 + (rowsCount * 13);
 
         if (y + boxHeight > 510) {
             doc.addPage();
@@ -106,10 +113,13 @@ const drawPdfSummaryBox = (doc, x, y, totals, title = 'RESUMEN') => {
 
         drawRow(hasNc ? 'Gravadas Netas:' : 'Gravadas:', totals.grav);
         drawRow('Exentas:', totals.exe);
+        if (hasNoSujeta) {
+            drawRow('No Sujetas:', totals.no_sujeta);
+        }
         drawRow(hasNc ? 'IVA Neto:' : 'IVA:', totals.iva);
-        if (totals.fovial > 0 || totals.cotrans > 0) {
-            drawRow('FOVIAL:', totals.fovial);
-            drawRow('COTRANS:', totals.cotrans);
+        if (hasFovialCotrans) {
+            if (totals.fovial > 0) drawRow('FOVIAL:', totals.fovial);
+            if (totals.cotrans > 0) drawRow('COTRANS:', totals.cotrans);
         }
         if (hasAnticipo) {
             drawRow('Anticipo a Cuenta:', totals.anticipo_cuenta);
@@ -135,6 +145,7 @@ const drawPdfSummaryBox = (doc, x, y, totals, title = 'RESUMEN') => {
 const getVatBookPurchasesPDF = async (req, res) => {
     try {
         const { year, month, branch_id } = req.query;
+        const folio = req.query.folio || req.query.start_folio || req.query.folio_inicio || null;
         const companyId = req.company_id || req.user?.company_id;
 
         console.log(`[VAT Books] Generating Purchases: Co=${companyId}, Period=${year}-${month}, Branch=${branch_id}`);
@@ -277,9 +288,10 @@ const getVatBookPurchasesPDF = async (req, res) => {
                 const i = Math.abs(n(r.iva));
                 const f = Math.abs(n(r.fovial));
                 const c = Math.abs(n(r.cotrans));
+                const ns = Math.abs(n(r.total_nosujeta)) + f + c;
                 const ac = Math.abs(n(r.anticipo_cuenta));
                 const re = Math.abs(n(r.retencion)) + Math.abs(n(r.percepcion));
-                const to = Math.abs(n(r.monto_total)) || ((g + e + i + f + c + re) || 0);
+                const to = Math.abs(n(r.monto_total)) || ((g + e + i + ns + re) || 0);
 
                 return {
                     Fecha: reportPdfHelper.formatDate(r.fecha),
@@ -292,8 +304,7 @@ const getVatBookPurchasesPDF = async (req, res) => {
                     Exento: Number((sign * e).toFixed(2)),
                     Neto: Number((sign * g).toFixed(2)),
                     IVA: Number((sign * i).toFixed(2)),
-                    FOVIAL: Number((sign * f).toFixed(2)),
-                    COTRANS: Number((sign * c).toFixed(2)),
+                    'No Sujetas': Number((sign * ns).toFixed(2)),
                     'Ret/Per': Number((re).toFixed(2)),
                     'Anticipo Cta.': Number((ac).toFixed(2)),
                     Total: Number((sign * to).toFixed(2)),
@@ -312,8 +323,7 @@ const getVatBookPurchasesPDF = async (req, res) => {
                     { header: 'Exento', key: 'Exento', width: 14 },
                     { header: 'Neto', key: 'Neto', width: 14 },
                     { header: 'IVA', key: 'IVA', width: 14 },
-                    { header: 'FOVIAL', key: 'FOVIAL', width: 12 },
-                    { header: 'COTRANS', key: 'COTRANS', width: 12 },
+                    { header: 'No Sujetas', key: 'No Sujetas', width: 14 },
                     { header: 'Ret/Per', key: 'Ret/Per', width: 14 },
                     { header: 'Anticipo Cta.', key: 'Anticipo Cta.', width: 14 },
                     { header: 'Total', key: 'Total', width: 14 },
@@ -343,8 +353,7 @@ const getVatBookPurchasesPDF = async (req, res) => {
             gravada: 46,
             exenta: 38,
             iva: 42,
-            fov: 26,
-            cot: 26,
+            no_sujeta: 52,
             ret_per: 40,
             ant_cta: 36,
             total: 70
@@ -367,8 +376,7 @@ const getVatBookPurchasesPDF = async (req, res) => {
             doc.text('GRAVADA', x, y + 4, { width: cols.gravada - 2, align: 'right' }); x += cols.gravada;
             doc.text('EXENTA', x, y + 4, { width: cols.exenta - 2, align: 'right' }); x += cols.exenta;
             doc.text('IVA', x, y + 4, { width: cols.iva - 2, align: 'right' }); x += cols.iva;
-            doc.text('FOV', x, y + 4, { width: cols.fov - 2, align: 'right' }); x += cols.fov;
-            doc.text('COT', x, y + 4, { width: cols.cot - 2, align: 'right' }); x += cols.cot;
+            doc.text('NO SUJETA', x, y + 4, { width: cols.no_sujeta - 2, align: 'right' }); x += cols.no_sujeta;
             doc.text('RET/PER', x, y + 4, { width: cols.ret_per - 2, align: 'right' }); x += cols.ret_per;
             doc.text('ANT. CTA', x, y + 4, { width: cols.ant_cta - 2, align: 'right' }); x += cols.ant_cta;
             doc.text('TOTAL', x, y + 4, { width: cols.total - 2, align: 'right' });
@@ -379,7 +387,7 @@ const getVatBookPurchasesPDF = async (req, res) => {
         drawPageHeader();
         drawTableHeader();
 
-        let t = { grav: 0, exe: 0, iva: 0, fovial: 0, cotrans: 0, ret: 0, anticipo_cuenta: 0, total: 0, nc_total: 0, nc_grav: 0, nc_iva: 0, bruto_total: 0 };
+        let t = { grav: 0, exe: 0, iva: 0, no_sujeta: 0, ret: 0, anticipo_cuenta: 0, total: 0, nc_total: 0, nc_grav: 0, nc_iva: 0, nc_no_sujeta: 0, bruto_total: 0 };
 
         rows.forEach((r, idx) => {
             if (doc.y > 510) {
@@ -395,11 +403,12 @@ const getVatBookPurchasesPDF = async (req, res) => {
             const i = Math.abs(n(r.iva));
             const f = Math.abs(n(r.fovial));
             const c = Math.abs(n(r.cotrans));
+            const ns = Math.abs(n(r.total_nosujeta)) + f + c;
             const ac = Math.abs(n(r.anticipo_cuenta));
             const re = Math.abs(n(r.retencion)) + Math.abs(n(r.percepcion));
             let to = Math.abs(n(r.monto_total));
-            if (to === 0 && (g > 0 || e > 0 || i > 0 || re > 0)) {
-                to = g + e + i + f + c + re;
+            if (to === 0 && (g > 0 || e > 0 || i > 0 || ns > 0 || re > 0)) {
+                to = g + e + i + ns + re;
             }
 
             const rowY = doc.y;
@@ -442,17 +451,16 @@ const getVatBookPurchasesPDF = async (req, res) => {
             doc.text(reportPdfHelper.fmt(sign * g), x, rowY, { width: cols.gravada - 2, align: 'right' }); x += cols.gravada;
             doc.text(reportPdfHelper.fmt(sign * e), x, rowY, { width: cols.exenta - 2, align: 'right' }); x += cols.exenta;
             doc.text(reportPdfHelper.fmt(sign * i), x, rowY, { width: cols.iva - 2, align: 'right' }); x += cols.iva;
-            doc.text(reportPdfHelper.fmt(sign * f), x, rowY, { width: cols.fov - 2, align: 'right' }); x += cols.fov;
-            doc.text(reportPdfHelper.fmt(sign * c), x, rowY, { width: cols.cot - 2, align: 'right' }); x += cols.cot;
+            doc.text(reportPdfHelper.fmt(sign * ns), x, rowY, { width: cols.no_sujeta - 2, align: 'right' }); x += cols.no_sujeta;
             doc.text(reportPdfHelper.fmt(re), x, rowY, { width: cols.ret_per - 2, align: 'right' }); x += cols.ret_per;
             doc.text(reportPdfHelper.fmt(ac), x, rowY, { width: cols.ant_cta - 2, align: 'right' }); x += cols.ant_cta;
             doc.text(reportPdfHelper.fmt(sign * to), x, rowY, { width: cols.total - 2, align: 'right' });
 
             if (esNC) {
-                t.grav -= g; t.exe -= e; t.iva -= i; t.fovial -= f; t.cotrans -= c; t.ret -= re; t.total -= to;
-                t.nc_total += to; t.nc_grav += g; t.nc_iva += i;
+                t.grav -= g; t.exe -= e; t.iva -= i; t.no_sujeta -= ns; t.ret -= re; t.total -= to;
+                t.nc_total += to; t.nc_grav += g; t.nc_iva += i; t.nc_no_sujeta += ns;
             } else {
-                t.grav += g; t.exe += e; t.iva += i; t.fovial += f; t.cotrans += c; t.ret += re; t.total += to;
+                t.grav += g; t.exe += e; t.iva += i; t.no_sujeta += ns; t.ret += re; t.total += to;
                 t.bruto_total += to;
             }
             t.anticipo_cuenta += ac;
@@ -473,8 +481,7 @@ const getVatBookPurchasesPDF = async (req, res) => {
         doc.text(reportPdfHelper.fmt(t.grav), tx, totalRowY + 4, { width: cols.gravada - 2, align: 'right' }); tx += cols.gravada;
         doc.text(reportPdfHelper.fmt(t.exe), tx, totalRowY + 4, { width: cols.exenta - 2, align: 'right' }); tx += cols.exenta;
         doc.text(reportPdfHelper.fmt(t.iva), tx, totalRowY + 4, { width: cols.iva - 2, align: 'right' }); tx += cols.iva;
-        doc.text(reportPdfHelper.fmt(t.fovial), tx, totalRowY + 4, { width: cols.fov - 2, align: 'right' }); tx += cols.fov;
-        doc.text(reportPdfHelper.fmt(t.cotrans), tx, totalRowY + 4, { width: cols.cot - 2, align: 'right' }); tx += cols.cot;
+        doc.text(reportPdfHelper.fmt(t.no_sujeta), tx, totalRowY + 4, { width: cols.no_sujeta - 2, align: 'right' }); tx += cols.no_sujeta;
         doc.text(reportPdfHelper.fmt(t.ret), tx, totalRowY + 4, { width: cols.ret_per - 2, align: 'right' }); tx += cols.ret_per;
         doc.text(reportPdfHelper.fmt(t.anticipo_cuenta), tx, totalRowY + 4, { width: cols.ant_cta - 2, align: 'right' }); tx += cols.ant_cta;
         doc.text(reportPdfHelper.fmt(t.total), tx, totalRowY + 4, { width: cols.total - 2, align: 'right' });
@@ -491,7 +498,7 @@ const getVatBookPurchasesPDF = async (req, res) => {
 
         const footerY = Math.max(doc.y, boxEndY) + 12;
         reportPdfHelper.renderClosingFooter(doc, startX, footerY, rows.length, 'Documentos');
-        reportPdfHelper.renderPageNumbers(doc);
+        reportPdfHelper.renderPageNumbers(doc, folio);
         doc.end();
 
         const buffer = await getBuffer();
@@ -510,6 +517,7 @@ const getVatBookPurchasesPDF = async (req, res) => {
 const getVatBookSalesTaxpayersPDF = async (req, res) => {
     try {
         const { year, month, branch_id } = req.query;
+        const folio = req.query.folio || req.query.start_folio || req.query.folio_inicio || null;
         const companyId = req.company_id || req.user?.company_id;
 
         console.log(`[VAT Books] Generating CCF: Co=${companyId}, Period=${year}-${month}, Branch=${branch_id}`);
@@ -702,7 +710,7 @@ const getVatBookSalesTaxpayersPDF = async (req, res) => {
 
         const footerY = Math.max(doc.y, boxEndY) + 12;
         reportPdfHelper.renderClosingFooter(doc, startX, footerY, rows.length, 'Documentos');
-        reportPdfHelper.renderPageNumbers(doc);
+        reportPdfHelper.renderPageNumbers(doc, folio);
         doc.end();
 
         const buffer = await getBuffer();
@@ -721,6 +729,7 @@ const getVatBookSalesTaxpayersPDF = async (req, res) => {
 const getVatBookSalesConsumersPDF = async (req, res) => {
     try {
         const { year, month, branch_id, resumen } = req.query;
+        const folio = req.query.folio || req.query.start_folio || req.query.folio_inicio || null;
         const companyId = req.company_id || req.user?.company_id;
         const isResumen = resumen !== 'false';
 
@@ -960,7 +969,7 @@ const getVatBookSalesConsumersPDF = async (req, res) => {
 
             const footerY = Math.max(doc.y, boxEndY) + 12;
             reportPdfHelper.renderClosingFooter(doc, startX, footerY, rows.length, 'Días');
-            reportPdfHelper.renderPageNumbers(doc);
+            reportPdfHelper.renderPageNumbers(doc, folio);
         } else {
             const cols = {
                 numero_control: 124,
@@ -1051,7 +1060,7 @@ const getVatBookSalesConsumersPDF = async (req, res) => {
 
             const footerY = Math.max(doc.y, boxEndY) + 12;
             reportPdfHelper.renderClosingFooter(doc, startX, footerY, rows.length, 'Documentos');
-            reportPdfHelper.renderPageNumbers(doc);
+            reportPdfHelper.renderPageNumbers(doc, folio);
         }
         doc.end();
 
@@ -1210,6 +1219,7 @@ const getVatBookAnexosIVAPDF = async (req, res) => {
         if (!companyId) return res.status(401).json({ message: 'No autorizado' });
 
         const { fecha_inicio, fecha_fin, tipo_dte, search = '' } = req.query;
+        const folio = req.query.folio || req.query.start_folio || req.query.folio_inicio || null;
 
         const company = await reportPdfHelper.getCompanyInfo(companyId);
 
@@ -1327,7 +1337,7 @@ const getVatBookAnexosIVAPDF = async (req, res) => {
 
         const footerY = Math.max(doc.y, boxEndY) + 12;
         reportPdfHelper.renderClosingFooter(doc, startX, footerY, rows.length, 'Documentos');
-        reportPdfHelper.renderPageNumbers(doc);
+        reportPdfHelper.renderPageNumbers(doc, folio);
         doc.end();
 
         const buffer = await getBuffer();
@@ -1531,7 +1541,7 @@ const calculateVatLiquidation = async (companyId, year, month, branch_id, option
             COUNT(*) as count,
             COALESCE(SUM(ph.total_gravada), 0) as total_gravada,
             COALESCE(SUM(ph.total_exenta), 0) as total_exenta,
-            COALESCE(SUM(ph.total_nosujeta), 0) as total_nosujeta,
+            COALESCE(SUM(ph.total_nosujeta + COALESCE(ph.fovial, 0) + COALESCE(ph.cotrans, 0)), 0) as total_nosujeta,
             COALESCE(SUM(ph.iva), 0) as total_iva,
             COALESCE(SUM(ph.retencion), 0) as total_retencion,
             COALESCE(SUM(ph.percepcion), 0) as total_percepcion,
@@ -1560,7 +1570,7 @@ const calculateVatLiquidation = async (companyId, year, month, branch_id, option
             COUNT(*) as count,
             COALESCE(SUM(eh.total_gravada + COALESCE(eh.gravadas_importaciones, 0) + COALESCE(eh.gravadas_internaciones, 0)), 0) as total_gravada,
             COALESCE(SUM(eh.total_exenta), 0) as total_exenta,
-            COALESCE(SUM(eh.total_nosujeta), 0) as total_nosujeta,
+            COALESCE(SUM(eh.total_nosujeta + COALESCE(eh.fovial, 0) + COALESCE(eh.cotrans, 0)), 0) as total_nosujeta,
             COALESCE(SUM(eh.iva + COALESCE(eh.iva_importaciones, 0)), 0) as total_iva,
             COALESCE(SUM(eh.retencion), 0) as total_retencion,
             COALESCE(SUM(eh.percepcion), 0) as total_percepcion,
@@ -1909,6 +1919,7 @@ const getVatLiquidationData = async (req, res) => {
 const getVatLiquidationPDF = async (req, res) => {
     try {
         const { year, month, branch_id = 'all', remanente_anterior = 0, retenciones_renta_sufridas = 0, fuel_rate, general_rate } = req.query;
+        const folio = req.query.folio || req.query.start_folio || req.query.folio_inicio || null;
         const companyId = req.company_id || req.user?.company_id;
 
         if (!companyId) return res.status(401).json({ message: 'No autorizado' });
@@ -2115,7 +2126,7 @@ const getVatLiquidationPDF = async (req, res) => {
 
         // Cierre estandarizado sin firmas
         reportPdfHelper.renderClosingFooter(doc, 30, curY, 2, 'Obligaciones Fiscales');
-        reportPdfHelper.renderPageNumbers(doc);
+        reportPdfHelper.renderPageNumbers(doc, folio);
 
         doc.end();
         const buffer = await getBuffer();
