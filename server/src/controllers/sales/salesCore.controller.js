@@ -1253,11 +1253,94 @@ const updateSaleCustomer = async (req, res) => {
     }
 };
 
+/**
+ * Obtener notas de remisión pendientes de facturar para la empresa
+ */
+const getPendingRemisiones = async (req, res) => {
+    try {
+        const { customer_id, search = '', limit = 50 } = req.query;
+        let whereClause = `
+            WHERE h.company_id = ?
+              AND (h.tipo_documento = '04' OR h.dte_type = '04')
+              AND h.estado = 'emitido'
+              AND NOT EXISTS (
+                  SELECT 1 FROM sales_linked_documents ld
+                  JOIN sales_headers fact ON ld.sale_id = fact.id
+                  WHERE ld.doc_type = '04'
+                    AND (ld.doc_number = h.codigo_generacion OR ld.doc_number = h.numero_control)
+                    AND fact.estado != 'invalidado'
+              )
+        `;
+        const params = [req.company_id];
+
+        if (customer_id && customer_id !== 'all') {
+            whereClause += ' AND h.customer_id = ?';
+            params.push(customer_id);
+        }
+
+        if (search && search.trim()) {
+            const s = `%${search.trim()}%`;
+            whereClause += ' AND (c.nombre LIKE ? OR h.cliente_nombre LIKE ? OR h.numero_control LIKE ? OR h.codigo_generacion LIKE ?)';
+            params.push(s, s, s, s);
+        }
+
+        params.push(parseInt(limit, 10) || 50);
+
+        const [remisiones] = await pool.query(`
+            SELECT h.id, h.company_id, h.branch_id, h.dte_type, h.tipo_documento,
+                   h.customer_id, h.cliente_nombre, h.codigo_generacion, h.numero_control,
+                   h.fecha_emision, h.hora_emision, h.total_gravado, h.total_exento,
+                   h.total_pagar, h.observaciones,
+                   COALESCE(c.nombre, h.cliente_nombre, 'Consumidor Final') as customer_name,
+                   c.nrc as customer_nrc, c.nit as customer_nit, c.numero_documento as customer_dui,
+                   c.direccion as customer_address, c.departamento as customer_departamento,
+                   c.municipio as customer_municipio
+            FROM sales_headers h
+            LEFT JOIN customers c ON c.id = h.customer_id
+            ${whereClause}
+            ORDER BY h.fecha_emision DESC, h.id DESC
+            LIMIT ?
+        `, params);
+
+        if (remisiones.length === 0) {
+            return res.json({ success: true, data: [] });
+        }
+
+        const remisionIds = remisiones.map(r => r.id);
+        const [items] = await pool.query(`
+            SELECT si.*, p.nombre as producto_nombre, p.precio as producto_precio_actual,
+                   p.tipo_combustible, p.unidad_medida
+            FROM sales_items si
+            LEFT JOIN products p ON p.id = si.product_id
+            WHERE si.sale_id IN (?)
+            ORDER BY si.id ASC
+        `, [remisionIds]);
+
+        const itemsBySale = new Map();
+        for (const item of items) {
+            if (!itemsBySale.has(item.sale_id)) itemsBySale.set(item.sale_id, []);
+            itemsBySale.get(item.sale_id).push(item);
+        }
+
+        const result = remisiones.map(r => ({
+            ...r,
+            items: itemsBySale.get(r.id) || []
+        }));
+
+        res.json({ success: true, data: result });
+    } catch (error) {
+        console.error('[getPendingRemisiones] Error:', error);
+        res.status(500).json({ success: false, message: 'Error al consultar notas de remisión pendientes', error: error.message });
+    }
+};
+
 module.exports = {
     createSale,
     getSales,
     getSaleById,
     voidSale,
     changeSalesShift,
-    updateSaleCustomer
+    updateSaleCustomer,
+    getPendingRemisiones
 };
+

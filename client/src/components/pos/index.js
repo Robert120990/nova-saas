@@ -9,3 +9,5 @@ export { default as PosLotSelectionModal } from './PosLotSelectionModal';
 export { default as PosProductCatalogModal } from './PosProductCatalogModal';
 export { default as PosSuccessModal } from './PosSuccessModal';
 export { default as PosSupervisorAuthModal } from './PosSupervisorAuthModal';
+export { default as PosRemisionesModal } from './PosRemisionesModal';
+

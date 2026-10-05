@@ -548,7 +548,9 @@ router.post('/expenses/:id/void', expenseController.voidExpense);
 
 // Sales
 router.get('/sales', salesController.getSales);
+router.get('/sales/remisiones/pending', salesController.getPendingRemisiones);
 router.get('/sales/check-cr', salesController.checkExistingCR);
+
 router.get('/sales/reports/pdf', salesController.getSalesReportPDF);
 router.get('/sales/reports/by-category', salesController.getSalesByCategory);
 router.get('/sales/reports/category/pdf', salesController.exportSalesByCategoryPDF);
@@ -1291,6 +1293,13 @@ router.post('/rh/biometric/overtime-employees/batch', tenantMiddleware, checkPer
 router.post('/rh/biometric/reclassify', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.reclassifyPunches);
 router.get('/rh/biometric/report', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.getAttendanceReport);
 router.get('/rh/biometric/report/export', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.exportAttendanceReport);
+router.get('/rh/biometric/cortes/summary', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.getPendingOvertimeSummary);
+router.get('/rh/biometric/cortes/daily-overtime', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.getDailyOvertimeRows);
+router.put('/rh/biometric/cortes/overtime-entry', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.updateOvertimeEntry);
+router.post('/rh/biometric/cortes/freeze', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.freezePeriod);
+router.get('/rh/biometric/cortes', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.getCortesList);
+router.post('/rh/biometric/cortes/:id/unfreeze', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.unfreezeCorte);
+
 
 router.get('/logs/stream/:service', verifyToken, settingsController.streamLogs);
 

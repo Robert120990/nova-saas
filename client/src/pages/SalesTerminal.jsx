@@ -21,7 +21,9 @@ import {
     Loader2,
     Layers,
     Sparkles,
-    AlertTriangle
+    AlertTriangle,
+    Truck,
+    RotateCcw
 } from 'lucide-react';
 import { toast } from 'sonner';
 import SearchableSelect from '../components/ui/SearchableSelect';
@@ -42,6 +44,7 @@ import PosLinkedDocModal from '../components/pos/PosLinkedDocModal';
 import PosSupervisorAuthModal from '../components/pos/PosSupervisorAuthModal';
 import PosCustomerModal from '../components/pos/PosCustomerModal';
 import PosFuelEntryModal from '../components/pos/PosFuelEntryModal';
+import PosRemisionesModal from '../components/pos/PosRemisionesModal';
 
 import { isPromoApplicableNow, computePromotionDiscount } from '../utils/posCalculations';
 
@@ -204,6 +207,9 @@ const SalesTerminal = () => {
     const [lotSearch, setLotSearch] = useState('');
     const [showAllLots, setShowAllLots] = useState(false);
     const [lotWarningTarget, setLotWarningTarget] = useState(null);
+
+    // Remisiones Pendientes Modal State
+    const [isRemisionesModalOpen, setIsRemisionesModalOpen] = useState(false);
     
     // Quick Add State (Like Purchases)
     const [quickBarcode, setQuickBarcode] = useState('');
@@ -1226,6 +1232,7 @@ const SalesTerminal = () => {
         isCustomerModalOpen || 
         isCustomerSearchOpen || 
         isLotModalOpen || 
+        isRemisionesModalOpen || 
         isSuccessModalOpen || 
         isGeneralDiscountModalOpen || 
         selectedDiscountItem
@@ -1896,7 +1903,7 @@ const SalesTerminal = () => {
                 monto: parseFloat(p.monto),
                 referencia: p.referencia || p.num_cheque || p.last_digits || null
             })),
-            linkedDocuments: (tipoDte === '04' || tipoDte === '05' || tipoDte === '07') ? linkedDocs : []
+            linkedDocuments: (tipoDte === '01' || tipoDte === '03' || tipoDte === '04' || tipoDte === '05' || tipoDte === '07') ? linkedDocs : []
         };
         processSale.mutate(saleData);
     };
@@ -2229,6 +2236,100 @@ const SalesTerminal = () => {
             setTimeout(() => barcodeInputRef.current?.focus(), 100);
         } else {
             toast.error('Ingrese un monto o cantidad válida');
+        }
+    };
+
+    const handleLoadRemisiones = useCallback((selectedList) => {
+        if (!selectedList || selectedList.length === 0) return;
+
+        // Si hay cliente en la remisión, asociarlo
+        const firstRem = selectedList[0];
+        if (firstRem.customer_id) {
+            setCustomerId(firstRem.customer_id);
+            if (firstRem.customer_nrc) {
+                setTipoDte('03'); // CCF si tiene NRC
+            } else {
+                setTipoDte('01'); // Factura
+            }
+        } else if (firstRem.cliente_nombre) {
+            setManualCustomerName(firstRem.cliente_nombre);
+            setTipoDte('01');
+        }
+
+        const loadedItems = [];
+        selectedList.forEach(rem => {
+            const refDoc = rem.codigo_generacion || rem.numero_control || rem.doc_number || `REM-${rem.id}`;
+            (rem.items || []).forEach(item => {
+                const qty = parseFloat(item.cantidad) || 1;
+                const rawPrice = parseFloat(item.precio_unitario);
+                const price = (!isNaN(rawPrice) && rawPrice > 0.0001)
+                    ? rawPrice
+                    : (parseFloat(item.producto_precio_actual) || (!isNaN(rawPrice) ? rawPrice : 0));
+                const discount = parseFloat(item.monto_descuento) || 0;
+
+                loadedItems.push({
+                    id: item.product_id,
+                    nombre: item.descripcion || item.producto_nombre || 'Producto',
+                    codigo: item.codigo || '',
+                    precio: price,
+                    originalPrice: price,
+                    cantidad: qty,
+                    originalQty: qty,
+                    descuento: discount,
+                    unitDiscount: qty > 0 ? (discount / qty) : 0,
+                    exento: (parseFloat(item.venta_exenta) || 0) > 0,
+                    no_sujeto: (parseFloat(item.venta_no_sujeta) || 0) > 0,
+                    tipo_combustible: item.tipo_combustible || 0,
+                    isManual: !item.product_id,
+                    referencedDoc: refDoc
+                });
+            });
+        });
+
+        // Vincular en linkedDocs para que se guarde en sales_linked_documents y se reporte a Hacienda
+        const newLinked = selectedList.map(rem => {
+            const refDoc = rem.codigo_generacion || rem.numero_control || rem.doc_number || rem.id.toString();
+            const isElectronic = !!(rem.codigo_generacion || (rem.numero_control && rem.numero_control.startsWith('DTE-04-')));
+            return {
+                doc_type: '04',
+                doc_number: refDoc,
+                control_number: rem.numero_control || null,
+                emission_date: (rem.fecha_emision || rem.created_at || new Date().toISOString()).split('T')[0],
+                generation_type: isElectronic ? 1 : 2
+            };
+        });
+
+        setCart(prev => (prev.length === 0 ? loadedItems : [...prev, ...loadedItems]));
+        setLinkedDocs(prev => {
+            const existing = new Set(prev.map(p => p.doc_number));
+            const toAdd = newLinked.filter(d => !existing.has(d.doc_number));
+            return [...prev, ...toAdd];
+        });
+
+        toast.success(`${loadedItems.length} ítem(s) cargado(s) desde ${selectedList.length} Nota(s) de Remisión`);
+    }, []);
+
+    const handleCancelSale = () => {
+        const hasContent = cart.length > 0 || customerId || manualCustomerName || linkedDocs.length > 0 || payments.length > 0;
+        if (!hasContent) {
+            toast.info('No hay ninguna venta o facturación activa para cancelar.');
+            return;
+        }
+        if (window.confirm('¿Está seguro de que desea cancelar la facturación actual? Se vaciará el carrito y se limpiarán los datos para cambiar de documento o iniciar una nueva venta.')) {
+            setCart([]);
+            setGeneralDiscount(0);
+            setGeneralDiscountPercentage(null);
+            setCustomerId('');
+            setCustomerBranchId('');
+            setManualCustomerName('');
+            setLinkedDocs([]);
+            setPayments([]);
+            setEntregado('');
+            setReferencingSale(null);
+            setTipoDte('01');
+            setActiveView('pos');
+            localStorage.removeItem(DRAFT_KEY);
+            toast.success('Facturación cancelada correctamente. Listo para nuevo documento.');
         }
     };
 
@@ -2828,8 +2929,7 @@ const SalesTerminal = () => {
                                 <select 
                                     value={tipoDte}
                                     onChange={(e) => setTipoDte(e.target.value)}
-                                    disabled={!!sellerSession}
-                                    className={`w-full px-4 py-2.5 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-4 focus:ring-indigo-500/5 focus:border-indigo-400 appearance-none transition-all ${sellerSession ? 'opacity-70 cursor-not-allowed bg-slate-100' : ''}`}
+                                    className="w-full px-4 py-2.5 bg-slate-50 hover:bg-slate-100/70 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-4 focus:ring-indigo-500/5 focus:border-indigo-400 appearance-none transition-all cursor-pointer"
                                 >
                                     <option value="01">Factura (01)</option>
                                     <option value="03">Crédito Fiscal (03)</option>
@@ -2864,6 +2964,17 @@ const SalesTerminal = () => {
                                     </span>
                                 </button>
                             )}
+                            <button 
+                                type="button"
+                                onClick={() => setIsRemisionesModalOpen(true)}
+                                className="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 p-3 rounded-2xl transition-all shadow-sm border border-emerald-200/60 relative group"
+                                title="Cargar Notas de Remisión Pendientes (Facturar DTE-04)"
+                            >
+                                <Truck size={20} className="text-emerald-600" />
+                                <span className="hidden group-hover:block absolute -top-8 right-0 bg-slate-900 text-white text-[9px] font-black px-2 py-0.5 rounded whitespace-nowrap z-30 shadow">
+                                    Remisiones
+                                </span>
+                            </button>
                             <button 
                                 type="button"
                                 onClick={() => setIsLinkedDocModalOpen(true)}
@@ -3342,6 +3453,18 @@ const SalesTerminal = () => {
                                 >
                                     {tipoDte === '07' ? 'Emitir Retención (F10)' : tipoDte === '05' ? 'Emitir Nota de Crédito (F10)' : 'Pagar (F10)'}
                                 </button>
+
+                                {(cart.length > 0 || customerId || manualCustomerName || linkedDocs.length > 0) && (
+                                    <button 
+                                        type="button"
+                                        onClick={handleCancelSale}
+                                        className="w-full bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200/80 py-2.5 rounded-2xl font-black uppercase text-[11px] transition-all flex items-center justify-center gap-1.5 shadow-xs active:scale-95"
+                                        title="Cancelar facturación actual y limpiar venta para cambiar de documento o reiniciar"
+                                    >
+                                        <RotateCcw size={14} className="text-rose-600" />
+                                        <span>Cancelar Facturación</span>
+                                    </button>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -3656,6 +3779,14 @@ const SalesTerminal = () => {
                                         'Al confirmar, el documento será enviado a @HaciendaSV'
                                     )}
                                 </p>
+                                <button 
+                                    type="button"
+                                    onClick={handleCancelSale}
+                                    className="w-full text-rose-600 hover:text-rose-700 hover:bg-rose-50 py-2 rounded-2xl font-black uppercase text-[11px] transition-all flex items-center justify-center gap-1.5 border border-dashed border-rose-200 active:scale-95"
+                                >
+                                    <RotateCcw size={14} />
+                                    <span>Cancelar Facturación y Reiniciar</span>
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -3717,6 +3848,14 @@ const SalesTerminal = () => {
                 setCart={setCart}
                 setGeneralDiscount={setGeneralDiscount}
                 setGeneralDiscountPercentage={setGeneralDiscountPercentage}
+            />
+
+            {/* Modal de Notas de Remisión Pendientes (Facturar DTE-04) */}
+            <PosRemisionesModal
+                isOpen={isRemisionesModalOpen}
+                onClose={() => setIsRemisionesModalOpen(false)}
+                currentCustomerId={customerId}
+                onLoadRemisiones={handleLoadRemisiones}
             />
 
             {/* Modal de Autenticación Logística */}
