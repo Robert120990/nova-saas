@@ -106,7 +106,18 @@ if not exist "package.json" (
     echo {"name":"sipe-biometric-agent","version":"1.0.0","private":true} > package.json
 )
 
-call npm install node-zklib --no-audit --no-fund --omit=dev
+:: Detectar comando npm
+set "NPM_CMD=npm"
+where npm >nul 2>nul
+if %errorlevel% neq 0 (
+    if defined NODE_CMD (
+        for %%i in ("%NODE_CMD%") do (
+            if exist "%%~dpi\npm.cmd" set "NPM_CMD=%%~dpi\npm.cmd"
+        )
+    )
+)
+
+call "!NPM_CMD!" install node-zklib --no-audit --no-fund --omit=dev
 if %errorlevel% neq 0 (
     echo.
     echo [ERROR] No se pudo instalar la libreria node-zklib.

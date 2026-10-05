@@ -7,9 +7,12 @@
  *
  * Funciones principales:
  * 1. Conecta con el reloj biométrico vía protocolo ZK nativo por TCP socket (4370).
- * 2. Extrae automáticamente las marcaciones de asistencia (huella, rostro, tarjeta, PIN).
- * 3. Transmite las marcaciones al servidor SaaS (sys.sipesv.com o local) vía HTTPS seguro.
- * 4. Escucha eventos en tiempo real para reflejar las marcaciones al instante.
+ * 2. Extrae las marcaciones de asistencia (huella, rostro, tarjeta, PIN).
+ * 3. ALMACENAMIENTO LOCAL: Guarda respaldo continuo en 'attendance_backup.jsonl'
+ *    y mantiene el cursor de sincronización en 'sync-state.json'.
+ * 4. SINCRONIZACIÓN INCREMENTAL: Solo transmite a SIPE SaaS las marcaciones NUEVAS
+ *    evitando saturar la red con los miles de registros históricos viejos.
+ * 5. Escucha eventos en tiempo real para reflejar marcaciones al instante.
  * ============================================================================
  */
 
@@ -31,11 +34,15 @@ try {
     }
 }
 
-// Cargar configuración local
+// Rutas de archivos locales
 const configPath = path.join(__dirname, 'config.json');
+const statePath = path.join(__dirname, 'sync-state.json');
+const backupPath = path.join(__dirname, 'attendance_backup.jsonl');
+
+// Configuración por defecto
 let config = {
-    serverUrl: 'http://localhost:4000',
-    companyId: 9,
+    serverUrl: 'https://sys.sipesv.com',
+    companyId: 8,
     deviceId: 1,
     agentKey: '',
     deviceIp: '192.168.3.201',
@@ -55,6 +62,50 @@ if (fs.existsSync(configPath)) {
     }
 }
 
+// Estado de sincronización local
+let syncState = {
+    lastPunchTime: null,
+    lastLogCount: 0,
+    totalPunchesSynced: 0,
+    lastSyncDate: null
+};
+
+function loadSyncState() {
+    if (fs.existsSync(statePath)) {
+        try {
+            const raw = fs.readFileSync(statePath, 'utf8');
+            syncState = { ...syncState, ...JSON.parse(raw) };
+        } catch (e) {
+            log(`Aviso leyendo sync-state.json: ${e.message}`, 'WARN');
+        }
+    }
+}
+
+function saveSyncState() {
+    try {
+        syncState.lastSyncDate = new Date().toISOString();
+        fs.writeFileSync(statePath, JSON.stringify(syncState, null, 2), 'utf8');
+    } catch (e) {
+        log(`Error al guardar sync-state.json: ${e.message}`, 'WARN');
+    }
+}
+
+function appendToLocalBackup(punches) {
+    if (!Array.isArray(punches) || punches.length === 0) return;
+    try {
+        const lines = punches.map(p => JSON.stringify({
+            uid: p.device_uid,
+            time: p.punch_time,
+            code: p.punch_code,
+            verify: p.verify_type,
+            recorded_at: new Date().toISOString()
+        })).join('\n') + '\n';
+        fs.appendFileSync(backupPath, lines, 'utf8');
+    } catch (e) {
+        log(`Aviso al escribir en attendance_backup.jsonl: ${e.message}`, 'WARN');
+    }
+}
+
 // Parámetros por línea de comandos
 const args = process.argv.slice(2);
 for (let i = 0; i < args.length; i++) {
@@ -64,6 +115,7 @@ for (let i = 0; i < args.length; i++) {
     if (args[i] === '--port' && args[i + 1]) config.devicePort = parseInt(args[++i], 10);
     if (args[i] === '--interval' && args[i + 1]) config.syncIntervalSeconds = parseInt(args[++i], 10);
 }
+const isFullSync = args.includes('--full-sync') || args.includes('--force');
 
 function log(msg, type = 'INFO') {
     const time = new Date().toLocaleTimeString('es-SV', { hour12: false });
@@ -94,7 +146,7 @@ function sendToServer(apiPath, method = 'POST', data = {}) {
                     'x-agent-key': config.agentKey
                 },
                 rejectUnauthorized: false, // Permite certificados autofirmados si los hubiese
-                timeout: 15000
+                timeout: 20000
             };
 
             const req = client.request(options, (res) => {
@@ -114,7 +166,7 @@ function sendToServer(apiPath, method = 'POST', data = {}) {
 
             req.on('error', (err) => {
                 const hint = (config.serverUrl.includes('localhost') || config.serverUrl.includes('127.0.0.1'))
-                    ? ' (Sugerencia: Si ejecuta en otra PC, use la IP del servidor en config.json)'
+                    ? ' (Sugerencia: Si ejecuta en otra PC, use la URL del servidor en config.json)'
                     : '';
                 reject(new Error(`Conexión fallida a ${rawUrl}: ${err.message}${hint}`));
             });
@@ -131,7 +183,6 @@ let zk = null;
 let isDeviceConnected = false;
 let isSyncing = false;
 let syncTimer = null;
-let lastSyncedCount = 0;
 
 async function connectToDevice() {
     if (isDeviceConnected && zk) return true;
@@ -170,13 +221,22 @@ async function connectToDevice() {
             log(`Aviso al consultar metadatos del dispositivo: ${err.message}`, 'WARN');
         }
 
-        // Notificar latido inicial al servidor SaaS
+        // Notificar latido inicial al servidor SaaS y sincronizar estado del servidor
         try {
-            await sendToServer('/api/rh/biometric/heartbeat', 'POST', {
+            const hbRes = await sendToServer('/api/rh/biometric/heartbeat', 'POST', {
                 status: 'online',
                 device_info: info
             });
             log('Estado [ONLINE] reportado al servidor SIPE SaaS.', 'SUCCESS');
+
+            if (hbRes?.last_punch_time) {
+                const serverTimeStr = new Date(hbRes.last_punch_time).toISOString();
+                if (!syncState.lastPunchTime || new Date(serverTimeStr) > new Date(syncState.lastPunchTime)) {
+                    syncState.lastPunchTime = serverTimeStr;
+                    saveSyncState();
+                    log(`Servidor SIPE reporta última marcación: ${serverTimeStr.replace('T', ' ').substring(0, 19)} (${hbRes.total_server_logs || 0} registradas en nube).`);
+                }
+            }
         } catch (serverErr) {
             log(`No se pudo reportar estado al servidor: ${serverErr.message}`, 'WARN');
         }
@@ -186,16 +246,22 @@ async function connectToDevice() {
             try {
                 await zk.getRealTimeLogs(async (event) => {
                     if (event && (event.userId || event.uid || event.user_id)) {
-                        log(`🔔 Marcación detectada en tiempo real: Empleado PIN: ${event.userId || event.user_id}`);
+                        const uid = String(event.userId || event.user_id);
+                        const rawTime = event.attTime || event.time || new Date().toISOString();
+                        log(`🔔 Marcación detectada en tiempo real: Empleado PIN: ${uid}`);
                         try {
                             const singlePunch = [{
-                                device_uid: event.userId || event.user_id,
-                                punch_time: event.attTime || event.time || new Date().toISOString(),
-                                punch_code: event.state || 0,
-                                verify_type: event.verifyType || 1,
+                                device_uid: uid,
+                                punch_time: rawTime,
+                                punch_code: typeof event.state === 'number' ? event.state : 0,
+                                verify_type: typeof event.verifyType === 'number' ? event.verifyType : 1,
                                 source: 'biometric'
                             }];
-                            await sendToServer('/api/rh/biometric/sync', 'POST', { punches: singlePunch });
+                            const res = await sendToServer('/api/rh/biometric/sync', 'POST', { punches: singlePunch });
+                            appendToLocalBackup(singlePunch);
+                            syncState.lastPunchTime = new Date(rawTime).toISOString();
+                            syncState.totalPunchesSynced += (res.insertedCount || 0);
+                            saveSyncState();
                             log(`✓ Marcación en tiempo real sincronizada con SIPE`, 'SUCCESS');
                         } catch (e) {
                             log(`Error enviando marcación en tiempo real: ${e.message}`, 'WARN');
@@ -204,7 +270,7 @@ async function connectToDevice() {
                 });
                 log('Modo de escucha en tiempo real activado.', 'SUCCESS');
             } catch (rtErr) {
-                log(`Modo en tiempo real no soportado por este firmware (se usará polling cada ${config.syncIntervalSeconds}s).`, 'WARN');
+                log(`Modo en tiempo real no soportado por este firmware (se usará polling incremental cada ${config.syncIntervalSeconds}s).`, 'WARN');
             }
         }
 
@@ -232,42 +298,86 @@ async function syncAttendances() {
         const attendances = await zk.getAttendances();
         const logsList = (attendances && Array.isArray(attendances.data)) ? attendances.data : (Array.isArray(attendances) ? attendances : []);
 
-        log(`Registros leídos del dispositivo: ${logsList.length} marcaciones.`);
-
-        if (logsList.length > 0) {
-            // Mapear al formato esperado por el backend
-            const punchesPayload = logsList.map(item => ({
-                device_uid: String(item.deviceUserId || item.userId || item.user_id || item.uid || ''),
-                punch_time: item.recordTime || item.attTime || item.timestamp,
-                punch_code: typeof item.punch === 'number' ? item.punch : (typeof item.state === 'number' ? item.state : 0),
-                verify_type: typeof item.verifyType === 'number' ? item.verifyType : 1,
-                raw_data: item
-            }));
-
-            // Enviar en bloques de 500 registros para optimizar red
-            const chunkSize = 500;
-            let totalInserted = 0;
-
-            for (let i = 0; i < punchesPayload.length; i += chunkSize) {
-                const chunk = punchesPayload.slice(i, i + chunkSize);
-                const res = await sendToServer('/api/rh/biometric/sync', 'POST', {
-                    punches: chunk,
-                    device_info: {
-                        last_sync_logs: logsList.length,
-                        sync_time: new Date().toISOString()
-                    }
-                });
-                totalInserted += (res.insertedCount || 0);
-            }
-
-            if (totalInserted > 0) {
-                log(`🎉 ${totalInserted} marcaciones NUEVAS sincronizadas exitosamente en SIPE SaaS.`, 'SUCCESS');
-            } else {
-                log(`Marcaciones al día en el servidor (sin registros nuevos).`);
-            }
-            lastSyncedCount = logsList.length;
-        } else {
+        if (logsList.length === 0) {
             log('El dispositivo no contiene marcaciones almacenadas actualmente.');
+            isSyncing = false;
+            return;
+        }
+
+        // Mapear al formato esperado
+        const punchesPayload = logsList.map(item => ({
+            device_uid: String(item.deviceUserId || item.userId || item.user_id || item.uid || '').trim(),
+            punch_time: item.recordTime || item.attTime || item.timestamp,
+            punch_code: typeof item.punch === 'number' ? item.punch : (typeof item.state === 'number' ? item.state : 0),
+            verify_type: typeof item.verifyType === 'number' ? item.verifyType : 1,
+            raw_data: item
+        })).filter(p => p.device_uid && p.punch_time && !isNaN(new Date(p.punch_time).getTime()));
+
+        // Ordenar cronológicamente
+        punchesPayload.sort((a, b) => new Date(a.punch_time) - new Date(b.punch_time));
+
+        // FILTRADO INCREMENTAL: Solo procesar los NUEVOS
+        let toSync = punchesPayload;
+        if (!isFullSync && syncState.lastPunchTime) {
+            const lastTimeMs = new Date(syncState.lastPunchTime).getTime();
+            // Margen de seguridad defensivo de 60 segundos por variaciones de reloj
+            const cutoffMs = lastTimeMs - (60 * 1000);
+            toSync = punchesPayload.filter(p => new Date(p.punch_time).getTime() > cutoffMs);
+        }
+
+        if (toSync.length === 0) {
+            log(`Dispositivo con ${logsList.length} marcaciones. Todo sincronizado al día (sin registros nuevos).`);
+            syncState.lastLogCount = logsList.length;
+            saveSyncState();
+            isSyncing = false;
+            return;
+        }
+
+        if (syncState.lastPunchTime && !isFullSync) {
+            log(`⚡ Detectadas ${toSync.length} marcaciones NUEVAS de un total de ${logsList.length} en el reloj. Sincronizando...`);
+        } else {
+            log(`📥 Sincronización inicial/completa: ${toSync.length} marcaciones a procesar...`);
+        }
+
+        // Enviar en bloques de 300 registros
+        const chunkSize = 300;
+        let totalInserted = 0;
+        let latestPunchTime = syncState.lastPunchTime;
+
+        for (let i = 0; i < toSync.length; i += chunkSize) {
+            const chunk = toSync.slice(i, i + chunkSize);
+            const res = await sendToServer('/api/rh/biometric/sync', 'POST', {
+                punches: chunk,
+                device_info: {
+                    last_sync_logs: logsList.length,
+                    sync_time: new Date().toISOString()
+                }
+            });
+            totalInserted += (res.insertedCount || 0);
+
+            // Almacenar localmente en archivo de respaldo continuo
+            appendToLocalBackup(chunk);
+
+            const chunkLastTime = chunk[chunk.length - 1]?.punch_time;
+            if (chunkLastTime) {
+                if (!latestPunchTime || new Date(chunkLastTime) > new Date(latestPunchTime)) {
+                    latestPunchTime = chunkLastTime;
+                }
+            }
+        }
+
+        // Actualizar y persistir estado local
+        if (latestPunchTime) {
+            syncState.lastPunchTime = new Date(latestPunchTime).toISOString();
+        }
+        syncState.lastLogCount = logsList.length;
+        syncState.totalPunchesSynced += totalInserted;
+        saveSyncState();
+
+        if (totalInserted > 0) {
+            log(`🎉 ${totalInserted} marcaciones NUEVAS sincronizadas exitosamente en SIPE SaaS.`, 'SUCCESS');
+        } else {
+            log(`Marcaciones al día en el servidor (los registros ya existían en SIPE).`);
         }
     } catch (err) {
         log(`Error durante la sincronización: ${err.message}`, 'ERROR');
@@ -283,15 +393,19 @@ async function syncAttendances() {
 }
 
 async function startAgent() {
+    loadSyncState();
+
     console.clear();
     console.log('========================================================================');
     console.log('   CONECTOR LOCAL MARCADOR DIGITAL ZKTECO — RECURSOS HUMANOS (SIPE)     ');
     console.log('========================================================================');
-    console.log(` Servidor SaaS      : ${config.serverUrl}`);
-    console.log(` Empresa ID         : ${config.companyId}`);
-    console.log(` Dispositivo IP     : ${config.deviceIp}:${config.devicePort} (${config.protocol.toUpperCase()})`);
-    console.log(` Intervalo de Sync  : Cada ${config.syncIntervalSeconds} segundos`);
-    console.log(` Clave de Agente    : ${config.agentKey ? (config.agentKey.slice(0, 8) + '...' + config.agentKey.slice(-6)) : 'NO CONFIGURADA'}`);
+    console.log(` Servidor SaaS          : ${config.serverUrl}`);
+    console.log(` Empresa ID             : ${config.companyId}`);
+    console.log(` Dispositivo IP         : ${config.deviceIp}:${config.devicePort} (${config.protocol.toUpperCase()})`);
+    console.log(` Intervalo de Sync      : Cada ${config.syncIntervalSeconds} segundos`);
+    console.log(` Clave de Agente        : ${config.agentKey ? (config.agentKey.slice(0, 8) + '...' + config.agentKey.slice(-6)) : 'NO CONFIGURADA'}`);
+    console.log(` Última Marcación Local : ${syncState.lastPunchTime ? syncState.lastPunchTime.replace('T', ' ').substring(0, 19) : 'Sin historial (primera ejecución)'}`);
+    console.log(` Archivo de Respaldo    : ${backupPath}`);
     console.log('------------------------------------------------------------------------');
 
     if (!config.agentKey) {
@@ -301,11 +415,20 @@ async function startAgent() {
 
     // Notificar al servidor que el agente inicio
     try {
-        await sendToServer('/api/rh/biometric/heartbeat', 'POST', {
+        const hb = await sendToServer('/api/rh/biometric/heartbeat', 'POST', {
             status: 'online',
             started_at: new Date().toISOString()
         });
         log('Conexión inicial con el servidor SIPE establecida. Estado [EN LÍNEA].', 'SUCCESS');
+
+        if (hb?.last_punch_time) {
+            const sTime = new Date(hb.last_punch_time).toISOString();
+            if (!syncState.lastPunchTime || new Date(sTime) > new Date(syncState.lastPunchTime)) {
+                syncState.lastPunchTime = sTime;
+                saveSyncState();
+                log(`SIPE SaaS reporta última marcación: ${sTime.replace('T', ' ').substring(0, 19)}.`);
+            }
+        }
     } catch (hbErr) {
         log(`No se pudo contactar al servidor SIPE en ${config.serverUrl}: ${hbErr.message}`, 'WARN');
     }
@@ -313,7 +436,7 @@ async function startAgent() {
     // Primera sincronización inmediata
     await syncAttendances();
 
-    // Ciclo recurrente de sincronización
+    // Ciclo recurrente de sincronización incremental
     const intervalMs = Math.max(10, config.syncIntervalSeconds) * 1000;
     syncTimer = setInterval(syncAttendances, intervalMs);
 

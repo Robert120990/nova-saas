@@ -10,3 +10,10 @@ export { default as BiometricConfigModal } from './BiometricConfigModal';
 export { default as BiometricSummaryCards } from './BiometricSummaryCards';
 export { default as BiometricFiltersBar } from './BiometricFiltersBar';
 export { default as BiometricLogsTable } from './BiometricLogsTable';
+export { default as BiometricEditOvertimeModal } from './BiometricEditOvertimeModal';
+export { default as BiometricFreezePeriodModal } from './BiometricFreezePeriodModal';
+export { default as BiometricCortesHistoryTable } from './BiometricCortesHistoryTable';
+export { default as BiometricOvertimeTable } from './BiometricOvertimeTable';
+export { default as BiometricEmployeeModal } from './BiometricEmployeeModal';
+
+

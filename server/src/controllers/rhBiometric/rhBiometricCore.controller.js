@@ -96,7 +96,15 @@ const heartbeatFromAgent = async (req, res) => {
         const status = req.body?.status || 'online';
         await rhBiometricService.updateDeviceHeartbeat(device.id, deviceInfo, status);
 
-        res.json({ success: true, status: 'pong', serverTime: new Date().toISOString() });
+        const lastPunchInfo = await rhBiometricService.getDeviceLastPunch(device.id, device.company_id);
+
+        res.json({
+            success: true,
+            status: 'pong',
+            serverTime: new Date().toISOString(),
+            last_punch_time: lastPunchInfo.last_punch_time,
+            total_server_logs: lastPunchInfo.total_logs
+        });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }

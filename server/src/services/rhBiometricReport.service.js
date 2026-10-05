@@ -72,6 +72,20 @@ async function getAttendanceReportData(companyId, filters = {}) {
         if (h.is_active) holidayMap.add(`${String(h.mes).padStart(2, '0')}-${String(h.dia).padStart(2, '0')}`);
     });
 
+    let adjMap = new Map();
+    if (startDate && endDate) {
+        const [adjustments] = await pool.query(
+            `SELECT device_uid, fecha, horas_extra_aprobadas, es_editado, observacion, congelado
+             FROM rh_biometric_daily_overtime
+             WHERE company_id = ? AND fecha >= ? AND fecha <= ?`,
+            [companyId, startDate, endDate]
+        );
+        adjustments.forEach(a => {
+            const fKey = extractDateOnly(a.fecha);
+            adjMap.set(`${a.device_uid}_${fKey}`, a);
+        });
+    }
+
     const grouped = new Map();
     for (const p of punches) {
         const dateKey = extractDateOnly(p.punch_time);
@@ -80,7 +94,9 @@ async function getAttendanceReportData(companyId, filters = {}) {
         if (!grouped.has(key)) {
             grouped.set(key, {
                 empleado_id: p.empleado_id,
+                device_uid: p.device_uid,
                 codigo: p.empleado_codigo || p.device_uid,
+
                 nombre: p.empleado_nombre ? p.empleado_nombre.trim() : `Empleado UID ${p.device_uid}`,
                 departamento: p.departamento_nombre || 'Sin Depto',
                 cargo: p.cargo_nombre || 'Sin Cargo',
@@ -145,12 +161,18 @@ async function getAttendanceReportData(companyId, filters = {}) {
         let horasExtra = 0;
         if (!item.exento_horas_extras && horasTrabajadas > item.jornada_horas) {
             horasExtra = parseFloat((horasTrabajadas - item.jornada_horas).toFixed(2));
-            totalHorasExtra += horasExtra;
         }
+
+        const adj = adjMap.get(`${item.device_uid}_${item.fecha}`) || adjMap.get(`${item.codigo}_${item.fecha}`);
+        if (adj && adj.horas_extra_aprobadas !== null) {
+            horasExtra = parseFloat(Number(adj.horas_extra_aprobadas).toFixed(2));
+        }
+        totalHorasExtra += horasExtra;
 
         const [, m, d] = item.fecha.split('-');
         reportRows.push({
             empleado_id: item.empleado_id,
+            device_uid: item.device_uid,
             codigo: item.codigo,
             nombre: item.nombre,
             turno: item.turno_nombre,
@@ -165,9 +187,13 @@ async function getAttendanceReportData(companyId, filters = {}) {
             minutos_tardanza: minutosTardanza,
             es_llegada_tarde: esLlegadaTarde,
             horas_extra: horasExtra,
+            es_editado: adj ? !!adj.es_editado : false,
+            observacion: adj?.observacion || '',
+            congelado: adj ? !!adj.congelado : false,
             exento_horas_extras: item.exento_horas_extras,
             es_festivo: holidayMap.has(`${m}-${d}`)
         });
+
     }
 
     return {

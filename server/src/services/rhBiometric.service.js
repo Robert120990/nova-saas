@@ -100,6 +100,22 @@ async function updateDeviceHeartbeat(deviceId, deviceInfo = null, status = 'onli
 }
 
 /**
+ * Obtener la última marcación registrada para un dispositivo en la empresa
+ */
+async function getDeviceLastPunch(deviceId, companyId) {
+    const [rows] = await pool.query(
+        `SELECT MAX(punch_time) as last_punch_time, COUNT(*) as total_logs
+         FROM rh_biometric_attendance_logs
+         WHERE device_id = ? AND company_id = ?`,
+        [deviceId, companyId]
+    );
+    return {
+        last_punch_time: rows[0]?.last_punch_time ? new Date(rows[0].last_punch_time).toISOString() : null,
+        total_logs: rows[0]?.total_logs || 0
+    };
+}
+
+/**
  * Guardar lote de marcaciones (desde el agente o sincronización)
  */
 async function processBatchPunches(companyId, deviceId, punches = []) {
@@ -339,6 +355,7 @@ module.exports = {
     regenerateAgentKey,
     getDeviceByAgentKey,
     updateDeviceHeartbeat,
+    getDeviceLastPunch,
     processBatchPunches,
     createManualPunch,
     getAttendanceLogs

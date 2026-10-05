@@ -3,17 +3,21 @@ import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
 import { toast } from 'sonner';
 import {
-    FileText, X, Download, FileSpreadsheet, Search, Loader2
+    FileText, X, Download, FileSpreadsheet, Search, Loader2, Edit3
 } from 'lucide-react';
 import { getTodayString, getFirstDayOfMonth, formatDate } from '../../utils/dateUtils';
+import BiometricEditOvertimeModal from './BiometricEditOvertimeModal';
 
 const BiometricReportModal = ({ open, onClose }) => {
     const [startDate, setStartDate] = useState(getFirstDayOfMonth());
     const [endDate, setEndDate] = useState(getTodayString());
     const [search, setSearch] = useState('');
     const [isExporting, setIsExporting] = useState(false);
+    const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+    const [selectedEntry, setSelectedEntry] = useState(null);
 
-    const { data: reportData = { rows: [], summary: {} }, isLoading } = useQuery({
+    const { data: reportData = { rows: [], summary: {} }, isLoading, refetch } = useQuery({
+
         queryKey: ['rh-biometric-attendance-report', startDate, endDate, search],
         queryFn: async () => {
             const res = await axios.get('/api/rh/biometric/report', {
@@ -226,13 +230,30 @@ const BiometricReportModal = ({ open, onClose }) => {
                                             )}
                                         </td>
                                         <td className="py-2 px-3 font-mono text-right whitespace-nowrap">
-                                            {r.horas_extra > 0 ? (
-                                                <span className="text-emerald-700 font-bold bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
-                                                    +{r.horas_extra.toFixed(2)} h
-                                                </span>
-                                            ) : (
-                                                <span className="text-slate-300">—</span>
-                                            )}
+                                            <div className="flex items-center justify-end gap-1.5">
+                                                {r.horas_extra > 0 ? (
+                                                    <span className="text-emerald-700 font-bold bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                                                        +{r.horas_extra.toFixed(2)} h
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-slate-300">—</span>
+                                                )}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setSelectedEntry({
+                                                            ...r,
+                                                            horas_extra_calculadas: r.horas_extra,
+                                                            horas_extra_aprobadas: r.horas_extra
+                                                        });
+                                                        setIsEditModalOpen(true);
+                                                    }}
+                                                    className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors"
+                                                    title="Editar horas extra"
+                                                >
+                                                    <Edit3 className="w-3 h-3" />
+                                                </button>
+                                            </div>
                                         </td>
                                     </tr>
                                 ))
@@ -252,8 +273,16 @@ const BiometricReportModal = ({ open, onClose }) => {
                     </button>
                 </div>
             </div>
+
+            <BiometricEditOvertimeModal
+                open={isEditModalOpen}
+                onClose={() => setIsEditModalOpen(false)}
+                entry={selectedEntry}
+                onSuccess={() => refetch()}
+            />
         </div>
     );
 };
+
 
 export default BiometricReportModal;
