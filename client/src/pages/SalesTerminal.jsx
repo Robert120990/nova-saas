@@ -1262,25 +1262,57 @@ const SalesTerminal = () => {
                 });
                 setIsLoadingShift(true);
                 try {
-                    const res = await axios.get(`/api/shifts/current?pos_id=${sellerSession.pos_id}&seller_id=${sellerSession.seller_id}`);
+                    const params = new URLSearchParams();
+                    if (sellerSession.pos_id && sellerSession.pos_id !== 'null' && sellerSession.pos_id !== 'undefined') {
+                        params.append('pos_id', sellerSession.pos_id);
+                    }
+                    if (sellerSession.seller_id && sellerSession.seller_id !== 'null' && sellerSession.seller_id !== 'undefined') {
+                        params.append('seller_id', sellerSession.seller_id);
+                    }
+                    const branchId = sellerSession.branch_id || user?.branch_id;
+                    if (branchId) {
+                        params.append('branch_id', branchId);
+                    }
+
+                    const res = await axios.get(`/api/shifts/current?${params.toString()}`);
                     console.log('[DEBUG-POS-SHIFT] Respuesta:', res.data);
                     
-                    if (res.data.open) {
+                    if (res.data.open && res.data.shift) {
                         if (res.data.isAssigned === false) {
                             setCurrentShift(null);
-                            toast.error(`No está asignado al turno activo (#${res.data.shift.shift_number}, responsable: ${res.data.responsable_name}). Consulte con el responsable de turno.`);
-                            navigate('/ventas/cierre');
+                            sessionStorage.removeItem(SELLER_KEY);
+                            setSellerSession(null);
+                            setIsAuthModalOpen(true);
+                            toast.error(`No está asignado al turno activo (#${res.data.shift.shift_number}, responsable: ${res.data.responsable_name || 'Desconocido'}). Inicie sesión con un vendedor asignado.`);
                         } else {
                             setCurrentShift(res.data.shift);
+                            // Si el turno activo tiene un POS diferente o actualizado, sincronizar sellerSession
+                            if (res.data.shift.pos_id && res.data.shift.pos_id !== sellerSession.pos_id) {
+                                const updated = {
+                                    ...sellerSession,
+                                    pos_id: res.data.shift.pos_id,
+                                    pos_name: res.data.shift.pos_name || sellerSession.pos_name
+                                };
+                                setSellerSession(updated);
+                                try {
+                                    sessionStorage.setItem(SELLER_KEY, JSON.stringify(updated));
+                                } catch {}
+                            }
                         }
                     } else {
                         setCurrentShift(null);
-                        toast.error('Debe abrir un turno para vender. Redirigiendo...');
-                        navigate('/ventas/cierre');
+                        sessionStorage.removeItem(SELLER_KEY);
+                        setSellerSession(null);
+                        setIsAuthModalOpen(true);
+                        toast.error('Debe abrir un turno para vender o iniciar sesión con un vendedor asignado al turno activo.');
                     }
                 } catch (error) {
                     console.error('[DEBUG-POS-SHIFT] Error:', error);
                     setCurrentShift(null);
+                    sessionStorage.removeItem(SELLER_KEY);
+                    setSellerSession(null);
+                    setIsAuthModalOpen(true);
+                    toast.error('Error al verificar turno. Inicie sesión nuevamente.');
                 } finally {
                     setIsLoadingShift(false);
                 }
@@ -1290,7 +1322,7 @@ const SalesTerminal = () => {
             }
         };
         checkStatus();
-    }, [sellerSession, navigate]);
+    }, [sellerSession?.seller_id, sellerSession?.pos_id, sellerSession?.branch_id, user?.branch_id, SELLER_KEY]);
 
     const validateCustomerData = () => {
         // Si no hay cliente seleccionado, solo permitimos Factura (01) y Nota Remisión (04) como Consumidor Final

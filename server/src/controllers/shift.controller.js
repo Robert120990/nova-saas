@@ -63,6 +63,94 @@ const assertNoSellerConflicts = async (companyId, sellerIds, excludeShiftId = nu
 const getCurrentShift = async (req, res) => {
     const { pos_id, seller_id, branch_id } = req.query;
     try {
+        const cleanPosId = (pos_id && pos_id !== 'undefined' && pos_id !== 'null' && String(pos_id).trim() !== '') ? Number(pos_id) : null;
+        const cleanSellerId = (seller_id && seller_id !== 'undefined' && seller_id !== 'null' && String(seller_id).trim() !== '') ? Number(seller_id) : null;
+        const cleanBranchId = (branch_id && branch_id !== 'undefined' && branch_id !== 'null' && String(branch_id).trim() !== '') ? Number(branch_id) : null;
+
+        // Caso 1: Se pasó seller_id (Terminal de Ventas / POS)
+        if (cleanSellerId) {
+            // Verificar primero si el vendedor tiene un turno activo en la empresa (y sucursal si aplica)
+            let sellerShiftQuery = `
+                SELECT s.*, sel.nombre as seller_name, p.nombre as pos_name
+                FROM pos_shifts s
+                LEFT JOIN sellers sel ON s.seller_id = sel.id
+                LEFT JOIN points_of_sale p ON s.pos_id = p.id
+                WHERE s.company_id = ? AND s.status = 'open'
+                  AND (s.seller_id = ? OR EXISTS (
+                      SELECT 1 FROM pos_shift_sellers pss
+                      WHERE pss.shift_id = s.id AND pss.seller_id = ?
+                  ))
+            `;
+            const sellerShiftParams = [req.company_id, cleanSellerId, cleanSellerId];
+            if (cleanBranchId) {
+                sellerShiftQuery += ` AND s.branch_id = ?`;
+                sellerShiftParams.push(cleanBranchId);
+            }
+            sellerShiftQuery += ` ORDER BY s.start_time DESC LIMIT 1`;
+            const [sellerShifts] = await pool.query(sellerShiftQuery, sellerShiftParams);
+
+            if (sellerShifts.length > 0) {
+                return res.json({
+                    open: true,
+                    shift: sellerShifts[0],
+                    isAssigned: true
+                });
+            }
+
+            // Si el vendedor no tiene turno asignado pero se solicitó un pos_id específico
+            if (cleanPosId) {
+                let posShiftQuery = `
+                    SELECT s.*, sel.nombre as seller_name, p.nombre as pos_name
+                    FROM pos_shifts s
+                    LEFT JOIN sellers sel ON s.seller_id = sel.id
+                    LEFT JOIN points_of_sale p ON s.pos_id = p.id
+                    WHERE s.company_id = ? AND s.status = 'open' AND s.pos_id = ?
+                `;
+                const posShiftParams = [req.company_id, cleanPosId];
+                if (cleanBranchId) {
+                    posShiftQuery += ` AND s.branch_id = ?`;
+                    posShiftParams.push(cleanBranchId);
+                }
+                posShiftQuery += ` ORDER BY s.start_time DESC LIMIT 1`;
+                const [posShifts] = await pool.query(posShiftQuery, posShiftParams);
+
+                if (posShifts.length > 0) {
+                    return res.json({
+                        open: true,
+                        shift: posShifts[0],
+                        isAssigned: false,
+                        responsable_name: posShifts[0].seller_name
+                    });
+                }
+            }
+
+            return res.json({ open: false });
+        }
+
+        // Caso 2: No se pasó seller_id, pero sí pos_id
+        if (cleanPosId) {
+            let query = `
+                SELECT s.*, sel.nombre as seller_name, p.nombre as pos_name
+                FROM pos_shifts s
+                LEFT JOIN sellers sel ON s.seller_id = sel.id
+                LEFT JOIN points_of_sale p ON s.pos_id = p.id
+                WHERE s.company_id = ? AND s.status = 'open' AND s.pos_id = ?
+            `;
+            const params = [req.company_id, cleanPosId];
+            if (cleanBranchId) {
+                query += ` AND s.branch_id = ?`;
+                params.push(cleanBranchId);
+            }
+            query += ` ORDER BY s.start_time DESC LIMIT 1`;
+            const [shifts] = await pool.query(query, params);
+
+            if (shifts.length === 0) {
+                return res.json({ open: false });
+            }
+            return res.json({ open: true, shift: shifts[0] });
+        }
+
+        // Caso 3: Consulta general (pantalla Corte de Caja con branch_id)
         let query = `
             SELECT s.*, sel.nombre as seller_name, p.nombre as pos_name
             FROM pos_shifts s
@@ -71,54 +159,17 @@ const getCurrentShift = async (req, res) => {
             WHERE s.company_id = ? AND s.status = 'open'
         `;
         const params = [req.company_id];
-
-        if (pos_id && pos_id !== 'undefined') {
-            query += ` AND s.pos_id = ?`;
-            params.push(pos_id);
-        }
-
-        if (branch_id && branch_id !== 'undefined') {
+        if (cleanBranchId) {
             query += ` AND s.branch_id = ?`;
-            params.push(branch_id);
+            params.push(cleanBranchId);
         }
-
         query += ` ORDER BY s.start_time DESC`;
-
         const [shifts] = await pool.query(query, params);
 
         if (shifts.length === 0) {
             return res.json({ open: false });
         }
 
-        // Si se pidió un POS específico, devolver solo ese turno
-        if (pos_id && pos_id !== 'undefined') {
-            const shift = shifts[0];
-            // Si también se envió seller_id, verificar si está asignado
-            if (seller_id && seller_id !== 'undefined') {
-                const [assigned] = await pool.query(`
-                    SELECT id FROM pos_shift_sellers
-                    WHERE shift_id = ? AND seller_id = ?
-                `, [shift.id, seller_id]);
-                const isAssigned = assigned.length > 0;
-                if (!isAssigned) {
-                    const [resp] = await pool.query(`
-                        SELECT sel.nombre as responsable_name
-                        FROM sellers sel
-                        WHERE sel.id = ?
-                    `, [shift.seller_id]);
-                    return res.json({
-                        open: true,
-                        shift,
-                        isAssigned: false,
-                        responsable_name: resp[0]?.responsable_name || shift.seller_name
-                    });
-                }
-                return res.json({ open: true, shift, isAssigned: true });
-            }
-            return res.json({ open: true, shift });
-        }
-
-        // Sin POS específico: devolver todos los turnos abiertos
         res.json({ open: true, shifts });
     } catch (error) {
         console.error('Error in getCurrentShift:', error);
