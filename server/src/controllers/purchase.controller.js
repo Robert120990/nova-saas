@@ -1242,7 +1242,7 @@ const scanDteInvoice = async (req, res) => {
             buffer = req.file.buffer;
             mimeType = req.file.mimetype;
         } else if (req.body.image) {
-            const matches = req.body.image.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+            const matches = req.body.image.match(/^data:([^;]+);base64,(.+)$/);
             if (matches && matches.length === 3) {
                 mimeType = matches[1];
                 buffer = Buffer.from(matches[2], 'base64');
@@ -1425,7 +1425,7 @@ const uploadMobileScan = async (req, res) => {
             buffer = req.file.buffer;
             mimeType = req.file.mimetype;
         } else if (req.body.image) {
-            const matches = req.body.image.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+            const matches = req.body.image.match(/^data:([^;]+);base64,(.+)$/);
             if (matches && matches.length === 3) {
                 mimeType = matches[1];
                 buffer = Buffer.from(matches[2], 'base64');

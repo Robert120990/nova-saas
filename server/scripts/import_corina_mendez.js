@@ -26,7 +26,7 @@ function isValidDui(dui) {
 function normalizeName(name) {
   if (!name) return '';
   return name.toString().trim().toUpperCase()
-    .replace(/[.,\-\/#!$%\^&\*;:{}=\-_`~()]/g, '')
+    .replace(/[.,/#!$%^&*;:{}=_`~()-]/g, '')
     .replace(/\s+/g, ' ');
 }
 

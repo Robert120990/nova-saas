@@ -145,7 +145,9 @@ async function sendContingencyReport(contingencyId) {
                     if (docDateTime > fin) fin = new Date(docDateTime.getTime() + 1000); // 1s después
                 }
             }
-        } catch (_) {}
+        } catch {
+            // Ignorar documentos con json corrupto o formato no compatible
+        }
     }
 
     const fInicio = inicio.toLocaleDateString('en-CA', { timeZone: 'America/El_Salvador' });

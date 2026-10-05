@@ -28,7 +28,9 @@ async function initHaciendaConfig() {
             simulatedOutage = rows[0].flag_value === 'true' || rows[0].flag_value === '1';
             console.log(`[HaciendaConfig] Estado de simulación recuperado de BD: ${simulatedOutage ? 'ACTIVADA' : 'DESACTIVADA'}`);
         }
-    } catch (_) {}
+    } catch {
+        // Fallback seguro si la base de datos o tabla no está disponible aún
+    }
 }
 
 // Sincronización inicial
@@ -48,7 +50,9 @@ async function setSimulatedOutage(enabled) {
     try {
         const cache = require('./cache');
         cache.set('simulated_outage', simulatedOutage);
-    } catch (_) {}
+    } catch {
+        // Fallback silencioso si el módulo de caché no está disponible
+    }
     console.log(`[HaciendaConfig] Simulación de corte con Hacienda: ${simulatedOutage ? 'ACTIVADA' : 'DESACTIVADA'}`);
 }
 
