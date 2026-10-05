@@ -896,11 +896,27 @@ const Expenses = () => {
     // Mutations
     const createMutation = useMutation({
         mutationFn: (data) => axios.post('/api/expenses', data),
-        onSuccess: () => {
+        onSuccess: async () => {
             toast.success('Gasto registrado correctamente');
-            setIsFormOpen(false);
-            resetForm();
             queryClient.invalidateQueries(['expenses-history']);
+
+            const addAnother = await confirm({
+                title: '¿Desea agregar otro documento?',
+                message: 'El comprobante ha sido registrado con éxito. ¿Desea ingresar otro documento de gasto ahora?',
+                confirmLabel: 'Sí, agregar otro',
+                cancelLabel: 'No, ir al listado',
+                variant: 'info'
+            });
+
+            if (addAnother) {
+                resetForm();
+                setTimeout(() => {
+                    tipoDocRef.current?.focus();
+                }, 80);
+            } else {
+                setIsFormOpen(false);
+                resetForm();
+            }
         },
         onError: (err) => toast.error(err.response?.data?.message || 'Error al procesar registro')
     });
