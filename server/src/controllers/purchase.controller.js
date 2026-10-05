@@ -4,6 +4,7 @@ const excelService = require('../services/excel.service');
 const { getEffectiveProductId } = require('../utils/inventoryUtils');
 const notificationService = require('../services/notification.service');
 const reportPdfHelper = require('../utils/reportPdfHelper');
+const { validateDocumentDuplicate } = require('../utils/documentValidator');
 const aiService = require('../services/ai.service');
 const crypto = require('crypto');
 const os = require('os');
@@ -269,6 +270,20 @@ const createPurchase = async (req, res) => {
         const selloRecepcion = req.body.sello_recepcion || null;
         const numQuedan = (req.body.num_quedan || req.body.numero_quedan || '').trim() || null;
 
+        // Validar unicidad y no duplicidad (entre compras y gastos operativos)
+        const dupCheck = await validateDocumentDuplicate({
+            connection,
+            companyId,
+            providerId: provider_id,
+            numeroDocumento: numero_documento,
+            numeroControl,
+            targetType: 'purchase'
+        });
+        if (dupCheck.isDuplicate) {
+            await connection.rollback();
+            return res.status(400).json({ message: dupCheck.message });
+        }
+
         const [headerResult] = await connection.query(`
              INSERT INTO purchase_headers 
              (company_id, branch_id, usuario_id, provider_id, fecha, numero_documento, 
@@ -515,6 +530,21 @@ const updatePurchase = async (req, res) => {
         const numeroControl = req.body.numero_control || req.body.num_control || null;
         const selloRecepcion = req.body.sello_recepcion || null;
         const numQuedan = (req.body.num_quedan || req.body.numero_quedan || '').trim() || null;
+
+        // Validar unicidad y no duplicidad (entre compras y gastos operativos)
+        const dupCheck = await validateDocumentDuplicate({
+            connection,
+            companyId,
+            providerId: provider_id,
+            numeroDocumento: numero_documento,
+            numeroControl,
+            excludeId: id,
+            targetType: 'purchase'
+        });
+        if (dupCheck.isDuplicate) {
+            await connection.rollback();
+            return res.status(400).json({ message: dupCheck.message });
+        }
 
         await connection.query(`
             UPDATE purchase_headers SET 

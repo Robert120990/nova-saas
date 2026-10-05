@@ -225,6 +225,7 @@ const accountingReportsController = require('../controllers/accounting.reports.c
 const officeConnectionController = require('../controllers/officeConnection.controller');
 const cxcController = require('../controllers/cxc.controller');
 const expenseController = require('../controllers/expense.controller');
+const documentValidator = require('../utils/documentValidator');
 const taxRoutes = require('./tax.routes');
 const auditController = require('../controllers/audit.controller');
 const rhAfpController = require('../controllers/rhAfp.controller');
@@ -545,6 +546,7 @@ router.post('/expenses/scan-dte', memoryUpload.single('file'), purchaseControlle
 router.get('/expenses/:id', expenseController.getExpenseById);
 router.put('/expenses/:id', validate(expenseUpdateSchema), expenseController.updateExpense);
 router.post('/expenses/:id/void', expenseController.voidExpense);
+router.get('/documents/check-duplicate', documentValidator.checkDocumentDuplicate);
 
 // Sales
 router.get('/sales', salesController.getSales);
