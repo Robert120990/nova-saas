@@ -32,6 +32,8 @@ const SearchableSelect = ({
     dropdownWidth = null,
     debounceMs = 500,
     isClearable = false,
+    onSelect = null,
+    onPressEnter = null,
     className = ''
 }) => {
     const [isOpen, setIsOpen] = useState(false);
@@ -274,6 +276,13 @@ const SearchableSelect = ({
 
     const handleKeyDown = (e) => {
         if (!isOpen) {
+            if (e.key === 'Enter') {
+                if (onPressEnter) {
+                    e.preventDefault();
+                    onPressEnter();
+                    return;
+                }
+            }
             if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
                 toggleOpen();
@@ -296,6 +305,8 @@ const SearchableSelect = ({
                 e.preventDefault();
                 if (focusIdx >= 0 && focusIdx < filteredOptions.length) {
                     handleSelect(filteredOptions[focusIdx]);
+                } else if (filteredOptions.length > 0) {
+                    handleSelect(filteredOptions[0]);
                 }
                 break;
             case 'Tab':
@@ -309,6 +320,9 @@ const SearchableSelect = ({
         onChange({ target: { name, value: option[valueKey] } }, option);
         setIsOpen(false);
         setSearch('');
+        if (onSelect) {
+            onSelect(option);
+        }
     };
 
     const handleListScroll = (e) => {

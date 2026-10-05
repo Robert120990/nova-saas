@@ -3,6 +3,7 @@ const PDFDocument = require('pdfkit');
 const excelService = require('../services/excel.service');
 const notificationService = require('../services/notification.service');
 const reportPdfHelper = require('../utils/reportPdfHelper');
+const { validateDocumentDuplicate } = require('../utils/documentValidator');
 
 /**
  * Obtener lista de gastos con búsqueda y paginación
@@ -20,7 +21,17 @@ const getExpenses = async (req, res) => {
                    p.nit AS provider_nit,
                    br.nombre AS branch_nombre,
                    u.nombre AS usuario_nombre,
-                   cat_dte.description AS tipo_documento_nombre,
+                   COALESCE(cat_dte.description, CASE eh.tipo_documento_id
+                       WHEN '01' THEN 'Factura'
+                       WHEN '02' THEN 'Crédito Fiscal'
+                       WHEN '03' THEN 'Factura de Exportación'
+                       WHEN '04' THEN 'Importación'
+                       WHEN '05' THEN 'Internación'
+                       WHEN '06' THEN 'Comprobante de Retención'
+                       WHEN '07' THEN 'Doc. Contable de Liquidación'
+                       WHEN '08' THEN 'Nota de Débito'
+                       WHEN '09' THEN 'Nota de Crédito'
+                       ELSE 'Gasto' END) AS tipo_documento_nombre,
                    cat_cond.description AS condicion_operacion_nombre
             FROM expense_headers eh
             LEFT JOIN providers p ON eh.provider_id = p.id
@@ -144,7 +155,17 @@ const getExpenseById = async (req, res) => {
                    p.es_gran_contribuyente AS provider_es_gran_contribuyente,
                    br.nombre AS branch_nombre,
                    u.nombre AS usuario_nombre,
-                   cat.description AS tipo_documento_nombre,
+                   COALESCE(cat.description, CASE eh.tipo_documento_id
+                       WHEN '01' THEN 'Factura'
+                       WHEN '02' THEN 'Crédito Fiscal'
+                       WHEN '03' THEN 'Factura de Exportación'
+                       WHEN '04' THEN 'Importación'
+                       WHEN '05' THEN 'Internación'
+                       WHEN '06' THEN 'Comprobante de Retención'
+                       WHEN '07' THEN 'Doc. Contable de Liquidación'
+                       WHEN '08' THEN 'Nota de Débito'
+                       WHEN '09' THEN 'Nota de Crédito'
+                       ELSE 'Gasto' END) AS tipo_documento_nombre,
                    cat_cond.description AS condicion_operacion_nombre
             FROM expense_headers eh
             LEFT JOIN providers p ON eh.provider_id = p.id
@@ -230,6 +251,21 @@ const createExpense = async (req, res) => {
         }
 
         // 1. Insertar Cabecera
+        const numeroControl = num_control || req.body.numero_control || null;
+        const dupCheck = await validateDocumentDuplicate({
+            connection,
+            companyId,
+            providerId: provider_id,
+            numeroDocumento: numero_documento,
+            numeroControl,
+            targetType: 'expense'
+        });
+        if (dupCheck.isDuplicate) {
+            await connection.rollback();
+            return res.status(400).json({ message: dupCheck.message });
+        }
+
+        const cleanNumeroDoc = (numero_documento || '').trim().toUpperCase();
         const anticipoCuenta = parseFloat(req.body.anticipo_cuenta) || 0;
         const montoSujeto = parseFloat(req.body.monto_sujeto) || 0;
         const [headerResult] = await connection.query(`
@@ -244,13 +280,13 @@ const createExpense = async (req, res) => {
              gravadas_importaciones, gravadas_internaciones, iva_importaciones)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `, [
-            companyId, branch_id, usuarioId, provider_id, fecha || new Date(), numero_documento,
+            companyId, branch_id, usuarioId, provider_id, fecha || new Date(), cleanNumeroDoc,
             tipo_documento_id, condicion_operacion_id, observaciones,
             total_nosujeta || 0, total_exenta || 0, total_gravada || 0,
             iva || 0, retencion || 0, percepcion || 0, fovial || 0, cotrans || 0, anticipoCuenta, montoSujeto, monto_total || 0,
             finalPeriodYear, finalPeriodMonth,
             documento_afectado || null, fecha_afectada || null, num_control || null, sello_recepcion || null,
-            tipo_operacion || '1', tipo_clasificacion || '2', tipo_sector || '4', tipo_costo || '2',
+            tipo_operacion || '1', tipo_clasificacion || '1', tipo_sector || '2', tipo_costo || '5',
             gravadas_importaciones || 0, gravadas_internaciones || 0, iva_importaciones || 0
         ]);
 
@@ -361,6 +397,22 @@ const updateExpense = async (req, res) => {
         }
 
         // 2. Actualizar Cabecera
+        const numeroControl = num_control || req.body.numero_control || null;
+        const dupCheck = await validateDocumentDuplicate({
+            connection,
+            companyId,
+            providerId: provider_id,
+            numeroDocumento: numero_documento,
+            numeroControl,
+            excludeId: id,
+            targetType: 'expense'
+        });
+        if (dupCheck.isDuplicate) {
+            await connection.rollback();
+            return res.status(400).json({ message: dupCheck.message });
+        }
+
+        const cleanNumeroDoc = (numero_documento || '').trim().toUpperCase();
         const anticipoCuenta = parseFloat(req.body.anticipo_cuenta) || 0;
         const montoSujeto = parseFloat(req.body.monto_sujeto) || 0;
         await connection.query(`
@@ -375,13 +427,13 @@ const updateExpense = async (req, res) => {
                 gravadas_importaciones = ?, gravadas_internaciones = ?, iva_importaciones = ?
             WHERE id = ? AND company_id = ?
         `, [
-            branch_id, provider_id, fecha, numero_documento,
+            branch_id, provider_id, fecha, cleanNumeroDoc,
             tipo_documento_id, condicion_operacion_id, observaciones,
             total_nosujeta || 0, total_exenta || 0, total_gravada || 0,
             iva || 0, retencion || 0, percepcion || 0, fovial || 0, cotrans || 0, anticipoCuenta, montoSujeto, monto_total || 0,
             finalPeriodYear, finalPeriodMonth,
             documento_afectado || null, fecha_afectada || null, num_control || null, sello_recepcion || null,
-            tipo_operacion || '1', tipo_clasificacion || '2', tipo_sector || '4', tipo_costo || '2',
+            tipo_operacion || '1', tipo_clasificacion || '1', tipo_sector || '2', tipo_costo || '5',
             gravadas_importaciones || 0, gravadas_internaciones || 0, iva_importaciones || 0,
             id, companyId
         ]);
@@ -480,7 +532,17 @@ const getExpenseReportPDF = async (req, res) => {
             SELECT eh.*, 
                    p.nombre AS provider_nombre, 
                    br.nombre AS branch_nombre,
-                   cat_dte.description AS tipo_doc_nombre,
+                   COALESCE(cat_dte.description, CASE eh.tipo_documento_id
+                       WHEN '01' THEN 'Factura'
+                       WHEN '02' THEN 'Crédito Fiscal'
+                       WHEN '03' THEN 'Factura de Exportación'
+                       WHEN '04' THEN 'Importación'
+                       WHEN '05' THEN 'Internación'
+                       WHEN '06' THEN 'Comprobante de Retención'
+                       WHEN '07' THEN 'Doc. Contable de Liquidación'
+                       WHEN '08' THEN 'Nota de Débito'
+                       WHEN '09' THEN 'Nota de Crédito'
+                       ELSE 'Gasto' END) AS tipo_doc_nombre,
                    cat_cond.description AS condicion_nombre
             FROM expense_headers eh
             LEFT JOIN providers p ON eh.provider_id = p.id

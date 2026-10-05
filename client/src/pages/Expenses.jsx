@@ -236,19 +236,73 @@ const F07_TIPOS_COSTO = [
     { code: '0', label: '0 - ANTES FEB 2024' }
 ];
 
+const getStoredExpensePeriod = (companyId) => {
+    try {
+        const key = `expenses_filter_period_${companyId || 'default'}`;
+        const raw = localStorage.getItem(key);
+        if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed && typeof parsed.year === 'number' && typeof parsed.month === 'number') {
+                return parsed;
+            }
+        }
+    } catch (e) {
+        console.error('Error reading stored expense period:', e);
+    }
+    return null;
+};
+
 const Expenses = () => {
     const { user } = useAuth();
     const queryClient = useQueryClient();
     const confirm = useConfirm();
 
-    // Query Filters & Period Consultation State
+    // Query Filters & Period Consultation State (Persisted in localStorage)
     const now = new Date();
-    const [filterYear, setFilterYear] = useState(now.getFullYear());
-    const [filterMonth, setFilterMonth] = useState(now.getMonth() + 1);
+    const [filterYear, setFilterYear] = useState(() => {
+        const saved = getStoredExpensePeriod(user?.company_id);
+        return saved?.year || now.getFullYear();
+    });
+    const [filterMonth, setFilterMonth] = useState(() => {
+        const saved = getStoredExpensePeriod(user?.company_id);
+        return saved?.month || (now.getMonth() + 1);
+    });
     const [historySearch, setHistorySearch] = useState('');
     const [historyPage, setHistoryPage] = useState(1);
     const [historyLimit, setHistoryLimit] = useState(15);
-    const [filterBranchId, setFilterBranchId] = useState('');
+    const [filterBranchId, setFilterBranchId] = useState(() => {
+        const saved = getStoredExpensePeriod(user?.company_id);
+        return saved?.branch_id !== undefined ? saved.branch_id : '';
+    });
+
+    // Recargar período guardado cuando cambie la empresa seleccionada
+    useEffect(() => {
+        if (!user?.company_id) return;
+        const saved = getStoredExpensePeriod(user.company_id);
+        if (saved) {
+            setFilterYear(saved.year);
+            setFilterMonth(saved.month);
+            if (saved.branch_id !== undefined) {
+                setFilterBranchId(saved.branch_id);
+            }
+        }
+    }, [user?.company_id]);
+
+    // Persistir automáticamente el último período consultado
+    useEffect(() => {
+        if (filterYear && filterMonth) {
+            try {
+                const key = `expenses_filter_period_${user?.company_id || 'default'}`;
+                localStorage.setItem(key, JSON.stringify({
+                    year: filterYear,
+                    month: filterMonth,
+                    branch_id: filterBranchId || ''
+                }));
+            } catch (e) {
+                console.error('Error saving expense period to localStorage:', e);
+            }
+        }
+    }, [filterYear, filterMonth, filterBranchId, user?.company_id]);
 
     // Active Period Modal State
     const [modalPeriodoOpen, setModalPeriodoOpen] = useState(false);
@@ -284,11 +338,11 @@ const Expenses = () => {
     const [documentoAfectado, setDocumentoAfectado] = useState('');
     const [fechaAfectada, setFechaAfectada] = useState('');
 
-    // Catálogos F-07 MH State
+    // Catálogos F-07 MH State (Por defecto: Gravada, Costo, Comercio, Costo Artículos Producidos Internos)
     const [tipoOperacion, setTipoOperacion] = useState('1'); // 1 Gravada
-    const [tipoClasificacion, setTipoClasificacion] = useState('2'); // 2 Gasto
-    const [tipoSector, setTipoSector] = useState('4'); // 4 Servicios/Profesiones
-    const [tipoCosto, setTipoCosto] = useState('2'); // 2 Gasto de Administración
+    const [tipoClasificacion, setTipoClasificacion] = useState('1'); // 1 Costo
+    const [tipoSector, setTipoSector] = useState('2'); // 2 Comercio
+    const [tipoCosto, setTipoCosto] = useState('5'); // 5 Costo Artículos Producidos Internos
     const [isF07Open, setIsF07Open] = useState(false);
 
     // Form Direct Tax Amounts State
@@ -302,8 +356,20 @@ const Expenses = () => {
     // Form & Button Refs for Keyboard Navigation
     const formRef = useRef(null);
     const submitBtnRef = useRef(null);
+    const conceptoInputRef = useRef(null);
     const dteFileInputRef = useRef(null);
     const [isScanningDte, setIsScanningDte] = useState(false);
+
+    const focusConcepto = () => {
+        setTimeout(() => {
+            if (conceptoInputRef.current) {
+                conceptoInputRef.current.focus();
+                if (typeof conceptoInputRef.current.select === 'function') {
+                    conceptoInputRef.current.select();
+                }
+            }
+        }, 40);
+    };
 
     // Summary / Totals State
     const [totals, setTotals] = useState({
@@ -387,13 +453,18 @@ const Expenses = () => {
         retry: false
     });
 
-    // Sincronizar consulta con período activo la primera vez
+    // Sincronizar modal de período activo y usarlo de consulta solo si aún no hay período guardado
     useEffect(() => {
         if (activePeriod?.year && activePeriod?.month) {
             setNuevoPeriodoMes(activePeriod.month);
             setNuevoPeriodoAnio(activePeriod.year);
+            const saved = getStoredExpensePeriod(user?.company_id);
+            if (!saved) {
+                setFilterYear(activePeriod.year);
+                setFilterMonth(activePeriod.month);
+            }
         }
-    }, [activePeriod]);
+    }, [activePeriod, user?.company_id]);
 
     const { data: taxSettings } = useQuery({
         queryKey: ['tax-settings'],
@@ -706,8 +777,14 @@ const Expenses = () => {
         }
     };
 
-    // Navegación secuencial ultra-rápida con tecla ENTER a lo largo de todo el formulario
+    // Atajo F10 para guardar y navegación secuencial ultra-rápida con tecla ENTER a lo largo de todo el formulario
     const handleFormKeyDown = (e) => {
+        if (e.key === 'F10') {
+            e.preventDefault();
+            formRef.current?.requestSubmit();
+            return;
+        }
+
         if (e.key === 'Enter') {
             if (e.target.tagName === 'TEXTAREA') return;
             if (e.target.type === 'submit') return;
@@ -739,6 +816,20 @@ const Expenses = () => {
         }
     };
 
+    // Atajo global de teclado F10 cuando el formulario esté abierto
+    useEffect(() => {
+        const handleGlobalKeyDown = (e) => {
+            if (e.key === 'F10') {
+                e.preventDefault();
+                if (isFormOpen) {
+                    formRef.current?.requestSubmit();
+                }
+            }
+        };
+        window.addEventListener('keydown', handleGlobalKeyDown);
+        return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+    }, [isFormOpen]);
+
     const resetForm = () => {
         setNumeroDoc('');
         setNumControl('');
@@ -751,9 +842,9 @@ const Expenses = () => {
         setTipoDocId('02');
         setCondicionId('01');
         setTipoOperacion('1');
-        setTipoClasificacion('2');
-        setTipoSector('4');
-        setTipoCosto('2');
+        setTipoClasificacion('1');
+        setTipoSector('2');
+        setTipoCosto('5');
         setIsF07Open(false);
         setTotalGravada(0);
         setTotalExenta(0);
@@ -827,6 +918,14 @@ const Expenses = () => {
             toast.success('Período activo actualizado exitosamente');
             setFilterYear(variables.year);
             setFilterMonth(variables.month);
+            try {
+                const key = `expenses_filter_period_${user?.company_id || 'default'}`;
+                localStorage.setItem(key, JSON.stringify({
+                    year: variables.year,
+                    month: variables.month,
+                    branch_id: filterBranchId || ''
+                }));
+            } catch (e) {}
             setModalPeriodoOpen(false);
             queryClient.invalidateQueries(['active-period']);
             queryClient.invalidateQueries(['expenses-history']);
@@ -871,9 +970,9 @@ const Expenses = () => {
 
             // Clasificación F-07 MH
             setTipoOperacion(detail.tipo_operacion || '1');
-            setTipoClasificacion(detail.tipo_clasificacion || '2');
-            setTipoSector(detail.tipo_sector || '4');
-            setTipoCosto(detail.tipo_costo || '2');
+            setTipoClasificacion(detail.tipo_clasificacion || '1');
+            setTipoSector(detail.tipo_sector || '2');
+            setTipoCosto(detail.tipo_costo || '5');
 
             setFecha(new Date(detail.fecha).toISOString().split('T')[0]);
             if (detail.period_year && detail.period_month) {
@@ -929,12 +1028,6 @@ const Expenses = () => {
         if (e) e.preventDefault();
         if (!branchId) return toast.error('Seleccione la sucursal');
         if (!providerId) return toast.error('Seleccione el proveedor');
-        if (!numeroDoc.trim()) return toast.error('Ingrese el número de documento');
-
-        // Validar Nota de Crédito / Débito
-        if ((esNotaCredito || esNotaDebito) && !documentoAfectado.trim()) {
-            return toast.error('Debe ingresar el Documento Afectado para este tipo de comprobante');
-        }
 
         const grav = parseFloat(totalGravada) || 0;
         const exe = parseFloat(totalExenta) || 0;
@@ -1047,7 +1140,10 @@ const Expenses = () => {
         total_gravada: 0,
         total_iva: 0,
         total_retencion: 0,
-        total_anticipo_cuenta: 0
+        total_percepcion: 0,
+        total_anticipo_cuenta: 0,
+        total_exenta: 0,
+        total_nosujeta: 0
     };
 
     return (
@@ -1220,7 +1316,7 @@ const Expenses = () => {
                         <Money value={summaryData.total_gravada} />
                     </div>
                     <span className="text-[10px] font-medium text-slate-400 mt-1">
-                        Exentas: <Money value={summaryData.total_exenta} />
+                        Exentas: <Money value={summaryData.total_exenta} /> · No Sujetas: <Money value={summaryData.total_nosujeta} />
                     </span>
                 </div>
 
@@ -1333,7 +1429,7 @@ const Expenses = () => {
                                                         {docTypeInfo.code} {docTypeInfo.badge}
                                                     </span>
                                                     <span className="text-xs font-black text-slate-900">
-                                                        {g.numero_documento}
+                                                        {g.numero_documento || 'S/N'}
                                                     </span>
                                                 </div>
                                                 {g.num_control && (
@@ -1358,6 +1454,12 @@ const Expenses = () => {
                                             </td>
                                             <td className="px-3 py-2.5 text-right text-xs font-semibold text-slate-700 whitespace-nowrap">
                                                 <Money value={g.total_gravada} />
+                                                {(parseFloat(g.total_nosujeta || 0) > 0 || parseFloat(g.total_exenta || 0) > 0) && (
+                                                    <div className="text-[10px] text-amber-600 font-medium">
+                                                        {parseFloat(g.total_nosujeta || 0) > 0 && <span>NS: <Money value={g.total_nosujeta} /> </span>}
+                                                        {parseFloat(g.total_exenta || 0) > 0 && <span>Ex: <Money value={g.total_exenta} /></span>}
+                                                    </div>
+                                                )}
                                             </td>
                                             <td className="px-3 py-2.5 text-right text-xs font-bold whitespace-nowrap">
                                                 {isNC ? (
@@ -1487,6 +1589,7 @@ const Expenses = () => {
                             >
                                 <Save size={15} />
                                 <span>{createMutation.isPending || updateMutation.isPending ? 'Guardando...' : (isEditing ? 'Guardar Cambios' : 'Guardar Comprobante')}</span>
+                                <kbd className="hidden sm:inline-block px-1.5 py-0.5 bg-black/20 rounded text-[10px] font-mono text-white/90">[F10]</kbd>
                             </button>
                         </div>
                     </div>
@@ -1650,24 +1753,26 @@ const Expenses = () => {
                                             </div>
                                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                                                 <div>
-                                                    <label className={labelCls}>Documento / CCF Afectado *</label>
+                                                    <label className={labelCls}>
+                                                        Documento / CCF Afectado <span className="text-[8px] font-normal text-slate-400 lowercase tracking-normal">(opcional)</span>
+                                                    </label>
                                                     <input
                                                         type="text"
                                                         value={documentoAfectado}
                                                         onChange={(e) => setDocumentoAfectado(e.target.value.toUpperCase())}
-                                                        placeholder="EJ: CCF-00123 O CÓDIGO DTE"
+                                                        placeholder="EJ: CCF-00123 O CÓDIGO DTE (OPCIONAL)"
                                                         className={`${inputCls} uppercase`}
-                                                        required
                                                     />
                                                 </div>
                                                 <div>
-                                                    <label className={labelCls}>Fecha del Doc. Afectado *</label>
+                                                    <label className={labelCls}>
+                                                        Fecha del Doc. Afectado <span className="text-[8px] font-normal text-slate-400 lowercase tracking-normal">(opcional)</span>
+                                                    </label>
                                                     <input
                                                         type="date"
                                                         value={fechaAfectada}
                                                         onChange={(e) => setFechaAfectada(e.target.value)}
                                                         className={inputCls}
-                                                        required
                                                     />
                                                 </div>
                                             </div>
@@ -1715,6 +1820,8 @@ const Expenses = () => {
                                                     setProviderId(e.target.value);
                                                     if (opt) setProvidersCache(prev => ({ ...prev, [opt.id]: opt }));
                                                 }}
+                                                onSelect={focusConcepto}
+                                                onPressEnter={focusConcepto}
                                                 valueKey="id" 
                                                 labelKey="nombre" 
                                                 placeholder="BUSCAR POR NOMBRE, NRC O NIT..."
@@ -1728,6 +1835,7 @@ const Expenses = () => {
                                         <div className="sm:col-span-6">
                                             <label className={labelCls}>Concepto General / Observaciones</label>
                                             <input 
+                                                ref={conceptoInputRef}
                                                 type="text" 
                                                 value={observaciones} 
                                                 onChange={(e) => setObservaciones(e.target.value.toUpperCase())} 
@@ -1741,15 +1849,15 @@ const Expenses = () => {
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                         <div>
                                             <label className={labelCls}>
-                                                {tipoDocId === '04' ? 'No. Póliza / Declaración *' : tipoDocId === '05' ? 'No. FAUCA / Mandamiento *' : 'Código de Generación *'}
+                                                {tipoDocId === '04' ? 'No. Póliza / Declaración' : tipoDocId === '05' ? 'No. FAUCA / Mandamiento' : 'Código de Generación'}{' '}
+                                                <span className="text-[8px] font-normal text-slate-400 lowercase tracking-normal">(opcional)</span>
                                             </label>
                                             <input 
                                                 type="text" 
                                                 value={numeroDoc} 
                                                 onChange={(e) => setNumeroDoc(e.target.value.toUpperCase())} 
-                                                placeholder={tipoDocId === '04' ? 'NO. PÓLIZA' : tipoDocId === '05' ? 'NO. FAUCA' : 'CÓDIGO GENERACIÓN DTE'} 
+                                                placeholder={tipoDocId === '04' ? 'NO. PÓLIZA (OPCIONAL)' : tipoDocId === '05' ? 'NO. FAUCA (OPCIONAL)' : 'CÓDIGO GENERACIÓN DTE (OPCIONAL)'} 
                                                 className={`${inputCls} uppercase font-mono text-[11px]`} 
-                                                required
                                             />
                                         </div>
 
@@ -1802,22 +1910,25 @@ const Expenses = () => {
                                     <button
                                         type="button"
                                         onClick={() => setIsF07Open(!isF07Open)}
-                                        className="skip-enter-nav w-full px-4 py-2.5 bg-slate-50/80 hover:bg-slate-100 flex items-center justify-between text-left transition-colors"
+                                        className="skip-enter-nav w-full px-4 py-2.5 bg-slate-50/80 hover:bg-slate-100 flex flex-col md:flex-row md:items-center justify-between text-left transition-colors gap-2"
                                     >
-                                        <div className="flex items-center gap-2">
-                                            <SlidersHorizontal size={14} className="text-indigo-600" />
+                                        <div className="flex items-center gap-2 shrink-0">
+                                            <SlidersHorizontal size={14} className="text-indigo-600 shrink-0" />
                                             <span className="text-xs font-black text-slate-800 uppercase tracking-wider">
                                                 2. Clasificación F-07 MH
                                             </span>
-                                            <span className="text-[10px] text-slate-400 font-medium hidden md:inline">
-                                                (Anexo F-07 Ministerio de Hacienda)
-                                            </span>
                                         </div>
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-[9px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200/70 px-2 py-0.5 rounded-full truncate max-w-[200px] sm:max-w-xs">
-                                                {F07_TIPOS_OPERACION.find(o => o.code === tipoOperacion)?.label.split('-')[1]?.trim() || 'GRAVADA'} · {F07_TIPOS_CLASIFICACION.find(c => c.code === tipoClasificacion)?.label.split('-')[1]?.trim() || 'GASTO'}
-                                            </span>
-                                            <div className="p-1 text-slate-400 hover:text-slate-600">
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                            <div className="flex items-center gap-1.5 flex-wrap text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200/80 px-2.5 py-1 rounded-xl">
+                                                <span className="font-black text-indigo-900">{F07_TIPOS_OPERACION.find(o => o.code === tipoOperacion)?.label.split('-')[1]?.trim() || 'GRAVADA'}</span>
+                                                <span className="text-indigo-300 font-bold">·</span>
+                                                <span className="font-black text-indigo-900">{F07_TIPOS_CLASIFICACION.find(c => c.code === tipoClasificacion)?.label.split('-')[1]?.trim() || 'COSTO'}</span>
+                                                <span className="text-indigo-300 font-bold">·</span>
+                                                <span className="font-black text-indigo-900">{F07_TIPOS_SECTOR.find(s => s.code === tipoSector)?.label.split('-')[1]?.trim() || 'COMERCIO'}</span>
+                                                <span className="text-indigo-300 font-bold">·</span>
+                                                <span className="font-black text-indigo-900">{F07_TIPOS_COSTO.find(c => c.code === tipoCosto)?.label.split('-')[1]?.trim() || 'COSTO ARTICULOS PRODUCIDOS INTERNOS'}</span>
+                                            </div>
+                                            <div className="p-1 text-slate-400 hover:text-slate-600 shrink-0">
                                                 {isF07Open ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                                             </div>
                                         </div>
@@ -2334,6 +2445,7 @@ const Expenses = () => {
                                         >
                                             <Save size={16} />
                                             <span>{createMutation.isPending || updateMutation.isPending ? 'Guardando...' : (isEditing ? 'Guardar Cambios' : 'Guardar Comprobante')}</span>
+                                            <kbd className="px-1.5 py-0.5 bg-black/25 rounded text-[10px] font-mono font-bold text-white/95">[F10]</kbd>
                                         </button>
 
                                         <button
