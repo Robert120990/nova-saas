@@ -670,6 +670,7 @@ router.post('/cxc/statement/send-email', cxcController.sendStatementEmail);
 router.get('/cxc/aging-report', cxcController.getAgingReport);
 router.get('/cxc/aging-report/pdf', cxcController.exportAgingPDF);
 router.get('/cxc/reports/pending-detailed/pdf', cxcController.exportPendingDocumentsDetailedPDF);
+router.get('/cxc/reports/detailed-statement/pdf', cxcController.exportDetailedStatementPDF);
 router.post('/cxc/aging-report/send-email', cxcController.sendAgingEmail);
 router.get('/cxc/pending-documents', cxcController.getPendingDocuments);
 router.get('/cxc/payments', cxcController.getPaymentHistory);

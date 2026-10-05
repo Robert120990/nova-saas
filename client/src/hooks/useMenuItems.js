@@ -270,6 +270,18 @@ function buildTree(items) {
             children: []
         });
     }
+    if (cxcReportsNode && !cxcReportsNode.children.some(c => c.path === '/cxc/reportes/estado-cuenta-detallado')) {
+        cxcReportsNode.children.push({
+            id: 'virtual-cxc-detailed-statement-report',
+            label: 'Estado de Cuenta Detallado',
+            path: '/cxc/reportes/estado-cuenta-detallado',
+            permission: 'view_cxc_detailed_statement_report',
+            permission_key: 'view_cxc_detailed_statement_report',
+            hideInMenu: false,
+            icon: iconMap.FileText || iconMap.Circle,
+            children: []
+        });
+    }
 
     // Asegurar Reporte de Lubricantes Vendidos en Reportes de Gasolinera
     const gasReportsNode = Object.values(itemMap).find(i => 

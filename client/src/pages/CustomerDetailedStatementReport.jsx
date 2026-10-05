@@ -4,22 +4,21 @@ import axios from 'axios';
 import { 
     GitBranch, 
     Calendar,
-    User,
-    FileText
+    User
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
 import ReportLayout from '../components/ui/ReportLayout';
 import SearchableSelect from '../components/ui/SearchableSelect';
 import { getTodayString, getFirstDayOfMonth } from '../utils/dateUtils';
+import { unwrapList } from '../utils/apiUtils';
 
-const CustomerStatementReport = () => {
+const CustomerDetailedStatementReport = () => {
     const { user } = useAuth();
     const today = getTodayString();
     const firstDayOfMonth = getFirstDayOfMonth();
 
-    // States
-    const [reportType, setReportType] = useState('credito'); // 'credito' | 'anticipado' | 'trupput'
+    // Filters State
     const [selectedBranch, setSelectedBranch] = useState(user?.branch_id || '');
     const [selectedCustomer, setSelectedCustomer] = useState('');
     const [selectedCustomerName, setSelectedCustomerName] = useState('');
@@ -29,77 +28,26 @@ const CustomerStatementReport = () => {
     const [pdfUrl, setPdfUrl] = useState(null);
 
     // Queries
-    const { data: branches = [] } = useQuery({
+    const { data: rawBranches = [] } = useQuery({
         queryKey: ['branches'],
-        queryFn: async () => (await axios.get('/api/branches')).data
+        queryFn: async () => unwrapList((await axios.get('/api/branches')).data)
     });
+    const branches = Array.isArray(rawBranches) ? rawBranches : [];
 
+    // Searchable customer options loader
     const loadCustomersOptions = async (search, page) => {
-        const { data } = await axios.get('/api/customers', {
-            params: { search: search || undefined, page, limit: 50 }
+        const res = await axios.get('/api/customers', {
+            params: { search: search || undefined, page, limit: 50, es_credito: 1 }
         });
-        return data;
+        return res.data;
     };
 
-    // Revoke previous URL on unmount
+    // Revoke object URL on unmount or change
     useEffect(() => {
         return () => {
             if (pdfUrl) URL.revokeObjectURL(pdfUrl);
         };
     }, [pdfUrl]);
-
-    // Reset pdf preview when changing report type
-    const handleTypeChange = (newType) => {
-        if (newType !== reportType) {
-            setReportType(newType);
-            if (pdfUrl) {
-                URL.revokeObjectURL(pdfUrl);
-                setPdfUrl(null);
-            }
-        }
-    };
-
-    const getEndpoint = () => {
-        switch (reportType) {
-            case 'anticipado':
-                return '/api/cxc/anticipos/statement/pdf';
-            case 'trupput':
-                return '/api/cxc/trupput/statement/pdf';
-            case 'detallado':
-                return '/api/cxc/reports/detailed-statement/pdf';
-            case 'credito':
-            default:
-                return '/api/cxc/statement/pdf';
-        }
-    };
-
-    const getReportTitle = () => {
-        switch (reportType) {
-            case 'anticipado':
-                return 'Estado de Cuenta de Anticipos';
-            case 'trupput':
-                return 'Estado de Cuenta Trupput';
-            case 'detallado':
-                return 'Estado de Cuenta Detallado';
-            case 'credito':
-            default:
-                return 'Estado de Cuenta de Crédito';
-        }
-    };
-
-    const getFilePrefix = () => {
-        switch (reportType) {
-            case 'anticipado':
-                return 'Estado_Cuenta_Anticipos';
-            case 'trupput':
-                return 'Estado_Cuenta_Trupput';
-            case 'detallado':
-                return 'Estado_Cuenta_Detallado';
-            case 'credito':
-            default:
-                return 'Estado_Cuenta_Credito';
-        }
-    };
 
     const handleGenerateReport = async () => {
         if (!selectedBranch) {
@@ -113,8 +61,7 @@ const CustomerStatementReport = () => {
 
         setIsGenerating(true);
         try {
-            const endpoint = getEndpoint();
-            const response = await axios.get(endpoint, {
+            const response = await axios.get('/api/cxc/reports/detailed-statement/pdf', {
                 params: { 
                     customer_id: selectedCustomer,
                     branch_id: selectedBranch,
@@ -124,7 +71,6 @@ const CustomerStatementReport = () => {
                 responseType: 'blob'
             });
 
-            // Verificar si el resultado es realmente un PDF o un JSON de error
             if (response.data.type !== 'application/pdf') {
                 const text = await response.data.text();
                 const error = JSON.parse(text);
@@ -137,10 +83,10 @@ const CustomerStatementReport = () => {
             
             const url = URL.createObjectURL(blob);
             setPdfUrl(url);
-            toast.success('Reporte de estado de cuenta generado correctamente');
+            toast.success('Estado de cuenta detallado generado exitosamente');
         } catch (error) {
-            console.error('Error generating report:', error);
-            toast.error(error.message || 'Error al generar el estado de cuenta');
+            console.error('Error generating detailed statement report:', error);
+            toast.error(error.message || 'Error al generar el estado de cuenta detallado');
         } finally {
             setIsGenerating(false);
         }
@@ -151,7 +97,7 @@ const CustomerStatementReport = () => {
         const cleanName = (selectedCustomerName || 'Cliente').replace(/[^a-zA-Z0-9_-]/g, '_');
         const link = document.createElement('a');
         link.href = pdfUrl;
-        link.setAttribute('download', `${getFilePrefix()}_${cleanName}_${endDate || 'corte'}.pdf`);
+        link.setAttribute('download', `Estado_Cuenta_Detallado_${cleanName}_${endDate || 'corte'}.pdf`);
         document.body.appendChild(link);
         link.click();
         link.remove();
@@ -165,7 +111,6 @@ const CustomerStatementReport = () => {
 
         const toastId = toast.loading('Generando archivo Excel...');
         try {
-            const endpoint = getEndpoint();
             const params = { 
                 customer_id: selectedCustomer,
                 branch_id: selectedBranch,
@@ -174,7 +119,7 @@ const CustomerStatementReport = () => {
                 format: 'excel' 
             };
 
-            const response = await axios.get(endpoint, {
+            const response = await axios.get('/api/cxc/reports/detailed-statement/pdf', {
                 params,
                 responseType: 'blob'
             });
@@ -186,22 +131,22 @@ const CustomerStatementReport = () => {
             const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = url;
-            link.setAttribute('download', `${getFilePrefix()}_${cleanName}.xlsx`);
+            link.setAttribute('download', `Estado_Cuenta_Detallado_${cleanName}.xlsx`);
             document.body.appendChild(link);
             link.click();
             link.remove();
             setTimeout(() => URL.revokeObjectURL(url), 2000);
             toast.success('Reporte exportado a Excel correctamente', { id: toastId });
         } catch (error) {
-            console.error('Error exporting to Excel:', error);
+            console.error('Error exporting detailed statement to Excel:', error);
             toast.error('Error al exportar a Excel', { id: toastId });
         }
     };
 
     return (
         <ReportLayout
-            title={getReportTitle()}
-            subtitle="Estado de cuenta contable pormenorizado: movimientos, cargos, abonos y saldos acumulados."
+            title="Estado de Cuenta Detallado"
+            subtitle="Detalle de consumos y movimientos con productos, placas, odómetro, pagaré legal y firmas."
             category="Cuentas por Cobrar"
             pdfUrl={pdfUrl}
             isGenerating={isGenerating}
@@ -209,25 +154,8 @@ const CustomerStatementReport = () => {
             onDownload={handleDownload}
             onExportExcel={handleExportExcel}
             canGenerate={Boolean(selectedBranch && selectedCustomer)}
-            fileName={`${getFilePrefix()}_${(selectedCustomerName || 'Cliente').replace(/[^a-zA-Z0-9_-]/g, '_')}.pdf`}
+            fileName={`Estado_Cuenta_Detallado_${(selectedCustomerName || 'Cliente').replace(/[^a-zA-Z0-9_-]/g, '_')}.pdf`}
         >
-            {/* Modalidad / Tipo de Reporte */}
-            <div className="space-y-2">
-                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                    <FileText size={12} className="text-indigo-500" /> Modalidad de Cuenta
-                </label>
-                <select 
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-xs font-black text-slate-700 outline-none focus:ring-4 focus:ring-indigo-500/5 transition-all cursor-pointer"
-                    value={reportType}
-                    onChange={(e) => handleTypeChange(e.target.value)}
-                >
-                    <option value="credito">CRÉDITO (VENTAS Y ABONOS)</option>
-                    <option value="detallado">DETALLADO (PRODUCTOS, PLACAS Y FIRMAS)</option>
-                    <option value="anticipado">ANTICIPOS (DEPÓSITOS Y CONSUMOS)</option>
-                    <option value="trupput">TRUPPUT (PREPAGO POR GALONAJE)</option>
-                </select>
-            </div>
-
             {/* Sucursal */}
             <div className="space-y-2">
                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
@@ -239,13 +167,13 @@ const CustomerStatementReport = () => {
                     onChange={(e) => setSelectedBranch(e.target.value)}
                 >
                     <option value="">Seleccionar Sucursal...</option>
-                    {branches.map(b => (
+                    {(Array.isArray(branches) ? branches : []).map(b => (
                         <option key={b.id} value={b.id}>{b.nombre}</option>
                     ))}
                 </select>
             </div>
 
-            {/* Cliente (Búsqueda remota) */}
+            {/* Cliente */}
             <div className="space-y-2">
                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
                     <User size={12} className="text-indigo-500" /> Cliente
@@ -261,7 +189,7 @@ const CustomerStatementReport = () => {
                             setSelectedCustomerName('');
                         }
                     }}
-                    placeholder="BUSCAR POR NOMBRE, NIT O DOCUMENTO..."
+                    placeholder="BUSCAR CLIENTE POR NOMBRE O NIT..."
                     valueKey="id"
                     labelKey="nombre"
                     displayKey="nombre"
@@ -337,4 +265,4 @@ const CustomerStatementReport = () => {
     );
 };
 
-export default CustomerStatementReport;
+export default CustomerDetailedStatementReport;

@@ -11,6 +11,7 @@ const {
 const excelService = require('../services/excel.service');
 const notificationService = require('../services/notification.service');
 const reportPdfHelper = require('../utils/reportPdfHelper');
+const { exportDetailedStatementPDF } = require('./cxc/cxcDetailedStatement.controller');
 
 const extractDateYMD = (d) => {
     if (!d) return '';
@@ -2028,5 +2029,6 @@ module.exports = {
     sendAnticiposStatementEmail,
     getTrupputStatement,
     exportTrupputStatementPDF,
-    sendTrupputStatementEmail
+    sendTrupputStatementEmail,
+    exportDetailedStatementPDF
 };

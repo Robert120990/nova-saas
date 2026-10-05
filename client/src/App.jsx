@@ -87,6 +87,7 @@ const InventoryValuationReport = lazyWithRetry(() => import('./pages/InventoryVa
 const InventoryTurnoverReport = lazyWithRetry(() => import('./pages/InventoryTurnoverReport'));
 const CustomerBalancesReport = lazyWithRetry(() => import('./pages/CustomerBalancesReport'));
 const CustomerStatementReport = lazyWithRetry(() => import('./pages/CustomerStatementReport'));
+const CustomerDetailedStatementReport = lazyWithRetry(() => import('./pages/CustomerDetailedStatementReport'));
 const ProviderBalancesReport = lazyWithRetry(() => import('./pages/ProviderBalancesReport'));
 const FuelPrices = lazyWithRetry(() => import('./pages/FuelPrices'));
 const SalesByCategoryReport = lazyWithRetry(() => import('./pages/SalesByCategoryReport'));
@@ -334,6 +335,7 @@ function App() {
                         <Route path="/cxc/reportes/saldos" element={<CustomerBalancesReport />} />
                         <Route path="/cxc/reportes/documentos-pendientes" element={<PendingDocumentsDetailedReport />} />
                         <Route path="/cxc/reportes/estado-cuenta" element={<CustomerStatementReport />} />
+                        <Route path="/cxc/reportes/estado-cuenta-detallado" element={<CustomerDetailedStatementReport />} />
 
                         {/* Accounts Payable (CXP) */}
                         <Route path="/cxp/estado-cuenta" element={<ProviderStatement />} />
