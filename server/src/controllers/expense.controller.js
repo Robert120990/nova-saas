@@ -5,6 +5,9 @@ const notificationService = require('../services/notification.service');
 const reportPdfHelper = require('../utils/reportPdfHelper');
 const { validateDocumentDuplicate } = require('../utils/documentValidator');
 
+// Mapa de peticiones en vuelo para evitar condiciones de carrera por doble clic o doble submit
+const activeExpenseSubmissions = new Map();
+
 /**
  * Obtener lista de gastos con búsqueda y paginación
  */
@@ -210,14 +213,26 @@ const createExpense = async (req, res) => {
         items 
     } = req.body;
 
+    const companyId = req.company_id || req.user?.company_id;
+    const usuarioId = req.user?.id;
+
+    if (!companyId || !usuarioId) return res.status(401).json({ message: 'Sesión no válida' });
+
+    // Protección anti-duplicado por peticiones concurrentes en el mismo segundo
+    const docKey = (num_control || numero_documento || '').trim().toUpperCase();
+    const submissionKey = (docKey && docKey !== 'S/N')
+        ? `${companyId}:${provider_id}:${docKey}`
+        : `${companyId}:${usuarioId}:time_${Math.floor(Date.now() / 1500)}`;
+
+    if (activeExpenseSubmissions.has(submissionKey)) {
+        return res.status(409).json({ message: 'Este documento se está procesando actualmente. Por favor espere un momento.' });
+    }
+    activeExpenseSubmissions.set(submissionKey, Date.now());
+
     const connection = await pool.getConnection();
     await connection.beginTransaction();
 
     try {
-        const companyId = req.company_id || req.user?.company_id;
-        const usuarioId = req.user?.id;
-
-        if (!companyId || !usuarioId) throw new Error('Sesión no válida');
 
         // Periodo fiscal del gasto
         let docYear = new Date().getFullYear();
@@ -327,6 +342,7 @@ const createExpense = async (req, res) => {
         console.error('Error al registrar gasto:', error);
         res.status(500).json({ message: 'Error al registrar gasto: ' + error.message });
     } finally {
+        activeExpenseSubmissions.delete(submissionKey);
         connection.release();
     }
 };

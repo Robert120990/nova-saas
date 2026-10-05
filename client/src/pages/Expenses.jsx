@@ -356,6 +356,7 @@ const Expenses = () => {
     // Form & Button Refs for Keyboard Navigation
     const formRef = useRef(null);
     const submitBtnRef = useRef(null);
+    const isSubmittingRef = useRef(false);
     const conceptoInputRef = useRef(null);
     const tipoDocRef = useRef(null);
     const dteFileInputRef = useRef(null);
@@ -782,7 +783,10 @@ const Expenses = () => {
     const handleFormKeyDown = (e) => {
         if (e.key === 'F10') {
             e.preventDefault();
-            formRef.current?.requestSubmit();
+            e.stopPropagation();
+            if (!isSubmittingRef.current && !createMutation.isPending && !updateMutation.isPending) {
+                formRef.current?.requestSubmit();
+            }
             return;
         }
 
@@ -822,7 +826,8 @@ const Expenses = () => {
         const handleGlobalKeyDown = (e) => {
             if (e.key === 'F10') {
                 e.preventDefault();
-                if (isFormOpen) {
+                e.stopPropagation();
+                if (isFormOpen && !isSubmittingRef.current && !createMutation.isPending && !updateMutation.isPending) {
                     formRef.current?.requestSubmit();
                 }
             }
@@ -918,7 +923,10 @@ const Expenses = () => {
                 resetForm();
             }
         },
-        onError: (err) => toast.error(err.response?.data?.message || 'Error al procesar registro')
+        onError: (err) => toast.error(err.response?.data?.message || 'Error al procesar registro'),
+        onSettled: () => {
+            isSubmittingRef.current = false;
+        }
     });
     
     const updateMutation = useMutation({
@@ -929,7 +937,10 @@ const Expenses = () => {
             resetForm();
             queryClient.invalidateQueries(['expenses-history']);
         },
-        onError: (err) => toast.error(err.response?.data?.message || 'Error al actualizar gasto')
+        onError: (err) => toast.error(err.response?.data?.message || 'Error al actualizar gasto'),
+        onSettled: () => {
+            isSubmittingRef.current = false;
+        }
     });
 
     const voidMutation = useMutation({
@@ -1055,6 +1066,8 @@ const Expenses = () => {
 
     const handleSubmitForm = (e) => {
         if (e) e.preventDefault();
+        if (isSubmittingRef.current || createMutation.isPending || updateMutation.isPending) return;
+
         if (!branchId) return toast.error('Seleccione la sucursal');
         if (!providerId) return toast.error('Seleccione el proveedor');
 
@@ -1069,6 +1082,8 @@ const Expenses = () => {
         if (totalBases === 0 && totals.total === 0 && !esNotaCredito && (!isLiquidacion || (totals.monto_sujeto === 0 && totals.anticipo_cuenta === 0))) {
             return toast.error('Debe ingresar al menos un monto en compras gravadas, exentas o no sujetas');
         }
+
+        isSubmittingRef.current = true;
 
         let docYear = new Date().getFullYear();
         let docMonth = new Date().getMonth() + 1;
@@ -1127,10 +1142,15 @@ const Expenses = () => {
             }]
         };
 
-        if (isEditing && editingId) {
-            updateMutation.mutate({ id: editingId, data: payload });
-        } else {
-            createMutation.mutate(payload);
+        try {
+            if (isEditing && editingId) {
+                updateMutation.mutate({ id: editingId, data: payload });
+            } else {
+                createMutation.mutate(payload);
+            }
+        } catch (err) {
+            isSubmittingRef.current = false;
+            console.error('Error submitting expense form:', err);
         }
     };
 
@@ -1612,7 +1632,11 @@ const Expenses = () => {
                             </button>
                             <button
                                 type="button"
-                                onClick={() => formRef.current?.requestSubmit()}
+                                onClick={() => {
+                                    if (!isSubmittingRef.current && !createMutation.isPending && !updateMutation.isPending) {
+                                        formRef.current?.requestSubmit();
+                                    }
+                                }}
                                 disabled={createMutation.isPending || updateMutation.isPending}
                                 className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-lg shadow-indigo-600/25 transition-all active:scale-95 flex items-center gap-1.5"
                             >
