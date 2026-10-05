@@ -497,7 +497,7 @@ async function freezePeriod(companyId, userId, data) {
  */
 async function getCortesList(companyId) {
     const [rows] = await pool.query(
-        `SELECT c.*, u.name as created_by_name
+        `SELECT c.*, COALESCE(u.nombre, u.username) as created_by_name
          FROM rh_biometric_cortes c
          LEFT JOIN users u ON u.id = c.created_by
          WHERE c.company_id = ?
