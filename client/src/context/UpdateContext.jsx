@@ -37,8 +37,6 @@ export const UpdateProvider = ({ children }) => {
         // En escáner móvil de tickets evitar interrumpir al operador
         if (window.location.pathname.startsWith('/scan-dte')) return;
 
-
-
         const serverVersion = (version ? String(version).trim() : '').replace(/^#/, '');
         const serverCommit = (commit ? String(commit).trim() : (rawVersion ? String(rawVersion).trim() : '')).replace(/^#/, '');
 
@@ -48,13 +46,23 @@ export const UpdateProvider = ({ children }) => {
         const lastAppliedCommit = localStorage.getItem('last_applied_commit');
         const lastAppliedVersion = localStorage.getItem('last_applied_version');
 
-        // Comprobación contra la versión del build compilado
-        const matchesBuild = (buildCommit !== 'unknown' && serverCommit === buildCommit) ||
-                             (buildVersion !== 'unknown' && serverVersion === buildVersion);
+        // Comparador tolerante de commits (primeros 7 caracteres o coincidencia prefijo)
+        const commitMatch = (a, b) => {
+            if (!a || !b || a === 'unknown' || b === 'unknown') return false;
+            const ca = a.trim().toLowerCase();
+            const cb = b.trim().toLowerCase();
+            if (ca === cb) return true;
+            if (ca.length >= 7 && cb.length >= 7 && ca.slice(0, 7) === cb.slice(0, 7)) return true;
+            return false;
+        };
 
-        // Comprobación contra lo guardado en localStorage
-        const matchesApplied = (lastAppliedCommit && serverCommit === lastAppliedCommit) ||
-                               (lastAppliedVersion && serverVersion === lastAppliedVersion);
+        // Comprobación contra la versión del build compilado
+        const matchesBuild = commitMatch(serverCommit, buildCommit) ||
+                             (buildVersion !== 'unknown' && serverVersion && serverVersion === buildVersion);
+
+        // Comprobación contra lo guardado en localStorage tras pulsar "Actualizar"
+        const matchesApplied = commitMatch(serverCommit, lastAppliedCommit) ||
+                               (lastAppliedVersion && serverVersion && serverVersion === lastAppliedVersion);
 
         // Si ya coincide con el build actual o ya fue aplicado en este cliente:
         // ¡YA ESTÁ ACTUALIZADO! NO sugerir actualización ni mostrar mensaje
@@ -65,7 +73,6 @@ export const UpdateProvider = ({ children }) => {
         }
 
         // El hash de commit debe tener formato corto de git (ej. 7-8 caracteres)
-        // Si por error de red o fallback viniera la versión semántica como commit, limpiar
         const displayCommit = serverCommit.startsWith('v') ? '' : serverCommit;
         const displayVersion = serverVersion || (displayCommit ? `v2.7.${displayCommit.slice(0, 4)}` : 'v2.7.143');
 
@@ -78,9 +85,14 @@ export const UpdateProvider = ({ children }) => {
         setUpdateInfo(newInfo);
         setUpdateAvailable(true);
 
-        // Verificar si el usuario ya presionó "Más tarde" para este commit en esta sesión
-        const snoozeKey = `update_snooze_${newInfo.commit || newInfo.version}`;
-        const snoozedUntil = Number(sessionStorage.getItem(snoozeKey) || 0);
+        // Claves de snooze para silenciar si ya se pospuso o se aplicó recientemente en esta sesión
+        const targetCommit = displayCommit || serverCommit;
+        const snoozeKey1 = `update_snooze_${targetCommit}`;
+        const snoozeKey2 = `update_snooze_${displayVersion}`;
+        const snoozedUntil = Math.max(
+            Number(sessionStorage.getItem(snoozeKey1) || 0),
+            Number(sessionStorage.getItem(snoozeKey2) || 0)
+        );
 
         if (isSimulated || Date.now() > snoozedUntil) {
             setIsModalOpen(true);
@@ -91,9 +103,13 @@ export const UpdateProvider = ({ children }) => {
     const dismissModal = useCallback(() => {
         setIsModalOpen(false);
         const current = updateInfoRef.current;
-        const snoozeKey = `update_snooze_${current.commit || current.version}`;
-        // Posponer notificación por 60 minutos en la sesión actual
-        sessionStorage.setItem(snoozeKey, String(Date.now() + 60 * 60 * 1000));
+        const targetCommit = current.commit || current.rawVersion;
+        if (targetCommit) {
+            sessionStorage.setItem(`update_snooze_${targetCommit}`, String(Date.now() + 60 * 60 * 1000));
+        }
+        if (current.version) {
+            sessionStorage.setItem(`update_snooze_${current.version}`, String(Date.now() + 60 * 60 * 1000));
+        }
     }, []);
 
     // Abrir modal manualmente (por ejemplo al hacer clic en el indicador del navbar)
@@ -117,14 +133,20 @@ export const UpdateProvider = ({ children }) => {
         setIsUpdating(true);
 
         const current = updateInfoRef.current;
-        if (current.commit) {
-            localStorage.setItem('app_commit', current.commit);
-            localStorage.setItem('app_version', current.commit);
-            localStorage.setItem('last_applied_commit', current.commit);
+        const targetCommit = current.commit || current.rawVersion || '';
+        const targetVersion = current.version || '';
+
+        // Guardar inmediatamente en localStorage y sessionStorage que este commit/versión fue aplicado
+        if (targetCommit) {
+            localStorage.setItem('app_commit', targetCommit);
+            localStorage.setItem('app_version', targetCommit);
+            localStorage.setItem('last_applied_commit', targetCommit);
+            sessionStorage.setItem(`update_snooze_${targetCommit}`, String(Date.now() + 30 * 60 * 1000));
         }
-        if (current.version) {
-            localStorage.setItem('app_semantic_version', current.version);
-            localStorage.setItem('last_applied_version', current.version);
+        if (targetVersion) {
+            localStorage.setItem('app_semantic_version', targetVersion);
+            localStorage.setItem('last_applied_version', targetVersion);
+            sessionStorage.setItem(`update_snooze_${targetVersion}`, String(Date.now() + 30 * 60 * 1000));
         }
 
         // 1. Activar nuevo Service Worker si está en espera
@@ -146,10 +168,16 @@ export const UpdateProvider = ({ children }) => {
             console.warn('[UpdateContext] Error limpiando cache de navegador:', e);
         }
 
-        // 3. Recargar la aplicación para cargar el nuevo build del servidor
+        // 3. Forzar recarga con cache-busting en la URL para obligar al navegador a pedir el nuevo index.html
         setTimeout(() => {
-            window.location.reload();
-        }, 300);
+            try {
+                const url = new URL(window.location.href);
+                url.searchParams.set('_v', Date.now().toString());
+                window.location.replace(url.toString());
+            } catch {
+                window.location.reload();
+            }
+        }, 350);
     }, []);
 
     // Escuchador global para WebSocket y Service Worker

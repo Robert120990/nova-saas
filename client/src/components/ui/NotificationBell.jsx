@@ -74,9 +74,9 @@ const NotificationBell = () => {
       ws.onmessage = (event) => {
         try {
           const { event: evt, data } = JSON.parse(event.data);
-          if ((evt === 'app_version' || evt === 'system_update') && data?.version) {
+          if ((evt === 'app_version' || evt === 'system_update') && (data?.version || data?.commit)) {
             if (typeof window.__onVersionReceived === 'function') {
-              window.__onVersionReceived(data.version);
+              window.__onVersionReceived(data);
             }
           }
           if (evt === 'new_notification') {

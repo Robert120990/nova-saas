@@ -125,12 +125,26 @@ app.get('/health', (req, res) => {
     });
 });
 
-// Serve client built files in production
+// Serve client built files in production with strict cache headers for SPA/PWA
 const clientDist = path.join(__dirname, '..', '..', 'client', 'dist');
 if (process.env.NODE_ENV === 'production' && fs.existsSync(clientDist)) {
-    app.use(express.static(clientDist));
+    app.use(express.static(clientDist, {
+        setHeaders: (res, filePath) => {
+            const normalized = filePath.replace(/\\/g, '/');
+            if (normalized.endsWith('index.html') || normalized.endsWith('sw.js') || normalized.endsWith('manifest.webmanifest')) {
+                res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+                res.setHeader('Pragma', 'no-cache');
+                res.setHeader('Expires', '0');
+            } else if (normalized.includes('/assets/')) {
+                res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+            }
+        }
+    }));
     app.get('*', (req, res) => {
         if (!req.path.startsWith('/api') && !req.path.startsWith('/uploads') && !req.path.startsWith('/ws')) {
+            res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+            res.setHeader('Pragma', 'no-cache');
+            res.setHeader('Expires', '0');
             res.sendFile(path.join(clientDist, 'index.html'));
         }
     });

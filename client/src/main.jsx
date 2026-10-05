@@ -17,13 +17,22 @@ const currentBuildVersion = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSI
 if (currentBuildVersion && currentBuildVersion !== 'unknown') {
     localStorage.setItem('app_version', currentBuildVersion);
     localStorage.setItem('app_commit', currentBuildVersion);
-    localStorage.setItem('last_applied_commit', currentBuildVersion);
 }
 const currentBuildSemantic = typeof __APP_SEMANTIC_VERSION__ !== 'undefined' ? __APP_SEMANTIC_VERSION__ : null;
 if (currentBuildSemantic && currentBuildSemantic !== 'unknown') {
     localStorage.setItem('app_semantic_version', currentBuildSemantic);
-    localStorage.setItem('last_applied_version', currentBuildSemantic);
 }
+
+// Limpiar parámetro de cache-busting si viene en la URL tras una actualización
+try {
+    const currentUrl = new URL(window.location.href);
+    if (currentUrl.searchParams.has('_v') || currentUrl.searchParams.has('_update')) {
+        currentUrl.searchParams.delete('_v');
+        currentUrl.searchParams.delete('_update');
+        const cleanPath = currentUrl.pathname + (currentUrl.search ? currentUrl.search : '') + currentUrl.hash;
+        window.history.replaceState({}, document.title, cleanPath);
+    }
+} catch (e) {}
 
 let swRegistration = null;
 
@@ -38,12 +47,24 @@ const updateSW = registerSW({
     immediate: true,
     onNeedRefresh() {
         console.log('[PWA] Nuevo Service Worker disponible en espera.');
-        if (typeof window.__notifyAppUpdate === 'function') {
-            window.__notifyAppUpdate({
-                version: 'v2.7',
-                commit: ''
+        fetch('/health', { headers: { 'Cache-Control': 'no-cache' } })
+            .then(res => res.json())
+            .then(data => {
+                if (typeof window.__notifyAppUpdate === 'function') {
+                    window.__notifyAppUpdate({
+                        version: data.appVersion || data.version,
+                        commit: data.commit || data.version
+                    });
+                }
+            })
+            .catch(() => {
+                if (typeof window.__notifyAppUpdate === 'function') {
+                    window.__notifyAppUpdate({
+                        version: 'v2.7',
+                        commit: 'sw_pending'
+                    });
+                }
             });
-        }
     },
     onRegisteredSW(_swUrl, registration) {
         swRegistration = registration || null;
@@ -61,7 +82,7 @@ window.__triggerSWUpdate = async () => {
     }
     if (typeof updateSW === 'function') {
         try {
-            await updateSW(true);
+            await updateSW(false);
         } catch (e) {
             console.warn('[SW] Error en updateSW:', e);
         }
