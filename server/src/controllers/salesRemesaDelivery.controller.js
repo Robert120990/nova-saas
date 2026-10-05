@@ -430,8 +430,8 @@ const syncSalesDeliveryToRrs = async (deliveryId, companyId) => {
     const concepto = `${delivery.branch_name || 'Sucursal'} - ${fechaStr} ${hora}`;
 
     await rrsPool.query(
-        `DELETE FROM movimientos_bancarios WHERE llave = ? AND numero_cuenta = ?`,
-        [llave, cuenta.numero]
+        `DELETE FROM movimientos_bancarios WHERE llave = ?`,
+        [llave]
     );
 
     await rrsPool.query(
@@ -447,7 +447,7 @@ const syncSalesDeliveryToRrs = async (deliveryId, companyId) => {
             concepto,
             montoEntregado.toFixed(2),
             '0.0',
-            '',
+            fechaStr,
             fechaStr,
             montoEntregado.toFixed(2),
             'P'

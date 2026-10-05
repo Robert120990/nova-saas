@@ -4,7 +4,7 @@ import axios from 'axios';
 import Modal from '../components/ui/Modal';
 import Pagination from '../components/ui/Pagination';
 import Table from '../components/ui/Table';
-import { Handshake, Plus, Trash2, Search, Save, X, Loader2, Eye, Barcode, Edit3, Printer, CheckCircle, RefreshCw } from 'lucide-react';
+import { Handshake, Plus, Trash2, Search, Save, X, Loader2, Eye, Barcode, Edit3, Printer, CheckCircle, RefreshCw, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
 import { useConfirm } from '../context/ConfirmContext';
@@ -150,15 +150,34 @@ const GasRemesaDeliveries = () => {
 
     const revertMutation = useMutation({
         mutationFn: (id) => axios.put(`/api/gas-station/remesa-deliveries/${id}/revertir-entregado`),
-        onSuccess: () => {
+        onSuccess: (res) => {
             queryClient.invalidateQueries({ queryKey: ['gas-remesa-deliveries'] });
             queryClient.invalidateQueries({ queryKey: ['gas-remesas-pending'] });
             queryClient.invalidateQueries({ queryKey: ['gas-remesa-delivery'] });
             queryClient.invalidateQueries({ queryKey: ['gas-remesa-delivery-edit'] });
-            toast.success('Entrega revertida a pendiente. Ahora puede editarla.');
+            toast.success(res.data?.message || 'Entrega revertida a pendiente con éxito. Ya puede editarla.');
         },
         onError: (error) => toast.error(error.response?.data?.message || 'Error al revertir entrega'),
     });
+
+    const handleRevertRrs = async (delivery) => {
+        if (!delivery || !delivery.id) return;
+        const refText = delivery.referencia ? `"${delivery.referencia}"` : `#${delivery.id}`;
+        const ok = await confirm({
+            title: '¿Revertir entrega en RRS y reactivar?',
+            message: `La entrega ${refText} se revertirá en RRS (se eliminarán sus movimientos bancarios) y volverá a estado PENDIENTE para que pueda editarla libremente.`,
+            confirmLabel: 'Sí, revertir y reactivar',
+            variant: 'danger',
+        });
+        if (!ok) return;
+
+        revertMutation.mutate(delivery.id, {
+            onSuccess: () => {
+                setShowDetailModal(false);
+                openEditForm(delivery.id);
+            }
+        });
+    };
 
     const resendRrsMutation = useMutation({
         mutationFn: (id) => axios.post(`/api/gas-station/remesa-deliveries/${id}/send-to-rrs`),
@@ -328,31 +347,8 @@ const GasRemesaDeliveries = () => {
     };
 
     const handleRefClick = async (item) => {
-        if (!isSuperAdmin || !item.entregado) return;
-
-        const nowTime = Date.now();
-        if (refClickDeliveryId !== item.id || nowTime - lastRefClickTime > 2000) {
-            setRefClickCount(1);
-            setRefClickDeliveryId(item.id);
-            setLastRefClickTime(nowTime);
-            return;
-        }
-        setLastRefClickTime(nowTime);
-
-        const newCount = refClickCount + 1;
-        setRefClickCount(newCount);
-
-        if (newCount >= 5) {
-            setRefClickCount(0);
-            setRefClickDeliveryId(null);
-            const ok = await confirm({
-                title: '¿Revertir entrega a pendiente?',
-                message: `La entrega "${item.referencia || ''}" volverá a estado pendiente para poder editarla. Al marcar entregada nuevamente, se actualizará el registro en RRS.`,
-                confirmLabel: 'Sí, revertir',
-                variant: 'info',
-            });
-            if (ok) revertMutation.mutate(item.id);
-        }
+        if (!item.entregado) return;
+        await handleRevertRrs(item);
     };
 
     const handlePrintPdf = async (id) => {
@@ -432,10 +428,10 @@ const GasRemesaDeliveries = () => {
                                 <span className="text-xs font-medium text-slate-800">{item.responsable || '—'}</span>
                             </td>
                             <td className="px-3 py-1">
-                                {isSuperAdmin && item.entregado ? (
+                                {item.entregado ? (
                                     <button
                                         onClick={() => handleRefClick(item)}
-                                        title="SuperAdmin: haga clic 5 veces seguidas para revertir a pendiente"
+                                        title="Haga clic para revertir en RRS y reactivar entrega para editar"
                                         className="text-xs font-bold font-mono text-indigo-600 underline decoration-dotted underline-offset-2 hover:text-indigo-800 transition-colors"
                                     >
                                         {item.referencia || '—'}
@@ -460,15 +456,23 @@ const GasRemesaDeliveries = () => {
                                     <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-100 text-amber-700 font-bold text-[10px] rounded-lg">Pendiente</span>
                                 )}
                             </td>
-                            <td className="px-3 py-1 flex gap-1">
+                            <td className="px-3 py-1 flex items-center gap-1">
                                 <button onClick={() => handleViewDetail(item.id)} className="p-1 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" title="Ver detalle"><Eye size={15} /></button>
                                 <button onClick={() => handlePrintPdf(item.id)} className="p-1 text-slate-600 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors" title="Imprimir PDF"><Printer size={15} /></button>
-                                {!item.entregado && (
+                                {!item.entregado ? (
                                     <>
                                         <button onClick={() => openEditForm(item.id)} className="p-1 text-slate-600 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors" title="Editar"><Edit3 size={15} /></button>
                                         <button onClick={() => handleDelete(item.id)} className="p-1 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Eliminar"><Trash2 size={15} /></button>
                                         <button onClick={() => handleMarkEntregado(item.id)} className="p-1 text-emerald-500 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors" title="Marcar entregada"><CheckCircle size={15} /></button>
                                     </>
+                                ) : (
+                                    <button
+                                        onClick={() => handleRevertRrs(item)}
+                                        className="p-1 text-amber-600 hover:text-amber-800 hover:bg-amber-50 rounded-lg transition-colors"
+                                        title="Revertir en RRS y reactivar para editar"
+                                    >
+                                        <RotateCcw size={15} />
+                                    </button>
                                 )}
                             </td>
                         </tr>
@@ -791,7 +795,30 @@ const GasRemesaDeliveries = () => {
                             </div>
                         )}
                         <div className="flex flex-wrap justify-end gap-2 pt-2">
-                            {isSuperAdmin && (
+                            {deliveryDetail.entregado ? (
+                                <button
+                                    type="button"
+                                    disabled={revertMutation.isPending}
+                                    onClick={() => handleRevertRrs(deliveryDetail)}
+                                    className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-xl transition-all border border-amber-200 disabled:opacity-50"
+                                    title="Revertir movimiento en RRS y reactivar entrega para poder editar"
+                                >
+                                    {revertMutation.isPending ? (
+                                        <Loader2 size={14} className="animate-spin" />
+                                    ) : (
+                                        <RotateCcw size={14} />
+                                    )}
+                                    Revertir en RRS y Editar
+                                </button>
+                            ) : (
+                                <button
+                                    onClick={() => { setShowDetailModal(false); openEditForm(deliveryDetail.id); }}
+                                    className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-amber-600 bg-amber-50 hover:bg-amber-100 rounded-xl transition-all"
+                                >
+                                    <Edit3 size={14} /> Editar
+                                </button>
+                            )}
+                            {isSuperAdmin && deliveryDetail.entregado && (
                                 <button
                                     type="button"
                                     disabled={resendRrsMutation.isPending}
@@ -813,14 +840,6 @@ const GasRemesaDeliveries = () => {
                             >
                                 <Printer size={14} /> Imprimir PDF
                             </button>
-                            {!deliveryDetail.entregado && (
-                                <button
-                                    onClick={() => { setShowDetailModal(false); openEditForm(deliveryDetail.id); }}
-                                    className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-amber-600 bg-amber-50 hover:bg-amber-100 rounded-xl transition-all"
-                                >
-                                    <Edit3 size={14} /> Editar
-                                </button>
-                            )}
                         </div>
                     </div>
                 )}

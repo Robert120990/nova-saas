@@ -371,33 +371,73 @@ exports.deleteDelivery = async (req, res) => {
 
 exports.revertirEntregado = async (req, res) => {
     try {
-        if (req.user.role !== 'SuperAdmin') {
-            return res.status(403).json({ message: 'Solo el SuperAdmin puede revertir una entrega entregada' });
+        const { id } = req.params;
+        const companyId = req.company_id || req.user?.company_id;
+
+        const isSuperAdmin = req.user.role === 'SuperAdmin';
+        const isAdmin = req.user.role === 'Admin';
+        if (!isSuperAdmin && !isAdmin) {
+            return res.status(403).json({ message: 'Solo administradores pueden revertir una entrega de remesas' });
         }
 
-        const { id } = req.params;
-
         const [deliveries] = await pool.query(
-            `SELECT id, entregado FROM gas_station_remesa_deliveries WHERE id = ? AND company_id = ?`,
-            [id, req.company_id]
+            `SELECT id, entregado, branch_id, referencia FROM gas_station_remesa_deliveries WHERE id = ? AND company_id = ?`,
+            [id, companyId]
         );
 
         if (deliveries.length === 0) {
             return res.status(404).json({ message: 'Entrega no encontrada' });
         }
-        if (!deliveries[0].entregado) {
+        const delivery = deliveries[0];
+        if (!delivery.entregado) {
             return res.status(400).json({ message: 'La entrega no está marcada como entregada' });
         }
 
+        // 1. Obtener código de empresa en RRS para esta sucursal/empresa
+        const [empresaRows] = await pool.query(
+            `SELECT setting_value FROM gas_station_settings 
+             WHERE company_id = ? AND (branch_id = ? OR (branch_id IS NULL AND ? IS NULL))
+             AND setting_key = 'rrs_id_empresa'`,
+            [companyId, delivery.branch_id || null, delivery.branch_id || null]
+        );
+        const rrsIdEmpresa = empresaRows[0]?.setting_value || '015';
+
+        // 2. Revertir y eliminar movimientos bancarios en RRS
+        let rrsDeleted = 0;
+        let rrsMessage = '';
+        try {
+            const rrsPool = getRrsPool();
+            const llave = `${rrsIdEmpresa}-${delivery.id}`;
+            const [delMain] = await rrsPool.query(
+                `DELETE FROM movimientos_bancarios WHERE llave = ?`,
+                [llave]
+            );
+            const [delExtras] = await rrsPool.query(
+                `DELETE FROM movimientos_bancarios WHERE llave LIKE ?`,
+                [`${rrsIdEmpresa}-${delivery.id}-E%`]
+            );
+            rrsDeleted = (delMain.affectedRows || 0) + (delExtras.affectedRows || 0);
+            rrsMessage = rrsDeleted > 0 
+                ? `Se eliminaron ${rrsDeleted} movimiento(s) de RRS.` 
+                : 'No se encontraron movimientos previos en RRS.';
+        } catch (rrsError) {
+            console.error('Error al revertir movimientos bancarios en RRS:', rrsError);
+            rrsMessage = `Aviso RRS: ${rrsError.message}.`;
+        }
+
+        // 3. Reactivar entrega en el sistema local (entregado = 0) para permitir edición
         await pool.query(
-            `UPDATE gas_station_remesa_deliveries SET entregado = 0 WHERE id = ?`,
-            [id]
+            `UPDATE gas_station_remesa_deliveries SET entregado = 0 WHERE id = ? AND company_id = ?`,
+            [id, companyId]
         );
 
-        res.json({ message: 'Entrega revertida a pendiente' });
+        res.json({
+            message: `Entrega #${id} revertida a pendiente con éxito. ${rrsMessage} Ya puede editar la remesa.`,
+            rrsDeleted
+        });
     } catch (error) {
         console.error('Error revertirEntregado:', error);
-        res.status(500).json({ message: 'Error al revertir entrega' });
+        res.status(500).json({ message: 'Error al revertir entrega: ' + error.message });
     }
 };
 
@@ -477,8 +517,8 @@ const syncGasDeliveryToRrs = async (deliveryId, companyId) => {
     const concepto = `${delivery.branch_name || 'Sucursal'} - ${fechaStr} ${hora}`;
 
     await rrsPool.query(
-        `DELETE FROM movimientos_bancarios WHERE llave = ? AND numero_cuenta = ?`,
-        [llave, cuenta.numero]
+        `DELETE FROM movimientos_bancarios WHERE llave = ?`,
+        [llave]
     );
 
     if (montoTotal > 0) {
@@ -495,7 +535,7 @@ const syncGasDeliveryToRrs = async (deliveryId, companyId) => {
                 concepto,
                 montoTotal.toFixed(2),
                 '0.0',
-                '',
+                fechaStr,
                 fechaStr,
                 montoTotal.toFixed(2),
                 'P'
@@ -503,17 +543,17 @@ const syncGasDeliveryToRrs = async (deliveryId, companyId) => {
         );
     }
 
+    await rrsPool.query(
+        `DELETE FROM movimientos_bancarios WHERE llave LIKE ?`,
+        [`${rrsIdEmpresa}-${delivery.id}-E%`]
+    );
+
     for (const extra of remesasExtra) {
         const montoExtra = parseFloat(extra.monto) || 0;
         if (montoExtra <= 0) continue;
 
         const llaveExtra = `${rrsIdEmpresa}-${delivery.id}-E${extra.id}`;
         const conceptoExtra = String(extra.descripcion || 'Otras remesas').trim().toUpperCase().slice(0, 120);
-
-        await rrsPool.query(
-            `DELETE FROM movimientos_bancarios WHERE llave = ? AND numero_cuenta = ?`,
-            [llaveExtra, cuenta.numero]
-        );
 
         await rrsPool.query(
             `INSERT INTO movimientos_bancarios 
@@ -528,7 +568,7 @@ const syncGasDeliveryToRrs = async (deliveryId, companyId) => {
                 conceptoExtra,
                 montoExtra.toFixed(2),
                 '0.0',
-                '',
+                fechaStr,
                 fechaStr,
                 montoExtra.toFixed(2),
                 'P'
