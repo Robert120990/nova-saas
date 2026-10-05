@@ -9,16 +9,16 @@ import { lazyWithRetry } from './utils/lazyRetry';
 
 // Pages
 import Login from './pages/Login';
-import PublicDTE from './pages/PublicDTE';
+const PublicDTE = lazyWithRetry(() => import('./pages/PublicDTE'));
 const MobileDteScanner = lazyWithRetry(() => import('./pages/MobileDteScanner'));
-import Dashboard from './pages/Dashboard';
+const Dashboard = lazyWithRetry(() => import('./pages/Dashboard'));
 const Companies = lazyWithRetry(() => import('./pages/Companies'));
 const CompanyModules = lazyWithRetry(() => import('./pages/CompanyModules'));
 const Branches = lazyWithRetry(() => import('./pages/Branches'));
-import POS from './pages/POS';
+const POS = lazyWithRetry(() => import('./pages/POS'));
 const FilproSync = lazyWithRetry(() => import('./pages/FilproSync'));
-import Customers from './pages/Customers';
-import Products from './pages/Products';
+const Customers = lazyWithRetry(() => import('./pages/Customers'));
+const Products = lazyWithRetry(() => import('./pages/Products'));
 const Sellers = lazyWithRetry(() => import('./pages/Sellers'));
 const Users = lazyWithRetry(() => import('./pages/Users'));
 const Roles = lazyWithRetry(() => import('./pages/Roles'));
@@ -37,10 +37,10 @@ const Transfers = lazyWithRetry(() => import('./pages/Transfers'));
 const InventoryAdjustments = lazyWithRetry(() => import('./pages/InventoryAdjustments'));
 const PhysicalInventory = lazyWithRetry(() => import('./pages/PhysicalInventory'));
 const ScanInventory = lazyWithRetry(() => import('./pages/ScanInventory'));
-import Kardex from './pages/Kardex';
+const Kardex = lazyWithRetry(() => import('./pages/Kardex'));
 const Purchases = lazyWithRetry(() => import('./pages/Purchases'));
 const PurchasePeriod = lazyWithRetry(() => import('./pages/PurchasePeriod'));
-import SalesTerminal from './pages/SalesTerminal';
+const SalesTerminal = lazyWithRetry(() => import('./pages/SalesTerminal'));
 const SalesHistory = lazyWithRetry(() => import('./pages/SalesHistory'));
 const CustomerDiscounts = lazyWithRetry(() => import('./pages/CustomerDiscounts'));
 const DiscountRules = lazyWithRetry(() => import('./pages/DiscountRules'));
@@ -242,8 +242,8 @@ function App() {
             <AuthProvider>
                 <Routes>
                     <Route path="/login" element={<Login />} />
-                    <Route path="/dte" element={<PublicDTE />} />
-                    <Route path="/dte/:codigo" element={<PublicDTE />} />
+                    <Route path="/dte" element={<Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-slate-900 text-white text-xs">Cargando...</div>}><PublicDTE /></Suspense>} />
+                    <Route path="/dte/:codigo" element={<Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-slate-900 text-white text-xs">Cargando...</div>}><PublicDTE /></Suspense>} />
                     <Route path="/scan/:token" element={<Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-slate-900 text-white text-xs">Cargando...</div>}><ScanInventory /></Suspense>} />
                     <Route path="/scan-dte/:sessionId" element={<Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-slate-900 text-white text-xs">Cargando...</div>}><MobileDteScanner /></Suspense>} />
                     

@@ -76,7 +76,7 @@ async function generateExcelBuffer({ sheets = [], title } = {}) {
  * @param {Object} payload.data
  * @returns {Promise<Buffer>}
  */
-async function generatePdfFromService({ serviceRelativePath, methodName, data } = {}) {
+async function generatePdfFromService({ serviceRelativePath, methodName, data, args = [] } = {}) {
     // Resolve service path relative to server/src
     const serviceFullPath = path.resolve(__dirname, '..', serviceRelativePath);
     const serviceModule = require(serviceFullPath);
@@ -85,7 +85,33 @@ async function generatePdfFromService({ serviceRelativePath, methodName, data } 
         throw new Error(`Method ${methodName} not found in ${serviceRelativePath}`);
     }
 
-    const result = await serviceModule[methodName](data);
+    const callArgs = Array.isArray(args) && args.length > 0 ? args : (data !== undefined ? [data] : []);
+    const result = await serviceModule[methodName](...callArgs);
+    if (!Buffer.isBuffer(result)) {
+        throw new Error(`Expected Buffer from ${serviceRelativePath}.${methodName}, got ${typeof result}`);
+    }
+    return result;
+}
+
+/**
+ * Executes an Excel service generator function
+ * @param {Object} payload
+ * @param {string} payload.serviceRelativePath
+ * @param {string} payload.methodName
+ * @param {Object} [payload.data]
+ * @param {Array} [payload.args]
+ * @returns {Promise<Buffer>}
+ */
+async function generateExcelFromService({ serviceRelativePath, methodName, data, args = [] } = {}) {
+    const serviceFullPath = path.resolve(__dirname, '..', serviceRelativePath);
+    const serviceModule = require(serviceFullPath);
+
+    if (typeof serviceModule[methodName] !== 'function') {
+        throw new Error(`Method ${methodName} not found in ${serviceRelativePath}`);
+    }
+
+    const callArgs = Array.isArray(args) && args.length > 0 ? args : (data !== undefined ? [data] : []);
+    const result = await serviceModule[methodName](...callArgs);
     if (!Buffer.isBuffer(result)) {
         throw new Error(`Expected Buffer from ${serviceRelativePath}.${methodName}, got ${typeof result}`);
     }
@@ -100,6 +126,8 @@ parentPort.on('message', async (task) => {
             buffer = await generateExcelBuffer(payload);
         } else if (type === 'PDF_SERVICE') {
             buffer = await generatePdfFromService(payload);
+        } else if (type === 'EXCEL_SERVICE') {
+            buffer = await generateExcelFromService(payload);
         } else {
             throw new Error(`Unknown worker task type: ${type}`);
         }

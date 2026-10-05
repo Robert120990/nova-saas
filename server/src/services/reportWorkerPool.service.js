@@ -211,20 +211,44 @@ async function executeExcelInWorker(payload, fallbackFn) {
 /**
  * Executes a PDF service method in the worker pool.
  * If the worker fails or is disabled, calls the fallback function.
- * @param {Object} options - { serviceRelativePath, methodName, data }
+ * @param {Object} options - { serviceRelativePath, methodName, data, args }
  * @param {Function} [fallbackFn] - Fallback function executing in the main thread
  * @returns {Promise<Buffer>}
  */
-async function executePdfInWorker({ serviceRelativePath, methodName, data }, fallbackFn) {
+async function executePdfInWorker({ serviceRelativePath, methodName, data, args }, fallbackFn) {
     try {
         return await poolInstance.executeTask({
             type: 'PDF_SERVICE',
-            payload: { serviceRelativePath, methodName, data }
+            payload: { serviceRelativePath, methodName, data, args }
         });
     } catch (err) {
         if (typeof fallbackFn === 'function') {
             console.warn('[ReportWorkerPool] Falling back to main-thread PDF generation:', err.message);
-            return await fallbackFn(data);
+            const callArgs = Array.isArray(args) && args.length > 0 ? args : (data !== undefined ? [data] : []);
+            return await fallbackFn(...callArgs);
+        }
+        throw err;
+    }
+}
+
+/**
+ * Executes an Excel service method in the worker pool.
+ * If the worker fails or is disabled, calls the fallback function.
+ * @param {Object} options - { serviceRelativePath, methodName, data, args }
+ * @param {Function} [fallbackFn] - Fallback function executing in the main thread
+ * @returns {Promise<Buffer>}
+ */
+async function executeExcelServiceInWorker({ serviceRelativePath, methodName, data, args }, fallbackFn) {
+    try {
+        return await poolInstance.executeTask({
+            type: 'EXCEL_SERVICE',
+            payload: { serviceRelativePath, methodName, data, args }
+        });
+    } catch (err) {
+        if (typeof fallbackFn === 'function') {
+            console.warn('[ReportWorkerPool] Falling back to main-thread Excel service generation:', err.message);
+            const callArgs = Array.isArray(args) && args.length > 0 ? args : (data !== undefined ? [data] : []);
+            return await fallbackFn(...callArgs);
         }
         throw err;
     }
@@ -233,5 +257,6 @@ async function executePdfInWorker({ serviceRelativePath, methodName, data }, fal
 module.exports = {
     reportWorkerPool: poolInstance,
     executeExcelInWorker,
+    executeExcelServiceInWorker,
     executePdfInWorker
 };

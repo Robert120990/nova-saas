@@ -1,4 +1,5 @@
 const { eggQualityLetterExport } = require('./shared');
+const { executeExcelServiceInWorker, executePdfInWorker } = require('../../../services/reportWorkerPool.service');
 
 const exportQualityLetter = async (req, res) => {
     try {
@@ -27,14 +28,22 @@ const exportQualityLetter = async (req, res) => {
         }
 
         if (format === 'excel') {
-            const buffer = await eggQualityLetterExport.generateQualityLetterExcel(letterData, scope);
+            const buffer = await executeExcelServiceInWorker({
+                serviceRelativePath: 'services/eggQualityLetterExport.service',
+                methodName: 'generateQualityLetterExcel',
+                args: [letterData, scope]
+            }, () => eggQualityLetterExport.generateQualityLetterExcel(letterData, scope));
             res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
             res.setHeader('Content-Disposition', `attachment; filename="${prefix}_${safeCode}.xlsx"`);
             return res.send(buffer);
         }
 
         // Por defecto PDF estilo cotización con membrete Eggcelent/ANDELSA
-        const pdfBuffer = await eggQualityLetterExport.generateQualityLetterPdf(letterData, scope);
+        const pdfBuffer = await executePdfInWorker({
+            serviceRelativePath: 'services/eggQualityLetterExport.service',
+            methodName: 'generateQualityLetterPdf',
+            args: [letterData, scope]
+        }, () => eggQualityLetterExport.generateQualityLetterPdf(letterData, scope));
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `inline; filename="${prefix}_${safeCode}.pdf"`);
         return res.send(pdfBuffer);

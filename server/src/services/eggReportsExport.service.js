@@ -1,6 +1,5 @@
 const pool = require('../config/db');
 const PDFDocument = require('pdfkit');
-const ExcelJS = require('exceljs');
 const reportPdfHelper = require('../utils/reportPdfHelper');
 
 /**

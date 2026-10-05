@@ -208,8 +208,10 @@ async function getBatchExportData(batchId, companyId) {
 /**
  * Genera el documento PDF del Resumen de Producción.
  */
-async function generateBatchSummaryPdf(batchId, companyId) {
-    const data = await getBatchExportData(batchId, companyId);
+async function generateBatchSummaryPdf(batchIdOrData, companyId) {
+    const data = typeof batchIdOrData === 'object' && batchIdOrData !== null 
+        ? batchIdOrData 
+        : await getBatchExportData(batchIdOrData, companyId);
     if (!data) throw new Error('Lote de producción no encontrado');
 
     const { 
@@ -682,8 +684,10 @@ async function generateBatchSummaryPdf(batchId, companyId) {
 /**
  * Genera el archivo Excel del Resumen de Producción.
  */
-async function generateBatchSummaryExcel(batchId, companyId) {
-    const data = await getBatchExportData(batchId, companyId);
+async function generateBatchSummaryExcel(batchIdOrData, companyId) {
+    const data = typeof batchIdOrData === 'object' && batchIdOrData !== null 
+        ? batchIdOrData 
+        : await getBatchExportData(batchIdOrData, companyId);
     if (!data) throw new Error('Lote de producción no encontrado');
 
     const { 
@@ -972,8 +976,10 @@ async function generateBatchSummaryExcel(batchId, companyId) {
 /**
  * Genera el archivo Word (.docx) del Resumen de Producción usando la biblioteca 'docx'.
  */
-async function generateBatchSummaryWord(batchId, companyId) {
-    const data = await getBatchExportData(batchId, companyId);
+async function generateBatchSummaryWord(batchIdOrData, companyId) {
+    const data = typeof batchIdOrData === 'object' && batchIdOrData !== null 
+        ? batchIdOrData 
+        : await getBatchExportData(batchIdOrData, companyId);
     if (!data) throw new Error('Lote de producción no encontrado');
 
     const { 

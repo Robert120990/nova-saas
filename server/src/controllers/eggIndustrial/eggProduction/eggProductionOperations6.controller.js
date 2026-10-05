@@ -1,4 +1,5 @@
 const { eggRules, pool, eggExportService } = require('./shared');
+const { executeExcelServiceInWorker, executePdfInWorker } = require('../../../services/reportWorkerPool.service');
 
 const updateBatchRemanente = async (req, res) => {
     const connection = await pool.getConnection();
@@ -93,8 +94,17 @@ const exportBatchSummary = async (req, res) => {
         const { format } = req.query; // 'pdf', 'excel', 'word'
         const company_id = req.company_id;
 
+        const data = await eggExportService.getBatchExportData(id, company_id);
+        if (!data) {
+            return res.status(404).json({ message: 'Lote de producción no encontrado' });
+        }
+
         if (format === 'excel' || format === 'xlsx') {
-            const buffer = await eggExportService.generateBatchSummaryExcel(id, company_id);
+            const buffer = await executeExcelServiceInWorker({
+                serviceRelativePath: 'services/eggProductionExport.service',
+                methodName: 'generateBatchSummaryExcel',
+                args: [data]
+            }, () => eggExportService.generateBatchSummaryExcel(data));
             res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
             res.setHeader('Content-Disposition', `attachment; filename="resumen_produccion_lote_${id}.xlsx"`);
             return res.send(buffer);
@@ -108,7 +118,11 @@ const exportBatchSummary = async (req, res) => {
         }
 
         // Default: PDF
-        const buffer = await eggExportService.generateBatchSummaryPdf(id, company_id);
+        const buffer = await executePdfInWorker({
+            serviceRelativePath: 'services/eggProductionExport.service',
+            methodName: 'generateBatchSummaryPdf',
+            args: [data]
+        }, () => eggExportService.generateBatchSummaryPdf(data));
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `inline; filename="resumen_produccion_lote_${id}.pdf"`);
         return res.send(buffer);
