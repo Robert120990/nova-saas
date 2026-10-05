@@ -271,21 +271,46 @@ const SearchableSelect = ({
                 loadRemotePage('', 1, false);
             }
             setPanelPos(computePanelPos());
+            setTimeout(() => {
+                searchInputRef.current?.focus();
+            }, 40);
         }
     };
 
     const handleKeyDown = (e) => {
         if (!isOpen) {
+            // Permitir desplegar con teclado sin hacer clic: Flecha Abajo, Arriba, F4, Alt+Abajo o Espacio
+            if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'F4' || (e.altKey && e.key === 'ArrowDown') || e.key === ' ') {
+                e.preventDefault();
+                toggleOpen();
+                return;
+            }
+            // Si el usuario escribe una letra o número directamente mientras está enfocado
+            if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
+                e.preventDefault();
+                setIsOpen(true);
+                const char = e.key.toUpperCase();
+                setSearch(char);
+                setFocusIdx(-1);
+                if (loadOptions) {
+                    skipDebounceRef.current = true;
+                    loadRemotePage(char, 1, false);
+                }
+                setPanelPos(computePanelPos());
+                setTimeout(() => {
+                    searchInputRef.current?.focus();
+                }, 40);
+                return;
+            }
             if (e.key === 'Enter') {
                 if (onPressEnter) {
                     e.preventDefault();
                     onPressEnter();
                     return;
                 }
-            }
-            if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
                 toggleOpen();
+                return;
             }
             return;
         }
@@ -432,11 +457,11 @@ const SearchableSelect = ({
                 role="button"
                 onClick={toggleOpen}
                 onKeyDown={disabled ? undefined : handleKeyDown}
-                className={`w-full px-3 py-1.5 bg-white border rounded-xl flex items-center justify-between transition-all text-[11px] font-bold uppercase outline-none ${
+                className={`w-full px-3 py-1.5 bg-white border rounded-xl flex items-center justify-between transition-all text-[11px] font-bold uppercase outline-none shadow-xs ${
                     disabled
                     ? 'border-slate-100 text-slate-300 cursor-not-allowed'
-                    : 'cursor-pointer focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-400 hover:border-slate-300'
-                } ${isOpen ? 'border-indigo-400 ring-2 ring-indigo-500/10' : 'border-slate-200'} ${className}`}
+                    : 'cursor-pointer focus:ring-2 focus:ring-indigo-600 focus:border-indigo-600 focus:bg-indigo-50/20 hover:border-slate-400'
+                } ${isOpen ? 'border-indigo-600 ring-2 ring-indigo-600/30 bg-indigo-50/20' : 'border-slate-300'} ${className}`}
             >
                 <div className="truncate pr-2">
                     {displayText ? (
@@ -459,6 +484,9 @@ const SearchableSelect = ({
                             <X size={13} />
                         </span>
                     )}
+                    <span className="hidden sm:inline-flex items-center px-1.5 py-0.5 text-[8px] font-mono font-bold text-indigo-700 bg-indigo-50 border border-indigo-200/80 rounded" title="Presione Flecha Abajo o F4 para desplegar">
+                        ↓ F4
+                    </span>
                     <ChevronDown size={14} className={`text-slate-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
                 </div>
             </div>

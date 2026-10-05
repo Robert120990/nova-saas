@@ -16,11 +16,15 @@ async function validateDocumentDuplicate({
     const cleanDoc = (numeroDocumento || '').trim().toUpperCase();
     const cleanCtrl = (numeroControl || '').trim().toUpperCase();
 
-    if (!cleanDoc && !cleanCtrl) {
+    // Comprobantes sin número o con comodín genérico (S/N, SN, etc.) no deben validar duplicidad por número
+    const isDocPlaceholder = !cleanDoc || cleanDoc === 'S/N' || cleanDoc === 'SN' || cleanDoc === 'SIN NUMERO' || cleanDoc === 'S-N';
+
+    if (isDocPlaceholder && !cleanCtrl) {
         return { isDuplicate: false };
     }
 
-    const isDocDte = cleanDoc.length === 36 || cleanDoc.startsWith('DTE');
+    const checkDoc = isDocPlaceholder ? '' : cleanDoc;
+    const isDocDte = checkDoc.length === 36 || checkDoc.startsWith('DTE');
     const provId = providerId ? parseInt(providerId, 10) : null;
 
     // 1. Si el objetivo es Registrar/Actualizar una COMPRA:
@@ -40,9 +44,9 @@ async function validateDocumentDuplicate({
         `;
         const expParams = [
             companyId,
-            cleanDoc, cleanDoc, isDocDte ? 1 : 0, provId,
+            checkDoc, checkDoc, isDocDte ? 1 : 0, provId,
             cleanCtrl, cleanCtrl,
-            cleanDoc, cleanDoc,
+            checkDoc, checkDoc,
             cleanCtrl, cleanCtrl
         ];
         const [expRows] = await connection.query(expSql, expParams);
@@ -82,9 +86,9 @@ async function validateDocumentDuplicate({
             LIMIT 1
         `;
         purParams.push(
-            cleanDoc, cleanDoc, isDocDte ? 1 : 0, provId,
+            checkDoc, checkDoc, isDocDte ? 1 : 0, provId,
             cleanCtrl, cleanCtrl,
-            cleanDoc, cleanDoc,
+            checkDoc, checkDoc,
             cleanCtrl, cleanCtrl
         );
 
@@ -119,9 +123,9 @@ async function validateDocumentDuplicate({
         `;
         const purParams = [
             companyId,
-            cleanDoc, cleanDoc, isDocDte ? 1 : 0, provId,
+            checkDoc, checkDoc, isDocDte ? 1 : 0, provId,
             cleanCtrl, cleanCtrl,
-            cleanDoc, cleanDoc,
+            checkDoc, checkDoc,
             cleanCtrl, cleanCtrl
         ];
         const [purRows] = await connection.query(purSql, purParams);
@@ -161,9 +165,9 @@ async function validateDocumentDuplicate({
             LIMIT 1
         `;
         expParams.push(
-            cleanDoc, cleanDoc, isDocDte ? 1 : 0, provId,
+            checkDoc, checkDoc, isDocDte ? 1 : 0, provId,
             cleanCtrl, cleanCtrl,
-            cleanDoc, cleanDoc,
+            checkDoc, checkDoc,
             cleanCtrl, cleanCtrl
         );
 

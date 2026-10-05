@@ -265,7 +265,7 @@ const createExpense = async (req, res) => {
             return res.status(400).json({ message: dupCheck.message });
         }
 
-        const cleanNumeroDoc = (numero_documento || '').trim().toUpperCase();
+        const cleanNumeroDoc = (numero_documento || '').trim().toUpperCase() || 'S/N';
         const anticipoCuenta = parseFloat(req.body.anticipo_cuenta) || 0;
         const montoSujeto = parseFloat(req.body.monto_sujeto) || 0;
         const [headerResult] = await connection.query(`
@@ -412,7 +412,7 @@ const updateExpense = async (req, res) => {
             return res.status(400).json({ message: dupCheck.message });
         }
 
-        const cleanNumeroDoc = (numero_documento || '').trim().toUpperCase();
+        const cleanNumeroDoc = (numero_documento || '').trim().toUpperCase() || 'S/N';
         const anticipoCuenta = parseFloat(req.body.anticipo_cuenta) || 0;
         const montoSujeto = parseFloat(req.body.monto_sujeto) || 0;
         await connection.query(`

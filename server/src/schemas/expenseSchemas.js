@@ -14,7 +14,14 @@ const expenseBaseShape = {
     branch_id: z.coerce.number().int().positive({ message: 'La sucursal es requerida' }),
     provider_id: z.coerce.number().int().positive({ message: 'El proveedor es requerido' }),
     fecha: z.string({ message: 'La fecha es requerida' }).min(1, { message: 'La fecha es requerida' }),
-    numero_documento: requiredString('El número de documento es requerido'),
+    numero_documento: z.preprocess(
+        val => {
+            if (val === undefined || val === null) return 'S/N';
+            const str = String(val).trim();
+            return str === '' ? 'S/N' : str;
+        },
+        z.string().default('S/N')
+    ),
     tipo_documento_id: z.preprocess(
         val => (val === undefined || val === null ? '' : String(val).trim()),
         z.string({ message: 'El tipo de documento es requerido' }).min(1, { message: 'El tipo de documento es requerido' })
