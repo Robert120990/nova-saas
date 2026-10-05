@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
 import Pagination from '../components/ui/Pagination';
 import { Search, Clock, ShieldAlert, Filter } from 'lucide-react';
+import { formatDateTime } from '../utils/dateUtils';
 
 const ENTITY_TYPES = [
     'api_request', 'sale', 'product', 'customer', 'user', 'company', 'branch', 'pos',
@@ -37,19 +38,14 @@ const AuditLog = () => {
         queryFn: async () => (await axios.get('/api/audit-log', { params })).data
     });
 
+    const rows = Array.isArray(logData?.data) ? logData.data : [];
+
     const getActionColor = (action) => {
         if (action.startsWith('POST')) return 'text-emerald-600 bg-emerald-50';
         if (action.startsWith('PUT')) return 'text-amber-600 bg-amber-50';
         if (action.startsWith('DELETE')) return 'text-rose-600 bg-rose-50';
         if (action.startsWith('GET')) return 'text-blue-600 bg-blue-50';
         return 'text-slate-600 bg-slate-50';
-    };
-
-    const formatDateTime = (dateStr) => {
-        if (!dateStr) return 'N/A';
-        const d = new Date(dateStr);
-        if (isNaN(d.getTime())) return 'N/A';
-        return d.toLocaleString('es-SV');
     };
 
     return (
@@ -112,7 +108,7 @@ const AuditLog = () => {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-50">
-                            {logData.data.map((row) => (
+                            {rows.map((row) => (
                                 <React.Fragment key={row.id}>
                                     <tr
                                         className="hover:bg-slate-50/50 transition-colors cursor-pointer text-xs"
@@ -120,7 +116,7 @@ const AuditLog = () => {
                                     >
                                         <td className="px-3 py-1">
                                             <span className="text-[10px] font-bold text-slate-600 whitespace-nowrap">
-                                                {new Date(row.created_at).toLocaleString('es-SV', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                                {formatDateTime(row.created_at)}
                                             </span>
                                         </td>
                                         <td className="px-3 py-1">
@@ -183,7 +179,7 @@ const AuditLog = () => {
                                     )}
                                 </React.Fragment>
                             ))}
-                            {!isLoading && logData.data.length === 0 && (
+                            {!isLoading && rows.length === 0 && (
                                 <tr><td colSpan={7} className="px-3 py-6 text-center text-slate-400 italic">No se encontraron registros</td></tr>
                             )}
                             {isLoading && (
@@ -197,10 +193,10 @@ const AuditLog = () => {
 
                 <Pagination
                     currentPage={page}
-                    totalPages={logData.totalPages}
-                    totalItems={logData.total}
+                    totalPages={logData?.totalPages || 0}
+                    totalItems={logData?.total || 0}
                     onPageChange={setPage}
-                    itemsOnPage={logData.data.length}
+                    itemsOnPage={rows.length}
                     isLoading={isLoading}
                 />
             </div>

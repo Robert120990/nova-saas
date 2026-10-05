@@ -126,7 +126,7 @@ export default function CustomerAgreements() {
         }
     });
 
-    const agreementsList = agreementsResponse.data || [];
+    const agreementsList = Array.isArray(agreementsResponse?.data) ? agreementsResponse.data : [];
     const kpis = agreementsResponse.kpis || {
         total_agreements: 0,
         active_agreements: 0,
@@ -616,7 +616,7 @@ export default function CustomerAgreements() {
                                     </td>
                                 </tr>
                             ) : (
-                                agreementsList.map((agr) => (
+                                (Array.isArray(agreementsList) ? agreementsList : []).map((agr) => (
                                     <tr key={agr.id} className="hover:bg-slate-50/75 transition-colors">
                                         <td className="py-3 px-4">
                                             <div className="font-bold text-slate-900 text-[13px]">
@@ -757,7 +757,7 @@ export default function CustomerAgreements() {
                                     )}
                                 </div>
 
-                                {showCustomerDropdown && customersData.length > 0 && (
+                                {showCustomerDropdown && Array.isArray(customersData) && customersData.length > 0 && (
                                     <div className="absolute z-30 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-48 overflow-y-auto divide-y divide-slate-100">
                                         {customersData.map((c) => (
                                             <div
@@ -805,7 +805,7 @@ export default function CustomerAgreements() {
 
                                 {/* LISTA DE PRODUCTOS DEL ACUERDO */}
                                 <div className="space-y-4 pt-1">
-                                    {formData.items.map((item, index) => (
+                                    {(Array.isArray(formData?.items) ? formData.items : []).map((item, index) => (
                                         <div
                                             key={index}
                                             className="bg-white border border-slate-200/90 rounded-xl p-4 shadow-xs space-y-3 relative"
@@ -858,10 +858,10 @@ export default function CustomerAgreements() {
                                                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                                                 />
 
-                                                {item.showProductDropdown && allCatalogProducts.length > 0 && (
+                                                {item.showProductDropdown && Array.isArray(allCatalogProducts) && allCatalogProducts.length > 0 && (
                                                     <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-40 overflow-y-auto divide-y divide-slate-100">
                                                         {allCatalogProducts
-                                                            .filter(p => !item.productSearchQuery || p.nombre.toLowerCase().includes(item.productSearchQuery.toLowerCase()) || p.codigo?.toLowerCase().includes(item.productSearchQuery.toLowerCase()))
+                                                            .filter(p => !item.productSearchQuery || p.nombre?.toLowerCase().includes(item.productSearchQuery.toLowerCase()) || p.codigo?.toLowerCase().includes(item.productSearchQuery.toLowerCase()))
                                                             .slice(0, 15)
                                                             .map((p) => (
                                                                 <div

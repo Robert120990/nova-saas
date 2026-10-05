@@ -259,10 +259,10 @@ const Eret = () => {
                 />
                 <Pagination
                     currentPage={page}
-                    totalPages={eretData.totalPages}
-                    totalItems={eretData.total}
+                    totalPages={eretData?.totalPages || 0}
+                    totalItems={eretData?.total || 0}
                     onPageChange={setPage}
-                    itemsOnPage={eretData.data.length}
+                    itemsOnPage={Array.isArray(eretData?.data) ? eretData.data.length : 0}
                     isLoading={isLoading}
                 />
             </div>
@@ -343,7 +343,7 @@ const Eret = () => {
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-slate-50">
-                                            {originalDte.items.map((item, idx) => (
+                                            {(Array.isArray(originalDte?.items) ? originalDte.items : []).map((item, idx) => (
                                                 <tr key={idx} className={`text-xs hover:bg-slate-50 transition-colors ${selectedItems.find(i => i.numItem === item.numItem)?.selected ? '' : 'opacity-40'}`}>
                                                     <td className="px-3 py-2">
                                                         <input

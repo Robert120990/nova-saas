@@ -94,7 +94,7 @@ const NotificacionesLista = () => {
             <div className="w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
             <span className="text-slate-400 font-medium">Cargando notificaciones...</span>
           </div>
-        ) : data?.data?.length > 0 ? (
+        ) : (Array.isArray(data?.data) && data.data.length > 0) ? (
           <div className="divide-y divide-slate-50">
             {data.data.map((notif, idx) => (
               <div
@@ -125,7 +125,7 @@ const NotificacionesLista = () => {
           currentPage={page}
           totalPages={data.totalPages}
           totalItems={data.total ?? data.totalItems ?? 0}
-          itemsOnPage={data.data?.length || 0}
+          itemsOnPage={Array.isArray(data?.data) ? data.data.length : 0}
           onPageChange={setPage}
         />
       )}

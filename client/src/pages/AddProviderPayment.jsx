@@ -153,7 +153,7 @@ const AddProviderPayment = () => {
         const { data } = await axios.get('/api/providers', {
             params: { search: search || undefined, page, limit: 50, es_credito: '1' }
         });
-        if (data?.data) {
+        if (Array.isArray(data?.data)) {
             data.data = data.data.map(p => ({
                 ...p,
                 nit_nrc: `NIT: ${p.nit || 'N/A'} | NRC: ${p.nrc || 'N/A'}`

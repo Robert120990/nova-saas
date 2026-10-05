@@ -525,10 +525,10 @@ const GasComplementariasReport = () => {
                                                                                                 <td className="py-2 px-3 font-mono font-bold text-slate-800">{dte.numero_control}</td>
                                                                                                 <td className="py-2 px-3 font-mono text-[11px] text-slate-500">{dte.codigo_generacion}</td>
                                                                                                 <td className="py-2 px-3 font-medium text-slate-700">
-                                                                                                    {dte.items.map(it => `${it.producto}`).join(', ') || 'Combustible'}
+                                                                                                    {(Array.isArray(dte?.items) ? dte.items : []).map(it => `${it.producto}`).join(', ') || 'Combustible'}
                                                                                                 </td>
                                                                                                 <td className="py-2 px-3 text-right font-medium">
-                                                                                                    {dte.items.reduce((acc, it) => acc + it.galones, 0).toFixed(2)} gln
+                                                                                                    {(Array.isArray(dte?.items) ? dte.items : []).reduce((acc, it) => acc + (parseFloat(it.galones) || 0), 0).toFixed(2)} gln
                                                                                                 </td>
                                                                                                 <td className="py-2 px-3 text-right"><Money value={dte.total_gravado} /></td>
                                                                                                 <td className="py-2 px-3 text-right"><Money value={dte.total_iva} /></td>

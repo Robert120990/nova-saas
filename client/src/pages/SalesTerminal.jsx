@@ -3192,10 +3192,7 @@ const SalesTerminal = () => {
                                                 <td className="px-4 py-4 text-right" data-label="Precio">
                                                     {tipoDte === '05' ? (
                                                         <div className="flex items-center justify-end gap-1">
-                                                            <span className="text-slate-400 text-[10px]">$</span>
-                                                            <input 
-                                                                type="number"
-                                                                step="0.01"
+                                                            <MoneyInput 
                                                                 className="w-20 text-right bg-indigo-50 border border-indigo-100 rounded-lg font-black text-xs py-1 px-2 focus:ring-2 focus:ring-indigo-500/20"
                                                                 value={item.precio}
                                                                 onChange={(e) => updateItem(item.id, 'precio', parseFloat(e.target.value) || 0)}
@@ -3203,40 +3200,42 @@ const SalesTerminal = () => {
                                                             />
                                                         </div>
                                                     ) : (
-                                                        <div className="font-bold text-xs text-slate-700">${(tipoDte === '11' ? parseFloat(item.precio || 0) / (1 + parseFloat(taxSettings?.iva_rate || 13) / 100) : parseFloat(item.precio || 0)).toFixed(2)}</div>
+                                                        <div className="font-bold text-xs text-slate-700">
+                                                            <Money value={tipoDte === '11' ? parseFloat(item.precio || 0) / (1 + parseFloat(taxSettings?.iva_rate || 13) / 100) : item.precio} />
+                                                        </div>
                                                     )}
                                                 </td>
                                                 <td className="px-4 py-4 text-right" data-label="Desc.">
                                                     {canApplyItemDiscount ? (
                                                         <button
-                                                            type="button"
-                                                            onClick={() => {
-                                                                if (hasGeneralDiscount && (parseFloat(item.descuento) || 0) <= 0) {
-                                                                    toast.error('No se puede aplicar descuento por producto: ya existe un descuento general activo en la venta.');
-                                                                    return;
-                                                                }
-                                                                setSelectedDiscountItem(item);
-                                                            }}
-                                                            className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-bold transition-all ${
-                                                                (item.descuento || 0) > 0 
-                                                                    ? 'bg-rose-50 text-rose-600 border border-rose-200 hover:bg-rose-100 shadow-sm' 
-                                                                    : hasGeneralDiscount
-                                                                        ? 'text-slate-300 border border-transparent cursor-not-allowed opacity-60'
-                                                                        : 'text-slate-400 hover:text-indigo-600 hover:bg-slate-100 border border-transparent'
-                                                            }`}
-                                                            title={hasGeneralDiscount && (parseFloat(item.descuento) || 0) <= 0 ? "Inhabilitado: descuento general activo" : "Editar o aplicar descuento a este producto"}
-                                                        >
-                                                            <Tag size={11} />
-                                                            <span>{(item.descuento || 0) > 0 ? `-$${parseFloat(item.descuento).toFixed(2)}` : '$0.00'}</span>
-                                                        </button>
+                                                             type="button"
+                                                             onClick={() => {
+                                                                 if (hasGeneralDiscount && (parseFloat(item.descuento) || 0) <= 0) {
+                                                                     toast.error('No se puede aplicar descuento por producto: ya existe un descuento general activo en la venta.');
+                                                                     return;
+                                                                 }
+                                                                 setSelectedDiscountItem(item);
+                                                             }}
+                                                             className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-bold transition-all ${
+                                                                 (item.descuento || 0) > 0 
+                                                                     ? 'bg-rose-50 text-rose-600 border border-rose-200 hover:bg-rose-100 shadow-sm' 
+                                                                     : hasGeneralDiscount
+                                                                         ? 'text-slate-300 border border-transparent cursor-not-allowed opacity-60'
+                                                                         : 'text-slate-400 hover:text-indigo-600 hover:bg-slate-100 border border-transparent'
+                                                             }`}
+                                                             title={hasGeneralDiscount && (parseFloat(item.descuento) || 0) <= 0 ? "Inhabilitado: descuento general activo" : "Editar o aplicar descuento a este producto"}
+                                                         >
+                                                             <Tag size={11} />
+                                                             <span>{(item.descuento || 0) > 0 ? <Money value={-item.descuento} /> : <Money value={0} />}</span>
+                                                         </button>
                                                     ) : (
                                                         <span className="text-rose-500 font-bold text-xs">
-                                                            {(item.descuento || 0) > 0 ? `-$${parseFloat(item.descuento).toFixed(2)}` : '$0.00'}
+                                                            {(item.descuento || 0) > 0 ? <Money value={-item.descuento} /> : <Money value={0} />}
                                                         </span>
                                                     )}
                                                 </td>
                                                 <td className="px-4 py-4 text-right font-black text-slate-900 text-xs" data-label="Subtotal">
-                                                    ${(tipoDte === '11' ? (((parseFloat(item.precio || 0) * (parseFloat(item.cantidad || 0))) - (parseFloat(item.descuento || 0))) / (1 + parseFloat(taxSettings?.iva_rate || 13) / 100)) : ((parseFloat(item.precio || 0) * (parseFloat(item.cantidad || 0))) - (parseFloat(item.descuento || 0)))).toFixed(2)}
+                                                    <Money value={tipoDte === '11' ? (((parseFloat(item.precio || 0) * (parseFloat(item.cantidad || 0))) - (parseFloat(item.descuento || 0))) / (1 + parseFloat(taxSettings?.iva_rate || 13) / 100)) : ((parseFloat(item.precio || 0) * (parseFloat(item.cantidad || 0))) - (parseFloat(item.descuento || 0)))} />
                                                 </td>
                                                 <td className="pr-6 py-4 text-right">
                                                     <button onClick={() => removeFromCart(item.id)} className="text-rose-300 hover:text-rose-600"><Trash2 size={16} /></button>
@@ -3254,42 +3253,44 @@ const SalesTerminal = () => {
                                     {tipoDte === '07' ? (
                                         <>
                                             <div className="flex justify-between border-b border-white/10 pb-1"><span>Docs. Vinculados</span><span>{linkedDocs.length}</span></div>
-                                            <div className="flex justify-between border-b border-white/10 pb-1 text-blue-300"><span>Sujeto a Retención</span><span>${totals.totalSujetoRetencion.toFixed(2)}</span></div>
-                                            <div className="flex justify-between border-b border-white/10 pb-1 text-rose-300"><span>IVA Retenido (1%)</span><span>${totals.totalIVAretenido.toFixed(2)}</span></div>
+                                            <div className="flex justify-between border-b border-white/10 pb-1 text-blue-300"><span>Sujeto a Retención</span><Money value={totals.totalSujetoRetencion} /></div>
+                                            <div className="flex justify-between border-b border-white/10 pb-1 text-rose-300"><span>IVA Retenido (1%)</span><Money value={totals.totalIVAretenido} /></div>
                                         </>
                                     ) : (
                                         <>
-                                    <div className="flex justify-between border-b border-white/10 pb-1"><span>Gravadas</span><span>${totals.viewGravadas.toFixed(2)}</span></div>
-                                    <div className="flex justify-between border-b border-white/10 pb-1"><span>IVA ({(taxSettings?.iva_rate || 13)}%)</span><span>${totals.viewIva.toFixed(2)}</span></div>
+                                    <div className="flex justify-between border-b border-white/10 pb-1"><span>Gravadas</span><Money value={totals.viewGravadas} /></div>
+                                    <div className="flex justify-between border-b border-white/10 pb-1"><span>IVA ({(taxSettings?.iva_rate || 13)}%)</span><Money value={totals.viewIva} /></div>
                                     <div className="flex justify-between items-center border-b border-white/10 pb-1 text-orange-200">
-                                        <span>FOVIAL ${totals.fovial.toFixed(2)}</span>
+                                        <span>FOVIAL <Money value={totals.fovial} /></span>
                                         <span className="opacity-40 font-normal">|</span>
-                                        <span>COTRANS ${totals.cotrans.toFixed(2)}</span>
+                                        <span>COTRANS <Money value={totals.cotrans} /></span>
                                     </div>
                                     <div className="flex justify-between items-center border-b border-white/10 pb-1 text-blue-300">
-                                        <span>EXENTAS ${totals.exento.toFixed(2)}</span>
+                                        <span>EXENTAS <Money value={totals.exento} /></span>
                                         <span className="opacity-40 font-normal">|</span>
-                                        <span className="text-slate-400">NO SUJETAS ${totals.noSujeto.toFixed(2)}</span>
+                                        <span className="text-slate-400">NO SUJETAS <Money value={totals.noSujeto} /></span>
                                     </div>
-                                    <div className="flex justify-between border-b border-white/10 pb-1 font-black text-indigo-300"><span>Subtotal s/Impuestos</span><span>${totals.subtotal.toFixed(2)}</span></div>
+                                    <div className="flex justify-between border-b border-white/10 pb-1 font-black text-indigo-300"><span>Subtotal s/Impuestos</span><Money value={totals.subtotal} /></div>
                                     <div className="flex justify-between items-center border-b border-white/10 pb-1 text-rose-300">
-                                        <span>RETENCIÓN -${totals.retencion.toFixed(2)}</span>
+                                        <span>RETENCIÓN <Money value={-totals.retencion} /></span>
                                         <span className="opacity-40 font-normal">|</span>
-                                        <span>PERCEPCIÓN +${totals.percepcion.toFixed(2)}</span>
+                                        <span>PERCEPCIÓN +<Money value={totals.percepcion} /></span>
                                     </div>
                                     <div className={`flex justify-between border-b border-white/10 pb-1 items-center ${totals.totalItemDiscounts > 0 ? 'text-rose-300 font-bold' : 'text-slate-400'}`}>
                                         <span className="flex items-center gap-1"><Tag size={10} /> Desc. Ítems</span>
-                                        <span className="font-mono text-[10px]">-${totals.totalItemDiscounts.toFixed(2)}</span>
+                                        <span className="font-mono text-[10px]"><Money value={-totals.totalItemDiscounts} /></span>
                                     </div>
                                     <div className={`flex justify-between border-b border-white/10 pb-1 items-center ${generalDiscount > 0 ? 'text-rose-300 font-bold' : 'text-slate-400'}`}>
                                         <span className="flex items-center gap-1"><Tag size={10} /> Desc. General</span>
-                                        <span className="font-mono text-[10px]">-${generalDiscount.toFixed(2)}</span>
+                                        <span className="font-mono text-[10px]"><Money value={-generalDiscount} /></span>
                                     </div>
-                                    <div className="flex justify-between border-b border-white/10 pb-1 text-indigo-400"><span>Monto Operación</span><span>${totals.montoOperacion.toFixed(2)}</span></div>
+                                    <div className="flex justify-between border-b border-white/10 pb-1 text-indigo-400"><span>Monto Operación</span><Money value={totals.montoOperacion} /></div>
                                         </>
                                     )}
                                 </div>
-                                <div className="text-4xl font-black mb-3 tracking-tighter">${(tipoDte === '07' ? totals.totalIVAretenido : totals.total).toFixed(2)}</div>
+                                <div className="text-4xl font-black mb-3 tracking-tighter">
+                                    <Money value={tipoDte === '07' ? totals.totalIVAretenido : totals.total} />
+                                </div>
                                 
                                 {canApplyGeneralDiscount && cart.length > 0 && tipoDte !== '07' && tipoDte !== '05' && (
                                     <button

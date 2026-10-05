@@ -27,6 +27,7 @@ import { useConfirm } from '../context/ConfirmContext';
 import Money, { MoneyInput } from '../components/ui/Money';
 import Pagination from '../components/ui/Pagination';
 import { useDirtyTracker } from '../hooks/useDirtyTracker';
+import { formatDate, formatTime } from '../utils/dateUtils';
 
 const CashClosing = () => {
     const queryClient = useQueryClient();
@@ -398,9 +399,9 @@ const CashClosing = () => {
                         </div>
                     </div>
                     <div className="text-xs font-bold text-slate-600 mb-2">
-                        {new Date(shift.start_time).toLocaleDateString('es-SV', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                        {formatDate(shift.start_time)}
                         {' — '}
-                        {new Date(shift.start_time).toLocaleTimeString('es-SV', { hour: '2-digit', minute: '2-digit', hour12: true })}
+                        {formatTime(shift.start_time)}
                     </div>
                     {activeSummary && activeShifts[0]?.id === shift.id && (
                         <div className="flex items-center justify-between pt-2 border-t border-slate-100 mb-3">
@@ -553,9 +554,9 @@ const CashClosing = () => {
                                     <tr key={shift.id} className="hover:bg-slate-50 transition-colors group">
                                         <td className="px-2 py-3 min-w-[160px]">
                                             <div className="flex flex-col">
-                                                <span className="text-xs font-black text-slate-900">{new Date(shift.start_time).toLocaleDateString('es-SV', { day: '2-digit', month: '2-digit', year: 'numeric' })}</span>
+                                                <span className="text-xs font-black text-slate-900">{formatDate(shift.start_time)}</span>
                                                 <span className="text-[9px] font-bold text-slate-400 tabular-nums">
-                                                    {new Date(shift.start_time).toLocaleTimeString('es-SV', { hour: '2-digit', minute: '2-digit' })} - {shift.end_time ? new Date(shift.end_time).toLocaleTimeString('es-SV', { hour: '2-digit', minute: '2-digit' }) : 'Abierto'}
+                                                    {formatTime(shift.start_time)} - {shift.end_time ? formatTime(shift.end_time) : 'Abierto'}
                                                 </span>
                                             </div>
                                         </td>
@@ -586,7 +587,7 @@ const CashClosing = () => {
                                         </td>
                                         <td className="px-2 py-3 text-right tabular-nums">
                                             <span className={`text-xs font-black flex items-center justify-end gap-1 ${parseFloat(shift.actual_cash - shift.expected_cash) >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                                                {parseFloat(shift.actual_cash - shift.expected_cash || 0).toFixed(2)}
+                                                <Money value={parseFloat(shift.actual_cash - shift.expected_cash || 0)} />
                                                 {parseFloat(shift.actual_cash - shift.expected_cash || 0) >= 0 ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}
                                             </span>
                                         </td>
@@ -849,7 +850,7 @@ const CashClosing = () => {
                                         {incomes.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0) > 0 && (
                                             <div className="flex justify-between items-center text-sm font-bold text-emerald-600 italic pt-2 border-t border-slate-200">
                                                 <span>Otros Ingresos</span>
-                                                <span>+${incomes.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0).toFixed(2)}</span>
+                                                <span>+<Money value={incomes.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0)} /></span>
                                             </div>
                                         )}
                                         
@@ -857,7 +858,7 @@ const CashClosing = () => {
                                         {expenses.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0) > 0 && (
                                             <div className="flex justify-between items-center text-sm font-bold text-rose-500 italic">
                                                 <span>Total Gastos</span>
-                                                <span>-${expenses.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0).toFixed(2)}</span>
+                                                <span>-<Money value={expenses.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0)} /></span>
                                             </div>
                                         )}
 
@@ -865,7 +866,7 @@ const CashClosing = () => {
                                         {remesas.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0) > 0 && (
                                             <div className="flex justify-between items-center text-sm font-bold text-amber-600 italic">
                                                 <span>Total Remesas</span>
-                                                <span>-${remesas.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0).toFixed(2)}</span>
+                                                <span>-<Money value={remesas.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0)} /></span>
                                             </div>
                                         )}
 
@@ -873,7 +874,7 @@ const CashClosing = () => {
                                         {puntos.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0) > 0 && (
                                             <div className="flex justify-between items-center text-sm font-bold text-violet-600 italic">
                                                 <span>Total Puntos</span>
-                                                <span>-${puntos.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0).toFixed(2)}</span>
+                                                <span>-<Money value={puntos.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0)} /></span>
                                             </div>
                                         )}
                                     </div>
@@ -886,14 +887,14 @@ const CashClosing = () => {
                                         <span className="text-[10px] text-slate-400 font-bold italic">(Saldo + Cash Sales + Cash In - Expenses - Remesas - Puntos)</span>
                                     </div>
                                     <span className="text-3xl font-black text-emerald-600">
-                                        ${(
+                                        <Money value={(
                                             (parseFloat(shiftSummary.opening_balance) || 0) + 
                                             (parseFloat(shiftSummary.cash) || 0) + 
                                             incomes.filter(i => i.payment_method === '01').reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0) - 
                                             expenses.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0) - 
                                             remesas.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0) -
                                             puntos.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0)
-                                        ).toFixed(2)}
+                                        )} />
                                     </span>
                                 </div>
                             </div>
@@ -911,7 +912,7 @@ const CashClosing = () => {
                                         <button key={tab.key} onClick={() => setArqueoActiveTab(tab.key)}
                                             className={`flex-1 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${arqueoActiveTab === tab.key ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
                                             {tab.label}
-                                            {tab.total > 0 && <span className="ml-1.5 tabular-nums text-slate-500">(${tab.total.toFixed(2)})</span>}
+                                            {tab.total > 0 && <span className="ml-1.5 tabular-nums text-slate-500">(<Money value={tab.total} />)</span>}
                                         </button>
                                     ))}
                                 </div>
@@ -935,7 +936,7 @@ const CashClosing = () => {
                                                         onChange={(e) => { const n = [...incomes]; n[idx].payment_method = e.target.value; setIncomes(n); }}>
                                                         {paymentMethods.map(m => <option key={m.code} value={m.code}>{m.description}</option>)}
                                                     </select>
-                                                    <input type="number" className="w-28 px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-bold outline-none focus:border-emerald-300 text-right"
+                                                    <MoneyInput className="w-28 px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-bold outline-none focus:border-emerald-300 text-right"
                                                         placeholder="0.00" value={inc.amount}
                                                         onChange={(e) => { const n = [...incomes]; n[idx].amount = e.target.value; setIncomes(n); }} />
                                                     <button onClick={() => {
@@ -968,7 +969,7 @@ const CashClosing = () => {
                                                     <input className="flex-[2] px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-bold outline-none focus:border-amber-300"
                                                         placeholder="Descripción" value={rem.description}
                                                         onChange={(e) => { const n = [...remesas]; n[idx].description = e.target.value; setRemesas(n); }} />
-                                                    <input type="number" className="w-28 px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-bold outline-none focus:border-amber-300 text-right"
+                                                    <MoneyInput className="w-28 px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-bold outline-none focus:border-amber-300 text-right"
                                                         placeholder="0.00" value={rem.amount}
                                                         onChange={(e) => { const n = [...remesas]; n[idx].amount = e.target.value; setRemesas(n); }} />
                                                     <button onClick={() => {
@@ -1032,7 +1033,7 @@ const CashClosing = () => {
                                                     <input className="flex-[2] px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-bold outline-none focus:border-rose-300"
                                                         placeholder="Descripción" value={exp.description}
                                                         onChange={(e) => { const n = [...expenses]; n[idx].description = e.target.value; setExpenses(n); }} />
-                                                    <input type="number" className="w-28 px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-bold outline-none focus:border-rose-300 text-right"
+                                                    <MoneyInput className="w-28 px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-bold outline-none focus:border-rose-300 text-right"
                                                         placeholder="0.00" value={exp.amount}
                                                         onChange={(e) => { const n = [...expenses]; n[idx].amount = e.target.value; setExpenses(n); }} />
                                                     <button onClick={() => {
@@ -1055,9 +1056,7 @@ const CashClosing = () => {
                                     <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest block mb-2 px-1">Efectivo Contado (Físico)</label>
                                     <div className="relative">
                                         <span className="absolute left-4 top-1/2 -translate-y-1/2 text-2xl font-black text-slate-300">$</span>
-                                        <input 
-                                            type="number"
-                                            step="0.01"
+                                        <MoneyInput 
                                             value={actualCash}
                                             onChange={(e) => setActualCash(e.target.value)}
                                             className="w-full pl-12 pr-4 py-6 bg-slate-50 border border-slate-100 rounded-3xl text-4xl font-black outline-none focus:ring-8 focus:ring-emerald-500/5 focus:border-emerald-400 transition-all tabular-nums"
@@ -1078,14 +1077,14 @@ const CashClosing = () => {
                                         }`}>
                                             <span className="text-[10px] font-black uppercase tracking-widest">Diferencia</span>
                                             <span className="text-xl font-black tabular-nums">
-                                                $ {(parseFloat(actualCash) - (
+                                                <Money value={(parseFloat(actualCash) - (
                                                     (parseFloat(shiftSummary.opening_balance) || 0) + 
                                                     (parseFloat(shiftSummary.cash) || 0) + 
                                                     incomes.filter(i => i.payment_method === '01').reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0) - 
                                                     expenses.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0) - 
                                                     remesas.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0) -
                                                     puntos.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0)
-                                                )).toFixed(2)}
+                                                ))} />
                                             </span>
                                         </div>
                                     )}
@@ -1524,7 +1523,7 @@ const CashClosing = () => {
                                                                 <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase text-amber-700 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200/60"
                                                                       title={`Diferencia de $${Math.abs(row.diferencia).toFixed(2)} entre sistema y RRS`}>
                                                                     <AlertTriangle size={12} className="text-amber-500" />
-                                                                    Dif: {row.diferencia > 0 ? '+' : ''}{row.diferencia.toFixed(2)}
+                                                                    Dif: {row.diferencia > 0 ? '+' : ''}<Money value={row.diferencia} />
                                                                 </span>
                                                             ) : (
                                                                 <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200/60">

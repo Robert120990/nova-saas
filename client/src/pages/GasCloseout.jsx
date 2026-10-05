@@ -1145,7 +1145,7 @@ const GasCloseout = () => {
             }))
         }),
         onSuccess: (res) => {
-            const clean = res.data.map(e => ({ ...e, fecha: toDateStr(e.fecha) }));
+            const clean = (Array.isArray(res.data) ? res.data : []).map(e => ({ ...e, fecha: toDateStr(e.fecha) }));
             setGastos(clean);
             if (modalSnapshotsRef.current) modalSnapshotsRef.current.gastos = JSON.stringify(clean);
             if (editId) {
@@ -1503,7 +1503,7 @@ const GasCloseout = () => {
             mutate: (data) => saveExpensesMutation.mutate(data),
             mutateAsync: (data) => saveExpensesMutation.mutateAsync(data),
             isPending: () => saveExpensesMutation.isPending,
-            cleanForSave: (data) => data.map(e => ({ ...e, provider_id: e.provider_id || null })),
+            cleanForSave: (data) => (Array.isArray(data) ? data : []).map(e => ({ ...e, provider_id: e.provider_id || null })),
             isEmptyRow: (r) => (!r.rubro || r.rubro.trim() === '') && (!r.proveedor || r.proveedor.trim() === '') && (!r.documento || r.documento.trim() === '') && (!r.comentario || r.comentario.trim() === '') && (parseFloat(r.valor) || 0) === 0,
             validateRow: (r) => {
                 if (!r.despachador_id) return 'Falta asignar despachador';
@@ -2767,7 +2767,7 @@ const GasCloseout = () => {
         if (tankReadings.length === 0 && closeoutId) {
             try {
                 const res = await axios.post(`/api/gas-station/closeouts/${closeoutId}/tank-readings/init`);
-                setTankReadings(res.data.map(r => ({ ...r, lectura_actual: r.lectura_anterior })));
+                setTankReadings((Array.isArray(res.data) ? res.data : []).map(r => ({ ...r, lectura_actual: r.lectura_anterior })));
             } catch { }
         }
         setShowTankReadingsModal(true);
@@ -3842,7 +3842,7 @@ const GasCloseout = () => {
                             className="w-full pl-9 pr-3 py-1.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-xs font-medium appearance-none cursor-pointer"
                         >
                             <option value="">Seleccionar vendedor...</option>
-                            {sellers.filter(s => s.status === 'activo').map(s => (
+                            {(Array.isArray(sellers) ? sellers : []).filter(s => s.status === 'activo').map(s => (
                                 <option key={s.id} value={s.id}>{s.nombre}</option>
                             ))}
                         </select>

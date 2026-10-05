@@ -1013,10 +1013,10 @@ const Expenses = () => {
     };
 
     const handleExportExcel = () => {
-        if (!expensesData?.data || expensesData.data.length === 0) {
+        if (!Array.isArray(expensesData?.data) || expensesData.data.length === 0) {
             return toast.error('No hay datos en el período para exportar');
         }
-        const data = expensesData.data.map(e => ({
+        const data = (Array.isArray(expensesData.data) ? expensesData.data : []).map(e => ({
             ID: e.id,
             FECHA: formatDate(e.fecha),
             TIPO_DOC: e.tipo_documento_id,
@@ -1304,7 +1304,7 @@ const Expenses = () => {
                                         Cargando gastos...
                                     </td>
                                 </tr>
-                            ) : (!expensesData?.data || expensesData.data.length === 0) ? (
+                            ) : (!Array.isArray(expensesData?.data) || expensesData.data.length === 0) ? (
                                 <tr>
                                     <td colSpan={8} className="px-4 py-12 text-center">
                                         <Receipt size={32} className="mx-auto text-slate-300 mb-2" />

@@ -1595,7 +1595,7 @@ const FilproSync = () => {
                                                     </tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-slate-100">
-                                                    {items.map((it, i) => (
+                                                    {(Array.isArray(items) ? items : []).map((it, i) => (
                                                         <tr key={i} className="hover:bg-slate-50/60">
                                                             <td className="py-2 px-3 text-slate-400 font-mono">{it.numItem || i + 1}</td>
                                                             <td className="py-2 px-3 font-mono text-slate-600 whitespace-nowrap">
