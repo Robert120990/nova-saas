@@ -659,6 +659,7 @@ const Providers = () => {
                                 }}
                                 placeholder={isForeign ? "No aplica para extranjeros" : "000000-0"} 
                                 className={`${fieldCls} font-mono ${isForeign ? 'bg-slate-100/70 text-slate-400 cursor-not-allowed' : ''}`} 
+                                maxLength={10}
                             />
                         </div>
 

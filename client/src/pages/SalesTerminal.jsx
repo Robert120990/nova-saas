@@ -31,7 +31,7 @@ import { printTicket } from '../utils/qzPrint';
 import { useAuth } from '../context/AuthContext';
 import Money, { MoneyInput } from '../components/ui/Money';
 import { useDirtyTracker } from '../hooks/useDirtyTracker';
-import { validateDocumentNumber, isValidDocumentNumber } from '../utils/svfeValidators';
+import { validateDocumentNumber, isValidDocumentNumber, formatNRC } from '../utils/svfeValidators';
 
 import ItemDiscountDialog from '../components/pos/ItemDiscountDialog';
 import GeneralDiscountDialog from '../components/pos/GeneralDiscountDialog';
@@ -914,14 +914,6 @@ const SalesTerminal = () => {
         queryKey: ['catalogs', 'cat_016_condicion_operacion'],
         queryFn: async () => (await axios.get('/api/catalogs/cat_016_condicion_operacion')).data
     });
-
-    // Helper: Format NRC
-    const formatNRC = (value) => {
-        if (!value) return '';
-        const digits = value.replace(/\D/g, '');
-        if (digits.length <= 6) return digits;
-        return `${digits.slice(0, 6)}-${digits.slice(6, 7)}`;
-    };
 
     // Helper: Format Document Number (DUI / NIT)
     const formatDocumentNumber = (value, type = 'DUI') => {

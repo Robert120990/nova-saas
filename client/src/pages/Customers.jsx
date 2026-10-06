@@ -11,7 +11,7 @@ import SearchableSelect from '../components/ui/SearchableSelect';
 import Pagination from '../components/ui/Pagination';
 import PdfViewerModal from '../components/ui/PdfViewerModal';
 import { exportJsonToExcel } from '../utils/excelExport';
-import { validateDocumentNumber } from '../utils/svfeValidators';
+import { validateDocumentNumber, formatNRC } from '../utils/svfeValidators';
 
 const Customers = () => {
     const queryClient = useQueryClient();
@@ -52,13 +52,6 @@ const Customers = () => {
     const [docNumberValue, setDocNumberValue] = useState('');
     const [docType, setDocType] = useState('DUI');
     const [nrcValue, setNrcValue] = useState('');
-
-    const formatNRC = (value) => {
-        if (!value) return '';
-        const digits = value.replace(/\D/g, '');
-        if (digits.length <= 6) return digits;
-        return `${digits.slice(0, 6)}-${digits.slice(6, 7)}`;
-    };
 
     const formatDocumentNumber = (value, type = 'DUI') => {
         if (!value) return '';
@@ -869,6 +862,7 @@ const Customers = () => {
                                 }}
                                 placeholder="000000-0" 
                                 className={`${fieldCls} font-mono`} 
+                                maxLength={10}
                             />
                         </div>
 

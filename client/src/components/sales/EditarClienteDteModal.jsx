@@ -4,7 +4,7 @@ import Modal from '../ui/Modal';
 import { UserCheck, Save, Send, AlertCircle, RefreshCcw } from 'lucide-react';
 import { toast } from 'sonner';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { validateDocumentNumber } from '../../utils/svfeValidators';
+import { validateDocumentNumber, formatNRC } from '../../utils/svfeValidators';
 
 export default function EditarClienteDteModal({ isOpen, onClose, sale, onSaved }) {
     const queryClient = useQueryClient();
@@ -58,12 +58,6 @@ export default function EditarClienteDteModal({ isOpen, onClose, sale, onSaved }
             return `${digits.slice(0, 4)}-${digits.slice(4, 10)}-${digits.slice(10, 13)}-${digits.slice(13, 14)}`;
         }
         return value;
-    };
-
-    const formatNRC = (value) => {
-        const digits = value.replace(/\D/g, '');
-        if (digits.length <= 6) return digits;
-        return `${digits.slice(0, 6)}-${digits.slice(6, 7)}`;
     };
 
     useEffect(() => {
@@ -321,6 +315,7 @@ export default function EditarClienteDteModal({ isOpen, onClose, sale, onSaved }
                                 value={formData.nrc}
                                 onChange={(e) => setFormData({ ...formData, nrc: formatNRC(e.target.value) })}
                                 placeholder="000000-0"
+                                maxLength={10}
                                 className="w-full font-mono text-[13px] font-medium px-3 py-2 rounded-xl border border-slate-300 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
                             />
                         </div>

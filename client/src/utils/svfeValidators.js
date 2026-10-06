@@ -87,13 +87,18 @@ export function isValidDocumentNumber(doc, type = null) {
 }
 
 /**
- * Formatea un NRC salvadoreño (ej. 155323-0)
+ * Limpia y permite escritura libre de un NRC salvadoreño (dígitos y guión opcional).
+ * No fuerza ni inserta guiones automáticamente, respetando exactamente lo que el usuario ingrese.
  */
 export function formatNRC(value) {
     if (!value) return '';
-    const digits = String(value).replace(/\D/g, '');
-    if (digits.length <= 6) return digits;
-    return `${digits.slice(0, 6)}-${digits.slice(6, 7)}`;
+    // Permitir solo dígitos y guión, sin formato automático
+    let clean = String(value).replace(/[^\d-]/g, '').replace(/^-+/, '');
+    const parts = clean.split('-');
+    if (parts.length > 2) {
+        clean = `${parts[0]}-${parts.slice(1).join('')}`;
+    }
+    return clean.slice(0, 10);
 }
 
 /**
