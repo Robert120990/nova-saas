@@ -245,8 +245,8 @@ class FilproExtractorService {
      * Fetch establishments/branches available in FilPro for the company
      */
     async getEstablishments(companyId, filproEmail, password, forcedFilproCompanyId = null) {
-        const session = await this.getValidSession(companyId, filproEmail, password);
-        const targetCompanyId = forcedFilproCompanyId || session.filproCompanyId;
+        let session = await this.getValidSession(companyId, filproEmail, password);
+        let targetCompanyId = forcedFilproCompanyId || session.filproCompanyId;
 
         if (!targetCompanyId) {
             return [];
@@ -291,8 +291,8 @@ class FilproExtractorService {
      * Query fiscal documents for a specific single day (YYYY-MM-DD)
      */
     async getDocumentsForDay(companyId, filproEmail, password, dateStr, establishmentCode = '', forcedFilproCompanyId = null) {
-        const session = await this.getValidSession(companyId, filproEmail, password);
-        const targetCompanyId = forcedFilproCompanyId || session.filproCompanyId;
+        let session = await this.getValidSession(companyId, filproEmail, password);
+        let targetCompanyId = forcedFilproCompanyId || session.filproCompanyId;
 
         if (!targetCompanyId) {
             throw new Error('No se pudo identificar el companyId de FilPro para consultar documentos.');
