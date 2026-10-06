@@ -6,6 +6,7 @@ const pool = require('../../config/db');
 const axios = require('axios');
 const { authenticate, transmitDTE } = require('../transmission/transmissionService');
 const { getSchemaVersion } = require('../utils/versionMap');
+const { enrichAcceptedDTE } = require('../services/dte/dteEnricher');
 
 async function addToQueue(dteId) {
     const nextAttemptAt = new Date();
@@ -50,10 +51,17 @@ async function processQueue() {
             });
 
             if (result.success && result.status === 'PROCESADO') {
-                // 4. Update DTE
+                // 4. Update DTE with reception seal and signature
+                const [currRows] = await pool.query('SELECT json_original, json_firmado FROM dtes WHERE id = ?', [task.dte_id]);
+                let updatedJsonStr = null;
+                if (currRows.length > 0 && currRows[0].json_original) {
+                    const enriched = enrichAcceptedDTE(currRows[0].json_original, currRows[0].json_firmado, result.selloRecepcion);
+                    updatedJsonStr = JSON.stringify(enriched);
+                }
+
                 await pool.query(
-                    'UPDATE dtes SET status = "ACCEPTED", sello_recepcion = ?, fh_procesamiento = ? WHERE id = ?',
-                    [result.selloRecepcion, result.fhProcesamiento, task.dte_id]
+                    'UPDATE dtes SET status = "ACCEPTED", sello_recepcion = ?, fh_procesamiento = ?, json_original = COALESCE(?, json_original) WHERE id = ?',
+                    [result.selloRecepcion, result.fhProcesamiento, updatedJsonStr, task.dte_id]
                 );
                 if (task.venta_id) {
                     await pool.query(

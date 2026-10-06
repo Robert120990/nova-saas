@@ -10,6 +10,7 @@ const { getSchemaVersion } = require('../utils/versionMap');
 const { getMHAmbiente } = require('../config/haciendaConfig');
 const queue = require('../queue/transmissionQueue');
 const pool = require('../../config/db');
+const { enrichAcceptedDTE } = require('../services/dte/dteEnricher');
 
 function isNetworkError(errOrMsg) {
     if (!errOrMsg) return false;
@@ -339,6 +340,10 @@ async function emit(req, res) {
             formattedDate = `${year}-${month}-${day} ${timePart}`;
         }
 
+        const savedDteJson = dbStatus === 'ACCEPTED' && txResult.selloRecepcion
+            ? enrichAcceptedDTE(dte, jwsString, txResult.selloRecepcion)
+            : dte;
+
         await pool.query(
             'INSERT INTO dtes (venta_id, codigo_generacion, numero_control, tipo_dte, company_id, branch_id, usuario_id, status, ambiente, json_original, json_firmado, sello_recepcion, fh_procesamiento, respuesta_hacienda) ' +
             'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
@@ -352,7 +357,7 @@ async function emit(req, res) {
                 req.user ? req.user.id : 0,
                 dbStatus,
                 dte.identificacion.ambiente,
-                JSON.stringify(dte),
+                JSON.stringify(savedDteJson),
                 jwsString,
                 txResult.selloRecepcion || null,
                 formattedDate,

@@ -11,6 +11,7 @@ const {
     generatePaymentReceiptPDF,
     generateAdvanceReceiptPDF
 } = require('./pdf.service');
+const { formatDeliveryDteJson } = require('../utils/dteDeliveryHelper');
 
 // ── Private Helpers ─────────────────────────────────────────────────────────
 
@@ -741,7 +742,7 @@ module.exports = {
         try {
             // 1. Obtener datos completos de la venta y DTE
             let query = `
-                SELECT h.*, d.json_original, d.sello_recepcion, d.numero_control,
+                SELECT h.*, d.json_original, d.json_firmado, d.sello_recepcion, d.numero_control,
                        c.razon_social as company_name, c.nit as company_nit, c.nrc as company_nrc, c.logo_url as company_logo_url,
                        cu.nrc as customer_nrc,
                        b.nombre as branch_name, b.codigo_mh as branch_codigo_mh, b.es_casa_matriz, b.tipo_establecimiento as branch_tipo_est,
@@ -764,7 +765,7 @@ module.exports = {
 
             if (!rows.length) throw new Error('Venta o DTE no encontrado');
             const venta = rows[0];
-            const dteJson = venta.json_original;
+            const dteJson = formatDeliveryDteJson(venta.json_original, venta.json_firmado, venta.sello_recepcion);
 
             // Mapeo robusto de nombres de documentos
             const dteNames = {
@@ -935,7 +936,7 @@ module.exports = {
         try {
             // 1. Obtener datos completos de la venta y DTE
             let query = `
-                SELECT h.*, d.json_original, d.sello_recepcion, d.numero_control,
+                SELECT h.*, d.json_original, d.json_firmado, d.sello_recepcion, d.numero_control,
                        c.razon_social as company_name, c.nit as company_nit, c.nrc as company_nrc, c.logo_url as company_logo_url,
                        cu.nrc as customer_nrc,
                        b.id as branch_id, b.nombre as branch_name, b.codigo_mh as branch_codigo_mh, b.es_casa_matriz, b.tipo_establecimiento as branch_tipo_est,
@@ -958,7 +959,7 @@ module.exports = {
 
             if (rows.length === 0) throw new Error('Venta o DTE no encontrado');
             const venta = rows[0];
-            const dteJson = venta.json_original;
+            const dteJson = formatDeliveryDteJson(venta.json_original, venta.json_firmado, venta.sello_recepcion);
 
             const dteNames = {
                 '01': 'Factura',

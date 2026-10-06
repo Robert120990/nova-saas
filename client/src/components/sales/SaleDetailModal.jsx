@@ -32,9 +32,26 @@ const SaleDetailModal = ({ saleId, isOpen, onClose, initialView = 'detalle' }) =
             || saleDetail.json_original?.identificacion?.codigoGeneracion 
             || `DTE-${saleId}`;
         const filename = `${codigoGeneracion}.json`;
-        const jsonStr = typeof saleDetail.json_original === 'string' 
-            ? saleDetail.json_original 
-            : JSON.stringify(saleDetail.json_original, null, 2);
+
+        let dteObj;
+        try {
+            dteObj = typeof saleDetail.json_original === 'string' 
+                ? JSON.parse(saleDetail.json_original) 
+                : { ...saleDetail.json_original };
+        } catch (e) {
+            dteObj = saleDetail.json_original;
+        }
+
+        if (dteObj && typeof dteObj === 'object') {
+            if (saleDetail.sello_recepcion && !dteObj.selloRecibido) {
+                dteObj.selloRecibido = saleDetail.sello_recepcion;
+            }
+            if (saleDetail.json_firmado && !dteObj.firmaElectronica) {
+                dteObj.firmaElectronica = saleDetail.json_firmado;
+            }
+        }
+
+        const jsonStr = typeof dteObj === 'string' ? dteObj : JSON.stringify(dteObj, null, 2);
         const blob = new Blob([jsonStr], { type: 'application/json;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');

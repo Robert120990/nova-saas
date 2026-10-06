@@ -22,6 +22,7 @@ const {
     FALLBACK_ACTIVIDAD,
     resolveActividadOficial
 } = require('./salesUtils');
+const { formatDeliveryDteJson } = require('../../utils/dteDeliveryHelper');
 
 
 // --- REPORTES DE VENTAS EN PANTALLA Y PDF ---
@@ -2563,13 +2564,13 @@ const getPublicDTEJson = async (req, res) => {
     const { codigo } = req.params;
     try {
         const [dte] = await pool.query(
-            'SELECT json_original, numero_control FROM dtes WHERE codigo_generacion = ?',
+            'SELECT json_original, json_firmado, sello_recepcion, numero_control FROM dtes WHERE codigo_generacion = ? ORDER BY id DESC LIMIT 1',
             [codigo]
         );
         if (dte.length === 0) {
             return res.status(404).json({ message: 'DTE no encontrado' });
         }
-        const json = typeof dte[0].json_original === 'string' ? JSON.parse(dte[0].json_original) : dte[0].json_original;
+        const json = formatDeliveryDteJson(dte[0].json_original, dte[0].json_firmado, dte[0].sello_recepcion);
         res.setHeader('Content-Type', 'application/json');
         res.setHeader('Content-Disposition', `attachment; filename=DTE-${dte[0].numero_control}.json`);
         res.json(json);
@@ -2589,7 +2590,7 @@ const sendPublicDTEEmail = async (req, res) => {
 
     try {
         const [rows] = await pool.query(
-            `SELECT h.*, d.status as dte_status, d.json_original, d.sello_recepcion, d.numero_control,
+            `SELECT h.*, d.status as dte_status, d.json_original, d.json_firmado, d.sello_recepcion, d.numero_control,
                     c.razon_social as company_name, c.nit as company_nit, c.nrc as company_nrc, c.logo_url as company_logo_url,
                     c.departamento as company_dep, c.municipio as company_mun,
                     cu.nrc as customer_nrc,
@@ -2612,7 +2613,7 @@ const sendPublicDTEEmail = async (req, res) => {
         }
 
         const venta = rows[0];
-        const dteJson = typeof venta.json_original === 'string' ? JSON.parse(venta.json_original) : venta.json_original;
+        const dteJson = formatDeliveryDteJson(venta.json_original, venta.json_firmado, venta.sello_recepcion);
 
         if (!dteJson) {
             return res.status(400).json({ message: 'El DTE no tiene JSON original' });

@@ -22,17 +22,22 @@ const {
     FALLBACK_ACTIVIDAD,
     resolveActividadOficial
 } = require('./salesUtils');
+const { formatDeliveryDteJson } = require('../../utils/dteDeliveryHelper');
 
 
 // --- GESTIÓN, TRANSMISIÓN Y CONSULTA DE DOCUMENTOS TRIBUTARIOS ELECTRÓNICOS (DTE) ---
 const getDTEJson = async (req, res) => {
     const { id } = req.params;
     try {
-        const [dte] = await pool.query('SELECT json_original FROM dtes WHERE venta_id = ? AND company_id = ?', [id, req.company_id]);
+        const [dte] = await pool.query(
+            'SELECT json_original, json_firmado, sello_recepcion FROM dtes WHERE venta_id = ? AND company_id = ? ORDER BY id DESC LIMIT 1',
+            [id, req.company_id]
+        );
         if (dte.length === 0) {
             return res.status(404).json({ message: 'JSON no encontrado para esta venta' });
         }
-        res.json(JSON.parse(dte[0].json_original));
+        const formatted = formatDeliveryDteJson(dte[0].json_original, dte[0].json_firmado, dte[0].sello_recepcion);
+        res.json(formatted);
     } catch (error) {
         console.error('[GetDTEJson] Error:', error);
         res.status(500).json({ message: 'Error al obtener JSON del DTE', error: error.message });

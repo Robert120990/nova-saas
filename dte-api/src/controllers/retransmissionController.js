@@ -10,6 +10,7 @@ const transmissionService = require('../transmission/transmissionService');
 const { getSchemaVersion } = require('../utils/versionMap');
 const { getMHAmbiente } = require('../config/haciendaConfig');
 const pool = require('../../config/db');
+const { enrichAcceptedDTE } = require('../services/dte/dteEnricher');
 const { sanitizeText, cleanNumbers } = require('../utils/text');
 const { round } = require('../utils/calculations');
 
@@ -364,11 +365,15 @@ async function retransmit(req, res) {
             formattedDate = `${year}-${month}-${day} ${timePart}`;
         }
 
+        const savedDteJson = dbStatus === 'ACCEPTED' && txResult.selloRecepcion
+            ? enrichAcceptedDTE(dteJson, jwsString, txResult.selloRecepcion)
+            : dteJson;
+
         await pool.query(
             'UPDATE dtes SET status = ?, json_original = ?, json_firmado = ?, sello_recepcion = ?, fh_procesamiento = ?, respuesta_hacienda = ? WHERE id = ?',
             [
                 dbStatus,
-                JSON.stringify(dteJson),
+                JSON.stringify(savedDteJson),
                 jwsString,
                 txResult.selloRecepcion || null,
                 formattedDate,

@@ -11,6 +11,7 @@ const { logger } = require('../utils/logger');
 const { authenticate, transmitDTE } = require('../transmission/transmissionService');
 const { getSchemaVersion } = require('../utils/versionMap');
 const { getMHAmbiente } = require('../config/haciendaConfig');
+const { enrichAcceptedDTE } = require('../services/dte/dteEnricher');
 
 const QUEUE_NAME = 'contingency-resend-queue';
 const DEFAULT_ATTEMPTS = 5;
@@ -201,9 +202,19 @@ class ContingencyQueueService {
                 'UPDATE dte_contingency_documents SET estado_envio = "SENT", fecha_envio_hacienda = NOW() WHERE id = ?',
                 [task.id]
             );
+
+            let updatedJsonStr = null;
+            if (selloRecepcion) {
+                const [currRows] = await pool.query('SELECT json_original, json_firmado FROM dtes WHERE codigo_generacion = ?', [task.codigo_generacion]);
+                if (currRows.length > 0 && currRows[0].json_original) {
+                    const enriched = enrichAcceptedDTE(currRows[0].json_original, currRows[0].json_firmado, selloRecepcion);
+                    updatedJsonStr = JSON.stringify(enriched);
+                }
+            }
+
             await pool.query(
-                'UPDATE dtes SET status = "ACCEPTED", sello_recepcion = COALESCE(?, sello_recepcion), fh_procesamiento = COALESCE(?, fh_procesamiento) WHERE codigo_generacion = ?',
-                [selloRecepcion, formattedDate, task.codigo_generacion]
+                'UPDATE dtes SET status = "ACCEPTED", sello_recepcion = COALESCE(?, sello_recepcion), fh_procesamiento = COALESCE(?, fh_procesamiento), json_original = COALESCE(?, json_original) WHERE codigo_generacion = ?',
+                [selloRecepcion, formattedDate, updatedJsonStr, task.codigo_generacion]
             );
             await pool.query(
                 'UPDATE sales_headers SET sello_recepcion = COALESCE(?, sello_recepcion), fh_procesamiento = COALESCE(?, fh_procesamiento) WHERE codigo_generacion = ?',
