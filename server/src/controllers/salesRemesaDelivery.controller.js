@@ -447,7 +447,7 @@ const syncSalesDeliveryToRrs = async (deliveryId, companyId) => {
             concepto,
             montoEntregado.toFixed(2),
             '0.0',
-            fechaStr,
+            '',
             fechaStr,
             montoEntregado.toFixed(2),
             'P'

@@ -535,7 +535,7 @@ const syncGasDeliveryToRrs = async (deliveryId, companyId) => {
                 concepto,
                 montoTotal.toFixed(2),
                 '0.0',
-                fechaStr,
+                '',
                 fechaStr,
                 montoTotal.toFixed(2),
                 'P'
@@ -568,7 +568,7 @@ const syncGasDeliveryToRrs = async (deliveryId, companyId) => {
                 conceptoExtra,
                 montoExtra.toFixed(2),
                 '0.0',
-                fechaStr,
+                '',
                 fechaStr,
                 montoExtra.toFixed(2),
                 'P'
