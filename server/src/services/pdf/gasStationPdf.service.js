@@ -36,6 +36,23 @@ const generateCloseoutDetailPDF = async (data) => {
         return { ...c, w };
     });
 
+    const isTotalCol = (c) => {
+        if (c.noTotal) return false;
+        if (c.hasTotal !== undefined) return c.hasTotal;
+        if (c.format === 'money') return true;
+        if (c.format === 'qty' || c.accessor === 'cantidad') return true;
+        return false;
+    };
+
+    const firstTotalIdx = colDefs.findIndex(isTotalCol);
+
+    const colXPositions = [];
+    let curX = startX;
+    colDefs.forEach(c => {
+        colXPositions.push(curX);
+        curX += c.w;
+    });
+
     const drawTableHeader = (y) => {
         doc.rect(startX, y, pageW, 14).fill('#f1f5f9');
         doc.fontSize(7).font('Helvetica-Bold').fillColor('#0f172a');
@@ -107,67 +124,78 @@ const generateCloseoutDetailPDF = async (data) => {
     };
 
     const renderGroupHeader = (group) => {
-        if (currentY > 700) {
+        if (currentY > 690) {
             doc.addPage();
             currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'portrait', subtitle);
             currentY = drawTableHeader(currentY);
         }
 
         doc.rect(startX, currentY - 1, pageW, 13).fill('#e2e8f0');
+        doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#0f172a');
+        const defaultPrefix = data.tipo_reporte === 'tarjetas' ? 'TIPO DE POS:' : 'CLIENTE:';
+        const groupTitle = group.groupTitle || `${defaultPrefix} ${String(group.label ?? '—').toUpperCase()}`;
+        doc.text(groupTitle, startX + 4, currentY + 2.5, { width: pageW - 8, align: 'left', lineBreak: false });
+        currentY += 14;
+    };
+
+    const renderGroupSubtotal = (group) => {
+        if (currentY > 695) {
+            doc.addPage();
+            currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'portrait', subtitle);
+            currentY = drawTableHeader(currentY);
+        }
+
+        doc.strokeColor('#cbd5e1').lineWidth(0.5).moveTo(startX, currentY).lineTo(startX + pageW, currentY).stroke();
+        currentY += 1;
+        doc.rect(startX, currentY - 1, pageW, 13).fill('#f8fafc');
         doc.fontSize(7).font('Helvetica-Bold').fillColor('#0f172a');
-        let x = startX;
+
+        const labelEndX = firstTotalIdx > 0 ? colXPositions[firstTotalIdx] : (startX + (colDefs[0]?.w || 150));
+        const labelW = Math.max(labelEndX - startX - 4, 100);
+        const subLabel = `SUBTOTAL ${String(group.label ?? '—').toUpperCase()}:`;
+        doc.text(reportPdfHelper.fitText(doc, subLabel, labelW), startX + 2, currentY + 2.5, { width: labelW, align: 'left', lineBreak: false });
+
         colDefs.forEach((c, idx) => {
-            const align = c.align || (c.format === 'money' ? 'right' : 'left');
-            const padX = align === 'right' ? x : x + 2;
+            if (!isTotalCol(c)) return;
+            const tx = colXPositions[idx];
+            const align = c.align || 'right';
+            const padX = align === 'right' ? tx : tx + 2;
             const w = align === 'right' ? c.w - 2 : c.w - 4;
 
             if (c.format === 'money') {
-                doc.text(reportPdfHelper.fmt(group.subtotal || 0), padX, currentY + 2, { width: w, align: 'right' });
-            } else if (idx === 0) {
-                doc.text(`TIPO DE POS: ${String(group.label ?? '—').toUpperCase()}`, padX, currentY + 2, { width: pageW - 140, align: 'left', lineBreak: false });
+                const subMoney = (group.rows || []).reduce((s, r) => s + (parseFloat(r[c.accessor || c.label]) || 0), 0);
+                doc.text(reportPdfHelper.fmt(subMoney), padX, currentY + 2.5, { width: w, align: 'right', lineBreak: false });
+            } else if (c.format === 'qty' || c.accessor === 'cantidad') {
+                const subQty = (group.rows || []).reduce((s, r) => s + (parseFloat(r[c.accessor || c.label]) || 0), 0);
+                const qtyStr = Number(subQty).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                doc.text(qtyStr, padX, currentY + 2.5, { width: w, align: 'right', lineBreak: false });
             }
-            x += c.w;
         });
 
-        currentY += 14;
+        doc.strokeColor('#cbd5e1').lineWidth(0.5).moveTo(startX, currentY + 12).lineTo(startX + pageW, currentY + 12).stroke();
+        currentY += 15;
     };
 
     if (data.groups && data.groups.length) {
         data.groups.forEach(g => {
             renderGroupHeader(g);
             g.rows.forEach(renderRow);
+            renderGroupSubtotal(g);
         });
     } else {
         (data.rows || []).forEach(renderRow);
     }
 
-    if (currentY > 700) {
+    if (currentY > 690) {
         doc.addPage();
         currentY = reportPdfHelper.renderHeader(doc, company, title, periodText, 'portrait', subtitle);
     }
 
     // Totales
-    doc.strokeColor('#cbd5e1').lineWidth(0.8).moveTo(startX, currentY).lineTo(startX + pageW, currentY).stroke();
+    doc.strokeColor('#0f172a').lineWidth(0.8).moveTo(startX, currentY).lineTo(startX + pageW, currentY).stroke();
     currentY += 2;
     doc.rect(startX, currentY - 1, pageW, 14).fill('#f1f5f9');
     doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#0f172a');
-
-    const isTotalCol = (c) => {
-        if (c.noTotal) return false;
-        if (c.hasTotal !== undefined) return c.hasTotal;
-        if (c.format === 'money') return true;
-        if (c.format === 'qty' || c.accessor === 'cantidad') return true;
-        return false;
-    };
-
-    const firstTotalIdx = colDefs.findIndex(isTotalCol);
-
-    let colXPositions = [];
-    let curX = startX;
-    colDefs.forEach(c => {
-        colXPositions.push(curX);
-        curX += c.w;
-    });
 
     const labelEndX = firstTotalIdx > 0 ? colXPositions[firstTotalIdx] : (startX + (colDefs[0]?.w || 150));
     const labelW = Math.max(labelEndX - startX - 4, 100);
@@ -189,7 +217,7 @@ const generateCloseoutDetailPDF = async (data) => {
             doc.text(Number(totalQty).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), padX, currentY + 3, { width: w, align: 'right', lineBreak: false });
         }
     });
-    doc.strokeColor('#94a3b8').lineWidth(0.5).moveTo(startX, currentY + 13).lineTo(startX + pageW, currentY + 13).stroke();
+    doc.strokeColor('#0f172a').lineWidth(0.8).moveTo(startX, currentY + 13).lineTo(startX + pageW, currentY + 13).stroke();
     currentY += 22;
 
     reportPdfHelper.renderClosingFooter(doc, startX, currentY, data.rows?.length || 0, 'Registros');

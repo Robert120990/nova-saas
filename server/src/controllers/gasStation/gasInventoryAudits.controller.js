@@ -380,7 +380,7 @@ exports.getCloseoutDetailPDF = async (req, res) => {
                 sql = `
                     SELECT g.fecha_turno, g.numero_turno,
                            COALESCE(NULLIF(c.documento, ''), '—') as documento,
-                           COALESCE(c.cliente_nombre, '—') as cliente,
+                           COALESCE(NULLIF(c.cliente_nombre, ''), NULLIF(cust.nombre, ''), '—') as cliente,
                            COALESCE(c.producto_descripcion, c.producto_codigo, '—') as producto,
                            COALESCE(NULLIF(cd.nombre, ''), d.descripcion, d.codigo, '—') as despachador,
                            COALESCE(c.cantidad, 0) as cantidad,
@@ -388,22 +388,23 @@ exports.getCloseoutDetailPDF = async (req, res) => {
                            COALESCE(c.monto, 0) as monto
                     FROM gas_station_closeout_creditos c
                     JOIN gas_station_closeouts g ON c.closeout_id = g.id
+                    LEFT JOIN customers cust ON c.cliente_id = cust.id
                     LEFT JOIN gas_station_despachadores d ON c.despachador_id = d.id
                     LEFT JOIN gas_station_closeout_despachadores cd ON cd.closeout_id = c.closeout_id AND cd.despachador_id = c.despachador_id
                     WHERE g.company_id = ? AND g.fecha_turno BETWEEN ? AND ? ${branchFilter}
-                    ORDER BY g.fecha_turno, g.numero_turno, c.id
+                    ORDER BY cliente ASC, g.fecha_turno ASC, g.numero_turno ASC, c.id ASC
                 `;
                 params = [companyId, start_date, end_date, ...branchParams];
                 columns = [
                     { label: 'Turno', w: 35, accessor: 'numero_turno', align: 'center' },
                     { label: 'Fecha', w: 60, accessor: 'fecha_turno', format: 'date', align: 'center' },
                     { label: 'Documento', w: 65, accessor: 'documento' },
-                    { label: 'Cliente', w: 132, accessor: 'cliente' },
-                    { label: 'Producto', w: 80, accessor: 'producto' },
-                    { label: 'Despachador', w: 75, accessor: 'despachador' },
-                    { label: 'Galones', w: 35, accessor: 'cantidad', format: 'qty', align: 'right' },
-                    { label: 'Precio', w: 35, accessor: 'precio', format: 'money', noTotal: true, align: 'right' },
-                    { label: 'Total', w: 35, accessor: 'monto', format: 'money', align: 'right' }
+                    { label: 'Cliente', w: 110, accessor: 'cliente' },
+                    { label: 'Producto', w: 75, accessor: 'producto' },
+                    { label: 'Despachador', w: 70, accessor: 'despachador' },
+                    { label: 'Galones', w: 42, accessor: 'cantidad', format: 'qty', align: 'right' },
+                    { label: 'Precio', w: 45, accessor: 'precio', format: 'money', noTotal: true, align: 'right' },
+                    { label: 'Total', w: 50, accessor: 'monto', format: 'money', align: 'right' }
                 ];
                 break;
             }
@@ -636,6 +637,25 @@ exports.getCloseoutDetailPDF = async (req, res) => {
                 g.subtotal += parseFloat(r.monto || 0);
             });
             groups = Array.from(groupMap.values());
+        } else if (tipo_reporte === 'creditos') {
+            const groupMap = new Map();
+            rows.forEach(r => {
+                const key = (r.cliente && r.cliente !== '—') ? r.cliente.trim() : 'SIN CLIENTE';
+                if (!groupMap.has(key)) {
+                    groupMap.set(key, {
+                        label: key,
+                        groupTitle: `CLIENTE: ${key}`,
+                        rows: [],
+                        subtotal: 0,
+                        subtotalCantidad: 0
+                    });
+                }
+                const g = groupMap.get(key);
+                g.rows.push(r);
+                g.subtotal += parseFloat(r.monto || 0);
+                g.subtotalCantidad += parseFloat(r.cantidad || 0);
+            });
+            groups = Array.from(groupMap.values());
         }
 
         const reportData = {
@@ -685,24 +705,40 @@ exports.getCloseoutDetailPDF = async (req, res) => {
                 return rowData;
             };
 
+            const isTotalCol = (c) => {
+                if (c.noTotal) return false;
+                if (c.hasTotal !== undefined) return c.hasTotal;
+                if (c.format === 'money') return true;
+                if (c.format === 'qty' || c.accessor === 'cantidad') return true;
+                return false;
+            };
+
             let excelData = rows.map(mapRow);
             if (groups) {
-                const moneyCol = columns.find(c => c.format === 'money' && !c.noTotal);
                 excelData = [];
                 groups.forEach(g => {
-                    const sub = emptyRow();
-                    sub[columns[0].accessor] = `SUBTOTAL ${g.label}`;
-                    if (moneyCol) sub[moneyCol.accessor] = g.subtotal.toFixed(2);
-                    excelData.push(sub);
+                    const headerRow = emptyRow();
+                    headerRow[columns[0].accessor] = g.groupTitle || `GRUPO: ${g.label}`;
+                    excelData.push(headerRow);
+
                     g.rows.forEach(r => excelData.push(mapRow(r)));
+
+                    const subRow = emptyRow();
+                    subRow[columns[0].accessor] = `SUBTOTAL ${g.label}`;
+                    columns.forEach(c => {
+                        if (!isTotalCol(c)) return;
+                        const sum = (g.rows || []).reduce((s, r) => s + (parseFloat(r[c.accessor]) || 0), 0);
+                        subRow[c.accessor] = sum.toFixed(2);
+                    });
+                    excelData.push(subRow);
                 });
                 const totalRow = emptyRow();
                 totalRow[columns[0].accessor] = 'TOTALES GENERALES';
-                if (moneyCol) {
-                    totalRow[moneyCol.accessor] = rows
-                        .reduce((s, r) => s + (parseFloat(r[moneyCol.accessor]) || 0), 0)
-                        .toFixed(2);
-                }
+                columns.forEach(c => {
+                    if (!isTotalCol(c)) return;
+                    const sum = rows.reduce((s, r) => s + (parseFloat(r[c.accessor]) || 0), 0);
+                    totalRow[c.accessor] = sum.toFixed(2);
+                });
                 excelData.push(totalRow);
             } else if (rows.length > 0) {
                 const totalRow = emptyRow();
