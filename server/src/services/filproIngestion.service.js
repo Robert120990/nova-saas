@@ -513,15 +513,26 @@ class FilproIngestionService {
         await connection.beginTransaction();
 
         try {
-            // 1. Find all sales imported from FilPro for this date
+            let startDate = dateStr;
+            let endDate = dateStr;
+            let isRange = false;
+            if (typeof dateStr === 'string' && (dateStr.includes(' a ') || dateStr.includes(' al ') || dateStr.includes(' - '))) {
+                const separator = dateStr.includes(' a ') ? ' a ' : (dateStr.includes(' al ') ? ' al ' : ' - ');
+                const parts = dateStr.split(separator);
+                startDate = parts[0].trim();
+                endDate = parts[1].trim();
+                isRange = true;
+            }
+
+            // 1. Find all sales imported from FilPro for this date/range
             let findQuery = `
                 SELECT s.id, s.codigo_generacion 
                 FROM sales_headers s 
                 WHERE s.company_id = ? 
-                  AND s.fecha_emision = ?
+                  AND ${isRange ? 's.fecha_emision BETWEEN ? AND ?' : 's.fecha_emision = ?'}
                   AND s.observaciones LIKE 'Importado de FilPro%'
             `;
-            const findParams = [companyId, dateStr];
+            const findParams = isRange ? [companyId, startDate, endDate] : [companyId, dateStr];
 
             if (branchId) {
                 findQuery += ' AND s.branch_id = ?';
@@ -530,7 +541,17 @@ class FilproIngestionService {
 
             const [salesToRevert] = await connection.query(findQuery, findParams);
 
-            // 2. Also find any DTEs for this company associated with these sales or imported for this date
+            // 2. Also find any DTEs for this company associated with these sales or imported for this date/range
+            const dateFilterDte = isRange 
+                ? 's2.fecha_emision BETWEEN ? AND ?' 
+                : 's2.fecha_emision = ?';
+            const dateFilterProc = isRange
+                ? 'DATE(d.fh_procesamiento) BETWEEN ? AND ?'
+                : 'DATE(d.fh_procesamiento) = ?';
+            const dteParams = isRange
+                ? [companyId, companyId, startDate, endDate, startDate, endDate]
+                : [companyId, companyId, dateStr, dateStr];
+
             const [dtesForDay] = await connection.query(`
                 SELECT d.id, d.venta_id, d.codigo_generacion 
                 FROM dtes d 
@@ -538,11 +559,11 @@ class FilproIngestionService {
                   AND (
                     d.codigo_generacion IN (
                         SELECT s2.codigo_generacion FROM sales_headers s2 
-                        WHERE s2.company_id = ? AND s2.fecha_emision = ? AND s2.observaciones LIKE 'Importado de FilPro%'
+                        WHERE s2.company_id = ? AND ${dateFilterDte} AND s2.observaciones LIKE 'Importado de FilPro%'
                     )
-                    OR (DATE(d.fh_procesamiento) = ? AND (d.json_original LIKE '%infile%' OR d.sello_recepcion = 'CERTIFICADO_INFILE'))
+                    OR (${dateFilterProc} AND (d.json_original LIKE '%infile%' OR d.sello_recepcion = 'CERTIFICADO_INFILE'))
                   )
-            `, [companyId, companyId, dateStr, dateStr]).catch(() => [[]]);
+            `, dteParams).catch(() => [[]]);
 
             const saleIds = Array.from(new Set([
                 ...salesToRevert.map(s => s.id),

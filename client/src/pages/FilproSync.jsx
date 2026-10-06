@@ -1300,7 +1300,7 @@ const FilproSync = () => {
                         <table className="w-full text-left border-collapse min-w-[750px]">
                             <thead>
                                 <tr className="bg-slate-50 border-b border-slate-200">
-                                    <th className="py-2.5 px-4 text-[11px] font-bold text-slate-500 uppercase">Fecha Consultada</th>
+                                    <th className="py-2.5 px-4 text-[11px] font-bold text-slate-500 uppercase">Fecha / Rango Consultado</th>
                                     <th className="py-2.5 px-4 text-[11px] font-bold text-slate-500 uppercase">Sucursal</th>
                                     <th className="py-2.5 px-4 text-[11px] font-bold text-slate-500 uppercase text-center">Encontrados</th>
                                     <th className="py-2.5 px-4 text-[11px] font-bold text-slate-500 uppercase text-center">Importados</th>
@@ -1319,8 +1319,18 @@ const FilproSync = () => {
                                 ) : (
                                     syncLogs.map((log) => (
                                         <tr key={log.id} className="hover:bg-slate-50/70 transition-colors">
-                                            <td className="py-2.5 px-4 font-bold text-slate-900 whitespace-nowrap">
-                                                {formatDate(log.sync_date)}
+                                            <td className="py-2.5 px-4 whitespace-nowrap">
+                                                {log.sync_date && (String(log.sync_date).includes(' a ') || String(log.sync_date).includes(' al ') || String(log.sync_date).includes(' - ')) ? (
+                                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-700 text-xs font-bold shadow-xs">
+                                                        <Calendar className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                                                        <span>{formatDate(log.sync_date)}</span>
+                                                    </span>
+                                                ) : (
+                                                    <span className="inline-flex items-center gap-1.5 text-slate-800 text-xs font-semibold">
+                                                        <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                                        <span>{formatDate(log.sync_date)}</span>
+                                                    </span>
+                                                )}
                                             </td>
                                             <td className="py-2.5 px-4 text-slate-600 whitespace-nowrap">
                                                 {log.branch_name || `Sucursal #${log.branch_id}`}

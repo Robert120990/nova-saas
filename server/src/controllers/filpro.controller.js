@@ -305,7 +305,7 @@ const filproController = {
 
             const config = configRows[0];
             const estCode = establishmentCode || config.filpro_establishment_code || '';
-            const queryDateLabel = startDateStr !== endDateStr ? `${startDateStr} al ${endDateStr}` : startDateStr;
+            const queryDateLabel = startDateStr !== endDateStr ? `${startDateStr} a ${endDateStr}` : startDateStr;
 
             // 1. Fetch daily documents from FilPro
             const documents = [];
@@ -331,20 +331,32 @@ const filproController = {
             let totalErrors = 0;
             const results = [];
 
-            // 2. Process documents concurrently with 8 parallel workers
-            const CONCURRENCY = 8;
+            // 2. Pre-check existing DTEs in batches of 1,000 to avoid thousands of roundtrips
+            const existingMap = new Map();
+            const allUuids = documents.map(d => d.uuid).filter(Boolean);
+            const CHUNK_SIZE = 1000;
+            for (let i = 0; i < allUuids.length; i += CHUNK_SIZE) {
+                const chunk = allUuids.slice(i, i + CHUNK_SIZE);
+                if (chunk.length > 0) {
+                    const [existingRows] = await pool.query(
+                        'SELECT id, status, codigo_generacion FROM dtes WHERE company_id = ? AND codigo_generacion IN (?)',
+                        [companyId, chunk]
+                    );
+                    for (const r of existingRows) {
+                        existingMap.set(r.codigo_generacion, r);
+                    }
+                }
+            }
+
+            // 3. Process documents concurrently with 16 parallel workers
+            const CONCURRENCY = 16;
             await runConcurrentPool(documents, CONCURRENCY, async (doc) => {
                 try {
-                    // Check if already in DB
-                    const [exists] = await pool.query(
-                        'SELECT id, status FROM dtes WHERE codigo_generacion = ? AND company_id = ? LIMIT 1',
-                        [doc.uuid, companyId]
-                    );
-
+                    const exists = existingMap.get(doc.uuid);
                     const isAnulado = (doc.status === 'ANULADO' || doc.status === 'INVALIDADO');
 
                     // Per user rule: do not ingest anulado documents if not already in DB
-                    if (exists.length === 0 && isAnulado) {
+                    if (!exists && isAnulado) {
                         totalSkipped++;
                         results.push({
                             uuid: doc.uuid,
@@ -356,7 +368,7 @@ const filproController = {
                     }
 
                     // If already imported and status has not changed, skip immediately without downloading JSON
-                    if (exists.length > 0 && (!isAnulado || exists[0].status === 'INVALIDADO')) {
+                    if (exists && (!isAnulado || exists.status === 'INVALIDADO')) {
                         totalSkipped++;
                         results.push({
                             uuid: doc.uuid,
@@ -379,12 +391,10 @@ const filproController = {
                         officialJson
                     });
 
-                    if (outcome.status === 'imported') {
+                    if (outcome.status === 'imported' || outcome.status === 'updated_anulado') {
                         totalImported++;
                     } else if (outcome.status === 'skipped') {
                         totalSkipped++;
-                    } else if (outcome.status === 'updated_anulado') {
-                        totalImported++;
                     }
 
                     results.push(outcome);
@@ -484,7 +494,7 @@ const filproController = {
 
             const config = configRows[0];
             const estCode = establishmentCode || config.filpro_establishment_code || '';
-            const queryDateLabel = startDateStr !== endDateStr ? `${startDateStr} al ${endDateStr}` : startDateStr;
+            const queryDateLabel = startDateStr !== endDateStr ? `${startDateStr} a ${endDateStr}` : startDateStr;
 
             sendEvent({ type: 'status', message: `Consultando DTEs emitidos del ${queryDateLabel} en FilPro...` });
 
@@ -510,7 +520,7 @@ const filproController = {
             sendEvent({
                 type: 'start',
                 total,
-                message: `Se encontraron ${total} DTEs en FilPro. Iniciando procesamiento concurrente (8 hilos)...`
+                message: `Se encontraron ${total} DTEs en FilPro. Iniciando procesamiento concurrente (16 hilos)...`
             });
 
             if (total === 0) {
@@ -531,19 +541,33 @@ const filproController = {
             let totalErrors = 0;
             const results = [];
 
-            const CONCURRENCY = 8;
+            // Pre-check existing DTEs in batches of 1,000 to eliminate redundant queries
+            const existingMap = new Map();
+            const allUuids = documents.map(d => d.uuid).filter(Boolean);
+            const CHUNK_SIZE = 1000;
+            for (let i = 0; i < allUuids.length; i += CHUNK_SIZE) {
+                const chunk = allUuids.slice(i, i + CHUNK_SIZE);
+                if (chunk.length > 0) {
+                    const [existingRows] = await pool.query(
+                        'SELECT id, status, codigo_generacion FROM dtes WHERE company_id = ? AND codigo_generacion IN (?)',
+                        [companyId, chunk]
+                    );
+                    for (const r of existingRows) {
+                        existingMap.set(r.codigo_generacion, r);
+                    }
+                }
+            }
+
+            const CONCURRENCY = 16;
+            let lastEventTime = Date.now();
 
             await runConcurrentPool(documents, CONCURRENCY, async (doc) => {
                 let outcome = null;
                 try {
-                    const [exists] = await pool.query(
-                        'SELECT id, status FROM dtes WHERE codigo_generacion = ? AND company_id = ? LIMIT 1',
-                        [doc.uuid, companyId]
-                    );
-
+                    const exists = existingMap.get(doc.uuid);
                     const isAnulado = (doc.status === 'ANULADO' || doc.status === 'INVALIDADO');
 
-                    if (exists.length === 0 && isAnulado) {
+                    if (!exists && isAnulado) {
                         totalSkipped++;
                         outcome = {
                             uuid: doc.uuid,
@@ -553,7 +577,7 @@ const filproController = {
                             total: doc.monto_total || 0,
                             message: 'Documento anulado en FilPro (omitido)'
                         };
-                    } else if (exists.length > 0 && (!isAnulado || exists[0].status === 'INVALIDADO')) {
+                    } else if (exists && (!isAnulado || exists.status === 'INVALIDADO')) {
                         totalSkipped++;
                         outcome = {
                             uuid: doc.uuid,
@@ -595,25 +619,35 @@ const filproController = {
                 processedCount++;
                 results.push(outcome);
 
-                // Send real-time progress event
-                sendEvent({
-                    type: 'progress',
-                    current: processedCount,
-                    total,
-                    imported: totalImported,
-                    skipped: totalSkipped,
-                    errors: totalErrors,
-                    pct: Math.round((processedCount / total) * 100),
-                    item: {
-                        uuid: outcome.uuid,
-                        numero_control: outcome.numero_control,
-                        status: outcome.status,
-                        saleId: outcome.saleId || null,
-                        total: outcome.total || 0,
-                        tipoDte: outcome.tipoDte || doc.tipo_dte,
-                        message: outcome.message || ''
-                    }
-                });
+                // Throttle real-time progress events to prevent browser UI freezing:
+                // Send if processedCount % 20 === 0, or is last item, or has error, or >250ms elapsed
+                const now = Date.now();
+                const shouldEmit = (processedCount % 20 === 0) || 
+                                   (processedCount === total) || 
+                                   (outcome.status === 'error') || 
+                                   (now - lastEventTime >= 250);
+
+                if (shouldEmit) {
+                    lastEventTime = now;
+                    sendEvent({
+                        type: 'progress',
+                        current: processedCount,
+                        total,
+                        imported: totalImported,
+                        skipped: totalSkipped,
+                        errors: totalErrors,
+                        pct: Math.round((processedCount / total) * 100),
+                        item: {
+                            uuid: outcome.uuid,
+                            numero_control: outcome.numero_control,
+                            status: outcome.status,
+                            saleId: outcome.saleId || null,
+                            total: outcome.total || 0,
+                            tipoDte: outcome.tipoDte || doc.tipo_dte,
+                            message: outcome.message || ''
+                        }
+                    });
+                }
             });
 
             // Record Audit Log

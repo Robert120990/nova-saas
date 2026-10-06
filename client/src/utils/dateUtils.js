@@ -85,13 +85,41 @@ export const formatDateDMY = (dateStr) => {
 };
 
 /**
+ * Formats a single date or date range string (e.g. "2026-09-08 al 2026-09-30" or "2026-09-08 a 2026-09-30")
+ * @param {Date|string} dateStr
+ * @param {string} [fallback='---']
+ * @returns {string}
+ */
+export const formatDateRange = (dateStr, fallback = '---') => {
+    if (!dateStr) return fallback;
+    const str = String(dateStr).trim();
+    if (str.includes(' al ')) {
+        const [start, end] = str.split(' al ');
+        return `${formatDateDMY(start)} al ${formatDateDMY(end)}`;
+    }
+    if (str.includes(' a ')) {
+        const [start, end] = str.split(' a ');
+        return `${formatDateDMY(start)} al ${formatDateDMY(end)}`;
+    }
+    if (str.includes(' - ')) {
+        const [start, end] = str.split(' - ');
+        return `${formatDateDMY(start)} al ${formatDateDMY(end)}`;
+    }
+    return formatDateDMY(str) || fallback;
+};
+
+/**
  * Standard date formatter for UI tables and modals.
+ * Supports single dates and ranges ("YYYY-MM-DD a YYYY-MM-DD").
  * @param {Date|string} dateStr
  * @param {string} [fallback='---']
  * @returns {string}
  */
 export const formatDate = (dateStr, fallback = '---') => {
     if (!dateStr) return fallback;
+    if (typeof dateStr === 'string' && (dateStr.includes(' a ') || dateStr.includes(' al ') || dateStr.includes(' - '))) {
+        return formatDateRange(dateStr, fallback);
+    }
     const formatted = formatDateDMY(dateStr);
     return formatted || fallback;
 };

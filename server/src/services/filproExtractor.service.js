@@ -1,4 +1,5 @@
 const https = require('https');
+const crypto = require('crypto');
 const pool = require('../config/db');
 const { decrypt } = require('../utils/crypto');
 
@@ -9,6 +10,8 @@ class FilproExtractorService {
         this.sessionCache = new Map();
         this.apiBaseUrl = 'https://api-filpro-service.apiconsumofel.com/api';
         this.certifierBaseUrl = 'https://certificador.infile.com.sv/api/v1/reporte/reporte_documento';
+        this.signatureSecret = 'CHANGE_ME_SHARED_SECRET';
+        this.clockOffsetMs = 0;
     }
 
     /**
@@ -39,6 +42,7 @@ class FilproExtractorService {
                 timeout: 30000
             };
 
+            const reqStartTime = Date.now();
             const req = https.request(options, (res) => {
                 let responseBody = '';
                 res.on('data', (chunk) => { responseBody += chunk; });
@@ -48,6 +52,10 @@ class FilproExtractorService {
                         parsedJson = JSON.parse(responseBody);
                     } catch (e) {
                         parsedJson = null;
+                    }
+
+                    if (res.headers && res.headers['x-server-time']) {
+                        this._updateClockOffset(res.headers['x-server-time'], reqStartTime, Date.now());
                     }
 
                     resolve({
@@ -73,6 +81,51 @@ class FilproExtractorService {
             }
             req.end();
         });
+    }
+
+    /**
+     * Recalibrate clock offset based on FilPro server time header
+     */
+    _updateClockOffset(serverTimeHeader, startMs = null, endMs = null) {
+        const serverTime = Number(serverTimeHeader);
+        if (serverTimeHeader && Number.isFinite(serverTime)) {
+            if (startMs && endMs && endMs >= startMs) {
+                this.clockOffsetMs = Math.round(serverTime - (startMs + endMs) / 2);
+            } else {
+                this.clockOffsetMs = Math.round(serverTime - Date.now());
+            }
+        }
+    }
+
+    /**
+     * Generate required HMAC-SHA256 signature headers for FilPro signed endpoints
+     */
+    _signRequest(method, url) {
+        const timestamp = Date.now() + this.clockOffsetMs;
+        const nonce = `${Date.now()}${crypto.randomBytes(8).toString('hex')}`;
+
+        let canonicalPath = url;
+        const protocolIdx = canonicalPath.indexOf('://');
+        if (protocolIdx !== -1) {
+            const afterProto = canonicalPath.substring(protocolIdx + 3);
+            const slashIdx = afterProto.indexOf('/');
+            canonicalPath = slashIdx !== -1 ? afterProto.substring(slashIdx) : '/';
+        }
+        const qIdx = canonicalPath.indexOf('?');
+        if (qIdx !== -1) canonicalPath = canonicalPath.substring(0, qIdx);
+        const hashIdx = canonicalPath.indexOf('#');
+        if (hashIdx !== -1) canonicalPath = canonicalPath.substring(0, hashIdx);
+        const apiIdx = canonicalPath.indexOf('/api/');
+        if (apiIdx !== -1) canonicalPath = canonicalPath.substring(apiIdx + 4);
+
+        const stringToSign = `${method.toUpperCase()}\n${canonicalPath}\n${timestamp}\n${nonce}`;
+        const signature = crypto.createHmac('sha256', this.signatureSecret).update(stringToSign).digest('hex');
+
+        return {
+            'X-Sig-Timestamp': `${timestamp}`,
+            'X-Sig-Nonce': nonce,
+            'X-Signature': signature
+        };
     }
 
     /**
@@ -115,18 +168,36 @@ class FilproExtractorService {
             }
         }
 
-        // 3. If token is close to expiry but we have a refreshToken, try refresh
-        const existingRefresh = cached?.refreshToken;
+        // 3. If token is close to expiry or forceRefresh, try refresh-token first to preserve rate limits
+        let existingRefresh = cached?.refreshToken;
+        if (!existingRefresh) {
+            try {
+                const [dbRows] = await pool.query(
+                    'SELECT filpro_refresh_token, filpro_company_id FROM filpro_connections WHERE company_id = ? LIMIT 1',
+                    [companyId]
+                );
+                if (dbRows.length > 0 && dbRows[0].filpro_refresh_token) {
+                    existingRefresh = dbRows[0].filpro_refresh_token;
+                }
+            } catch (e) {
+                // ignore
+            }
+        }
+
         if (existingRefresh) {
             try {
+                const refreshHeaders = {
+                    'Authorization': `Bearer ${existingRefresh}`
+                };
+                if (cached?.token) {
+                    refreshHeaders['X-Previous-Token'] = cached.token;
+                }
+
                 const refreshRes = await this._rawRequest(
                     `${this.apiBaseUrl}/security/refresh-token`,
                     'POST',
                     {},
-                    {
-                        'Authorization': `Bearer ${existingRefresh}`,
-                        'X-Previous-Token': cached.token
-                    }
+                    refreshHeaders
                 );
 
                 if (refreshRes.statusCode === 200 && refreshRes.body?.token) {
@@ -142,17 +213,18 @@ class FilproExtractorService {
                     }
 
                     const updatedSession = {
-                        ...cached,
+                        ...(cached || {}),
                         token: newToken,
                         refreshToken: newRefresh,
-                        expiresAt
+                        expiresAt,
+                        filproCompanyId: cached?.filproCompanyId || refreshRes.body.user?.companies?.[0]?.id || null
                     };
                     this.sessionCache.set(companyId, updatedSession);
 
                     // Persist refreshed token to DB
                     await pool.query(
-                        'UPDATE filpro_connections SET filpro_token = ?, filpro_refresh_token = ?, filpro_token_expires_at = ? WHERE company_id = ?',
-                        [newToken, newRefresh, expiresAt, companyId]
+                        'UPDATE filpro_connections SET filpro_token = ?, filpro_refresh_token = ?, filpro_token_expires_at = ?, filpro_company_id = COALESCE(?, filpro_company_id) WHERE company_id = ?',
+                        [newToken, newRefresh, expiresAt, updatedSession.filproCompanyId, companyId]
                     );
 
                     return updatedSession;
@@ -325,24 +397,44 @@ class FilproExtractorService {
                 filter: ''
             };
 
+            const reportUrl = `${this.apiBaseUrl}/report/fiscalDocumentReport/get-report`;
             let res = await this._rawRequest(
-                `${this.apiBaseUrl}/report/fiscalDocumentReport/get-report`,
+                reportUrl,
                 'POST',
                 reqPayload,
-                { 'Authorization': `Bearer ${session.token}` }
+                {
+                    'Authorization': `Bearer ${session.token}`,
+                    ...this._signRequest('POST', reportUrl)
+                }
             );
 
+            // 1. If clock offset caused signature verification to fail, retry with updated clock offset
+            if (res.statusCode === 401 && res.headers && res.headers['x-auth-error'] === 'signature') {
+                res = await this._rawRequest(
+                    reportUrl,
+                    'POST',
+                    reqPayload,
+                    {
+                        'Authorization': `Bearer ${session.token}`,
+                        ...this._signRequest('POST', reportUrl)
+                    }
+                );
+            }
+
+            // 2. If token expired or forbidden, force session refresh and retry
             if (res.statusCode === 401 || res.statusCode === 403) {
-                // Token might be invalid on server, force refresh and retry
                 session = await this.getValidSession(companyId, filproEmail, password, true);
                 targetCompanyId = forcedFilproCompanyId || session.filproCompanyId;
                 reqPayload.companyId = targetCompanyId; // update in case it changed
 
                 res = await this._rawRequest(
-                    `${this.apiBaseUrl}/report/fiscalDocumentReport/get-report`,
+                    reportUrl,
                     'POST',
                     reqPayload,
-                    { 'Authorization': `Bearer ${session.token}` }
+                    {
+                        'Authorization': `Bearer ${session.token}`,
+                        ...this._signRequest('POST', reportUrl)
+                    }
                 );
             }
 
