@@ -76,9 +76,12 @@ const Quedan = () => {
     const [creditProvidersCache, setCreditProvidersCache] = useState({});
 
     const loadCreditProviders = async (search, page) => {
-        const { data } = await axios.get('/api/providers', {
-            params: { search: search || undefined, page, limit: 50, es_credito: '1' }
-        });
+        const params = { search: search || undefined, page, limit: 50 };
+        // Si no hay búsqueda por texto, filtrar por defecto los de crédito; si el usuario busca, buscar entre todos
+        if (!search) {
+            params.es_credito = '1';
+        }
+        const { data } = await axios.get('/api/providers', { params });
         if (data?.data?.length) {
             setCreditProvidersCache(prev => {
                 const next = { ...prev };
