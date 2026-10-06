@@ -39,7 +39,8 @@ const FilproSync = () => {
 
     // Form states for sync
     const todayStr = new Date().toISOString().split('T')[0];
-    const [selectedDate, setSelectedDate] = useState(todayStr);
+    const [startDate, setStartDate] = useState(todayStr);
+    const [endDate, setEndDate] = useState(todayStr);
     const [selectedBranchId, setSelectedBranchId] = useState('');
     const [establishmentCode, setEstablishmentCode] = useState('');
 
@@ -258,15 +259,16 @@ const FilproSync = () => {
     });
 
     const handlePreviewDay = async () => {
-        if (!selectedDate) {
-            toast.error('Seleccione una fecha');
+        if (!startDate) {
+            toast.error('Seleccione una fecha de inicio');
             return;
         }
 
         setIsPreviewLoading(true);
         try {
             const res = await axios.post('/api/filpro/preview-day', {
-                date: selectedDate,
+                startDate: startDate,
+                endDate: endDate,
                 establishment_code: establishmentCode
             });
             setPreviewData(res.data);
@@ -284,8 +286,8 @@ const FilproSync = () => {
     };
 
     const handleExecuteSync = async () => {
-        if (!selectedDate) {
-            toast.error('Seleccione una fecha a sincronizar');
+        if (!startDate) {
+            toast.error('Seleccione una fecha de inicio a sincronizar');
             return;
         }
         if (!selectedBranchId) {
@@ -324,7 +326,8 @@ const FilproSync = () => {
                     ...(companyId ? { 'x-company-id': String(companyId) } : {})
                 },
                 body: JSON.stringify({
-                    date: selectedDate,
+                    startDate: startDate,
+                    endDate: endDate,
                     branch_id: parseInt(selectedBranchId, 10),
                     establishment_code: establishmentCode
                 })
@@ -661,17 +664,24 @@ const FilproSync = () => {
 
                     {/* Controls Card */}
                     <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
                             {/* Fecha */}
-                            <div>
+                            <div className="sm:col-span-2">
                                 <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1.5">
-                                    Fecha a Consultar
+                                    Rango de Fechas a Consultar
                                 </label>
-                                <div className="relative">
+                                <div className="flex items-center gap-2">
                                     <input
                                         type="date"
-                                        value={selectedDate}
-                                        onChange={(e) => setSelectedDate(e.target.value)}
+                                        value={startDate}
+                                        onChange={(e) => setStartDate(e.target.value)}
+                                        className="w-full text-[13px] font-medium px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                                    />
+                                    <span className="text-slate-400 font-medium">a</span>
+                                    <input
+                                        type="date"
+                                        value={endDate}
+                                        onChange={(e) => setEndDate(e.target.value)}
                                         className="w-full text-[13px] font-medium px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                                     />
                                 </div>
@@ -724,7 +734,7 @@ const FilproSync = () => {
                                     ) : (
                                         <>
                                             <Calendar className="w-4 h-4" />
-                                            <span>Consultar Día en FilPro</span>
+                                            <span>Consultar Fechas en FilPro</span>
                                         </>
                                     )}
                                 </button>
@@ -741,7 +751,7 @@ const FilproSync = () => {
                                     <div className="text-2xl font-bold text-slate-800 mt-1">
                                         {previewData.summary.totalFound}
                                     </div>
-                                    <div className="text-[11px] text-slate-500 mt-0.5">Emitidos en fecha {selectedDate}</div>
+                                    <div className="text-[11px] text-slate-500 mt-0.5">Emitidos en fecha {previewData.date}</div>
                                 </div>
 
                                 <div className="bg-emerald-50/60 p-4 rounded-xl border border-emerald-200 shadow-sm">

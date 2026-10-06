@@ -170,10 +170,11 @@ const filproController = {
     async previewDay(req, res) {
         try {
             const companyId = req.company_id;
-            const dateStr = req.body.date || req.query.date;
+            const startDateStr = req.body.startDate || req.body.date || req.query.date;
+            const endDateStr = req.body.endDate || req.query.endDate || startDateStr;
             const establishmentCode = req.body.establishment_code || req.query.establishment_code || '';
 
-            if (!dateStr) {
+            if (!startDateStr) {
                 return res.status(400).json({ message: 'La fecha a consultar es obligatoria (formato YYYY-MM-DD).' });
             }
 
@@ -191,14 +192,23 @@ const filproController = {
             const config = configRows[0];
             const estCode = establishmentCode || config.filpro_establishment_code || '';
 
-            const documents = await filproExtractor.getDocumentsForDay(
-                companyId,
-                config.filpro_email,
-                config.filpro_password,
-                dateStr,
-                estCode,
-                config.filpro_company_id
-            );
+            const documents = [];
+            let currentDate = new Date(startDateStr + 'T12:00:00');
+            const endD = new Date(endDateStr + 'T12:00:00');
+
+            while (currentDate <= endD) {
+                const dateStr = currentDate.toISOString().split('T')[0];
+                const dayDocs = await filproExtractor.getDocumentsForDay(
+                    companyId,
+                    config.filpro_email,
+                    config.filpro_password,
+                    dateStr,
+                    estCode,
+                    config.filpro_company_id
+                );
+                documents.push(...dayDocs);
+                currentDate.setDate(currentDate.getDate() + 1);
+            }
 
             // Cross-reference with existing DTEs in Sipe Web SaaS to mark what's already imported
             const uuids = documents.map(d => d.uuid).filter(Boolean);
@@ -247,7 +257,7 @@ const filproController = {
 
             return res.json({
                 success: true,
-                date: dateStr,
+                date: startDateStr !== endDateStr ? `${startDateStr} al ${endDateStr}` : startDateStr,
                 summary: {
                     totalFound: documents.length,
                     totalNew,
@@ -272,11 +282,12 @@ const filproController = {
         try {
             const companyId = req.company_id;
             const userId = req.user?.id || 1;
-            const dateStr = req.body.date;
+            const startDateStr = req.body.startDate || req.body.date;
+            const endDateStr = req.body.endDate || startDateStr;
             const branchId = req.body.branch_id || req.user?.branch_id;
             const establishmentCode = req.body.establishment_code || '';
 
-            if (!dateStr) {
+            if (!startDateStr) {
                 return res.status(400).json({ message: 'La fecha es obligatoria (formato YYYY-MM-DD).' });
             }
             if (!branchId) {
@@ -294,16 +305,26 @@ const filproController = {
 
             const config = configRows[0];
             const estCode = establishmentCode || config.filpro_establishment_code || '';
+            const queryDateLabel = startDateStr !== endDateStr ? `${startDateStr} al ${endDateStr}` : startDateStr;
 
             // 1. Fetch daily documents from FilPro
-            const documents = await filproExtractor.getDocumentsForDay(
-                companyId,
-                config.filpro_email,
-                config.filpro_password,
-                dateStr,
-                estCode,
-                config.filpro_company_id
-            );
+            const documents = [];
+            let currentDate = new Date(startDateStr + 'T12:00:00');
+            const endD = new Date(endDateStr + 'T12:00:00');
+
+            while (currentDate <= endD) {
+                const loopDateStr = currentDate.toISOString().split('T')[0];
+                const dayDocs = await filproExtractor.getDocumentsForDay(
+                    companyId,
+                    config.filpro_email,
+                    config.filpro_password,
+                    loopDateStr,
+                    estCode,
+                    config.filpro_company_id
+                );
+                documents.push(...dayDocs);
+                currentDate.setDate(currentDate.getDate() + 1);
+            }
 
             let totalImported = 0;
             let totalSkipped = 0;
@@ -384,7 +405,7 @@ const filproController = {
             await pool.query('INSERT INTO filpro_sync_logs SET ?', [{
                 company_id: companyId,
                 branch_id: branchId,
-                sync_date: dateStr,
+                sync_date: queryDateLabel,
                 total_found: documents.length,
                 total_imported: totalImported,
                 total_skipped: totalSkipped,
@@ -399,12 +420,12 @@ const filproController = {
             // 4. Update last sync date on connection
             await pool.query(
                 'UPDATE filpro_connections SET last_sync_date = ?, last_sync_at = NOW() WHERE id = ?',
-                [dateStr, config.id]
+                [queryDateLabel, config.id]
             );
 
             return res.json({
                 success: true,
-                syncDate: dateStr,
+                syncDate: queryDateLabel,
                 totalFound: documents.length,
                 totalImported,
                 totalSkipped,
@@ -437,12 +458,13 @@ const filproController = {
         try {
             const companyId = req.company_id;
             const userId = req.user?.id || 1;
-            const dateStr = req.body.date;
+            const startDateStr = req.body.startDate || req.body.date;
+            const endDateStr = req.body.endDate || startDateStr;
             const branchId = req.body.branch_id || req.user?.branch_id;
             const establishmentCode = req.body.establishment_code || '';
 
-            if (!dateStr) {
-                sendEvent({ type: 'error', message: 'La fecha es obligatoria (formato YYYY-MM-DD).' });
+            if (!startDateStr) {
+                sendEvent({ type: 'error', message: 'La fecha a sincronizar es obligatoria (formato YYYY-MM-DD).' });
                 return res.end();
             }
             if (!branchId) {
@@ -462,17 +484,27 @@ const filproController = {
 
             const config = configRows[0];
             const estCode = establishmentCode || config.filpro_establishment_code || '';
+            const queryDateLabel = startDateStr !== endDateStr ? `${startDateStr} al ${endDateStr}` : startDateStr;
 
-            sendEvent({ type: 'status', message: `Consultando DTEs emitidos el ${dateStr} en FilPro...` });
+            sendEvent({ type: 'status', message: `Consultando DTEs emitidos del ${queryDateLabel} en FilPro...` });
 
-            const documents = await filproExtractor.getDocumentsForDay(
-                companyId,
-                config.filpro_email,
-                config.filpro_password,
-                dateStr,
-                estCode,
-                config.filpro_company_id
-            );
+            const documents = [];
+            let currentDate = new Date(startDateStr + 'T12:00:00');
+            const endD = new Date(endDateStr + 'T12:00:00');
+
+            while (currentDate <= endD) {
+                const loopDateStr = currentDate.toISOString().split('T')[0];
+                const dayDocs = await filproExtractor.getDocumentsForDay(
+                    companyId,
+                    config.filpro_email,
+                    config.filpro_password,
+                    loopDateStr,
+                    estCode,
+                    config.filpro_company_id
+                );
+                documents.push(...dayDocs);
+                currentDate.setDate(currentDate.getDate() + 1);
+            }
 
             const total = documents.length;
             sendEvent({
@@ -588,7 +620,7 @@ const filproController = {
             await pool.query('INSERT INTO filpro_sync_logs SET ?', [{
                 company_id: companyId,
                 branch_id: branchId,
-                sync_date: dateStr,
+                sync_date: queryDateLabel,
                 total_found: total,
                 total_imported: totalImported,
                 total_skipped: totalSkipped,
@@ -603,7 +635,7 @@ const filproController = {
             // Update last sync date on connection
             await pool.query(
                 'UPDATE filpro_connections SET last_sync_date = ?, last_sync_at = NOW() WHERE id = ?',
-                [dateStr, config.id]
+                [queryDateLabel, config.id]
             );
 
             sendEvent({
