@@ -6,7 +6,7 @@ const expenseItemSchema = z.object({
     description: optionalString,
     expense_type_id: z.coerce.number().int().positive().optional().nullable(),
     tax_type: optionalString.default('gravada'),
-    total: z.coerce.number().min(0, { message: 'El total del ítem no puede ser negativo' }).optional().default(0)
+    total: z.coerce.number().optional().default(0)
 });
 
 // Expense Base Shape
