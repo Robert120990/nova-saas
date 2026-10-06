@@ -61,21 +61,31 @@ const SalesTerminal = () => {
     // Logistic/Seller Auth State
     const [sellerSession, setSellerSession] = useState(() => {
         try {
-            const raw = sessionStorage.getItem(SELLER_KEY);
-            if (!raw) return null;
-            const parsed = JSON.parse(raw);
-            if (Number(parsed.branch_id) === Number(user?.branch_id)) {
+            const rawDraft = localStorage.getItem(DRAFT_KEY);
+            const rawSeller = sessionStorage.getItem(SELLER_KEY);
+            if (!rawSeller) return null;
+            const parsed = JSON.parse(rawSeller);
+            const parsedDraft = rawDraft ? JSON.parse(rawDraft) : null;
+            // Solo restaurar la sesión del vendedor si existe un borrador activo con productos en la misma sucursal
+            if (parsedDraft && Array.isArray(parsedDraft.cart) && parsedDraft.cart.length > 0 && Number(parsed.branch_id) === Number(user?.branch_id)) {
                 return parsed;
             }
         } catch {}
+        try { sessionStorage.removeItem(SELLER_KEY); } catch {}
         return null;
     });
     const [isAuthModalOpen, setIsAuthModalOpen] = useState(() => {
         try {
-            const raw = sessionStorage.getItem(SELLER_KEY);
-            if (!raw) return true;
-            const parsed = JSON.parse(raw);
-            return Number(parsed.branch_id) !== Number(user?.branch_id);
+            const rawDraft = localStorage.getItem(DRAFT_KEY);
+            const rawSeller = sessionStorage.getItem(SELLER_KEY);
+            if (rawDraft && rawSeller) {
+                const parsedDraft = JSON.parse(rawDraft);
+                const parsedSeller = JSON.parse(rawSeller);
+                // Si hay un borrador con partidas activo para este vendedor en esta sucursal, no mostrar modal
+                if (Array.isArray(parsedDraft.cart) && parsedDraft.cart.length > 0 && Number(parsedSeller.branch_id) === Number(user?.branch_id)) {
+                    return false;
+                }
+            }
         } catch {}
         return true;
     });
@@ -96,14 +106,18 @@ const SalesTerminal = () => {
     });
     const [sellerId, setSellerId] = useState(() => {
         try {
-            const rawSeller = sessionStorage.getItem(SELLER_KEY);
-            if (rawSeller) {
-                const parsed = JSON.parse(rawSeller);
-                if (Number(parsed.branch_id) === Number(user?.branch_id)) return parsed.seller_id || '';
-            }
             const rawDraft = localStorage.getItem(DRAFT_KEY);
-            return rawDraft ? (JSON.parse(rawDraft).sellerId || '') : '';
+            const parsedDraft = rawDraft ? JSON.parse(rawDraft) : null;
+            if (parsedDraft && Array.isArray(parsedDraft.cart) && parsedDraft.cart.length > 0) {
+                const rawSeller = sessionStorage.getItem(SELLER_KEY);
+                if (rawSeller) {
+                    const parsed = JSON.parse(rawSeller);
+                    if (Number(parsed.branch_id) === Number(user?.branch_id)) return parsed.seller_id || '';
+                }
+                return parsedDraft.sellerId || '';
+            }
         } catch { return ''; }
+        return '';
     });
     const [tipoDte, setTipoDte] = useState(() => {
         try {
@@ -1596,7 +1610,12 @@ const SalesTerminal = () => {
         setLinkedDocs([]);
         setPayments([]);
         setEntregado('');
+        setSellerSession(null);
+        setSellerId('');
+        setAuthPassword('');
         localStorage.removeItem(DRAFT_KEY);
+        try { sessionStorage.removeItem(SELLER_KEY); } catch {}
+        setIsAuthModalOpen(true);
         toast.info('Borrador descartado correctamente');
     };
 
@@ -2342,27 +2361,30 @@ const SalesTerminal = () => {
     }, []);
 
     const handleCancelSale = () => {
-        const hasContent = cart.length > 0 || customerId || manualCustomerName || linkedDocs.length > 0 || payments.length > 0;
-        if (!hasContent) {
-            toast.info('No hay ninguna venta o facturación activa para cancelar.');
-            return;
-        }
-        if (window.confirm('¿Está seguro de que desea cancelar la facturación actual? Se vaciará el carrito y se limpiarán los datos para cambiar de documento o iniciar una nueva venta.')) {
-            setCart([]);
-            setGeneralDiscount(0);
-            setGeneralDiscountPercentage(null);
-            setCustomerId('');
-            setCustomerBranchId('');
-            setManualCustomerName('');
-            setLinkedDocs([]);
-            setPayments([]);
-            setEntregado('');
-            setReferencingSale(null);
-            setTipoDte('01');
-            setActiveView('pos');
-            localStorage.removeItem(DRAFT_KEY);
-            toast.success('Facturación cancelada correctamente. Listo para nuevo documento.');
-        }
+        // Limpiar completamente el carrito y datos de la venta actual
+        setCart([]);
+        setGeneralDiscount(0);
+        setGeneralDiscountPercentage(null);
+        setCustomerId('');
+        setCustomerBranchId('');
+        setManualCustomerName('');
+        setLinkedDocs([]);
+        setPayments([]);
+        setEntregado('');
+        setReferencingSale(null);
+        setTipoDte('01');
+        setActiveView('pos');
+
+        // Limpiar sesión de vendedor y borrador
+        setSellerSession(null);
+        setSellerId('');
+        setAuthPassword('');
+        localStorage.removeItem(DRAFT_KEY);
+        try { sessionStorage.removeItem(SELLER_KEY); } catch {}
+
+        // Cargar directamente el modal para seleccionar tipo de factura y poner PIN
+        setIsAuthModalOpen(true);
+        toast.info('Facturación cancelada. Seleccione el documento e ingrese su PIN.');
     };
 
     const autoAddScannedProduct = (product, isCombo = false, price = 0, isAgreed = false) => {
@@ -2973,9 +2995,16 @@ const SalesTerminal = () => {
                             </div>
                             <div className="flex flex-col gap-1.5">
                                 <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider ml-1">Vendedor</label>
-                                <div className="px-4 py-2.5 bg-indigo-50/50 border border-indigo-100 rounded-2xl text-sm font-bold text-indigo-600 flex items-center gap-2">
+                                <div 
+                                    onClick={() => {
+                                        setAuthPassword('');
+                                        setIsAuthModalOpen(true);
+                                    }}
+                                    className="px-4 py-2.5 bg-indigo-50/50 hover:bg-indigo-100/70 border border-indigo-100 rounded-2xl text-sm font-bold text-indigo-600 flex items-center gap-2 cursor-pointer transition-colors group"
+                                    title="Clic para cambiar vendedor o reautenticar"
+                                >
                                     <div className={`w-2 h-2 rounded-full ${currentShift ? 'bg-green-500 animate-pulse' : 'bg-rose-500'}`}></div>
-                                    {sellerSession ? `${sellerSession.seller_name} — ${sellerSession.pos_name || 'Sin POS'}` : 'Acceso Limitado'}
+                                    {sellerSession ? `${sellerSession.seller_name} — ${sellerSession.pos_name || 'Sin POS'}` : 'Acceso Limitado (Clic para ingresar)'}
                                     {currentShift?.shift_number && <span className="text-[10px] font-black text-indigo-400 ml-auto">#{currentShift.shift_number}</span>}
                                 </div>
                             </div>
@@ -3486,17 +3515,15 @@ const SalesTerminal = () => {
                                     {tipoDte === '07' ? 'Emitir Retención (F10)' : tipoDte === '05' ? 'Emitir Nota de Crédito (F10)' : 'Pagar (F10)'}
                                 </button>
 
-                                {(cart.length > 0 || customerId || manualCustomerName || linkedDocs.length > 0) && (
-                                    <button 
-                                        type="button"
-                                        onClick={handleCancelSale}
-                                        className="w-full bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200/80 py-2.5 rounded-2xl font-black uppercase text-[11px] transition-all flex items-center justify-center gap-1.5 shadow-xs active:scale-95"
-                                        title="Cancelar facturación actual y limpiar venta para cambiar de documento o reiniciar"
-                                    >
-                                        <RotateCcw size={14} className="text-rose-600" />
-                                        <span>Cancelar Facturación</span>
-                                    </button>
-                                )}
+                                <button 
+                                    type="button"
+                                    onClick={handleCancelSale}
+                                    className="w-full bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200/80 py-2.5 rounded-2xl font-black uppercase text-[11px] transition-all flex items-center justify-center gap-1.5 shadow-xs active:scale-95"
+                                    title="Cancelar facturación y abrir selector de documento / PIN"
+                                >
+                                    <RotateCcw size={14} className="text-rose-600" />
+                                    <span>Cancelar Facturación</span>
+                                </button>
                             </div>
                         </div>
                     </div>
