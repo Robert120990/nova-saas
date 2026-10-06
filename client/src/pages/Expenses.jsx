@@ -252,6 +252,32 @@ const getStoredExpensePeriod = (companyId) => {
     return null;
 };
 
+const getStoredF07Classification = (companyId) => {
+    try {
+        const key = `expenses_f07_classification_${companyId || 'default'}`;
+        const raw = localStorage.getItem(key);
+        if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed && typeof parsed === 'object') {
+                return {
+                    tipoOperacion: parsed.tipoOperacion || '1',
+                    tipoClasificacion: parsed.tipoClasificacion || '1',
+                    tipoSector: parsed.tipoSector || '2',
+                    tipoCosto: parsed.tipoCosto || '5'
+                };
+            }
+        }
+    } catch (e) {
+        console.error('Error reading stored F07 classification:', e);
+    }
+    return {
+        tipoOperacion: '1',
+        tipoClasificacion: '1',
+        tipoSector: '2',
+        tipoCosto: '5'
+    };
+};
+
 const Expenses = () => {
     const { user } = useAuth();
     const queryClient = useQueryClient();
@@ -304,6 +330,35 @@ const Expenses = () => {
         }
     }, [filterYear, filterMonth, filterBranchId, user?.company_id]);
 
+    // Recargar clasificación F-07 guardada cuando cambie la empresa seleccionada
+    useEffect(() => {
+        if (!user?.company_id || isEditing) return;
+        const saved = getStoredF07Classification(user.company_id);
+        setTipoOperacion(saved.tipoOperacion);
+        setTipoClasificacion(saved.tipoClasificacion);
+        setTipoSector(saved.tipoSector);
+        setTipoCosto(saved.tipoCosto);
+    }, [user?.company_id, isEditing]);
+
+    const handleF07Change = (field, value) => {
+        if (field === 'tipoOperacion') setTipoOperacion(value);
+        if (field === 'tipoClasificacion') setTipoClasificacion(value);
+        if (field === 'tipoSector') setTipoSector(value);
+        if (field === 'tipoCosto') setTipoCosto(value);
+
+        try {
+            const current = getStoredF07Classification(user?.company_id);
+            const updated = {
+                ...current,
+                [field]: value
+            };
+            const key = `expenses_f07_classification_${user?.company_id || 'default'}`;
+            localStorage.setItem(key, JSON.stringify(updated));
+        } catch (e) {
+            console.error('Error saving F07 classification to localStorage:', e);
+        }
+    };
+
     // Active Period Modal State
     const [modalPeriodoOpen, setModalPeriodoOpen] = useState(false);
     const [nuevoPeriodoMes, setNuevoPeriodoMes] = useState(now.getMonth() + 1);
@@ -338,12 +393,12 @@ const Expenses = () => {
     const [documentoAfectado, setDocumentoAfectado] = useState('');
     const [fechaAfectada, setFechaAfectada] = useState('');
 
-    // Catálogos F-07 MH State (Por defecto: Gravada, Costo, Comercio, Costo Artículos Producidos Internos)
-    const [tipoOperacion, setTipoOperacion] = useState('1'); // 1 Gravada
-    const [tipoClasificacion, setTipoClasificacion] = useState('1'); // 1 Costo
-    const [tipoSector, setTipoSector] = useState('2'); // 2 Comercio
-    const [tipoCosto, setTipoCosto] = useState('5'); // 5 Costo Artículos Producidos Internos
-    const [isF07Open, setIsF07Open] = useState(false);
+    // Catálogos F-07 MH State (Persistidos en localStorage por empresa)
+    const [tipoOperacion, setTipoOperacion] = useState(() => getStoredF07Classification(user?.company_id).tipoOperacion);
+    const [tipoClasificacion, setTipoClasificacion] = useState(() => getStoredF07Classification(user?.company_id).tipoClasificacion);
+    const [tipoSector, setTipoSector] = useState(() => getStoredF07Classification(user?.company_id).tipoSector);
+    const [tipoCosto, setTipoCosto] = useState(() => getStoredF07Classification(user?.company_id).tipoCosto);
+    const [isF07Open, setIsF07Open] = useState(true);
 
     // Form Direct Tax Amounts State
     const [totalGravada, setTotalGravada] = useState(0);
@@ -847,11 +902,12 @@ const Expenses = () => {
         setBranchId(user?.branch_id ? String(user.branch_id) : '');
         setTipoDocId('02');
         setCondicionId('01');
-        setTipoOperacion('1');
-        setTipoClasificacion('1');
-        setTipoSector('2');
-        setTipoCosto('5');
-        setIsF07Open(false);
+        const savedF07 = getStoredF07Classification(user?.company_id);
+        setTipoOperacion(savedF07.tipoOperacion);
+        setTipoClasificacion(savedF07.tipoClasificacion);
+        setTipoSector(savedF07.tipoSector);
+        setTipoCosto(savedF07.tipoCosto);
+        setIsF07Open(true);
         setTotalGravada(0);
         setTotalExenta(0);
         setTotalNosujeta(0);
@@ -883,6 +939,7 @@ const Expenses = () => {
 
     const openCreateModal = () => {
         resetForm();
+        setIsF07Open(true);
         setIsFormOpen(true);
         setTimeout(() => {
             tipoDocRef.current?.focus();
@@ -1999,7 +2056,7 @@ const Expenses = () => {
                                                 <label className={labelCls}>Tipo de Operación</label>
                                                 <select
                                                     value={tipoOperacion}
-                                                    onChange={(e) => setTipoOperacion(e.target.value)}
+                                                    onChange={(e) => handleF07Change('tipoOperacion', e.target.value)}
                                                     className={inputCls}
                                                 >
                                                     {F07_TIPOS_OPERACION.map(o => (
@@ -2012,7 +2069,7 @@ const Expenses = () => {
                                                 <label className={labelCls}>Tipo de Clasificación</label>
                                                 <select
                                                     value={tipoClasificacion}
-                                                    onChange={(e) => setTipoClasificacion(e.target.value)}
+                                                    onChange={(e) => handleF07Change('tipoClasificacion', e.target.value)}
                                                     className={inputCls}
                                                 >
                                                     {F07_TIPOS_CLASIFICACION.map(c => (
@@ -2025,7 +2082,7 @@ const Expenses = () => {
                                                 <label className={labelCls}>Tipo de Sector</label>
                                                 <select
                                                     value={tipoSector}
-                                                    onChange={(e) => setTipoSector(e.target.value)}
+                                                    onChange={(e) => handleF07Change('tipoSector', e.target.value)}
                                                     className={inputCls}
                                                 >
                                                     {F07_TIPOS_SECTOR.map(s => (
@@ -2038,7 +2095,7 @@ const Expenses = () => {
                                                 <label className={labelCls}>Tipo de Costo / Gasto</label>
                                                 <select
                                                     value={tipoCosto}
-                                                    onChange={(e) => setTipoCosto(e.target.value)}
+                                                    onChange={(e) => handleF07Change('tipoCosto', e.target.value)}
                                                     className={inputCls}
                                                 >
                                                     {F07_TIPOS_COSTO.map(c => (
