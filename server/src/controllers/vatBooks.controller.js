@@ -140,6 +140,158 @@ const drawPdfSummaryBox = (doc, x, y, totals, title = 'RESUMEN') => {
 };
 
 /**
+ * Cuadro Resumen oficial del Libro de Compras (según formato y normativa tributaria salvadoreña)
+ */
+const drawCuadroResumenCompras = (doc, startX, totalWidth, totals, onNewPage = null) => {
+    try {
+        const boxWidth = 520;
+        const boxX = startX + Math.round((totalWidth - boxWidth) / 2);
+        let y = doc.y + 10;
+
+        if (y + 125 > 500) {
+            doc.addPage();
+            if (onNewPage) onNewPage();
+            y = doc.y + 10;
+        }
+
+        const boxStartY = y;
+        doc.save();
+
+        // 1. Título
+        const titleH = 18;
+        doc.rect(boxX, y, boxWidth, titleH).fill('#0f172a');
+        doc.fillColor('#ffffff').fontSize(8).font('Helvetica-Bold')
+           .text('CUADRO RESUMEN', boxX, y + 5, { width: boxWidth, align: 'center' });
+        y += titleH;
+
+        // 2. Encabezados de Matriz
+        const colW = {
+            concepto: 120,
+            exentas: 100,
+            gravadas: 100,
+            reb_dev: 100,
+            total: 100
+        };
+
+        const headerH = 15;
+        doc.rect(boxX, y, boxWidth, headerH).fill('#f1f5f9');
+        doc.fillColor('#0f172a').fontSize(6.5).font('Helvetica-Bold');
+
+        let curX = boxX;
+        doc.text('', curX + 4, y + 4, { width: colW.concepto - 8 }); curX += colW.concepto;
+        doc.text('COMPRAS EXENTAS', curX, y + 4, { width: colW.exentas - 4, align: 'right' }); curX += colW.exentas;
+        doc.text('COMPRAS GRAVADAS', curX, y + 4, { width: colW.gravadas - 4, align: 'right' }); curX += colW.gravadas;
+        doc.text('REB. Y DEV. S/COMPRAS', curX, y + 4, { width: colW.reb_dev - 4, align: 'right' }); curX += colW.reb_dev;
+        doc.text('TOTAL', curX, y + 4, { width: colW.total - 4, align: 'right' });
+
+        doc.moveTo(boxX, y + headerH).lineTo(boxX + boxWidth, y + headerH).lineWidth(0.5).strokeColor('#cbd5e1').stroke();
+        y += headerH;
+
+        const startMatrixY = y;
+        const drawMatrixRow = (label, exentas, gravadas, reb_dev, total, isBold = false, bg = null) => {
+            const rowH = 13.5;
+            if (bg) {
+                doc.rect(boxX, y, boxWidth, rowH).fill(bg);
+            }
+            doc.fillColor(isBold ? '#0f172a' : '#334155').fontSize(6.5).font(isBold ? 'Helvetica-Bold' : 'Helvetica');
+            let rx = boxX;
+            doc.text(label, rx + 6, y + 3.5, { width: colW.concepto - 8 }); rx += colW.concepto;
+            doc.text(exentas !== null && exentas !== undefined ? reportPdfHelper.fmt(exentas) : '', rx, y + 3.5, { width: colW.exentas - 4, align: 'right' }); rx += colW.exentas;
+            doc.text(reportPdfHelper.fmt(gravadas), rx, y + 3.5, { width: colW.gravadas - 4, align: 'right' }); rx += colW.gravadas;
+            doc.text(reportPdfHelper.fmt(reb_dev), rx, y + 3.5, { width: colW.reb_dev - 4, align: 'right' }); rx += colW.reb_dev;
+            doc.text(reportPdfHelper.fmt(total), rx, y + 3.5, { width: colW.total - 4, align: 'right' });
+
+            doc.moveTo(boxX, y + rowH).lineTo(boxX + boxWidth, y + rowH).lineWidth(0.25).strokeColor('#e2e8f0').stroke();
+            y += rowH;
+        };
+
+        const locGravNet = (totals.locales_grav_bruto || 0) - (totals.locales_nc || 0);
+        const locExeNet = totals.locales_exe_bruto || 0;
+        const locTotal = totals.locales_grav_bruto || 0;
+
+        const impGravNet = (totals.import_grav_bruto || 0) - (totals.import_nc || 0);
+        const impExeNet = totals.import_exe_bruto || 0;
+        const impTotal = totals.import_grav_bruto || 0;
+
+        const intGravNet = (totals.intern_grav_bruto || 0) - (totals.intern_nc || 0);
+        const intExeNet = totals.intern_exe_bruto || 0;
+        const intTotal = totals.intern_grav_bruto || 0;
+
+        const ivaNet = totals.iva || 0;
+        const ivaTotal = (totals.iva_bruto || (ivaNet + (totals.iva_nc || 0)));
+
+        drawMatrixRow('LOCALES', locExeNet, locGravNet, totals.locales_nc || 0, locTotal, false, '#ffffff');
+        drawMatrixRow('IMPORTACIONES', impExeNet, impGravNet, totals.import_nc || 0, impTotal, false, '#f8fafc');
+        drawMatrixRow('INTERNACIONES', intExeNet, intGravNet, totals.intern_nc || 0, intTotal, false, '#ffffff');
+        drawMatrixRow('CREDITO FISCAL', null, ivaNet, totals.iva_nc || 0, ivaTotal, true, '#f1f5f9');
+        const matrixBottomY = y;
+
+        // Líneas verticales divisoras de la matriz
+        let vx = boxX + colW.concepto;
+        doc.moveTo(vx, startMatrixY).lineTo(vx, matrixBottomY).lineWidth(0.25).strokeColor('#e2e8f0').stroke();
+        vx += colW.exentas;
+        doc.moveTo(vx, startMatrixY).lineTo(vx, matrixBottomY).lineWidth(0.25).strokeColor('#e2e8f0').stroke();
+        vx += colW.gravadas;
+        doc.moveTo(vx, startMatrixY).lineTo(vx, matrixBottomY).lineWidth(0.25).strokeColor('#e2e8f0').stroke();
+        vx += colW.reb_dev;
+        doc.moveTo(vx, startMatrixY).lineTo(vx, matrixBottomY).lineWidth(0.25).strokeColor('#e2e8f0').stroke();
+
+        // 3. Sub-tabla de complementos fiscales
+        const subColW = {
+            totalLabel: 70,
+            anticipo: 90,
+            percibido: 90,
+            retenido: 90,
+            ret_terceros: 90,
+            excluidos: 90
+        };
+
+        const subHeaderY = y;
+        doc.rect(boxX, y, boxWidth, 14).fill('#f1f5f9');
+        doc.fillColor('#0f172a').fontSize(6).font('Helvetica-Bold');
+        let sx = boxX;
+        doc.text('', sx, y + 4, { width: subColW.totalLabel }); sx += subColW.totalLabel;
+        doc.text('ANTICIPO A CUENTA', sx, y + 4, { width: subColW.anticipo - 4, align: 'right' }); sx += subColW.anticipo;
+        doc.text('I.V.A. PERCIBIDO', sx, y + 4, { width: subColW.percibido - 4, align: 'right' }); sx += subColW.percibido;
+        doc.text('I.V.A. RETENIDO', sx, y + 4, { width: subColW.retenido - 4, align: 'right' }); sx += subColW.retenido;
+        doc.text('RETENCION A TERCEROS', sx, y + 4, { width: subColW.ret_terceros - 4, align: 'right' }); sx += subColW.ret_terceros;
+        doc.text('COMPRAS A EXCLUIDOS', sx, y + 4, { width: subColW.excluidos - 4, align: 'right' });
+        y += 14;
+
+        doc.rect(boxX, y, boxWidth, 14).fill('#ffffff');
+        doc.fillColor('#0f172a').fontSize(6.5).font('Helvetica-Bold');
+        sx = boxX;
+        doc.text('TOTAL', sx + 6, y + 3.5, { width: subColW.totalLabel - 8 }); sx += subColW.totalLabel;
+        doc.text(reportPdfHelper.fmt(totals.anticipo_cuenta || 0), sx, y + 3.5, { width: subColW.anticipo - 4, align: 'right' }); sx += subColW.anticipo;
+        doc.text(reportPdfHelper.fmt(totals.iva_percibido || 0), sx, y + 3.5, { width: subColW.percibido - 4, align: 'right' }); sx += subColW.percibido;
+        doc.text(reportPdfHelper.fmt(totals.iva_retenido || 0), sx, y + 3.5, { width: subColW.retenido - 4, align: 'right' }); sx += subColW.retenido;
+        doc.text(reportPdfHelper.fmt(totals.ret_terceros || 0), sx, y + 3.5, { width: subColW.ret_terceros - 4, align: 'right' }); sx += subColW.ret_terceros;
+        doc.text(reportPdfHelper.fmt(totals.compras_excluidos || 0), sx, y + 3.5, { width: subColW.excluidos - 4, align: 'right' });
+        y += 14;
+
+        // Líneas verticales para la sub-tabla
+        let svx = boxX + subColW.totalLabel;
+        doc.moveTo(svx, subHeaderY).lineTo(svx, y).lineWidth(0.25).strokeColor('#e2e8f0').stroke();
+        svx += subColW.anticipo;
+        doc.moveTo(svx, subHeaderY).lineTo(svx, y).lineWidth(0.25).strokeColor('#e2e8f0').stroke();
+        svx += subColW.percibido;
+        doc.moveTo(svx, subHeaderY).lineTo(svx, y).lineWidth(0.25).strokeColor('#e2e8f0').stroke();
+        svx += subColW.retenido;
+        doc.moveTo(svx, subHeaderY).lineTo(svx, y).lineWidth(0.25).strokeColor('#e2e8f0').stroke();
+        svx += subColW.ret_terceros;
+        doc.moveTo(svx, subHeaderY).lineTo(svx, y).lineWidth(0.25).strokeColor('#e2e8f0').stroke();
+
+        // Marco exterior
+        doc.rect(boxX, boxStartY, boxWidth, y - boxStartY).lineWidth(0.75).strokeColor('#cbd5e1').stroke();
+        doc.restore();
+        return y;
+    } catch (err) {
+        console.error('[VAT Books] Error drawing Cuadro Resumen Compras:', err);
+        return doc.y;
+    }
+};
+
+/**
  * 1. Libro de Compras
  */
 const getVatBookPurchasesPDF = async (req, res) => {
@@ -181,7 +333,10 @@ const getVatBookPurchasesPDF = async (req, res) => {
                 ph.total_nosujeta,
                 ph.total_exenta,
                 ph.total_gravada,
+                0.00 AS gravadas_importaciones,
+                0.00 AS gravadas_internaciones,
                 ph.iva,
+                0.00 AS iva_importaciones,
                 ph.retencion,
                 ph.percepcion,
                 ph.fovial,
@@ -213,8 +368,11 @@ const getVatBookPurchasesPDF = async (req, res) => {
                 eh.documento_afectado,
                 eh.total_nosujeta,
                 eh.total_exenta,
-                (eh.total_gravada + COALESCE(eh.gravadas_importaciones, 0) + COALESCE(eh.gravadas_internaciones, 0)) AS total_gravada,
-                (eh.iva + COALESCE(eh.iva_importaciones, 0)) AS iva,
+                eh.total_gravada,
+                COALESCE(eh.gravadas_importaciones, 0) AS gravadas_importaciones,
+                COALESCE(eh.gravadas_internaciones, 0) AS gravadas_internaciones,
+                eh.iva,
+                COALESCE(eh.iva_importaciones, 0) AS iva_importaciones,
                 eh.retencion,
                 eh.percepcion,
                 eh.fovial,
@@ -246,24 +404,28 @@ const getVatBookPurchasesPDF = async (req, res) => {
         const getPurchaseDocInfo = (r) => {
             const isExpense = r.source_type === 'gasto';
             let esNC = false;
+            let esImport = false;
+            let esIntern = false;
+            let esExcluido = false;
             let tipoNombre = '';
 
+            const tId = String(r.tipo_documento_id || '').trim();
+
             if (isExpense) {
-                const tId = String(r.tipo_documento_id || '').trim();
                 switch (tId) {
                     case '01': tipoNombre = 'Factura'; break;
                     case '02': tipoNombre = 'Créd. Fiscal'; break;
                     case '03': tipoNombre = 'Fact. Export.'; break;
-                    case '04': tipoNombre = 'Importación'; break;
-                    case '05': tipoNombre = 'Internación'; break;
+                    case '04': tipoNombre = 'Importación'; esImport = true; break;
+                    case '05': tipoNombre = 'Internación'; esIntern = true; break;
                     case '06': tipoNombre = 'Retención'; break;
                     case '07': tipoNombre = 'Liquidación'; break;
                     case '08': tipoNombre = 'Nota Débito'; break;
                     case '09': tipoNombre = 'Nota Crédito'; esNC = true; break;
+                    case '14': tipoNombre = 'Suj. Excl.'; esExcluido = true; break;
                     default: tipoNombre = 'Doc. ' + tId;
                 }
             } else {
-                const tId = String(r.tipo_documento_id || '').trim();
                 const desc = String(r.tipo_doc_nombre || '').toLowerCase();
                 esNC = tId === '05' || tId === '06' || desc.includes('nota de crédito') || desc.includes('nota de credito');
                 if (esNC) tipoNombre = 'Nota Crédito';
@@ -271,27 +433,33 @@ const getVatBookPurchasesPDF = async (req, res) => {
                 else if (tId === '04' || desc.includes('remisión') || desc.includes('remision')) tipoNombre = 'Nota Remisión';
                 else if (tId === '06' || desc.includes('débito') || desc.includes('debito')) tipoNombre = 'Nota Débito';
                 else if (tId === '07' || tId === '08' || desc.includes('retención') || desc.includes('retencion')) tipoNombre = 'Retención';
-                else if (tId === '11' || tId === '14') tipoNombre = 'Suj. Excl.';
+                else if (tId === '11' || tId === '14' || desc.includes('excluido')) { tipoNombre = 'Suj. Excl.'; esExcluido = true; }
                 else tipoNombre = 'Créd. Fiscal';
             }
 
+            if (n(r.gravadas_importaciones) > 0 || n(r.iva_importaciones) > 0) esImport = true;
+            if (n(r.gravadas_internaciones) > 0) esIntern = true;
+
             const docNumber = (r.num_control || r.numero_documento || '').trim();
-            return { esNC, tipoNombre, docNumber };
+            return { esNC, esImport, esIntern, esExcluido, tipoNombre, docNumber };
         };
 
         if (req.query.format === 'excel') {
             const excelData = rows.map(r => {
                 const { esNC, tipoNombre, docNumber } = getPurchaseDocInfo(r);
                 const sign = esNC ? -1 : 1;
-                const g = Math.abs(n(r.total_gravada));
+                const gLoc = Math.abs(n(r.total_gravada));
+                const gImp = Math.abs(n(r.gravadas_importaciones));
+                const gInt = Math.abs(n(r.gravadas_internaciones));
+                const g = gLoc + gImp + gInt;
                 const e = Math.abs(n(r.total_exenta));
-                const i = Math.abs(n(r.iva));
+                const i = Math.abs(n(r.iva)) + Math.abs(n(r.iva_importaciones));
                 const f = Math.abs(n(r.fovial));
                 const c = Math.abs(n(r.cotrans));
                 const ns = Math.abs(n(r.total_nosujeta)) + f + c;
                 const ac = Math.abs(n(r.anticipo_cuenta));
                 const re = Math.abs(n(r.retencion)) + Math.abs(n(r.percepcion));
-                const to = Math.abs(n(r.monto_total)) || ((g + e + i + ns + re) || 0);
+                const to = g + e + i + ns;
 
                 return {
                     Fecha: reportPdfHelper.formatDate(r.fecha),
@@ -387,7 +555,15 @@ const getVatBookPurchasesPDF = async (req, res) => {
         drawPageHeader();
         drawTableHeader();
 
-        let t = { grav: 0, exe: 0, iva: 0, no_sujeta: 0, ret: 0, anticipo_cuenta: 0, total: 0, nc_total: 0, nc_grav: 0, nc_iva: 0, nc_no_sujeta: 0, bruto_total: 0 };
+        let t = {
+            grav: 0, exe: 0, iva: 0, no_sujeta: 0, ret: 0, anticipo_cuenta: 0, total: 0,
+            nc_total: 0, nc_grav: 0, nc_iva: 0, nc_no_sujeta: 0, bruto_total: 0,
+            locales_grav_bruto: 0, locales_exe_bruto: 0, locales_nc: 0,
+            import_grav_bruto: 0, import_exe_bruto: 0, import_nc: 0,
+            intern_grav_bruto: 0, intern_exe_bruto: 0, intern_nc: 0,
+            iva_bruto: 0, iva_nc: 0,
+            iva_percibido: 0, iva_retenido: 0, ret_terceros: 0, compras_excluidos: 0
+        };
 
         rows.forEach((r, idx) => {
             if (doc.y > 510) {
@@ -396,20 +572,28 @@ const getVatBookPurchasesPDF = async (req, res) => {
                 drawTableHeader();
             }
 
-            const { esNC, tipoNombre, docNumber } = getPurchaseDocInfo(r);
+            const { esNC, esImport, esIntern, esExcluido, tipoNombre, docNumber } = getPurchaseDocInfo(r);
             const sign = esNC ? -1 : 1;
-            const g = Math.abs(n(r.total_gravada));
+            const gLoc = Math.abs(n(r.total_gravada));
+            const gImp = Math.abs(n(r.gravadas_importaciones));
+            const gInt = Math.abs(n(r.gravadas_internaciones));
+            const g = gLoc + gImp + gInt;
+
             const e = Math.abs(n(r.total_exenta));
-            const i = Math.abs(n(r.iva));
+            const iLoc = Math.abs(n(r.iva));
+            const iImp = Math.abs(n(r.iva_importaciones));
+            const i = iLoc + iImp;
+
             const f = Math.abs(n(r.fovial));
             const c = Math.abs(n(r.cotrans));
             const ns = Math.abs(n(r.total_nosujeta)) + f + c;
             const ac = Math.abs(n(r.anticipo_cuenta));
-            const re = Math.abs(n(r.retencion)) + Math.abs(n(r.percepcion));
-            let to = Math.abs(n(r.monto_total));
-            if (to === 0 && (g > 0 || e > 0 || i > 0 || ns > 0 || re > 0)) {
-                to = g + e + i + ns + re;
-            }
+            const retVal = Math.abs(n(r.retencion));
+            const perVal = Math.abs(n(r.percepcion));
+            const re = retVal + perVal;
+
+            // En el Libro de Compras oficial, el total de compras es Gravada + Exenta + IVA + No Sujeta
+            const to = g + e + i + ns;
 
             const rowY = doc.y;
             if (idx % 2 === 1) {
@@ -457,15 +641,43 @@ const getVatBookPurchasesPDF = async (req, res) => {
             doc.text(reportPdfHelper.fmt(sign * to), x, rowY, { width: cols.total - 2, align: 'right' });
 
             if (esNC) {
-                t.grav -= g; t.exe -= e; t.iva -= i; t.no_sujeta -= ns; t.ret -= re; t.total -= to;
+                t.grav -= g; t.exe -= e; t.iva -= i; t.no_sujeta -= ns; t.ret -= re;
                 t.nc_total += to; t.nc_grav += g; t.nc_iva += i; t.nc_no_sujeta += ns;
+                if (esImport) {
+                    t.import_nc += g;
+                } else if (esIntern) {
+                    t.intern_nc += g;
+                } else {
+                    t.locales_nc += g;
+                }
+                t.iva_nc += i;
             } else {
-                t.grav += g; t.exe += e; t.iva += i; t.no_sujeta += ns; t.ret += re; t.total += to;
+                t.grav += g; t.exe += e; t.iva += i; t.no_sujeta += ns; t.ret += re;
                 t.bruto_total += to;
+                if (esImport) {
+                    t.import_grav_bruto += g;
+                    t.import_exe_bruto += e;
+                } else if (esIntern) {
+                    t.intern_grav_bruto += g;
+                    t.intern_exe_bruto += e;
+                } else {
+                    t.locales_grav_bruto += g;
+                    t.locales_exe_bruto += e;
+                }
+                t.iva_bruto += i;
+                if (esExcluido) {
+                    t.compras_excluidos += to;
+                }
             }
             t.anticipo_cuenta += ac;
+            t.iva_retenido += retVal;
+            t.iva_percibido += perVal;
+
             doc.y = rowY + 13;
         });
+
+        // Total general oficial de compras:
+        t.total = t.grav + t.exe + t.iva + t.no_sujeta;
 
         // Fila de TOTALES GENERALES al pie de la tabla
         const totalRowY = doc.y + 2;
@@ -488,15 +700,8 @@ const getVatBookPurchasesPDF = async (req, res) => {
 
         doc.y = totalRowY + 20;
 
-        if (doc.y > 470) {
-            doc.addPage();
-            drawPageHeader();
-        }
-
-        const boxX = startX + totalWidth - 260;
-        const boxEndY = drawPdfSummaryBox(doc, boxX, doc.y + 10, t, 'RESUMEN DE COMPRAS');
-
-        const footerY = Math.max(doc.y, boxEndY) + 12;
+        const boxEndY = drawCuadroResumenCompras(doc, startX, totalWidth, t, drawPageHeader);
+        const footerY = boxEndY + 12;
         reportPdfHelper.renderClosingFooter(doc, startX, footerY, rows.length, 'Documentos');
         reportPdfHelper.renderPageNumbers(doc, folio);
         doc.end();
