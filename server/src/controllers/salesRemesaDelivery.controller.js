@@ -535,6 +535,72 @@ exports.entregarDelivery = async (req, res) => {
     }
 };
 
+exports.revertirEntregado = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const companyId = req.company_id || req.user?.company_id;
+
+        const isSuperAdmin = req.user.role === 'SuperAdmin';
+        const isAdmin = req.user.role === 'Admin';
+        if (!isSuperAdmin && !isAdmin) {
+            return res.status(403).json({ message: 'Solo administradores pueden revertir una entrega de remesas' });
+        }
+
+        const [deliveries] = await pool.query(
+            `SELECT id, entregado, branch_id, referencia FROM sales_remesa_deliveries WHERE id = ? AND company_id = ?`,
+            [id, companyId]
+        );
+
+        if (deliveries.length === 0) {
+            return res.status(404).json({ message: 'Entrega no encontrada' });
+        }
+        const delivery = deliveries[0];
+        if (!delivery.entregado) {
+            return res.status(400).json({ message: 'La entrega no está marcada como entregada' });
+        }
+
+        // 1. Obtener código de empresa en RRS para esta sucursal/empresa
+        const rrsIdEmpresa = (await getSalesSetting(companyId, delivery.branch_id || null, 'empresa_rrs')) || '015';
+
+        // 2. Revertir y eliminar movimientos bancarios en RRS
+        let rrsDeleted = 0;
+        let rrsMessage = '';
+        try {
+            const rrsPool = getRrsPool();
+            const llave = `${rrsIdEmpresa}-${delivery.id}`;
+            const [delMain] = await rrsPool.query(
+                `DELETE FROM movimientos_bancarios WHERE llave = ?`,
+                [llave]
+            );
+            const [delExtras] = await rrsPool.query(
+                `DELETE FROM movimientos_bancarios WHERE llave LIKE ?`,
+                [`${rrsIdEmpresa}-${delivery.id}-E%`]
+            );
+            rrsDeleted = (delMain.affectedRows || 0) + (delExtras.affectedRows || 0);
+            rrsMessage = rrsDeleted > 0 
+                ? `Se eliminaron ${rrsDeleted} movimiento(s) de RRS.` 
+                : 'No se encontraron movimientos previos en RRS.';
+        } catch (rrsError) {
+            console.error('Error al revertir movimientos bancarios en RRS (sales):', rrsError);
+            rrsMessage = `Aviso RRS: ${rrsError.message}.`;
+        }
+
+        // 3. Reactivar entrega en el sistema local (entregado = 0) para permitir edición
+        await pool.query(
+            `UPDATE sales_remesa_deliveries SET entregado = 0 WHERE id = ? AND company_id = ?`,
+            [id, companyId]
+        );
+
+        res.json({
+            message: `Entrega #${id} revertida a pendiente con éxito. ${rrsMessage} Ya puede editar la remesa.`,
+            rrsDeleted
+        });
+    } catch (error) {
+        console.error('Error revertirEntregado (sales):', error);
+        res.status(500).json({ message: 'Error al revertir entrega: ' + error.message });
+    }
+};
+
 exports.resendToRrs = async (req, res) => {
     try {
         if (req.user.role !== 'SuperAdmin') {

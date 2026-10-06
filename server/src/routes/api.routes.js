@@ -584,6 +584,7 @@ router.post('/sales/remesa-deliveries', validate(salesRemesaDeliverySchema), sal
 router.put('/sales/remesa-deliveries/:id', validate(salesRemesaDeliveryUpdateSchema), salesRemesaDeliveryController.updateDelivery);
 router.get('/sales/remesa-deliveries/:id', salesRemesaDeliveryController.getDelivery);
 router.put('/sales/remesa-deliveries/:id/entregar', salesRemesaDeliveryController.entregarDelivery);
+router.put('/sales/remesa-deliveries/:id/revertir-entregado', salesRemesaDeliveryController.revertirEntregado);
 router.post('/sales/remesa-deliveries/:id/send-to-rrs', salesRemesaDeliveryController.resendToRrs);
 router.get('/sales/remesa-deliveries/:id/pdf', salesRemesaDeliveryController.getDeliveryPdf);
 router.delete('/sales/remesa-deliveries/:id', salesRemesaDeliveryController.deleteDelivery);
