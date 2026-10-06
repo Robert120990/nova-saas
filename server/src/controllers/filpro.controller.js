@@ -863,20 +863,38 @@ const filproController = {
         try {
             const companyId = req.company_id;
             const userId = req.user?.id || null;
-            const { date, branch_id } = req.body;
+            const startDateStr = req.body.startDate || req.body.date;
+            const endDateStr = req.body.endDate || startDateStr;
+            const branchId = req.body.branch_id ? parseInt(req.body.branch_id, 10) : null;
 
-            if (!date) {
-                return res.status(400).json({ message: 'La fecha es obligatoria (formato YYYY-MM-DD).' });
+            if (!startDateStr) {
+                return res.status(400).json({ message: 'La fecha es obligatoria.' });
             }
 
-            const outcome = await filproIngestion.revertDay({
-                companyId,
-                dateStr: date,
-                branchId: branch_id ? parseInt(branch_id, 10) : null,
-                userId
-            });
+            let currentDate = new Date(startDateStr + 'T12:00:00');
+            const endD = new Date(endDateStr + 'T12:00:00');
+            let totalSalesDeleted = 0;
+            let totalDtesDeleted = 0;
 
-            return res.json(outcome);
+            while (currentDate <= endD) {
+                const loopDateStr = currentDate.toISOString().split('T')[0];
+                const outcome = await filproIngestion.revertDay({
+                    companyId,
+                    dateStr: loopDateStr,
+                    branchId,
+                    userId
+                });
+                totalSalesDeleted += outcome.salesDeleted || 0;
+                totalDtesDeleted += outcome.dtesDeleted || 0;
+                currentDate.setDate(currentDate.getDate() + 1);
+            }
+
+            return res.json({
+                success: true,
+                message: `Días revertidos exitosamente. Se eliminaron ${totalSalesDeleted} ventas y ${totalDtesDeleted} DTEs.`,
+                salesDeleted: totalSalesDeleted,
+                dtesDeleted: totalDtesDeleted
+            });
         } catch (error) {
             console.error('Error reverting FilPro day:', error);
             return res.status(500).json({ message: error.message || 'Error al revertir sincronización del día' });

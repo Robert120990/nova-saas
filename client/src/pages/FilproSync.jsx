@@ -1923,15 +1923,15 @@ const FilproSync = () => {
                         <div>
                             <span className="font-bold">¿Desea revertir las {previewData?.summary?.totalAlreadyImported || 0} ventas importadas?</span>
                             <p className="mt-1 text-rose-700">
-                                Se eliminarán todas las ventas registradas en Sipe Web SaaS que provengan de FilPro para la fecha <span className="font-semibold">{selectedDate}</span>. No afecta inventario. Los documentos quedarán listos para sincronizarse nuevamente.
+                                Se eliminarán todas las ventas registradas en Sipe Web SaaS que provengan de FilPro para la fecha <span className="font-semibold">{previewData?.date || startDate}</span>. No afecta inventario. Los documentos quedarán listos para sincronizarse nuevamente.
                             </p>
                         </div>
                     </div>
 
                     <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 text-xs space-y-2 font-medium">
                         <div className="flex justify-between">
-                            <span className="text-slate-500">Fecha:</span>
-                            <span className="font-semibold text-slate-800">{selectedDate}</span>
+                            <span className="text-slate-500">Fecha(s):</span>
+                            <span className="font-semibold text-slate-800">{previewData?.date || startDate}</span>
                         </div>
                         <div className="flex justify-between">
                             <span className="text-slate-500">Sucursal:</span>
@@ -1957,7 +1957,8 @@ const FilproSync = () => {
                         <button
                             type="button"
                             onClick={() => revertDayMutation.mutate({
-                                date: selectedDate,
+                                startDate: startDate,
+                                endDate: endDate,
                                 branch_id: selectedBranchId ? parseInt(selectedBranchId, 10) : null
                             })}
                             disabled={revertDayMutation.isPending}
@@ -2028,7 +2029,7 @@ const FilproSync = () => {
                                 {syncProgress.hasError ? syncProgress.errorMessage : syncProgress.statusMessage}
                             </div>
                             <div className="text-[11px] opacity-75 mt-0.5">
-                                Fecha: <span className="font-semibold">{selectedDate}</span> • Sucursal: <span className="font-semibold">{branches.find(b => String(b.id) === String(selectedBranchId))?.nombre || selectedBranchId}</span>
+                                Fecha: <span className="font-semibold">{previewData?.date || startDate}</span> • Sucursal: <span className="font-semibold">{branches.find(b => String(b.id) === String(selectedBranchId))?.nombre || selectedBranchId}</span>
                             </div>
                         </div>
                     </div>
