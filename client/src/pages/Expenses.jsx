@@ -330,35 +330,6 @@ const Expenses = () => {
         }
     }, [filterYear, filterMonth, filterBranchId, user?.company_id]);
 
-    // Recargar clasificación F-07 guardada cuando cambie la empresa seleccionada
-    useEffect(() => {
-        if (!user?.company_id || isEditing) return;
-        const saved = getStoredF07Classification(user.company_id);
-        setTipoOperacion(saved.tipoOperacion);
-        setTipoClasificacion(saved.tipoClasificacion);
-        setTipoSector(saved.tipoSector);
-        setTipoCosto(saved.tipoCosto);
-    }, [user?.company_id, isEditing]);
-
-    const handleF07Change = (field, value) => {
-        if (field === 'tipoOperacion') setTipoOperacion(value);
-        if (field === 'tipoClasificacion') setTipoClasificacion(value);
-        if (field === 'tipoSector') setTipoSector(value);
-        if (field === 'tipoCosto') setTipoCosto(value);
-
-        try {
-            const current = getStoredF07Classification(user?.company_id);
-            const updated = {
-                ...current,
-                [field]: value
-            };
-            const key = `expenses_f07_classification_${user?.company_id || 'default'}`;
-            localStorage.setItem(key, JSON.stringify(updated));
-        } catch (e) {
-            console.error('Error saving F07 classification to localStorage:', e);
-        }
-    };
-
     // Active Period Modal State
     const [modalPeriodoOpen, setModalPeriodoOpen] = useState(false);
     const [nuevoPeriodoMes, setNuevoPeriodoMes] = useState(now.getMonth() + 1);
@@ -399,6 +370,35 @@ const Expenses = () => {
     const [tipoSector, setTipoSector] = useState(() => getStoredF07Classification(user?.company_id).tipoSector);
     const [tipoCosto, setTipoCosto] = useState(() => getStoredF07Classification(user?.company_id).tipoCosto);
     const [isF07Open, setIsF07Open] = useState(true);
+
+    // Recargar clasificación F-07 guardada cuando cambie la empresa seleccionada
+    useEffect(() => {
+        if (!user?.company_id || isEditing) return;
+        const saved = getStoredF07Classification(user.company_id);
+        setTipoOperacion(saved.tipoOperacion);
+        setTipoClasificacion(saved.tipoClasificacion);
+        setTipoSector(saved.tipoSector);
+        setTipoCosto(saved.tipoCosto);
+    }, [user?.company_id, isEditing]);
+
+    const handleF07Change = (field, value) => {
+        if (field === 'tipoOperacion') setTipoOperacion(value);
+        if (field === 'tipoClasificacion') setTipoClasificacion(value);
+        if (field === 'tipoSector') setTipoSector(value);
+        if (field === 'tipoCosto') setTipoCosto(value);
+
+        try {
+            const current = getStoredF07Classification(user?.company_id);
+            const updated = {
+                ...current,
+                [field]: value
+            };
+            const key = `expenses_f07_classification_${user?.company_id || 'default'}`;
+            localStorage.setItem(key, JSON.stringify(updated));
+        } catch (e) {
+            console.error('Error saving F07 classification to localStorage:', e);
+        }
+    };
 
     // Form Direct Tax Amounts State
     const [totalGravada, setTotalGravada] = useState(0);
