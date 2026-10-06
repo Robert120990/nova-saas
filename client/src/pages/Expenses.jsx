@@ -457,17 +457,8 @@ const Expenses = () => {
 
     // Dirty Flags
     const [isIvaDirty, setIsIvaDirty] = useState(false);
-    const [isRetDirty, setIsRetDirty] = useState(false);
-    const [isPercDirty, setIsPercDirty] = useState(false);
 
     useDirtyTracker('gastos-form', isFormOpen && (parseFloat(totalGravada) > 0 || parseFloat(totalExenta) > 0 || parseFloat(totalNosujeta) > 0 || !!providerId || !!numeroDoc));
-
-    // Queries
-    const { data: currentCompany } = useQuery({
-        queryKey: ['company', user?.company_id],
-        queryFn: async () => unwrapList(await axios.get(`/api/companies`)).find(c => c.id === user.company_id),
-        enabled: !!user?.company_id
-    });
 
     const [providersCache, setProvidersCache] = useState({});
 
@@ -593,31 +584,11 @@ const Expenses = () => {
         let ivaCalculated = noDeduceIva ? 0 : (gravada * ivaRate);
         ivaCalculated = Math.round(ivaCalculated * 100) / 100;
 
-        let retencion = 0;
-        const nosAgenteRetencion = currentCompany?.tipo_contribuyente === 'Grande';
-        const proveedNoGC = !selectedProvider?.es_gran_contribuyente;
-        const retencionRate = parseFloat(taxSettings?.retencion_rate || 1) / 100;
-        
-        if (nosAgenteRetencion && proveedNoGC && gravada >= 100 && (tipoDocId === '02' || tipoDocId === '08')) {
-            retencion = Math.round((gravada * retencionRate) * 100) / 100;
-        }
-
-        let percepcion = 0;
-        const proveedAgentePerc = selectedProvider?.es_gran_contribuyente;
-        const nosNoGC = currentCompany?.tipo_contribuyente !== 'Grande';
-        const percepcionRate = parseFloat(taxSettings?.percepcion_rate || 1) / 100;
-
-        if (proveedAgentePerc && nosNoGC && (tipoDocId === '02' || tipoDocId === '08')) {
-            percepcion = Math.round((gravada * percepcionRate) * 100) / 100;
-        }
-
         if (!isIvaDirty) setManualIVA(ivaCalculated);
-        if (!isRetDirty) setManualRetencion(retencion);
-        if (!isPercDirty) setManualPercepcion(percepcion);
 
         const currentIva = parseFloat(isIvaDirty ? manualIVA : ivaCalculated) || 0;
-        const currentRet = parseFloat(isRetDirty ? manualRetencion : retencion) || 0;
-        const currentPerc = parseFloat(isPercDirty ? manualPercepcion : percepcion) || 0;
+        const currentRet = parseFloat(manualRetencion) || 0;
+        const currentPerc = parseFloat(manualPercepcion) || 0;
         const currentFov = parseFloat(manualFovial) || 0;
         const currentCot = parseFloat(manualCotrans) || 0;
         const currentAnt = parseFloat(manualAnticipoCuenta) || 0;
@@ -649,7 +620,7 @@ const Expenses = () => {
             total: Math.round(finalTotal * 100) / 100
         });
 
-    }, [totalGravada, totalExenta, totalNosujeta, gravadasImportaciones, gravadasInternaciones, ivaImportaciones, tipoDocId, esNotaCredito, selectedProvider, currentCompany, isIvaDirty, isRetDirty, isPercDirty, manualIVA, manualRetencion, manualPercepcion, manualFovial, manualCotrans, manualAnticipoCuenta, manualMontoSujeto, taxSettings]);
+    }, [totalGravada, totalExenta, totalNosujeta, gravadasImportaciones, gravadasInternaciones, ivaImportaciones, tipoDocId, esNotaCredito, selectedProvider, isIvaDirty, manualIVA, manualRetencion, manualPercepcion, manualFovial, manualCotrans, manualAnticipoCuenta, manualMontoSujeto, taxSettings]);
 
     const handleGravadaChange = (e) => {
         const val = e.target.value;
@@ -791,13 +762,11 @@ const Expenses = () => {
 
                 if (ret > 0) {
                     setManualRetencion(ret);
-                    setIsRetDirty(true);
                     filledFields.push('Retención');
                 }
 
                 if (perc > 0) {
                     setManualPercepcion(perc);
-                    setIsPercDirty(true);
                     filledFields.push('Percepción');
                 }
 
@@ -922,8 +891,6 @@ const Expenses = () => {
         setManualAnticipoCuenta(0);
         setManualMontoSujeto(0);
         setIsIvaDirty(false);
-        setIsRetDirty(false);
-        setIsPercDirty(false);
 
         const today = getTodayString();
         setFecha(today);
@@ -1097,8 +1064,6 @@ const Expenses = () => {
             setManualAnticipoCuenta(parseFloat(detail.anticipo_cuenta || 0));
             setManualMontoSujeto(parseFloat(detail.monto_sujeto || 0));
             setIsIvaDirty(true);
-            setIsRetDirty(true);
-            setIsPercDirty(true);
 
             setIsFormOpen(true);
             toast.dismiss(loadToast);
@@ -1811,8 +1776,6 @@ const Expenses = () => {
                                                         const num = parseFloat(totalGravada) || 0;
                                                         setManualIVA(Math.round(num * 0.13 * 100) / 100);
                                                     }
-                                                    setIsRetDirty(false);
-                                                    setIsPercDirty(false);
                                                 }}
                                                 className={inputCls}
                                             >
@@ -2280,7 +2243,7 @@ const Expenses = () => {
                                         <div className="bg-slate-50/70 p-2 rounded-xl border border-slate-200/80 focus-within:border-rose-600 focus-within:bg-rose-50/20 focus-within:ring-2 focus-within:ring-rose-600/40 transition-all">
                                             <div className="flex items-center justify-between mb-1">
                                                 <label className="text-[9px] font-bold text-slate-600 uppercase tracking-tight truncate">Retención 1%</label>
-                                                {isRetDirty && <span className="text-[7px] text-amber-600 font-bold uppercase">Manual</span>}
+                                                <span className="text-[7px] text-slate-400 font-bold uppercase">Manual</span>
                                             </div>
                                             <div className="relative">
                                                 <span className="absolute left-2 top-1/2 -translate-y-1/2 text-rose-400 font-mono font-bold text-[10px]">$</span>
@@ -2291,7 +2254,6 @@ const Expenses = () => {
                                                     value={manualRetencion}
                                                     onChange={(e) => {
                                                         setManualRetencion(e.target.value);
-                                                        setIsRetDirty(true);
                                                     }}
                                                     onFocus={handleFocusSelect}
                                                     placeholder="0.00"
@@ -2303,7 +2265,7 @@ const Expenses = () => {
                                         <div className="bg-slate-50/70 p-2 rounded-xl border border-slate-200/80 focus-within:border-amber-600 focus-within:bg-amber-50/20 focus-within:ring-2 focus-within:ring-amber-600/40 transition-all">
                                             <div className="flex items-center justify-between mb-1">
                                                 <label className="text-[9px] font-bold text-slate-600 uppercase tracking-tight truncate">Percepción 1%</label>
-                                                {isPercDirty && <span className="text-[7px] text-amber-600 font-bold uppercase">Manual</span>}
+                                                <span className="text-[7px] text-slate-400 font-bold uppercase">Manual</span>
                                             </div>
                                             <div className="relative">
                                                 <span className="absolute left-2 top-1/2 -translate-y-1/2 text-amber-400 font-mono font-bold text-[10px]">$</span>
@@ -2314,7 +2276,6 @@ const Expenses = () => {
                                                     value={manualPercepcion}
                                                     onChange={(e) => {
                                                         setManualPercepcion(e.target.value);
-                                                        setIsPercDirty(true);
                                                     }}
                                                     onFocus={handleFocusSelect}
                                                     placeholder="0.00"
