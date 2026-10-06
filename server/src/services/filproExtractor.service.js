@@ -78,7 +78,7 @@ class FilproExtractorService {
     /**
      * Get or refresh a valid JWT session for a company
      */
-    async getValidSession(companyId, filproEmail, rawOrEncryptedPassword) {
+    async getValidSession(companyId, filproEmail, rawOrEncryptedPassword, forceRefresh = false) {
         let password = rawOrEncryptedPassword;
         if (password.includes(':')) {
             const decrypted = decrypt(password);
@@ -89,28 +89,30 @@ class FilproExtractorService {
 
         // 1. If we have an in-memory cached token valid for at least 3 more minutes, reuse it
         const cached = this.sessionCache.get(companyId);
-        if (cached && cached.token && cached.expiresAt && cached.expiresAt > (now + 180000)) {
+        if (!forceRefresh && cached && cached.token && cached.expiresAt && cached.expiresAt > (now + 180000)) {
             return cached;
         }
 
         // 2. Check persistent token cache in database
-        try {
-            const [dbRows] = await pool.query(
-                'SELECT filpro_token, filpro_refresh_token, filpro_token_expires_at, filpro_company_id FROM filpro_connections WHERE company_id = ? LIMIT 1',
-                [companyId]
-            );
-            if (dbRows.length > 0 && dbRows[0].filpro_token && dbRows[0].filpro_token_expires_at > (now + 180000)) {
-                const dbSession = {
-                    token: dbRows[0].filpro_token,
-                    refreshToken: dbRows[0].filpro_refresh_token,
-                    expiresAt: Number(dbRows[0].filpro_token_expires_at),
-                    filproCompanyId: dbRows[0].filpro_company_id
-                };
-                this.sessionCache.set(companyId, dbSession);
-                return dbSession;
+        if (!forceRefresh) {
+            try {
+                const [dbRows] = await pool.query(
+                    'SELECT filpro_token, filpro_refresh_token, filpro_token_expires_at, filpro_company_id FROM filpro_connections WHERE company_id = ? LIMIT 1',
+                    [companyId]
+                );
+                if (dbRows.length > 0 && dbRows[0].filpro_token && dbRows[0].filpro_token_expires_at > (now + 180000)) {
+                    const dbSession = {
+                        token: dbRows[0].filpro_token,
+                        refreshToken: dbRows[0].filpro_refresh_token,
+                        expiresAt: Number(dbRows[0].filpro_token_expires_at),
+                        filproCompanyId: dbRows[0].filpro_company_id
+                    };
+                    this.sessionCache.set(companyId, dbSession);
+                    return dbSession;
+                }
+            } catch (dbErr) {
+                // ignore DB lookup error
             }
-        } catch (dbErr) {
-            // ignore DB lookup error
         }
 
         // 3. If token is close to expiry but we have a refreshToken, try refresh
@@ -250,12 +252,27 @@ class FilproExtractorService {
             return [];
         }
 
-        const res = await this._rawRequest(
+        let res = await this._rawRequest(
             `${this.apiBaseUrl}/configuration/establishment/findByCompanyId`,
             'POST',
             { companyId: targetCompanyId },
             { 'Authorization': `Bearer ${session.token}` }
         );
+
+        if (res.statusCode === 401 || res.statusCode === 403) {
+            // Token might be invalid on server, force refresh and retry
+            session = await this.getValidSession(companyId, filproEmail, password, true);
+            targetCompanyId = forcedFilproCompanyId || session.filproCompanyId;
+
+            if (!targetCompanyId) return [];
+
+            res = await this._rawRequest(
+                `${this.apiBaseUrl}/configuration/establishment/findByCompanyId`,
+                'POST',
+                { companyId: targetCompanyId },
+                { 'Authorization': `Bearer ${session.token}` }
+            );
+        }
 
         if (res.statusCode === 200 && Array.isArray(res.body)) {
             return res.body.map(est => ({
@@ -308,12 +325,26 @@ class FilproExtractorService {
                 filter: ''
             };
 
-            const res = await this._rawRequest(
+            let res = await this._rawRequest(
                 `${this.apiBaseUrl}/report/fiscalDocumentReport/get-report`,
                 'POST',
                 reqPayload,
                 { 'Authorization': `Bearer ${session.token}` }
             );
+
+            if (res.statusCode === 401 || res.statusCode === 403) {
+                // Token might be invalid on server, force refresh and retry
+                session = await this.getValidSession(companyId, filproEmail, password, true);
+                targetCompanyId = forcedFilproCompanyId || session.filproCompanyId;
+                reqPayload.companyId = targetCompanyId; // update in case it changed
+
+                res = await this._rawRequest(
+                    `${this.apiBaseUrl}/report/fiscalDocumentReport/get-report`,
+                    'POST',
+                    reqPayload,
+                    { 'Authorization': `Bearer ${session.token}` }
+                );
+            }
 
             if (res.statusCode !== 200) {
                 const msg = res.body?.mensaje || `Error al consultar reporte de DTEs en FilPro (HTTP ${res.statusCode})`;
