@@ -2221,6 +2221,7 @@ const GasCloseout = () => {
             cliente_nombre: '',
             producto_codigo: '',
             producto_descripcion: '',
+            producto_tipo: 'combustible',
             despachador_id: defaultDesp,
             cantidad: 0,
             precio: 0,
@@ -2253,6 +2254,7 @@ const GasCloseout = () => {
             cliente_nombre: '',
             producto_codigo: '',
             producto_descripcion: '',
+            producto_tipo: 'combustible',
             despachador_id: defaultDesp,
             cantidad: 0,
             precio: 0,
@@ -3752,6 +3754,9 @@ const GasCloseout = () => {
                     toDateStrDDMMYYYY={toDateStrDDMMYYYY}
                     loadCustomers={loadCustomers}
                     fuelProducts={fuelProducts}
+                    lubricantProducts={lubricantProducts}
+                    branchId={closeoutBranchId || editData?.branch_id || user?.branch_id}
+                    closeoutId={closeoutId}
                     despachadoresOptions={despachadoresOptions}
                     handleCreditoChange={handleCreditoChange}
                     handleRemoveCredito={handleRemoveCredito}
@@ -3769,6 +3774,9 @@ const GasCloseout = () => {
                     vales={vales}
                     loadCustomers={loadCustomers}
                     fuelProducts={fuelProducts}
+                    lubricantProducts={lubricantProducts}
+                    branchId={closeoutBranchId || editData?.branch_id || user?.branch_id}
+                    closeoutId={closeoutId}
                     despachadoresOptions={despachadoresOptions}
                     handleValeChange={handleValeChange}
                     handleRemoveVale={handleRemoveVale}
