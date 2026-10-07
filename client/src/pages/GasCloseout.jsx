@@ -2134,6 +2134,7 @@ const GasCloseout = () => {
             cliente_nombre: '',
             producto_codigo: '',
             producto_descripcion: '',
+            producto_tipo: 'combustible',
             cantidad: 0,
             valor: 0,
             total: 0,
@@ -2393,6 +2394,43 @@ const GasCloseout = () => {
         });
         return Object.values(map);
     }, [nozzlesData]);
+
+    const targetBranchForLubricants = closeoutBranchId || editData?.branch_id || user?.branch_id;
+    const { data: lubricantCatalogData = [] } = useQuery({
+        queryKey: ['products-lubricants-catalog', targetBranchForLubricants, closeoutId],
+        queryFn: async () => unwrapList(await axios.get('/api/products/lubricants', {
+            params: {
+                branch_id: targetBranchForLubricants || undefined,
+                closeout_id: closeoutId || undefined
+            }
+        })),
+        enabled: !!targetBranchForLubricants
+    });
+
+    const lubricantProducts = useMemo(() => {
+        const map = {};
+        (Array.isArray(lubricantCatalogData) ? lubricantCatalogData : []).forEach(p => {
+            if (p.codigo && !map[p.codigo]) {
+                map[p.codigo] = {
+                    id: p.id,
+                    codigo: p.codigo,
+                    descripcion: p.descripcion || p.nombre,
+                    precio: parseFloat(p.precio_unitario) || 0
+                };
+            }
+        });
+        (Array.isArray(lubricantReadings) ? lubricantReadings : []).forEach(r => {
+            if (r.producto_codigo && !map[r.producto_codigo]) {
+                map[r.producto_codigo] = {
+                    id: r.producto_id,
+                    codigo: r.producto_codigo,
+                    descripcion: r.producto_descripcion,
+                    precio: parseFloat(r.precio) || 0
+                };
+            }
+        });
+        return Object.values(map);
+    }, [lubricantCatalogData, lubricantReadings]);
 
     const fuelPriceByCode = useMemo(() => {
         const map = {};
@@ -3614,6 +3652,9 @@ const GasCloseout = () => {
                     descuentos={descuentos}
                     loadCustomers={loadCustomers}
                     fuelProducts={fuelProducts}
+                    lubricantProducts={lubricantProducts}
+                    branchId={closeoutBranchId || editData?.branch_id || user?.branch_id}
+                    closeoutId={closeoutId}
                     despachadoresOptions={despachadoresOptions}
                     handleDescuentoChange={handleDescuentoChange}
                     handleRemoveDescuento={handleRemoveDescuento}

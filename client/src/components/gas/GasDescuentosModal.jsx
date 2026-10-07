@@ -1,6 +1,10 @@
+import { useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import axios from 'axios';
 import { Percent, X, Plus, Trash2, Save, Loader2 } from 'lucide-react';
 import SearchableSelect from '../ui/SearchableSelect';
 import Money, { MoneyInput } from '../ui/Money';
+import { unwrapList } from '../../utils/apiUtils';
 
 const GasDescuentosModal = ({
     isOpen,
@@ -10,6 +14,9 @@ const GasDescuentosModal = ({
     descuentos = [],
     loadCustomers,
     fuelProducts = [],
+    lubricantProducts = [],
+    branchId,
+    closeoutId,
     despachadoresOptions = [],
     handleDescuentoChange,
     handleRemoveDescuento,
@@ -18,6 +25,36 @@ const GasDescuentosModal = ({
     handleSaveSection,
     isSaving = false
 }) => {
+    const { data: fetchedLubricants = [] } = useQuery({
+        queryKey: ['products-lubricants-modal', branchId, closeoutId],
+        queryFn: async () => unwrapList(await axios.get('/api/products/lubricants', {
+            params: {
+                branch_id: branchId || undefined,
+                closeout_id: closeoutId || undefined
+            }
+        })),
+        enabled: isOpen && (!lubricantProducts || lubricantProducts.length === 0)
+    });
+
+    const allLubricants = useMemo(() => {
+        if (lubricantProducts && lubricantProducts.length > 0) return lubricantProducts;
+        return (Array.isArray(fetchedLubricants) ? fetchedLubricants : []).map(p => ({
+            id: p.id,
+            codigo: p.codigo,
+            descripcion: p.descripcion || p.nombre,
+            precio: parseFloat(p.precio_unitario) || 0
+        }));
+    }, [lubricantProducts, fetchedLubricants]);
+
+    const [productType, setProductType] = useState('combustible');
+
+    const handleToggleProductType = () => {
+        if (estado === 'cerrado') return;
+        setProductType(prev => prev === 'lubricante' ? 'combustible' : 'lubricante');
+    };
+
+    const currentProducts = productType === 'lubricante' ? allLubricants : fuelProducts;
+
     if (!isOpen) return null;
 
     const handleRowEnter = (index) => {
@@ -75,7 +112,23 @@ const GasDescuentosModal = ({
                                         <tr className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-24">Documento</th>
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-40">Cliente</th>
-                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-28">Producto</th>
+                                            <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 min-w-[210px]">
+                                                <div className="flex items-center justify-between gap-1.5">
+                                                    <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">
+                                                        Producto <span className={productType === 'lubricante' ? 'text-amber-600' : 'text-indigo-600'}>({productType === 'lubricante' ? 'Lubricantes' : 'Combustibles'})</span>
+                                                    </span>
+                                                    {estado !== 'cerrado' && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={handleToggleProductType}
+                                                            className="text-[9px] font-bold text-indigo-600 hover:text-indigo-800 underline normal-case cursor-pointer whitespace-nowrap"
+                                                            title={`Cambiar catálogo a ${productType === 'lubricante' ? 'combustibles' : 'lubricantes'}`}
+                                                        >
+                                                            Cambiar a {productType === 'lubricante' ? 'Combustibles' : 'Lubricantes'}
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </th>
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 w-44">Despachador</th>
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 text-right w-16">Cantidad</th>
                                             <th className="px-1.5 py-1 bg-slate-50 border-b border-slate-100 text-right w-16">Valor</th>
@@ -125,20 +178,26 @@ const GasDescuentosModal = ({
                                                 </td>
                                                 <td className="px-1.5 py-1" data-label="Producto">
                                                     <select
-                                                        value={d.producto_codigo}
+                                                        value={d.producto_codigo || ''}
                                                         onChange={(e) => {
                                                             const cod = e.target.value;
-                                                            const prod = fuelProducts.find(p => p.codigo === cod);
+                                                            const prod = currentProducts.find(p => p.codigo === cod)
+                                                                || allLubricants.find(p => p.codigo === cod)
+                                                                || fuelProducts.find(p => p.codigo === cod);
                                                             handleDescuentoChange(d.id, 'producto_codigo', cod);
                                                             handleDescuentoChange(d.id, 'producto_descripcion', prod ? prod.descripcion : '');
+                                                            handleDescuentoChange(d.id, 'producto_tipo', productType);
                                                         }}
                                                         disabled={estado === 'cerrado'}
                                                         className="w-full bg-white border border-slate-200 rounded text-[11px] py-0.5 px-1 outline-none focus:ring-2 focus:ring-indigo-500/20"
                                                     >
-                                                        <option value="">Seleccionar...</option>
-                                                        {fuelProducts.map(p => (
+                                                        <option value="">Seleccionar {productType === 'lubricante' ? 'lubricante' : 'combustible'}...</option>
+                                                        {(Array.isArray(currentProducts) ? currentProducts : []).map(p => (
                                                             <option key={p.codigo} value={p.codigo}>{p.codigo} — {p.descripcion}</option>
                                                         ))}
+                                                        {d.producto_codigo && !currentProducts.some(p => p.codigo === d.producto_codigo) && (
+                                                            <option value={d.producto_codigo}>{d.producto_codigo} — {d.producto_descripcion || d.producto_codigo}</option>
+                                                        )}
                                                     </select>
                                                 </td>
                                                 <td className="px-1.5 py-1" data-label="Despachador">
