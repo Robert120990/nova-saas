@@ -271,6 +271,7 @@ const createExpense = async (req, res) => {
             connection,
             companyId,
             providerId: provider_id,
+            tipoDocumentoId: tipo_documento_id,
             numeroDocumento: numero_documento,
             numeroControl,
             targetType: 'expense'
@@ -418,6 +419,7 @@ const updateExpense = async (req, res) => {
             connection,
             companyId,
             providerId: provider_id,
+            tipoDocumentoId: tipo_documento_id,
             numeroDocumento: numero_documento,
             numeroControl,
             excludeId: id,

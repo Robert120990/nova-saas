@@ -275,6 +275,7 @@ const createPurchase = async (req, res) => {
             connection,
             companyId,
             providerId: provider_id,
+            tipoDocumentoId: tipo_documento_id,
             numeroDocumento: numero_documento,
             numeroControl,
             targetType: 'purchase'
@@ -536,6 +537,7 @@ const updatePurchase = async (req, res) => {
             connection,
             companyId,
             providerId: provider_id,
+            tipoDocumentoId: tipo_documento_id,
             numeroDocumento: numero_documento,
             numeroControl,
             excludeId: id,
