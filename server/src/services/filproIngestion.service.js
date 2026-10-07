@@ -121,9 +121,34 @@ class FilproIngestionService {
                 else if (code === 'C3') totalPercepcion += val;
             }
 
-            // Fallback IVA if CCF (03) has separate IVA or if not explicitly in tributos
-            if (totalIva === 0 && tipoDte === '03' && totalGravado > 0) {
-                totalIva = parseFloat((totalGravado * 0.13).toFixed(2));
+            // Extract or calculate IVA
+            if (totalIva === 0) {
+                if (tipoDte === '03' && totalGravado > 0) {
+                    // Fallback for CCF (03) where prices are net
+                    totalIva = parseFloat((totalGravado * 0.13).toFixed(2));
+                } else if (tipoDte === '01') {
+                    // Factura (01): FilPro places IVA in resumen.totalIva or cuerpoDocumento.ivaItem
+                    if (resumen.totalIva && parseFloat(resumen.totalIva) > 0) {
+                        totalIva = parseFloat(resumen.totalIva);
+                    } else if (cuerpoDocumento.length > 0) {
+                        const sumItemIva = cuerpoDocumento.reduce((acc, it) => acc + (parseFloat(it.ivaItem) || 0), 0);
+                        if (sumItemIva > 0) totalIva = Math.round(sumItemIva * 100) / 100;
+                    }
+
+                    // Fallback using Salvadoran formula if still zero
+                    if (totalIva === 0 && totalGravado > 0) {
+                        totalIva = Math.round((totalGravado - (totalGravado / 1.13)) * 100) / 100;
+                    }
+                }
+            }
+
+            // In Nova-SaaS sales_headers, total_gravado must store net base gravada (sin IVA).
+            // For DTE 01, FilPro exports resumen.totalGravada with IVA included.
+            // If totalGravado + FOVIAL + COTRANS matches totalPagar, totalGravado includes IVA and must be netted.
+            let finalTotalGravado = totalGravado;
+            const grossSumWithIva = totalGravado + totalFovial + totalCotrans + totalExento + totalNoSujeto;
+            if (tipoDte === '01' && totalIva > 0 && Math.abs(grossSumWithIva - totalPagar) <= 0.05) {
+                finalTotalGravado = Math.round((totalGravado - totalIva) * 100) / 100;
             }
 
             // Sello de recepción
@@ -232,7 +257,7 @@ class FilproIngestionService {
                 estado: saleEstado,
                 fecha_emision: fecEmi,
                 hora_emision: horEmi,
-                total_gravado: totalGravado,
+                total_gravado: finalTotalGravado,
                 total_exento: totalExento,
                 total_nosujetas: totalNoSujeto,
                 fovial: totalFovial,
