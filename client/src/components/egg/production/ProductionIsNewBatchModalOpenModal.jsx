@@ -720,7 +720,8 @@ export default function ProductionIsNewBatchModalOpenModal({ model, open = model
                                                                 labJson = {};
                                                             }
                                                             const mpTag = labJson.reception_lot ? `[${labJson.reception_lot}] ` : '';
-                                                            const aaTag = isAA ? (m.egg_classification?.toLowerCase().includes('aa y a') ? '[⭐ Grado AA y A] ' : '[⭐ Grado AA] ') : '';
+                                                            const isDoubleAA = (m.egg_classification || '').includes('/') || (m.egg_classification || '').toLowerCase().includes('aa y a');
+                                                            const aaTag = isAA ? (isDoubleAA ? '[⭐ Grado AA / A] ' : '[⭐ Grado AA] ') : '';
 
                                                             return (
                                                                 <option

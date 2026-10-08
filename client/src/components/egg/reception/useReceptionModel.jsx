@@ -199,8 +199,8 @@ export default function useReceptionModel() {
         if (s === 'rechazado' || s === 'no_conforme' || g.includes('no conforme') || g.includes('rechaz')) {
             return 'bg-rose-600 text-white border-rose-700 shadow-sm font-black';
         }
-        // Grado AA y A (Doble Clasificación)
-        if (g.includes('aa') && (g.includes('y') || g.includes('&'))) {
+        // Grado AA / A (Doble Clasificación)
+        if (g.includes('aa') && (g.includes('/') || g.includes('y') || g.includes('&'))) {
             return 'bg-gradient-to-r from-purple-100 to-emerald-100 text-purple-900 border-purple-300 font-black shadow-2xs';
         }
         // Grado AA
@@ -688,7 +688,7 @@ export default function useReceptionModel() {
             egg_color: rm.egg_color || 'blanco',
             egg_size: rm.egg_size || 'L',
             sample_egg_weight_g: sampleWeight,
-            egg_classification: rm.egg_classification || 'Grado A',
+            egg_classification: (rm.egg_classification === 'Grado AA y A' ? 'Grado AA / A' : rm.egg_classification) || 'Grado A',
 
             physicochemical: {
                 ...defaultPhysicochemical,

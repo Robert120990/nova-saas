@@ -278,7 +278,7 @@ export default function ReceptionIsCreateModalOpenModal({ model, open = model.is
                                             className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 shadow-xs"
                                         >
                                             <option value="Grado AA">Grado AA (Extra Especial)</option>
-                                            <option value="Grado AA y A">Grado AA y A (Doble Clasificación: Selección Especial)</option>
+                                            <option value="Grado AA / A">Grado AA / A</option>
                                             <option value="Grado A">Grado A (Estándar Premium)</option>
                                             <option value="Grado B">Grado B (Comercial)</option>
                                             <option value="Grado Industrial">Grado Industrial</option>

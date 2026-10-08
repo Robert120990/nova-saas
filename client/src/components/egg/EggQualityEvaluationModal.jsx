@@ -242,7 +242,7 @@ const EggQualityEvaluationModal = ({
                                                 className="w-full px-3 py-2 bg-white border-2 border-slate-900 rounded-xl text-xs font-black text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500/20 shadow-xs"
                                             >
                                                 <option value="Grado AA">Grado AA (Extra Especial / Cáscara Impecable)</option>
-                                                <option value="Grado AA y A">Grado AA y A (Doble Clasificación: Selección Especial)</option>
+                                                <option value="Grado AA / A">Grado AA / A</option>
                                                 <option value="Grado A">Grado A (Estándar Premium de Planta)</option>
                                                 <option value="Grado B">Grado B (Comercial / Cáscara Irregular)</option>
                                                 <option value="Grado Industrial">Grado Industrial (Quiebre Inmediato)</option>
