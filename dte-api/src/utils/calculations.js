@@ -20,8 +20,8 @@ const round6 = (num) => {
  */
 function calculateItem(item, tipoDte = '01', ivaRate = 13) {
     const quantity = parseFloat(item.cantidad) || 0;
-    const priceInput = parseFloat(item.precioUnitario) || 0;
-    const discountInput = parseFloat(item.montoDescu) || 0;
+    const priceInput = parseFloat(item.precioUnitario ?? item.precio_unitario ?? item.precio ?? item.price) || 0;
+    const discountInput = parseFloat(item.montoDescu ?? item.monto_descuento ?? item.descuento) || 0;
 
     const rate = ivaRate / 100;
     const divisor = 1 + rate;

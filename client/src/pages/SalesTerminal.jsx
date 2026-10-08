@@ -448,6 +448,10 @@ const SalesTerminal = () => {
         return branchList.find(b => String(b.id) === String(bId)) || null;
     }, [sellerSession?.branch_id, user?.branch_id, branchList]);
 
+    const remisionConValores = useMemo(() => {
+        return Boolean(currentBranch?.remision_con_valores === 1 || currentBranch?.remision_con_valores === true || currentBranch?.remision_con_valores === '1');
+    }, [currentBranch?.remision_con_valores]);
+
     const userPermissions = useMemo(() => {
         if (!user) return [];
         if (user.role === 'SuperAdmin') return ['ALL'];
@@ -1852,8 +1856,8 @@ const SalesTerminal = () => {
             }
         }
 
-        // 3. Validar que el total pagado cubra la venta (excepto crédito, CR y NC)
-        if (tipoDte !== '07' && tipoDte !== '05') {
+        // 3. Validar que el total pagado cubra la venta (excepto crédito, CR, NC y Nota de Remisión)
+        if (tipoDte !== '07' && tipoDte !== '05' && tipoDte !== '04') {
             const totalPaid = payments.reduce((acc, p) => acc + parseFloat(p.monto), 0);
             if (condicionPago === '1' && totalPaid < (totals.total - 0.01)) {
                 return toast.error('El monto pagado es insuficiente para una venta al contado');
@@ -2107,7 +2111,7 @@ const SalesTerminal = () => {
             }
 
             setQuickProd(prodData);
-            setQuickPrecio(tipoDte === '04' ? '0.00001' : finalPrice.toString());
+            setQuickPrecio(tipoDte === '04' && !remisionConValores ? '0.00001' : finalPrice.toString());
             setQuickCant('1');
             setQuickDesc(prodData.nombre || prodData.name || '');
             quickAddFocusRef.current = true;
@@ -2124,8 +2128,8 @@ const SalesTerminal = () => {
             return;
         }
 
-        // Regla de Negocio: Nota de Remisión siempre tiene precio simbólico
-        if (tipoDte === '04') {
+        // Regla de Negocio: Nota de Remisión tiene precio simbólico si no está valorizada
+        if (tipoDte === '04' && !remisionConValores) {
             itemPrice = 0.00001;
         }
 
@@ -2220,7 +2224,7 @@ const SalesTerminal = () => {
             ? parseFloat(matched.precio_unitario) 
             : (lot.weight_per_unit_lbs ? parseFloat(lot.weight_per_unit_lbs) * 1.5 : 30.00);
 
-        if (tipoDte === '04') unitPrice = 0.00001;
+        if (tipoDte === '04' && !remisionConValores) unitPrice = 0.00001;
 
         const productRule = matched?.id ? getProductDiscountRule(matched.id) : null;
         setCart(prev => [...prev, {
@@ -2259,7 +2263,7 @@ const SalesTerminal = () => {
 
         if (qty > 0) {
             let finalPrice = price;
-            if (tipoDte === '04') finalPrice = 0.00001;
+            if (tipoDte === '04' && !remisionConValores) finalPrice = 0.00001;
 
             setCart([...cart, {
                 id: fuelProd.id,
@@ -2382,8 +2386,8 @@ const SalesTerminal = () => {
     const autoAddScannedProduct = (product, isCombo = false, price = 0, isAgreed = false) => {
         let finalPrice = price;
 
-        // Regla de Negocio: Nota de Remisión siempre tiene precio simbólico
-        if (tipoDte === '04') {
+        // Regla de Negocio: Nota de Remisión tiene precio simbólico si no está valorizada
+        if (tipoDte === '04' && !remisionConValores) {
             finalPrice = 0.00001;
         }
 
@@ -2555,8 +2559,8 @@ const SalesTerminal = () => {
         const qty = parseFloat(quickCant);
         let price = parseFloat(quickPrecio);
 
-        // Regla de Negocio: Nota de Remisión siempre tiene precio simbólico
-        if (tipoDte === '04') {
+        // Regla de Negocio: Nota de Remisión tiene precio simbólico si no está valorizada
+        if (tipoDte === '04' && !remisionConValores) {
             price = 0.00001;
         }
 
@@ -2679,8 +2683,8 @@ const SalesTerminal = () => {
                     }
                 }
 
-                // Validación para Nota de Remisión (04) - Precio bloqueado
-                if (tipoDte === '04' && field === 'precio') {
+                // Validación para Nota de Remisión (04) sin valorizar - Precio bloqueado
+                if (tipoDte === '04' && !remisionConValores && field === 'precio') {
                     return item;
                 }
 
@@ -3793,7 +3797,7 @@ const SalesTerminal = () => {
                             <div className="space-y-3 py-2">
                                 <button 
                                     onClick={handleProcessSale}
-                                    disabled={processSale.isPending || (condicionPago === '1' && payments.reduce((acc, p) => acc + parseFloat(p.monto || 0), 0) < (totals.total - 0.01))}
+                                    disabled={processSale.isPending || (tipoDte !== '04' && tipoDte !== '05' && tipoDte !== '07' && condicionPago === '1' && payments.reduce((acc, p) => acc + parseFloat(p.monto || 0), 0) < (totals.total - 0.01))}
                                     className={`w-full text-white py-5 rounded-[2.5rem] font-black uppercase text-sm tracking-[0.2em] shadow-2xl transition-all active:scale-95 flex items-center justify-center gap-3 ${
                                         processSale.isPending 
                                             ? 'bg-indigo-700 cursor-wait shadow-indigo-500/30' 

@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import Table from '../components/ui/Table';
-import Modal from '../components/ui/Modal';
-import { Plus, Edit, Trash2, Phone, Mail, Home, Percent, Info } from 'lucide-react';
+import { BranchModal } from '../components/branches';
+import { Plus, Edit, Trash2, Phone, Mail, Home, Percent, FileCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { useConfirm } from '../context/ConfirmContext';
 
@@ -24,28 +24,11 @@ const formatPercentages = (val) => {
 
 const SAVE_TIMEOUT_MS = 15000;
 
-const REQUIRED_FIELDS = [
-    ['codigo', 'Código'],
-    ['tipo_establecimiento', 'Tipo de establecimiento'],
-    ['nombre', 'Nombre'],
-    ['ambiente', 'Ambiente'],
-    ['departamento', 'Departamento'],
-    ['municipio', 'Municipio'],
-    ['distrito', 'Distrito'],
-    ['direccion', 'Dirección']
-];
-
 const Branches = () => {
     const queryClient = useQueryClient();
     const confirm = useConfirm();
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedBranch, setSelectedBranch] = useState(null);
-    const [selectedDept, setSelectedDept] = useState('');
-    const [selectedMun, setSelectedMun] = useState('');
-    const [selectedDistrito, setSelectedDistrito] = useState('');
-    const [selectedEnv, setSelectedEnv] = useState('2');
-    const [omitirDigitoVerificador, setOmitirDigitoVerificador] = useState(false);
-    const [previewUrl, setPreviewUrl] = useState(null);
 
     const { data: branches = [] } = useQuery({
         queryKey: ['branches'],
@@ -57,16 +40,14 @@ const Branches = () => {
         queryFn: async () => (await axios.get('/api/catalogs/departments')).data
     });
 
-    const { data: municipalities = [] } = useQuery({
-        queryKey: ['catalogs', 'municipalities', selectedDept],
-        queryFn: async () => (await axios.get(`/api/catalogs/municipalities?dep_code=${selectedDept}`)).data,
-        enabled: !!selectedDept
+    const { data: establishmentTypes = [] } = useQuery({
+        queryKey: ['catalogs', 'cat_009_tipo_establecimiento'],
+        queryFn: async () => (await axios.get('/api/catalogs/cat_009_tipo_establecimiento')).data
     });
 
-    const { data: distritos = [] } = useQuery({
-        queryKey: ['catalogs', 'distritos', selectedDept],
-        queryFn: async () => (await axios.get(`/api/catalogs/districts?dep_code=${selectedDept}`)).data,
-        enabled: !!selectedDept
+    const { data: environments = [] } = useQuery({
+        queryKey: ['catalogs', 'cat_001_ambiente'],
+        queryFn: async () => (await axios.get('/api/catalogs/cat_001_ambiente')).data
     });
 
     const mutation = useMutation({
@@ -106,43 +87,15 @@ const Branches = () => {
         if (ok) deleteMutation.mutate(id);
     };
 
-    const { data: establishmentTypes = [] } = useQuery({
-        queryKey: ['catalogs', 'cat_009_tipo_establecimiento'],
-        queryFn: async () => (await axios.get('/api/catalogs/cat_009_tipo_establecimiento')).data
-    });
-
-    const { data: environments = [] } = useQuery({
-        queryKey: ['catalogs', 'cat_001_ambiente'],
-        queryFn: async () => (await axios.get('/api/catalogs/cat_001_ambiente')).data
-    });
-
-    const handleSubmit = (e) => {
-        e.preventDefault();
-        const form = e.target;
-        const formData = new FormData(form);
-        const values = Object.fromEntries(formData.entries());
-        const missing = REQUIRED_FIELDS.filter(([name]) => !String(values[name] ?? '').trim());
-        if (missing.length > 0) {
-            toast.error(`Complete los siguientes campos: ${missing.map(([, label]) => label).join(', ')}`);
-            form.querySelector(`[name="${missing[0][0]}"]`)?.focus();
-            return;
-        }
-        mutation.mutate({ formData, editId: selectedBranch?.id || null });
-    };
-
     const handleEdit = (branch) => {
         setSelectedBranch(branch);
-        setSelectedDept(branch.departamento);
-        setSelectedMun(branch.municipio);
-        setSelectedDistrito(branch.distrito);
-        setSelectedEnv(branch.ambiente || '2');
-        setOmitirDigitoVerificador(!!branch.omitir_digito_verificador);
-        setPreviewUrl(null);
         setIsModalOpen(true);
     };
 
-    const fieldCls = "w-full px-3 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all text-sm";
-    const labelCls = "block text-xs font-semibold text-slate-500 mb-1";
+    const handleCreate = () => {
+        setSelectedBranch(null);
+        setIsModalOpen(true);
+    };
 
     return (
         <div className="space-y-6">
@@ -152,16 +105,7 @@ const Branches = () => {
                     <p className="text-slate-500 mt-1 font-medium">Administra los puntos físicos y virtuales</p>
                 </div>
                 <button 
-                    onClick={() => { 
-                        setSelectedBranch(null); 
-                        setSelectedDept(''); 
-                        setSelectedMun('');
-                        setSelectedDistrito('');
-                        setSelectedEnv('2');
-                        setOmitirDigitoVerificador(false);
-                        setPreviewUrl(null);
-                        setIsModalOpen(true); 
-                    }}
+                    onClick={handleCreate}
                     className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl font-bold transition-all shadow-lg shadow-indigo-600/20 active:scale-95"
                 >
                     <Plus size={20}/>
@@ -185,7 +129,7 @@ const Branches = () => {
                                     {establishmentTypes.find(t => t.code === b.tipo_establecimiento)?.description || 'Sucursal'}
                                 </div>
                                 {b.codigo_mh && <div className="text-[10px] text-slate-400 mt-0.5">MH: {b.codigo_mh}</div>}
-                                <div className="flex items-center gap-1.5 mt-1">
+                                <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
                                     <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded-full border ${
                                         b.ambiente === '2'
                                             ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
@@ -193,6 +137,15 @@ const Branches = () => {
                                     }`}>
                                         {b.ambiente === '2' ? 'Producción' : 'Pruebas'}
                                     </span>
+                                    {b.remision_con_valores ? (
+                                        <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded-full border bg-indigo-50 text-indigo-700 border-indigo-200 flex items-center gap-1" title="Emite Notas de Remisión con precios reales y montos totales">
+                                            <FileCheck size={10} /> Remisión valorizada
+                                        </span>
+                                    ) : (
+                                        <span className="text-[9px] font-medium uppercase px-1.5 py-0.5 rounded-full border bg-slate-50 text-slate-500 border-slate-200" title="Emite Notas de Remisión con precio simbólico ($0.00)">
+                                            Remisión $0
+                                        </span>
+                                    )}
                                 </div>
                             </td>
                             <td className="px-6 py-4">
@@ -223,211 +176,16 @@ const Branches = () => {
                 />
             </div>
 
-            <Modal 
-                isOpen={isModalOpen} 
-                onClose={() => setIsModalOpen(false)} 
-                title={selectedBranch ? 'Editar Establecimiento' : 'Nuevo Establecimiento'}
-                maxWidth="max-w-lg"
-            >
-                <form onSubmit={handleSubmit} className="space-y-4">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                            <label className={labelCls}>Código</label>
-                            <input name="codigo" defaultValue={selectedBranch?.codigo} placeholder="001" className={fieldCls} />
-                        </div>
-                        <div>
-                            <label className={labelCls}>Tipo de Establecimiento</label>
-                            <select name="tipo_establecimiento" defaultValue={selectedBranch?.tipo_establecimiento || '01'} className={fieldCls}>
-                                {establishmentTypes
-                                    .map(t => (
-                                    <option key={t.code} value={t.code}>{t.description}</option>
-                                ))}
-                            </select>
-                        </div>
-                    </div>
-                    <div>
-                        <label className={labelCls}>Nombre de Sucursal / Establecimiento</label>
-                        <input name="nombre" defaultValue={selectedBranch?.nombre} placeholder="Ej: Sucursal Escalón" className={fieldCls} />
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                            <label className={labelCls}>Teléfono</label>
-                            <input name="telefono" defaultValue={selectedBranch?.telefono} placeholder="2200-0000" className={fieldCls} />
-                        </div>
-                        <div>
-                            <label className={labelCls}>Correo (Opcional)</label>
-                            <input name="correo" type="email" defaultValue={selectedBranch?.correo} placeholder="sucursal@empresa.com" className={fieldCls} />
-                        </div>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                            <label className={labelCls}>Código MH</label>
-                            <input name="codigo_mh" defaultValue={selectedBranch?.codigo_mh} placeholder="Código Ministerio de Hacienda" className={fieldCls} />
-                        </div>
-                        <div>
-                            <label className={labelCls}>Ambiente de Facturación</label>
-                            <select name="ambiente" value={selectedEnv} onChange={(e) => setSelectedEnv(e.target.value)} className={fieldCls}>
-                                <option value="">Seleccionar</option>
-                                {environments?.map(env => <option key={env.code} value={env.code}>{env.description}</option>)}
-                            </select>
-                        </div>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                            <label className={labelCls}>Departamento</label>
-                            <select
-                                name="departamento"
-                                className={fieldCls}
-                                value={selectedDept}
-                                 onChange={(e) => { setSelectedDept(e.target.value); setSelectedMun(''); setSelectedDistrito(''); }}
-                            >
-                                <option value="">Seleccionar</option>
-                                {departments?.map(d => <option key={d.code} value={d.code}>{d.description}</option>)}
-                            </select>
-                        </div>
-                        <div>
-                            <label className={labelCls}>Municipio</label>
-                            <select name="municipio" value={selectedMun} onChange={(e) => setSelectedMun(e.target.value)} className={fieldCls}>
-                                <option value="">Seleccionar</option>
-                                {municipalities?.map(m => <option key={m.code} value={m.code}>{m.description}</option>)}
-                            </select>
-                        </div>
-                        <div>
-                            <label className={labelCls}>Distrito</label>
-                            <select name="distrito" value={selectedDistrito} onChange={(e) => setSelectedDistrito(e.target.value)} className={fieldCls}>
-                                <option value="">Seleccionar</option>
-                                {distritos?.map(d => <option key={d.code} value={d.code}>{d.description}</option>)}
-                            </select>
-                        </div>
-                    </div>
-                    <div>
-                        <label className={labelCls}>Omitir Dígito Verificador</label>
-                        <button
-                            type="button"
-                            onClick={() => setOmitirDigitoVerificador(v => !v)}
-                            className={`w-full flex items-center justify-between px-4 py-3 border rounded-xl transition-all ${
-                                omitirDigitoVerificador
-                                    ? 'bg-indigo-50 border-indigo-200'
-                                    : 'bg-slate-50 border-slate-200'
-                            }`}
-                        >
-                            <span className="text-sm font-semibold text-slate-700 text-left">
-                                Omitir el último dígito del código al leer en POS
-                            </span>
-                            <span className={`relative inline-flex items-center h-6 w-11 rounded-full transition-colors shrink-0 ${omitirDigitoVerificador ? 'bg-indigo-600' : 'bg-slate-300'}`}>
-                                <span className={`inline-block w-4 h-4 transform rounded-full bg-white transition-transform ${omitirDigitoVerificador ? 'translate-x-6' : 'translate-x-1'}`} />
-                            </span>
-                        </button>
-                        <input
-                            type="hidden"
-                            name="omitir_digito_verificador"
-                            value={omitirDigitoVerificador ? '1' : '0'}
-                        />
-                    </div>
-                    <div className="border-t border-slate-100 pt-3">
-                        <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider ml-1 block mb-2">Políticas de Descuento (POS)</label>
-                        <div className="p-3 bg-slate-50 border border-slate-200/80 rounded-xl space-y-3">
-                            <div>
-                                <label className={labelCls}>Porcentajes Rápidos Disponibles (%)</label>
-                                <input 
-                                    name="discount_percentages" 
-                                    defaultValue={formatPercentages(selectedBranch?.discount_percentages)} 
-                                    placeholder="5, 10, 15, 20" 
-                                    className={fieldCls} 
-                                />
-                                <span className="text-[10px] text-slate-400 mt-1 block">Valores separados por comas. Se mostrarán como botones rápidos en la terminal.</span>
-                            </div>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                <div>
-                                    <label className={labelCls}>Porcentaje Máximo Permitido (%)</label>
-                                    <input 
-                                        name="max_discount_percentage" 
-                                        type="number" 
-                                        step="0.01" 
-                                        min="0" 
-                                        max="100" 
-                                        defaultValue={selectedBranch?.max_discount_percentage ?? ''} 
-                                        placeholder="Ej: 50 (opcional)" 
-                                        className={fieldCls} 
-                                    />
-                                </div>
-                                <div>
-                                    <label className={labelCls}>Monto Máximo de Descuento ($)</label>
-                                    <input 
-                                        name="max_discount_amount" 
-                                        type="number" 
-                                        step="0.01" 
-                                        min="0" 
-                                        defaultValue={selectedBranch?.max_discount_amount ?? ''} 
-                                        placeholder="Ej: 100.00 (opcional)" 
-                                        className={fieldCls} 
-                                    />
-                                </div>
-                                <div className="mt-2.5 p-3 bg-indigo-50/70 border border-indigo-100 rounded-xl text-[11px] text-slate-600 space-y-1.5 leading-relaxed">
-                                    <div className="flex items-center gap-1.5 font-bold text-indigo-900 uppercase text-[10px] tracking-wider">
-                                        <Info size={13} className="text-indigo-600 shrink-0" />
-                                        <span>Reglas de Aplicación y Control de Topes</span>
-                                    </div>
-                                    <ul className="list-disc list-inside space-y-1 pl-1 text-[10.5px]">
-                                        <li>
-                                            <strong className="text-slate-800">Porcentaje Máximo (%):</strong> Tope de margen por producto y general. Ningún ítem ni venta podrá superar este porcentaje de descuento sobre su base gravada.
-                                        </li>
-                                        <li>
-                                            <strong className="text-slate-800">Monto Máximo ($):</strong> Tope monetario máximo <em>acumulado por venta / ticket</em>. La suma de todos los descuentos otorgados (individuales y generales) en una misma venta no podrá exceder este valor.
-                                        </li>
-                                    </ul>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div>
-                        <label className={labelCls}>Dirección</label>
-                        <textarea name="direccion" defaultValue={selectedBranch?.direccion} placeholder="Calle, pasaje, local..." className={`${fieldCls} h-20 resize-none`} />
-                    </div>
-                    <div>
-                        <label className={labelCls}>Logo</label>
-                        <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center p-3 bg-slate-50 border border-slate-200 border-dashed rounded-xl">
-                            <div className="flex-1 w-full">
-                                <input 
-                                    name="logo" 
-                                    type="file" 
-                                    accept="image/*" 
-                                    className="block w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-[10px] file:font-black file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 transition-all cursor-pointer"
-                                    onChange={(e) => {
-                                        const file = e.target.files[0];
-                                        if (file) {
-                                            setPreviewUrl(URL.createObjectURL(file));
-                                        }
-                                    }}
-                                />
-                                <p className="mt-1 text-[10px] text-slate-400">PNG, JPG o GIF. Máximo 2MB.</p>
-                            </div>
-                            {(previewUrl || selectedBranch?.logo_url) && (
-                                <div className="w-16 h-16 bg-white border border-slate-200 rounded-lg overflow-hidden flex-shrink-0 shadow-sm relative group">
-                                    <img 
-                                        src={previewUrl || selectedBranch.logo_url} 
-                                        alt="Vista previa" 
-                                        className="w-full h-full object-contain" 
-                                    />
-                                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
-                                        <span className="text-[8px] text-white font-bold uppercase">Previsualizar</span>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                    <div className="flex justify-end gap-3 pt-2 border-t border-slate-100">
-                        <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-slate-500 font-semibold hover:text-slate-700 transition-colors text-sm">Cancelar</button>
-                        <button
-                            type="submit"
-                            disabled={mutation.isPending}
-                            className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-6 py-2 rounded-lg font-bold transition-all text-sm active:scale-95"
-                        >
-                            {mutation.isPending ? 'Guardando…' : selectedBranch ? 'Actualizar' : 'Registrar'}
-                        </button>
-                    </div>
-                </form>
-            </Modal>
+            <BranchModal
+                isOpen={isModalOpen}
+                onClose={() => setIsModalOpen(false)}
+                branch={selectedBranch}
+                onSave={mutation.mutate}
+                isSaving={mutation.isPending}
+                departments={departments}
+                establishmentTypes={establishmentTypes}
+                environments={environments}
+            />
         </div>
     );
 };

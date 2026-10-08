@@ -75,6 +75,14 @@ const createBranch = asyncHandler(async (req, res) => {
     if (data.max_discount_percentage !== undefined) {
         data.max_discount_percentage = data.max_discount_percentage !== null && data.max_discount_percentage !== '' ? parseFloat(data.max_discount_percentage) : null;
     }
+    if (data.omitir_digito_verificador !== undefined) {
+        data.omitir_digito_verificador = (data.omitir_digito_verificador === 1 || data.omitir_digito_verificador === '1' || data.omitir_digito_verificador === true || data.omitir_digito_verificador === 'true') ? 1 : 0;
+    }
+    if (data.remision_con_valores !== undefined) {
+        data.remision_con_valores = (data.remision_con_valores === 1 || data.remision_con_valores === '1' || data.remision_con_valores === true || data.remision_con_valores === 'true') ? 1 : 0;
+    } else {
+        data.remision_con_valores = 0;
+    }
     if (req.file) {
         data.logo_url = '/uploads/' + req.file.filename;
     }
@@ -112,6 +120,12 @@ const updateBranch = asyncHandler(async (req, res) => {
     }
     if (data.max_discount_percentage !== undefined) {
         data.max_discount_percentage = data.max_discount_percentage !== null && data.max_discount_percentage !== '' ? parseFloat(data.max_discount_percentage) : null;
+    }
+    if (data.omitir_digito_verificador !== undefined) {
+        data.omitir_digito_verificador = (data.omitir_digito_verificador === 1 || data.omitir_digito_verificador === '1' || data.omitir_digito_verificador === true || data.omitir_digito_verificador === 'true') ? 1 : 0;
+    }
+    if (data.remision_con_valores !== undefined) {
+        data.remision_con_valores = (data.remision_con_valores === 1 || data.remision_con_valores === '1' || data.remision_con_valores === true || data.remision_con_valores === 'true') ? 1 : 0;
     }
     if (req.file) {
         data.logo_url = '/uploads/' + req.file.filename;

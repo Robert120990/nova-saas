@@ -767,6 +767,7 @@ async function generateDTE(payload) {
             delete base.reteRenta;
             delete base.condicionOperacion;
             base.totalLetras = getAmountInWords(totals.totalPagar);
+            base.tributos = (base.tributos && base.tributos.length > 0) ? base.tributos : null;
         } else if (type === '11') {
             // FEX: estructura requerida por fe-fex-v3.json
             const finalPagos = (pagos && pagos.length > 0) ? (() => {

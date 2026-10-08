@@ -31,6 +31,7 @@ REGLAS DE MULTI-TENENCIA:
 - direccion, departamento, municipio, telefono, correo, codigo_mh
 - es_casa_matriz BOOLEAN, distrito VARCHAR(10)
 - omitir_digito_verificador BOOLEAN DEFAULT FALSE (al leer un producto en POS omite el último dígito del código)
+- remision_con_valores BOOLEAN DEFAULT FALSE (si está activo emite nota de remisión DTE-04 con valores reales)
 - logo_url, created_at
 - UNIQUE(company_id, codigo), UNIQUE(company_id, codigo_mh)
 
