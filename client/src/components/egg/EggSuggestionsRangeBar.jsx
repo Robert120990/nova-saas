@@ -1,4 +1,4 @@
-import { Calendar, RefreshCw } from 'lucide-react';
+import { Calendar, RefreshCw, Users, ChevronDown, ChevronUp } from 'lucide-react';
 
 export const EggSuggestionsRangeBar = ({
     startDate,
@@ -8,7 +8,12 @@ export const EggSuggestionsRangeBar = ({
     preventPast,
     setPreventPast,
     onCalculate,
-    loading
+    loading,
+    availableCustomersCount = 0,
+    activeCustomersCount = 0,
+    separationBatchLbs = 6000,
+    isConfigOpen = false,
+    onToggleConfig
 }) => {
     return (
         <div className="bg-gradient-to-r from-slate-50 to-indigo-50/40 p-3.5 rounded-2xl border border-slate-200/90 shadow-2xs space-y-3">
@@ -19,10 +24,10 @@ export const EggSuggestionsRangeBar = ({
                     </span>
                     <div>
                         <h4 className="text-xs font-bold text-slate-800">
-                            Rango de Fechas para Sugerencias IA
+                            Rango de Fechas & Configuración de Proyección IA
                         </h4>
                         <p className="text-[10px] text-slate-500 font-medium">
-                            Define el horizonte temporal para proyectar lotes sin generar fechas retroactivas en el pasado.
+                            Define el horizonte de fechas, activa los clientes a contemplar y calibra el lote de separación.
                         </p>
                     </div>
                 </div>
@@ -58,6 +63,33 @@ export const EggSuggestionsRangeBar = ({
                         className="text-xs font-bold text-slate-800 bg-transparent outline-none cursor-pointer"
                     />
                 </div>
+
+                {onToggleConfig && (
+                    <button
+                        type="button"
+                        onClick={onToggleConfig}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all border shadow-2xs ${
+                            isConfigOpen
+                                ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                                : 'bg-white text-indigo-700 border-indigo-200 hover:bg-indigo-50'
+                        }`}
+                        title="Configurar clientes contemplados y lote de separación"
+                    >
+                        <Users className="w-3.5 h-3.5" />
+                        <span>
+                            Clientes: {activeCustomersCount} de {availableCustomersCount}
+                        </span>
+                        <span className="text-[10px] opacity-75 font-normal">|</span>
+                        <span className="text-[11px] font-semibold">
+                            Separación: {separationBatchLbs.toLocaleString()} Lb
+                        </span>
+                        {isConfigOpen ? (
+                            <ChevronUp className="w-3.5 h-3.5 ml-0.5" />
+                        ) : (
+                            <ChevronDown className="w-3.5 h-3.5 ml-0.5 text-indigo-500" />
+                        )}
+                    </button>
+                )}
 
                 <button
                     type="button"

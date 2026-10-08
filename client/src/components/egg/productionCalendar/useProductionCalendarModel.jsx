@@ -155,6 +155,12 @@ export default function useProductionCalendarModel() {
     });
     const [preventPastSuggestions, setPreventPastSuggestions] = useState(true);
 
+    // Filtro de Clientes y Lote de Separación en Sugerencias IA
+    const [availableCustomers, setAvailableCustomers] = useState([]);
+    const [selectedCustomerIds, setSelectedCustomerIds] = useState(null); // null = todos activos por defecto
+    const [separationBatchLbs, setSeparationBatchLbs] = useState(6000);
+    const [isConfigDrawerOpen, setIsConfigDrawerOpen] = useState(false);
+
     // Drag and Drop state
     const [draggedItem, setDraggedItem] = useState(null);
     const [dragOverDate, setDragOverDate] = useState(null);
@@ -228,13 +234,30 @@ export default function useProductionCalendarModel() {
         }
     };
 
-    const fetchSuggestions = async (sDate = suggestionStartDate, eDate = suggestionEndDate) => {
+    const fetchSuggestions = async (
+        sDate = suggestionStartDate,
+        eDate = suggestionEndDate,
+        custIds = selectedCustomerIds,
+        sepBatch = separationBatchLbs
+    ) => {
         setLoadingSuggestions(true);
         try {
-            const res = await axios.get('/api/egg-industrial/calendar/suggestions', {
-                params: { start_date: sDate, end_date: eDate }
-            });
+            const params = { start_date: sDate, end_date: eDate };
+            if (custIds !== null && custIds !== undefined) {
+                params.customer_ids = custIds.length > 0 ? custIds.join(',') : 'none';
+            }
+            if (sepBatch) {
+                params.separation_batch_lbs = sepBatch;
+            }
+            const res = await axios.get('/api/egg-industrial/calendar/suggestions', { params });
             setSuggestionsData(res.data || null);
+            if (Array.isArray(res.data?.available_customers) && res.data.available_customers.length > 0) {
+                setAvailableCustomers(res.data.available_customers);
+                if (custIds === null || custIds === undefined) {
+                    const activeIds = res.data.available_customers.filter(c => c.active).map(c => c.id);
+                    setSelectedCustomerIds(activeIds);
+                }
+            }
         } catch (error) {
             console.error('Error cargando sugerencias inteligentes:', error);
         } finally {
@@ -255,22 +278,36 @@ export default function useProductionCalendarModel() {
         targetD = currentDate,
         sDate = suggestionStartDate,
         eDate = suggestionEndDate,
-        prevPast = preventPastSuggestions
+        prevPast = preventPastSuggestions,
+        custIds = selectedCustomerIds,
+        sepBatch = separationBatchLbs
     ) => {
         setLoadingMonthlyPlan(true);
         try {
             const targetYear = targetD.getFullYear();
             const targetMonth = targetD.getMonth() + 1;
-            const res = await axios.get('/api/egg-industrial/calendar/monthly-suggestions', {
-                params: {
-                    year: targetYear,
-                    month: targetMonth,
-                    start_date: sDate,
-                    end_date: eDate,
-                    prevent_past: prevPast
-                }
-            });
+            const params = {
+                year: targetYear,
+                month: targetMonth,
+                start_date: sDate,
+                end_date: eDate,
+                prevent_past: prevPast
+            };
+            if (custIds !== null && custIds !== undefined) {
+                params.customer_ids = custIds.length > 0 ? custIds.join(',') : 'none';
+            }
+            if (sepBatch) {
+                params.separation_batch_lbs = sepBatch;
+            }
+            const res = await axios.get('/api/egg-industrial/calendar/monthly-suggestions', { params });
             setMonthlyPlanData(res.data || null);
+            if (Array.isArray(res.data?.available_customers) && res.data.available_customers.length > 0) {
+                setAvailableCustomers(res.data.available_customers);
+                if (custIds === null || custIds === undefined) {
+                    const activeIds = res.data.available_customers.filter(c => c.active).map(c => c.id);
+                    setSelectedCustomerIds(activeIds);
+                }
+            }
             // Pre-seleccionar todos los que no estén ya programados
             const unscheduled = (res.data?.monthly_plan || []).filter(p => !p.already_scheduled);
             setSelectedPlanRuns(unscheduled);
@@ -279,6 +316,27 @@ export default function useProductionCalendarModel() {
         } finally {
             setLoadingMonthlyPlan(false);
         }
+    };
+
+    const handleToggleCustomer = (customerId) => {
+        setSelectedCustomerIds(prev => {
+            const current = prev !== null ? prev : availableCustomers.map(c => c.id);
+            const exists = current.includes(customerId);
+            if (exists) {
+                return current.filter(id => id !== customerId);
+            } else {
+                return [...current, customerId];
+            }
+        });
+    };
+
+    const handleSelectAllCustomers = () => {
+        const allIds = availableCustomers.map(c => c.id);
+        setSelectedCustomerIds(allIds);
+    };
+
+    const handleDeselectAllCustomers = () => {
+        setSelectedCustomerIds([]);
     };
 
     const handleConvertLotToJulian = async (prodId) => {
@@ -438,6 +496,8 @@ export default function useProductionCalendarModel() {
         const secondJulianLot = generateJulianLotCode(targetDate, 2, julianFormat);
 
         if (defaultRunData) {
+            const isSep = (defaultRunData.product_profile || '').toLowerCase().includes('clara') || (defaultRunData.product_profile || '').toLowerCase().includes('separaci');
+            const targetQty = defaultRunData.target_quantity_lbs || (isSep ? (separationBatchLbs || 6000) : 12000);
             setFormData({
                 id: null,
                 production_date: defaultRunData.production_date || targetDate,
@@ -446,11 +506,11 @@ export default function useProductionCalendarModel() {
                 lot_code: defaultRunData.lot_code || julianLot,
                 product_profile: defaultRunData.product_profile || 'Huevo Entero Pasteurizado',
                 presentation: defaultRunData.presentation || 'cubeta 30LB',
-                target_quantity_lbs: defaultRunData.target_quantity_lbs || 12000,
+                target_quantity_lbs: targetQty,
                 target_solids_pct: defaultRunData.target_solids_pct || 22.5,
                 status: 'programado',
                 priority: defaultRunData.priority || 'alta',
-                mix_formula_json: defaultRunData.mix_formula_json || recalculateMixFormula(defaultRunData.product_profile, defaultRunData.target_quantity_lbs),
+                mix_formula_json: defaultRunData.mix_formula_json || recalculateMixFormula(defaultRunData.product_profile, targetQty),
                 assigned_operator_id: '',
                 assigned_operator_name: '',
                 notes: defaultRunData.notes || '',
@@ -595,10 +655,19 @@ export default function useProductionCalendarModel() {
 
     // Handle Profile Change in Form
     const handleProfileChange = (newProfile) => {
-        const newMix = recalculateMixFormula(newProfile, formData.target_quantity_lbs);
+        const profLower = (newProfile || '').toLowerCase();
+        let targetQty = formData.target_quantity_lbs;
+        // Si cambia a separación (Clara o Formulado por separación), calibrar por lote de separación
+        if ((profLower.includes('clara') || profLower.includes('separaci')) && targetQty === 12000) {
+            targetQty = separationBatchLbs || 6000;
+        } else if (profLower.includes('entero') && targetQty === (separationBatchLbs || 6000)) {
+            targetQty = 12000;
+        }
+        const newMix = recalculateMixFormula(newProfile, targetQty);
         setFormData(prev => ({
             ...prev,
             product_profile: newProfile,
+            target_quantity_lbs: targetQty,
             target_solids_pct: newMix.target_solids_pct,
             mix_formula_json: newMix
         }));
@@ -966,5 +1035,5 @@ export default function useProductionCalendarModel() {
     }, [filteredProductions]);
 
 
- return { PRODUCT_PROFILES, FACTORY_ROLES, DEFAULT_PRESETS_BY_ROLE, PRESENTATIONS, _findAgreementForProduct, user, navigate, companyId, calendarView, setCalendarView, currentDate, setCurrentDate, productions, setProductions, loading, setLoading, factoryUsers, setFactoryUsers, suggestionsData, setSuggestionsData, loadingSuggestions, setLoadingSuggestions, customerOrders, setCustomerOrders, searchTerm, setSearchTerm, statusFilter, setStatusFilter, profileFilter, setProfileFilter, isFormModalOpen, setIsFormModalOpen, isSuggestionsDrawerOpen, setIsSuggestionsDrawerOpen, isOrdersModalOpen, setIsOrdersModalOpen, isPlannerModalOpen, setIsPlannerModalOpen, isSubmitting, setIsSubmitting, isCustomerOrderModalOpen, setIsCustomerOrderModalOpen, selectedOrderToEdit, setSelectedOrderToEdit, alterDateItem, setAlterDateItem, newAlteredDate, setNewAlteredDate, isAlteringDate, setIsAlteringDate, suggestionsTab, setSuggestionsTab, monthlyPlanData, setMonthlyPlanData, loadingMonthlyPlan, setLoadingMonthlyPlan, applyingPlan, setApplyingPlan, selectedPlanRuns, setSelectedPlanRuns, julianFormat, setJulianFormat, hoverPreview, setHoverPreview, suggestionStartDate, setSuggestionStartDate, suggestionEndDate, setSuggestionEndDate, preventPastSuggestions, setPreventPastSuggestions, draggedItem, setDraggedItem, dragOverDate, setDragOverDate, formData, setFormData, newTaskRole, setNewTaskRole, newTaskUser, setNewTaskUser, newTaskDesc, setNewTaskDesc, fetchProductions, fetchFactoryUsers, fetchSuggestions, fetchOrders, fetchMonthlyPlan, handleConvertLotToJulian, handleApplyMonthlyPlan, recalculateMixFormula, handleOpenCreateModal, handleOpenEditModal, handleProfileChange, handleQuantityChange, handleAddTask, handleRemoveTask, handleSaveProduction, handleDeleteProduction, _handleStartBatchInPlant, handleToggleTask, handleDragStart, handleDragOver, handleDragLeave, handleDrop, handleDeleteOrder, handleOpenAlterDateModal, handleSaveAlteredDate, filteredProductions, calendarMonthDays, getProductionsForDate, getProfileBadgeStyle, monthNames, todayStr, totalScheduledLbs, totalTasksCount, handleAddSecondaryLot, handleRemoveSecondaryLot, handleUpdateSecondaryLot };
+ return { PRODUCT_PROFILES, FACTORY_ROLES, DEFAULT_PRESETS_BY_ROLE, PRESENTATIONS, _findAgreementForProduct, user, navigate, companyId, calendarView, setCalendarView, currentDate, setCurrentDate, productions, setProductions, loading, setLoading, factoryUsers, setFactoryUsers, suggestionsData, setSuggestionsData, loadingSuggestions, setLoadingSuggestions, customerOrders, setCustomerOrders, searchTerm, setSearchTerm, statusFilter, setStatusFilter, profileFilter, setProfileFilter, isFormModalOpen, setIsFormModalOpen, isSuggestionsDrawerOpen, setIsSuggestionsDrawerOpen, isOrdersModalOpen, setIsOrdersModalOpen, isPlannerModalOpen, setIsPlannerModalOpen, isSubmitting, setIsSubmitting, isCustomerOrderModalOpen, setIsCustomerOrderModalOpen, selectedOrderToEdit, setSelectedOrderToEdit, alterDateItem, setAlterDateItem, newAlteredDate, setNewAlteredDate, isAlteringDate, setIsAlteringDate, suggestionsTab, setSuggestionsTab, monthlyPlanData, setMonthlyPlanData, loadingMonthlyPlan, setLoadingMonthlyPlan, applyingPlan, setApplyingPlan, selectedPlanRuns, setSelectedPlanRuns, julianFormat, setJulianFormat, hoverPreview, setHoverPreview, suggestionStartDate, setSuggestionStartDate, suggestionEndDate, setSuggestionEndDate, preventPastSuggestions, setPreventPastSuggestions, availableCustomers, setAvailableCustomers, selectedCustomerIds, setSelectedCustomerIds, separationBatchLbs, setSeparationBatchLbs, isConfigDrawerOpen, setIsConfigDrawerOpen, handleToggleCustomer, handleSelectAllCustomers, handleDeselectAllCustomers, draggedItem, setDraggedItem, dragOverDate, setDragOverDate, formData, setFormData, newTaskRole, setNewTaskRole, newTaskUser, setNewTaskUser, newTaskDesc, setNewTaskDesc, fetchProductions, fetchFactoryUsers, fetchSuggestions, fetchOrders, fetchMonthlyPlan, handleConvertLotToJulian, handleApplyMonthlyPlan, recalculateMixFormula, handleOpenCreateModal, handleOpenEditModal, handleProfileChange, handleQuantityChange, handleAddTask, handleRemoveTask, handleSaveProduction, handleDeleteProduction, _handleStartBatchInPlant, handleToggleTask, handleDragStart, handleDragOver, handleDragLeave, handleDrop, handleDeleteOrder, handleOpenAlterDateModal, handleSaveAlteredDate, filteredProductions, calendarMonthDays, getProductionsForDate, getProfileBadgeStyle, monthNames, todayStr, totalScheduledLbs, totalTasksCount, handleAddSecondaryLot, handleRemoveSecondaryLot, handleUpdateSecondaryLot };
 }

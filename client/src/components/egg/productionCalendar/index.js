@@ -7,3 +7,6 @@ export { default as ProductionCalendarActionBar } from './ProductionCalendarActi
 export { default as ProductionCalendarSection5 } from './ProductionCalendarSection5';
 export { default as ProductionCalendarSection6 } from './ProductionCalendarSection6';
 export { default as ProductionCalendarSection7 } from './ProductionCalendarSection7';
+export { default as EggSuggestionsClientsPanel } from './EggSuggestionsClientsPanel';
+export { default as ProductionCalendarMonthlyTab } from './ProductionCalendarMonthlyTab';
+export { default as ProductionCalendarTacticalTab } from './ProductionCalendarTacticalTab';
