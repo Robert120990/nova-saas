@@ -248,19 +248,24 @@ async function recordSaleReturnables(dbConnection, saleData) {
 async function syncHistoricalSales(company_id) {
     if (!company_id) return { syncedCount: 0, syncedCubetas: 0, customersUpdated: 0 };
 
-    // Buscar ventas activas que tengan ítems con cubetas y cliente registrado
+    // Buscar ventas activas que tengan ítems con cubetas y cliente registrado (solo ventas reales válidas)
     const [salesRows] = await pool.query(
         `SELECT DISTINCT sh.id as sale_id, sh.company_id, sh.customer_id,
                 COALESCE(c.nombre, sh.cliente_nombre) as customer_name,
-                sh.tipo_documento, sh.numero_control, sh.fecha_emision,
+                COALESCE(sh.tipo_documento, sh.dte_type) as tipo_documento,
+                COALESCE(sh.numero_control, d.numero_control) as numero_control,
+                sh.fecha_emision,
                 u.nombre as user_name
          FROM sales_headers sh
          JOIN sales_items si ON sh.id = si.sale_id
+         LEFT JOIN dtes d ON sh.id = d.venta_id
          LEFT JOIN customers c ON sh.customer_id = c.id
          LEFT JOIN users u ON sh.seller_id = u.id
          WHERE sh.company_id = ?
            AND sh.customer_id IS NOT NULL
-           AND sh.estado != 'ANULADA'
+           AND UPPER(COALESCE(sh.estado, '')) NOT IN ('ANULADO', 'ANULADA', 'INVALIDADO', 'RECHAZADO')
+           AND (d.status IS NULL OR UPPER(d.status) NOT IN ('INVALIDADO', 'REJECTED', 'RECHAZADO', 'ANULADO', 'ERROR'))
+           AND COALESCE(sh.tipo_documento, sh.dte_type) IN ('01', '03', '11')
            AND (
                LOWER(si.descripcion) LIKE '%cubeta%'
                OR si.product_id IN (
@@ -271,6 +276,11 @@ async function syncHistoricalSales(company_id) {
            AND sh.id NOT IN (
                SELECT erm.sale_id FROM egg_returnable_movements erm
                WHERE erm.company_id = ? AND erm.sale_id IS NOT NULL
+           )
+           AND NOT EXISTS (
+               SELECT 1 FROM dte_invalidations di 
+               WHERE di.codigo_generacion_dte = COALESCE(sh.codigo_generacion, d.codigo_generacion) 
+                 AND di.estado IN ('ACCEPTED', 'SENT')
            )
          ORDER BY sh.fecha_emision ASC, sh.id ASC`,
         [company_id, company_id, company_id]

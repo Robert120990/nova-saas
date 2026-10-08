@@ -1,4 +1,5 @@
 const { eggReportsExportService } = require('./shared');
+const eggSalesReportService = require('../../../services/eggSalesReport.service');
 
 const getRawMaterialsReport = async (req, res) => {
     try {
@@ -124,4 +125,78 @@ const getWastesReport = async (req, res) => {
         res.status(500).json({ message: error.message });
     }
 };
-module.exports = { getRawMaterialsReport, getProductionReport, getPackagingReport, getQualityReport, getWastesReport };
+
+const getSalesByProductReport = async (req, res) => {
+    try {
+        const { format, start_date = req.query.from, end_date = req.query.to, customer_id, product_type } = req.query;
+        const filters = { startDate: start_date, endDate: end_date, customerId: customer_id, productType: product_type, viewType: 'product' };
+
+        if (format === 'excel') {
+            const buffer = await eggSalesReportService.generateEggSalesExcel(req.company_id, filters);
+            res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            res.setHeader('Content-Disposition', 'attachment; filename="reporte_ventas_por_producto.xlsx"');
+            return res.send(buffer);
+        }
+        if (format === 'pdf') {
+            const buffer = await eggSalesReportService.generateEggSalesPdf(req.company_id, filters);
+            res.setHeader('Content-Type', 'application/pdf');
+            res.setHeader('Content-Disposition', 'inline; filename="reporte_ventas_por_producto.pdf"');
+            return res.send(buffer);
+        }
+
+        const data = await eggSalesReportService.getEggSalesReportData(req.company_id, filters);
+        res.json({
+            success: true,
+            data: data.byProduct,
+            rows: data.byProduct,
+            summary: data.summary,
+            byCustomer: data.byCustomer
+        });
+    } catch (error) {
+        console.error('[getSalesByProductReport error]:', error);
+        res.status(500).json({ message: error.message });
+    }
+};
+
+const getSalesByCustomerReport = async (req, res) => {
+    try {
+        const { format, start_date = req.query.from, end_date = req.query.to, customer_id, product_type } = req.query;
+        const filters = { startDate: start_date, endDate: end_date, customerId: customer_id, productType: product_type, viewType: 'customer' };
+
+        if (format === 'excel') {
+            const buffer = await eggSalesReportService.generateEggSalesExcel(req.company_id, filters);
+            res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            res.setHeader('Content-Disposition', 'attachment; filename="reporte_ventas_por_cliente.xlsx"');
+            return res.send(buffer);
+        }
+        if (format === 'pdf') {
+            const buffer = await eggSalesReportService.generateEggSalesPdf(req.company_id, filters);
+            res.setHeader('Content-Type', 'application/pdf');
+            res.setHeader('Content-Disposition', 'inline; filename="reporte_ventas_por_cliente.pdf"');
+            return res.send(buffer);
+        }
+
+        const data = await eggSalesReportService.getEggSalesReportData(req.company_id, filters);
+        res.json({
+            success: true,
+            data: data.byCustomer,
+            rows: data.byCustomer,
+            summary: data.summary,
+            byProduct: data.byProduct
+        });
+    } catch (error) {
+        console.error('[getSalesByCustomerReport error]:', error);
+        res.status(500).json({ message: error.message });
+    }
+};
+
+module.exports = {
+    getRawMaterialsReport,
+    getProductionReport,
+    getPackagingReport,
+    getQualityReport,
+    getWastesReport,
+    getSalesByProductReport,
+    getSalesByCustomerReport
+};
+

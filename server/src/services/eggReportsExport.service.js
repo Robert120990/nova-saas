@@ -1047,5 +1047,7 @@ module.exports = {
     generateQualityReportExcel,
     getWastesReportData,
     generateWastesReportPdf,
-    generateWastesReportExcel
+    generateWastesReportExcel,
+    ...require('./eggSalesReport.service')
 };
+

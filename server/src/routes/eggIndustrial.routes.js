@@ -244,6 +244,8 @@ router.get('/reports/production', permit('view_egg_reports'), eggController.getP
 router.get('/reports/packaging', permit('view_egg_reports'), eggController.getPackagingReport);
 router.get('/reports/quality', permit('view_egg_reports'), eggController.getQualityReport);
 router.get('/reports/wastes', permit('view_egg_reports'), eggController.getWastesReport);
+router.get('/reports/sales-product', permit('view_egg_reports'), eggController.getSalesByProductReport);
+router.get('/reports/sales-customer', permit('view_egg_reports'), eggController.getSalesByCustomerReport);
 
 // 24. Vinculación de Códigos de Catálogo (Mapeo de Productos)
 router.get('/code-mappings', permit('manage_industrial_settings', 'manage_production', 'manage_packaging', 'manage_mp_reception', 'view_egg_inventory', 'manage_egg_dispatch'), eggController.getCodeMappings);
