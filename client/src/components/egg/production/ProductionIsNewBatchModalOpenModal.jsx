@@ -4,10 +4,8 @@ import axios from 'axios';
 import {
     Plus,
     XCircle,
-    AlertOctagon,
     Lock,
     Calendar,
-    ShieldAlert,
     Sparkles,
     Layers,
     Trash2,
@@ -19,8 +17,8 @@ import {
 import { getJulianDayInfo } from '../../../utils/julianDate';
 
 
-export default function ProductionIsNewBatchModalOpenModal({ model, open = model.isNewBatchModalOpen, onClose = () => { model.setIsNewBatchModalOpen(false); model.setEditingBatch(null); }, onSave = (e) => model.handleCreateBatch(e, true) }) {
-    const { scheduledProductions, selectedScheduledProd, setScannerModalOpen, rawMaterials, availableRemanentes, setAvailableRemanentes, showAllRemanentes, setShowAllRemanentes, setActiveTab, batchForm, setBatchForm, isSubmitting, cipBlockedError, setCipBlockedError, isNewBatchModalOpen, setIsNewBatchModalOpen, canManageLots, editingBatch, setEditingBatch, handleMarkRemanenteUsed, handleReactivateRemanente, handleSelectScheduledProduction, batches, handleAddSpecificTarimaToRm, handleLoadAllAvailableTarimas, handleUpdateTarimaBoxesInRm, handleUpdateTarimaLbsInRm, handleRemoveTarimaFromRm, isCurrentSeparation, recommendedLot, recommendationReason, nonAALotSelectedForSeparation, nonAALotObj, handleApplyRecommendedLot, handleCreateBatch, handleQuickSanitize, handleAddSecondaryBatch, handleRemoveSecondaryBatch, handleUpdateSecondaryBatch, handleLinkSecondaryBatchToSchedule, handleProductTypeChange, handleSecondaryProductTypeChange } = model;
+export default function ProductionIsNewBatchModalOpenModal({ model, open = model.isNewBatchModalOpen, onClose = () => { model.setIsNewBatchModalOpen(false); model.setEditingBatch(null); }, onSave = (e) => model.handleCreateBatch(e) }) {
+    const { scheduledProductions, selectedScheduledProd, setScannerModalOpen, rawMaterials, availableRemanentes, setAvailableRemanentes, showAllRemanentes, setShowAllRemanentes, batchForm, setBatchForm, isSubmitting, isNewBatchModalOpen, setIsNewBatchModalOpen, canManageLots, editingBatch, setEditingBatch, handleMarkRemanenteUsed, handleReactivateRemanente, handleSelectScheduledProduction, batches, handleAddSpecificTarimaToRm, handleLoadAllAvailableTarimas, handleUpdateTarimaBoxesInRm, handleUpdateTarimaLbsInRm, handleRemoveTarimaFromRm, isCurrentSeparation, recommendedLot, recommendationReason, nonAALotSelectedForSeparation, nonAALotObj, handleApplyRecommendedLot, handleCreateBatch, handleAddSecondaryBatch, handleRemoveSecondaryBatch, handleUpdateSecondaryBatch, handleLinkSecondaryBatchToSchedule, handleProductTypeChange, handleSecondaryProductTypeChange } = model;
     if (!open) return null;
     return (<>{isNewBatchModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
@@ -51,52 +49,12 @@ export default function ProductionIsNewBatchModalOpenModal({ model, open = model
                             <p className="text-xs text-slate-500 mt-1">
                                 {editingBatch
                                     ? 'Modifica los parámetros del lote, formulación y materias primas asignadas a esta corrida.'
-                                    : 'El pasteurizador debe contar con una limpieza CIP aprobada en las últimas 12 horas.'}
+                                    : 'Configura los parámetros iniciales de quebrado, formulación y materias primas para esta corrida.'}
                             </p>
                             <div className="h-px bg-slate-100 mt-4" />
                         </div>
 
-                        {/* CIP Block Warning Alert */}
-                        {cipBlockedError && (
-                            <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 space-y-3 text-rose-900 shadow-sm">
-                                <div className="flex gap-2 items-center font-black text-xs uppercase tracking-wide text-rose-700">
-                                    <AlertOctagon size={18} className="text-rose-600 shrink-0" />
-                                    <span>Alerta de Inocuidad: Pasteurizador Sin Sanitización CIP Vigente</span>
-                                </div>
-                                <p className="text-xs leading-relaxed text-rose-800">
-                                    {cipBlockedError}
-                                </p>
-                                <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-rose-200/70">
-                                    <button
-                                        type="button"
-                                        onClick={handleQuickSanitize}
-                                        disabled={isSubmitting}
-                                        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5"
-                                    >
-                                        <Sparkles size={13} />
-                                        Auto-registrar CIP Aprobado de Hoy (1 clic)
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={onSave}
-                                        disabled={isSubmitting}
-                                        className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5"
-                                    >
-                                        <ShieldAlert size={13} />
-                                        Iniciar de todos modos (Omitir CIP)
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => { setActiveTab('cip'); setCipBlockedError(null); setIsNewBatchModalOpen(false); }}
-                                        className="px-3 py-1.5 bg-white hover:bg-rose-100/60 border border-rose-300 text-rose-800 rounded-xl text-xs font-semibold transition-all"
-                                    >
-                                        Ir a Bitácora CIP Manual
-                                    </button>
-                                </div>
-                            </div>
-                        )}
-
-                        <form onSubmit={handleCreateBatch} className="space-y-5">
+                        <form onSubmit={onSave || handleCreateBatch} className="space-y-5">
                             {/* Selector de Producción Programada del Calendario */}
                             <div className="bg-indigo-50/70 border border-indigo-200 rounded-2xl p-4 space-y-2">
                                 <div className="flex items-center justify-between">
@@ -1204,26 +1162,6 @@ export default function ProductionIsNewBatchModalOpenModal({ model, open = model
                                         />
                                     </div>
                                 </div>
-                            </div>
-
-                            {/* Checkbox de autorización de excepción de CIP */}
-                            <div className="bg-amber-50 border border-amber-200/80 rounded-xl p-3.5 flex items-start gap-3">
-                                <input
-                                    type="checkbox"
-                                    id="bypassCipCheckModal"
-                                    checked={batchForm.bypass_cip_check || false}
-                                    onChange={(e) => setBatchForm({ ...batchForm, bypass_cip_check: e.target.checked })}
-                                    className="mt-0.5 h-4 w-4 rounded border-amber-300 text-amber-600 focus:ring-amber-500 cursor-pointer"
-                                />
-                                <label htmlFor="bypassCipCheckModal" className="text-xs text-amber-900 cursor-pointer select-none">
-                                    <span className="font-bold flex items-center gap-1.5">
-                                        <ShieldAlert size={14} className="text-amber-600" />
-                                        Autorizar inicio bajo excepción operativa de sanitización CIP
-                                    </span>
-                                    <span className="text-[11px] text-amber-700 block mt-0.5">
-                                        Marque esta casilla si la planta ya fue sanitizada o requiere procesar de urgencia sin registro formal previo de CIP (se auditará como evento de excepción).
-                                    </span>
-                                </label>
                             </div>
 
                             <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">

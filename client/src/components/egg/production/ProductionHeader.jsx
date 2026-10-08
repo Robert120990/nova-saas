@@ -73,8 +73,7 @@ export default function ProductionHeader({ model }) {
                                     milk_powder_lbs: '',
                                     ppg_g: ''
                                 },
-                                operator_name: user?.nombre || '',
-                                bypass_cip_check: false
+                                operator_name: user?.nombre || ''
                             });
                             setCipBlockedError(null);
                             setIsNewBatchModalOpen(true);

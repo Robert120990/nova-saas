@@ -65,8 +65,7 @@ export default function useProductionModel() {
             milk_powder_lbs: '',
             ppg_g: ''
         },
-        operator_name: user?.nombre || '',
-        bypass_cip_check: false
+        operator_name: user?.nombre || ''
     });
 
     const [cipForm, setCipForm] = useState({
@@ -517,7 +516,6 @@ export default function useProductionModel() {
                 ppg_g: formula.ppg_g || ''
             },
             operator_name: batch.operator_name || user?.nombre || '',
-            bypass_cip_check: true,
             notes: batch.notes || ''
         });
 
@@ -1687,8 +1685,8 @@ export default function useProductionModel() {
         toast.success(`Lote ${lot.provider_lot} aplicado (${lot.egg_classification || 'Grado A'}) según rotación.`);
     };
 
-    // Handle new / edit production batch with optional bypass
-    const handleCreateBatch = async (e, forceBypass = false) => {
+    // Handle new / edit production batch
+    const handleCreateBatch = async (e) => {
         if (e && e.preventDefault) e.preventDefault();
         setCipBlockedError(null);
 
@@ -1727,10 +1725,6 @@ export default function useProductionModel() {
                 return;
             }
 
-            const shouldBypass = forceBypass || Boolean(batchForm.bypass_cip_check);
-            const exceptionReason = shouldBypass ? window.prompt('Motivo de la excepción CIP autorizada:') : null;
-            if (shouldBypass && !exceptionReason?.trim()) return;
-
             const secBatchesList = (batchForm.secondary_batches || []).map((sb, idx) => ({
                 scheduled_production_id: sb.scheduled_production_id || null,
                 run_number: parseInt(sb.run_number) || (parseInt(batchForm.run_number) + idx + 1),
@@ -1762,16 +1756,12 @@ export default function useProductionModel() {
                 raw_materials: batchForm.raw_materials,
                 remanente_ids: batchForm.remanente_ids || [],
                 ingredients: batchForm.ingredients,
-                bypass_cip_check: shouldBypass,
-                cip_exception_reason: exceptionReason,
                 secondary_batches: secBatchesList.length > 0 ? secBatchesList : undefined,
                 secondary_batch: secBatchesList[0] || undefined
             });
-            toast.success(shouldBypass
-                ? 'Lote de producción iniciado bajo excepción de sanitización.'
-                : (secBatchesList.length > 0
-                    ? `Lotes de producción iniciados con éxito (${1 + secBatchesList.length} lotes con materia prima compartida).`
-                    : (batchForm.is_coproduct ? 'Segundo lote / co-producto iniciado exitosamente.' : 'Lote de producción iniciado exitosamente.')));
+            toast.success(secBatchesList.length > 0
+                ? `Lotes de producción iniciados con éxito (${1 + secBatchesList.length} lotes con materia prima compartida).`
+                : (batchForm.is_coproduct ? 'Segundo lote / co-producto iniciado exitosamente.' : 'Lote de producción iniciado exitosamente.'));
             setSelectedScheduledProd(null);
             fetchScheduledProductions();
             setBatchForm({
@@ -1800,16 +1790,12 @@ export default function useProductionModel() {
                     milk_powder_lbs: '',
                     ppg_g: ''
                 },
-                operator_name: user?.nombre || '',
-                bypass_cip_check: false
+                operator_name: user?.nombre || ''
             });
             fetchData();
             setIsNewBatchModalOpen(false);
         } catch (error) {
             console.error('Error in batch operation:', error);
-            if (!editingBatch) {
-                setCipBlockedError(error.response?.data?.message || 'Error al iniciar el lote.');
-            }
             toast.error(error.response?.data?.message || 'Error al procesar lote de producción.');
         } finally {
             setIsSubmitting(false);

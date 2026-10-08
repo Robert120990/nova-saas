@@ -59,28 +59,6 @@ const createProductionBatch = async (req) => {
             return ({ status: 400, body: { message: 'El peso total de entrada debe ser mayor a cero.' }, headers: responseHeaders });
         }
 
-        // --- REGLA CRÍTICA INDUSTRIAL: VALIDAR CIP RECIENTE O EXCEPCIÓN AUTORIZADA ---
-        const [cipLogs] = await connection.query(
-            `SELECT id FROM egg_cip_logs
-             WHERE company_id = ? AND equipment_name = 'pasteurizador'
-               AND validation_status = 'completado'
-               AND created_at >= NOW() - INTERVAL 12 HOUR`,
-            [company_id]
-        );
-
-        const bypassCip = req.body.bypass_cip_check === true || req.body.bypass_cip_check === 'true';
-        if (bypassCip && (!hasPermission(req.eggAccess, 'manage_egg_cip_exception') || !String(req.body.cip_exception_reason || '').trim())) {
-            eggRules.fail('La excepción CIP requiere permiso y un motivo explícito.', 403);
-        }
-
-        if (cipLogs.length === 0 && !bypassCip) {
-            await connection.rollback();
-            return ({ status: 400, body: {
-                message: 'BLOQUEO DE INOCUIDAD: El pasteurizador no cuenta con una limpieza CIP aprobada en las últimas 12 horas. Puede autorizar el inicio bajo excepción operativa o registrar la sanitización CIP.',
-                can_bypass: true
-            }, headers: responseHeaders });
-        }
-
         // Validate stock availability and MANDATORY APPROVAL STATUS for each raw material
         for (const rm of raw_materials) {
             const [rows] = await connection.query(
@@ -291,13 +269,6 @@ const createProductionBatch = async (req) => {
             'INSERT INTO egg_industrial_events (company_id, event_type, severity, description, payload, operator_name) VALUES (?, "production.started", "info", ?, ?, ?)',
             [company_id, `Iniciado lote oficial ${batch_code_display} (${product_type} - ${presentation}) con ${totalInputWeight} LBS.`, JSON.stringify({ batch_id: batchId, batch_uuid, batch_code_display, totalInputWeight, raw_materials }), operator_name]
         );
-
-        if (cipLogs.length === 0 && bypassCip) {
-            await connection.query(
-                'INSERT INTO egg_industrial_events (company_id, event_type, severity, description, payload, operator_name) VALUES (?, "batch.cip_bypassed", "warning", ?, ?, ?)',
-                [company_id, `Inicio de lote oficial ${batch_code_display} autorizado bajo excepción: sin sanitización CIP previa.`, JSON.stringify({ batch_id: batchId, batch_uuid, batch_code_display, operator: req.user?.id, reason: String(req.body.cip_exception_reason).trim() }), operator_name]
-            );
-        }
 
         const secInput = Array.isArray(req.body.secondary_batches) && req.body.secondary_batches.length > 0
             ? req.body.secondary_batches
