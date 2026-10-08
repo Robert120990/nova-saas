@@ -59,9 +59,12 @@ export const INDUSTRIAL_PRESENTATIONS = Object.freeze([
     { value: 'galon 8LB', label: 'Galón (8 lb)', weightLbs: 8 },
     { value: 'medio galon 4LB', label: 'Medio galón (4 lb)', weightLbs: 4 },
     { value: 'litro 2LB', label: 'Litro (2 lb)', weightLbs: 2 },
-    { value: 'carton 55LB', label: 'Cartón comercial (55 lb)', weightLbs: 55 },
+    // Presentaciones especializadas para Huevo en Cáscara
+    { value: 'unidad', label: 'Unidad de Huevo (Individual)', weightLbs: 0.13 },
+    { value: 'carton 30U', label: 'Cartón (30 Unidades)', weightLbs: 3.9 },
+    { value: 'caja 360U', label: 'Caja Comercial (12 Cartones / 360 Unid)', weightLbs: 45 },
     { value: 'caja 32LB', label: 'Caja de huevo blanco (32 lb)', weightLbs: 32 },
-    { value: 'carton 30U', label: 'Cartón (30 unidades - 4 lb)', weightLbs: 4 },
+    { value: 'carton 55LB', label: 'Cartón comercial pesado (55 lb)', weightLbs: 55 },
     { value: 'unidad 0.2LB', label: 'Unidad de huevo (0.20 lb)', weightLbs: 0.2 },
     // Se mantienen para que los registros existentes no pierdan su presentación.
     { value: 'bolsa 5LB', label: 'Bolsa (5 lb)', weightLbs: 5 },
@@ -71,7 +74,10 @@ export const INDUSTRIAL_PRESENTATIONS = Object.freeze([
 
 export const INDUSTRIAL_MEASUREMENT_UNITS = Object.freeze([
     { value: 'lb', label: 'Libra (lb)' },
-    { value: 'kg', label: 'Kilogramo (kg)' }
+    { value: 'kg', label: 'Kilogramo (kg)' },
+    { value: 'unidad', label: 'Unidad (U)' },
+    { value: 'carton', label: 'Cartón (30 Unidades)' },
+    { value: 'caja', label: 'Caja (360 Unidades / 12 Cartones)' }
 ]);
 
 export const DEFAULT_INDUSTRIAL_PRODUCT_CATEGORY = INDUSTRIAL_PRODUCT_CATEGORIES[0].value;
@@ -101,22 +107,29 @@ const presentationAliases = new Map([
     ['litro 2 lb', 'litro 2LB'],
     ['carton 55lb', 'carton 55LB'],
     ['carton 55 lb', 'carton 55LB'],
-    ['carton', 'carton 55LB'],
-    ['cartón', 'carton 55LB'],
+    ['carton', 'carton 30U'],
+    ['cartón', 'carton 30U'],
+    ['carton 30u', 'carton 30U'],
+    ['carton 30 u', 'carton 30U'],
+    ['cartón 30u', 'carton 30U'],
     ['cartón 55lb', 'carton 55LB'],
     ['cartón 55 lb', 'carton 55LB'],
     ['caja 32lb', 'caja 32LB'],
     ['caja 32 lb', 'caja 32LB'],
-    ['caja', 'caja 32LB'],
+    ['caja 360u', 'caja 360U'],
+    ['caja 360 u', 'caja 360U'],
+    ['caja', 'caja 360U'],
     ['carton 4 lb', 'carton 30U'],
     ['carton 4lb', 'carton 30U'],
     ['cartón 4 lb', 'carton 30U'],
     ['cartón 4lb', 'carton 30U'],
-    ['unidad', 'unidad 0.2LB'],
+    ['unidad', 'unidad'],
+    ['unid', 'unidad'],
+    ['u', 'unidad'],
     ['unidad 0.2lb', 'unidad 0.2LB'],
     ['unidad 0.2 lb', 'unidad 0.2LB'],
     ['unidad 0.20 lb', 'unidad 0.2LB'],
-    ['huevo unidad', 'unidad 0.2LB']
+    ['huevo unidad', 'unidad']
 ]);
 
 export const normalizeIndustrialPresentation = (presentation) => {
@@ -163,11 +176,14 @@ export const getIndustrialPresentationWeightLbs = (presentation, fallback = 0) =
     if (raw.includes('galon') || raw.includes('galón')) return 8;
     if (raw.includes('litro')) return 2;
     if (raw.includes('medio')) return 4;
-    if (raw.includes('carton') || raw.includes('cartón')) return 55;
+    if (raw.includes('360')) return 45;
+    if (raw.includes('carton 30') || raw.includes('cartón 30')) return 3.9;
+    if (raw.includes('55lb') || raw.includes('55 lb')) return 55;
+    if (raw.includes('carton') || raw.includes('cartón')) return 3.9;
     if (raw.includes('caja')) return 32;
     if (raw.includes('bolsa')) return 5;
     if (raw.includes('tanque')) return 2000;
-    if (raw.includes('unidad') || raw.includes('unid')) return 0.20;
+    if (raw.includes('unidad') || raw.includes('unid')) return 0.13;
 
     return fallback;
 };

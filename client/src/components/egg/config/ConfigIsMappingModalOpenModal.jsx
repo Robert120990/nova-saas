@@ -139,12 +139,20 @@ export default function ConfigIsMappingModalOpenModal({ model, open = model.isMa
                                         onChange={(e) => {
                                             const presentation = e.target.value;
                                             const lbs = getIndustrialPresentationWeightLbs(presentation, 0);
+                                            const presLower = presentation.toLowerCase();
+                                            let suggestedUnit = mappingForm.unit_of_measure;
+                                            if (presLower.includes('unidad')) suggestedUnit = 'unidad';
+                                            else if (presLower.includes('carton') || presLower.includes('cartón')) suggestedUnit = 'carton';
+                                            else if (presLower.includes('caja')) suggestedUnit = 'caja';
+                                            else if (suggestedUnit === 'unidad' || suggestedUnit === 'carton' || suggestedUnit === 'caja') suggestedUnit = 'lb';
+
                                             setMappingForm(prev => {
                                                 const nextLbs = lbs > 0 ? lbs.toFixed(2) : null;
                                                 const nextKg = lbs > 0 ? poundsToKilograms(lbs).toFixed(2) : null;
                                                 return {
                                                     ...prev,
                                                     presentation,
+                                                    unit_of_measure: suggestedUnit,
                                                     codes: ((Array.isArray(prev.codes || []) ? prev.codes || [] : [])).map((it, idx) => {
                                                         if (nextLbs && (idx === 0 || !it.weight_lbs || it.weight_lbs === '32.00')) {
                                                             return {

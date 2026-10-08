@@ -154,8 +154,36 @@ export default function ConfigCodeMappingsTab({ model }) {
                                                             {minW === maxW ? `~${poundsToKilograms(minW).toFixed(2)} kg` : `~${poundsToKilograms(minW).toFixed(1)} - ${poundsToKilograms(maxW).toFixed(1)} kg`}
                                                         </div>
                                                     </td>
-                                                    <td className="p-3 text-slate-600 font-bold uppercase">
-                                                        {m.unit_of_measure || 'lb'}
+                                                    <td className="p-3">
+                                                        {(() => {
+                                                            const u = String(m.unit_of_measure || 'lb').toLowerCase();
+                                                            if (u === 'unidad' || u === 'u') {
+                                                                return (
+                                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200" title="Comercializado por unidad individual">
+                                                                        🥚 UNIDAD
+                                                                    </span>
+                                                                );
+                                                            }
+                                                            if (u === 'carton' || u === 'cartón') {
+                                                                return (
+                                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-50 text-blue-800 border border-blue-200" title="Comercializado por cartón de 30 unidades">
+                                                                        📋 CARTÓN
+                                                                    </span>
+                                                                );
+                                                            }
+                                                            if (u === 'caja') {
+                                                                return (
+                                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-purple-50 text-purple-800 border border-purple-200" title="Comercializado por caja de 360 unidades / 12 cartones">
+                                                                        📦 CAJA
+                                                                    </span>
+                                                                );
+                                                            }
+                                                            return (
+                                                                <span className="font-bold text-slate-700 uppercase">
+                                                                    {m.unit_of_measure || 'lb'}
+                                                                </span>
+                                                            );
+                                                        })()}
                                                     </td>
                                                     <td className="p-3 text-slate-600 font-medium">
                                                         {linkedProductNames.length > 0 ? (

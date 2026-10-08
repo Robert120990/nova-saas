@@ -74,8 +74,9 @@ const saveCodeMapping = async (req, res) => {
         if (mappingId && (!Number.isInteger(currentMappingId) || currentMappingId <= 0)) {
             return res.status(400).json({ message: 'El identificador del mapeo no es válido.' });
         }
-        if (!['lb', 'kg'].includes(resolvedUnit)) {
-            return res.status(400).json({ message: 'La unidad de medida debe ser lb o kg.' });
+        const allowedUnits = ['lb', 'kg', 'unidad', 'carton', 'caja'];
+        if (!allowedUnits.includes(String(resolvedUnit).toLowerCase().trim())) {
+            return res.status(400).json({ message: 'La unidad de medida debe ser lb, kg, unidad, carton o caja.' });
         }
 
         // 1. Validar que no haya códigos repetidos dentro de la misma solicitud
