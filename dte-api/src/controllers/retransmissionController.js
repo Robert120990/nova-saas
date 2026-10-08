@@ -120,33 +120,43 @@ async function buildPayloadFromSale(dteRecord, newReceptor, companyId) {
     );
     const company = companies[0];
 
+    // 6b. Obtener JSON original previo para fallback defensivo de datos del receptor
+    let origJson = null;
+    try {
+        origJson = typeof dteRecord.json_original === 'string'
+            ? JSON.parse(dteRecord.json_original)
+            : dteRecord.json_original;
+    } catch (e) { /* ignore */ }
+    const origReceptor = origJson?.receptor || {};
+
     // 7. Construir receptor (con posibilidad de sobreescribir con newReceptor)
-    const deptoReceptor = (customerBranch?.departamento && String(customerBranch.departamento).trim()) || customer?.departamento || '06';
-    const muniReceptor = (customerBranch?.municipio && String(customerBranch.municipio).trim()) || customer?.municipio || '01';
-    const distReceptor = (customerBranch?.distrito && String(customerBranch.distrito).trim()) || customer?.distrito || '01';
-    const dirComplemento = (customerBranch?.direccion && String(customerBranch.direccion).trim()) || customer?.direccion || 'Direccion de entrega';
+    const deptoReceptor = (customerBranch?.departamento && String(customerBranch.departamento).trim()) || customer?.departamento || origReceptor?.direccion?.departamento || '06';
+    const muniReceptor = (customerBranch?.municipio && String(customerBranch.municipio).trim()) || customer?.municipio || origReceptor?.direccion?.municipio || '01';
+    const distReceptor = (customerBranch?.distrito && String(customerBranch.distrito).trim()) || customer?.distrito || origReceptor?.direccion?.distrito || '01';
+    const dirComplemento = (customerBranch?.direccion && String(customerBranch.direccion).trim()) || customer?.direccion || origReceptor?.direccion?.complemento || 'Direccion de entrega';
 
     const mergedRec = {
-        nombre: customer?.nombre || newReceptor?.nombre || sale.cliente_nombre || 'Consumidor Final',
-        nit: customer?.nit || newReceptor?.nit || null,
-        nrc: customer?.nrc || newReceptor?.nrc || null,
-        numDocumento: customer?.numero_documento || customer?.num_documento || newReceptor?.numDocumento || null,
-        tipoDocumento: customer?.tipo_documento || newReceptor?.tipoDocumento || null,
-        correo: customerBranch?.correo || customer?.correo || newReceptor?.correo || null,
-        telefono: customerBranch?.telefono || customer?.telefono || newReceptor?.telefono || null,
-        nombreComercial: customer?.nombre_comercial || newReceptor?.nombreComercial || null,
-        tipo_persona: parseInt(customer?.tipo_persona || newReceptor?.tipo_persona) || 1,
-        pais_code: customer?.pais || customer?.pais_code || newReceptor?.pais_code || null,
-        pais: customer?.pais || null,
-        pais_name: customer?.pais_name || newReceptor?.pais_name || null,
-        codActividad: customer?.codigo_actividad || newReceptor?.codActividad || '10005',
-        descActividad: customer?.actividad_economica || newReceptor?.descActividad || 'Otros',
+        nombre: customer?.nombre || newReceptor?.nombre || origReceptor?.nombre || sale.cliente_nombre || 'Consumidor Final',
+        nit: customer?.nit || newReceptor?.nit || origReceptor?.nit || null,
+        nrc: customer?.nrc || newReceptor?.nrc || origReceptor?.nrc || null,
+        numDocumento: customer?.numero_documento || customer?.num_documento || newReceptor?.numDocumento || origReceptor?.numDocumento || null,
+        tipoDocumento: customer?.tipo_documento || newReceptor?.tipoDocumento || origReceptor?.tipoDocumento || null,
+        correo: customerBranch?.correo || customer?.correo || newReceptor?.correo || origReceptor?.correo || null,
+        telefono: customerBranch?.telefono || customer?.telefono || newReceptor?.telefono || origReceptor?.telefono || null,
+        nombreComercial: customer?.nombre_comercial || newReceptor?.nombreComercial || origReceptor?.nombreComercial || null,
+        tipo_persona: parseInt(customer?.tipo_persona || newReceptor?.tipo_persona || origReceptor?.tipo_persona) || 1,
+        pais_code: customer?.pais || customer?.pais_code || newReceptor?.pais_code || origReceptor?.pais_code || null,
+        pais: customer?.pais || origReceptor?.pais || null,
+        pais_name: customer?.pais_name || newReceptor?.pais_name || origReceptor?.pais_name || null,
+        codActividad: customer?.codigo_actividad || newReceptor?.codActividad || origReceptor?.codActividad || '10005',
+        descActividad: customer?.actividad_economica || newReceptor?.descActividad || origReceptor?.descActividad || 'Otros',
+        bienTitulo: newReceptor?.bienTitulo || origReceptor?.bienTitulo || '01',
         direccion: customer ? {
             departamento: deptoReceptor,
             municipio: muniReceptor,
             distrito: distReceptor,
             complemento: dirComplemento
-        } : (newReceptor?.direccion || null)
+        } : (newReceptor?.direccion || origReceptor?.direccion || null)
     };
 
     // Si se proveyó newReceptor, sobreescribe todo lo que venga
@@ -239,6 +249,7 @@ async function buildPayloadFromSale(dteRecord, newReceptor, companyId) {
         userId: dteRecord.usuario_id || 0,
         items: mappedItems,
         receptor: mergedRec,
+        bienTitulo: mergedRec.bienTitulo || '01',
         pagos: mappedPayments,
         retencion: parseFloat(sale.iva_retenido) || 0,
         percepcion: parseFloat(sale.iva_percibido) || 0,
