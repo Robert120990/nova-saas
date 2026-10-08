@@ -1,4 +1,5 @@
 const { pool, computeJulianLotCode } = require('../../../controllers/eggIndustrial/eggPlanning/shared');
+const { extractCustomerMap, resolveCustomerSelection, getCustomerKey } = require('./eggPlanningCustomerHelper');
 const getMonthlyProductionSuggestions = async (req) => {
     const responseHeaders = {};
     try {
@@ -28,6 +29,8 @@ const getMonthlyProductionSuggestions = async (req) => {
             }
         }
 
+        const separationBatchLbs = Math.min(12000, Math.max(3000, parseFloat(req.query.separation_batch_lbs) || 6000));
+
         // 1. Obtener pedidos de clientes en el rango o pendientes
         const [orders] = await pool.query(
             `SELECT * FROM egg_customer_orders
@@ -43,6 +46,13 @@ const getMonthlyProductionSuggestions = async (req) => {
              WHERE company_id = ? AND status = 'activo'`,
             [company_id]
         );
+
+        // Mapeo unificado de clientes elegibles (pedidos + acuerdos) y filtrado dinámico
+        const rawAvailableCustomers = extractCustomerMap(orders, agreements);
+        const { selectedKeys: selectedCustomerKeys, availableCustomers } = resolveCustomerSelection(rawAvailableCustomers, req.query.customer_ids);
+
+        const filteredOrders = orders.filter(o => selectedCustomerKeys.has(getCustomerKey(o)));
+        const filteredAgreements = agreements.filter(a => selectedCustomerKeys.has(getCustomerKey(a)));
 
         // 3. Ventas de ovoproductos de los últimos 6 meses (para calcular promedios reales)
         const [salesRows] = await pool.query(
@@ -80,14 +90,14 @@ const getMonthlyProductionSuggestions = async (req) => {
             existingSchedule.map(p => new Date(p.production_date).toISOString().split('T')[0])
         );
 
-        // Agregación de demanda
+        // Agregación de demanda exacta de clientes seleccionados
         let demandClara = 0;
         let demandYema = 0;
         let demandEntero = 0;
         let demandFormulado = 0;
         let demandLeche = 0;
 
-        orders.forEach(o => {
+        filteredOrders.forEach(o => {
             const qty = parseFloat(o.quantity_lbs || 0);
             const p = (o.product_type || '').toLowerCase();
             if (p.includes('clara')) demandClara += qty;
@@ -97,7 +107,7 @@ const getMonthlyProductionSuggestions = async (req) => {
             else demandEntero += qty;
         });
 
-        agreements.forEach(a => {
+        filteredAgreements.forEach(a => {
             const vol = parseFloat(a.monthly_volume_lbs || 0);
             const p = (a.product_type || '').toLowerCase();
             if (p.includes('clara')) demandClara += vol;
@@ -115,11 +125,12 @@ const getMonthlyProductionSuggestions = async (req) => {
             historyMonthlyAvgLbs = sumLbs / maxMonths;
         }
 
-        // Si la demanda puntual de pedidos es modesta, complementar con el promedio de ventas para dar cobertura mensual completa
+        // Si la empresa no tiene ningún pedido ni acuerdo cargado, proveer base de simulación
+        const hasAnyCustomerData = (orders.length > 0 || agreements.length > 0);
         const baseDemandTotal = demandClara + demandYema + demandEntero + demandFormulado + demandLeche;
-        const targetMonthlyVolumeLbs = Math.max(baseDemandTotal, historyMonthlyAvgLbs > 10000 ? historyMonthlyAvgLbs : 54000);
 
-        if (demandEntero === 0 && demandClara === 0) {
+        if (!hasAnyCustomerData && baseDemandTotal === 0) {
+            const targetMonthlyVolumeLbs = historyMonthlyAvgLbs > 10000 ? historyMonthlyAvgLbs : 54000;
             demandEntero = targetMonthlyVolumeLbs * 0.60;
             demandClara = targetMonthlyVolumeLbs * 0.25;
             demandFormulado = targetMonthlyVolumeLbs * 0.15;
@@ -163,12 +174,15 @@ const getMonthlyProductionSuggestions = async (req) => {
                 if (dayOfWeek === 1) {
                     // Lunes: Corrida de Separación / Clara de alta demanda
                     profile = 'Clara de Huevo Pasteurizada';
-                    targetLbs = Math.min(8000, Math.max(5000, Math.round(demandClara / 4)));
+                    // Sizing de separación calibrado por lote operativo (evita saturar maquinaria y tanques)
+                    const maxClaraPerBatch = Math.round(separationBatchLbs * 0.5395);
+                    const weeklyClaraDemand = Math.round(demandClara / 4);
+                    targetLbs = Math.min(maxClaraPerBatch, Math.max(1500, weeklyClaraDemand || maxClaraPerBatch));
                     targetSolids = 11.5;
                     const rawNeeded = Math.round(targetLbs / 0.5395);
                     const coprodYolk = Math.round(rawNeeded * 0.308);
                     const boxes = Math.round(rawNeeded / 36.1);
-                    reason = `Cubrir demanda semanal de Clara. Genera ${coprodYolk.toLocaleString()} Lbs de yema coproducto para formular el miércoles.`;
+                    reason = `Separación en lote calibrado de ${rawNeeded.toLocaleString()} Lbs (${boxes} cajas). Genera ${targetLbs.toLocaleString()} Lbs de clara y ${coprodYolk.toLocaleString()} Lbs de yema coproducto sin sobrecargar tanques de frío.`;
                     priority = 'alta';
                     mixFormula = {
                         raw_egg_boxes: boxes,
@@ -176,12 +190,16 @@ const getMonthlyProductionSuggestions = async (req) => {
                         clara_produced_lbs: targetLbs,
                         yema_coproduct_lbs: coprodYolk,
                         water_h2o_lbs: 0,
-                        notes: 'Separación centrífuga de alta pureza. Enfriar y almacenar yema en tanque HOLDING-2.'
+                        separation_batch_limit_lbs: separationBatchLbs,
+                        notes: `Separación centrífuga en lote controlado de ${rawNeeded.toLocaleString()} Lbs (máx ${separationBatchLbs.toLocaleString()} Lbs). Enfriar y almacenar yema en tanque HOLDING-2.`
                     };
                 } else if (dayOfWeek === 3) {
                     // Miércoles: Corrida de Huevo Formulado (Yema coproducto + MP liquida A) -> Arbitraje
                     profile = 'Huevo Formulado por Separación';
-                    const surplusYolk = Math.round(Math.min(8000, Math.max(5000, Math.round(demandClara / 4))) * (0.308 / 0.5395));
+                    const maxClaraPerBatch = Math.round(separationBatchLbs * 0.5395);
+                    const weeklyClaraDemand = Math.round(demandClara / 4);
+                    const plannedClara = Math.min(maxClaraPerBatch, Math.max(1500, weeklyClaraDemand || maxClaraPerBatch));
+                    const surplusYolk = Math.round(plannedClara * (0.308 / 0.5395));
                     const waterAdded = Math.round(surplusYolk * 1.22);
                     targetLbs = surplusYolk + waterAdded;
                     targetSolids = 22.5;
@@ -189,7 +207,7 @@ const getMonthlyProductionSuggestions = async (req) => {
                     const boxesSaved = Math.round(targetLbs / 36.1);
                     const moneySaved = boxesSaved * 38.00;
                     totalCoproductSavingsUsd += moneySaved;
-                    reason = `Arbitraje Coproducto: Reincorporar ${surplusYolk.toLocaleString()} Lbs de yema del lunes con ${waterAdded.toLocaleString()} Lbs MP liquida A y ácido cítrico. Ahorro de $${moneySaved.toLocaleString()}`;
+                    reason = `Arbitraje Coproducto: Reincorporar ${surplusYolk.toLocaleString()} Lbs de yema del lunes con ${waterAdded.toLocaleString()} Lbs MP liquida A y ácido cítrico en lote de ${targetLbs.toLocaleString()} Lbs. Ahorro de $${moneySaved.toLocaleString()}`;
                     priority = 'alta';
                     mixFormula = {
                         raw_egg_boxes: 0,
@@ -198,7 +216,7 @@ const getMonthlyProductionSuggestions = async (req) => {
                         water_h2o_lbs: waterAdded,
                         water_bottles: Math.ceil(waterAdded / 41.8),
                         citric_acid_lbs: citricAcid,
-                        notes: 'Balance yema + MP liquida A a 22.5% Brix. Validación LAB-004 obligatoria.'
+                        notes: 'Balance yema coproducto + MP liquida A a 22.5% Brix. Validación LAB-004 obligatoria.'
                     };
                 } else {
                     // Viernes: Huevo Entero Pasteurizado Puro
@@ -258,6 +276,9 @@ const getMonthlyProductionSuggestions = async (req) => {
                 end_date: endDateStr,
                 prevent_past: preventPast
             },
+            separation_batch_lbs: separationBatchLbs,
+            available_customers: availableCustomers,
+            selected_customer_ids: Array.from(selectedCustomerKeys),
             summary: {
                 target_month: targetMonth,
                 target_year: targetYear,
@@ -277,10 +298,13 @@ const getMonthlyProductionSuggestions = async (req) => {
                 stock_balance_boxes: availableStockBoxes - totalBoxesNeeded,
                 total_coproduct_savings_usd: Math.round(totalCoproductSavingsUsd),
                 batches_count: monthlyRuns.length,
-                pending_orders_count: orders.length,
-                active_agreements_count: agreements.length,
+                pending_orders_count: filteredOrders.length,
+                active_agreements_count: filteredAgreements.length,
                 sales_history_monthly_avg_lbs: Math.round(historyMonthlyAvgLbs),
-                already_scheduled_count: existingSchedule.length
+                already_scheduled_count: existingSchedule.length,
+                selected_customers_count: selectedCustomerKeys.size,
+                total_customers_count: availableCustomers.length,
+                separation_batch_lbs: separationBatchLbs
             },
             monthly_plan: monthlyRuns
         }, headers: responseHeaders });

@@ -1,7 +1,9 @@
 const { pool, computeJulianLotCode } = require('./shared');
+const { extractCustomerMap, resolveCustomerSelection, getCustomerKey } = require('../../../services/eggIndustrial/eggPlanning/eggPlanningCustomerHelper');
 const getProductionSuggestions = async (req, res) => {
     try {
         const company_id = req.company_id || req.user?.company_id;
+        const separationBatchLbs = Math.min(12000, Math.max(3000, parseFloat(req.query.separation_batch_lbs) || 6000));
 
         // 1. Obtener pedidos pendientes
         const [orders] = await pool.query(
@@ -17,6 +19,13 @@ const getProductionSuggestions = async (req, res) => {
              WHERE company_id = ? AND status = 'activo'`,
             [company_id]
         );
+
+        // Mapeo unificado de clientes elegibles y filtrado dinámico
+        const rawAvailableCustomers = extractCustomerMap(orders, agreements);
+        const { selectedKeys: selectedCustomerKeys, availableCustomers } = resolveCustomerSelection(rawAvailableCustomers, req.query.customer_ids);
+
+        const filteredOrders = orders.filter(o => selectedCustomerKeys.has(getCustomerKey(o)));
+        const filteredAgreements = agreements.filter(a => selectedCustomerKeys.has(getCustomerKey(a)));
 
         // 3. Stock actual de materia prima disponible
         const [rmRows] = await pool.query(
@@ -47,7 +56,7 @@ const getProductionSuggestions = async (req, res) => {
         let demandEntero = 0;
         let demandFormulado = 0;
 
-        orders.forEach(o => {
+        filteredOrders.forEach(o => {
             const qty = parseFloat(o.quantity_lbs || 0);
             const pType = (o.product_type || '').toLowerCase();
             if (pType.includes('clara')) demandClara += qty;
@@ -57,7 +66,7 @@ const getProductionSuggestions = async (req, res) => {
         });
 
         // Sumar demanda prorrateada semanal de los acuerdos comerciales
-        agreements.forEach(a => {
+        filteredAgreements.forEach(a => {
             const weeklyVol = (parseFloat(a.monthly_volume_lbs || 0)) / 4.2;
             const pType = (a.product_type || '').toLowerCase();
             if (pType.includes('clara')) demandClara += weeklyVol;
@@ -66,11 +75,12 @@ const getProductionSuggestions = async (req, res) => {
             else demandEntero += weeklyVol;
         });
 
-        // Si no hay pedidos cargados aún, proveer una base de simulación realista basada en históricos o estándares de planta
-        const isSimulation = (demandClara + demandYema + demandEntero + demandFormulado) === 0;
+        // Si no hay pedidos cargados aún en toda la empresa, proveer base de simulación
+        const hasAnyCustomerData = (orders.length > 0 || agreements.length > 0);
+        const isSimulation = !hasAnyCustomerData && (demandClara + demandYema + demandEntero + demandFormulado) === 0;
         if (isSimulation) {
-            demandClara = 5400; // Pedido de Clara típico (PriceSmart / repostería)
-            demandYema = 0;    // Cero pedidos de yema pura
+            demandClara = 5400;
+            demandYema = 0;
             demandEntero = 12000;
             demandFormulado = 6000;
         }
@@ -82,18 +92,22 @@ const getProductionSuggestions = async (req, res) => {
         // -------------------------------------------------------------------------------------
         // Quebrado rinde ~53.95% de Clara y ~30.8% de Yema (con 15.25% de cáscara y merma)
         if (demandClara > 0) {
-            const rawLiquidNeededForClara = demandClara / 0.5395;
-            const coproductYolkGenerated = rawLiquidNeededForClara * 0.308;
+            // Sizing de separación calibrado por lote operativo (evita saturar maquinaria y tanques)
+            const maxClaraInBatch = Math.round(separationBatchLbs * 0.5395);
+            const claraInBatch = Math.min(demandClara, maxClaraInBatch);
+            const rawLiquidNeededForClara = Math.round(claraInBatch / 0.5395);
+            const coproductYolkGenerated = Math.round(rawLiquidNeededForClara * 0.308);
             const surplusYolk = Math.max(0, coproductYolkGenerated - demandYema);
 
             if (surplusYolk > 200) {
                 // Reformulación: Yema pura (50% sólidos) rebajada con MP liquida A a 22.5% de sólidos
                 // Ratio: 1 lb de yema + 1.22 lbs MP liquida A -> 2.22 lbs de Huevo Formulado
-                const waterAddedLbs = surplusYolk * 1.22;
+                const waterAddedLbs = Math.round(surplusYolk * 1.22);
                 const formulatedYieldLbs = surplusYolk + waterAddedLbs;
                 const citricAcidLbs = (formulatedYieldLbs * 0.0015).toFixed(2); // 0.15% estabilizador
                 const boxesSaved = Math.round(formulatedYieldLbs / 36.1); // ~36.1 lbs líquido útil por caja
                 const moneySaved = boxesSaved * 38.00; // Ahorro neto en cajas de materia prima
+                const rawBoxes = Math.round(rawLiquidNeededForClara / 36.1);
 
                 // Fecha sugerida: próximo martes o jueves a las 06:00 (nunca en el pasado)
                 const baseDate = req.query.start_date ? new Date(req.query.start_date + 'T00:00:00') : new Date();
@@ -108,7 +122,7 @@ const getProductionSuggestions = async (req, res) => {
                     title: 'Arbitraje de Coproducto: Reutilización de Yema con MP liquida A',
                     badge: 'Ahorro Máximo & Margen Alto',
                     color: 'emerald',
-                    summary: `Detectada demanda de ${Math.round(demandClara).toLocaleString()} Lbs de Clara con solo ${Math.round(demandYema).toLocaleString()} Lbs de Yema requerida. El quebrado generará un excedente de ${Math.round(surplusYolk).toLocaleString()} Lbs de yema pura (50% sólidos). En lugar de congelarla y saturar cuartos fríos, se recomienda reincorporarla con ${Math.round(waterAddedLbs).toLocaleString()} Lbs de MP liquida A y ácido cítrico para formular ${Math.round(formulatedYieldLbs).toLocaleString()} Lbs de Huevo Entero Formulado estandarizado al 22.5% de sólidos.`,
+                    summary: `Detectada demanda de ${Math.round(demandClara).toLocaleString()} Lbs de Clara. Se calibra un lote de separación controlado de ${rawLiquidNeededForClara.toLocaleString()} Lbs (${rawBoxes} cajas) para no saturar tanques de frío. Generará ${Math.round(claraInBatch).toLocaleString()} Lbs de clara y ${Math.round(surplusYolk).toLocaleString()} Lbs de yema coproducto excedente. Reincorporarla con ${Math.round(waterAddedLbs).toLocaleString()} Lbs MP liquida A y ácido cítrico formula ${Math.round(formulatedYieldLbs).toLocaleString()} Lbs de Huevo Entero Formulado al 22.5% de sólidos.`,
                     economic_impact: {
                         boxes_saved: boxesSaved,
                         cost_savings_usd: moneySaved,
@@ -127,25 +141,26 @@ const getProductionSuggestions = async (req, res) => {
                         priority: 'alta',
                         suggestion_source: 'ai_balance_coproductos',
                         mix_formula_json: {
-                            raw_egg_boxes: Math.round(rawLiquidNeededForClara / 36.1),
-                            raw_liquid_lbs: Math.round(rawLiquidNeededForClara),
+                            raw_egg_boxes: rawBoxes,
+                            raw_liquid_lbs: rawLiquidNeededForClara,
                             clara_separated_pct: 100,
-                            clara_produced_lbs: Math.round(demandClara),
+                            clara_produced_lbs: Math.round(claraInBatch),
                             yema_coproduct_lbs: Math.round(coproductYolkGenerated),
                             yema_reutilized_lbs: Math.round(surplusYolk),
                             water_h2o_lbs: Math.round(waterAddedLbs),
                             water_bottles: Math.ceil(waterAddedLbs / 41.8), // ~41.8 lbs por garrafa de 5 galones
                             citric_acid_lbs: citricAcidLbs,
                             target_solids_pct: 22.5,
-                            notes: `Batch combinado: 1) Separar ${Math.round(demandClara).toLocaleString()} Lbs de clara para pedidos PriceSmart/repostería. 2) Reincorporar ${Math.round(surplusYolk).toLocaleString()} Lbs de yema coproducto con ${Math.round(waterAddedLbs).toLocaleString()} Lbs de MP liquida A y ${citricAcidLbs} Lbs de ácido cítrico para envasar Huevo Formulado.`
+                            separation_batch_limit_lbs: separationBatchLbs,
+                            notes: `Batch combinado calibrado a ${rawLiquidNeededForClara.toLocaleString()} Lbs MP (máx ${separationBatchLbs.toLocaleString()} Lbs): 1) Separar ${Math.round(claraInBatch).toLocaleString()} Lbs de clara. 2) Reincorporar ${Math.round(surplusYolk).toLocaleString()} Lbs de yema coproducto con ${Math.round(waterAddedLbs).toLocaleString()} Lbs de MP liquida A y ${citricAcidLbs} Lbs de ácido cítrico.`
                         },
                         tasks: [
-                            { factory_role: 'Quebrado y Carga', task_description: `Almacenar y quebrar ${Math.round(rawLiquidNeededForClara / 36.1)} cajas de huevo blanco para alimentar separadora centrífuga.` },
+                            { factory_role: 'Quebrado y Carga', task_description: `Almacenar y quebrar ${rawBoxes} cajas de huevo blanco para alimentar separadora centrífuga.` },
                             { factory_role: 'Sanitización CIP', task_description: 'Ejecutar CIP ácido/alcalino de 45 min en pasteurizador y tanque de mezcla antes de las 05:30 AM.' },
                             { factory_role: 'Dosificación MP liquida A / Mezcla', task_description: `Medir y dosificar ${Math.round(waterAddedLbs).toLocaleString()} Lbs de MP liquida A con ${citricAcidLbs} Lbs de ácido cítrico grado alimentario.` },
                             { factory_role: 'Control de Calidad LAB-004', task_description: 'Verificar refractómetro: Sólidos totales 22.5% ± 0.5% Brix y pH 6.8 antes de autorizar pasteurización.' },
                             { factory_role: 'Pasteurización HACCP', task_description: 'Pasteurizar a 64.5°C por 210 segundos, monitoreando CCP-1 y flujo de 12.5 GPM.' },
-                            { factory_role: 'Empaque y Cuarto Frío', task_description: `Preparar ${Math.ceil(formulatedYieldLbs / 30)} cubetas de 30 Lb sanitizadas y ${Math.ceil(demandClara / 30)} cubetas para clara.` }
+                            { factory_role: 'Empaque y Cuarto Frío', task_description: `Preparar ${Math.ceil(formulatedYieldLbs / 30)} cubetas de 30 Lb sanitizadas y ${Math.ceil(claraInBatch / 30)} cubetas para clara.` }
                         ]
                     }
                 });
@@ -259,10 +274,16 @@ const getProductionSuggestions = async (req, res) => {
                 demand_entero_lbs: Math.round(demandEntero),
                 demand_formulado_lbs: Math.round(demandFormulado),
                 available_stock_lbs: availableStockLbs,
-                pending_orders_count: orders.length,
-                active_agreements_count: agreements.length,
+                pending_orders_count: filteredOrders.length,
+                active_agreements_count: filteredAgreements.length,
+                selected_customers_count: selectedCustomerKeys.size,
+                total_customers_count: availableCustomers.length,
+                separation_batch_lbs: separationBatchLbs,
                 is_simulation_active: isSimulation
             },
+            available_customers: availableCustomers,
+            selected_customer_ids: Array.from(selectedCustomerKeys),
+            separation_batch_lbs: separationBatchLbs,
             suggestions
         });
     } catch (error) {
