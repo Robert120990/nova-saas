@@ -8,7 +8,6 @@ import {
     Search,
     Pencil,
     Ban,
-    Truck,
     Printer,
     Eye,
     ShieldCheck,
@@ -62,10 +61,10 @@ export default function ReceptionFiltersBar({ model }) {
                                     <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase tracking-wider text-[10px]">
                                         <th className="px-3 py-2.5">Fecha</th>
                                         <th className="px-3 py-2.5">Proveedor / Lote</th>
-                                        <th className="px-3 py-2.5">Transporte (LOG-004)</th>
                                         <th className="px-3 py-2.5">Tipo / Presentación</th>
                                         <th className="px-3 py-2.5 text-right">Cajas</th>
                                         <th className="px-3 py-2.5 text-right">Peso (Lbs)</th>
+                                        <th className="px-3 py-2.5 text-right">Peso Prom. / Cj</th>
                                         <th className="px-3 py-2.5 text-right">Stock (Lbs)</th>
                                         <th className="px-3 py-2.5 text-center">Temp Huevo</th>
                                         <th className="px-3 py-2.5 text-center">Estatus</th>
@@ -83,6 +82,10 @@ export default function ReceptionFiltersBar({ model }) {
                                             certs = [];
                                         }
 
+                                        const boxes = parseFloat(rm.total_boxes || 0);
+                                        const weight = parseFloat(rm.weight_lbs || 0);
+                                        const avgWeightPerBox = boxes > 0 && weight > 0 ? (weight / boxes) : null;
+
                                         return (
                                             <tr key={rm.id} className="hover:bg-slate-50/75 transition-colors">
                                                 <td className="px-3 py-2.5 text-xs whitespace-nowrap">
@@ -99,21 +102,6 @@ export default function ReceptionFiltersBar({ model }) {
                                                         </span>
                                                     </div>
                                                 </td>
-                                                <td className="px-3 py-2.5">
-                                                    <div className="flex flex-col text-xs">
-                                                        {rm.truck_plate ? (
-                                                            <span className="text-slate-800 font-bold flex items-center gap-1">
-                                                                <Truck size={13} className="text-indigo-600" />
-                                                                {rm.truck_plate}
-                                                            </span>
-                                                        ) : (
-                                                            <span className="text-slate-400 italic text-[11px]">Sin transporte</span>
-                                                        )}
-                                                        {rm.truck_temperature_c && (
-                                                            <span className="text-slate-500 text-[10px]">Termoking: {rm.truck_temperature_c}°C</span>
-                                                        )}
-                                                    </div>
-                                                </td>
                                                 <td className="px-3 py-2.5 capitalize">
                                                     <div className="flex flex-col">
                                                         <span className="text-slate-900 text-xs font-bold">{rm.egg_type}</span>
@@ -127,6 +115,16 @@ export default function ReceptionFiltersBar({ model }) {
                                                 </td>
                                                 <td className="px-3 py-2.5 text-right font-black text-slate-900 text-xs">
                                                     {parseFloat(rm.weight_lbs).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                </td>
+                                                <td className="px-3 py-2.5 text-right font-bold text-slate-800 text-xs whitespace-nowrap">
+                                                    {avgWeightPerBox !== null ? (
+                                                        <span className="inline-flex items-baseline gap-1 text-slate-900 font-extrabold">
+                                                            {avgWeightPerBox.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                            <span className="text-[10px] text-slate-400 font-medium">lb/cj</span>
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-slate-400 font-normal">-</span>
+                                                    )}
                                                 </td>
                                                 <td className="px-3 py-2.5 text-right font-bold text-xs">
                                                     <span className={parseFloat(rm.stock_lbs || 0) <= 0 ? 'text-rose-600' : parseFloat(rm.stock_lbs) < 1000 ? 'text-amber-600' : 'text-emerald-700'}>

@@ -130,6 +130,9 @@ const EggReceptionDetailModal = ({
                         <div className="text-slate-700 space-y-0.5 pt-1">
                             <p><span className="text-slate-400 font-medium">Total Cajas:</span> <strong className="text-indigo-700">{reception.total_boxes || 0} cjs</strong></p>
                             <p><span className="text-slate-400 font-medium">Peso Neto Inicial:</span> <strong className="text-slate-900">{parseFloat(reception.weight_lbs || 0).toLocaleString()} Lbs</strong></p>
+                            {parseFloat(reception.total_boxes || 0) > 0 && parseFloat(reception.weight_lbs || 0) > 0 && (
+                                <p><span className="text-slate-400 font-medium">Peso Promedio / Caja:</span> <strong className="text-indigo-900 font-bold">{(parseFloat(reception.weight_lbs) / parseFloat(reception.total_boxes)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Lbs/Cj</strong></p>
+                            )}
                             <p><span className="text-slate-400 font-medium">Stock Remanente:</span> <strong className="text-emerald-700">{parseFloat(reception.stock_lbs || 0).toLocaleString()} Lbs</strong></p>
                             <p><span className="text-slate-400 font-medium">Tarimas Pesadas:</span> <strong>{parsedTarimas.length}</strong></p>
                         </div>

@@ -1445,8 +1445,12 @@ export default function useReceptionModel() {
             doc.text(`Fecha de Emisión: ${emissionDate} | Planta ANDELSA El Salvador | Auditoría de Trazabilidad`, 14, 39);
 
             // Tabla 1: Datos Generales y Cadena de Frío
+            const avgBoxWeight = (parseFloat(rm.total_boxes || 0) > 0 && parseFloat(rm.weight_lbs || 0) > 0)
+                ? (parseFloat(rm.weight_lbs) / parseFloat(rm.total_boxes)).toFixed(2)
+                : null;
+
             autoTable(doc, {
-                startY: 43,
+                startY: 44,
                 theme: 'grid',
                 headStyles: { fillColor: [79, 70, 229], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
                 bodyStyles: { fontSize: 7.5, textColor: [30, 41, 59], cellPadding: 2 },
@@ -1463,7 +1467,8 @@ export default function useReceptionModel() {
                     ['Fecha de Ingreso:', formatDate(rm.fecha || rm.created_at), 'Temp. Termoking (°C):', rm.truck_temperature_c !== null && rm.truck_temperature_c !== undefined ? `${rm.truck_temperature_c}°C` : 'N/R'],
                     ['Tipo de Producto:', `${rm.egg_type} (${rm.egg_color || 'blanco'})`, 'Temp. Interna Huevo:', rm.temperature_c !== null && rm.temperature_c !== undefined ? `${rm.temperature_c}°C` : 'N/R'],
                     ['Clasificación Calidad:', `${rm.egg_classification || 'Grado A'} (${(rm.quality_status || rm.status || 'Aprobado').toUpperCase()})`, 'Inspector Calidad:', rm.quality_inspector_name || rm.operator_name || 'N/A'],
-                    ['Total Cajas Recibidas:', `${rm.total_boxes || 0} cajas (Talla: ${rm.egg_size || 'L'})`, 'Total Peso Neto:', `${parseFloat(rm.weight_lbs || 0).toLocaleString()} Lbs`]
+                    ['Total Cajas Recibidas:', `${rm.total_boxes || 0} cajas (Talla: ${rm.egg_size || 'L'})`, 'Total Peso Neto:', `${parseFloat(rm.weight_lbs || 0).toLocaleString()} Lbs`],
+                    ...(avgBoxWeight ? [['Peso Promedio / Caja:', `${avgBoxWeight} Lbs/Caja`, 'Condición de Empaque:', rm.egg_color ? `Color ${rm.egg_color}` : 'Estándar']] : [])
                 ]
             });
 

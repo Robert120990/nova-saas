@@ -751,6 +751,9 @@ export default function ReceptionIsCreateModalOpenModal({ model, open = model.is
                                             <span className="text-slate-500">Tarimas: <strong className="text-slate-800">{tarimas.length}</strong></span>
                                             <span className="text-slate-500">Total Cajas: <strong className="text-indigo-700">{formData.total_boxes}</strong></span>
                                             <span className="text-slate-500">Neto Total: <strong className="text-emerald-700">{formData.weight_lbs || '0.00'} lb</strong></span>
+                                            {parseFloat(formData.total_boxes || 0) > 0 && parseFloat(formData.weight_lbs || 0) > 0 && (
+                                                <span className="text-slate-500">Prom. Caja: <strong className="text-indigo-900 font-bold">{(parseFloat(formData.weight_lbs) / parseFloat(formData.total_boxes)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} lb/cj</strong></span>
+                                            )}
                                         </div>
                                     </div>
                                 </div>
