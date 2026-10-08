@@ -21,6 +21,25 @@ export default function ProductionSelectedBatchForCompleteModal({
     const isFinalized = !!selectedBatchForComplete?.completed_at;
     const canSupervise = isAdmin || canManageLots;
 
+    const configs = Array.isArray(productConfig) ? productConfig : [];
+    const pType = (selectedBatchForComplete?.product_type || '').toLowerCase();
+    const isCoproduct = Boolean(selectedBatchForComplete?.is_coproduct || selectedBatchForComplete?.parent_batch_id);
+    const isClara = pType.includes('clara');
+    const isYema = pType.includes('yema');
+
+    const matchedConfig = configs.find(c => (c.product_type || '').toLowerCase() === pType) || {};
+    const defaultYieldPct = isClara ? 56 : isYema ? 32 : 87;
+    const defaultShellPct = isCoproduct ? 0 : (isClara || isYema ? 13 : 13);
+    const defaultLossPct = isClara || isYema ? 1.5 : 0;
+
+    const cfgYieldPct = parseFloat(matchedConfig.yield_pct ?? defaultYieldPct);
+    const cfgShellPct = parseFloat(matchedConfig.waste_shell_pct ?? defaultShellPct);
+    const cfgLossPct = parseFloat(matchedConfig.waste_loss_pct ?? defaultLossPct);
+
+    const inputWeight = parseFloat(selectedBatchForComplete?.input_weight_lbs || 0);
+    const expectedYieldLbs = (inputWeight * (cfgYieldPct / 100)).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+    const expectedWasteLbs = (inputWeight * ((cfgShellPct + cfgLossPct) / 100)).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+
     return (
         <>
             {selectedBatchForComplete && (
@@ -31,13 +50,20 @@ export default function ProductionSelectedBatchForCompleteModal({
                                 <h3 className="text-base font-bold text-slate-900 uppercase tracking-tight">
                                     Balance de Masas y Cierre de Lote
                                 </h3>
-                                {isFinalized && (
-                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
-                                        Finalizado
-                                    </span>
-                                )}
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                    {isCoproduct && (
+                                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-800 border border-purple-300">
+                                            🔗 Co-Producto (Separación)
+                                        </span>
+                                    )}
+                                    {isFinalized && (
+                                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                                            Finalizado
+                                        </span>
+                                    )}
+                                </div>
                             </div>
-                            <p className="text-xs text-slate-500 mt-1">Lote: <b>{selectedBatchForComplete.batch_uuid}</b></p>
+                            <p className="text-xs text-slate-500 mt-1">Lote: <b>{selectedBatchForComplete.batch_uuid}</b> ({selectedBatchForComplete.product_type})</p>
                         </div>
                         <div className="h-px bg-slate-100" />
 
@@ -58,21 +84,21 @@ export default function ProductionSelectedBatchForCompleteModal({
                         <div className="grid grid-cols-3 gap-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
                             <div className="text-center">
                                 <span className="text-[10px] font-bold text-slate-500 block uppercase">Entrada</span>
-                                <span className="text-xs font-bold text-slate-900">{parseFloat(selectedBatchForComplete.input_weight_lbs || 0).toLocaleString()} Lbs</span>
+                                <span className="text-xs font-bold text-slate-900">{inputWeight.toLocaleString()} Lbs</span>
                             </div>
                             <div className="text-center">
-                                <span className="text-[10px] font-bold text-slate-500 block uppercase">Esperado ({(productConfig.find(c => c.product_type === selectedBatchForComplete?.product_type) || {}).yield_pct || 87}%)</span>
-                                <span className="text-xs font-bold text-indigo-600">~{(parseFloat(selectedBatchForComplete.input_weight_lbs) * (() => { const cfg = productConfig.find(c => c.product_type === selectedBatchForComplete.product_type) || {}; return parseFloat(cfg.yield_pct || 87) / 100; })()).toLocaleString()} Lbs</span>
+                                <span className="text-[10px] font-bold text-slate-500 block uppercase">Esperado ({cfgYieldPct}%)</span>
+                                <span className="text-xs font-bold text-indigo-600">~{expectedYieldLbs} Lbs</span>
                             </div>
                             <div className="text-center">
-                                <span className="text-[10px] font-bold text-slate-500 block uppercase">Cáscara/Merma ({(productConfig.find(c => c.product_type === selectedBatchForComplete?.product_type) || {}).waste_shell_pct || 13}%+{(productConfig.find(c => c.product_type === selectedBatchForComplete?.product_type) || {}).waste_loss_pct || 0}%)</span>
-                                <span className="text-xs font-bold text-slate-600">~{(parseFloat(selectedBatchForComplete.input_weight_lbs) * (() => { const cfg = productConfig.find(c => c.product_type === selectedBatchForComplete.product_type) || {}; return (parseFloat(cfg.waste_shell_pct || 13) + parseFloat(cfg.waste_loss_pct || 0)) / 100; })()).toLocaleString()} Lbs</span>
+                                <span className="text-[10px] font-bold text-slate-500 block uppercase">Cáscara/Merma ({cfgShellPct}%+{cfgLossPct}%)</span>
+                                <span className="text-xs font-bold text-slate-600">~{expectedWasteLbs} Lbs</span>
                             </div>
                         </div>
 
                         <form onSubmit={onSave} className="space-y-4">
                             <div>
-                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">Rendimiento Líquido ({(productConfig.find(c => c.product_type === selectedBatchForComplete?.product_type) || {}).yield_pct || 87}%)</label>
+                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">Rendimiento Líquido ({cfgYieldPct}%)</label>
                                 <input
                                     type="number"
                                     value={completeForm.yield_liquid_lbs}
@@ -86,7 +112,7 @@ export default function ProductionSelectedBatchForCompleteModal({
 
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">Cáscara ({(productConfig.find(c => c.product_type === selectedBatchForComplete?.product_type) || {}).waste_shell_pct || 13}%)</label>
+                                    <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">Cáscara ({cfgShellPct}%)</label>
                                     <input
                                         type="number"
                                         value={completeForm.waste_shell_lbs}
@@ -97,7 +123,7 @@ export default function ProductionSelectedBatchForCompleteModal({
                                     />
                                 </div>
                                 <div>
-                                    <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">Merma ({(productConfig.find(c => c.product_type === selectedBatchForComplete?.product_type) || {}).waste_loss_pct || 0}%)</label>
+                                    <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">Merma ({cfgLossPct}%)</label>
                                     <input
                                         type="number"
                                         value={completeForm.waste_loss_lbs}

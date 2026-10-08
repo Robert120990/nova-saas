@@ -100,7 +100,13 @@ const createPackagingRecord = async (req, res) => {
             'SELECT COALESCE(SUM(quantity_lbs), 0) as remanentes_lbs FROM egg_batch_remanentes WHERE target_batch_id = ? AND company_id = ?',
             [batch_id, company_id]
         );
-        const totalAvailableLiquid = Number(batch.yield_liquid_lbs || 0) + Number(remSum[0]?.remanentes_lbs || 0);
+        const estimatedLiquid = Number(batch.input_weight_lbs || 0) * (
+            (batch.product_type || '').toLowerCase().includes('clara') ? 0.56
+            : (batch.product_type || '').toLowerCase().includes('yema') ? 0.32
+            : 0.87
+        );
+        const liquidBasis = Number(batch.yield_liquid_lbs || 0) > 0 ? Number(batch.yield_liquid_lbs) : estimatedLiquid;
+        const totalAvailableLiquid = liquidBasis + Number(remSum[0]?.remanentes_lbs || 0);
 
         for (const item of itemsToProcess) {
             const units_packaged = number(item.units_packaged, 'Unidades', 1);

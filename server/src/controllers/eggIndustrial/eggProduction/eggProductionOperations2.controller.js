@@ -92,7 +92,7 @@ const closePasteurization = async (req, res) => {
         if (!logs.length) eggRules.fail('Registre los parámetros de pasteurización antes de cerrar.');
         const resolvedPastLot = (pasteurization_lot || batch.pasteurization_lot || 'PAST-' + batch.id).trim();
 
-        // Auto-cálculo y registro de merma de cáscara (13% fijo) y saldo líquido estimado (87%)
+        // Auto-cálculo y registro de merma de cáscara y saldo líquido estimado
         const inputWeight = Number(batch.input_weight_lbs || 0);
         let autoShell = null;
         let autoYield = null;
@@ -103,23 +103,34 @@ const closePasteurization = async (req, res) => {
             const customYield = (req.body.yield_liquid_lbs !== undefined && req.body.yield_liquid_lbs !== null && req.body.yield_liquid_lbs !== '')
                 ? Number(req.body.yield_liquid_lbs) : null;
 
+            const isCoproduct = Boolean(batch.is_coproduct || batch.parent_batch_id);
+            const pType = (batch.product_type || '').toLowerCase();
+            const defaultYieldPct = pType.includes('clara') ? 0.56 : pType.includes('yema') ? 0.32 : 0.87;
+            const defaultShellPct = isCoproduct ? 0 : 0.13;
+
             autoShell = customShell !== null
                 ? customShell
-                : (batch.waste_shell_lbs !== null && Number(batch.waste_shell_lbs) > 0
+                : (batch.waste_shell_lbs !== null && Number(batch.waste_shell_lbs) >= 0
                     ? Number(batch.waste_shell_lbs)
-                    : Math.round(inputWeight * 0.13 * 100) / 100);
+                    : Math.round(inputWeight * defaultShellPct * 100) / 100);
 
             autoYield = customYield !== null
                 ? customYield
                 : (batch.yield_liquid_lbs !== null && Number(batch.yield_liquid_lbs) > 0
                     ? Number(batch.yield_liquid_lbs)
-                    : Math.round((inputWeight - autoShell) * 100) / 100);
+                    : Math.round((inputWeight * defaultYieldPct) * 100) / 100);
 
-            // Registrar en egg_batch_waste_logs si aún no se ha registrado la merma de cáscara para este lote
+            // Registrar en egg_batch_waste_logs si aún no se ha registrado la merma de cáscara para esta corrida
+            // En corridas compartidas (co-productos), la cáscara se registra solo una vez en el lote principal
+            const parentOrCompanionId = batch.parent_batch_id || null;
             const [existingWaste] = await connection.query(
-                'SELECT id FROM egg_batch_waste_logs WHERE batch_id = ? AND company_id = ? AND stage = "quebraje" AND waste_type = "cascaron" LIMIT 1',
-                [id, company_id]
+                `SELECT id FROM egg_batch_waste_logs 
+                 WHERE company_id = ? AND stage = 'quebraje' AND waste_type = 'cascaron' 
+                   AND (batch_id = ? ${parentOrCompanionId ? 'OR batch_id = ?' : ''})
+                 LIMIT 1`,
+                parentOrCompanionId ? [company_id, id, parentOrCompanionId] : [company_id, id]
             );
+
             if (!existingWaste.length && autoShell > 0) {
                 await connection.query(
                     `INSERT INTO egg_batch_waste_logs (company_id, batch_id, stage, waste_type, quantity_lbs, reason, operator_name)

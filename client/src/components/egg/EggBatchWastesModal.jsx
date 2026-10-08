@@ -168,7 +168,7 @@ const EggBatchWastesModal = ({
                                             <tr key={w.id} className="hover:bg-slate-50">
                                                 <td className="p-2.5 font-bold capitalize text-slate-900">{w.stage}</td>
                                                 <td className="p-2.5 text-rose-700 font-semibold capitalize">{w.waste_type?.replace('_', ' ')}</td>
-                                                <td className="p-2.5 text-right font-black text-slate-900">{parseFloat(w.weight_lbs).toFixed(1)} Lbs</td>
+                                                <td className="p-2.5 text-right font-black text-slate-900">{parseFloat(w.weight_lbs ?? w.quantity_lbs ?? 0).toFixed(1)} Lbs</td>
                                                 <td className="p-2.5 text-slate-600">{w.operator_name || '-'}</td>
                                                 <td className="p-2.5 text-slate-500 italic text-[11px]">{w.notes || '-'}</td>
                                                 <td className="p-2.5 text-center">

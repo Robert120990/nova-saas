@@ -126,9 +126,9 @@ const getActualOperationalCost = async (req, res) => {
         let batchSql = `
             SELECT
                 COUNT(*) as total_batches,
-                COALESCE(SUM(input_weight_lbs), 0) as total_input_lbs,
+                COALESCE(SUM(CASE WHEN is_coproduct = 1 THEN 0 ELSE input_weight_lbs END), 0) as total_input_lbs,
                 COALESCE(SUM(yield_liquid_lbs), 0) as total_liquid_lbs,
-                COALESCE(SUM(waste_shell_lbs), 0) as total_shell_lbs
+                COALESCE(SUM(CASE WHEN is_coproduct = 1 AND parent_batch_id IS NOT NULL THEN 0 ELSE waste_shell_lbs END), 0) as total_shell_lbs
             FROM egg_production_batches
             WHERE company_id = ? AND status != 'cancelado'
         `;

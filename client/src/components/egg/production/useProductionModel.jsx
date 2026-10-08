@@ -192,17 +192,25 @@ export default function useProductionModel() {
     const handleOpenClosePasteurization = (batch) => {
         if (!batch) return;
         const inputLbs = parseFloat(batch.input_weight_lbs || 0);
-        const defaultShell = batch.waste_shell_lbs && parseFloat(batch.waste_shell_lbs) > 0
+        const pType = (batch.product_type || '').toLowerCase();
+        const isCoproduct = Boolean(batch.is_coproduct || batch.parent_batch_id);
+        const isClara = pType.includes('clara');
+        const isYema = pType.includes('yema');
+
+        const defaultShellPct = isCoproduct ? 0 : 0.13;
+        const defaultYieldPct = isClara ? 0.56 : isYema ? 0.32 : 0.87;
+
+        const defaultShell = batch.waste_shell_lbs && parseFloat(batch.waste_shell_lbs) >= 0
             ? String(batch.waste_shell_lbs)
-            : (inputLbs > 0 ? (inputLbs * 0.13).toFixed(2) : '');
+            : (inputLbs > 0 ? (inputLbs * defaultShellPct).toFixed(2) : '');
         const defaultYield = batch.yield_liquid_lbs && parseFloat(batch.yield_liquid_lbs) > 0
             ? String(batch.yield_liquid_lbs)
-            : (inputLbs > 0 ? (inputLbs * 0.87).toFixed(2) : '');
+            : (inputLbs > 0 ? (inputLbs * defaultYieldPct).toFixed(2) : '');
 
         setClosePasteurizationModal({
             isOpen: true,
             batch,
-            pasteurization_lot: batch.pasteurization_lot || (batch.batch_code_display ? `PAST-${batch.batch_code_display}` : `PAST-${batch.id}`),
+            pasteurization_lot: batch.pasteurization_lot || (batch.batch_code_display ? `PAST-${batch.batch_code_display.replace(/\s+/g, '')}` : `PAST-${batch.id}`),
             waste_shell_lbs: defaultShell,
             yield_liquid_lbs: defaultYield,
             notes: '',
@@ -288,10 +296,20 @@ export default function useProductionModel() {
                 supervisor_password: ''
             });
         } else {
-            const cfg = productConfig.find(c => c.product_type === batch.product_type) || {};
-            const yieldPct = parseFloat(cfg.yield_pct || 87) / 100;
-            const shellPct = parseFloat(cfg.waste_shell_pct || 13) / 100;
-            const lossPct = parseFloat(cfg.waste_loss_pct || 0) / 100;
+            const configs = Array.isArray(productConfig) ? productConfig : [];
+            const pType = (batch.product_type || '').toLowerCase();
+            const isCoproduct = Boolean(batch.is_coproduct || batch.parent_batch_id);
+            const isClara = pType.includes('clara');
+            const isYema = pType.includes('yema');
+
+            const cfg = configs.find(c => (c.product_type || '').toLowerCase() === pType) || {};
+            const defaultYieldPct = isClara ? 56 : isYema ? 32 : 87;
+            const defaultShellPct = isCoproduct ? 0 : 13;
+            const defaultLossPct = isClara || isYema ? 1.5 : 0;
+
+            const yieldPct = parseFloat(cfg.yield_pct ?? defaultYieldPct) / 100;
+            const shellPct = parseFloat(cfg.waste_shell_pct ?? defaultShellPct) / 100;
+            const lossPct = parseFloat(cfg.waste_loss_pct ?? defaultLossPct) / 100;
             const inputLbs = parseFloat(batch.input_weight_lbs || 0);
             setCompleteForm({
                 yield_liquid_lbs: inputLbs > 0 ? (inputLbs * yieldPct).toFixed(2) : '',
@@ -1889,7 +1907,8 @@ export default function useProductionModel() {
                 holding_time_seconds: parseInt(pasteurizeForm.holding_time_seconds),
                 pressure_psi: parseFloat(pasteurizeForm.pressure_psi),
                 flow_rate_gpm: parseFloat(pasteurizeForm.flow_rate_gpm),
-                operator_name: pasteurizeForm.operator_name
+                operator_name: pasteurizeForm.operator_name,
+                pasteurization_lot: pasteurizeForm.pasteurization_lot?.trim() || undefined
             });
 
             const { haccp_compliant, deviation_description } = res.data;
@@ -1922,7 +1941,7 @@ export default function useProductionModel() {
                 pressure_psi: parseFloat(pasteurizeForm.pressure_psi),
                 flow_rate_gpm: parseFloat(pasteurizeForm.flow_rate_gpm),
                 operator_name: pasteurizeForm.operator_name,
-                pasteurization_lot: pasteurizeForm.pasteurization_lot
+                pasteurization_lot: pasteurizeForm.pasteurization_lot?.trim() || undefined
             });
 
             const res2 = await axios.post('/api/egg-industrial/pasteurize', {
@@ -1932,7 +1951,7 @@ export default function useProductionModel() {
                 pressure_psi: parseFloat(secondPasteurizeForm.pressure_psi),
                 flow_rate_gpm: parseFloat(secondPasteurizeForm.flow_rate_gpm),
                 operator_name: secondPasteurizeForm.operator_name,
-                pasteurization_lot: secondPasteurizeForm.pasteurization_lot
+                pasteurization_lot: secondPasteurizeForm.pasteurization_lot?.trim() || undefined
             });
 
             const fail1 = !res1.data.haccp_compliant;
@@ -1940,13 +1959,13 @@ export default function useProductionModel() {
 
             if (fail1 || fail2) {
                 const msg = [fail1 ? `Lote Principal: ${res1.data.deviation_description}` : null, fail2 ? `Segundo Lote: ${res2.data.deviation_description}` : null].filter(Boolean).join(' | ');
-                setHaccpViolationAlert(msg);
-                toast.error('ALERTA HACCP: Se detectó desviación en al menos uno de los lotes.', { duration: 10000 });
+                toast.warning(`Parámetros registrados con observación térmica: ${msg}. Los lotes avanzaron a pasteurizado; Calidad dictaminará la liberación.`, { duration: 9000 });
             } else {
                 toast.success('Monitoreo HACCP validado para ambos lotes con éxito.');
-                setSelectedBatchForPasteurize('');
-                setIsPasteurizeModalOpen(false);
             }
+            setSelectedBatchForPasteurize('');
+            setIsPasteurizeModalOpen(false);
+            setHaccpViolationAlert(null);
             fetchData();
         } catch (error) {
             console.error('Error in dual pasteurization:', error);

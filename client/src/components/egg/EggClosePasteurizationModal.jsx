@@ -18,8 +18,18 @@ const EggClosePasteurizationModal = ({
     if (!isOpen || !batch) return null;
 
     const inputLbs = parseFloat(batch.input_weight_lbs || 0);
-    const autoShellLbs = inputLbs > 0 ? (inputLbs * 0.13).toFixed(2) : '0.00';
-    const autoYieldLbs = inputLbs > 0 ? (inputLbs * 0.87).toFixed(2) : '0.00';
+    const isCoproduct = Boolean(batch.is_coproduct || batch.parent_batch_id);
+    const pType = (batch.product_type || '').toLowerCase();
+    const isClara = pType.includes('clara');
+    const isYema = pType.includes('yema');
+
+    const defaultShellPct = isCoproduct ? 0 : 0.13;
+    const defaultYieldPct = isClara ? 0.56 : isYema ? 0.32 : 0.87;
+    const shellPctLabel = isCoproduct ? '0% (Compartida)' : '13% fijo';
+    const yieldPctLabel = `${Math.round(defaultYieldPct * 100)}%`;
+
+    const autoShellLbs = inputLbs > 0 ? (inputLbs * defaultShellPct).toFixed(2) : '0.00';
+    const autoYieldLbs = inputLbs > 0 ? (inputLbs * defaultYieldPct).toFixed(2) : '0.00';
 
     return (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
@@ -46,16 +56,21 @@ const EggClosePasteurizationModal = ({
                 </div>
 
                 <div className="bg-amber-50/70 border border-amber-200 rounded-xl p-3.5 text-xs text-amber-900 space-y-1.5">
-                    <div className="font-bold flex items-center gap-1.5">
+                    <div className="font-bold flex items-center gap-1.5 flex-wrap">
                         <Flame size={14} className="text-amber-700" />
-                        Lote: {batch.batch_code_display || batch.batch_uuid} ({batch.product_type})
+                        <span>Lote: {batch.batch_code_display || batch.batch_uuid} ({batch.product_type})</span>
+                        {isCoproduct && (
+                            <span className="px-1.5 py-0.5 text-[9px] bg-purple-100 text-purple-800 font-bold rounded border border-purple-200">
+                                🔗 Co-Producto
+                            </span>
+                        )}
                     </div>
                     <p className="text-[11px] text-amber-800">
                         Al cerrar la pasteurización, se fijará el lote térmico oficial y se impedirá añadir más tarimas o modificar temperaturas/retención sin permiso especial de administración.
                     </p>
                 </div>
 
-                {/* Desglose de Masa Automático: Merma de Cáscara 13% y Líquido 87% */}
+                {/* Desglose de Masa Automático Calibrado por Tipo de Corrida */}
                 <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2">
                     <div className="flex items-center justify-between text-xs">
                         <span className="font-bold text-slate-700">Entrada del Lote:</span>
@@ -63,20 +78,22 @@ const EggClosePasteurizationModal = ({
                     </div>
                     <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-200">
                         <div className="p-2 bg-amber-50/80 border border-amber-200 rounded-lg">
-                            <span className="text-[10px] font-bold text-amber-800 uppercase block">Cáscara (13% fijo)</span>
+                            <span className="text-[10px] font-bold text-amber-800 uppercase block">Cáscara ({shellPctLabel})</span>
                             <span className="text-xs font-black text-amber-900 font-mono">
-                                {wasteShellLbs ? parseFloat(wasteShellLbs).toLocaleString() : autoShellLbs} Lbs
+                                {wasteShellLbs !== undefined && wasteShellLbs !== null && wasteShellLbs !== '' ? parseFloat(wasteShellLbs).toLocaleString() : autoShellLbs} Lbs
                             </span>
                         </div>
                         <div className="p-2 bg-teal-50/80 border border-teal-200 rounded-lg">
-                            <span className="text-[10px] font-bold text-teal-800 uppercase block">Líquido Estimado (87%)</span>
+                            <span className="text-[10px] font-bold text-teal-800 uppercase block">Líquido Estimado ({yieldPctLabel})</span>
                             <span className="text-xs font-black text-teal-900 font-mono">
-                                {yieldLiquidLbs ? parseFloat(yieldLiquidLbs).toLocaleString() : autoYieldLbs} Lbs
+                                {yieldLiquidLbs !== undefined && yieldLiquidLbs !== null && yieldLiquidLbs !== '' ? parseFloat(yieldLiquidLbs).toLocaleString() : autoYieldLbs} Lbs
                             </span>
                         </div>
                     </div>
                     <p className="text-[10px] text-slate-500 italic">
-                        ℹ️ El sistema registrará automáticamente la merma de cáscara del 13% en el balance de masas y en la bitácora de mermas.
+                        {isCoproduct
+                            ? 'ℹ️ Lote co-producto (corrida compartida). La merma de cáscara se atribuye al lote principal para evitar doble contabilización.'
+                            : 'ℹ️ El sistema registrará automáticamente la merma de cáscara en el balance de masas y en la bitácora de mermas.'}
                     </p>
                 </div>
 

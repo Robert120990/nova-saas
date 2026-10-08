@@ -29,8 +29,9 @@ export default function ProductionIsPasteurizeModalOpenModal({
 
     const [pasteurizeMode, setPasteurizeMode] = useState('dual'); // 'dual' | 'single'
 
-    const currentBatch = batches.find(b => String(b.id) === String(selectedBatchForPasteurize));
-    const companionBatch = batches.find(b =>
+    const safeBatches = Array.isArray(batches) ? batches : [];
+    const currentBatch = safeBatches.find(b => String(b.id) === String(selectedBatchForPasteurize));
+    const companionBatch = safeBatches.find(b =>
         currentBatch && (
             (currentBatch.parent_batch_id && b.id === currentBatch.parent_batch_id) ||
             (b.parent_batch_id && b.parent_batch_id === currentBatch.id) ||
@@ -272,6 +273,19 @@ export default function ProductionIsPasteurizeModalOpenModal({
                                     className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                                     step="0.01"
                                     placeholder="Ej: 12.5"
+                                />
+                            </div>
+
+                            <div className="md:col-span-2">
+                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">
+                                    Código Lote de Pasteurización
+                                </label>
+                                <input
+                                    type="text"
+                                    value={pasteurizeForm.pasteurization_lot || ''}
+                                    onChange={(e) => setPasteurizeForm({ ...pasteurizeForm, pasteurization_lot: e.target.value })}
+                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-mono font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                                    placeholder="Ej: PAST-01-274"
                                 />
                             </div>
                         </div>
