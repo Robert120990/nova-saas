@@ -9,13 +9,16 @@ import Modal from '../components/ui/Modal';
 import { 
     Search, FileText, Eye, Printer, Trash2,
     Mail, Terminal, Code, CheckCircle2, XCircle, AlertCircle, Info, Clock, Send, Ban, RefreshCcw,
-    BarChart3, Filter, RotateCcw, X, Sparkles, User, MoreVertical
+    BarChart3, Filter, RotateCcw, X, Sparkles, User, MoreVertical, ShieldCheck
 } from 'lucide-react';
 import Money from '../components/ui/Money';
-import SaleDetailModal from '../components/sales/SaleDetailModal';
-import DteStatsModal from '../components/sales/DteStatsModal';
-import DiagnosticoDteModal from '../components/sales/DiagnosticoDteModal';
-import EditarClienteDteModal from '../components/sales/EditarClienteDteModal';
+import { 
+    SaleDetailModal, 
+    DteStatsModal, 
+    DiagnosticoDteModal, 
+    EditarClienteDteModal, 
+    SalesIntegrityAuditModal 
+} from '../components/sales';
 import { useAuth } from '../context/AuthContext';
 
 const formatDateTime = (dateStr) => {
@@ -128,6 +131,7 @@ const SalesHistory = () => {
     const [viewType, setViewType] = useState('detalle');
     const [isEditDTEModalOpen, setIsEditDTEModalOpen] = useState(false);
     const [isDteStatsOpen, setIsDteStatsOpen] = useState(false);
+    const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
     const [isDiagModalOpen, setIsDiagModalOpen] = useState(false);
     const [selectedSaleForDiag, setSelectedSaleForDiag] = useState(null);
     const [isEditCustomerModalOpen, setIsEditCustomerModalOpen] = useState(false);
@@ -763,6 +767,14 @@ const SalesHistory = () => {
                     <p className="text-slate-500 font-medium text-Spanish">Consulta y gestión de documentos emitidos</p>
                 </div>
                 <div className="flex items-center gap-3">
+                    <button
+                        onClick={() => setIsAuditModalOpen(true)}
+                        className="flex items-center gap-2 px-4 py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold rounded-2xl border border-emerald-200/70 shadow-sm hover:shadow transition-all text-xs active:scale-95 cursor-pointer"
+                        title="Auditoría Forense de Integridad y Duplicidad de Ventas"
+                    >
+                        <ShieldCheck size={16} className="text-emerald-600" />
+                        <span>Auditoría de Integridad</span>
+                    </button>
                     <button
                         onClick={() => setIsDteStatsOpen(true)}
                         className="flex items-center gap-2 px-4 py-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold rounded-2xl border border-indigo-200/70 shadow-sm hover:shadow transition-all text-xs active:scale-95 cursor-pointer"
@@ -1694,6 +1706,12 @@ const SalesHistory = () => {
                     </div>
                 </div>
             </Modal>
+
+            {/* Modal de Auditoría Forense de Integridad de Ventas */}
+            <SalesIntegrityAuditModal
+                isOpen={isAuditModalOpen}
+                onClose={() => setIsAuditModalOpen(false)}
+            />
 
             {/* Modal de Estadísticas DTE */}
             <DteStatsModal 

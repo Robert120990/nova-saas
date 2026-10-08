@@ -599,6 +599,11 @@ router.put('/sales/change-shift', checkPermission('manage_dte_shift_change'), va
 // DTE Statistics
 router.get('/sales/dte-stats', salesController.getDteStats);
 
+// Sales Integrity Audit (Auditoría Forense y Duplicidad de Ventas)
+router.get('/sales/audit-integrity', salesController.getSalesIntegrityAudit);
+router.get('/sales/audit-integrity/pdf', salesController.exportSalesIntegrityAuditPDF);
+router.post('/sales/audit-integrity/sync-stamps', salesController.syncUnsyncedDteStamps);
+
 router.get('/sales/:id', salesController.getSaleById);
 router.get('/sales/:id/dte-diagnosis', salesController.getDteDiagnosis);
 router.post('/sales/:id/void', salesController.voidSale);
@@ -1322,14 +1327,14 @@ router.post('/filpro/revert-dte', verifyToken, tenantMiddleware, checkPermission
 router.post('/filpro/revert-day', verifyToken, tenantMiddleware, checkPermission('manage_filpro_sync'), filproController.revertDay);
 
 // Sistema Energético (Growatt + GESS SolarWeb)
-router.get('/energy/locations', verifyToken, checkPermission(['manage_energy_system', 'manage_energy_config']), energySystemController.getLocations);
-router.get('/energy/live', verifyToken, tenantMiddleware, checkPermission(['manage_energy_system', 'manage_energy_config']), energySystemController.getLive);
-router.post('/energy/sync', verifyToken, tenantMiddleware, checkPermission(['manage_energy_system', 'manage_energy_config']), energySystemController.syncNow);
-router.get('/energy/history', verifyToken, tenantMiddleware, checkPermission(['manage_energy_system', 'manage_energy_config']), energySystemController.getHistory);
-router.get('/energy/daily-summary', verifyToken, tenantMiddleware, checkPermission(['manage_energy_system', 'manage_energy_config']), energySystemController.getDailySummaries);
+router.get('/energy/locations', verifyToken, checkPermission(['manage_energy_system', 'manage_energy_config', 'view_dashboard_energy']), energySystemController.getLocations);
+router.get('/energy/live', verifyToken, tenantMiddleware, checkPermission(['manage_energy_system', 'manage_energy_config', 'view_dashboard_energy']), energySystemController.getLive);
+router.post('/energy/sync', verifyToken, tenantMiddleware, checkPermission(['manage_energy_system', 'manage_energy_config', 'view_dashboard_energy']), energySystemController.syncNow);
+router.get('/energy/history', verifyToken, tenantMiddleware, checkPermission(['manage_energy_system', 'manage_energy_config', 'view_dashboard_energy']), energySystemController.getHistory);
+router.get('/energy/daily-summary', verifyToken, tenantMiddleware, checkPermission(['manage_energy_system', 'manage_energy_config', 'view_dashboard_energy']), energySystemController.getDailySummaries);
 router.get('/energy/config', verifyToken, tenantMiddleware, checkPermission('manage_energy_config'), energySystemController.getConfig);
 router.put('/energy/config', verifyToken, tenantMiddleware, checkPermission('manage_energy_config'), energySystemController.updateConfig);
-router.get('/energy/analytics', verifyToken, tenantMiddleware, checkPermission(['manage_energy_system', 'manage_energy_config']), energySystemController.getAnalytics);
+router.get('/energy/analytics', verifyToken, tenantMiddleware, checkPermission(['manage_energy_system', 'manage_energy_config', 'view_dashboard_energy']), energySystemController.getAnalytics);
 
 // Notifications
 router.use('/notifications', notificationRoutes);
