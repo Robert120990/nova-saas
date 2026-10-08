@@ -449,7 +449,25 @@ const getVatBookPurchasesPDF = async (req, res) => {
             if (n(r.gravadas_importaciones) > 0 || n(r.iva_importaciones) > 0) esImport = true;
             if (n(r.gravadas_internaciones) > 0) esIntern = true;
 
-            const docNumber = (r.num_control || r.numero_documento || '').trim();
+            const rawDoc = (r.numero_documento || '').trim();
+            const rawCtrl = (r.num_control || '').trim();
+            const isDocPlaceholder = !rawDoc || ['S/N', 'SN', 'SIN NUMERO', 'S-N'].includes(rawDoc.toUpperCase());
+            const isCtrlPlaceholder = !rawCtrl || ['S/N', 'SN', 'SIN NUMERO', 'S-N'].includes(rawCtrl.toUpperCase());
+
+            let docNumber = '';
+            // 1. Prefer official MH DTE control number when available (e.g. DTE-03-M001P001-...)
+            if (/^DTE-\d{2}-/i.test(rawCtrl)) {
+                docNumber = rawCtrl;
+            } else if (!isDocPlaceholder) {
+                // 2. If numero_documento is a valid real number (not placeholder S/N), use it as the unique correlative
+                docNumber = rawDoc;
+            } else if (!isCtrlPlaceholder) {
+                // 3. Fallback to num_control if numero_documento was S/N or empty (e.g. manual entries)
+                docNumber = rawCtrl;
+            } else {
+                docNumber = 'S/N';
+            }
+
             return { esNC, esImport, esIntern, esExcluido, tipoNombre, docNumber };
         };
 
