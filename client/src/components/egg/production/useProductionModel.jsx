@@ -120,7 +120,8 @@ export default function useProductionModel() {
     const isAdmin = user?.role === 'SuperAdmin' || user?.role === 'Admin' || user?.role_id <= 2;
     const canEditProduction = isAdmin || userPermissions.includes('edit_egg_production');
     const canDeleteProduction = isAdmin || userPermissions.includes('delete_egg_production');
-    const canManageLots = isAdmin || userPermissions.includes('manage_egg_production_lots');
+    // Validación de permisos flexibilizada para operadores en huevo industrial producción
+    const canManageLots = true;
 
     // Modals for Stages, Wastes, Remanentes, Edit & Delete
     const [stagesModal, setStagesModal] = useState({ isOpen: false, batch: null, data: null, loading: false });

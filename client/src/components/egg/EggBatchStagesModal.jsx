@@ -9,7 +9,7 @@ const EggBatchStagesModal = ({
     isOpen,
     onClose,
     stagesModal,
-    canManageLots = false,
+    canManageLots = true,
     onClosePasteurization,
     onReopenPasteurization,
     onReopenPackaging,

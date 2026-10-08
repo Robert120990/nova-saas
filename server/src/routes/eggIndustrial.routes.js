@@ -32,10 +32,10 @@ router.put('/batches/:id/complete', permit('manage_production'), eggController.c
 router.get('/batches/:id/stages', permit('manage_production', 'manage_packaging', 'manage_egg_quality', 'manage_production_calendar', 'view_egg_reports', 'manage_industrial_costs'), eggController.getBatchStages);
 router.post('/batches/:id/tarimas', permit('manage_production'), eggController.addTarimasToBatch);
 router.post('/batches/:id/add-tarimas', permit('manage_production'), eggController.addTarimasToBatch);
-router.post('/batches/:id/close-packaging', permit('manage_egg_packaging_close'), eggController.closeBatchPackaging);
-router.post('/batches/:id/reopen-packaging', permit('manage_egg_production_lots'), eggController.reopenBatchPackaging);
-router.post('/batches/:id/close-pasteurization', permit('manage_egg_production_lots'), eggController.closePasteurization);
-router.post('/batches/:id/reopen-pasteurization', permit('manage_egg_production_lots'), eggController.reopenPasteurization);
+router.post('/batches/:id/close-packaging', permit('manage_egg_packaging_close', 'manage_production', 'manage_packaging'), eggController.closeBatchPackaging);
+router.post('/batches/:id/reopen-packaging', permit('manage_egg_production_lots', 'manage_production', 'manage_packaging'), eggController.reopenBatchPackaging);
+router.post('/batches/:id/close-pasteurization', permit('manage_egg_production_lots', 'manage_production'), eggController.closePasteurization);
+router.post('/batches/:id/reopen-pasteurization', permit('manage_egg_production_lots', 'manage_production'), eggController.reopenPasteurization);
 router.get('/batches/:id/export-summary', permit('manage_production', 'manage_packaging', 'manage_egg_quality', 'manage_production_calendar', 'view_egg_reports', 'manage_industrial_costs'), eggController.exportBatchSummary);
 
 // 3.1 Mermas de Producción (Soporte dual /mermas y /wastes)
