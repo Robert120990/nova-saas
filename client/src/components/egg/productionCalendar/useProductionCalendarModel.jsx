@@ -10,6 +10,7 @@ import axios from 'axios';
 import {
     generateJulianLotCode
 } from '../../../utils/julianDate';
+import { getDefaultPresentationForProduct } from '../../../utils/eggPresentationUtils';
 const PRODUCT_PROFILES = [
     { id: 'Huevo Entero Pasteurizado', name: 'Huevo Entero Pasteurizado', defaultSolids: 23.5, color: 'indigo', desc: '83% rendimiento estándar' },
     { id: 'Huevo Formulado por Separación', name: 'Huevo Formulado por Separación (Yema + MP liquida A)', defaultSolids: 22.5, color: 'emerald', desc: 'Venta de Clara + Yema con MP liquida A' },
@@ -39,7 +40,9 @@ const DEFAULT_PRESETS_BY_ROLE = {
 const PRESENTATIONS = [
     'cubeta 30LB',
     'cubeta 32LB',
+    'galón 8LB',
     'galon 8LB',
+    'medio galón 4LB',
     'medio galon 4LB',
     'litro 2LB',
     'bolsa 20LB'
@@ -524,7 +527,7 @@ export default function useProductionCalendarModel() {
                 secondary_lots: [],
                 second_lot_code: secondJulianLot,
                 second_product_profile: 'Clara de Huevo Pasteurizada',
-                second_presentation: 'cubeta 30LB',
+                second_presentation: getDefaultPresentationForProduct('Clara de Huevo Pasteurizada'),
                 second_target_quantity_lbs: 6000,
                 second_target_solids_pct: 11.5
             });
@@ -557,7 +560,7 @@ export default function useProductionCalendarModel() {
                 secondary_lots: [],
                 second_lot_code: secondJulianLot,
                 second_product_profile: 'Clara de Huevo Pasteurizada',
-                second_presentation: 'cubeta 30LB',
+                second_presentation: getDefaultPresentationForProduct('Clara de Huevo Pasteurizada'),
                 second_target_quantity_lbs: 6000,
                 second_target_solids_pct: 11.5
             });
@@ -568,8 +571,12 @@ export default function useProductionCalendarModel() {
 
     // Open modal to edit existing production
     const handleOpenEditModal = (prod) => {
+        const rootProd = prod.parent_production_id
+            ? ((Array.isArray(productions) ? productions : []).find(p => p.id === prod.parent_production_id) || prod)
+            : prod;
+
         const companions = (Array.isArray(productions) ? productions : []).filter(
-            p => p.id !== prod.id && (p.parent_production_id === prod.id || (prod.parent_production_id && (p.id === prod.parent_production_id || p.parent_production_id === prod.parent_production_id)))
+            p => p.id !== rootProd.id && (p.parent_production_id === rootProd.id || (rootProd.parent_production_id && p.parent_production_id === rootProd.parent_production_id))
         );
         const mappedSec = companions.map(c => ({
             id: c.id,
@@ -580,22 +587,22 @@ export default function useProductionCalendarModel() {
         }));
 
         setFormData({
-            id: prod.id,
-            production_date: prod.production_date ? getTodayString(new Date(prod.production_date)) : '',
-            start_time: prod.start_time ? prod.start_time.slice(0, 5) : '06:00',
-            end_time: prod.end_time ? prod.end_time.slice(0, 5) : '14:00',
-            lot_code: prod.lot_code || '',
-            product_profile: prod.product_profile || 'Huevo Entero Pasteurizado',
-            presentation: prod.presentation || 'cubeta 30LB',
-            target_quantity_lbs: prod.target_quantity_lbs || 12000,
-            target_solids_pct: prod.target_solids_pct || 21.5,
-            status: prod.status || 'programado',
-            priority: prod.priority || 'media',
-            mix_formula_json: prod.mix_formula_json || {},
-            assigned_operator_id: prod.assigned_operator_id || '',
-            assigned_operator_name: prod.assigned_operator_name || '',
-            notes: prod.notes || '',
-            tasks: prod.tasks || [],
+            id: rootProd.id,
+            production_date: rootProd.production_date ? getTodayString(new Date(rootProd.production_date)) : '',
+            start_time: rootProd.start_time ? rootProd.start_time.slice(0, 5) : '06:00',
+            end_time: rootProd.end_time ? rootProd.end_time.slice(0, 5) : '14:00',
+            lot_code: rootProd.lot_code || '',
+            product_profile: rootProd.product_profile || 'Huevo Entero Pasteurizado',
+            presentation: rootProd.presentation || 'cubeta 30LB',
+            target_quantity_lbs: rootProd.target_quantity_lbs || 12000,
+            target_solids_pct: rootProd.target_solids_pct || 21.5,
+            status: rootProd.status || 'programado',
+            priority: rootProd.priority || 'media',
+            mix_formula_json: rootProd.mix_formula_json || {},
+            assigned_operator_id: rootProd.assigned_operator_id || '',
+            assigned_operator_name: rootProd.assigned_operator_name || '',
+            notes: rootProd.notes || '',
+            tasks: rootProd.tasks || [],
             enable_secondary_batch: mappedSec.length > 0,
             secondary_lots: mappedSec,
             second_lot_code: mappedSec[0]?.lot_code || '',
@@ -603,8 +610,8 @@ export default function useProductionCalendarModel() {
             second_presentation: mappedSec[0]?.presentation || 'cubeta 30LB',
             second_target_quantity_lbs: mappedSec[0]?.target_quantity_lbs || 6000,
             second_target_solids_pct: 11.5,
-            is_coproduct: Boolean(prod.is_coproduct),
-            parent_production_id: prod.parent_production_id || null
+            is_coproduct: Boolean(rootProd.is_coproduct),
+            parent_production_id: rootProd.parent_production_id || null
         });
         setIsFormModalOpen(true);
     };
@@ -616,6 +623,7 @@ export default function useProductionCalendarModel() {
         const nextLot = generateJulianLotCode(formData.production_date, nextIdx, julianFormat);
         const defaultProfiles = ['Clara de Huevo Pasteurizada', 'Yema Azucarada', 'Yema Salada', 'Huevo Entero Pasteurizado'];
         const prof = defaultProfiles[count % defaultProfiles.length] || 'Clara de Huevo Pasteurizada';
+        const defaultPres = getDefaultPresentationForProduct(prof);
         setFormData(prev => ({
             ...prev,
             enable_secondary_batch: true,
@@ -625,7 +633,7 @@ export default function useProductionCalendarModel() {
                     id: `sec-${Date.now()}-${nextIdx}`,
                     lot_code: nextLot,
                     product_profile: prof,
-                    presentation: 'cubeta 30LB',
+                    presentation: defaultPres,
                     target_quantity_lbs: 6000
                 }
             ]
@@ -648,6 +656,9 @@ export default function useProductionCalendarModel() {
             const updated = [...(prev.secondary_lots || [])];
             if (updated[idx]) {
                 updated[idx] = { ...updated[idx], [field]: value };
+                if (field === 'product_profile') {
+                    updated[idx].presentation = getDefaultPresentationForProduct(value);
+                }
             }
             return { ...prev, secondary_lots: updated };
         });
@@ -664,9 +675,11 @@ export default function useProductionCalendarModel() {
             targetQty = 12000;
         }
         const newMix = recalculateMixFormula(newProfile, targetQty);
+        const defaultPres = getDefaultPresentationForProduct(newProfile);
         setFormData(prev => ({
             ...prev,
             product_profile: newProfile,
+            presentation: defaultPres,
             target_quantity_lbs: targetQty,
             target_solids_pct: newMix.target_solids_pct,
             mix_formula_json: newMix
@@ -718,8 +731,30 @@ export default function useProductionCalendarModel() {
         setIsSubmitting(true);
         try {
             if (formData.id) {
-                await axios.put(`/api/egg-industrial/calendar/${formData.id}`, formData);
-                toast.success('Producción actualizada exitosamente.');
+                const secLots = formData.secondary_lots || [];
+                const secProductionsPayload = secLots.map(sl => ({
+                    id: (sl.id && !String(sl.id).startsWith('sec-')) ? sl.id : null,
+                    lot_code: sl.lot_code,
+                    product_profile: sl.product_profile,
+                    presentation: sl.presentation,
+                    target_quantity_lbs: parseFloat(sl.target_quantity_lbs) || 6000,
+                    target_solids_pct: (sl.product_profile || '').toLowerCase().includes('clara') ? 11.5 : 21.5,
+                    mix_formula_json: recalculateMixFormula(sl.product_profile, sl.target_quantity_lbs)
+                }));
+
+                const updatePayload = {
+                    ...formData,
+                    enable_secondary_batch: secLots.length > 0,
+                    secondary_lots: secProductionsPayload,
+                    secondary_productions: secProductionsPayload,
+                    secondary_production: secProductionsPayload[0] || null
+                };
+
+                await axios.put(`/api/egg-industrial/calendar/${formData.id}`, updatePayload);
+                toast.success(secLots.length > 0
+                    ? `Producción multi-lote (${1 + secLots.length} lotes) actualizada exitosamente.`
+                    : 'Producción actualizada exitosamente.'
+                );
             } else {
                 const secLots = formData.secondary_lots || [];
                 const secProductionsPayload = secLots.map(sl => ({

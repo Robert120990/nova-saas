@@ -20,11 +20,11 @@ import { getJulianDayInfo } from '../../../utils/julianDate';
 
 
 export default function ProductionIsNewBatchModalOpenModal({ model, open = model.isNewBatchModalOpen, onClose = () => { model.setIsNewBatchModalOpen(false); model.setEditingBatch(null); }, onSave = (e) => model.handleCreateBatch(e, true) }) {
-    const { scheduledProductions, selectedScheduledProd, setScannerModalOpen, rawMaterials, availableRemanentes, setAvailableRemanentes, showAllRemanentes, setShowAllRemanentes, setActiveTab, batchForm, setBatchForm, isSubmitting, cipBlockedError, setCipBlockedError, isNewBatchModalOpen, setIsNewBatchModalOpen, canManageLots, editingBatch, setEditingBatch, handleMarkRemanenteUsed, handleReactivateRemanente, handleSelectScheduledProduction, batches, handleAddSpecificTarimaToRm, handleLoadAllAvailableTarimas, handleUpdateTarimaBoxesInRm, handleUpdateTarimaLbsInRm, handleRemoveTarimaFromRm, isCurrentSeparation, recommendedLot, recommendationReason, nonAALotSelectedForSeparation, nonAALotObj, handleApplyRecommendedLot, handleCreateBatch, handleQuickSanitize, handleAddSecondaryBatch, handleRemoveSecondaryBatch, handleUpdateSecondaryBatch } = model;
+    const { scheduledProductions, selectedScheduledProd, setScannerModalOpen, rawMaterials, availableRemanentes, setAvailableRemanentes, showAllRemanentes, setShowAllRemanentes, setActiveTab, batchForm, setBatchForm, isSubmitting, cipBlockedError, setCipBlockedError, isNewBatchModalOpen, setIsNewBatchModalOpen, canManageLots, editingBatch, setEditingBatch, handleMarkRemanenteUsed, handleReactivateRemanente, handleSelectScheduledProduction, batches, handleAddSpecificTarimaToRm, handleLoadAllAvailableTarimas, handleUpdateTarimaBoxesInRm, handleUpdateTarimaLbsInRm, handleRemoveTarimaFromRm, isCurrentSeparation, recommendedLot, recommendationReason, nonAALotSelectedForSeparation, nonAALotObj, handleApplyRecommendedLot, handleCreateBatch, handleQuickSanitize, handleAddSecondaryBatch, handleRemoveSecondaryBatch, handleUpdateSecondaryBatch, handleLinkSecondaryBatchToSchedule, handleProductTypeChange, handleSecondaryProductTypeChange } = model;
     if (!open) return null;
     return (<>{isNewBatchModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
-                    <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto space-y-6 text-slate-900">
+                    <div className={`bg-white border border-slate-200 rounded-2xl p-6 shadow-2xl ${batchForm.enable_secondary_batch ? 'max-w-4xl' : 'max-w-2xl'} w-full max-h-[90vh] overflow-y-auto space-y-6 text-slate-900 transition-all`}>
                         <div>
                             <div className="flex items-center justify-between">
                                 <h2 className="text-base font-bold text-slate-900 uppercase tracking-tight flex items-center gap-2">
@@ -288,7 +288,7 @@ export default function ProductionIsNewBatchModalOpenModal({ model, open = model
                                     <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">Producto a Fabricar</label>
                                     <select
                                         value={batchForm.product_type}
-                                        onChange={(e) => setBatchForm({ ...batchForm, product_type: e.target.value })}
+                                        onChange={(e) => handleProductTypeChange(e.target.value)}
                                         className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                                     >
                                         <option value="huevo entero">Huevo Entero Pasteurizado</option>
@@ -364,9 +364,9 @@ export default function ProductionIsNewBatchModalOpenModal({ model, open = model
                                         </span>
                                     </div>
 
-                                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 min-w-0">
                                         {/* TARJETA LOTE 1 (PRINCIPAL) */}
-                                        <div className="bg-indigo-50/50 border-2 border-indigo-300 rounded-2xl p-4 space-y-3">
+                                        <div className="bg-indigo-50/50 border-2 border-indigo-300 rounded-2xl p-4 space-y-3 min-w-0 overflow-hidden">
                                             <div className="flex items-center justify-between border-b border-indigo-200 pb-2">
                                                 <span className="text-xs font-black uppercase text-indigo-900 flex items-center gap-1.5">
                                                     <span>🥚 Lote 1 (Principal)</span>
@@ -401,7 +401,7 @@ export default function ProductionIsNewBatchModalOpenModal({ model, open = model
                                                     <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">Producto Lote 1 *</label>
                                                     <select
                                                         value={batchForm.product_type}
-                                                        onChange={(e) => setBatchForm({ ...batchForm, product_type: e.target.value })}
+                                                        onChange={(e) => handleProductTypeChange(e.target.value)}
                                                         className="w-full px-3 py-1.5 bg-white border border-indigo-200 rounded-xl text-xs font-semibold"
                                                     >
                                                         <option value="clara">Clara Pasteurizada</option>
@@ -466,13 +466,15 @@ export default function ProductionIsNewBatchModalOpenModal({ model, open = model
                                             }]
                                         ).map((secBatch, sIdx) => {
                                             const lotNum = sIdx + 2;
-                                            const codeDisplay = secBatch.batch_code_display || `LOTE ${String(secBatch.run_number || lotNum).padStart(2, '0')}-${getJulianDayInfo().dayOfYearStr}-${getJulianDayInfo().year2Digit}`;
+                                            const targetDate = selectedScheduledProd?.production_date || new Date();
+                                            const targetDayInfo = getJulianDayInfo(targetDate);
+                                            const codeDisplay = secBatch.batch_code_display || `LOTE ${String(secBatch.run_number || lotNum).padStart(2, '0')}-${targetDayInfo.dayOfYearStr}-${targetDayInfo.year2Digit}`;
                                             const currentPres = Array.isArray(secBatch.presentations) && secBatch.presentations.length > 0
                                                 ? secBatch.presentations
                                                 : (secBatch.presentation ? secBatch.presentation.split(',').map(s => s.trim()) : ['cubeta 30LB']);
 
                                             return (
-                                                <div key={secBatch.id || sIdx} className="bg-teal-50/50 border-2 border-teal-300 rounded-2xl p-4 space-y-3">
+                                                <div key={secBatch.id || sIdx} className="bg-teal-50/50 border-2 border-teal-300 rounded-2xl p-4 space-y-3 min-w-0 overflow-hidden">
                                                     <div className="flex items-center justify-between border-b border-teal-200 pb-2">
                                                         <span className="text-xs font-black uppercase text-teal-900 flex items-center gap-1.5">
                                                             <Sparkles className="w-3.5 h-3.5 text-teal-600" />
@@ -493,6 +495,40 @@ export default function ProductionIsNewBatchModalOpenModal({ model, open = model
                                                         </div>
                                                     </div>
 
+                                                    {/* Selector de vinculación con co-producto programado del calendario */}
+                                                    <div className="bg-white/90 p-2.5 rounded-xl border border-teal-200 space-y-1.5 shadow-2xs min-w-0">
+                                                        <div className="flex items-center justify-between gap-2">
+                                                            <div className="flex items-center gap-1.5 text-[10px] font-bold text-teal-900 uppercase truncate">
+                                                                <Calendar className="w-3.5 h-3.5 text-teal-600 shrink-0" />
+                                                                <span>Vincular con Calendario:</span>
+                                                            </div>
+                                                            {secBatch.scheduled_production_id && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handleLinkSecondaryBatchToSchedule(sIdx, '')}
+                                                                    className="text-[10px] font-bold text-rose-600 hover:text-rose-800 underline shrink-0 transition-colors"
+                                                                >
+                                                                    Desvincular
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                        <select
+                                                            value={secBatch.scheduled_production_id || ''}
+                                                            onChange={(e) => handleLinkSecondaryBatchToSchedule(sIdx, e.target.value)}
+                                                            className="w-full min-w-0 max-w-full text-xs font-semibold bg-white border border-teal-300 rounded-lg px-2.5 py-1.5 text-slate-700 truncate focus:ring-2 focus:ring-teal-500"
+                                                        >
+                                                            <option value="">-- Sin vincular (Crear nuevo) --</option>
+                                                            {(Array.isArray(scheduledProductions) ? scheduledProductions : [])
+                                                                .filter(p => p.id !== batchForm.scheduled_production_id && (!p.batch_id || p.id === secBatch.scheduled_production_id))
+                                                                .map(p => (
+                                                                    <option key={p.id} value={p.id}>
+                                                                        {p.lot_code} - {p.product_profile} ({p.presentation || 'cubeta 30LB'})
+                                                                    </option>
+                                                                ))
+                                                            }
+                                                        </select>
+                                                    </div>
+
                                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                                         <div>
                                                             <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">Corrida / Código Lote {lotNum}</label>
@@ -501,14 +537,14 @@ export default function ProductionIsNewBatchModalOpenModal({ model, open = model
                                                                 value={secBatch.batch_code_display || ''}
                                                                 onChange={(e) => handleUpdateSecondaryBatch(sIdx, 'batch_code_display', e.target.value)}
                                                                 className="w-full px-3 py-1.5 bg-white border border-teal-200 rounded-xl text-xs font-bold"
-                                                                placeholder={`Ej: LOTE 0${lotNum}-${getJulianDayInfo().dayOfYearStr}-${getJulianDayInfo().year2Digit}`}
+                                                                placeholder={`Ej: LOTE 0${lotNum}-${targetDayInfo.dayOfYearStr}-${targetDayInfo.year2Digit}`}
                                                             />
                                                         </div>
                                                         <div>
                                                             <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">Producto Lote {lotNum} *</label>
                                                             <select
                                                                 value={secBatch.product_type || 'clara'}
-                                                                onChange={(e) => handleUpdateSecondaryBatch(sIdx, 'product_type', e.target.value)}
+                                                                onChange={(e) => handleSecondaryProductTypeChange(sIdx, e.target.value)}
                                                                 className="w-full px-3 py-1.5 bg-white border border-teal-200 rounded-xl text-xs font-semibold"
                                                             >
                                                                 <option value="huevo entero">Huevo Entero Pasteurizado</option>

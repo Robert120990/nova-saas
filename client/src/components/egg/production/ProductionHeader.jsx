@@ -60,8 +60,8 @@ export default function ProductionHeader({ model }) {
                                 second_run_number: nextRun + 1,
                                 second_batch_code_display: `LOTE ${String(nextRun + 1).padStart(2, '0')}-${dayInfo.dayOfYearStr}-${dayInfo.year2Digit}`,
                                 second_product_type: 'clara',
-                                second_presentation: 'cubeta 30LB',
-                                second_presentations: ['cubeta 30LB'],
+                                second_presentation: 'galón 8LB',
+                                second_presentations: ['galón 8LB'],
                                 raw_materials: [],
                                 remanente_ids: [],
                                 ingredients: {
