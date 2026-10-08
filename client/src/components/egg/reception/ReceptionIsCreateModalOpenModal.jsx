@@ -1,4 +1,5 @@
 import SearchableSelect from '../../ui/SearchableSelect';
+import { calculateEggSizeFromWeight, calculateUnitGramsFromBoxes, EGG_SIZE_CATEGORIES, normalizeEggSize } from '../../../utils/eggSizeUtils';
 import {
     Plus,
     Thermometer,
@@ -257,17 +258,24 @@ export default function ReceptionIsCreateModalOpenModal({ model, open = model.is
                                         </select>
                                     </div>
                                     <div className="space-y-1">
-                                        <label className="text-[10px] font-bold text-slate-600 uppercase">Tamaño / Calibre</label>
+                                        <div className="flex items-center justify-between">
+                                            <label className="text-[10px] font-bold text-slate-600 uppercase">Tamaño / Calibre</label>
+                                            {calculateUnitGramsFromBoxes(formData.weight_lbs, formData.total_boxes) && (
+                                                <span className="text-[9px] font-mono font-bold text-indigo-600 bg-indigo-50 border border-indigo-200 px-1 py-0.2 rounded" title="Calculado automáticamente del pesaje de cajas">
+                                                    {calculateUnitGramsFromBoxes(formData.weight_lbs, formData.total_boxes)}g
+                                                </span>
+                                            )}
+                                        </div>
                                         <select
-                                            value={formData.egg_size}
+                                            value={normalizeEggSize(formData.egg_size)}
                                             onChange={(e) => setFormData({ ...formData, egg_size: e.target.value })}
                                             className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 shadow-xs"
                                         >
-                                            <option value="S">S (Chico)</option>
-                                            <option value="M">M (Mediano)</option>
-                                            <option value="L">L (Grande)</option>
-                                            <option value="XL">XL (Extra Grande)</option>
-                                            <option value="Jumbo">Jumbo</option>
+                                            {EGG_SIZE_CATEGORIES.map(cat => (
+                                                <option key={cat.code} value={cat.code}>
+                                                    {cat.label}
+                                                </option>
+                                            ))}
                                         </select>
                                     </div>
                                     <div className="space-y-1">
@@ -402,7 +410,16 @@ export default function ReceptionIsCreateModalOpenModal({ model, open = model.is
                                         <input
                                             type="number"
                                             value={formData.total_boxes}
-                                            onChange={(e) => setFormData({ ...formData, total_boxes: parseInt(e.target.value) || 0 })}
+                                            onChange={(e) => {
+                                                const boxes = parseInt(e.target.value) || 0;
+                                                const unitG = calculateUnitGramsFromBoxes(formData.weight_lbs, boxes);
+                                                const autoSize = calculateEggSizeFromWeight(unitG);
+                                                setFormData(prev => ({
+                                                    ...prev,
+                                                    total_boxes: boxes,
+                                                    ...(autoSize ? { egg_size: autoSize } : {})
+                                                }));
+                                            }}
                                             className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 shadow-xs"
                                             placeholder="Ej: 360"
                                         />
@@ -412,12 +429,22 @@ export default function ReceptionIsCreateModalOpenModal({ model, open = model.is
                                         <input
                                             type="number"
                                             value={formData.weight_lbs}
-                                            onChange={(e) => setFormData({ ...formData, weight_lbs: e.target.value })}
+                                            onChange={(e) => {
+                                                const lbs = e.target.value;
+                                                const unitG = calculateUnitGramsFromBoxes(lbs, formData.total_boxes);
+                                                const autoSize = calculateEggSizeFromWeight(unitG);
+                                                setFormData(prev => ({
+                                                    ...prev,
+                                                    weight_lbs: lbs,
+                                                    ...(autoSize ? { egg_size: autoSize } : {})
+                                                }));
+                                            }}
                                             className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 shadow-xs"
                                             placeholder="Ej: 16500.50"
                                             step="0.01"
                                         />
                                     </div>
+
                                     <div className="space-y-1">
                                         <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide">Ubicación de Almacenamiento</label>
                                         <select
@@ -753,8 +780,12 @@ export default function ReceptionIsCreateModalOpenModal({ model, open = model.is
                                             <span className="text-slate-500">Total Cajas: <strong className="text-indigo-700">{formData.total_boxes}</strong></span>
                                             <span className="text-slate-500">Neto Total: <strong className="text-emerald-700">{formData.weight_lbs || '0.00'} lb</strong></span>
                                             {parseFloat(formData.total_boxes || 0) > 0 && parseFloat(formData.weight_lbs || 0) > 0 && (
-                                                <span className="text-slate-500">Prom. Caja: <strong className="text-indigo-900 font-bold">{(parseFloat(formData.weight_lbs) / parseFloat(formData.total_boxes)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} lb/cj</strong></span>
+                                                <>
+                                                    <span className="text-slate-500">Prom. Caja: <strong className="text-indigo-900 font-bold">{(parseFloat(formData.weight_lbs) / parseFloat(formData.total_boxes)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} lb/cj</strong></span>
+                                                    <span className="text-slate-500">Prom. Unidad: <strong className="text-emerald-700 font-bold">{calculateUnitGramsFromBoxes(formData.weight_lbs, formData.total_boxes)} g/hvo</strong></span>
+                                                </>
                                             )}
+
                                         </div>
                                     </div>
                                 </div>

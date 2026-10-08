@@ -130,7 +130,7 @@ const EggReceptionDetailModal = ({
                             <p><span className="text-slate-400 font-medium">Tipo:</span> <strong className="capitalize">{reception.egg_type}</strong></p>
                             <p><span className="text-slate-400 font-medium">Clasificación:</span> <strong className="text-indigo-900">{reception.egg_classification || 'Grado A'}</strong></p>
                             {reception.egg_type === 'huevo cáscara' && (
-                                <p><span className="text-slate-400 font-medium">Color / Talla:</span> <strong>{reception.egg_color} / {reception.egg_size}</strong></p>
+                                <p><span className="text-slate-400 font-medium">Color / Talla:</span> <strong>{reception.egg_color} / {reception.egg_size}{reception.sample_egg_weight_g ? ` (${reception.sample_egg_weight_g} g/huevo)` : ''}</strong></p>
                             )}
                             <p><span className="text-slate-400 font-medium">Temp. Huevo:</span> <strong>{reception.temperature_c ? `${reception.temperature_c}°C` : 'N/R'}</strong></p>
                             <p><span className="text-slate-400 font-medium">Inspector:</span> <strong>{reception.operator_name || 'N/A'}</strong></p>

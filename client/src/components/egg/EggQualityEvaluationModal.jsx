@@ -14,6 +14,7 @@ import {
     Trash2
 } from 'lucide-react';
 import { generateJulianMpLotCode } from '../../utils/julianDate';
+import { calculateEggSizeFromWeight, EGG_SIZE_CATEGORIES, normalizeEggSize, calculateUnitGramsFromBoxes } from '../../utils/eggSizeUtils';
 
 const EggQualityEvaluationModal = ({
     isOpen,
@@ -376,17 +377,48 @@ const EggQualityEvaluationModal = ({
 
                                         {/* Peso en Gramos Unitario Muestreado */}
                                         <div className="space-y-1">
-                                            <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">
-                                                Peso Unitario en Gramos (Muestreo)
-                                            </label>
+                                            <div className="flex items-center justify-between">
+                                                <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">
+                                                    Peso Unitario en Gramos (Muestreo) *
+                                                </label>
+                                                {qualityModal.rm?.weight_lbs && qualityModal.total_boxes > 0 && (
+                                                    <button
+                                                        type="button"
+                                                        disabled={!canEditQuality}
+                                                        onClick={() => {
+                                                            const calcG = calculateUnitGramsFromBoxes(qualityModal.rm.weight_lbs, qualityModal.total_boxes);
+                                                            if (calcG) {
+                                                                const autoSize = calculateEggSizeFromWeight(calcG);
+                                                                setQualityModal(prev => ({
+                                                                    ...prev,
+                                                                    sample_egg_weight_g: calcG,
+                                                                    egg_size: autoSize || prev.egg_size
+                                                                }));
+                                                            }
+                                                        }}
+                                                        className="text-[9px] font-mono font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 px-1.5 py-0.5 rounded cursor-pointer transition-colors"
+                                                        title={`Calcular según peso neto recibido (${qualityModal.rm.weight_lbs} lbs) y ${qualityModal.total_boxes} cajas`}
+                                                    >
+                                                        Auto ({calculateUnitGramsFromBoxes(qualityModal.rm.weight_lbs, qualityModal.total_boxes)}g)
+                                                    </button>
+                                                )}
+                                            </div>
                                             <div className="relative">
                                                 <input
                                                     type="number"
-                                                    step="0.1"
+                                                    step="0.01"
                                                     disabled={!canEditQuality}
-                                                    placeholder="Ej: 62.5"
+                                                    placeholder="Ej: 60.7"
                                                     value={qualityModal.sample_egg_weight_g}
-                                                    onChange={(e) => setQualityModal({ ...qualityModal, sample_egg_weight_g: e.target.value })}
+                                                    onChange={(e) => {
+                                                        const val = e.target.value;
+                                                        const autoSize = calculateEggSizeFromWeight(val);
+                                                        setQualityModal(prev => ({
+                                                            ...prev,
+                                                            sample_egg_weight_g: val,
+                                                            ...(autoSize ? { egg_size: autoSize } : {})
+                                                        }));
+                                                    }}
                                                     className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs"
                                                 />
                                                 <span className="absolute right-3 top-2 text-xs text-slate-400 font-bold">g/huevo</span>
@@ -412,22 +444,30 @@ const EggQualityEvaluationModal = ({
 
                                         {/* Tamaño de Huevo */}
                                         <div className="space-y-1">
-                                            <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">
-                                                Tamaño de Huevo
-                                            </label>
+                                            <div className="flex items-center justify-between">
+                                                <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">
+                                                    Tamaño de Huevo *
+                                                </label>
+                                                {calculateEggSizeFromWeight(qualityModal.sample_egg_weight_g) && (
+                                                    <span className="text-[9px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-1.5 py-0.2 rounded" title="Calculado automáticamente según peso unitario oficial">
+                                                        Auto: {calculateEggSizeFromWeight(qualityModal.sample_egg_weight_g)}
+                                                    </span>
+                                                )}
+                                            </div>
                                             <select
                                                 disabled={!canEditQuality}
-                                                value={qualityModal.egg_size}
+                                                value={normalizeEggSize(qualityModal.egg_size)}
                                                 onChange={(e) => setQualityModal({ ...qualityModal, egg_size: e.target.value })}
-                                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs"
+                                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs"
                                             >
-                                                <option value="XL">XL (Super Grande / &gt;73g)</option>
-                                                <option value="L">L (Grande / 63g - 73g)</option>
-                                                <option value="M">M (Mediano / 53g - 63g)</option>
-                                                <option value="S">S (Pequeño / &lt;53g)</option>
-                                                <option value="Jumbo">Jumbo (&gt;78g)</option>
+                                                {EGG_SIZE_CATEGORIES.map(cat => (
+                                                    <option key={cat.code} value={cat.code}>
+                                                        {cat.label}
+                                                    </option>
+                                                ))}
                                             </select>
                                         </div>
+
 
                                         {/* Fecha Producción */}
                                         <div className="space-y-1">

@@ -2,6 +2,7 @@ import { getTodayString } from '../../../utils/dateUtils';
 import { formatTime } from '../../../utils/dateUtils';
 import { formatDate } from '../../../utils/dateUtils';
 import { generateJulianMpLotCode } from '../../../utils/julianDate';
+import { calculateEggSizeFromWeight, calculateUnitGramsFromBoxes, normalizeEggSize } from '../../../utils/eggSizeUtils';
 import { unwrapList } from '../../../utils/apiUtils';
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../../context/AuthContext';
@@ -652,9 +653,12 @@ export default function useReceptionModel() {
             ? rm.sample_egg_weight_g
             : (labReport.sample_egg_weight_g || (
                 rm.weight_lbs && rm.total_boxes
-                    ? Math.round((parseFloat(rm.weight_lbs) * 453.592) / (parseInt(rm.total_boxes) * 360) * 10) / 10
+                    ? Math.round((parseFloat(rm.weight_lbs) * 453.592) / (parseInt(rm.total_boxes) * 360) * 100) / 100
                     : ''
             ));
+
+        const computedSize = calculateEggSizeFromWeight(sampleWeight);
+        const resolvedEggSize = computedSize || normalizeEggSize(rm.egg_size) || 'L';
 
         const prov = providers.find(p => p.id === rm.provider_id);
         const isExtranjero = labReport.provider_type
@@ -686,7 +690,7 @@ export default function useReceptionModel() {
             analysis_date: analysisDt,
             analysis_time: analysisTm,
             egg_color: rm.egg_color || 'blanco',
-            egg_size: rm.egg_size || 'L',
+            egg_size: resolvedEggSize,
             sample_egg_weight_g: sampleWeight,
             egg_classification: (rm.egg_classification === 'Grado AA y A' ? 'Grado AA / A' : rm.egg_classification) || 'Grado A',
 
@@ -1097,10 +1101,13 @@ export default function useReceptionModel() {
     const recalcTarimasTotals = (currentTarimas) => {
         const totalNet = currentTarimas.reduce((acc, t) => acc + (parseFloat(t.net_weight_lbs) || 0), 0);
         const totalB = currentTarimas.reduce((acc, t) => acc + (parseInt(t.boxes_count) || 0), 0);
+        const unitG = calculateUnitGramsFromBoxes(totalNet, totalB);
+        const autoSize = calculateEggSizeFromWeight(unitG);
         setFormData(prev => ({
             ...prev,
             weight_lbs: totalNet > 0 ? totalNet.toFixed(2) : '',
-            total_boxes: totalB
+            total_boxes: totalB,
+            ...(autoSize ? { egg_size: autoSize } : {})
         }));
     };
 

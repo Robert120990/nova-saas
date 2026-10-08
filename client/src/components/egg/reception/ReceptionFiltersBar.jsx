@@ -135,8 +135,9 @@ export default function ReceptionFiltersBar({ model }) {
                                                     <div className="flex flex-col">
                                                         <span className="text-slate-900 text-xs font-bold">{rm.egg_type}</span>
                                                         {rm.egg_type === 'huevo cáscara' && (
-                                                            <span className="text-[10px] text-slate-500">Color: {rm.egg_color} | Talla: {rm.egg_size}</span>
+                                                            <span className="text-[10px] text-slate-500">Color: {rm.egg_color} | Talla: {rm.egg_size}{rm.sample_egg_weight_g ? ` (${rm.sample_egg_weight_g}g)` : ''}</span>
                                                         )}
+
                                                     </div>
                                                 </td>
                                                 <td className="px-3 py-2.5 text-right font-bold text-slate-800 text-xs">

@@ -1,5 +1,16 @@
 const { pool, eggRawMaterialLabReport, eggOriginCertificate } = require('./shared');
 
+const calculateEggSizeFromWeight = (grams) => {
+    if (!grams || isNaN(grams) || grams <= 0) return null;
+    const g = parseFloat(grams);
+    if (g >= 63.83) return 'Jumbo';
+    if (g >= 56.74) return 'XL';
+    if (g >= 49.64) return 'L';
+    if (g >= 42.55) return 'M';
+    if (g >= 35.45) return 'S';
+    return 'Peewee';
+};
+
 const voidRawMaterial = async (req, res) => {
     try {
         const { id } = req.params;
@@ -76,6 +87,8 @@ const saveQualityClassification = async (req, res) => {
             ? (typeof quality_lab_report_json === 'string' ? quality_lab_report_json : JSON.stringify(quality_lab_report_json))
             : null;
 
+        const resolvedEggSize = egg_size || (sample_egg_weight_g ? calculateEggSizeFromWeight(sample_egg_weight_g) : null);
+
         await pool.query(
             `UPDATE egg_raw_materials SET
                 egg_classification = ?,
@@ -99,7 +112,7 @@ const saveQualityClassification = async (req, res) => {
              WHERE id = ? AND company_id = ?`,
             [
                 egg_classification || 'Grado A',
-                egg_size || null,
+                resolvedEggSize || null,
                 egg_color || null,
                 provider_lot ? String(provider_lot).trim() : null,
                 inspector,
