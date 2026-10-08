@@ -80,7 +80,9 @@ const Sidebar = ({ onOpenSearch, isMobileOpen = false, onCloseMobile }) => {
                 permissions.includes('view_dashboard_pista') ||
                 permissions.includes('view_dashboard_tienda') ||
                 permissions.includes('view_dashboard_andelsa') ||
-                permissions.includes('view_dashboard_server')
+                permissions.includes('view_dashboard_server') ||
+                permissions.includes('view_dashboard_energy') ||
+                permissions.includes('manage_energy_system')
             );
         }
         // Flexibilidad para CRM y Calendario para roles administrativos

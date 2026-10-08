@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { 
     BarChart2, 
@@ -10,7 +11,8 @@ import {
     Building2, 
     User, 
     GitBranch,
-    FileCheck
+    FileCheck,
+    Zap
 } from 'lucide-react';
 
 import DashboardGeneral from '../components/dashboard/DashboardGeneral';
@@ -19,6 +21,7 @@ import DashboardTienda from '../components/dashboard/DashboardTienda';
 import DashboardAndelsa from '../components/dashboard/DashboardAndelsa';
 import DashboardServer from '../components/dashboard/DashboardServer';
 import DashboardDte from '../components/dashboard/DashboardDte';
+import SistemaEnergetico from './energy/SistemaEnergetico';
 
 const parsePermissions = (raw) => {
     if (!raw) return [];
@@ -75,6 +78,13 @@ export default function Dashboard() {
             component: DashboardServer
         },
         {
+            id: 'energy',
+            label: 'Sistema Energético',
+            icon: Zap,
+            allowed: isSuperAdmin || permissions.includes('view_dashboard_energy') || permissions.includes('manage_energy_system'),
+            component: SistemaEnergetico
+        },
+        {
             id: 'dte',
             label: 'Estadísticas DTE',
             icon: FileCheck,
@@ -84,9 +94,14 @@ export default function Dashboard() {
     ];
 
     const allowedDashboards = DASHBOARD_DEFS.filter(d => d.allowed);
+    const [searchParams] = useSearchParams();
+    const tabParam = searchParams.get('tab');
 
     // Determinar el dashboard activo por defecto
     const [activeTab, setActiveTab] = useState(() => {
+        if (tabParam && allowedDashboards.some(d => d.id === tabParam)) {
+            return tabParam;
+        }
         const saved = localStorage.getItem('active_dashboard_tab');
         if (saved && allowedDashboards.some(d => d.id === saved)) {
             return saved;
@@ -99,14 +114,16 @@ export default function Dashboard() {
     });
 
     useEffect(() => {
-        if (allowedDashboards.length > 0 && !allowedDashboards.some(d => d.id === activeTab)) {
+        if (tabParam && allowedDashboards.some(d => d.id === tabParam) && activeTab !== tabParam) {
+            setActiveTab(tabParam);
+        } else if (allowedDashboards.length > 0 && !allowedDashboards.some(d => d.id === activeTab)) {
             const userDefault = user?.default_dashboard;
             const fallback = (userDefault && allowedDashboards.some(d => d.id === userDefault))
                 ? userDefault
                 : allowedDashboards[0]?.id;
             setActiveTab(fallback);
         }
-    }, [allowedDashboards, activeTab, user?.default_dashboard]);
+    }, [tabParam, allowedDashboards, activeTab, user?.default_dashboard]);
 
     const handleSelectTab = (tabId) => {
         setActiveTab(tabId);

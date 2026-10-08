@@ -249,6 +249,7 @@ const Roles = () => {
                                     <option value="tienda" className="bg-[#0f172a] text-white">🏪 Tienda de Conveniencia</option>
                                     <option value="andelsa" className="bg-[#0f172a] text-white">🥚 Planta Andelsa</option>
                                     <option value="server" className="bg-[#0f172a] text-white">🖥️ Monitor del Servidor</option>
+                                    <option value="energy" className="bg-[#0f172a] text-white">⚡ Sistema Energético</option>
                                 </select>
                             </div>
                         </div>
