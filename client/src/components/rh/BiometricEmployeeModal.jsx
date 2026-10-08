@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { toast } from 'sonner';
-import { UserPlus, X, Check, Fingerprint, Clock, Building2, Briefcase, Users } from 'lucide-react';
+import { UserPlus, X, Check, Fingerprint, Users } from 'lucide-react';
 import { unwrapList } from '../../utils/apiUtils';
 
 const BiometricEmployeeModal = ({ open, onClose, onSuccess }) => {

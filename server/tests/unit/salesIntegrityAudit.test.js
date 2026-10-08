@@ -35,7 +35,7 @@ describe('Sales Integrity Audit Service & Controller', () => {
         assert.equal(typeof salesIntegrityAuditController.syncUnsyncedDteStamps, 'function');
     });
 
-    it('should execute audit for company 9 and return valid structure', async () => {
+    it('should execute audit for company 9 (ANDELSA) and return valid structure', async () => {
         const result = await salesIntegrityAuditService.runSalesIntegrityAudit(9);
         assert.ok(result);
         assert.ok(result.empresa);
@@ -49,11 +49,26 @@ describe('Sales Integrity Audit Service & Controller', () => {
         assert.ok(Array.isArray(result.ventas_multi_sucursal_legitimas));
     });
 
+    it('should execute audit for company 1 (high-volume multi-company) within performance budget', async () => {
+        const start = Date.now();
+        const result = await salesIntegrityAuditService.runSalesIntegrityAudit(1);
+        const duration = Date.now() - start;
+        assert.ok(result);
+        assert.ok(result.resumen.total_ventas > 1000);
+        assert.ok(duration < 5000, `Execution took ${duration}ms, exceeding budget`);
+    });
+
     it('should generate valid PDF buffer for company 9', async () => {
         const pdfBuffer = await salesIntegrityAuditService.generateAuditPdfBuffer(9);
         assert.ok(Buffer.isBuffer(pdfBuffer));
         assert.ok(pdfBuffer.length > 1000);
-        // Standard PDF magic number %PDF
+        assert.equal(pdfBuffer.subarray(0, 4).toString(), '%PDF');
+    });
+
+    it('should generate valid PDF buffer for company 1', async () => {
+        const pdfBuffer = await salesIntegrityAuditService.generateAuditPdfBuffer(1);
+        assert.ok(Buffer.isBuffer(pdfBuffer));
+        assert.ok(pdfBuffer.length > 1000);
         assert.equal(pdfBuffer.subarray(0, 4).toString(), '%PDF');
     });
 

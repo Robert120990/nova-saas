@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
 import {
     Fingerprint, Radio, Settings, Plus, RefreshCw,
-    FileText, Sliders, Clock, Lock, UserPlus
+    FileText, Sliders, Lock, UserPlus
 } from 'lucide-react';
 import { getTodayString } from '../../utils/dateUtils';
 import { unwrapList } from '../../utils/apiUtils';

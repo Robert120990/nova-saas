@@ -41,10 +41,6 @@ const GasRemesaDeliveries = () => {
     const [showDetailModal, setShowDetailModal] = useState(false);
     const [selectedDeliveryId, setSelectedDeliveryId] = useState(null);
 
-    const [refClickCount, setRefClickCount] = useState(0);
-    const [refClickDeliveryId, setRefClickDeliveryId] = useState(null);
-    const [lastRefClickTime, setLastRefClickTime] = useState(0);
-
     const isSuperAdmin = user?.role === 'SuperAdmin';
 
     const isEditing = editId !== null;

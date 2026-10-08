@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { toast } from 'sonner';
-import { Clock, X, Check, AlertCircle, Lock } from 'lucide-react';
+import { Clock, X, Check, Lock } from 'lucide-react';
 import { formatDate } from '../../utils/dateUtils';
 
 const BiometricEditOvertimeModal = ({ open, onClose, entry, onSuccess }) => {

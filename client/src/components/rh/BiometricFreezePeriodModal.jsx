@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { toast } from 'sonner';
-import { Lock, X, Check, Calendar, AlertTriangle } from 'lucide-react';
+import { Lock, X, AlertTriangle } from 'lucide-react';
 import { formatDate } from '../../utils/dateUtils';
 
 const BiometricFreezePeriodModal = ({ open, onClose, suggestedRange, onSuccess }) => {

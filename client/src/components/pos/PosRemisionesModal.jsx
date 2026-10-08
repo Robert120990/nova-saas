@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
 import {
-    Truck, X, Search, Check, FileText, ChevronDown, ChevronUp,
+    Truck, X, Search, Check, ChevronDown, ChevronUp,
     Package, RefreshCw, AlertCircle
 } from 'lucide-react';
 import { formatDate } from '../../utils/dateUtils';
