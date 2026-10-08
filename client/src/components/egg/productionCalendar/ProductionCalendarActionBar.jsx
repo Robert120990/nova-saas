@@ -16,7 +16,7 @@ import { isProductionFinished } from '../EggCalendarPreviewPopover';
 
 
 export default function ProductionCalendarActionBar({ model }) {
-    const { navigate, calendarView, setHoverPreview, handleConvertLotToJulian, handleOpenEditModal, handleDeleteProduction, filteredProductions, getProfileBadgeStyle } = model;
+    const { navigate, calendarView, handleConvertLotToJulian, handleOpenEditModal, handleDeleteProduction, filteredProductions, getProfileBadgeStyle } = model;
 
     return (<>{calendarView === 'list' && (
                 <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
@@ -52,11 +52,6 @@ export default function ProductionCalendarActionBar({ model }) {
                                         return (
                                             <tr
                                                 key={prod.id}
-                                                onMouseEnter={(e) => {
-                                                    const rect = e.currentTarget.getBoundingClientRect();
-                                                    setHoverPreview({ type: 'production', data: prod, rect });
-                                                }}
-                                                onMouseLeave={() => setHoverPreview(null)}
                                                 className={`transition-colors ${isFinished
                                                         ? 'bg-emerald-50/40 hover:bg-emerald-50/70 border-l-4 border-l-emerald-600'
                                                         : 'hover:bg-slate-50/70'

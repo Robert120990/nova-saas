@@ -15,7 +15,7 @@ import { isProductionFinished } from '../EggCalendarPreviewPopover';
 
 
 export default function ProductionCalendarContent({ model }) {
-    const { navigate, calendarView, customerOrders, setIsCustomerOrderModalOpen, setSelectedOrderToEdit, setHoverPreview, draggedItem, dragOverDate, handleConvertLotToJulian, handleOpenCreateModal, handleOpenEditModal, handleDragStart, handleDragOver, handleDragLeave, handleDrop, handleOpenAlterDateModal, calendarMonthDays, getProductionsForDate, getProfileBadgeStyle, todayStr } = model;
+    const { navigate, calendarView, customerOrders, productions, setIsCustomerOrderModalOpen, setSelectedOrderToEdit, setHoverPreview, draggedItem, dragOverDate, handleConvertLotToJulian, handleOpenCreateModal, handleOpenEditModal, handleDragStart, handleDragOver, handleDragLeave, handleDrop, handleOpenAlterDateModal, calendarMonthDays, getProductionsForDate, getProfileBadgeStyle, todayStr } = model;
 
     return (<>{calendarView === 'month' && (
                 <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
@@ -165,10 +165,17 @@ export default function ProductionCalendarContent({ model }) {
                                                                     type="button"
                                                                     onClick={(e) => {
                                                                         e.stopPropagation();
+                                                                        const rootProd = prod.parent_production_id
+                                                                            ? ((Array.isArray(productions) ? productions : []).find(p => p.id === prod.parent_production_id) || prod)
+                                                                            : prod;
+                                                                        const companions = (Array.isArray(productions) ? productions : []).filter(p =>
+                                                                            p.id !== rootProd.id && (p.parent_production_id === rootProd.id || (rootProd.parent_production_id && p.parent_production_id === rootProd.parent_production_id))
+                                                                        );
                                                                         navigate('/industrial/produccion', {
                                                                             state: {
                                                                                 openNewBatchModal: true,
-                                                                                scheduledProduction: prod
+                                                                                scheduledProduction: rootProd,
+                                                                                companionProductions: companions
                                                                             }
                                                                         });
                                                                     }}

@@ -14,7 +14,8 @@ export default function ProductionCalendarSection5({ model }) {
         newTaskRole, setNewTaskRole, newTaskUser, setNewTaskUser, newTaskDesc, setNewTaskDesc,
         handleProfileChange, handleQuantityChange, handleAddTask, handleRemoveTask,
         handleSaveProduction, handleDeleteProduction, handleToggleTask,
-        handleAddSecondaryLot, handleRemoveSecondaryLot, handleUpdateSecondaryLot
+        handleAddSecondaryLot, handleRemoveSecondaryLot, handleUpdateSecondaryLot,
+        productions
     } = model;
 
     return (
@@ -26,37 +27,31 @@ export default function ProductionCalendarSection5({ model }) {
         >
             <form onSubmit={handleSaveProduction} className="space-y-4">
                 {/* Selector de Modo: 1 Lote vs Multi-Lote */}
-                {!formData.id && (
-                    <div className="flex items-center gap-2 p-1.5 bg-slate-100 rounded-xl border border-slate-200">
-                        <button
-                            type="button"
-                            onClick={() => setFormData(prev => ({ ...prev, enable_secondary_batch: false, secondary_lots: [] }))}
-                            className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-                                !formData.enable_secondary_batch
-                                    ? 'bg-white text-indigo-700 shadow-sm border border-slate-200/80'
-                                    : 'text-slate-500 hover:text-slate-800'
-                            }`}
-                        >
-                            <span>🥚 Corrida Individual (1 Lote)</span>
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => {
-                                if ((formData.secondary_lots || []).length === 0) {
-                                    handleAddSecondaryLot();
-                                }
-                            }}
-                            className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-                                formData.enable_secondary_batch
-                                    ? 'bg-indigo-600 text-white shadow-sm'
-                                    : 'text-slate-500 hover:text-slate-800'
-                            }`}
-                        >
-                            <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-                            <span>⚡ Quebrado Multi-Lote ({formData.secondary_lots?.length ? `${1 + formData.secondary_lots.length} Lotes` : '2+ Lotes'})</span>
-                        </button>
-                    </div>
-                )}
+                <div className="flex items-center gap-2 p-1.5 bg-slate-100 rounded-xl border border-slate-200">
+                    <button
+                        type="button"
+                        onClick={() => setFormData(prev => ({ ...prev, enable_secondary_batch: false, secondary_lots: [] }))}
+                        className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                            !formData.enable_secondary_batch
+                                ? 'bg-white text-indigo-700 shadow-sm border border-slate-200/80'
+                                : 'text-slate-500 hover:text-slate-800'
+                        }`}
+                    >
+                        <span>🥚 Corrida Individual (1 Lote)</span>
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => {
+                            if ((formData.secondary_lots || []).length === 0) handleAddSecondaryLot();
+                        }}
+                        className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                            formData.enable_secondary_batch ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'
+                        }`}
+                    >
+                        <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                        <span>⚡ Quebrado Multi-Lote ({formData.secondary_lots?.length ? `${1 + formData.secondary_lots.length} Lotes` : '2+ Lotes'})</span>
+                    </button>
+                </div>
 
                 {/* Parámetros Generales de Fecha, Horario y Prioridad */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-50/70 p-3 rounded-xl border border-slate-200/80">
@@ -290,10 +285,14 @@ export default function ProductionCalendarSection5({ model }) {
                                 type="button"
                                 onClick={() => {
                                     setIsFormModalOpen(false);
+                                    const companions = (Array.isArray(productions) ? productions : []).filter(p =>
+                                        p.id !== formData.id && (p.parent_production_id === formData.id || (formData.parent_production_id && p.parent_production_id === formData.parent_production_id))
+                                    );
                                     navigate('/industrial/produccion', {
                                         state: {
                                             openNewBatchModal: true,
-                                            scheduledProduction: formData
+                                            scheduledProduction: formData,
+                                            companionProductions: companions
                                         }
                                     });
                                 }}

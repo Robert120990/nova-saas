@@ -34,7 +34,7 @@ async function insertSecondaryBatch(connection, {
 
     const secSchedId = secondary_batch.scheduled_production_id
         ? parseInt(secondary_batch.scheduled_production_id, 10)
-        : (scheduled_production_id ? parseInt(scheduled_production_id, 10) : null);
+        : null;
 
     const [secResult] = await connection.query(
         `INSERT INTO egg_production_batches (
