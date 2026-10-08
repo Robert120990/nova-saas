@@ -128,13 +128,27 @@ const EggReceptionDetailModal = ({
                             <FileText size={12} /> Balance de Peso & Stock
                         </span>
                         <div className="text-slate-700 space-y-0.5 pt-1">
-                            <p><span className="text-slate-400 font-medium">Total Cajas:</span> <strong className="text-indigo-700">{reception.total_boxes || 0} cjs</strong></p>
-                            <p><span className="text-slate-400 font-medium">Peso Neto Inicial:</span> <strong className="text-slate-900">{parseFloat(reception.weight_lbs || 0).toLocaleString()} Lbs</strong></p>
-                            {parseFloat(reception.total_boxes || 0) > 0 && parseFloat(reception.weight_lbs || 0) > 0 && (
-                                <p><span className="text-slate-400 font-medium">Peso Promedio / Caja:</span> <strong className="text-indigo-900 font-bold">{(parseFloat(reception.weight_lbs) / parseFloat(reception.total_boxes)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Lbs/Cj</strong></p>
-                            )}
-                            <p><span className="text-slate-400 font-medium">Stock Remanente:</span> <strong className="text-emerald-700">{parseFloat(reception.stock_lbs || 0).toLocaleString()} Lbs</strong></p>
-                            <p><span className="text-slate-400 font-medium">Tarimas Pesadas:</span> <strong>{parsedTarimas.length}</strong></p>
+                            {(() => {
+                                const tarimaBoxes = Array.isArray(parsedTarimas) ? parsedTarimas.reduce((acc, t) => acc + (parseInt(t.boxes_count) || 0), 0) : 0;
+                                const initialBoxes = reception.initial_boxes || tarimaBoxes || reception.total_boxes || 0;
+                                const stockBoxes = reception.stock_boxes !== undefined ? reception.stock_boxes : (reception.total_boxes || 0);
+                                const avgInitial = initialBoxes > 0 && parseFloat(reception.weight_lbs || 0) > 0 ? (parseFloat(reception.weight_lbs) / initialBoxes) : null;
+
+                                return (
+                                    <>
+                                        <p><span className="text-slate-400 font-medium">Cajas Recibidas:</span> <strong className="text-indigo-700">{initialBoxes} cjs</strong></p>
+                                        <p><span className="text-slate-400 font-medium">Peso Neto Inicial:</span> <strong className="text-slate-900">{parseFloat(reception.weight_lbs || 0).toLocaleString()} Lbs</strong></p>
+                                        {avgInitial && (
+                                            <p><span className="text-slate-400 font-medium">Peso Promedio / Caja:</span> <strong className="text-indigo-900 font-bold">{avgInitial.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Lbs/Cj</strong></p>
+                                        )}
+                                        {stockBoxes < initialBoxes && (
+                                            <p><span className="text-slate-400 font-medium">Stock Cajas Remanente:</span> <strong className="text-slate-700">{stockBoxes} cjs</strong></p>
+                                        )}
+                                        <p><span className="text-slate-400 font-medium">Stock Remanente:</span> <strong className="text-emerald-700">{parseFloat(reception.stock_lbs || 0).toLocaleString()} Lbs</strong></p>
+                                        <p><span className="text-slate-400 font-medium">Tarimas Pesadas:</span> <strong>{parsedTarimas.length}</strong></p>
+                                    </>
+                                );
+                            })()}
                         </div>
                     </div>
                 </div>

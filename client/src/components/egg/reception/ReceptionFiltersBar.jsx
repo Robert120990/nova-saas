@@ -82,9 +82,21 @@ export default function ReceptionFiltersBar({ model }) {
                                             certs = [];
                                         }
 
-                                        const boxes = parseFloat(rm.total_boxes || 0);
+                                        let originalTarimas = [];
+                                        try {
+                                            originalTarimas = typeof rm.tarimas_json === 'string' ? JSON.parse(rm.tarimas_json || '[]') : (rm.tarimas_json || []);
+                                        } catch (e) {
+                                            originalTarimas = [];
+                                        }
+                                        const tarimaBoxes = Array.isArray(originalTarimas) && originalTarimas.length > 0
+                                            ? originalTarimas.reduce((acc, t) => acc + (parseInt(t.boxes_count) || 0), 0)
+                                            : 0;
+                                        const initialBoxes = rm.initial_boxes || tarimaBoxes || parseInt(rm.total_boxes || 0);
+                                        const stockBoxes = rm.stock_boxes !== undefined ? rm.stock_boxes : parseInt(rm.total_boxes || 0);
                                         const weight = parseFloat(rm.weight_lbs || 0);
-                                        const avgWeightPerBox = boxes > 0 && weight > 0 ? (weight / boxes) : null;
+                                        const avgWeightPerBox = rm.avg_weight_per_box !== undefined && rm.avg_weight_per_box !== null
+                                            ? rm.avg_weight_per_box
+                                            : (initialBoxes > 0 && weight > 0 ? (weight / initialBoxes) : null);
 
                                         return (
                                             <tr key={rm.id} className="hover:bg-slate-50/75 transition-colors">
@@ -111,7 +123,16 @@ export default function ReceptionFiltersBar({ model }) {
                                                     </div>
                                                 </td>
                                                 <td className="px-3 py-2.5 text-right font-bold text-slate-800 text-xs">
-                                                    {rm.total_boxes ? `${rm.total_boxes} cjs` : '-'}
+                                                    {initialBoxes ? (
+                                                        <div className="flex flex-col items-end">
+                                                            <span>{initialBoxes} cjs</span>
+                                                            {stockBoxes < initialBoxes && (
+                                                                <span className={`text-[10px] font-bold ${stockBoxes <= 0 ? 'text-rose-600' : 'text-emerald-700'}`}>
+                                                                    Stock: {stockBoxes} cjs
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    ) : '-'}
                                                 </td>
                                                 <td className="px-3 py-2.5 text-right font-black text-slate-900 text-xs">
                                                     {parseFloat(rm.weight_lbs).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}

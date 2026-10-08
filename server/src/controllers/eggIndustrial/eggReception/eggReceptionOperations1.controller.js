@@ -100,10 +100,20 @@ const getRawMaterials = async (req, res) => {
                 };
             });
 
-            const isDepleted = parseFloat(rm.stock_lbs) <= 0.01 || (tarimasAvailable.length > 0 && tarimasAvailable.every(t => t.is_depleted));
+            const tarimaBoxes = Array.isArray(originalTarimas) && originalTarimas.length > 0
+                ? originalTarimas.reduce((acc, t) => acc + (parseInt(t.boxes_count) || 0), 0)
+                : 0;
+            const initialBoxes = rm.initial_boxes || tarimaBoxes || ((parseInt(rm.total_boxes) || 0) + (consumed.totalBoxes || 0));
+            const stockBoxes = parseInt(rm.total_boxes) || 0;
+            const initialWeight = parseFloat(rm.weight_lbs) || 0;
+            const avgWeightPerBox = initialBoxes > 0 && initialWeight > 0 ? Math.round((initialWeight / initialBoxes) * 100) / 100 : null;
 
             return {
                 ...rm,
+                initial_boxes: initialBoxes,
+                stock_boxes: stockBoxes,
+                consumed_boxes: consumed.totalBoxes || 0,
+                avg_weight_per_box: avgWeightPerBox,
                 tarimas_available: tarimasAvailable,
                 is_depleted: isDepleted
             };
@@ -158,14 +168,14 @@ const createRawMaterial = async (req, res) => {
         const [result] = await pool.query(
             `INSERT INTO egg_raw_materials (
                 company_id, branch_id, provider_id, egg_type, egg_color, egg_size,
-                fecha, weight_lbs, total_boxes, storage_location, stock_lbs, temperature_c, truck_temperature_c,
+                fecha, weight_lbs, total_boxes, initial_boxes, storage_location, stock_lbs, temperature_c, truck_temperature_c,
                 truck_plate, driver_name, provider_lot, certificate_urls, tarimas_json, operator_name, status
             )
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
                 req.company_id, branchId, provider_id, egg_type,
                 egg_color || 'blanco', egg_size || 'L', fecha || new Date().toISOString().split('T')[0],
-                finalWeightLbs, finalBoxes, mainStorageLocation, finalWeightLbs, temperature_c || null,
+                finalWeightLbs, finalBoxes, finalBoxes, mainStorageLocation, finalWeightLbs, temperature_c || null,
                 truck_temperature_c || null, truck_plate || null, driver_name || null,
                 provider_lot, JSON.stringify(certificate_urls || []),
                 JSON.stringify(cleanTarimas.length > 0 ? cleanTarimas : (tarimas_json || [])), operator_name, 'pendiente_aprobacion'
@@ -237,16 +247,18 @@ const updateRawMaterial = async (req, res) => {
             updatedStock = finalWeightLbs;
         }
 
+        const newInitialBoxes = consumed > 0 ? (existing[0].initial_boxes || existing[0].total_boxes) : finalBoxes;
+
         await pool.query(
             `UPDATE egg_raw_materials SET
                 provider_id = ?, egg_type = ?, egg_color = ?, egg_size = ?,
-                fecha = ?, weight_lbs = ?, total_boxes = ?, storage_location = ?, stock_lbs = ?,
+                fecha = ?, weight_lbs = ?, total_boxes = ?, initial_boxes = ?, storage_location = ?, stock_lbs = ?,
                 temperature_c = ?, truck_temperature_c = ?, truck_plate = ?, driver_name = ?,
                 provider_lot = ?, certificate_urls = ?, tarimas_json = ?, operator_name = ?, status = ?
              WHERE id = ? AND company_id = ?`,
             [
                 provider_id, egg_type, egg_color || 'blanco', egg_size || 'L',
-                fecha || existing[0].fecha, finalWeightLbs, finalBoxes, mainStorageLocation, updatedStock,
+                fecha || existing[0].fecha, finalWeightLbs, finalBoxes, newInitialBoxes, mainStorageLocation, updatedStock,
                 temperature_c, truck_temperature_c || null, truck_plate || null, driver_name || null,
                 provider_lot, JSON.stringify(certificate_urls || []),
                 JSON.stringify(cleanTarimas.length > 0 ? cleanTarimas : (tarimas_json || [])), operator_name, existing[0].status,
