@@ -391,7 +391,16 @@ const getVatBookPurchasesPDF = async (req, res) => {
             ORDER BY eh.fecha ASC, eh.id ASC
         `;
 
-        const [pRows] = await pool.query(purchaseQuery, pParams);
+        /* =========================================================================
+         * [TEMPORAL - LIBRO DE COMPRAS IVA]
+         * De momento, las compras NO afectan el Libro de IVA de Compras; únicamente los
+         * Gastos Operativos (expense_headers) afectarán este libro tributario.
+         * Para reactivar la afectación de compras en el Libro de IVA posteriormente:
+         * 1) Descomenta la línea: const [pRows] = await pool.query(purchaseQuery, pParams);
+         * 2) Elimina o comenta: const pRows = [];
+         * ========================================================================= */
+        // const [pRows] = await pool.query(purchaseQuery, pParams);
+        const pRows = [];
         const [eRows] = await pool.query(expenseQuery, eParams);
 
         const rows = [...pRows, ...eRows].sort((a, b) => {
@@ -1739,6 +1748,15 @@ const calculateVatLiquidation = async (companyId, year, month, branch_id, option
         purchasesParams.push(branch_id);
     }
 
+    /* =========================================================================
+     * [TEMPORAL - LIQUIDACIÓN DE IVA F-07]
+     * De momento, las compras NO afectan el Crédito Fiscal de IVA; únicamente los
+     * Gastos Operativos (expense_headers) afectarán la liquidación tributaria.
+     * Para reactivar la afectación de compras en la liquidación de IVA posteriormente:
+     * 1) Descomenta la ejecución de la consulta `[purchasesByTypeRows] = await pool.query(...)` a continuación.
+     * 2) Elimina o comenta: const purchasesByTypeRows = [];
+     * ========================================================================= */
+    /*
     const [purchasesByTypeRows] = await pool.query(`
         SELECT 
             ph.tipo_documento_id,
@@ -1756,6 +1774,8 @@ const calculateVatLiquidation = async (companyId, year, month, branch_id, option
         WHERE ${purchasesWhere.join(' AND ')}
         GROUP BY ph.tipo_documento_id, cat.description
     `, purchasesParams);
+    */
+    const purchasesByTypeRows = [];
 
     let expensesWhere = [
         'eh.company_id = ?',
