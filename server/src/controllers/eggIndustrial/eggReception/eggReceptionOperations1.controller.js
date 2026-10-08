@@ -1,5 +1,16 @@
 const { owned, fail, number, pool } = require('./shared');
 
+// Asegurar existencia de columna initial_boxes en egg_raw_materials de forma auto-migrable
+pool.query("SHOW COLUMNS FROM egg_raw_materials LIKE 'initial_boxes'")
+    .then(([cols]) => {
+        if (cols.length === 0) {
+            pool.query("ALTER TABLE egg_raw_materials ADD COLUMN initial_boxes INT NULL DEFAULT NULL AFTER total_boxes")
+                .then(() => pool.query("UPDATE egg_raw_materials SET initial_boxes = total_boxes WHERE initial_boxes IS NULL"))
+                .catch(e => console.warn('Warning adding initial_boxes to egg_raw_materials:', e.message));
+        }
+    })
+    .catch(() => {});
+
 const getRawMaterials = async (req, res) => {
     try {
         const { only_with_stock } = req.query;
@@ -99,6 +110,8 @@ const getRawMaterials = async (req, res) => {
                     is_depleted: isDepleted
                 };
             });
+
+            const isDepleted = parseFloat(rm.stock_lbs) <= 0.01 || (tarimasAvailable.length > 0 && tarimasAvailable.every(t => t.is_depleted));
 
             const tarimaBoxes = Array.isArray(originalTarimas) && originalTarimas.length > 0
                 ? originalTarimas.reduce((acc, t) => acc + (parseInt(t.boxes_count) || 0), 0)
