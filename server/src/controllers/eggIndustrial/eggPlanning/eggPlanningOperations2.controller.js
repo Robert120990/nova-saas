@@ -1,4 +1,5 @@
 const { pool, computeJulianLotCode } = require('./shared');
+const { syncScheduledCompanions } = require('../../../services/eggIndustrial/eggPlanning/syncScheduledCompanions.service');
 const createScheduledProduction = async (req, res) => {
     const connection = await pool.getConnection();
     try {
@@ -245,6 +246,23 @@ const updateScheduledProduction = async (req, res) => {
                 req.user?.nombre || 'Planificador'
             ]
         );
+
+        if (req.body.secondary_lots || req.body.secondary_productions || req.body.enable_secondary_batch !== undefined) {
+            await syncScheduledCompanions(connection, {
+                company_id,
+                branch_id: req.body.branch_id,
+                masterProductionId: id,
+                production_date,
+                start_time,
+                end_time,
+                status,
+                priority,
+                assigned_operator_id,
+                assigned_operator_name,
+                created_by: req.user?.username || req.user?.nombre || 'Planificador',
+                secondary_lots: req.body.enable_secondary_batch === false ? [] : (req.body.secondary_lots || req.body.secondary_productions || [])
+            });
+        }
 
         await connection.commit();
         res.json({ message: 'Producción actualizada correctamente.' });

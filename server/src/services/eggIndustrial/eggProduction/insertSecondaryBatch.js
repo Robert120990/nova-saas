@@ -32,6 +32,10 @@ async function insertSecondaryBatch(connection, {
         if (!/^LOTE\b/i.test(secCode)) secCode = `LOTE ${secCode}`;
     }
 
+    const secSchedId = secondary_batch.scheduled_production_id
+        ? parseInt(secondary_batch.scheduled_production_id, 10)
+        : (scheduled_production_id ? parseInt(scheduled_production_id, 10) : null);
+
     const [secResult] = await connection.query(
         `INSERT INTO egg_production_batches (
             company_id, branch_id, batch_uuid, batch_code_display, scheduled_production_id,
@@ -39,7 +43,7 @@ async function insertSecondaryBatch(connection, {
             status, input_weight_lbs, target_brix, target_solids_pct, operator_name
         ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, 'en_proceso', ?, ?, ?, ?)`,
         [
-            company_id, branch_id, secUuid, secCode, scheduled_production_id,
+            company_id, branch_id, secUuid, secCode, secSchedId,
             parentBatchId, secProductType, secPresentation,
             JSON.stringify(secondary_batch.ingredients_json || {}),
             totalInputWeight,
@@ -50,6 +54,28 @@ async function insertSecondaryBatch(connection, {
     );
 
     const secBatchId = secResult.insertId;
+
+    if (secSchedId) {
+        try {
+            await connection.query(
+                'UPDATE egg_scheduled_productions SET status = "en_proceso", batch_id = COALESCE(batch_id, ?) WHERE id = ? AND company_id = ?',
+                [secBatchId, secSchedId, company_id]
+            );
+
+            await connection.query(
+                `INSERT INTO egg_industrial_events (company_id, event_type, severity, description, payload, operator_name)
+                 VALUES (?, 'batch.linked_to_schedule', 'info', ?, ?, ?)`,
+                [
+                    company_id,
+                    `Lote co-producto ${secCode} vinculado a la producción programada #${secSchedId}.`,
+                    JSON.stringify({ batch_id: secBatchId, scheduled_production_id: secSchedId, parent_batch_id: parentBatchId, is_coproduct: true, batch_code_display: secCode }),
+                    operator_name
+                ]
+            );
+        } catch (schedErr) {
+            console.warn('[insertSecondaryBatch] Update egg_scheduled_productions error:', schedErr.message);
+        }
+    }
 
     // Registrar materias primas compartidas (sin descontar inventario dos veces)
     for (const rm of raw_materials) {
