@@ -127,6 +127,10 @@ const updateBranch = asyncHandler(async (req, res) => {
     if (data.remision_con_valores !== undefined) {
         data.remision_con_valores = (data.remision_con_valores === 1 || data.remision_con_valores === '1' || data.remision_con_valores === true || data.remision_con_valores === 'true') ? 1 : 0;
     }
+    if (data.remove_logo === '1' || data.remove_logo === 'true') {
+        data.logo_url = null;
+    }
+    delete data.remove_logo;
     if (req.file) {
         data.logo_url = '/uploads/' + req.file.filename;
     }
