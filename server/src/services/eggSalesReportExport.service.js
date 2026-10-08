@@ -74,8 +74,8 @@ async function generateEggSalesExcel(companyId, filters = {}, dataParam = null) 
         (c.invoices || []).forEach(inv => {
             detailRows.push({
                 fecha: inv.fecha_emision ? new Date(inv.fecha_emision).toLocaleDateString() : 'N/A',
-                tipo_doc: inv.tipo_documento === '03' ? 'CCF' : (inv.tipo_documento === '11' ? 'FEX' : (inv.tipo_documento === '01' ? 'FAC' : (inv.tipo_documento || 'DTE'))),
-                control: inv.numero_control || inv.codigo_generacion || `Venta #${inv.sale_id}`,
+                tipo_doc: inv.tipo_documento === '03' ? 'CCF' : (inv.tipo_documento === '11' ? 'FEX' : (inv.tipo_documento === '04' ? 'REM' : (inv.tipo_documento === '01' ? 'FAC' : (inv.tipo_documento || 'DTE')))),
+                control: (inv.numero_control || inv.codigo_generacion || `Venta #${inv.sale_id}`) + (inv.linked_remisiones ? ` (Ref: ${inv.linked_remisiones})` : '') + (inv.tipo_documento === '04' ? ' [Pendiente]' : ''),
                 cliente: c.customer_name,
                 producto: inv.product_name,
                 desc: inv.descripcion,
@@ -114,9 +114,15 @@ async function generateEggSalesPdf(companyId, filters = {}, dataParam = null) {
         ? 'REPORTE DE VENTAS POR CLIENTE (OVOPRODUCTOS Y HUEVO EN CÁSCARA)'
         : 'REPORTE DE VENTAS POR PRODUCTO (OVOPRODUCTOS Y HUEVO EN CÁSCARA)';
 
-    const periodText = filters.startDate && filters.endDate
+    const criterionLabel = filters.remissionMode === 'solo_fiscal'
+        ? 'Criterio: Facturación Fiscal Estricta (01, 03, 11)'
+        : (filters.remissionMode === 'despachos_fisicos'
+            ? 'Criterio: Despachos Físicos (Remisiones 04 Salidas)'
+            : 'Criterio: Facturación + Remisiones Pendientes (Sin duplicidad)');
+
+    const periodText = (filters.startDate && filters.endDate
         ? `Período: ${filters.startDate} al ${filters.endDate}`
-        : 'Historial General de Ventas Facturadas';
+        : 'Historial General de Ventas') + ` • ${criterionLabel}`;
 
     const subtitle = 'Consolidado de Libras Vendidas, Monto Total y Precio Promedio Ponderado ($/Lb)';
 

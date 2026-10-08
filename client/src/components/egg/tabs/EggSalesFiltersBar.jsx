@@ -141,7 +141,7 @@ export default function EggSalesFiltersBar({
                 </div>
 
                 {/* Filtro por Cliente */}
-                <div className="w-full sm:w-52">
+                <div className="w-full sm:w-48">
                     <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
                         Cliente
                     </label>
@@ -156,6 +156,23 @@ export default function EggSalesFiltersBar({
                                 {c.nombre || c.razon_social}
                             </option>
                         ))}
+                    </select>
+                </div>
+
+                {/* Criterio de Documentos y Remisiones */}
+                <div className="w-full sm:w-56">
+                    <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1" title="Contemplar remisiones y deduplicar al facturar">
+                        Criterio de Documentos
+                    </label>
+                    <select
+                        className="w-full rounded-xl border border-slate-200 p-2 text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 bg-white"
+                        value={filters.remissionMode || 'facturado_pendiente'}
+                        onChange={(e) => onChangeFilter('remissionMode', e.target.value)}
+                        title="Evita doble sumatoria de notas de remisión al facturarse a clientes"
+                    >
+                        <option value="facturado_pendiente">Facturado + Remisiones Pendientes</option>
+                        <option value="solo_fiscal">Solo Facturación Fiscal (01, 03, 11)</option>
+                        <option value="despachos_fisicos">Despachos Físicos (Remisiones 04)</option>
                     </select>
                 </div>
 

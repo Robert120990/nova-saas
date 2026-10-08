@@ -196,13 +196,25 @@ export default function EggSalesCustomerDetailModal({ open, onClose, customer })
                                             </td>
                                             <td className="p-3 whitespace-nowrap">
                                                 <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold ${
-                                                    inv.tipo_documento === '03' ? 'bg-purple-100 text-purple-700' : (inv.tipo_documento === '11' ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700')
+                                                    inv.tipo_documento === '03' ? 'bg-purple-100 text-purple-700' :
+                                                    (inv.tipo_documento === '11' ? 'bg-emerald-100 text-emerald-700' :
+                                                    (inv.tipo_documento === '04' ? 'bg-amber-100 text-amber-800 border border-amber-200' : 'bg-blue-100 text-blue-700'))
                                                 }`}>
-                                                    {inv.tipo_documento === '03' ? 'CCF' : (inv.tipo_documento === '11' ? 'FEX' : 'FAC')}
+                                                    {inv.tipo_documento === '03' ? 'CCF' : (inv.tipo_documento === '11' ? 'FEX' : (inv.tipo_documento === '04' ? 'REM (04)' : 'FAC'))}
                                                 </span>
                                             </td>
                                             <td className="p-3 whitespace-nowrap font-mono text-[11px] text-slate-700">
-                                                {inv.numero_control || (inv.codigo_generacion ? `${inv.codigo_generacion.substring(0, 13)}...` : `#${inv.sale_id}`)}
+                                                <div>{inv.numero_control || (inv.codigo_generacion ? `${inv.codigo_generacion.substring(0, 13)}...` : `#${inv.sale_id}`)}</div>
+                                                {inv.linked_remisiones && (
+                                                    <div className="text-[10px] text-indigo-600 font-sans font-medium truncate max-w-[180px]" title={`Remisiones liquidadas: ${inv.linked_remisiones}`}>
+                                                        🔗 Rem: {inv.linked_remisiones}
+                                                    </div>
+                                                )}
+                                                {inv.tipo_documento === '04' && (
+                                                    <div className="text-[10px] text-amber-600 font-sans font-medium">
+                                                        ⏳ Pendiente de facturar
+                                                    </div>
+                                                )}
                                             </td>
                                             <td className="p-3 text-slate-700 max-w-xs truncate" title={inv.descripcion}>
                                                 {inv.descripcion}

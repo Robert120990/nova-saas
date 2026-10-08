@@ -11,8 +11,8 @@ function calculateLbs(item) {
     const matchPounds = desc.match(/\((\d+(?:\.\d+)?)\s*Lbs?\)/i);
     if (matchPounds) return parseFloat(matchPounds[1]);
 
-    // 2. Huevo en Cáscara (Unidades y Cajas) -> NO SUMA A LIBRAS (se comercializa por unidades/cajas)
-    if (code === 'HCU' || code === 'H1' || desc.toUpperCase().includes('CASCARA') || desc.toUpperCase().includes('CÁSCARA') || desc.toUpperCase().includes('CAJA')) {
+    // 2. Huevo en Cáscara (Unidades, Cartones y Cajas) -> NO SUMA A LIBRAS (se comercializa por unidades/cartones/cajas)
+    if (code === 'HCU' || code === 'H1' || code === 'HC' || code === 'CARTONH' || desc.toUpperCase().includes('CASCARA') || desc.toUpperCase().includes('CÁSCARA') || desc.toUpperCase().includes('CAJA') || desc.toUpperCase().includes('CARTON DE HUEVO')) {
         return 0;
     }
 
@@ -45,7 +45,7 @@ function classifyProduct(code, desc) {
     const c = (code || '').toUpperCase();
     const d = (desc || '').toUpperCase();
 
-    if (c === 'HCU' || c === 'H1' || d.includes('CASCARA') || d.includes('CÁSCARA') || d.includes('HUEVO BLANCO')) return 'HUEVO EN CASCARA';
+    if (c === 'HCU' || c === 'H1' || c === 'HC' || c === 'CARTONH' || d.includes('CASCARA') || d.includes('CÁSCARA') || d.includes('HUEVO BLANCO') || d.includes('CARTON DE HUEVO')) return 'HUEVO EN CASCARA';
     if (c.includes('CLPPG') || c.includes('CPPGC') || d.includes('CLARA PPG')) return 'CLARA PPG';
     if (c === 'SL01' || c.startsWith('CLGL') || c.startsWith('CNG') || d.includes('CLARA')) return 'CLARA PASTEURIZADA';
     if (c.startsWith('HERG') || c.startsWith('HER') || c.startsWith('HR') || d.includes('RAPIDO') || d.includes('RÁPIDO')) return 'HUEVO RAPIDO';
@@ -62,22 +62,33 @@ function classifyProduct(code, desc) {
 function isEggProduct(code, desc) {
     const c = (code || '').toUpperCase();
     const d = (desc || '').toUpperCase();
-    if (c === 'CONTENEDOR' || c === 'CARTON' || c === 'CARTONH') return false;
+    if (c === 'CONTENEDOR' || c === 'CARTON' || d.includes('CARTON VACIO') || d.includes('CARTÓN VACÍO')) return false;
     if (d.includes('RETENCION') || d.includes('ALMACENAMIENTO') || d.includes('CORRUGADO') || d.includes('FLETE') || d.includes('DETALLE CON PRECIO')) return false;
     return true;
 }
 
-function formatQtyAndPrice(isShell, boxes, units, lbs, amount) {
+function formatQtyAndPrice(isShell, boxes, units, lbs, amount, cartons = 0) {
     if (isShell) {
-        const displayQty = (boxes > 0 && units > 0)
-            ? `${units.toLocaleString()} Unid / ${boxes.toLocaleString()} Cajas`
-            : (boxes > 0 ? `${boxes.toLocaleString()} Cajas` : `${units.toLocaleString()} Unid`);
-        const avgPrice = (boxes > 0 && units === 0)
-            ? (amount / boxes)
-            : (units > 0 && boxes === 0 ? (amount / units) : 0);
-        const avgPriceDisplay = (boxes > 0 && units === 0)
-            ? `$${(amount / boxes).toFixed(2)} /Caja`
-            : (units > 0 && boxes === 0 ? `$${(amount / units).toFixed(2)} /Unid` : '—');
+        const parts = [];
+        if (units > 0) parts.push(`${units.toLocaleString()} Unid`);
+        if (cartons > 0) parts.push(`${cartons.toLocaleString()} Cartón${cartons > 1 ? 'es' : ''}`);
+        if (boxes > 0) parts.push(`${boxes.toLocaleString()} Caja${boxes > 1 ? 's' : ''}`);
+        const displayQty = parts.length > 0 ? parts.join(' / ') : '0 Unid';
+
+        let avgPrice = 0;
+        let avgPriceDisplay = '—';
+        if (boxes > 0 && units === 0 && cartons === 0) {
+            avgPrice = amount / boxes;
+            avgPriceDisplay = `$${avgPrice.toFixed(2)} /Caja`;
+        } else if (cartons > 0 && units === 0 && boxes === 0) {
+            avgPrice = amount / cartons;
+            avgPriceDisplay = `$${avgPrice.toFixed(2)} /Cartón`;
+        } else if (units > 0 && boxes === 0 && cartons === 0) {
+            avgPrice = amount / units;
+            avgPriceDisplay = `$${avgPrice.toFixed(2)} /Unid`;
+        } else if (amount > 0) {
+            avgPriceDisplay = `$${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        }
         return { displayQty, avgPrice: Math.round(avgPrice * 100) / 100, avgPriceDisplay };
     }
     const displayQty = `${Number(lbs).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} Lb`;
@@ -86,9 +97,106 @@ function formatQtyAndPrice(isShell, boxes, units, lbs, amount) {
     return { displayQty, avgPrice: Math.round(avgPrice * 100) / 100, avgPriceDisplay };
 }
 
+function buildEggSalesReportQuery(companyId, filters = {}) {
+    const { startDate, endDate, customerId, from, to, month, remissionMode = 'facturado_pendiente' } = filters;
+    let startFilter = startDate || from;
+    let endFilter = endDate || to;
+
+    if (month && !startFilter && !endFilter) {
+        const [y, m] = month.split('-').map(Number);
+        if (y && m) {
+            startFilter = `${y}-${String(m).padStart(2, '0')}-01`;
+            const lastDay = new Date(y, m, 0).getDate();
+            endFilter = `${y}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+        }
+    }
+
+    let query = `
+        SELECT si.id as item_id, si.sale_id, si.codigo, si.descripcion, si.cantidad, si.precio_unitario,
+               si.venta_gravada, si.venta_exenta,
+               sh.fecha_emision,
+               COALESCE(sh.tipo_documento, sh.dte_type) as tipo_documento,
+               COALESCE(sh.numero_control, d.numero_control) as numero_control,
+               COALESCE(sh.codigo_generacion, d.codigo_generacion) as codigo_generacion,
+               sh.cliente_nombre, sh.customer_id,
+               c.nombre as customer_name, c.nit as customer_nit, c.nrc as customer_nrc,
+               (
+                   SELECT GROUP_CONCAT(DISTINCT ld.doc_number SEPARATOR ', ')
+                   FROM sales_linked_documents ld
+                   WHERE ld.sale_id = sh.id AND ld.doc_type = '04'
+               ) AS linked_remisiones
+        FROM sales_items si
+        JOIN sales_headers sh ON si.sale_id = sh.id
+        LEFT JOIN dtes d ON sh.id = d.venta_id
+        LEFT JOIN customers c ON sh.customer_id = c.id
+        WHERE sh.company_id = ?
+          AND UPPER(COALESCE(sh.estado, '')) NOT IN ('ANULADO', 'ANULADA', 'INVALIDADO', 'RECHAZADO')
+          AND (d.status IS NULL OR UPPER(d.status) NOT IN ('INVALIDADO', 'REJECTED', 'RECHAZADO', 'ANULADO', 'ERROR'))
+          AND NOT EXISTS (
+              SELECT 1 FROM dte_invalidations di 
+              WHERE di.codigo_generacion_dte = COALESCE(sh.codigo_generacion, d.codigo_generacion) 
+                AND di.estado IN ('ACCEPTED', 'SENT')
+          )
+    `;
+
+    if (remissionMode === 'solo_fiscal') {
+        query += ` AND COALESCE(sh.tipo_documento, sh.dte_type) IN ('01', '03', '11')
+                   AND (si.venta_gravada > 0 OR si.venta_exenta > 0)`;
+    } else if (remissionMode === 'despachos_fisicos') {
+        query += ` AND (
+                       COALESCE(sh.tipo_documento, sh.dte_type) = '04'
+                       OR (
+                           COALESCE(sh.tipo_documento, sh.dte_type) IN ('01', '03', '11')
+                           AND NOT EXISTS (
+                               SELECT 1 FROM sales_linked_documents ld
+                               WHERE ld.sale_id = sh.id AND ld.doc_type = '04'
+                           )
+                       )
+                   )
+                   AND (si.venta_gravada > 0 OR si.venta_exenta > 0 OR (COALESCE(sh.tipo_documento, sh.dte_type) = '04' AND si.cantidad > 0))`;
+    } else {
+        // 'facturado_pendiente' (por defecto): Suman facturas fiscales y remisiones solo si NO han sido facturadas
+        query += ` AND (
+                       COALESCE(sh.tipo_documento, sh.dte_type) IN ('01', '03', '11')
+                       OR (
+                           COALESCE(sh.tipo_documento, sh.dte_type) = '04'
+                           AND NOT EXISTS (
+                               SELECT 1 FROM sales_linked_documents ld
+                               JOIN sales_headers fact ON ld.sale_id = fact.id
+                               WHERE ld.doc_type = '04'
+                                 AND (ld.doc_number = COALESCE(sh.codigo_generacion, '') 
+                                      OR ld.doc_number = COALESCE(sh.numero_control, '') 
+                                      OR ld.doc_number = CONVERT(sh.id, CHAR) COLLATE utf8mb4_0900_ai_ci)
+                                 AND UPPER(COALESCE(fact.estado, '')) NOT IN ('ANULADO', 'ANULADA', 'INVALIDADO', 'RECHAZADO')
+                           )
+                       )
+                   )
+                   AND (si.venta_gravada > 0 OR si.venta_exenta > 0 OR (COALESCE(sh.tipo_documento, sh.dte_type) = '04' AND si.cantidad > 0))`;
+    }
+
+    const params = [companyId];
+    if (startFilter) {
+        query += ' AND sh.fecha_emision >= ?';
+        params.push(startFilter);
+    }
+    if (endFilter) {
+        query += ' AND sh.fecha_emision <= ?';
+        params.push(endFilter);
+    }
+    if (customerId) {
+        query += ' AND sh.customer_id = ?';
+        params.push(customerId);
+    }
+
+    query += ' ORDER BY sh.fecha_emision ASC, sh.id ASC, si.id ASC';
+
+    return { query, params };
+}
+
 module.exports = {
     calculateLbs,
     classifyProduct,
     isEggProduct,
-    formatQtyAndPrice
+    formatQtyAndPrice,
+    buildEggSalesReportQuery
 };

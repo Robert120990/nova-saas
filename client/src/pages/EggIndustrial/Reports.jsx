@@ -22,7 +22,7 @@ const tabs = [
 
 const initialFilters = () => {
     const start = new Date(); start.setDate(start.getDate() - 30);
-    return { from: getTodayString(start), to: getTodayString(), provider_id: '', product_type: '', batch_id: '', customer_id: '' };
+    return { from: getTodayString(start), to: getTodayString(), provider_id: '', product_type: '', batch_id: '', customer_id: '', remissionMode: 'facturado_pendiente' };
 };
 
 export default function EggReports() {
