@@ -54,12 +54,15 @@ const approveRawMaterial = async (req, res) => {
         await pool.query(
             `UPDATE egg_raw_materials
              SET status = 'aprobado',
-                 notes = CASE
-                     WHEN ? IS NOT NULL AND ? != '' THEN CONCAT(COALESCE(notes, ''), ' | [Aprobado: ', ?, ']')
-                     ELSE notes
-                 END
+                 quality_status = 'aprobado',
+                 quality_notes = CASE
+                     WHEN ? IS NOT NULL AND ? != '' THEN CONCAT(COALESCE(quality_notes, ''), ' | [Aprobado: ', ?, ']')
+                     ELSE quality_notes
+                 END,
+                 quality_date = NOW(),
+                 quality_inspector_name = COALESCE(quality_inspector_name, ?)
              WHERE id = ? AND company_id = ?`,
-            [notes, notes, notes, id, company_id]
+            [notes, notes, notes, req.user?.nombre || 'Control de Calidad', id, company_id]
         );
 
         await pool.query(
