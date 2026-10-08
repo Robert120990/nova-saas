@@ -229,6 +229,14 @@ async function validateDocumentDuplicate({
 
     // 2. Si el objetivo es Registrar/Actualizar un GASTO OPERATIVO:
     if (targetType === 'expense') {
+        /* =========================================================================
+         * [TEMPORAL - VALIDACIÓN DE DUPLICADOS EN GASTOS]
+         * De momento, la validación en gastos solo verifica contra gastos (expense_headers)
+         * y NO contra compras de inventario (purchase_headers).
+         * Para reactivar la validación cruzada contra compras posteriormente:
+         * 1) Descomenta el bloque "A) Validar contra Compras de Inventario" a continuación.
+         * ========================================================================= */
+        /*
         // A) Validar contra Compras de Inventario (purchase_headers)
         const purMatch = await queryTableDuplicate({
             connection,
@@ -257,6 +265,7 @@ async function validateDocumentDuplicate({
                 message: msg
             };
         }
+        */
 
         // B) Validar contra Gastos previos (expense_headers)
         const expMatch = await queryTableDuplicate({
