@@ -1,6 +1,8 @@
-import { Plus, Boxes, Trash2, Lock, X } from 'lucide-react';
+import { useState } from 'react';
+import { Plus, Lock, X } from 'lucide-react';
 import PackagingColdChainSection from './PackagingColdChainSection';
 import PackagingBatchBalanceCard from './PackagingBatchBalanceCard';
+import PackagingItemsSection from './PackagingItemsSection';
 
 const EggNewPackagingModal = ({
     isOpen,
@@ -14,6 +16,8 @@ const EggNewPackagingModal = ({
     onReopenPackaging,
     canClosePackaging
 }) => {
+    const [showClosedBatches, setShowClosedBatches] = useState(false);
+
     if (!isOpen) return null;
 
     const currentBatch = batches.find(b => b.id === parseInt(packagingForm.batch_id));
@@ -47,6 +51,20 @@ const EggNewPackagingModal = ({
         });
     };
 
+    const eligibleBatches = (Array.isArray(batches) ? batches : []).filter(
+        b => ['pasteurizado', 'aprobado_calidad', 'empaquetado', 'bloqueado_haccp'].includes(b.status)
+    );
+    const openBatches = eligibleBatches.filter(b => {
+        const packaged = parseFloat(b.packaged_weight_lbs || 0);
+        const disp = Math.max(0, parseFloat(b.yield_liquid_lbs || 0) - packaged);
+        return b.packaging_status !== 'cerrado' && disp > 0.01;
+    });
+    const closedBatches = eligibleBatches.filter(b => {
+        const packaged = parseFloat(b.packaged_weight_lbs || 0);
+        const disp = Math.max(0, parseFloat(b.yield_liquid_lbs || 0) - packaged);
+        return b.packaging_status === 'cerrado' || disp <= 0.01;
+    });
+
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-150">
             <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto space-y-5 text-slate-900">
@@ -72,9 +90,20 @@ const EggNewPackagingModal = ({
                 <form onSubmit={onSubmit} className="space-y-4">
                     {/* Selector de Lote Pasteurizado */}
                     <div>
-                        <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">
-                            Lote Pasteurizado Aprobado a Envasar *
-                        </label>
+                        <div className="flex items-center justify-between mb-1.5">
+                            <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide">
+                                Lote Pasteurizado Aprobado a Envasar *
+                            </label>
+                            {closedBatches.length > 0 && (
+                                <button
+                                    type="button"
+                                    onClick={() => setShowClosedBatches(prev => !prev)}
+                                    className="text-[10px] text-slate-500 hover:text-indigo-600 font-medium transition-colors"
+                                >
+                                    {showClosedBatches ? 'Ocultar cerrados (saldo 0)' : `Mostrar cerrados (${closedBatches.length})`}
+                                </button>
+                            )}
+                        </div>
                         <select
                             value={packagingForm.batch_id}
                             onChange={(e) => {
@@ -84,25 +113,45 @@ const EggNewPackagingModal = ({
                             className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                         >
                             <option value="">Seleccione Lote Disponible...</option>
-                            {(Array.isArray(batches.filter(b => ['pasteurizado', 'aprobado_calidad', 'empaquetado', 'bloqueado_haccp'].includes(b.status)))
-                                ? batches.filter(b => ['pasteurizado', 'aprobado_calidad', 'empaquetado', 'bloqueado_haccp'].includes(b.status))
-                                : []
-                            ).map(b => {
-                                const packaged = parseFloat(b.packaged_weight_lbs || 0);
-                                const disp = Math.max(0, parseFloat(b.yield_liquid_lbs || 0) - packaged);
-                                const isClosed = b.packaging_status === 'cerrado';
-                                const tagPrefix = isClosed
-                                    ? `🔒 [CERRADO]`
-                                    : (packaged > 0 && disp > 0)
-                                        ? `⚠️ [PARCIAL: Faltan ${disp.toFixed(0)} Lbs]`
-                                        : `🟢 [DISP: ${disp.toFixed(0)} Lbs]`;
-                                const coprodTag = b.is_coproduct ? ' 🔗 [CO-PRODUCTO]' : '';
-                                return (
-                                    <option key={b.id} value={b.id} disabled={b.status === 'bloqueado_haccp'}>
-                                        {tagPrefix}{coprodTag} [{b.batch_code_display || b.batch_uuid}] {b.product_type} ({b.presentation}) - Env: {packaged.toFixed(0)} Lbs / Disp: {disp.toFixed(0)} Lbs{b.status === 'bloqueado_haccp' ? ' [BLOQUEADO HACCP]' : ''}
+                            {openBatches.length > 0 && (
+                                <optgroup label="✨ Lotes Disponibles para Envasar">
+                                    {openBatches.map(b => {
+                                        const packaged = parseFloat(b.packaged_weight_lbs || 0);
+                                        const disp = Math.max(0, parseFloat(b.yield_liquid_lbs || 0) - packaged);
+                                        const tagPrefix = (packaged > 0 && disp > 0)
+                                            ? `⚠️ [PARCIAL: Faltan ${disp.toFixed(0)} Lbs]`
+                                            : `🟢 [DISP: ${disp.toFixed(0)} Lbs]`;
+                                        const coprodTag = b.is_coproduct ? ' 🔗 [CO-PRODUCTO]' : '';
+                                        return (
+                                            <option key={b.id} value={b.id} disabled={b.status === 'bloqueado_haccp'}>
+                                                {tagPrefix}{coprodTag} [{b.batch_code_display || b.batch_uuid}] {b.product_type} ({b.presentation}) - Env: {packaged.toFixed(0)} Lbs / Disp: {disp.toFixed(0)} Lbs{b.status === 'bloqueado_haccp' ? ' [BLOQUEADO HACCP]' : ''}
+                                            </option>
+                                        );
+                                    })}
+                                </optgroup>
+                            )}
+                            {showClosedBatches && closedBatches.length > 0 && (
+                                <optgroup label="🔒 Lotes Cerrados / Saldo Cero">
+                                    {closedBatches.map(b => {
+                                        const packaged = parseFloat(b.packaged_weight_lbs || 0);
+                                        const disp = Math.max(0, parseFloat(b.yield_liquid_lbs || 0) - packaged);
+                                        const isClosed = b.packaging_status === 'cerrado';
+                                        const coprodTag = b.is_coproduct ? ' 🔗 [CO-PRODUCTO]' : '';
+                                        return (
+                                            <option key={b.id} value={b.id} disabled={b.status === 'bloqueado_haccp'}>
+                                                {isClosed ? '🔒 [CERRADO]' : '⚪ [SALDO 0]'}{coprodTag} [{b.batch_code_display || b.batch_uuid}] {b.product_type} ({b.presentation}) - Env: {packaged.toFixed(0)} Lbs / Disp: {disp.toFixed(0)} Lbs
+                                            </option>
+                                        );
+                                    })}
+                                </optgroup>
+                            )}
+                            {!showClosedBatches && currentBatch && closedBatches.some(b => b.id === currentBatch.id) && (
+                                <optgroup label="🔒 Lote Seleccionado (Cerrado)">
+                                    <option value={currentBatch.id}>
+                                        🔒 [CERRADO] [{currentBatch.batch_code_display || currentBatch.batch_uuid}] {currentBatch.product_type} - Disp: 0 Lbs
                                     </option>
-                                );
-                            })}
+                                </optgroup>
+                            )}
                         </select>
                     </div>
 
@@ -172,127 +221,10 @@ const EggNewPackagingModal = ({
                     </div>
 
                     {/* Partidas a Envasar */}
-                    <div className="space-y-3 bg-slate-50/80 p-4 rounded-2xl border border-slate-200">
-                        <div className="flex items-center justify-between border-b border-slate-200/80 pb-2">
-                            <label className="text-xs font-bold text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
-                                <Boxes className="w-4 h-4 text-purple-600" />
-                                <span>Presentaciones Comerciales a Envasar</span>
-                            </label>
-                            <span className="text-[11px] text-slate-500 font-medium">
-                                Puede empacar más de una presentación en este lote
-                            </span>
-                        </div>
-
-                        {(Array.isArray(packagingForm.items) ? packagingForm.items : []).map((it, idx) => {
-                            const itemTotal = ((parseFloat(it.units_packaged) || 0) * (parseFloat(it.weight_per_unit_lbs) || 0));
-                            return (
-                                <div key={idx} className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs space-y-2">
-                                    <div className="flex items-center justify-between">
-                                        <span className="text-[10px] font-bold text-indigo-700 uppercase">
-                                            Presentación #{idx + 1}
-                                        </span>
-                                        {packagingForm.items.length > 1 && (
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    const updated = packagingForm.items.filter((_, i) => i !== idx);
-                                                    setPackagingForm({ ...packagingForm, items: updated });
-                                                }}
-                                                className="text-slate-400 hover:text-rose-600 p-1 rounded transition-colors"
-                                            >
-                                                <Trash2 size={13} />
-                                            </button>
-                                        )}
-                                    </div>
-
-                                    <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end">
-                                        <div className="sm:col-span-5">
-                                            <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">Presentación Comercial *</label>
-                                            <select
-                                                value={it.presentation}
-                                                onChange={(e) => {
-                                                    const pres = e.target.value;
-                                                    let defaultW = '30.00';
-                                                    if (pres === 'cubeta 30LB') defaultW = '30.00';
-                                                    else if (pres === 'cubeta 32LB') defaultW = '32.00';
-                                                    else if (pres === 'galón 8LB') defaultW = '8.00';
-                                                    else if (pres === 'medio galón 4LB') defaultW = '4.00';
-                                                    else if (pres === 'litro 2LB') defaultW = '2.00';
-                                                    else if (pres === 'bolsa 5LB') defaultW = '5.00';
-                                                    const updated = [...packagingForm.items];
-                                                    updated[idx] = { ...it, presentation: pres, weight_per_unit_lbs: defaultW };
-                                                    setPackagingForm({ ...packagingForm, items: updated });
-                                                }}
-                                                className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                                            >
-                                                <option value="cubeta 30LB">Cubeta 30 Lbs (Líquido PT)</option>
-                                                <option value="cubeta 32LB">Cubeta 32 Lbs (Líquido PT)</option>
-                                                <option value="galón 8LB">Galón 8 Lbs</option>
-                                                <option value="medio galón 4LB">Medio Galón 4 Lbs</option>
-                                                <option value="litro 2LB">Litro 2 Lbs</option>
-                                                <option value="bolsa 5LB">Bolsa 5 Lbs (Panadería)</option>
-                                                <option value="otro">Otro Formato</option>
-                                            </select>
-                                        </div>
-
-                                        <div className="sm:col-span-3">
-                                            <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">Unidades Envasadas *</label>
-                                            <input
-                                                type="number"
-                                                min="1"
-                                                value={it.units_packaged}
-                                                onChange={(e) => {
-                                                    const updated = [...packagingForm.items];
-                                                    updated[idx] = { ...it, units_packaged: e.target.value };
-                                                    setPackagingForm({ ...packagingForm, items: updated });
-                                                }}
-                                                className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-bold text-center"
-                                                placeholder="Ej: 50"
-                                            />
-                                        </div>
-
-                                        <div className="sm:col-span-2">
-                                            <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">Peso Unit (Lb)</label>
-                                            <input
-                                                type="number"
-                                                step="0.01"
-                                                value={it.weight_per_unit_lbs}
-                                                onChange={(e) => {
-                                                    const updated = [...packagingForm.items];
-                                                    updated[idx] = { ...it, weight_per_unit_lbs: e.target.value };
-                                                    setPackagingForm({ ...packagingForm, items: updated });
-                                                }}
-                                                className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-xl text-xs text-right"
-                                                placeholder="30.00"
-                                            />
-                                        </div>
-
-                                        <div className="sm:col-span-2 text-right">
-                                            <span className="text-[9px] font-bold text-slate-400 uppercase block">Subtotal</span>
-                                            <span className="text-xs font-bold text-teal-700">{itemTotal.toFixed(1)} Lbs</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            );
-                        })}
-
-                        <button
-                            type="button"
-                            onClick={() => {
-                                setPackagingForm({
-                                    ...packagingForm,
-                                    items: [
-                                        ...packagingForm.items,
-                                        { presentation: 'cubeta 30LB', units_packaged: '', weight_per_unit_lbs: '30.00' }
-                                    ]
-                                });
-                            }}
-                            className="w-full py-2 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-xl text-xs font-bold transition-all border border-purple-200 flex items-center justify-center gap-1.5 shadow-2xs"
-                        >
-                            <Plus size={13} />
-                            + Agregar Otra Presentación Comercial
-                        </button>
-                    </div>
+                    <PackagingItemsSection
+                        packagingForm={packagingForm}
+                        setPackagingForm={setPackagingForm}
+                    />
 
                     <PackagingColdChainSection
                         packagingForm={packagingForm}
