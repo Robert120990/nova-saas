@@ -22,7 +22,7 @@ import {
 export default function ProductionBatchesTab({ model }) {
     const [openActionMenuId, setOpenActionMenuId] = useState(null);
     const [actionMenuPos, setActionMenuPos] = useState(null);
-    const { setQualityModal, loading, searchTerm, setSearchTerm, activeTab, setSelectedBatchForPasteurize, setIsPasteurizeModalOpen, canEditProduction, canDeleteProduction, canManageLots, setDeleteConfirmBatch, handleOpenStagesModal, handleOpenClosePasteurization, handleReopenPasteurization, handleOpenBalanceModal, handleOpenWastesModal, handleOpenEditBatch, handleExportSummary, getBatchStatusBadge, filteredBatches, handleCreateCoproductBatch } = model;
+    const { setQualityModal, setAddTarimasModal, loading, searchTerm, setSearchTerm, activeTab, setSelectedBatchForPasteurize, setIsPasteurizeModalOpen, canEditProduction, canDeleteProduction, canManageLots, setDeleteConfirmBatch, handleOpenStagesModal, handleOpenClosePasteurization, handleReopenPasteurization, handleOpenBalanceModal, handleOpenWastesModal, handleOpenEditBatch, handleExportSummary, getBatchStatusBadge, filteredBatches, handleCreateCoproductBatch } = model;
 
     return (<>{activeTab === 'batches' && (
                 <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
@@ -118,7 +118,12 @@ export default function ProductionBatchesTab({ model }) {
                                                 {b.raw_materials && b.raw_materials.length > 0 && (
                                                     <div className="text-[10px] text-slate-500 mt-0.5 space-y-0.5">
                                                         {(Array.isArray(b.raw_materials) ? b.raw_materials : []).map((m, mi) => (
-                                                            <div key={mi} title={Array.isArray(m.tarimas) && m.tarimas.length > 0 ? `Tarimas: ${m.tarimas.map(t => `#${t.tarima_number || 1} (${t.boxes_count || 0}cjs - ${parseFloat(t.quantity_lbs || 0).toFixed(0)}Lbs)`).join(', ')}` : undefined}>
+                                                            <div key={mi} className="flex items-center gap-1 flex-wrap" title={Array.isArray(m.tarimas) && m.tarimas.length > 0 ? `Tarimas: ${m.tarimas.map(t => `#${t.tarima_number || 1} (${t.boxes_count || 0}cjs - ${parseFloat(t.quantity_lbs || 0).toFixed(0)}Lbs)`).join(', ')}` : undefined}>
+                                                                {m.is_initial ? (
+                                                                    <span className="text-[9px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-1 rounded">Inicial</span>
+                                                                ) : m.is_added ? (
+                                                                    <span className="text-[9px] font-bold text-blue-800 bg-blue-50 border border-blue-200 px-1 rounded">Agregada</span>
+                                                                ) : null}
                                                                 <span>{m.egg_type} - {parseFloat(m.quantity_lbs).toFixed(0)} Lbs{m.boxes_count > 0 ? ` (${m.boxes_count} cjs)` : ''}</span>
                                                             </div>
                                                         ))}
@@ -126,7 +131,9 @@ export default function ProductionBatchesTab({ model }) {
                                                 )}
                                             </td>
                                             <td className="px-3 py-2.5 font-medium text-slate-600 text-xs">{b.presentation}</td>
-                                            <td className="px-3 py-2.5 text-right text-slate-900 font-bold text-xs">{parseFloat(b.input_weight_lbs).toLocaleString()} Lbs</td>
+                                            <td className="px-3 py-2.5 text-right text-slate-900 font-bold text-xs" title={b.total_input_weight_lbs && b.total_input_weight_lbs !== b.input_weight_lbs ? `Peso consolidado (Inicial + Agregado): ${parseFloat(b.total_input_weight_lbs).toLocaleString()} Lbs` : undefined}>
+                                                {parseFloat(b.total_input_weight_lbs || b.input_weight_lbs).toLocaleString()} Lbs
+                                            </td>
                                             <td className="px-3 py-2.5 text-right text-teal-700 font-bold text-xs">
                                                 {b.yield_liquid_lbs > 0 ? `${parseFloat(b.yield_liquid_lbs).toLocaleString()} Lbs` : '-'}
                                             </td>
@@ -291,6 +298,31 @@ export default function ProductionBatchesTab({ model }) {
                                                                             Word
                                                                         </button>
                                                                     </div>
+
+                                                                    {/* Agregar Más Tarimas al Quebraje */}
+                                                                    {b.status === 'en_proceso' && b.pasteurization_status !== 'cerrado' && (
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => {
+                                                                                if (setAddTarimasModal) {
+                                                                                    setAddTarimasModal({
+                                                                                        isOpen: true,
+                                                                                        batch: b,
+                                                                                        raw_materials: [{ raw_material_id: '', quantity_lbs: '', boxes_count: '', tarimas: [] }],
+                                                                                        notes: '',
+                                                                                        isSubmitting: false,
+                                                                                        manualTarimaInput: ''
+                                                                                    });
+                                                                                }
+                                                                                setOpenActionMenuId(null);
+                                                                            }}
+                                                                            className="flex items-center gap-2 px-2 py-1.5 hover:bg-indigo-50 rounded-lg text-xs font-bold text-indigo-800 w-full transition-colors text-left"
+                                                                            title="Adicionar más tarimas de materia prima a la corrida"
+                                                                        >
+                                                                            <Plus size={13} className="text-indigo-600 shrink-0" />
+                                                                            <span>+ Agregar Tarimas</span>
+                                                                        </button>
+                                                                    )}
 
                                                                     {/* Crear Segundo Lote (Co-producto) */}
                                                                     {canManageLots && (

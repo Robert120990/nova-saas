@@ -178,12 +178,20 @@ const getProductionBatches = async (req, res) => {
 
         for (const batch of rows) {
             try {
+                const rootBatchId = batch.parent_batch_id || batch.id;
+                const relatedIds = [batch.id];
+                if (batch.parent_batch_id && !relatedIds.includes(batch.parent_batch_id)) {
+                    relatedIds.push(batch.parent_batch_id);
+                }
+
                 const [materials] = await pool.query(
-                    `SELECT brm.*, rm.egg_type, rm.provider_lot, rm.egg_color, rm.egg_size
+                    `SELECT brm.*, rm.egg_type, rm.provider_lot, rm.egg_color, rm.egg_size,
+                            CASE WHEN brm.batch_id = ? THEN 0 ELSE 1 END as is_parent_material
                      FROM batch_raw_materials brm
                      JOIN egg_raw_materials rm ON brm.raw_material_id = rm.id
-                     WHERE brm.batch_id = ?`,
-                    [batch.id]
+                     WHERE brm.batch_id IN (?)
+                     ORDER BY is_parent_material DESC, brm.id ASC`,
+                    [rootBatchId, relatedIds]
                 );
                 for (const m of materials) {
                     if (m.tarimas_json && typeof m.tarimas_json === 'string') {
@@ -191,11 +199,16 @@ const getProductionBatches = async (req, res) => {
                     } else {
                         m.tarimas = m.tarimas_json || [];
                     }
+                    m.is_initial = (m.batch_id === rootBatchId && batch.parent_batch_id) || Boolean(m.is_initial);
+                    m.is_added = !m.is_initial;
                 }
                 batch.raw_materials = materials;
+                const totalMatWeight = materials.reduce((sum, m) => sum + parseFloat(m.quantity_lbs || 0), 0);
+                batch.total_input_weight_lbs = Math.max(parseFloat(batch.input_weight_lbs || 0), totalMatWeight);
             } catch (matErr) {
                 console.warn(`[getProductionBatches] Error fetching materials for batch ${batch.id}:`, matErr.message);
                 batch.raw_materials = [];
+                batch.total_input_weight_lbs = parseFloat(batch.input_weight_lbs || 0);
             }
 
             try {

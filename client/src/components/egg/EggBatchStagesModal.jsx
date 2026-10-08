@@ -63,7 +63,7 @@ const EggBatchStagesModal = ({
                                 <span>•</span>
                                 <span className="capitalize">{stagesModal.batch?.product_type} ({stagesModal.batch?.presentation})</span>
                                 <span>•</span>
-                                <span className="font-bold text-teal-700">{parseFloat(stagesModal.batch?.input_weight_lbs || 0).toLocaleString()} Lbs Entrantes</span>
+                                <span className="font-bold text-teal-700">{parseFloat(stagesModal.data?.totals?.totalInputWeight ?? stagesModal.data?.batch?.total_input_weight_lbs ?? stagesModal.batch?.input_weight_lbs ?? 0).toLocaleString()} Lbs Entrantes</span>
                                 {stagesModal.batch?.pasteurization_lot && (
                                     <>
                                         <span>•</span>
@@ -114,7 +114,7 @@ const EggBatchStagesModal = ({
                                         </div>
                                         <h4 className="font-bold text-xs text-slate-800">Entrada & Quebrado</h4>
                                         <div className="mt-2 space-y-1 text-xs text-slate-600">
-                                            <div>Total: <b className="text-slate-900">{parseFloat(stagesModal.data?.batch?.input_weight_lbs || 0).toLocaleString()} Lbs</b></div>
+                                            <div>Total: <b className="text-slate-900">{parseFloat(stagesModal.data?.totals?.totalInputWeight ?? stagesModal.data?.batch?.total_input_weight_lbs ?? stagesModal.data?.batch?.input_weight_lbs ?? 0).toLocaleString()} Lbs</b></div>
                                             <div>Materia Prima: <span className="font-medium">{stagesModal.data?.raw_materials?.length || 0} ingresos</span></div>
                                             <div>Tarimas: <span className="font-medium text-indigo-700">{tarimasUsedList.length} tarimas</span></div>
                                             {Boolean(stagesModal.batch?.is_coproduct || stagesModal.data?.batch?.is_coproduct) && (
@@ -393,9 +393,16 @@ const EggBatchStagesModal = ({
                                         <Layers size={14} className="text-indigo-600" />
                                         Tarimas Utilizadas en esta Producción ({tarimasUsedList.length})
                                     </h4>
-                                    <span className="text-[11px] font-bold text-indigo-700">
-                                        Total: {tarimasUsedList.reduce((acc, t) => acc + (parseFloat(t.quantity_lbs) || 0), 0).toLocaleString()} Lbs • {tarimasUsedList.reduce((acc, t) => acc + (parseInt(t.boxes_count) || 0), 0)} Cajas
-                                    </span>
+                                    <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 text-right">
+                                        <span className="text-[11px] font-bold text-indigo-700">
+                                            Total: {tarimasUsedList.reduce((acc, t) => acc + (parseFloat(t.quantity_lbs) || 0), 0).toLocaleString()} Lbs • {tarimasUsedList.reduce((acc, t) => acc + (parseInt(t.boxes_count) || 0), 0)} Cajas
+                                        </span>
+                                        {tarimasUsedList.some(t => t.is_initial) && tarimasUsedList.some(t => t.is_added) && (
+                                            <span className="text-[10px] text-slate-500 font-semibold bg-slate-100 px-2 py-0.5 rounded-md self-end sm:self-auto">
+                                                ({tarimasUsedList.filter(t => t.is_initial).length} inicial • {tarimasUsedList.filter(t => t.is_added).length} agregadas)
+                                            </span>
+                                        )}
+                                    </div>
                                 </div>
                                 {tarimasUsedList.length > 0 ? (
                                     <div className="overflow-x-auto">
@@ -403,6 +410,7 @@ const EggBatchStagesModal = ({
                                             <thead>
                                                 <tr className="border-b border-slate-100 text-slate-500 font-bold uppercase text-[10px]">
                                                     <th className="py-1.5">Tarima #</th>
+                                                    <th className="py-1.5">Ingreso / Tipo</th>
                                                     <th className="py-1.5">Lote Prov.</th>
                                                     <th className="py-1.5">Proveedor</th>
                                                     <th className="py-1.5">Tipo Huevo</th>
@@ -417,6 +425,19 @@ const EggBatchStagesModal = ({
                                                         <td className="py-2 font-mono font-bold text-indigo-700">
                                                             #{t.tarima_number || (ti + 1)}
                                                             {t.is_partial && <span className="ml-1 text-[9px] text-amber-600 bg-amber-50 px-1 py-0.2 rounded font-normal">Parcial</span>}
+                                                        </td>
+                                                        <td className="py-2">
+                                                            {t.is_initial ? (
+                                                                <span className="text-[10px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md inline-flex items-center gap-1 shadow-2xs">
+                                                                    ⭐ Inicial
+                                                                </span>
+                                                            ) : t.is_added ? (
+                                                                <span className="text-[10px] font-bold text-blue-800 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-md inline-flex items-center gap-1 shadow-2xs">
+                                                                    ➕ Agregada
+                                                                </span>
+                                                            ) : (
+                                                                <span className="text-[10px] text-slate-500 font-medium">Estándar</span>
+                                                            )}
                                                         </td>
                                                         <td className="py-2 font-mono font-semibold text-slate-800">{t.provider_lot || '-'}</td>
                                                         <td className="py-2 text-slate-600">{t.provider_name || 'HUEVO EN CASCARÓN'}</td>

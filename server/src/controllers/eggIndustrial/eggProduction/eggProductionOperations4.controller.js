@@ -189,6 +189,8 @@ const addTarimasToBatch = async (req, res) => {
                 [id, rmId]
             );
 
+            const taggedTarimas = tarimas.map(t => ({ ...t, is_added: true, origin_type: 'agregada' }));
+
             if (existingBrm.length > 0) {
                 let currentTarimas = [];
                 try {
@@ -197,7 +199,7 @@ const addTarimasToBatch = async (req, res) => {
                         : (existingBrm[0].tarimas_json || []);
                 } catch (e) { currentTarimas = []; }
 
-                const combinedTarimas = [...currentTarimas, ...tarimas];
+                const combinedTarimas = [...currentTarimas, ...taggedTarimas];
                 const newQty = parseFloat(existingBrm[0].quantity_lbs || 0) + qty;
                 const newBoxes = parseInt(existingBrm[0].boxes_count || 0, 10) + boxes;
 
@@ -208,7 +210,7 @@ const addTarimasToBatch = async (req, res) => {
             } else {
                 await connection.query(
                     'INSERT INTO batch_raw_materials (batch_id, raw_material_id, quantity_lbs, tarimas_json, boxes_count) VALUES (?, ?, ?, ?, ?)',
-                    [id, rmId, qty, JSON.stringify(tarimas), boxes]
+                    [id, rmId, qty, JSON.stringify(taggedTarimas), boxes]
                 );
             }
 

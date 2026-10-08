@@ -55,14 +55,19 @@ const EggAddTarimasModal = ({
                                 Tarimas / Lotes ya Quebrados en esta Producción
                             </span>
                             <span className="text-[11px] text-slate-500 font-semibold">
-                                Total previo: <strong className="text-slate-900">{parseFloat(addTarimasModal.batch.input_weight_lbs || 0).toLocaleString()} Lbs</strong>
+                                Total previo: <strong className="text-slate-900">{parseFloat(addTarimasModal.batch.total_input_weight_lbs || addTarimasModal.batch.input_weight_lbs || 0).toLocaleString()} Lbs</strong>
                             </span>
                         </div>
                         <div className="space-y-1.5">
                             {(Array.isArray(addTarimasModal.batch.raw_materials) ? addTarimasModal.batch.raw_materials : []).map((rmPrev, pIdx) => (
                                 <div key={pIdx} className="bg-white border border-slate-200/80 rounded-lg p-2.5 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
                                     <div>
-                                        <div className="font-bold text-slate-800 flex items-center gap-1.5">
+                                        <div className="font-bold text-slate-800 flex items-center gap-1.5 flex-wrap">
+                                            {rmPrev.is_initial ? (
+                                                <span className="text-[9px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">⭐ Inicial</span>
+                                            ) : rmPrev.is_added ? (
+                                                <span className="text-[9px] font-bold text-blue-800 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded">➕ Agregada</span>
+                                            ) : null}
                                             <span>{rmPrev.egg_type || 'Huevo'}</span>
                                             <span className="text-slate-400 font-normal">| Lote:</span>
                                             <span className="font-mono text-indigo-700">{rmPrev.provider_lot || rmPrev.id}</span>

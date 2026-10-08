@@ -56,6 +56,7 @@ export default function useProductionModel() {
         second_presentations: ['galón 8LB'],
         raw_materials: [],
         remanente_ids: [],
+        remanente_usages: {},
         ingredients: {
             boxes_count: '',
             water_bottles: '',
@@ -507,6 +508,7 @@ export default function useProductionModel() {
             scheduled_production_id: batch.scheduled_production_id || null,
             raw_materials: mappedRms.length > 0 ? mappedRms : [{ raw_material_id: '', quantity_lbs: '', boxes_count: '', tarimas: [] }],
             remanente_ids: assignedRemIds,
+            remanente_usages: {},
             ingredients: {
                 boxes_count: formula.boxes_count || formula.raw_egg_boxes || '',
                 water_bottles: formula.water_bottles || '',
@@ -531,42 +533,106 @@ export default function useProductionModel() {
         setIsNewBatchModalOpen(true);
     };
 
+    const handleToggleRemanenteSelect = (rem) => {
+        if (!rem) return;
+        const currentIds = batchForm.remanente_ids || [];
+        const isSelected = currentIds.includes(rem.id);
+        const nextIds = isSelected ? currentIds.filter(id => id !== rem.id) : [...currentIds, rem.id];
+
+        const nextUsages = { ...(batchForm.remanente_usages || {}) };
+        if (isSelected) {
+            delete nextUsages[rem.id];
+        } else {
+            const avail = parseFloat(rem.quantity_lbs || rem.weight_lbs || 0);
+            nextUsages[rem.id] = {
+                used_lbs: avail,
+                percentage: 100,
+                pct: 100
+            };
+        }
+
+        setBatchForm(prev => ({
+            ...prev,
+            remanente_ids: nextIds,
+            remanente_usages: nextUsages
+        }));
+    };
+
+    const handleUpdateRemanenteUsage = (remId, usageData) => {
+        setBatchForm(prev => ({
+            ...prev,
+            remanente_usages: {
+                ...(prev.remanente_usages || {}),
+                [remId]: usageData
+            }
+        }));
+    };
+
     const handleMarkRemanenteUsed = async (e, rem) => {
-        e.stopPropagation();
-        if (!window.confirm(`¿Confirmas que este remanente de ${parseFloat(rem.quantity_lbs || rem.weight_lbs || 0).toFixed(1)} Lbs ya fue utilizado en una producción anterior?`)) return;
+        if (e && e.stopPropagation) e.stopPropagation();
+        if (!window.confirm(`¿Confirmas que deseas marcar el remanente REM-#${rem.id} (${parseFloat(rem.quantity_lbs || rem.weight_lbs || 0).toFixed(1)} Lbs) como consumido o descartado en una producción anterior?`)) return;
         try {
             await axios.put(`/api/egg-industrial/remanentes/${rem.id}`, {
                 status: 'asignado_a_lote',
                 notes: (rem.notes ? rem.notes + ' | ' : '') + 'Marcado manualmente como utilizado en producción anterior'
             });
-            toast.success('Remanente marcado como utilizado con éxito.');
-            setBatchForm(prev => ({
-                ...prev,
-                remanente_ids: (prev.remanente_ids || []).filter(id => id !== rem.id)
-            }));
+            toast.success(`Remanente REM-#${rem.id} marcado como utilizado con éxito.`);
+            setBatchForm(prev => {
+                const nextUsages = { ...(prev.remanente_usages || {}) };
+                delete nextUsages[rem.id];
+                return {
+                    ...prev,
+                    remanente_ids: (prev.remanente_ids || []).filter(id => id !== rem.id),
+                    remanente_usages: nextUsages
+                };
+            });
             const res = await axios.get('/api/egg-industrial/remanentes/available', {
                 params: showAllRemanentes ? { all: 'true' } : (editingBatch ? { include_batch_id: editingBatch.id } : {})
             });
             setAvailableRemanentes(unwrapList(res));
         } catch (err) {
-            toast.error('Error al actualizar el estado del remanente.');
+            toast.error(err.response?.data?.message || 'Error al actualizar el estado del remanente.');
+        }
+    };
+
+    const handleDeleteRemanenteDirect = async (e, rem) => {
+        if (e && e.stopPropagation) e.stopPropagation();
+        if (!window.confirm(`¿Confirmas que deseas eliminar el remanente REM-#${rem.id} (${parseFloat(rem.quantity_lbs || rem.weight_lbs || 0).toFixed(1)} Lbs)? Esta acción liberará el registro.`)) return;
+        try {
+            await axios.delete(`/api/egg-industrial/remanentes/${rem.id}`);
+            toast.success(`Remanente REM-#${rem.id} eliminado exitosamente.`);
+            setBatchForm(prev => {
+                const nextUsages = { ...(prev.remanente_usages || {}) };
+                delete nextUsages[rem.id];
+                return {
+                    ...prev,
+                    remanente_ids: (prev.remanente_ids || []).filter(id => id !== rem.id),
+                    remanente_usages: nextUsages
+                };
+            });
+            const res = await axios.get('/api/egg-industrial/remanentes/available', {
+                params: showAllRemanentes ? { all: 'true' } : (editingBatch ? { include_batch_id: editingBatch.id } : {})
+            });
+            setAvailableRemanentes(unwrapList(res));
+        } catch (err) {
+            toast.error(err.response?.data?.message || 'Error al eliminar el remanente.');
         }
     };
 
     const handleReactivateRemanente = async (e, rem) => {
-        e.stopPropagation();
+        if (e && e.stopPropagation) e.stopPropagation();
         try {
             await axios.put(`/api/egg-industrial/remanentes/${rem.id}`, {
                 status: 'disponible',
                 target_batch_id: null
             });
-            toast.success('Remanente reactivado como disponible con éxito.');
+            toast.success(`Remanente REM-#${rem.id} reactivado como disponible.`);
             const res = await axios.get('/api/egg-industrial/remanentes/available', {
                 params: showAllRemanentes ? { all: 'true' } : (editingBatch ? { include_batch_id: editingBatch.id } : {})
             });
             setAvailableRemanentes(unwrapList(res));
         } catch (err) {
-            toast.error('Error al reactivar el remanente.');
+            toast.error(err.response?.data?.message || 'Error al reactivar el remanente.');
         }
     };
 
@@ -1715,6 +1781,12 @@ export default function useProductionModel() {
                     notes: batchForm.notes,
                     raw_materials: batchForm.raw_materials,
                     remanente_ids: batchForm.remanente_ids || [],
+                    remanente_usages: batchForm.remanente_usages || {},
+                    remanente_items: (batchForm.remanente_ids || []).map(id => ({
+                        id,
+                        used_lbs: batchForm.remanente_usages?.[id]?.used_lbs,
+                        percentage: batchForm.remanente_usages?.[id]?.percentage
+                    })),
                     ingredients: batchForm.ingredients,
                     batch_code_display: canManageLots ? batchForm.batch_code_display : undefined,
                     pasteurization_lot: canManageLots ? batchForm.pasteurization_lot : undefined
@@ -1756,6 +1828,12 @@ export default function useProductionModel() {
                 run_number: parseInt(batchForm.run_number) || 1,
                 raw_materials: batchForm.raw_materials,
                 remanente_ids: batchForm.remanente_ids || [],
+                remanente_usages: batchForm.remanente_usages || {},
+                remanente_items: (batchForm.remanente_ids || []).map(id => ({
+                    id,
+                    used_lbs: batchForm.remanente_usages?.[id]?.used_lbs,
+                    percentage: batchForm.remanente_usages?.[id]?.percentage
+                })),
                 ingredients: batchForm.ingredients,
                 secondary_batches: secBatchesList.length > 0 ? secBatchesList : undefined,
                 secondary_batch: secBatchesList[0] || undefined
@@ -1782,6 +1860,7 @@ export default function useProductionModel() {
                 second_presentations: ['galón 8LB'],
                 raw_materials: [],
                 remanente_ids: [],
+                remanente_usages: {},
                 ingredients: {
                     boxes_count: '',
                     water_bottles: '',
@@ -2025,5 +2104,5 @@ export default function useProductionModel() {
     });
 
 
- return { getNowDateTimeLocal, user, navigate, location, companyId, scheduledProductions, setScheduledProductions, selectedScheduledProd, setSelectedScheduledProd, scannerModalOpen, setScannerModalOpen, tarimaPickerModal, setTarimaPickerModal, tarimaSearchPickerOpen, setTarimaSearchPickerOpen, qualityModal, setQualityModal, batches, setBatches, rawMaterials, setRawMaterials, availableRemanentes, setAvailableRemanentes, showAllRemanentes, setShowAllRemanentes, openExportMenuId, setOpenExportMenuId, cipLogs, setCipLogs, loading, setLoading, searchTerm, setSearchTerm, activeTab, setActiveTab, batchForm, setBatchForm, cipForm, setCipForm, selectedBatchForPasteurize, setSelectedBatchForPasteurize, pasteurizeForm, setPasteurizeForm, secondPasteurizeForm, setSecondPasteurizeForm, selectedBatchForComplete, setSelectedBatchForComplete, completeForm, setCompleteForm, isSubmitting, setIsSubmitting, cipBlockedError, setCipBlockedError, haccpViolationAlert, setHaccpViolationAlert, isNewBatchModalOpen, setIsNewBatchModalOpen, isPasteurizeModalOpen, setIsPasteurizeModalOpen, productConfig, setProductConfig, userPermissions, isAdmin, canEditProduction, canDeleteProduction, canManageLots, stagesModal, setStagesModal, closePasteurizationModal, setClosePasteurizationModal, scannerContext, setScannerContext, editingBatch, setEditingBatch, addTarimasModal, setAddTarimasModal, remanenteModal, setRemanenteModal, wastesModal, setWastesModal, editBatchModal, setEditBatchModal, deleteConfirmBatch, setDeleteConfirmBatch, handleOpenStagesModal, handleOpenClosePasteurization, handleConfirmClosePasteurization, handleReopenPasteurization, handleReopenBatchPackaging, handleOpenBalanceModal, handleOpenWastesModal, handleOpenEditWaste, handleCreateWaste, handleDeleteWaste, handleOpenEditRemanente, handleDeleteRemanente, handleOpenEditBatch, handleMarkRemanenteUsed, handleReactivateRemanente, handleAddSpecificTarimaToAddModal, handleLoadAllAvailableTarimasToAddModal, handleUpdateTarimaBoxesInAddModal, handleUpdateTarimaLbsInAddModal, handleRemoveTarimaFromAddModal, handleManualTarimaDigitize, handleAddTarimasSubmit, handleRemanenteSubmit, _handleEditBatchSubmit, handleDeleteBatchConfirm, handleExportSummary, fetchData, fetchScheduledProductions, handleSelectScheduledProduction, handleCreateCoproductBatch, handleAddSpecificTarimaToRm, handleLoadAllAvailableTarimas, handleUpdateTarimaBoxesInRm, handleUpdateTarimaLbsInRm, handleRemoveTarimaFromRm, handleScanTarimaResult, isSeparationProduct, availableRawLots, oldestFifoLot, oldestAALot, isCurrentSeparation, recommendedLot, recommendationReason, nonAALotSelectedForSeparation, nonAALotObj, handleApplyRecommendedLot, handleCreateBatch, handleQuickSanitize, handleCreateCip, handleDeleteCip, handlePasteurize, handlePasteurizeDual, handleCompleteBatch, getBatchStatusBadge, filteredBatches, handleAddSecondaryBatch, handleRemoveSecondaryBatch, handleUpdateSecondaryBatch, handleLinkSecondaryBatchToSchedule, handleProductTypeChange, handleSecondaryProductTypeChange };
+ return { getNowDateTimeLocal, user, navigate, location, companyId, scheduledProductions, setScheduledProductions, selectedScheduledProd, setSelectedScheduledProd, scannerModalOpen, setScannerModalOpen, tarimaPickerModal, setTarimaPickerModal, tarimaSearchPickerOpen, setTarimaSearchPickerOpen, qualityModal, setQualityModal, batches, setBatches, rawMaterials, setRawMaterials, availableRemanentes, setAvailableRemanentes, showAllRemanentes, setShowAllRemanentes, openExportMenuId, setOpenExportMenuId, cipLogs, setCipLogs, loading, setLoading, searchTerm, setSearchTerm, activeTab, setActiveTab, batchForm, setBatchForm, cipForm, setCipForm, selectedBatchForPasteurize, setSelectedBatchForPasteurize, pasteurizeForm, setPasteurizeForm, secondPasteurizeForm, setSecondPasteurizeForm, selectedBatchForComplete, setSelectedBatchForComplete, completeForm, setCompleteForm, isSubmitting, setIsSubmitting, cipBlockedError, setCipBlockedError, haccpViolationAlert, setHaccpViolationAlert, isNewBatchModalOpen, setIsNewBatchModalOpen, isPasteurizeModalOpen, setIsPasteurizeModalOpen, productConfig, setProductConfig, userPermissions, isAdmin, canEditProduction, canDeleteProduction, canManageLots, stagesModal, setStagesModal, closePasteurizationModal, setClosePasteurizationModal, scannerContext, setScannerContext, editingBatch, setEditingBatch, addTarimasModal, setAddTarimasModal, remanenteModal, setRemanenteModal, wastesModal, setWastesModal, editBatchModal, setEditBatchModal, deleteConfirmBatch, setDeleteConfirmBatch, handleOpenStagesModal, handleOpenClosePasteurization, handleConfirmClosePasteurization, handleReopenPasteurization, handleReopenBatchPackaging, handleOpenBalanceModal, handleOpenWastesModal, handleOpenEditWaste, handleCreateWaste, handleDeleteWaste, handleOpenEditRemanente, handleDeleteRemanente, handleOpenEditBatch, handleMarkRemanenteUsed, handleReactivateRemanente, handleToggleRemanenteSelect, handleUpdateRemanenteUsage, handleDeleteRemanenteDirect, handleAddSpecificTarimaToAddModal, handleLoadAllAvailableTarimasToAddModal, handleUpdateTarimaBoxesInAddModal, handleUpdateTarimaLbsInAddModal, handleRemoveTarimaFromAddModal, handleManualTarimaDigitize, handleAddTarimasSubmit, handleRemanenteSubmit, _handleEditBatchSubmit, handleDeleteBatchConfirm, handleExportSummary, fetchData, fetchScheduledProductions, handleSelectScheduledProduction, handleCreateCoproductBatch, handleAddSpecificTarimaToRm, handleLoadAllAvailableTarimas, handleUpdateTarimaBoxesInRm, handleUpdateTarimaLbsInRm, handleRemoveTarimaFromRm, handleScanTarimaResult, isSeparationProduct, availableRawLots, oldestFifoLot, oldestAALot, isCurrentSeparation, recommendedLot, recommendationReason, nonAALotSelectedForSeparation, nonAALotObj, handleApplyRecommendedLot, handleCreateBatch, handleQuickSanitize, handleCreateCip, handleDeleteCip, handlePasteurize, handlePasteurizeDual, handleCompleteBatch, getBatchStatusBadge, filteredBatches, handleAddSecondaryBatch, handleRemoveSecondaryBatch, handleUpdateSecondaryBatch, handleLinkSecondaryBatchToSchedule, handleProductTypeChange, handleSecondaryProductTypeChange };
 }

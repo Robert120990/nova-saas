@@ -18,16 +18,35 @@ async function getBatchExportData(batchId, companyId) {
     if (batches.length === 0) return null;
     const batch = batches[0];
 
-    // 1. Materias primas utilizadas
+    // 1. Materias primas utilizadas (Consolidación de lote inicial y tarimas agregadas / co-productos)
+    const rootBatchId = batch.parent_batch_id || batch.id;
+    const [relatedBatches] = await pool.query(
+        `SELECT id, parent_batch_id, batch_code_display, is_coproduct 
+         FROM egg_production_batches 
+         WHERE (id = ? OR parent_batch_id = ? OR id = ?) AND company_id = ?`,
+        [batch.id, rootBatchId, rootBatchId, companyId]
+    );
+    const relatedBatchIds = Array.from(new Set(relatedBatches.map(b => b.id)));
+
     const [rawMaterials] = await pool.query(
         `SELECT brm.*, rm.egg_type, rm.provider_lot, rm.egg_color, rm.egg_size, rm.provider_id, 
-                COALESCE(p.nombre, p.nombre_comercial, 'Proveedor General') as provider_name
+                COALESCE(p.nombre, p.nombre_comercial, 'Proveedor General') as provider_name,
+                b.batch_code_display as batch_code_source,
+                b.id as batch_id_source,
+                CASE 
+                    WHEN brm.batch_id = ? THEN 0
+                    WHEN brm.batch_id = ? THEN 1
+                    ELSE 2 
+                END as sort_origin
          FROM batch_raw_materials brm
          JOIN egg_raw_materials rm ON brm.raw_material_id = rm.id
+         JOIN egg_production_batches b ON brm.batch_id = b.id
          LEFT JOIN providers p ON rm.provider_id = p.id
-         WHERE brm.batch_id = ?`,
-        [batchId]
+         WHERE brm.batch_id IN (?)
+         ORDER BY sort_origin ASC, brm.id ASC`,
+        [rootBatchId, batch.id, relatedBatchIds]
     );
+
     for (const rm of rawMaterials) {
         if (rm.tarimas_json && typeof rm.tarimas_json === 'string') {
             try { rm.tarimas = JSON.parse(rm.tarimas_json); } catch (e) { rm.tarimas = []; }
@@ -36,10 +55,18 @@ async function getBatchExportData(batchId, companyId) {
         }
     }
 
+    const seenTarimas = new Set();
     const tarimasUsed = [];
     for (const rm of rawMaterials) {
         if (Array.isArray(rm.tarimas) && rm.tarimas.length > 0) {
             for (const t of rm.tarimas) {
+                const uniqueKey = t.barcode ? t.barcode : `${rm.raw_material_id}-${t.tarima_number || t.tarima_no}`;
+                if (seenTarimas.has(uniqueKey)) continue;
+                seenTarimas.add(uniqueKey);
+
+                const isInitial = Boolean(rm.batch_id_source === rootBatchId && batch.parent_batch_id) || Boolean(t.is_initial) || (!t.is_added && rm.batch_id_source === rootBatchId);
+                const isAdded = !isInitial && (Boolean(t.is_added) || Boolean(batch.parent_batch_id && rm.batch_id_source === batch.id) || Boolean(rm.batch_id_source !== rootBatchId));
+
                 tarimasUsed.push({
                     tarima_number: t.tarima_number || t.tarima_no || '1',
                     barcode: t.barcode || 'N/A',
@@ -49,7 +76,11 @@ async function getBatchExportData(batchId, companyId) {
                     boxes_count: parseInt(t.boxes_count || 0, 10),
                     quantity_lbs: parseFloat(t.quantity_lbs || t.weight_lbs || 0),
                     storage_location: t.storage_location || 'Cámara Fría',
-                    is_partial: Boolean(t.is_partial)
+                    is_partial: Boolean(t.is_partial),
+                    is_initial: isInitial,
+                    is_added: isAdded,
+                    origin_label: isInitial ? 'Inicial' : (isAdded ? 'Agregada' : null),
+                    source_batch_code: rm.batch_code_source || null
                 });
             }
         }
@@ -120,7 +151,11 @@ async function getBatchExportData(batchId, companyId) {
     }
 
     // Totales calculados
-    const totalInputWeight = parseFloat(batch.input_weight_lbs || 0);
+    const totalConsolidatedWeight = tarimasUsed.length > 0
+        ? tarimasUsed.reduce((sum, t) => sum + (parseFloat(t.quantity_lbs) || 0), 0)
+        : rawMaterials.reduce((sum, rm) => sum + (parseFloat(rm.quantity_lbs) || 0), 0);
+    const totalInputWeight = Math.max(parseFloat(batch.input_weight_lbs || 0), totalConsolidatedWeight);
+    batch.total_input_weight_lbs = totalInputWeight;
     const liquidYield = parseFloat(batch.yield_liquid_lbs || 0);
     const shellWaste = parseFloat(batch.waste_shell_lbs || 0);
     const processLoss = parseFloat(batch.waste_loss_lbs || 0);
@@ -130,13 +165,17 @@ async function getBatchExportData(batchId, companyId) {
     const remanenteWeight = remanentes.reduce((sum, r) => sum + parseFloat(r.quantity_lbs || 0), 0);
 
     // Calcular cajas de huevo procesadas
-    let totalBoxes = 0;
-    for (const rm of rawMaterials) {
-        let bxs = parseInt(rm.boxes_count || 0, 10);
-        if (!bxs && rm.tarimas) {
-            bxs = (rm.tarimas || []).reduce((s, t) => s + (parseInt(t.boxes_count || 0, 10)), 0);
+    let totalBoxes = tarimasUsed.length > 0
+        ? tarimasUsed.reduce((sum, t) => sum + (parseInt(t.boxes_count) || 0), 0)
+        : 0;
+    if (totalBoxes === 0) {
+        for (const rm of rawMaterials) {
+            let bxs = parseInt(rm.boxes_count || 0, 10);
+            if (!bxs && rm.tarimas) {
+                bxs = (rm.tarimas || []).reduce((s, t) => s + (parseInt(t.boxes_count || 0, 10)), 0);
+            }
+            totalBoxes += bxs;
         }
-        totalBoxes += bxs;
     }
     if (totalBoxes === 0 && batch.ingredients_json) {
         try {

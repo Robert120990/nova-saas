@@ -80,7 +80,15 @@ const createProductionBatch = async (req) => {
                     message: `BLOQUEO DE INOCUIDAD: El lote de materia prima ${rows[0].provider_lot || '#' + rows[0].id} (${rows[0].egg_type}) no puede ser utilizado porque se encuentra en estado "${statusLabel}". Se requiere que el lote esté APROBADO por Control de Calidad antes de iniciar producción.`
                 }, headers: responseHeaders });
             }
-            if (!is_coproduct) {
+            let shouldValidateStock = !is_coproduct;
+            if (is_coproduct && parent_batch_id) {
+                const [p] = await connection.query(
+                    'SELECT id FROM batch_raw_materials WHERE batch_id = ? AND raw_material_id = ?',
+                    [parent_batch_id, rm.raw_material_id]
+                );
+                if (p.length === 0) shouldValidateStock = true;
+            }
+            if (shouldValidateStock) {
                 const currentStock = parseFloat(rows[0].stock_lbs || 0);
                 if (currentStock <= 0.01) {
                     await connection.rollback();
@@ -198,27 +206,101 @@ const createProductionBatch = async (req) => {
             batchId = result.insertId;
         }
 
-        // Vincular remanentes utilizados en esta producción
+        // Vincular remanentes utilizados en esta producción (con soporte para uso parcial o por porcentaje)
+        const remanenteUsages = req.body.remanente_usages || {};
+        const remanenteItems = Array.isArray(req.body.remanente_items) ? req.body.remanente_items : [];
+
         const rawRemIds = req.body.remanente_ids || (Array.isArray(req.body.remanentes) ? req.body.remanentes.map(r => r.id || r) : []);
-        const remanenteIds = (Array.isArray(rawRemIds) ? rawRemIds : []).map(r => parseInt(r, 10)).filter(r => !isNaN(r) && r > 0);
+        const allRemIds = [
+            ...((Array.isArray(rawRemIds) ? rawRemIds : []).map(r => parseInt(r, 10))),
+            ...remanenteItems.map(item => parseInt(item.id, 10)),
+            ...Object.keys(remanenteUsages).map(k => parseInt(k, 10))
+        ].filter(r => !isNaN(r) && r > 0);
+
+        const remanenteIds = [...new Set(allRemIds)];
         if (remanenteIds.length > 0) {
             for (const remId of remanenteIds) {
                 const remnant = await eggRules.owned(connection, 'egg_batch_remanentes', remId, company_id, true);
-                if (remnant.status !== 'disponible' || remnant.target_batch_id) eggRules.fail('El remanente ya está asignado o consumido.', 409);
-                await connection.query(
-                    `UPDATE egg_batch_remanentes
-                     SET status = 'asignado_a_lote', target_batch_id = ?, updated_at = NOW()
-                     WHERE id = ? AND company_id = ?`,
-                    [batchId, remId, company_id]
-                );
+                if (remnant.status !== 'disponible' || remnant.target_batch_id) {
+                    eggRules.fail(`El remanente #${remId} ya está asignado o consumido.`, 409);
+                }
+
+                const totalAvail = parseFloat(remnant.quantity_lbs || 0);
+
+                // Determinar cantidad a utilizar (porcentaje o libras directas)
+                let requestedLbs = totalAvail;
+                const usageObj = remanenteUsages[remId] || remanenteItems.find(item => parseInt(item.id, 10) === remId);
+                if (usageObj) {
+                    if (usageObj.used_lbs !== undefined && parseFloat(usageObj.used_lbs) > 0) {
+                        requestedLbs = parseFloat(usageObj.used_lbs);
+                    } else if (usageObj.percentage !== undefined && parseFloat(usageObj.percentage) > 0) {
+                        requestedLbs = (totalAvail * parseFloat(usageObj.percentage)) / 100;
+                    } else if (usageObj.pct !== undefined && parseFloat(usageObj.pct) > 0) {
+                        requestedLbs = (totalAvail * parseFloat(usageObj.pct)) / 100;
+                    }
+                }
+
+                const usedQty = Math.min(totalAvail, Math.max(0.01, Math.round(requestedLbs * 100) / 100));
+                const remainingQty = Math.round((totalAvail - usedQty) * 100) / 100;
+
+                if (remainingQty <= 0.05) {
+                    // Consumo total (100%)
+                    await connection.query(
+                        `UPDATE egg_batch_remanentes
+                         SET status = 'asignado_a_lote', target_batch_id = ?, updated_at = NOW()
+                         WHERE id = ? AND company_id = ?`,
+                        [batchId, remId, company_id]
+                    );
+                } else {
+                    // Consumo parcial (< 100%):
+                    // 1. Asignar la porción consumida a este lote de producción
+                    const usedPct = ((usedQty / totalAvail) * 100).toFixed(1);
+                    await connection.query(
+                        `UPDATE egg_batch_remanentes
+                         SET quantity_lbs = ?,
+                             status = 'asignado_a_lote',
+                             target_batch_id = ?,
+                             notes = CONCAT(COALESCE(notes, ''), ' [Uso parcial: ', ?, ' Lbs (', ?, '%) en lote ', ?, ']'),
+                             updated_at = NOW()
+                         WHERE id = ? AND company_id = ?`,
+                        [usedQty, batchId, usedQty, usedPct, batch_code_display || String(batchId), remId, company_id]
+                    );
+
+                    // 2. Crear el remanente residual con el saldo sobrante como 'disponible'
+                    const residualNotes = `Saldo remanente residual (${remainingQty} Lbs) tras uso parcial en Lote ${batch_code_display || batchId} (Origen: REM-#${remId})`;
+                    await connection.query(
+                        `INSERT INTO egg_batch_remanentes (
+                            company_id, batch_id, product_type, remanente_type,
+                            quantity_lbs, storage_location, status, notes, operator_name, created_at
+                        )
+                        VALUES (?, ?, ?, ?, ?, ?, 'disponible', ?, ?, NOW())`,
+                        [
+                            company_id,
+                            remnant.batch_id,
+                            remnant.product_type,
+                            remnant.remanente_type,
+                            remainingQty,
+                            remnant.storage_location || 'Tanque Pulmón / Cámara',
+                            residualNotes,
+                            operator_name || remnant.operator_name || 'Operador'
+                        ]
+                    );
+                }
             }
         }
 
         // Insert batch_raw_materials and deduct stock (with tarimas breakdown support)
         for (const rm of raw_materials) {
             const qty = parseFloat(rm.quantity_lbs || 0);
-            const boxes = parseInt(rm.boxes_count || rm.total_boxes || 0, 10);
-            const tarimasJson = rm.tarimas && Array.isArray(rm.tarimas) ? JSON.stringify(rm.tarimas) : (rm.tarimas_json || null);
+            let taggedTarimas = rm.tarimas;
+            if (Array.isArray(rm.tarimas) && rm.tarimas.length > 0) {
+                taggedTarimas = rm.tarimas.map(t => ({
+                    ...t,
+                    is_initial: !is_coproduct,
+                    is_added: Boolean(is_coproduct)
+                }));
+            }
+            const tarimasJson = taggedTarimas && Array.isArray(taggedTarimas) ? JSON.stringify(taggedTarimas) : (rm.tarimas_json || null);
 
             try {
                 await connection.query(
@@ -233,7 +315,16 @@ const createProductionBatch = async (req) => {
                 );
             }
 
-            if (!is_coproduct) {
+            let shouldDeductStock = !is_coproduct;
+            if (is_coproduct && parent_batch_id) {
+                const [parentRm] = await connection.query(
+                    'SELECT id FROM batch_raw_materials WHERE batch_id = ? AND raw_material_id = ?',
+                    [parent_batch_id, rm.raw_material_id]
+                );
+                if (parentRm.length === 0) shouldDeductStock = true;
+            }
+
+            if (shouldDeductStock) {
                 const stockSql = boxes > 0
                     ? 'UPDATE egg_raw_materials SET stock_lbs = stock_lbs - ?, total_boxes = total_boxes - ? WHERE id = ? AND company_id = ?'
                     : 'UPDATE egg_raw_materials SET stock_lbs = stock_lbs - ? WHERE id = ? AND company_id = ?';

@@ -22,8 +22,21 @@ const updateBatchRemanente = async (req, res) => {
         const company_id = req.company_id || req.user?.company_id;
 
         const current = await eggRules.owned(connection, 'egg_batch_remanentes', targetId, company_id, true);
-        if (current.target_batch_id || current.status !== 'disponible') eggRules.fail('El remanente está asignado o consumido; edite el lote de destino.', 409);
-        if (target_batch_id || (status && status !== 'disponible')) eggRules.fail('Asigne el remanente desde el lote de producción.');
+        
+        // Si no es reactivación ni descarte manual, validar que esté disponible para cambios de peso/tipo
+        if (status === 'disponible') {
+            // Permitido: reactivación
+        } else if (['asignado_a_lote', 'descartado'].includes(status)) {
+            // Permitido: marcar manualmente como usado o descartado
+        } else {
+            if (current.target_batch_id || current.status !== 'disponible') {
+                eggRules.fail('El remanente está asignado o consumido; edite el lote de destino.', 409);
+            }
+            if (target_batch_id) {
+                eggRules.fail('Asigne el remanente desde el lote de producción.');
+            }
+        }
+
         const qty = quantity_lbs === undefined && weight_lbs === undefined ? Number(current.quantity_lbs) : eggRules.number(quantity_lbs ?? weight_lbs, 'Peso', 0.001);
         let remType = remanente_type;
         if (!remType && is_pasteurized !== undefined) {

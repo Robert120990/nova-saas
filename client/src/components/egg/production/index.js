@@ -9,3 +9,4 @@ export { default as ProductionIsNewBatchModalOpenModal } from './ProductionIsNew
 export { default as ProductionHeader } from './ProductionHeader';
 export { default as ProductionFiltersBar } from './ProductionFiltersBar';
 export { default as ProductionContent } from './ProductionContent';
+export { default as ProductionRemanentesSelector } from './ProductionRemanentesSelector';

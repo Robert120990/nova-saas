@@ -185,14 +185,26 @@ const updateProductionBatch = async (req, res) => {
             );
         }
 
-        // Sincronizar remanentes vinculados a este lote
-        if (req.body.remanente_ids !== undefined) {
+        // Sincronizar remanentes vinculados a este lote (con soporte para uso parcial o por porcentaje)
+        if (req.body.remanente_ids !== undefined || req.body.remanente_usages !== undefined || req.body.remanente_items !== undefined) {
             const rawRemIds = Array.isArray(req.body.remanente_ids) ? req.body.remanente_ids : [];
-            const cleanRemIds = [...new Set(rawRemIds.map(r => eggRules.number(r, 'Remanente', 1)))].sort((a,b) => a-b);
+            const remanenteUsages = req.body.remanente_usages || {};
+            const remanenteItems = Array.isArray(req.body.remanente_items) ? req.body.remanente_items : [];
+
+            const allRemIds = [
+                ...rawRemIds.map(r => parseInt(r, 10)),
+                ...remanenteItems.map(item => parseInt(item.id, 10)),
+                ...Object.keys(remanenteUsages).map(k => parseInt(k, 10))
+            ].filter(r => !isNaN(r) && r > 0);
+
+            const cleanRemIds = [...new Set(allRemIds)].sort((a,b) => a-b);
             if (!['en_proceso', 'quebraje'].includes(existing[0].status) || existing[0].pasteurization_status === 'cerrado') eggRules.fail('Reabra el proceso antes de cambiar remanentes.', 409);
+
             for (const remId of cleanRemIds) {
                 const remnant = await eggRules.owned(connection, 'egg_batch_remanentes', remId, company_id, true);
-                if (Number(remnant.batch_id) === Number(id) || (remnant.target_batch_id && Number(remnant.target_batch_id) !== Number(id)) || !['disponible', 'asignado_a_lote'].includes(remnant.status)) eggRules.fail('Remanente no disponible para este lote.', 409);
+                if (Number(remnant.batch_id) === Number(id) || (remnant.target_batch_id && Number(remnant.target_batch_id) !== Number(id)) || !['disponible', 'asignado_a_lote'].includes(remnant.status)) {
+                    eggRules.fail('Remanente no disponible para este lote.', 409);
+                }
             }
 
             if (cleanRemIds.length > 0) {
@@ -203,13 +215,69 @@ const updateProductionBatch = async (req, res) => {
                      WHERE target_batch_id = ? AND company_id = ? AND id NOT IN (?)`,
                     [id, company_id, cleanRemIds]
                 );
-                // Marcar los remanentes seleccionados como asignados a este lote
-                await connection.query(
-                    `UPDATE egg_batch_remanentes
-                     SET status = 'asignado_a_lote', target_batch_id = ?, updated_at = NOW()
-                     WHERE id IN (?) AND company_id = ?`,
-                    [id, cleanRemIds, company_id]
-                );
+
+                // Procesar consumo de los remanentes seleccionados
+                for (const remId of cleanRemIds) {
+                    const remnant = await eggRules.owned(connection, 'egg_batch_remanentes', remId, company_id, true);
+                    const totalAvail = parseFloat(remnant.quantity_lbs || 0);
+
+                    let requestedLbs = totalAvail;
+                    const usageObj = remanenteUsages[remId] || remanenteItems.find(item => parseInt(item.id, 10) === remId);
+                    if (usageObj) {
+                        if (usageObj.used_lbs !== undefined && parseFloat(usageObj.used_lbs) > 0) {
+                            requestedLbs = parseFloat(usageObj.used_lbs);
+                        } else if (usageObj.percentage !== undefined && parseFloat(usageObj.percentage) > 0) {
+                            requestedLbs = (totalAvail * parseFloat(usageObj.percentage)) / 100;
+                        } else if (usageObj.pct !== undefined && parseFloat(usageObj.pct) > 0) {
+                            requestedLbs = (totalAvail * parseFloat(usageObj.pct)) / 100;
+                        }
+                    }
+
+                    const usedQty = Math.min(totalAvail, Math.max(0.01, Math.round(requestedLbs * 100) / 100));
+                    const remainingQty = Math.round((totalAvail - usedQty) * 100) / 100;
+
+                    if (remainingQty <= 0.05 || remnant.target_batch_id === Number(id)) {
+                        // Consumo completo o ya asignado
+                        await connection.query(
+                            `UPDATE egg_batch_remanentes
+                             SET status = 'asignado_a_lote', target_batch_id = ?, updated_at = NOW()
+                             WHERE id = ? AND company_id = ?`,
+                            [id, remId, company_id]
+                        );
+                    } else {
+                        // Consumo parcial nuevo
+                        const usedPct = ((usedQty / totalAvail) * 100).toFixed(1);
+                        await connection.query(
+                            `UPDATE egg_batch_remanentes
+                             SET quantity_lbs = ?,
+                                 status = 'asignado_a_lote',
+                                 target_batch_id = ?,
+                                 notes = CONCAT(COALESCE(notes, ''), ' [Uso parcial: ', ?, ' Lbs (', ?, '%) en lote ', ?, ']'),
+                                 updated_at = NOW()
+                             WHERE id = ? AND company_id = ?`,
+                            [usedQty, id, usedQty, usedPct, resolvedBatchCode || String(id), remId, company_id]
+                        );
+
+                        const residualNotes = `Saldo remanente residual (${remainingQty} Lbs) tras uso parcial en Lote ${resolvedBatchCode || id} (Origen: REM-#${remId})`;
+                        await connection.query(
+                            `INSERT INTO egg_batch_remanentes (
+                                company_id, batch_id, product_type, remanente_type,
+                                quantity_lbs, storage_location, status, notes, operator_name, created_at
+                            )
+                            VALUES (?, ?, ?, ?, ?, ?, 'disponible', ?, ?, NOW())`,
+                            [
+                                company_id,
+                                remnant.batch_id,
+                                remnant.product_type,
+                                remnant.remanente_type,
+                                remainingQty,
+                                remnant.storage_location || 'Tanque Pulmón / Cámara',
+                                residualNotes,
+                                operator_name || remnant.operator_name || 'Operador'
+                            ]
+                        );
+                    }
+                }
             } else {
                 // Si se enviaron remanentes vacíos, desvincular todos los asignados a este lote
                 await connection.query(

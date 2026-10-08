@@ -232,7 +232,7 @@ const getAvailableRemanentes = async (req, res) => {
     try {
         const includeBatchId = req.query.include_batch_id ? parseInt(req.query.include_batch_id, 10) : null;
         const showAll = req.query.all === 'true' || req.query.status === 'all';
-        let query = `SELECT r.*, b.batch_code_display, b.batch_uuid
+        let query = `SELECT r.*, b.batch_code_display, b.batch_uuid, b.product_type as batch_product_type, b.parent_batch_id, b.is_coproduct
              FROM egg_batch_remanentes r
              JOIN egg_production_batches b ON r.batch_id = b.id
              WHERE r.company_id = ? `;
@@ -253,8 +253,10 @@ const getAvailableRemanentes = async (req, res) => {
             ...r,
             remanente_code: `REM-${r.id}`,
             weight_lbs: parseFloat(r.quantity_lbs || 0),
+            quantity_lbs: parseFloat(r.quantity_lbs || 0),
             is_pasteurized: r.remanente_type === 'pasteurizado',
-            destination: r.storage_location || 'proximo_empaque'
+            destination: r.storage_location || 'proximo_empaque',
+            is_coproduct: Boolean(r.is_coproduct || r.parent_batch_id)
         }));
         res.json(mapped);
     } catch (error) {
