@@ -713,6 +713,15 @@ export default function ProductionIsNewBatchModalOpenModal({ model, open = model
                                                             const isFifoOldest = mIdx === 0;
                                                             const isAA = (m.egg_classification || '').toLowerCase().includes('aa');
                                                             const locTag = (m.storage_location || 'abajo') === 'abajo' ? '⬇ Abajo' : '⬆ Arriba';
+                                                            let labJson = {};
+                                                            try {
+                                                                labJson = typeof m.quality_lab_report_json === 'string' ? JSON.parse(m.quality_lab_report_json || '{}') : (m.quality_lab_report_json || {});
+                                                            } catch (e) {
+                                                                labJson = {};
+                                                            }
+                                                            const mpTag = labJson.reception_lot ? `[${labJson.reception_lot}] ` : '';
+                                                            const aaTag = isAA ? (m.egg_classification?.toLowerCase().includes('aa y a') ? '[⭐ Grado AA y A] ' : '[⭐ Grado AA] ') : '';
+
                                                             return (
                                                                 <option
                                                                     key={m.id}
@@ -721,8 +730,8 @@ export default function ProductionIsNewBatchModalOpenModal({ model, open = model
                                                                     className={isAgotado ? 'text-slate-400 bg-slate-50' : 'text-slate-900 font-semibold'}
                                                                 >
                                                                     {isFifoOldest ? '[FIFO] ' : ''}
-                                                                    {isAA ? '[⭐ Grado AA] ' : ''}
-                                                                    [{locTag}] Lote: {m.provider_lot} - {m.egg_type} ({m.provider_name || 'Prov.'}) | {isAgotado ? '🚫 [AGOTADO - 0 Lbs]' : `Stock: ${parseFloat(m.stock_lbs || 0).toFixed(0)} Lbs (${m.total_boxes || 0} cjs)`}
+                                                                    {aaTag}
+                                                                    {mpTag}[{locTag}] Lote Prov: {m.provider_lot} - {m.egg_type} ({m.provider_name || 'Prov.'}) | {isAgotado ? '🚫 [AGOTADO - 0 Lbs]' : `Stock: ${parseFloat(m.stock_lbs || 0).toFixed(0)} Lbs (${m.total_boxes || 0} cjs)`}
                                                                 </option>
                                                             );
                                                         })}

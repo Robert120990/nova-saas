@@ -1,6 +1,7 @@
 import { getTodayString } from '../../../utils/dateUtils';
 import { formatTime } from '../../../utils/dateUtils';
 import { formatDate } from '../../../utils/dateUtils';
+import { generateJulianMpLotCode } from '../../../utils/julianDate';
 import { unwrapList } from '../../../utils/apiUtils';
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../../context/AuthContext';
@@ -198,6 +199,10 @@ export default function useReceptionModel() {
         if (s === 'rechazado' || s === 'no_conforme' || g.includes('no conforme') || g.includes('rechaz')) {
             return 'bg-rose-600 text-white border-rose-700 shadow-sm font-black';
         }
+        // Grado AA y A (Doble Clasificación)
+        if (g.includes('aa') && (g.includes('y') || g.includes('&'))) {
+            return 'bg-gradient-to-r from-purple-100 to-emerald-100 text-purple-900 border-purple-300 font-black shadow-2xs';
+        }
         // Grado AA
         if (g.includes('aa')) {
             return 'bg-purple-100 text-purple-800 border-purple-300 font-black';
@@ -308,6 +313,12 @@ export default function useReceptionModel() {
         const toastId = toast.loading('Generando dictamen técnico de calidad LAB 001...');
         try {
             const currentPayload = {
+                reception_lot: qualityModal.reception_lot,
+                provider_lot: qualityModal.provider_lot,
+                plant_entry_date: qualityModal.plant_entry_date,
+                reception_date: qualityModal.reception_date,
+                analysis_date: qualityModal.analysis_date,
+                analysis_time: qualityModal.analysis_time,
                 egg_classification: qualityModal.egg_classification,
                 egg_size: qualityModal.egg_size,
                 egg_color: qualityModal.egg_color,
@@ -335,12 +346,13 @@ export default function useReceptionModel() {
             const blob = new Blob([res.data], { type: 'application/pdf' });
             const blobUrl = window.URL.createObjectURL(blob);
 
+            const displayLot = qualityModal.reception_lot || qualityModal.provider_lot || qualityModal.rm.provider_lot || qualityModal.rm.id;
             setPdfPreviewModal({
                 isOpen: true,
                 url: blobUrl,
                 title: 'Reporte de Materia Prima • Control de Calidad',
-                subtitle: `Formato Oficial LAB 001 • Lote ${qualityModal.provider_lot || qualityModal.rm.provider_lot || qualityModal.rm.id}`,
-                fileName: `LAB_001_Materia_Prima_${(qualityModal.provider_lot || qualityModal.rm.provider_lot || qualityModal.rm.id).toString().replace(/[^a-zA-Z0-9_-]/g, '_')}.pdf`
+                subtitle: `Formato Oficial LAB 001 • Lote MP ${displayLot} ${qualityModal.provider_lot ? `(Prov: ${qualityModal.provider_lot})` : ''}`,
+                fileName: `LAB_001_Materia_Prima_${displayLot.toString().replace(/[^a-zA-Z0-9_-]/g, '_')}.pdf`
             });
 
             toast.dismiss(toastId);
@@ -352,12 +364,13 @@ export default function useReceptionModel() {
                 });
                 const blob = new Blob([res.data], { type: 'application/pdf' });
                 const blobUrl = window.URL.createObjectURL(blob);
+                const displayLot = qualityModal.reception_lot || qualityModal.provider_lot || qualityModal.rm.provider_lot || qualityModal.rm.id;
                 setPdfPreviewModal({
                     isOpen: true,
                     url: blobUrl,
                     title: 'Reporte de Materia Prima • Control de Calidad',
-                    subtitle: `Formato Oficial LAB 001 • Lote ${qualityModal.provider_lot || qualityModal.rm.provider_lot || qualityModal.rm.id}`,
-                    fileName: `LAB_001_Materia_Prima_${(qualityModal.provider_lot || qualityModal.rm.provider_lot || qualityModal.rm.id).toString().replace(/[^a-zA-Z0-9_-]/g, '_')}.pdf`
+                    subtitle: `Formato Oficial LAB 001 • Lote MP ${displayLot}`,
+                    fileName: `LAB_001_Materia_Prima_${displayLot.toString().replace(/[^a-zA-Z0-9_-]/g, '_')}.pdf`
                 });
                 toast.dismiss(toastId);
             } catch (err2) {
@@ -402,6 +415,12 @@ export default function useReceptionModel() {
         try {
             const currentPayload = {
                 format: 'word',
+                reception_lot: qualityModal.reception_lot,
+                provider_lot: qualityModal.provider_lot,
+                plant_entry_date: qualityModal.plant_entry_date,
+                reception_date: qualityModal.reception_date,
+                analysis_date: qualityModal.analysis_date,
+                analysis_time: qualityModal.analysis_time,
                 egg_classification: qualityModal.egg_classification,
                 egg_size: qualityModal.egg_size,
                 egg_color: qualityModal.egg_color,
@@ -426,7 +445,7 @@ export default function useReceptionModel() {
             const res = await axios.post(`/api/egg-industrial/raw-materials/${qualityModal.rm.id}/lab-001-pdf?format=word`, currentPayload, {
                 responseType: 'blob'
             });
-            const safeLot = (qualityModal.provider_lot || qualityModal.rm.provider_lot || qualityModal.rm.id).toString().replace(/[^a-zA-Z0-9_-]/g, '_');
+            const safeLot = (qualityModal.reception_lot || qualityModal.provider_lot || qualityModal.rm.provider_lot || qualityModal.rm.id).toString().replace(/[^a-zA-Z0-9_-]/g, '_');
             const blob = new Blob([res.data], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
             const blobUrl = window.URL.createObjectURL(blob);
             const link = document.createElement('a');
@@ -584,6 +603,7 @@ export default function useReceptionModel() {
         rm: null,
         provider_type: 'LOCAL',
         farm_name: '',
+        reception_lot: '',
         provider_lot: '',
         production_date: '',
         expiration_date: '',
@@ -643,6 +663,7 @@ export default function useReceptionModel() {
 
         const plantEntry = labReport.plant_entry_date || (rm.fecha ? String(rm.fecha).split('T')[0] : todayStr);
         const receptionDt = labReport.reception_date || (rm.fecha ? String(rm.fecha).split('T')[0] : todayStr);
+        const defaultMpLot = generateJulianMpLotCode(plantEntry || receptionDt);
         const analysisDt = labReport.analysis_date || (rm.quality_date ? String(rm.quality_date).split('T')[0] : todayStr);
         const analysisTm = labReport.analysis_time || (rm.quality_date ? new Date(rm.quality_date).toTimeString().substring(0, 5) : new Date().toTimeString().substring(0, 5));
 
@@ -654,7 +675,8 @@ export default function useReceptionModel() {
             rm,
             provider_type: isExtranjero ? 'EXTRANJERO' : 'LOCAL',
             farm_name: farm,
-            provider_lot: rm.provider_lot || '',
+            reception_lot: labReport.reception_lot || defaultMpLot,
+            provider_lot: rm.provider_lot || labReport.provider_lot || '',
             production_date: rm.production_date ? String(rm.production_date).split('T')[0] : (labReport.production_date || ''),
             expiration_date: rm.expiration_date ? String(rm.expiration_date).split('T')[0] : (labReport.expiration_date || ''),
             total_boxes: rm.total_boxes || 0,
@@ -721,10 +743,15 @@ export default function useReceptionModel() {
 
         setQualityModal(prev => ({ ...prev, isSubmitting: true }));
         try {
+            const defaultMpLot = generateJulianMpLotCode(qualityModal.plant_entry_date || qualityModal.reception_date);
+            const finalReceptionLot = qualityModal.reception_lot?.trim() || defaultMpLot;
+            const finalProviderLot = qualityModal.provider_lot?.trim() || '';
+
             const labReportJson = {
                 provider_type: qualityModal.provider_type,
                 farm_name: qualityModal.farm_name,
-                provider_lot: qualityModal.provider_lot,
+                reception_lot: finalReceptionLot,
+                provider_lot: finalProviderLot,
                 production_date: qualityModal.production_date || null,
                 expiration_date: qualityModal.expiration_date || null,
                 total_boxes: qualityModal.total_boxes,
@@ -753,6 +780,7 @@ export default function useReceptionModel() {
                 egg_classification: qualityModal.egg_classification,
                 egg_size: qualityModal.egg_size,
                 egg_color: qualityModal.egg_color,
+                provider_lot: finalProviderLot || null,
                 quality_status: qualityModal.quality_status,
                 quality_inspector_name: qualityModal.inspector_name.trim(),
                 quality_reviewed_by: qualityModal.quality_reviewed_by?.trim() || 'Jefe de Control de Calidad',
@@ -777,6 +805,7 @@ export default function useReceptionModel() {
                     return {
                         ...item,
                         ...payload,
+                        provider_lot: finalProviderLot || item.provider_lot,
                         quality_date: new Date().toISOString()
                     };
                 }
@@ -787,6 +816,7 @@ export default function useReceptionModel() {
                 setViewingReception(prev => ({
                     ...prev,
                     ...payload,
+                    provider_lot: finalProviderLot || prev.provider_lot,
                     quality_date: new Date().toISOString()
                 }));
             }

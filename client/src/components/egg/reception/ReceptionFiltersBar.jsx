@@ -98,6 +98,14 @@ export default function ReceptionFiltersBar({ model }) {
                                             ? rm.avg_weight_per_box
                                             : (initialBoxes > 0 && weight > 0 ? (weight / initialBoxes) : null);
 
+                                        let labReport = {};
+                                        try {
+                                            labReport = typeof rm.quality_lab_report_json === 'string' ? JSON.parse(rm.quality_lab_report_json || '{}') : (rm.quality_lab_report_json || {});
+                                        } catch (e) {
+                                            labReport = {};
+                                        }
+                                        const mpLot = labReport.reception_lot;
+
                                         return (
                                             <tr key={rm.id} className="hover:bg-slate-50/75 transition-colors">
                                                 <td className="px-3 py-2.5 text-xs whitespace-nowrap">
@@ -109,9 +117,18 @@ export default function ReceptionFiltersBar({ model }) {
                                                 <td className="px-3 py-2.5">
                                                     <div className="flex flex-col">
                                                         <span className="font-bold text-slate-900 text-xs truncate max-w-[200px]">{rm.provider_name}</span>
-                                                        <span className="bg-slate-100 border border-slate-200 text-indigo-700 px-1.5 py-0.5 rounded text-[10px] font-bold w-fit mt-0.5">
-                                                            {rm.provider_lot}
-                                                        </span>
+                                                        <div className="flex items-center gap-1 mt-0.5 flex-wrap">
+                                                            {mpLot && (
+                                                                <span className="bg-amber-50 border border-amber-200 text-amber-900 px-1.5 py-0.2 rounded text-[10px] font-bold w-fit" title="Lote MP de Recepción">
+                                                                    {mpLot}
+                                                                </span>
+                                                            )}
+                                                            {rm.provider_lot && (
+                                                                <span className="bg-slate-100 border border-slate-200 text-indigo-700 px-1.5 py-0.2 rounded text-[10px] font-bold w-fit" title="Lote del Proveedor">
+                                                                    {rm.provider_lot}
+                                                                </span>
+                                                            )}
+                                                        </div>
                                                     </div>
                                                 </td>
                                                 <td className="px-3 py-2.5 capitalize">

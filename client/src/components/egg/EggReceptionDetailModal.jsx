@@ -72,10 +72,35 @@ const EggReceptionDetailModal = ({
                             <Boxes className="h-6 w-6" />
                         </div>
                         <div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
                                 <h2 className="text-base font-bold text-slate-900 tracking-tight">
-                                    Recepción #{reception.id} - Lote: {reception.provider_lot}
+                                    Recepción #{reception.id}
                                 </h2>
+                                {(() => {
+                                    let labReport = {};
+                                    try {
+                                        labReport = typeof reception.quality_lab_report_json === 'string'
+                                            ? JSON.parse(reception.quality_lab_report_json || '{}')
+                                            : (reception.quality_lab_report_json || {});
+                                    } catch (e) {
+                                        labReport = {};
+                                    }
+                                    const mpLot = labReport.reception_lot;
+                                    return (
+                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                            {mpLot && (
+                                                <span className="bg-amber-50 border border-amber-200 text-amber-900 px-2 py-0.5 rounded-lg text-xs font-black">
+                                                    Lote MP: {mpLot}
+                                                </span>
+                                            )}
+                                            {reception.provider_lot && (
+                                                <span className="bg-slate-100 border border-slate-200 text-indigo-700 px-2 py-0.5 rounded-lg text-xs font-bold">
+                                                    Lote Prov: {reception.provider_lot}
+                                                </span>
+                                            )}
+                                        </div>
+                                    );
+                                })()}
                                 <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-tight flex items-center gap-1 ${getStatusBadge ? getStatusBadge(reception.status) : ''}`}>
                                     {getStatusIcon && getStatusIcon(reception.status)}
                                     {reception.status}
@@ -103,6 +128,7 @@ const EggReceptionDetailModal = ({
                         </span>
                         <div className="text-slate-700 space-y-0.5 pt-1">
                             <p><span className="text-slate-400 font-medium">Tipo:</span> <strong className="capitalize">{reception.egg_type}</strong></p>
+                            <p><span className="text-slate-400 font-medium">Clasificación:</span> <strong className="text-indigo-900">{reception.egg_classification || 'Grado A'}</strong></p>
                             {reception.egg_type === 'huevo cáscara' && (
                                 <p><span className="text-slate-400 font-medium">Color / Talla:</span> <strong>{reception.egg_color} / {reception.egg_size}</strong></p>
                             )}

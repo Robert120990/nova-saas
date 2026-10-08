@@ -69,6 +69,17 @@ export const generateJulianLotCode = (dateInput, runNumber = 1, format = 'standa
 };
 
 /**
+ * Genera el código de lote MP (Materia Prima) en formato juliano oficial
+ * Formato oficial ANDELSA Recepción: MP-[Día Juliano 3 dígitos]-[Año 2 dígitos] (ej: MP-271-26)
+ * @param {string|Date} dateInput - Fecha de ingreso o recepción
+ * @returns {string} Código de lote MP juliano (ej: MP-271-26)
+ */
+export const generateJulianMpLotCode = (dateInput) => {
+    const info = getJulianDayInfo(dateInput);
+    return `MP-${info.dayOfYearStr}-${info.year2Digit}`;
+};
+
+/**
  * Detecta si un código de lote usa formato gregoriano (ej. LOTE-20260909-01 o LOTE-260909-01)
  * o formatos previos y lo convierte a su equivalente en numeración juliana oficial (ej. LOTE 01-265-26)
  * @param {string} lotCode - Código de lote existente

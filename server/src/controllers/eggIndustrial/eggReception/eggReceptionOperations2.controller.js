@@ -42,6 +42,7 @@ const saveQualityClassification = async (req, res) => {
             egg_classification,
             egg_size,
             egg_color,
+            provider_lot,
             quality_inspector_name,
             quality_reviewed_by,
             quality_status,
@@ -80,6 +81,7 @@ const saveQualityClassification = async (req, res) => {
                 egg_classification = ?,
                 egg_size = COALESCE(?, egg_size),
                 egg_color = COALESCE(?, egg_color),
+                provider_lot = COALESCE(?, provider_lot),
                 quality_inspector_name = ?,
                 quality_reviewed_by = ?,
                 quality_status = ?,
@@ -99,6 +101,7 @@ const saveQualityClassification = async (req, res) => {
                 egg_classification || 'Grado A',
                 egg_size || null,
                 egg_color || null,
+                provider_lot ? String(provider_lot).trim() : null,
                 inspector,
                 reviewedBy,
                 qStatus,
@@ -162,6 +165,12 @@ const getRawMaterialLab001Pdf = async (req, res) => {
             const b = req.body;
             data = {
                 ...data,
+                reception_lot: b.reception_lot || data.reception_lot,
+                provider_lot: b.provider_lot || data.provider_lot,
+                plant_entry_date: b.plant_entry_date || data.plant_entry_date,
+                reception_date: b.reception_date || data.reception_date,
+                analysis_date: b.analysis_date || data.analysis_date,
+                analysis_time: b.analysis_time || data.analysis_time,
                 classification: b.egg_classification || data.classification,
                 farm_name: b.farm_name || data.farm_name,
                 remission_note: b.remission_note || data.remission_note,
@@ -180,7 +189,7 @@ const getRawMaterialLab001Pdf = async (req, res) => {
             };
         }
 
-        const safeLot = (data.provider_lot || `LOTE-${id}`).replace(/[^a-zA-Z0-9_-]/g, '_');
+        const safeLot = (data.reception_lot || data.provider_lot || `LOTE-${id}`).replace(/[^a-zA-Z0-9_-]/g, '_');
         const format = (req.query.format || req.body?.format || 'pdf').toLowerCase();
 
         if (format === 'word' || format === 'docx') {

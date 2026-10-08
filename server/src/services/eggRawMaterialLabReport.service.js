@@ -35,6 +35,33 @@ function formatDate(d) {
 }
 
 /**
+ * Calcula código de lote MP con Calendario Juliano: MP-[Día Juliano 3d]-[Año 2d] (ej: MP-271-26)
+ */
+function computeMpJulianLot(dateInput) {
+    let d;
+    if (!dateInput) {
+        d = new Date();
+    } else if (typeof dateInput === 'string') {
+        const parts = dateInput.split('T')[0].split('-');
+        if (parts.length === 3) {
+            d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+        } else {
+            d = new Date(dateInput);
+        }
+    } else {
+        d = new Date(dateInput);
+    }
+    if (isNaN(d.getTime())) d = new Date();
+    const yearFull = d.getFullYear();
+    const year2Digit = String(yearFull).slice(-2);
+    const startOfYear = new Date(yearFull, 0, 1);
+    const diffMs = d.getTime() - startOfYear.getTime();
+    const dayOfYear = Math.floor(diffMs / (1000 * 60 * 60 * 24)) + 1;
+    const dayOfYearStr = String(dayOfYear).padStart(3, '0');
+    return `MP-${dayOfYearStr}-${year2Digit}`;
+}
+
+/**
  * Obtiene los datos consolidados de la recepción para el reporte LAB 001
  */
 async function getRawMaterialLab001Data(rawMaterialId, companyId) {
@@ -71,6 +98,10 @@ async function getRawMaterialLab001Data(rawMaterialId, companyId) {
         ? labJson.provider_type.toUpperCase() === 'EXTRANJERO'
         : (rm.provider_country && !['EL SALVADOR', 'SV', 'SALVADOR'].includes(rm.provider_country.toUpperCase()));
 
+    const plantEntry = labJson.plant_entry_date || rm.fecha || rm.created_at;
+    const defaultMpLot = computeMpJulianLot(plantEntry);
+    const receptionLot = labJson.reception_lot || defaultMpLot;
+
     return {
         id: rm.id,
         company_name: rm.company_name || 'ALIMENTOS NUTRICIONALES DE EL SALVADOR, S.A. DE C.V.',
@@ -80,12 +111,13 @@ async function getRawMaterialLab001Data(rawMaterialId, companyId) {
         provider_name: rm.provider_commercial_name || rm.provider_name || 'PROVEEDOR REGISTRADO',
         is_foreign: isForeign,
         farm_name: rm.farm_name || labJson.farm_name || '---',
-        provider_lot: rm.provider_lot || `LOTE-${rm.id}`,
+        reception_lot: receptionLot,
+        provider_lot: rm.provider_lot || labJson.provider_lot || `LOTE-${rm.id}`,
         production_date: rm.production_date || labJson.production_date || '',
         expiration_date: rm.expiration_date || labJson.expiration_date || '',
         total_boxes: rm.total_boxes || 0,
         remission_note: rm.remission_note || labJson.remission_note || '---',
-        plant_entry_date: labJson.plant_entry_date || rm.fecha || rm.created_at,
+        plant_entry_date: plantEntry,
         reception_date: labJson.reception_date || rm.fecha || rm.created_at,
         analysis_date: labJson.analysis_date || rm.quality_date || rm.created_at,
         analysis_time: labJson.analysis_time || (rm.quality_date ? new Date(rm.quality_date).toTimeString().substring(0, 5) : '---'),
@@ -246,6 +278,7 @@ async function generateRawMaterialLab001Pdf(data) {
                     }
                 },
                 { label: 'GRANJA DE ORIGEN', val: String(data.farm_name || '---').toUpperCase() },
+                { label: 'LOTE RECEPCIÓN (MP)', val: String(data.reception_lot || '---').toUpperCase() },
                 { label: 'LOTE PROVEEDOR', val: String(data.provider_lot || '---').toUpperCase() },
                 { label: 'FECHA PRODUCCIÓN', val: formatDate(data.production_date) },
                 { label: 'FECHA VENCIMIENTO', val: formatDate(data.expiration_date) },
@@ -261,7 +294,8 @@ async function generateRawMaterialLab001Pdf(data) {
                     val: `${formatDate(data.analysis_date)}  •  HORA: ${data.analysis_time || '---'}`
                 },
                 { label: 'COLOR CASCARÓN', val: String(data.egg_color || 'BLANCO').toUpperCase() },
-                { label: 'TAMAÑO & PESO PROMEDIO', val: `${String(data.egg_size || 'L').toUpperCase()}  •  ${data.sample_egg_weight_g ? `${data.sample_egg_weight_g} g / huevo` : '---'}` }
+                { label: 'TAMAÑO & PESO PROMEDIO', val: `${String(data.egg_size || 'L').toUpperCase()}  •  ${data.sample_egg_weight_g ? `${data.sample_egg_weight_g} g / huevo` : '---'}` },
+                { label: 'DESTINO PREVISTO', val: 'PROCESO INDUSTRIAL / PASTEURIZACIÓN' }
             ];
 
             const maxDgRows = Math.max(leftRows.length, rightRows.length);
@@ -583,26 +617,26 @@ async function generateRawMaterialLab001Docx(data) {
         }),
         new TableRow({
             children: [
+                bodyCell('Lote Recepción (MP):', true, true),
+                bodyCell(data.reception_lot, false, true),
                 bodyCell('Lote Proveedor:', true, true),
-                bodyCell(data.provider_lot, false, true),
-                bodyCell('Fecha Recepción:', true, true),
-                bodyCell(formatDate(data.reception_date), false, true)
+                bodyCell(data.provider_lot, false, true)
             ]
         }),
         new TableRow({
             children: [
-                bodyCell('Fecha Producción:', true, false),
-                bodyCell(formatDate(data.production_date), false, false),
+                bodyCell('Fecha Recepción:', true, false),
+                bodyCell(formatDate(data.reception_date), false, false),
                 bodyCell('Fecha / Hora Análisis:', true, false),
                 bodyCell(`${formatDate(data.analysis_date)} - ${data.analysis_time || '---'}`, false, false)
             ]
         }),
         new TableRow({
             children: [
+                bodyCell('Fecha Producción:', true, true),
+                bodyCell(formatDate(data.production_date), false, true),
                 bodyCell('Fecha Vencimiento:', true, true),
-                bodyCell(formatDate(data.expiration_date), false, true),
-                bodyCell('Color del Cascarón:', true, true),
-                bodyCell(data.egg_color, false, true)
+                bodyCell(formatDate(data.expiration_date), false, true)
             ]
         }),
         new TableRow({

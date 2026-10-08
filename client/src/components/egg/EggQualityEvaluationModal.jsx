@@ -13,6 +13,7 @@ import {
     Plus,
     Trash2
 } from 'lucide-react';
+import { generateJulianMpLotCode } from '../../utils/julianDate';
 
 const EggQualityEvaluationModal = ({
     isOpen,
@@ -118,8 +119,12 @@ const EggQualityEvaluationModal = ({
                             <div className="bg-amber-50/60 border-b border-amber-200/70 px-5 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
                                 <div className="flex items-center gap-4 flex-wrap">
                                     <div>
-                                        <span className="text-[10px] font-bold text-amber-900/70 uppercase block">Lote:</span>
-                                        <strong className="text-slate-900 font-black">{qualityModal.provider_lot || qualityModal.rm.provider_lot}</strong>
+                                        <span className="text-[10px] font-bold text-amber-900/70 uppercase block">Lote Recepción MP:</span>
+                                        <strong className="text-amber-950 font-black">{qualityModal.reception_lot || 'MP PENDIENTE'}</strong>
+                                    </div>
+                                    <div>
+                                        <span className="text-[10px] font-bold text-amber-900/70 uppercase block">Lote Proveedor:</span>
+                                        <strong className="text-slate-800 font-bold">{qualityModal.provider_lot || qualityModal.rm.provider_lot || '---'}</strong>
                                     </div>
                                     <div>
                                         <span className="text-[10px] font-bold text-amber-900/70 uppercase block">Proveedor:</span>
@@ -237,6 +242,7 @@ const EggQualityEvaluationModal = ({
                                                 className="w-full px-3 py-2 bg-white border-2 border-slate-900 rounded-xl text-xs font-black text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500/20 shadow-xs"
                                             >
                                                 <option value="Grado AA">Grado AA (Extra Especial / Cáscara Impecable)</option>
+                                                <option value="Grado AA y A">Grado AA y A (Doble Clasificación: Selección Especial)</option>
                                                 <option value="Grado A">Grado A (Estándar Premium de Planta)</option>
                                                 <option value="Grado B">Grado B (Comercial / Cáscara Irregular)</option>
                                                 <option value="Grado Industrial">Grado Industrial (Quiebre Inmediato)</option>
@@ -294,15 +300,44 @@ const EggQualityEvaluationModal = ({
                                             />
                                         </div>
 
-                                        {/* Lote */}
+                                        {/* Lote Recepción MP (Fecha Juliana) */}
+                                        <div className="space-y-1">
+                                            <div className="flex items-center justify-between">
+                                                <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">
+                                                    Lote de Recepción MP (Juliano) *
+                                                </label>
+                                                <button
+                                                    type="button"
+                                                    disabled={!canEditQuality}
+                                                    onClick={() => {
+                                                        const jMp = generateJulianMpLotCode(qualityModal.plant_entry_date || qualityModal.reception_date);
+                                                        setQualityModal(prev => ({ ...prev, reception_lot: jMp }));
+                                                    }}
+                                                    className="text-[9px] font-mono font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 px-1.5 py-0.5 rounded cursor-pointer transition-colors"
+                                                    title="Calcular automáticamente lote MP según Fecha Juliana de ingreso"
+                                                >
+                                                    Auto Juliano
+                                                </button>
+                                            </div>
+                                            <input
+                                                type="text"
+                                                disabled={!canEditQuality}
+                                                placeholder="Ej: MP-271-26"
+                                                value={qualityModal.reception_lot || ''}
+                                                onChange={(e) => setQualityModal({ ...qualityModal, reception_lot: e.target.value })}
+                                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-amber-900 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs"
+                                            />
+                                        </div>
+
+                                        {/* Lote del Proveedor */}
                                         <div className="space-y-1">
                                             <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">
-                                                Lote de Recepción
+                                                Lote del Proveedor
                                             </label>
                                             <input
                                                 type="text"
                                                 disabled={!canEditQuality}
-                                                placeholder="Lote proveedor"
+                                                placeholder="Lote proveedor (ej: INAVI-25926)"
                                                 value={qualityModal.provider_lot}
                                                 onChange={(e) => setQualityModal({ ...qualityModal, provider_lot: e.target.value })}
                                                 className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-indigo-700 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 shadow-2xs"
