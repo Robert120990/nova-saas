@@ -488,7 +488,16 @@ async function generateDTE(payload) {
 
         let itemFinalTributos;
         if (tipoDte === '04') {
-            itemFinalTributos = null;
+            // Nota de Remisión: si el ítem genera venta gravada, debe declarar el tributo (IVA 20)
+            // Si es un traslado sin valor comercial (precio 0 / ventaGravada 0) o exento sin tributos, debe ser null
+            const hasGravada = parseFloat(calcItem.ventaGravada || 0) > 0;
+            if (hasGravada) {
+                itemFinalTributos = (itemTributos && itemTributos.length > 0) ? itemTributos : ['20'];
+            } else if (itemTributos && itemTributos.length > 0 && !itemTributos.every(t => t === '20')) {
+                itemFinalTributos = itemTributos;
+            } else {
+                itemFinalTributos = null;
+            }
         } else if (tipoDte === '11') {
             // FEX: Hacienda exige declarar el tributo C3 (IVA exportaciones 0%)
             itemFinalTributos = (itemTributos && itemTributos.length > 0 && !itemTributos.includes('20'))
@@ -941,7 +950,7 @@ async function generateDTE(payload) {
     }
 
     if (tipoDte === '04') {
-        finalReceptor.bienTitulo = payload.bienTitulo || '01'; // 01: Venta/Traslado dominio
+        finalReceptor.bienTitulo = payload.bienTitulo || payload.transporte?.bienTitulo || receptor.bienTitulo || '01'; // 01: Venta/Traslado dominio
         finalReceptor.codActividad = receptor.codActividad || '10005';
         finalReceptor.descActividad = sanitizeText(receptor.descActividad || 'Otros');
         finalReceptor.nombreComercial = sanitizeText(receptor.nombreComercial) || finalReceptor.nombre;

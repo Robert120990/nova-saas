@@ -20,12 +20,7 @@ const formatPercentages = (val) => {
     if (!val) return '5, 10, 15, 20';
     if (Array.isArray(val)) return val.join(', ');
     if (typeof val === 'string') {
-        try {
-            const parsed = JSON.parse(val);
-            if (Array.isArray(parsed)) return parsed.join(', ');
-        } catch {
-            return val;
-        }
+        try { const parsed = JSON.parse(val); if (Array.isArray(parsed)) return parsed.join(', '); } catch { /* ignore */ }
         return val;
     }
     return '5, 10, 15, 20';
@@ -48,6 +43,8 @@ const BranchModal = ({
     const [omitirDigitoVerificador, setOmitirDigitoVerificador] = useState(false);
     const [remisionConValores, setRemisionConValores] = useState(false);
     const [previewUrl, setPreviewUrl] = useState(null);
+    const [removeLogo, setRemoveLogo] = useState(false);
+    const [hasImageError, setHasImageError] = useState(false);
 
     useEffect(() => {
         if (isOpen) {
@@ -58,6 +55,8 @@ const BranchModal = ({
             setOmitirDigitoVerificador(Boolean(branch?.omitir_digito_verificador));
             setRemisionConValores(Boolean(branch?.remision_con_valores));
             setPreviewUrl(null);
+            setRemoveLogo(false);
+            setHasImageError(false);
         }
     }, [isOpen, branch]);
 
@@ -268,19 +267,15 @@ const BranchModal = ({
                                     className={fieldCls} 
                                 />
                             </div>
-                            <div className="mt-2.5 p-3 bg-indigo-50/70 border border-indigo-100 rounded-xl text-[11px] text-slate-600 space-y-1.5 leading-relaxed">
-                                <div className="flex items-center gap-1.5 font-bold text-indigo-900 uppercase text-[10px] tracking-wider">
+                            <div className="col-span-1 sm:col-span-2 p-2.5 sm:p-3 bg-indigo-50/70 border border-indigo-100 rounded-xl text-[11px] text-slate-600">
+                                <div className="flex items-center gap-1.5 font-bold text-indigo-900 uppercase text-[10px] tracking-wider mb-1.5">
                                     <Info size={13} className="text-indigo-600 shrink-0" />
                                     <span>Reglas de Aplicación y Control de Topes</span>
                                 </div>
-                                <ul className="list-disc list-inside space-y-1 pl-1 text-[10.5px]">
-                                    <li>
-                                        <strong className="text-slate-800">Porcentaje Máximo (%):</strong> Tope de margen por producto y general.
-                                    </li>
-                                    <li>
-                                        <strong className="text-slate-800">Monto Máximo ($):</strong> Tope monetario máximo acumulado por ticket.
-                                    </li>
-                                </ul>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[10.5px] leading-relaxed">
+                                    <p><strong className="text-slate-800">• Porcentaje Máximo (%):</strong> Tope de margen por producto y general.</p>
+                                    <p><strong className="text-slate-800">• Monto Máximo ($):</strong> Tope monetario máximo acumulado por ticket.</p>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -304,21 +299,37 @@ const BranchModal = ({
                                     const file = e.target.files[0];
                                     if (file) {
                                         setPreviewUrl(URL.createObjectURL(file));
+                                        setRemoveLogo(false);
+                                        setHasImageError(false);
                                     }
                                 }}
                             />
                             <p className="mt-1 text-[10px] text-slate-400">PNG, JPG o GIF. Máximo 2MB.</p>
                         </div>
-                        {(previewUrl || branch?.logo_url) && (
+                        <input type="hidden" name="remove_logo" value={removeLogo ? '1' : '0'} />
+                        {(previewUrl || (branch?.logo_url && !hasImageError)) && !removeLogo && (
                             <div className="w-16 h-16 bg-white border border-slate-200 rounded-lg overflow-hidden flex-shrink-0 shadow-sm relative group">
                                 <img 
                                     src={previewUrl || branch.logo_url} 
                                     alt="Vista previa" 
-                                    className="w-full h-full object-contain" 
+                                    className="w-full h-full object-contain"
+                                    onError={() => { if (!previewUrl) setHasImageError(true); }}
                                 />
-                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
-                                    <span className="text-[8px] text-white font-bold uppercase">Previsualizar</span>
+                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
+                                    <button type="button" onClick={() => { setRemoveLogo(true); setPreviewUrl(null); }} className="text-[8px] bg-red-600 text-white font-bold uppercase px-1.5 py-0.5 rounded pointer-events-auto hover:bg-red-700 transition-colors">
+                                        Eliminar
+                                    </button>
                                 </div>
+                            </div>
+                        )}
+                        {removeLogo && (
+                            <div className="w-16 h-16 bg-red-50 border border-red-200 rounded-lg flex items-center justify-center flex-shrink-0">
+                                <span className="text-[8px] text-red-600 font-bold uppercase text-center leading-tight">Logo<br/>eliminado</span>
+                            </div>
+                        )}
+                        {hasImageError && !previewUrl && !removeLogo && (
+                            <div className="px-2.5 py-1.5 bg-amber-50 border border-amber-200 rounded-lg text-[10px] text-amber-700 flex items-center shrink-0">
+                                Logo no disponible
                             </div>
                         )}
                     </div>
@@ -326,11 +337,7 @@ const BranchModal = ({
 
                 <div className="flex justify-end gap-3 pt-2 border-t border-slate-100">
                     <button type="button" onClick={onClose} className="px-4 py-2 text-slate-500 font-semibold hover:text-slate-700 transition-colors text-sm">Cancelar</button>
-                    <button
-                        type="submit"
-                        disabled={isSaving}
-                        className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-6 py-2 rounded-lg font-bold transition-all text-sm active:scale-95"
-                    >
+                    <button type="submit" disabled={isSaving} className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-6 py-2 rounded-lg font-bold transition-all text-sm active:scale-95">
                         {isSaving ? 'Guardando…' : branch ? 'Actualizar' : 'Registrar'}
                     </button>
                 </div>
