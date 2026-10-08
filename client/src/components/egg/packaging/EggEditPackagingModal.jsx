@@ -201,6 +201,27 @@ const EggEditPackagingModal = ({
                         </div>
                     )}
 
+                    {/* Vinculación Comercial y Existencia en Inventario */}
+                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-1 text-xs">
+                        <span className="text-[10px] font-bold text-slate-500 uppercase block">
+                            Catálogo Comercial en Inventario
+                        </span>
+                        {packaging.catalog_product_code ? (
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
+                                <span className="font-bold text-indigo-700">
+                                    [{packaging.catalog_product_code}] {packaging.catalog_product_name}
+                                </span>
+                                {packaging.current_inventory_stock !== null && packaging.current_inventory_stock !== undefined && (
+                                    <span className="text-emerald-700 font-bold bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded text-[10px] w-fit">
+                                        Existencia: {Number(packaging.current_inventory_stock).toFixed(0)} Uds
+                                    </span>
+                                )}
+                            </div>
+                        ) : (
+                            <span className="text-amber-600 font-medium">Sin producto comercial asignado</span>
+                        )}
+                    </div>
+
                     <div className="grid grid-cols-2 gap-3">
                         <div>
                             <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">Unidades</label>

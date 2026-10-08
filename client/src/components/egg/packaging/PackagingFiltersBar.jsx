@@ -103,8 +103,33 @@ export default function PackagingFiltersBar({ model }) {
                                                 </span>
                                             </div>
                                         </td>
-                                        <td className="p-3 font-bold text-slate-900 capitalize text-xs">{p.product_type}</td>
-                                        <td className="p-3 font-medium text-slate-600 text-xs">{p.presentation}</td>
+                                        <td className="p-3">
+                                            <div className="flex flex-col">
+                                                <span className="font-bold text-slate-900 capitalize text-xs">{p.product_type}</span>
+                                                {p.catalog_product_code ? (
+                                                    <span className="text-[10px] text-indigo-700 font-semibold flex items-center gap-1 mt-0.5" title={p.catalog_product_name}>
+                                                        <span className="px-1 py-0.2 bg-indigo-50 border border-indigo-200 rounded font-bold text-[9px]">
+                                                            {p.catalog_product_code}
+                                                        </span>
+                                                        <span className="truncate max-w-[130px]">
+                                                            {p.catalog_product_name}
+                                                        </span>
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-[9px] text-amber-600 font-medium">Sin catálogo asignado</span>
+                                                )}
+                                            </div>
+                                        </td>
+                                        <td className="p-3">
+                                            <div className="flex flex-col">
+                                                <span className="font-medium text-slate-700 text-xs">{p.presentation}</span>
+                                                {p.current_inventory_stock !== null && p.current_inventory_stock !== undefined ? (
+                                                    <span className="text-[9px] text-emerald-700 font-bold flex items-center gap-0.5 mt-0.5" title="Existencia actual en inventario comercial">
+                                                        ✓ Stock: {Number(p.current_inventory_stock).toFixed(0)} Uds
+                                                    </span>
+                                                ) : null}
+                                            </div>
+                                        </td>
                                         <td className="p-3">
                                             <div className="flex flex-col gap-1">
                                                 <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase w-fit flex items-center gap-1 ${

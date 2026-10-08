@@ -44,9 +44,16 @@ const getPackagingRecords = async (req, res) => {
             `SELECT pr.*,
                     COALESCE(pr.product_type, b.product_type) as product_type,
                     COALESCE(pr.presentation, b.presentation) as presentation,
-                    b.batch_uuid
+                    b.batch_uuid,
+                    p.codigo as catalog_product_code,
+                    p.nombre as catalog_product_name,
+                    p.costo as catalog_product_cost,
+                    p.unidad_medida as catalog_product_um,
+                    inv.stock as current_inventory_stock
              FROM egg_packaging_records pr
              LEFT JOIN egg_production_batches b ON pr.batch_id = b.id
+             LEFT JOIN products p ON pr.product_id = p.id
+             LEFT JOIN inventory inv ON inv.product_id = pr.product_id AND inv.branch_id = pr.branch_id
              WHERE pr.company_id = ?
              ORDER BY pr.created_at DESC`,
             [companyId]
@@ -196,15 +203,19 @@ const createPackagingRecord = async (req, res) => {
             );
 
             // Alimentar inventario comercial y Kardex automáticamente
+            const explicitProductId = item.product_id || item.catalog_product_id || req.body.product_id || req.body.catalog_product_id || null;
+            const targetBranchId = item.branch_id || req.body.branch_id || batch.branch_id;
             const stockFeed = await recordPackagingStock(
                 connection,
                 company_id,
                 result.insertId,
                 {
+                    product_id: explicitProductId,
                     product_type: resolvedProduct,
                     presentation: resolvedPresentation,
                     units_packaged,
-                    branch_id: batch.branch_id
+                    branch_id: targetBranchId,
+                    batch_id
                 },
                 units_packaged
             );
@@ -212,7 +223,8 @@ const createPackagingRecord = async (req, res) => {
             createdRecords.push({
                 id: result.insertId,
                 product_id: stockFeed?.productId || null,
-                branch_id: stockFeed?.branchId || batch.branch_id || null,
+                branch_id: stockFeed?.branchId || targetBranchId || null,
+                stock_fed: !!stockFeed?.productId,
                 lot_code,
                 product_type: resolvedProduct,
                 presentation: resolvedPresentation,

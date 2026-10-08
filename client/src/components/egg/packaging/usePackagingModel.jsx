@@ -26,6 +26,8 @@ export default function usePackagingModel() {
     const [isNewPackagingModalOpen, setIsNewPackagingModalOpen] = useState(false);
     const [isFreezerModalOpen, setIsFreezerModalOpen] = useState(false);
     const [_productConfig, setProductConfig] = useState([]);
+    const [catalogProducts, setCatalogProducts] = useState([]);
+    const [codeMappings, setCodeMappings] = useState([]);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [editingPackaging, setEditingPackaging] = useState(null);
 
@@ -110,7 +112,7 @@ export default function usePackagingModel() {
     const fetchData = async () => {
         setLoading(true);
         try {
-            const [pkgRes, bRes, fRes, cfgRes] = await Promise.all([
+            const [pkgRes, bRes, fRes, cfgRes, prodRes, mapRes] = await Promise.all([
                 axios.get('/api/egg-industrial/packaging').catch(err => {
                     console.error('Error fetching packaging records:', err);
                     return { data: [] };
@@ -126,17 +128,29 @@ export default function usePackagingModel() {
                 axios.get('/api/egg-industrial/product-config').catch(err => {
                     console.error('Error fetching product config:', err);
                     return { data: {} };
+                }),
+                axios.get('/api/egg-industrial/catalog-products').catch(err => {
+                    console.error('Error fetching catalog products:', err);
+                    return { data: [] };
+                }),
+                axios.get('/api/egg-industrial/code-mappings').catch(err => {
+                    console.error('Error fetching code mappings:', err);
+                    return { data: [] };
                 })
             ]);
             const pkgList = Array.isArray(pkgRes.data) ? pkgRes.data : (pkgRes.data?.data || []);
             const batchesList = Array.isArray(bRes.data) ? bRes.data : (bRes.data?.data || []);
             const freezerList = Array.isArray(fRes.data) ? fRes.data : (fRes.data?.data || []);
             const cfgData = cfgRes.data?.data || cfgRes.data || {};
+            const prodList = Array.isArray(prodRes.data) ? prodRes.data : (prodRes.data?.data || []);
+            const mapList = Array.isArray(mapRes.data) ? mapRes.data : (mapRes.data?.data || []);
 
             setPackagingRecords(pkgList);
             setBatches(batchesList);
             setFreezerLogs(freezerList);
             setProductConfig(cfgData);
+            setCatalogProducts(prodList);
+            setCodeMappings(mapList);
         } catch (error) {
             console.error('Error fetching packaging data:', error);
             toast.error('Error al cargar datos de envasado.');
@@ -179,7 +193,10 @@ export default function usePackagingModel() {
             const res = await axios.post('/api/egg-industrial/packaging', {
                 batch_id: parseInt(packagingForm.batch_id),
                 product_type: packagingForm.product_type,
-                items: validItems,
+                items: validItems.map(it => ({
+                    ...it,
+                    product_id: it.product_id || it.catalog_product_id || null
+                })),
                 units_packaged: validItems.reduce((s, it) => s + parseInt(it.units_packaged), 0),
                 presentation: validItems.map(it => it.presentation).join(', '),
                 weight_per_unit_lbs: validItems[0]?.weight_per_unit_lbs || 30.00,
@@ -193,7 +210,7 @@ export default function usePackagingModel() {
             setPackagingForm({
                 batch_id: '',
                 product_type: 'huevo entero',
-                items: [{ presentation: 'cubeta 30LB', units_packaged: '', weight_per_unit_lbs: '30.00' }],
+                items: [{ presentation: 'cubeta 30LB', units_packaged: '', weight_per_unit_lbs: '30.00', product_id: null }],
                 product_state: 'líquido',
                 warehouse_zone: 'COOLER',
                 operator_name: user?.nombre || ''
@@ -455,5 +472,5 @@ export default function usePackagingModel() {
     };
 
 
- return { user, confirm, companyId, packagingRecords, setPackagingRecords, batches, setBatches, freezerLogs, setFreezerLogs, loading, setLoading, searchTerm, setSearchTerm, isNewPackagingModalOpen, setIsNewPackagingModalOpen, isFreezerModalOpen, setIsFreezerModalOpen, _productConfig, setProductConfig, isEditModalOpen, setIsEditModalOpen, editingPackaging, setEditingPackaging, packagingForm, setPackagingForm, freezerForm, setFreezerForm, isSubmitting, setIsSubmitting, selectedLabel, setSelectedLabel, qualityModal, setQualityModal, userPermissions, isAdmin, canClosePackaging, canEditLots, closeBatchModal, setCloseBatchModal, handleCloseBatchPackaging, handleReopenBatchPackaging, fetchData, handleCreatePackaging, handleDeleteFreezerLog, handleCreateFreezerLog, getFreezerStatusBadge, handlePrintLabel, filteredPackaging, handleEdit, handleEditSubmit, handleDelete };
+ return { user, confirm, companyId, packagingRecords, setPackagingRecords, batches, setBatches, freezerLogs, setFreezerLogs, loading, setLoading, searchTerm, setSearchTerm, isNewPackagingModalOpen, setIsNewPackagingModalOpen, isFreezerModalOpen, setIsFreezerModalOpen, _productConfig, setProductConfig, catalogProducts, setCatalogProducts, codeMappings, setCodeMappings, isEditModalOpen, setIsEditModalOpen, editingPackaging, setEditingPackaging, packagingForm, setPackagingForm, freezerForm, setFreezerForm, isSubmitting, setIsSubmitting, selectedLabel, setSelectedLabel, qualityModal, setQualityModal, userPermissions, isAdmin, canClosePackaging, canEditLots, closeBatchModal, setCloseBatchModal, handleCloseBatchPackaging, handleReopenBatchPackaging, fetchData, handleCreatePackaging, handleDeleteFreezerLog, handleCreateFreezerLog, getFreezerStatusBadge, handlePrintLabel, filteredPackaging, handleEdit, handleEditSubmit, handleDelete };
 }

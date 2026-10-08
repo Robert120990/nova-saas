@@ -164,11 +164,18 @@ async function recordPackagingStock(connection, companyId, packagingId, recordDa
     if (!branchId) return null;
 
     let productId = recordData.product_id;
+    let productCost = 0;
     if (!productId) {
-        const resolved = await resolveEggCatalogProduct(connection, companyId, recordData.product_type, recordData.presentation);
+        const resolved = await resolveEggCatalogProduct(connection, companyId, recordData.product_type, recordData.presentation, { autoCreate: true, branchId });
         productId = resolved?.catalog_product_id || null;
+        productCost = resolved?.cost || 0;
     }
     if (!productId) return null;
+
+    if (!productCost || productCost === 0) {
+        const [pRows] = await connection.query('SELECT costo FROM products WHERE id = ? LIMIT 1', [productId]);
+        productCost = Number(pRows[0]?.costo || 0);
+    }
 
     await connection.query('INSERT IGNORE INTO product_branch (product_id, branch_id) VALUES (?, ?)', [productId, branchId]);
     await connection.query(
@@ -177,12 +184,12 @@ async function recordPackagingStock(connection, companyId, packagingId, recordDa
         [companyId, branchId, productId, units, units]
     );
     await connection.query(
-        `INSERT INTO inventory_movements (company_id, branch_id, product_id, tipo_movimiento, cantidad, tipo_documento, documento_id, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
-        [companyId, branchId, productId, 'ENTRADA', units, 'ENVASADO_INDUSTRIAL', packagingId]
+        `INSERT INTO inventory_movements (company_id, branch_id, product_id, tipo_movimiento, cantidad, costo, precio_venta, tipo_documento, documento_id, created_at)
+         VALUES (?, ?, ?, 'ENTRADA', ?, ?, 0, 'ENVASADO_INDUSTRIAL', ?, NOW())`,
+        [companyId, branchId, productId, units, productCost, packagingId]
     );
     await connection.query('UPDATE egg_packaging_records SET product_id = ?, branch_id = ? WHERE id = ? AND company_id = ?', [productId, branchId, packagingId, companyId]).catch(() => {});
-    return { productId, branchId, units };
+    return { productId, branchId, units, cost: productCost };
 }
 
 async function revertPackagingStock(connection, companyId, packagingId, recordData, unitsToRevert, reason = 'ANULACION_ENVASADO') {
@@ -198,17 +205,21 @@ async function revertPackagingStock(connection, companyId, packagingId, recordDa
     }
     if (!productId) return null;
 
+    let productCost = 0;
+    const [pRows] = await connection.query('SELECT costo FROM products WHERE id = ? LIMIT 1', [productId]);
+    productCost = Number(pRows[0]?.costo || 0);
+
     await connection.query(
         `INSERT INTO inventory (company_id, branch_id, product_id, stock) VALUES (?, ?, ?, -?)
          ON DUPLICATE KEY UPDATE stock = stock - ?`,
         [companyId, branchId, productId, units, units]
     );
     await connection.query(
-        `INSERT INTO inventory_movements (company_id, branch_id, product_id, tipo_movimiento, cantidad, tipo_documento, documento_id, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
-        [companyId, branchId, productId, 'SALIDA', units, reason, packagingId]
+        `INSERT INTO inventory_movements (company_id, branch_id, product_id, tipo_movimiento, cantidad, costo, precio_venta, tipo_documento, documento_id, created_at)
+         VALUES (?, ?, ?, 'SALIDA', ?, ?, 0, ?, ?, NOW())`,
+        [companyId, branchId, productId, units, productCost, reason, packagingId]
     );
-    return { productId, branchId, units };
+    return { productId, branchId, units, cost: productCost };
 }
 
 async function adjustPackagingStock(connection, companyId, packagingId, oldData, newData) {
@@ -222,7 +233,7 @@ async function adjustPackagingStock(connection, companyId, packagingId, oldData,
     }
     let newProductId = newData.product_id;
     if (!newProductId) {
-        const resolvedNew = await resolveEggCatalogProduct(connection, companyId, newData.product_type, newData.presentation);
+        const resolvedNew = await resolveEggCatalogProduct(connection, companyId, newData.product_type, newData.presentation, { autoCreate: true, branchId });
         newProductId = resolvedNew?.catalog_product_id || null;
     }
 
@@ -235,15 +246,20 @@ async function adjustPackagingStock(connection, companyId, packagingId, oldData,
     } else {
         const targetProductId = newProductId || oldProductId;
         if (!targetProductId) return null;
+
+        let cost = 0;
+        const [pRows] = await connection.query('SELECT costo FROM products WHERE id = ? LIMIT 1', [targetProductId]);
+        cost = Number(pRows[0]?.costo || 0);
+
         const delta = newUnits - oldUnits;
         if (delta > 0) {
             await connection.query('INSERT IGNORE INTO product_branch (product_id, branch_id) VALUES (?, ?)', [targetProductId, branchId]);
             await connection.query(`INSERT INTO inventory (company_id, branch_id, product_id, stock) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE stock = stock + ?`, [companyId, branchId, targetProductId, delta, delta]);
-            await connection.query(`INSERT INTO inventory_movements (company_id, branch_id, product_id, tipo_movimiento, cantidad, tipo_documento, documento_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`, [companyId, branchId, targetProductId, 'ENTRADA', delta, 'AJUSTE_ENVASADO', packagingId]);
+            await connection.query(`INSERT INTO inventory_movements (company_id, branch_id, product_id, tipo_movimiento, cantidad, costo, precio_venta, tipo_documento, documento_id, created_at) VALUES (?, ?, ?, 'ENTRADA', ?, ?, 0, 'AJUSTE_ENVASADO', ?, NOW())`, [companyId, branchId, targetProductId, delta, cost, packagingId]);
         } else if (delta < 0) {
             const absDelta = Math.abs(delta);
             await connection.query(`INSERT INTO inventory (company_id, branch_id, product_id, stock) VALUES (?, ?, ?, -?) ON DUPLICATE KEY UPDATE stock = stock - ?`, [companyId, branchId, targetProductId, absDelta, absDelta]);
-            await connection.query(`INSERT INTO inventory_movements (company_id, branch_id, product_id, tipo_movimiento, cantidad, tipo_documento, documento_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`, [companyId, branchId, targetProductId, 'SALIDA', absDelta, 'AJUSTE_ENVASADO', packagingId]);
+            await connection.query(`INSERT INTO inventory_movements (company_id, branch_id, product_id, tipo_movimiento, cantidad, costo, precio_venta, tipo_documento, documento_id, created_at) VALUES (?, ?, ?, 'SALIDA', ?, ?, 0, 'AJUSTE_ENVASADO', ?, NOW())`, [companyId, branchId, targetProductId, absDelta, cost, packagingId]);
         }
     }
 

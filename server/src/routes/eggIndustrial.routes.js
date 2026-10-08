@@ -68,6 +68,7 @@ router.post('/holding-temps', permit('manage_production'), eggController.createH
 
 // 6. Empaque Final
 router.get('/packaging', permit('manage_packaging', 'manage_production', 'manage_egg_quality', 'manage_egg_dispatch'), eggController.getPackagingRecords);
+router.get('/catalog-products', permit('manage_packaging', 'manage_production', 'manage_egg_quality', 'manage_egg_dispatch', 'view_egg_inventory'), eggController.getCatalogOvoproducts);
 router.post('/packaging', permit('manage_packaging'), eggController.createPackagingRecord);
 router.put('/packaging/:id', permit('manage_packaging'), eggController.updatePackagingRecord);
 router.delete('/packaging/:id', permit('manage_packaging'), eggController.deletePackagingRecord);

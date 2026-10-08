@@ -14,7 +14,9 @@ const EggNewPackagingModal = ({
     onSubmit,
     onOpenCloseBatch,
     onReopenPackaging,
-    canClosePackaging
+    canClosePackaging,
+    catalogProducts = [],
+    codeMappings = []
 }) => {
     const [showClosedBatches, setShowClosedBatches] = useState(false);
 
@@ -224,6 +226,8 @@ const EggNewPackagingModal = ({
                     <PackagingItemsSection
                         packagingForm={packagingForm}
                         setPackagingForm={setPackagingForm}
+                        catalogProducts={catalogProducts}
+                        codeMappings={codeMappings}
                     />
 
                     <PackagingColdChainSection

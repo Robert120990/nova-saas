@@ -209,4 +209,37 @@ const getCodeMappings = async (req, res) => {
         res.status(error.status || 500).json({ message: error.message });
     }
 };
-module.exports = { closeBatchPackaging, reopenBatchPackaging, getCodeMappings };
+
+const getCatalogOvoproducts = async (req, res) => {
+    try {
+        await ensureEggSchema();
+        const companyId = req.company_id || req.user?.company_id;
+        if (!companyId) return res.status(400).json({ message: 'Company ID is required' });
+        const branchId = req.query.branch_id ? parseInt(req.query.branch_id, 10) : null;
+
+        const [rows] = await pool.query(
+            `SELECT p.id, p.codigo, p.nombre, p.unidad_medida, p.costo,
+                    COALESCE(inv.stock, 0) as stock,
+                    inv.branch_id
+             FROM products p
+             LEFT JOIN inventory inv ON inv.product_id = p.id AND (? IS NULL OR inv.branch_id = ?)
+             WHERE p.company_id = ?
+               AND p.status = 'activo'
+               AND p.afecta_inventario = 1
+               AND (
+                   p.id IN (SELECT catalog_product_id FROM egg_product_code_mappings WHERE company_id = ? AND catalog_product_id IS NOT NULL)
+                   OR LOWER(p.nombre) LIKE '%huevo%'
+                   OR LOWER(p.nombre) LIKE '%clara%'
+                   OR LOWER(p.nombre) LIKE '%yema%'
+                   OR LOWER(p.nombre) LIKE '%ovoproducto%'
+               )
+             ORDER BY p.nombre ASC`,
+            [branchId, branchId, companyId, companyId]
+        );
+        res.json(rows);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+module.exports = { closeBatchPackaging, reopenBatchPackaging, getCodeMappings, getCatalogOvoproducts };

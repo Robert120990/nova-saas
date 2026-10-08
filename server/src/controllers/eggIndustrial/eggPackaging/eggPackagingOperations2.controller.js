@@ -107,10 +107,11 @@ const updatePackagingRecord = async (req, res) => {
             id,
             currentRecord,
             {
+                product_id: req.body.product_id || req.body.catalog_product_id || null,
                 units_packaged: finalUnits,
                 product_type: finalProductType,
                 presentation: finalPresentation,
-                branch_id: parent.branch_id || currentRecord.branch_id
+                branch_id: req.body.branch_id || parent.branch_id || currentRecord.branch_id
             }
         );
 
