@@ -55,16 +55,22 @@ function classifyProduct(code, desc) {
     if (d.includes('YEMA SALADA')) return 'YEMA SALADA';
     if (d.includes('YEMA')) return 'YEMA';
     if (c.startsWith('HEC') || c.startsWith('HEG') || c.startsWith('HEL') || c.startsWith('HEP') || d.includes('HUEVO ENTERO')) return 'HUEVO ENTERO';
-    if (c.includes('TORTITA') || d.includes('TORTITA')) return 'TORTITAS DE HUEVO';
-    return 'OTROS OVOPRODUCTOS';
+    if (d.includes('TORTITA')) return 'TORTITAS DE HUEVO';
+    // Ovoproductos explícitos o derivados de huevo
+    if (d.includes('HUEVO') || d.includes('OVOPRODUCTO') || d.includes('ALBUMINA') || d.includes('ALBÚMINA') || c.startsWith('OVO') || d.includes('LOTE:')) {
+        return 'OTROS OVOPRODUCTOS';
+    }
+    return null;
 }
 
 function isEggProduct(code, desc) {
+    if (!code && !desc) return false;
     const c = (code || '').toUpperCase();
     const d = (desc || '').toUpperCase();
     if (c === 'CONTENEDOR' || c === 'CARTON' || d.includes('CARTON VACIO') || d.includes('CARTÓN VACÍO')) return false;
     if (d.includes('RETENCION') || d.includes('ALMACENAMIENTO') || d.includes('CORRUGADO') || d.includes('FLETE') || d.includes('DETALLE CON PRECIO')) return false;
-    return true;
+    if (c === 'AZUCAR' || d.includes('AZUCAR') || d.includes('AZÚCAR')) return false;
+    return classifyProduct(code, desc) !== null;
 }
 
 function formatQtyAndPrice(isShell, boxes, units, lbs, amount, cartons = 0) {
@@ -116,8 +122,8 @@ function buildEggSalesReportQuery(companyId, filters = {}) {
                si.venta_gravada, si.venta_exenta,
                sh.fecha_emision,
                COALESCE(sh.tipo_documento, sh.dte_type) as tipo_documento,
-               COALESCE(sh.numero_control, d.numero_control) as numero_control,
-               COALESCE(sh.codigo_generacion, d.codigo_generacion) as codigo_generacion,
+               COALESCE(sh.numero_control, d_c.numero_control, d_v.numero_control) as numero_control,
+               COALESCE(sh.codigo_generacion, d_c.codigo_generacion, d_v.codigo_generacion) as codigo_generacion,
                sh.cliente_nombre, sh.customer_id,
                c.nombre as customer_name, c.nit as customer_nit, c.nrc as customer_nrc,
                (
@@ -127,14 +133,17 @@ function buildEggSalesReportQuery(companyId, filters = {}) {
                ) AS linked_remisiones
         FROM sales_items si
         JOIN sales_headers sh ON si.sale_id = sh.id
-        LEFT JOIN dtes d ON sh.id = d.venta_id
+        LEFT JOIN dtes d_c ON (sh.codigo_generacion IS NOT NULL AND sh.codigo_generacion != '' AND d_c.codigo_generacion = sh.codigo_generacion AND d_c.company_id = sh.company_id)
+        LEFT JOIN dtes d_v ON (sh.codigo_generacion IS NULL OR sh.codigo_generacion = '') AND d_v.venta_id = sh.id AND d_v.company_id = sh.company_id
+        JOIN companies comp ON comp.id = sh.company_id
         LEFT JOIN customers c ON sh.customer_id = c.id
         WHERE sh.company_id = ?
           AND UPPER(COALESCE(sh.estado, '')) NOT IN ('ANULADO', 'ANULADA', 'INVALIDADO', 'RECHAZADO')
-          AND (d.status IS NULL OR UPPER(d.status) NOT IN ('INVALIDADO', 'REJECTED', 'RECHAZADO', 'ANULADO', 'ERROR'))
+          AND (COALESCE(d_c.status, d_v.status) IS NULL OR UPPER(COALESCE(d_c.status, d_v.status)) NOT IN ('INVALIDADO', 'REJECTED', 'RECHAZADO', 'ANULADO', 'ERROR'))
+          AND (comp.ambiente = '1' OR (COALESCE(d_c.ambiente, d_v.ambiente, '01') != '00' AND UPPER(COALESCE(sh.observaciones, '')) NOT LIKE '%PRUEBA%'))
           AND NOT EXISTS (
               SELECT 1 FROM dte_invalidations di 
-              WHERE di.codigo_generacion_dte = COALESCE(sh.codigo_generacion, d.codigo_generacion) 
+              WHERE di.codigo_generacion_dte = COALESCE(sh.codigo_generacion, d_c.codigo_generacion, d_v.codigo_generacion) 
                 AND di.estado IN ('ACCEPTED', 'SENT')
           )
     `;
