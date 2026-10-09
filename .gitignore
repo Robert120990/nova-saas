@@ -50,3 +50,8 @@ test_watermark.pdf
 spa.traineddata
 
 # Playwright MCP session artifacts.playwright-mcp/
+
+# Biometric Agent Local Data
+scripts/biometric-agent/config.json
+scripts/biometric-agent/sync-state.json
+scripts/biometric-agent/*.jsonl

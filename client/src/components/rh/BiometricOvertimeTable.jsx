@@ -1,5 +1,5 @@
 import { Search, Edit3 } from 'lucide-react';
-import { formatDate } from '../../utils/dateUtils';
+import { formatDate, formatDecimalHours } from '../../utils/dateUtils';
 
 const BiometricOvertimeTable = ({
     rows,
@@ -115,30 +115,49 @@ const BiometricOvertimeTable = ({
                                     </td>
                                     <td className="py-2.5 px-3 font-mono text-slate-700">{r.entrada || '---'}</td>
                                     <td className="py-2.5 px-3 font-mono text-slate-700">{r.salida || '---'}</td>
-                                    <td className="py-2.5 px-3 font-mono font-bold text-right text-slate-800">
-                                        {r.horas_trabajadas > 0 ? `${r.horas_trabajadas.toFixed(2)} h` : '—'}
+                                    <td className="py-2.5 px-3 font-mono text-right text-slate-800">
+                                        {r.horas_trabajadas > 0 ? (
+                                            <div>
+                                                <span className="font-bold text-slate-800 block">{formatDecimalHours(r.horas_trabajadas)}</span>
+                                                <span className="text-[10px] text-slate-400 font-normal block">
+                                                    ({r.horas_trabajadas.toFixed(2)} h)
+                                                </span>
+                                            </div>
+                                        ) : '—'}
                                     </td>
                                     <td className="py-2.5 px-3 font-mono text-right">
                                         {r.es_llegada_tarde ? (
                                             <span className="text-rose-600 font-bold bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">
-                                                {r.minutos_tardanza} m
+                                                {r.minutos_tardanza} min
                                             </span>
                                         ) : (
                                             <span className="text-slate-300">—</span>
                                         )}
                                     </td>
                                     <td className="py-2.5 px-3 font-mono text-right text-slate-500">
-                                        {r.horas_extra_calculadas > 0 ? `${r.horas_extra_calculadas.toFixed(2)} h` : '—'}
+                                        {r.horas_extra_calculadas > 0 ? (
+                                            <div>
+                                                <span className="font-bold text-indigo-900 block">{formatDecimalHours(r.horas_extra_calculadas)}</span>
+                                                <span className="text-[10px] text-slate-400 font-normal block">
+                                                    ({r.horas_extra_calculadas.toFixed(2)} h)
+                                                </span>
+                                            </div>
+                                        ) : '—'}
                                     </td>
                                     <td className="py-2.5 px-3 font-mono text-right bg-indigo-50/50">
                                         {r.horas_extra_aprobadas > 0 ? (
-                                            <div className="flex items-center justify-end gap-1">
-                                                <span className="text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                                                    +{r.horas_extra_aprobadas.toFixed(2)} h
+                                            <div className="flex flex-col items-end">
+                                                <div className="flex items-center justify-end gap-1">
+                                                    <span className="text-emerald-800 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200" title={`Horas decimales para planilla: ${r.horas_extra_aprobadas.toFixed(2)} h`}>
+                                                        +{formatDecimalHours(r.horas_extra_aprobadas)}
+                                                    </span>
+                                                    {r.es_editado && (
+                                                        <span className="w-2 h-2 rounded-full bg-indigo-500" title="Ajustada manualmente" />
+                                                    )}
+                                                </div>
+                                                <span className="text-[10px] text-emerald-700/80 font-normal mt-0.5">
+                                                    ({r.horas_extra_aprobadas.toFixed(2)} h)
                                                 </span>
-                                                {r.es_editado && (
-                                                    <span className="w-2 h-2 rounded-full bg-indigo-500" title="Ajustada manualmente" />
-                                                )}
                                             </div>
                                         ) : (
                                             <span className="text-slate-300">—</span>

@@ -3,7 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { toast } from 'sonner';
 import { Clock, X, Check, Lock } from 'lucide-react';
-import { formatDate } from '../../utils/dateUtils';
+import { formatDate, formatDecimalHours } from '../../utils/dateUtils';
 
 const BiometricEditOvertimeModal = ({ open, onClose, entry, onSuccess }) => {
     const queryClient = useQueryClient();
@@ -122,11 +122,21 @@ const BiometricEditOvertimeModal = ({ open, onClose, entry, onSuccess }) => {
                         </div>
                         <div>
                             <span className="text-[10px] font-bold text-slate-400 uppercase block">Horas Laboradas</span>
-                            <span className="text-xs font-bold text-slate-800 font-mono">{entry.horas_trabajadas || 0} h</span>
+                            <span className="text-xs font-bold text-slate-800 font-mono block">
+                                {formatDecimalHours(entry.horas_trabajadas)}
+                            </span>
+                            <span className="text-[10px] text-slate-400 block font-normal">
+                                ({entry.horas_trabajadas || 0} h)
+                            </span>
                         </div>
                         <div>
                             <span className="text-[10px] font-bold text-indigo-500 uppercase block">H.E. Reloj</span>
-                            <span className="text-xs font-bold text-indigo-700 font-mono">{entry.horas_extra_calculadas || 0} h</span>
+                            <span className="text-xs font-bold text-indigo-700 font-mono block">
+                                {formatDecimalHours(entry.horas_extra_calculadas)}
+                            </span>
+                            <span className="text-[10px] text-indigo-400 block font-normal">
+                                ({entry.horas_extra_calculadas || 0} h)
+                            </span>
                         </div>
                     </div>
 
@@ -166,8 +176,16 @@ const BiometricEditOvertimeModal = ({ open, onClose, entry, onSuccess }) => {
                             placeholder="Ej. 2.0"
                             className="w-full text-base font-bold text-indigo-900 border border-slate-300 rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 bg-white"
                         />
+                        {horasAprobadas !== '' && !isNaN(parseFloat(horasAprobadas)) && (
+                            <div className="p-2.5 bg-indigo-50 border border-indigo-100 rounded-xl flex items-center justify-between text-xs text-indigo-900">
+                                <span className="font-medium">Tiempo en reloj:</span>
+                                <span className="font-bold text-indigo-700 font-mono">
+                                    {formatDecimalHours(parseFloat(horasAprobadas))} ({Math.round(parseFloat(horasAprobadas) * 60)} minutos)
+                                </span>
+                            </div>
+                        )}
                         <p className="text-[11px] text-slate-400">
-                            Indique las horas extra finales que serán reconocidas para el corte y reporte de planillas.
+                            Indique las horas extra que serán reconocidas para el corte y reporte de planillas.
                         </p>
                     </div>
 

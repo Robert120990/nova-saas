@@ -6,7 +6,7 @@ import {
     FolderArchive, FileSpreadsheet, CheckCircle2, AlertCircle,
     Loader2, RefreshCw, X, FolderOpen, UserCheck
 } from 'lucide-react';
-import { formatDate } from '../../utils/dateUtils';
+import { formatDate, formatDecimalHours } from '../../utils/dateUtils';
 
 const BiometricImportZkModal = ({ open, onClose, onSuccess }) => {
     const queryClient = useQueryClient();
@@ -290,7 +290,9 @@ const BiometricImportZkModal = ({ open, onClose, onSuccess }) => {
                                                         </td>
                                                         <td className="px-2 py-2 text-center font-medium text-slate-700">{emp.daysCount}</td>
                                                         <td className="px-2 py-2 text-center font-bold text-slate-800">{emp.punchesCount}</td>
-                                                        <td className="px-2 py-2 text-center font-bold text-indigo-700">{emp.totalOtHours > 0 ? `${emp.totalOtHours} h` : '-'}</td>
+                                                        <td className="px-2 py-2 text-center font-bold text-indigo-700" title={emp.totalOtHours > 0 ? `${emp.totalOtHours} h` : ''}>
+                                                            {emp.totalOtHours > 0 ? formatDecimalHours(emp.totalOtHours) : '-'}
+                                                        </td>
                                                     </tr>
                                                 );
                                             })}

@@ -1,5 +1,5 @@
 import { Lock, Unlock, ArrowLeft } from 'lucide-react';
-import { formatDate } from '../../utils/dateUtils';
+import { formatDate, formatDecimalHours } from '../../utils/dateUtils';
 
 export const BiometricPendingBanner = ({ pendingRange, lastCorte, summary }) => {
     return (
@@ -35,11 +35,21 @@ export const BiometricPendingBanner = ({ pendingRange, lastCorte, summary }) => 
                     </div>
                     <div className="bg-white/10 backdrop-blur-sm px-4 py-2.5 rounded-xl border border-white/10 text-center">
                         <span className="text-[10px] font-bold text-slate-300 uppercase block">H.E. Reloj</span>
-                        <span className="text-lg font-black text-indigo-300">{summary.total_horas_extra_calculadas || 0} h</span>
+                        <span className="text-lg font-black text-indigo-300">
+                            {formatDecimalHours(summary.total_horas_extra_calculadas, { short: true })}
+                        </span>
+                        <span className="text-[10px] text-slate-400 block font-normal">
+                            ({(summary.total_horas_extra_calculadas || 0).toFixed(2)} h)
+                        </span>
                     </div>
                     <div className="bg-emerald-500/20 backdrop-blur-sm px-4 py-2.5 rounded-xl border border-emerald-500/30 text-center">
                         <span className="text-[10px] font-bold text-emerald-300 uppercase block">H.E. Aprobadas</span>
-                        <span className="text-lg font-black text-emerald-400">{summary.total_horas_extra_aprobadas || 0} h</span>
+                        <span className="text-lg font-black text-emerald-400">
+                            {formatDecimalHours(summary.total_horas_extra_aprobadas, { short: true })}
+                        </span>
+                        <span className="text-[10px] text-emerald-300/80 block font-normal">
+                            ({(summary.total_horas_extra_aprobadas || 0).toFixed(2)} h)
+                        </span>
                     </div>
                 </div>
             </div>
@@ -76,7 +86,12 @@ export const BiometricFrozenBanner = ({ selectedCorte, onBack, onUnfreeze, isUnf
                 <div className="flex items-center gap-3">
                     <div className="bg-white/10 px-4 py-2 rounded-xl text-center">
                         <span className="text-[10px] font-bold text-sky-300 uppercase block">H.E. Aprobadas</span>
-                        <span className="text-lg font-black text-white">{selectedCorte.total_horas_extra_aprobadas || 0} h</span>
+                        <span className="text-lg font-black text-white">
+                            {formatDecimalHours(selectedCorte.total_horas_extra_aprobadas, { short: true })}
+                        </span>
+                        <span className="text-[10px] text-sky-200/80 block font-normal">
+                            ({(selectedCorte.total_horas_extra_aprobadas || 0).toFixed(2)} h)
+                        </span>
                     </div>
                     <button
                         type="button"

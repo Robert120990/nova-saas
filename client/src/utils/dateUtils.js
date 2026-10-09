@@ -157,6 +157,27 @@ export const formatTime = (dateStr, fallback = '') => {
     return `${hours}:${minutes}:${seconds}`;
 };
 
+/**
+ * Convierte horas decimales (ej. 2.80) a formato legible en horas y minutos (ej. "2h 48 min" o "2h 48m").
+ * @param {number|string} decimalHours
+ * @param {Object} [options]
+ * @param {boolean} [options.short=false]
+ * @param {string} [options.fallback]
+ * @returns {string}
+ */
+export const formatDecimalHours = (decimalHours, options = {}) => {
+    const val = parseFloat(decimalHours);
+    const fallback = options.fallback || (options.short ? '0m' : '0 min');
+    if (!val || isNaN(val) || val <= 0) return fallback;
+    const totalMinutes = Math.round(val * 60);
+    const h = Math.floor(totalMinutes / 60);
+    const m = totalMinutes % 60;
+    const minSuffix = options.short ? 'm' : ' min';
+    if (h > 0 && m > 0) return `${h}h ${m}${minSuffix}`;
+    if (h > 0) return options.short ? `${h}h` : `${h}h 00 min`;
+    return `${m}${minSuffix}`;
+};
+
 export default {
     getTodayString,
     getFirstDayOfMonth,
@@ -164,5 +185,7 @@ export default {
     formatDateDMY,
     formatDate,
     formatDateTime,
-    formatTime
+    formatTime,
+    formatDecimalHours
 };
+
