@@ -31,7 +31,13 @@ async function buildVentasPreview(companyId, date, detailCredit, settings) {
                 h.fovial, h.cotrans, h.iva_percibido, h.iva_retenido, h.total_pagar
          FROM sales_headers h
          LEFT JOIN customers c ON c.id = h.customer_id
-         WHERE h.company_id = ? AND DATE(h.fecha_emision) = ? AND UPPER(h.estado) <> 'ANULADO'`,
+         LEFT JOIN dtes d_c ON (h.codigo_generacion IS NOT NULL AND h.codigo_generacion != '' AND d_c.codigo_generacion = h.codigo_generacion AND d_c.company_id = h.company_id)
+         LEFT JOIN dtes d_v ON (h.codigo_generacion IS NULL OR h.codigo_generacion = '') AND d_v.venta_id = h.id AND d_v.company_id = h.company_id
+         JOIN companies comp ON comp.id = h.company_id
+         WHERE h.company_id = ? AND DATE(h.fecha_emision) = ? 
+           AND UPPER(COALESCE(h.estado, '')) NOT IN ('ANULADO', 'ANULADA', 'INVALIDADO', 'RECHAZADO')
+           AND h.tipo_documento NOT IN ('04', '07')
+           AND (comp.ambiente = '1' OR (COALESCE(d_c.ambiente, d_v.ambiente, '01') != '00' AND UPPER(COALESCE(h.observaciones, '')) NOT LIKE '%PRUEBA%'))`,
         [companyId, date]
     );
 
@@ -39,9 +45,13 @@ async function buildVentasPreview(companyId, date, detailCredit, settings) {
         `SELECT sp.metodo_pago, SUM(sp.monto) AS monto
          FROM sales_payments sp
          JOIN sales_headers h ON h.id = sp.sale_id
+         LEFT JOIN dtes d_c ON (h.codigo_generacion IS NOT NULL AND h.codigo_generacion != '' AND d_c.codigo_generacion = h.codigo_generacion AND d_c.company_id = h.company_id)
+         LEFT JOIN dtes d_v ON (h.codigo_generacion IS NULL OR h.codigo_generacion = '') AND d_v.venta_id = h.id AND d_v.company_id = h.company_id
+         JOIN companies comp ON comp.id = h.company_id
          WHERE h.company_id = ? AND DATE(h.fecha_emision) = ?
-           AND UPPER(h.estado) <> 'ANULADO' AND h.tipo_documento <> '05'
+           AND UPPER(COALESCE(h.estado, '')) NOT IN ('ANULADO', 'ANULADA', 'INVALIDADO', 'RECHAZADO') AND h.tipo_documento NOT IN ('04', '05', '07')
            AND h.condicion_operacion = 1
+           AND (comp.ambiente = '1' OR (COALESCE(d_c.ambiente, d_v.ambiente, '01') != '00' AND UPPER(COALESCE(h.observaciones, '')) NOT LIKE '%PRUEBA%'))
          GROUP BY sp.metodo_pago`,
         [companyId, date]
     );
