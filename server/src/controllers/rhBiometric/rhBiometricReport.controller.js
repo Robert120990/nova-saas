@@ -10,9 +10,29 @@ const getAttendanceReport = async (req, res) => {
     }
 };
 
+const { executeExcelServiceInWorker } = require('../../services/reportWorkerPool.service');
+const { generateAndelsaOvertimeExcel } = require('../../services/rhBiometricAndelsaExcel.service');
+
 const exportAttendanceReport = async (req, res) => {
     try {
         const format = (req.query.format || '').toLowerCase();
+        const template = (req.query.template || '').toLowerCase();
+        const isAndelsaFormat = template === 'andelsa' || format === 'andelsa_excel' || (format === 'excel' && template !== 'tabular' && Number(req.company_id) === 9);
+
+        if (isAndelsaFormat) {
+            const buffer = await executeExcelServiceInWorker(
+                {
+                    serviceRelativePath: 'services/rhBiometricAndelsaExcel.service',
+                    methodName: 'generateAndelsaOvertimeExcel',
+                    args: [req.company_id, req.query]
+                },
+                () => generateAndelsaOvertimeExcel(req.company_id, req.query)
+            );
+            res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            res.setHeader('Content-Disposition', 'attachment; filename="reporte_horas_extras_andelsa.xlsx"');
+            return res.send(buffer);
+        }
+
         if (format === 'excel') {
             const buffer = await rhBiometricReportService.generateAttendanceExcel(req.company_id, req.query);
             res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');

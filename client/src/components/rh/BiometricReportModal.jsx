@@ -37,7 +37,7 @@ const BiometricReportModal = ({ open, onClose }) => {
     const rows = Array.isArray(reportData?.rows) ? reportData.rows : [];
     const summary = reportData?.summary || { total_registros: 0, total_horas_trabajadas: 0, total_llegadas_tarde: 0, total_horas_extra: 0 };
 
-    const handleExport = async (format) => {
+    const handleExport = async (format, template = '') => {
         try {
             setIsExporting(true);
             const res = await axios.get('/api/rh/biometric/report/export', {
@@ -45,25 +45,30 @@ const BiometricReportModal = ({ open, onClose }) => {
                     startDate: startDate || undefined,
                     endDate: endDate || undefined,
                     search: search.trim() || undefined,
-                    format
+                    format,
+                    template
                 },
                 responseType: 'blob'
             });
 
-            const mimeType = format === 'excel'
+            const isExcel = format.includes('excel') || format === 'excel';
+            const mimeType = isExcel
                 ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
                 : 'application/pdf';
-            const ext = format === 'excel' ? 'xlsx' : 'pdf';
+            const ext = isExcel ? 'xlsx' : 'pdf';
             const blob = new Blob([res.data], { type: mimeType });
             const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = url;
-            link.setAttribute('download', `Reporte_Asistencia_${startDate}_al_${endDate}.${ext}`);
+            const filename = template === 'andelsa' || format === 'andelsa_excel'
+                ? `Horas_Extras_Quincenal_${startDate}_al_${endDate}.${ext}`
+                : `Reporte_Asistencia_${startDate}_al_${endDate}.${ext}`;
+            link.setAttribute('download', filename);
             document.body.appendChild(link);
             link.click();
             link.remove();
             URL.revokeObjectURL(url);
-            toast.success(`Reporte ${format === 'excel' ? 'Excel' : 'PDF'} generado con éxito.`);
+            toast.success(`Reporte ${isExcel ? 'Excel' : 'PDF'} generado con éxito.`);
         } catch (error) {
             console.error('Error al exportar reporte:', error);
             toast.error('Error al exportar el reporte');
@@ -90,15 +95,26 @@ const BiometricReportModal = ({ open, onClose }) => {
                             </p>
                         </div>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                         <button
                             type="button"
-                            onClick={() => handleExport('excel')}
+                            onClick={() => handleExport('andelsa_excel', 'andelsa')}
                             disabled={isExporting}
-                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-xl transition-all shadow-sm disabled:opacity-50"
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-emerald-800 bg-emerald-100 hover:bg-emerald-200 border border-emerald-300 rounded-xl transition-all shadow-sm disabled:opacity-50"
+                            title="Exportar formato oficial de Horas Extras Quincenal con resumen"
                         >
                             {isExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileSpreadsheet className="w-4 h-4" />}
-                            <span>Exportar Excel</span>
+                            <span>Formato Quincenal (.xlsx)</span>
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => handleExport('excel', 'tabular')}
+                            disabled={isExporting}
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-100 border border-slate-200 rounded-xl transition-all shadow-sm disabled:opacity-50"
+                            title="Exportar tabla completa de registros"
+                        >
+                            {isExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileSpreadsheet className="w-4 h-4 text-emerald-600" />}
+                            <span>Listado Excel</span>
                         </button>
                         <button
                             type="button"

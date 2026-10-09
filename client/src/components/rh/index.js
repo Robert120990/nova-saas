@@ -15,5 +15,6 @@ export { default as BiometricFreezePeriodModal } from './BiometricFreezePeriodMo
 export { default as BiometricCortesHistoryTable } from './BiometricCortesHistoryTable';
 export { default as BiometricOvertimeTable } from './BiometricOvertimeTable';
 export { default as BiometricEmployeeModal } from './BiometricEmployeeModal';
+export { BiometricPendingBanner, BiometricFrozenBanner } from './BiometricOvertimeBanners';
 
 
