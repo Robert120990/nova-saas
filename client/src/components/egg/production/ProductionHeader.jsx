@@ -7,7 +7,7 @@ import { getJulianDayInfo } from '../../../utils/julianDate';
 
 
 export default function ProductionHeader({ model }) {
-    const { user, navigate, batches, activeTab, setActiveTab, setBatchForm, setCipBlockedError, setHaccpViolationAlert, setIsNewBatchModalOpen, setIsPasteurizeModalOpen, setEditingBatch } = model;
+    const { user, navigate, batches, activeTab, setActiveTab, setBatchForm, setCipBlockedError, setHaccpViolationAlert, setIsNewBatchModalOpen, setIsPasteurizeModalOpen, setEditingBatch, setSelectedScheduledProd } = model;
 
     return (<div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
                 <div className="flex flex-wrap gap-1 p-1 bg-slate-100 rounded-xl border border-slate-200 w-fit">
@@ -50,13 +50,17 @@ export default function ProductionHeader({ model }) {
                                 })) + 1
                                 : 1;
 
+                            if (setSelectedScheduledProd) setSelectedScheduledProd(null);
                             setBatchForm({
                                 product_type: 'huevo entero',
                                 presentation: 'cubeta 30LB',
                                 presentations: ['cubeta 30LB'],
                                 run_number: nextRun,
                                 scheduled_production_id: null,
+                                parent_batch_id: null,
+                                is_coproduct: false,
                                 enable_secondary_batch: false,
+                                secondary_batches: [],
                                 second_run_number: nextRun + 1,
                                 second_batch_code_display: `LOTE ${String(nextRun + 1).padStart(2, '0')}-${dayInfo.dayOfYearStr}-${dayInfo.year2Digit}`,
                                 second_product_type: 'clara',

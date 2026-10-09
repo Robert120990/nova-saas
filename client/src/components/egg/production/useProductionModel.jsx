@@ -1060,16 +1060,21 @@ export default function useProductionModel() {
 
     // Handle calendar navigation
     useEffect(() => {
-        if (location.state?.openNewBatchModal || location.state?.scheduledProduction) {
+        if (location.state?.openNewBatchModal || location.state?.scheduledProduction || location.state?.scheduledProductionId) {
             setIsNewBatchModalOpen(true);
             if (location.state?.scheduledProduction) {
                 handleSelectScheduledProduction(
                     location.state.scheduledProduction,
                     location.state.companionProductions
                 );
+            } else if (location.state?.scheduledProductionId && Array.isArray(scheduledProductions) && scheduledProductions.length > 0) {
+                const found = scheduledProductions.find(p => p.id === location.state.scheduledProductionId);
+                if (found) {
+                    handleSelectScheduledProduction(found);
+                }
             }
         }
-    }, [location.state]);
+    }, [location.state, scheduledProductions]);
 
     const handleCreateCoproductBatch = (parentBatch) => {
         if (!parentBatch) return;
@@ -1146,11 +1151,11 @@ export default function useProductionModel() {
 
         setSelectedScheduledProd(sched);
 
-        // Si la orden ya cuenta con un lote iniciado o en proceso, cargar como segundo lote / co-producto
-        if (sched.batch_id || sched.status === 'en_proceso') {
-            const existingBatch = batches.find(b => b.id === sched.batch_id || b.scheduled_production_id === sched.id);
-            if (existingBatch) {
-                return handleCreateCoproductBatch(existingBatch);
+        // Si la programación es explícitamente un co-producto del calendario, enlazar con el lote padre
+        if (sched.is_coproduct && sched.parent_production_id) {
+            const parentBatch = batches.find(b => b.scheduled_production_id === sched.parent_production_id);
+            if (parentBatch) {
+                return handleCreateCoproductBatch(parentBatch);
             }
         }
 

@@ -26,10 +26,21 @@ const createProductionBatch = async (req) => {
             if (schedule.status === 'cancelado') {
                 eggRules.fail('La producción programada se encuentra cancelada.', 409);
             }
-            if (schedule.batch_id || ['en_proceso', 'completado'].includes(schedule.status)) {
-                // Ya existe lote en esta programación: se permite crear segundo lote / co-producto en la misma corrida
+            if (Boolean(schedule.is_coproduct)) {
                 is_coproduct = true;
-                if (!parent_batch_id) parent_batch_id = schedule.batch_id;
+                if (!parent_batch_id && schedule.parent_production_id) {
+                    const [parentSchedRows] = await connection.query(
+                        'SELECT batch_id FROM egg_scheduled_productions WHERE id = ? AND company_id = ?',
+                        [schedule.parent_production_id, company_id]
+                    );
+                    if (parentSchedRows.length && parentSchedRows[0].batch_id) {
+                        parent_batch_id = parentSchedRows[0].batch_id;
+                    }
+                }
+            } else if (parent_batch_id || req.body.is_coproduct) {
+                is_coproduct = true;
+            } else {
+                is_coproduct = false;
             }
         }
 
@@ -96,7 +107,8 @@ const createProductionBatch = async (req) => {
                         message: `El lote ${rows[0].provider_lot} (${rows[0].egg_type}) ya está 100% agotado y no tiene saldo disponible.`
                     }, headers: responseHeaders });
                 }
-                if (currentStock < rm.quantity_lbs || Number(rows[0].total_boxes || 0) < rm.boxes_count) {
+                const reqBoxes = parseInt(rm.boxes_count ?? rm.total_boxes ?? rm.boxes ?? 0, 10) || 0;
+                if (currentStock < rm.quantity_lbs || (reqBoxes > 0 && Number(rows[0].total_boxes || 0) < reqBoxes)) {
                     await connection.rollback();
                     return ({ status: 400, body: {
                         message: `Stock insuficiente para lote ${rows[0].provider_lot} (disponible: ${currentStock.toFixed(2)} Lbs, solicitado: ${parseFloat(rm.quantity_lbs).toFixed(2)} Lbs).`
@@ -292,6 +304,12 @@ const createProductionBatch = async (req) => {
         // Insert batch_raw_materials and deduct stock (with tarimas breakdown support)
         for (const rm of raw_materials) {
             const qty = parseFloat(rm.quantity_lbs || 0);
+            let boxes = parseInt(rm.boxes_count ?? rm.total_boxes ?? rm.boxes ?? 0, 10);
+            if (isNaN(boxes) || boxes < 0) boxes = 0;
+            if (boxes === 0 && Array.isArray(rm.tarimas) && rm.tarimas.length > 0) {
+                boxes = rm.tarimas.reduce((sum, t) => sum + (parseInt(t.boxes_count || t.boxes || 0, 10) || 0), 0);
+            }
+
             let taggedTarimas = rm.tarimas;
             if (Array.isArray(rm.tarimas) && rm.tarimas.length > 0) {
                 taggedTarimas = rm.tarimas.map(t => ({
@@ -322,13 +340,15 @@ const createProductionBatch = async (req) => {
                     [parent_batch_id, rm.raw_material_id]
                 );
                 if (parentRm.length === 0) shouldDeductStock = true;
+            } else if (is_coproduct && !parent_batch_id) {
+                shouldDeductStock = true;
             }
 
             if (shouldDeductStock) {
                 const stockSql = boxes > 0
                     ? 'UPDATE egg_raw_materials SET stock_lbs = stock_lbs - ?, total_boxes = total_boxes - ? WHERE id = ? AND company_id = ?'
                     : 'UPDATE egg_raw_materials SET stock_lbs = stock_lbs - ? WHERE id = ? AND company_id = ?';
-                await connection.query(stockSql, boxes > 0 ? [qty, boxes, rm.raw_material_id, req.company_id] : [qty, rm.raw_material_id, req.company_id]);
+                await connection.query(stockSql, boxes > 0 ? [qty, boxes, rm.raw_material_id, company_id] : [qty, rm.raw_material_id, company_id]);
             }
         }
 

@@ -82,7 +82,7 @@ export default function ProductionIsNewBatchModalOpenModal({ model, open = model
                                     <option value="">-- Iniciar Producción Libre / Sin Programación Previa --</option>
                                     {(Array.isArray(scheduledProductions) ? scheduledProductions : []).map(p => (
                                         <option key={p.id} value={p.id}>
-                                            {p.status === 'en_proceso' || p.batch_id ? '🔄 [En Proceso / Co-Producto] ' : '📅 '}
+                                            {p.is_coproduct ? '🔗 [Co-Producto] ' : (p.batch_id ? '🔄 [Lote Vinculado] ' : '📅 ')}
                                             Lote: {p.lot_code} | {p.product_profile} ({parseFloat(p.target_quantity_lbs || 0).toLocaleString()} Lbs) - {p.production_date?.split('T')[0]} ({p.status || p.priority || 'media'})
                                         </option>
                                     ))}

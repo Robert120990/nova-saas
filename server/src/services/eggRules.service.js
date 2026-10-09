@@ -13,8 +13,12 @@ function normalizeMaterials(materials) {
     for (const material of materials) {
         const id = number(material.raw_material_id, 'Materia prima', 1);
         if (!Number.isInteger(id)) fail('Materia prima inválida.');
-        const quantity = number(material.quantity_lbs, 'Libras', 0.001);
-        const boxes = number(material.boxes_count ?? material.total_boxes ?? 0, 'Cajas');
+        const rawBoxes = (material.boxes_count !== undefined && material.boxes_count !== '' && material.boxes_count !== null)
+            ? material.boxes_count
+            : ((material.total_boxes !== undefined && material.total_boxes !== '' && material.total_boxes !== null)
+                ? material.total_boxes
+                : (material.boxes ?? 0));
+        const boxes = number(rawBoxes, 'Cajas');
         if (!Number.isInteger(boxes)) fail('Las cajas deben ser enteras.');
         const previous = grouped.get(id) || { raw_material_id: id, quantity_lbs: 0, boxes_count: 0, tarimas: [] };
         previous.quantity_lbs += quantity;

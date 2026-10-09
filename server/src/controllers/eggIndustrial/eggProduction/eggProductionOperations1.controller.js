@@ -199,8 +199,14 @@ const getProductionBatches = async (req, res) => {
                     } else {
                         m.tarimas = m.tarimas_json || [];
                     }
-                    m.is_initial = (m.batch_id === rootBatchId && batch.parent_batch_id) || Boolean(m.is_initial);
-                    m.is_added = !m.is_initial;
+                    if (batch.parent_batch_id) {
+                        m.is_initial = (m.batch_id === batch.parent_batch_id);
+                        m.is_added = !m.is_initial;
+                    } else {
+                        const hasAddedOnlyTarimas = Array.isArray(m.tarimas) && m.tarimas.length > 0 && m.tarimas.every(t => t.is_added || t.origin_type === 'agregada');
+                        m.is_initial = !hasAddedOnlyTarimas;
+                        m.is_added = hasAddedOnlyTarimas;
+                    }
                 }
                 batch.raw_materials = materials;
                 const totalMatWeight = materials.reduce((sum, m) => sum + parseFloat(m.quantity_lbs || 0), 0);
