@@ -493,6 +493,36 @@ exports.getCloseoutDetailPDF = async (req, res) => {
                 ];
                 break;
             }
+            case 'cheques': {
+                sql = `
+                    SELECT g.fecha_turno, g.numero_turno,
+                           COALESCE(NULLIF(ch.numero_cheque, ''), '—') as numero_cheque,
+                           COALESCE(NULLIF(ch.banco, ''), '—') as banco,
+                           CASE 
+                               WHEN ch.tipo_operacion = 'recuperacion_credito' THEN 'Recup. Crédito'
+                               ELSE 'Venta Combustible'
+                           END as tipo_operacion,
+                           COALESCE(NULLIF(cd.nombre, ''), d.descripcion, d.codigo, '—') as despachador,
+                           ch.monto
+                    FROM gas_station_closeout_cheques ch
+                    JOIN gas_station_closeouts g ON ch.closeout_id = g.id
+                    LEFT JOIN gas_station_despachadores d ON ch.despachador_id = d.id
+                    LEFT JOIN gas_station_closeout_despachadores cd ON cd.closeout_id = ch.closeout_id AND cd.despachador_id = ch.despachador_id
+                    WHERE g.company_id = ? AND g.fecha_turno BETWEEN ? AND ? ${branchFilter}
+                    ORDER BY g.fecha_turno, g.numero_turno, ch.id
+                `;
+                params = [companyId, start_date, end_date, ...branchParams];
+                columns = [
+                    { label: 'Turno', w: 35, accessor: 'numero_turno', align: 'center' },
+                    { label: 'Fecha', w: 60, accessor: 'fecha_turno', format: 'date', align: 'center' },
+                    { label: 'No. Cheque', w: 75, accessor: 'numero_cheque' },
+                    { label: 'Banco', w: 100, accessor: 'banco' },
+                    { label: 'Operación', w: 90, accessor: 'tipo_operacion' },
+                    { label: 'Despachador', w: 102, accessor: 'despachador' },
+                    { label: 'Monto', w: 90, accessor: 'monto', format: 'money', align: 'right' }
+                ];
+                break;
+            }
             case 'vales': {
                 sql = `
                     SELECT g.fecha_turno, 

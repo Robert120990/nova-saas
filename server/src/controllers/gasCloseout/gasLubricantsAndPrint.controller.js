@@ -250,6 +250,19 @@ exports.getCloseoutPrintData = async (req, res) => {
              WHERE t.closeout_id = ? ORDER BY t.id ASC`, [id]
         );
 
+        const [cheques] = await pool.query(
+            `SELECT ch.*,
+                    ch.numero_cheque,
+                    ch.banco,
+                    ch.tipo_operacion,
+                    d.codigo as despachador_codigo,
+                    COALESCE(NULLIF(cd.nombre, ''), d.descripcion, d.codigo, '—') as despachador_descripcion
+             FROM gas_station_closeout_cheques ch
+             LEFT JOIN gas_station_despachadores d ON ch.despachador_id = d.id
+             LEFT JOIN gas_station_closeout_despachadores cd ON cd.closeout_id = ch.closeout_id AND cd.despachador_id = ch.despachador_id
+             WHERE ch.closeout_id = ? ORDER BY ch.id ASC`, [id]
+        );
+
         const [creditos] = await pool.query(
             `SELECT c.*,
                     c.documento as comprobante,
@@ -321,6 +334,7 @@ exports.getCloseoutPrintData = async (req, res) => {
             adelantos,
             lubricantes,
             tarjetas,
+            cheques,
             creditos,
             vales,
             anticiposDesp,
@@ -963,6 +977,7 @@ exports.getAccumulatedDayPrintData = async (req, res) => {
         const rawLubricantes = await aggregateRows('gas_station_closeout_lubricant_readings');
         const lubricantes = rawLubricantes.filter(l => (parseFloat(l.lectura_final) || 0) > 0 || (parseFloat(l.ventas) || 0) > 0);
         const tarjetas = await aggregateRows('gas_station_closeout_tarjetas');
+        const cheques = await aggregateRows('gas_station_closeout_cheques');
         const creditos = await aggregateRows('gas_station_closeout_creditos');
         const vales = await aggregateRows('gas_station_closeout_vales');
         let anticiposDesp = [];
@@ -1003,6 +1018,7 @@ exports.getAccumulatedDayPrintData = async (req, res) => {
             adelantos,
             lubricantes,
             tarjetas,
+            cheques,
             creditos,
             vales,
             anticiposDesp,
@@ -1141,6 +1157,18 @@ exports.getCloseoutAnnexesPDF = async (req, res) => {
              WHERE t.closeout_id = ? ORDER BY t.id ASC`, [id]
         );
 
+        const [cheques] = await pool.query(
+            `SELECT COALESCE(NULLIF(ch.numero_cheque, ''), '—') as numero_cheque,
+                    COALESCE(NULLIF(ch.banco, ''), '—') as banco,
+                    ch.tipo_operacion,
+                    COALESCE(NULLIF(cd.nombre, ''), d.descripcion, d.codigo, '—') as despachador,
+                    ch.monto
+             FROM gas_station_closeout_cheques ch
+             LEFT JOIN gas_station_despachadores d ON ch.despachador_id = d.id
+             LEFT JOIN gas_station_closeout_despachadores cd ON cd.closeout_id = ch.closeout_id AND cd.despachador_id = ch.despachador_id
+             WHERE ch.closeout_id = ? ORDER BY ch.id ASC`, [id]
+        );
+
         const [vales] = await pool.query(
             `SELECT COALESCE(NULLIF(r.documento, ''), '—') as documento,
                     COALESCE(NULLIF(r.cliente_nombre, ''), '—') as cliente,
@@ -1188,6 +1216,7 @@ exports.getCloseoutAnnexesPDF = async (req, res) => {
             descuentos,
             adelantos,
             tarjetas,
+            cheques,
             vales,
             anticipos_desp: anticiposDesp,
             lubricantes

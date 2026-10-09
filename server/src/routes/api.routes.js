@@ -149,6 +149,7 @@ const {
     closeoutDescuentosSchema,
     closeoutAdelantosSchema,
     closeoutTarjetasSchema,
+    closeoutChequesSchema,
     closeoutCreditosSchema,
     closeoutValesSchema,
     closeoutAnticiposDespSchema,
@@ -943,6 +944,11 @@ router.delete('/gas-station/pos-types/:id', gasPosTypeController.deletePosType);
 router.get('/gas-station/closeouts/:id/tarjetas', gasCloseoutController.getTarjetas);
 router.post('/gas-station/closeouts/:id/tarjetas', validate(closeoutTarjetasSchema), gasCloseoutController.saveTarjetas);
 router.delete('/gas-station/closeouts/:id/tarjetas/:tarjetaId', gasCloseoutController.deleteTarjeta);
+
+// Gas Station - Closeout Cheques
+router.get('/gas-station/closeouts/:id/cheques', gasCloseoutController.getCheques);
+router.post('/gas-station/closeouts/:id/cheques', validate(closeoutChequesSchema), gasCloseoutController.saveCheques);
+router.delete('/gas-station/closeouts/:id/cheques/:chequeId', gasCloseoutController.deleteCheque);
 
 // Gas Station - Closeout Creditos
 router.get('/gas-station/closeouts/:id/creditos', gasCloseoutController.getCreditos);

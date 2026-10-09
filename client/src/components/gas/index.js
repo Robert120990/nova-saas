@@ -9,6 +9,7 @@ export { default as GasAdelantosModal } from './GasAdelantosModal';
 export { default as GasReadingsModal } from './GasReadingsModal';
 export { default as GasDescuentosModal } from './GasDescuentosModal';
 export { default as GasTarjetasModal } from './GasTarjetasModal';
+export { default as GasChequesModal } from './GasChequesModal';
 export { default as GasCreditosModal } from './GasCreditosModal';
 export { default as GasValesModal } from './GasValesModal';
 export { default as GasDiferenciasModal } from './GasDiferenciasModal';

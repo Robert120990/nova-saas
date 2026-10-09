@@ -426,6 +426,7 @@ exports.getCloseouts = async (req, res) => {
                 (COALESCE(eg.total_gastos, 0) + COALESCE(re.total_remesas, 0) +
                  COALESCE(cu.total_cupones, 0) + COALESCE(dc.total_descuentos, 0) +
                  COALESCE(ad.total_adelantos, 0) + COALESCE(tj.total_tarjetas, 0) +
+                 COALESCE(ch.total_cheques, 0) +
                  COALESCE(cr.total_creditos, 0) + COALESCE(vl.total_vales, 0) +
                  COALESCE(ad2.total_anticipos_desp, 0) + COALESCE(tp.total_trupput_desp, 0)) -
                 (COALESCE(rd.total_monto, 0) + COALESCE(lb.total_lubricantes, 0)),
@@ -440,6 +441,7 @@ exports.getCloseouts = async (req, res) => {
             LEFT JOIN (SELECT closeout_id, COALESCE(SUM(total), 0) as total_descuentos FROM gas_station_closeout_descuentos GROUP BY closeout_id) dc ON dc.closeout_id = c.id
             LEFT JOIN (SELECT closeout_id, COALESCE(SUM(monto), 0) as total_adelantos FROM gas_station_closeout_adelantos GROUP BY closeout_id) ad ON ad.closeout_id = c.id
             LEFT JOIN (SELECT closeout_id, COALESCE(SUM(monto), 0) as total_tarjetas FROM gas_station_closeout_tarjetas GROUP BY closeout_id) tj ON tj.closeout_id = c.id
+            LEFT JOIN (SELECT closeout_id, COALESCE(SUM(monto), 0) as total_cheques FROM gas_station_closeout_cheques GROUP BY closeout_id) ch ON ch.closeout_id = c.id
             LEFT JOIN (SELECT closeout_id, COALESCE(SUM(monto), 0) as total_creditos FROM gas_station_closeout_creditos GROUP BY closeout_id) cr ON cr.closeout_id = c.id
             LEFT JOIN (SELECT closeout_id, COALESCE(SUM(monto), 0) as total_vales FROM gas_station_closeout_vales GROUP BY closeout_id) vl ON vl.closeout_id = c.id
             LEFT JOIN (SELECT closeout_id, COALESCE(SUM(monto), 0) as total_anticipos_desp FROM gas_station_closeout_anticipos_despachados GROUP BY closeout_id) ad2 ON ad2.closeout_id = c.id
@@ -559,6 +561,14 @@ exports.getCloseout = async (req, res) => {
              WHERE t.closeout_id = ? ORDER BY t.id ASC`, [id]
         );
 
+        const [cheques] = await pool.query(
+            `SELECT ch.*, d.codigo as despachador_codigo, COALESCE(NULLIF(cd.nombre, ''), d.descripcion, '') as despachador_descripcion
+             FROM gas_station_closeout_cheques ch
+             LEFT JOIN gas_station_despachadores d ON ch.despachador_id = d.id
+             LEFT JOIN gas_station_closeout_despachadores cd ON cd.closeout_id = ch.closeout_id AND cd.despachador_id = ch.despachador_id
+             WHERE ch.closeout_id = ? ORDER BY ch.id ASC`, [id]
+        );
+
         const [creditos] = await pool.query(
             `SELECT c.*, d.codigo as despachador_codigo, COALESCE(NULLIF(cd.nombre, ''), d.descripcion, '') as despachador_descripcion
              FROM gas_station_closeout_creditos c
@@ -625,6 +635,7 @@ exports.getCloseout = async (req, res) => {
             descuentos,
             adelantos,
             tarjetas,
+            cheques,
             creditos,
             vales,
             anticipos_despachadores: anticiposDesp,
@@ -1257,6 +1268,10 @@ exports.closeCloseout = async (req, res) => {
                 `SELECT COALESCE(SUM(monto), 0) as tarjetasTotal FROM gas_station_closeout_tarjetas WHERE closeout_id = ?`,
                 [id]
             );
+            const [[{ chequesTotal }]] = await pool.query(
+                `SELECT COALESCE(SUM(monto), 0) as chequesTotal FROM gas_station_closeout_cheques WHERE closeout_id = ?`,
+                [id]
+            );
             const [[{ creditosTotal }]] = await pool.query(
                 `SELECT COALESCE(SUM(monto), 0) as creditosTotal FROM gas_station_closeout_creditos WHERE closeout_id = ?`,
                 [id]
@@ -1274,7 +1289,7 @@ exports.closeCloseout = async (req, res) => {
                 [id]
             );
 
-            const diferencia = (parseFloat(gastosTotal) + parseFloat(remesasTotal) + parseFloat(cuponesTotal) + parseFloat(descuentosTotal) + parseFloat(adelantosTotal) + parseFloat(tarjetasTotal) + parseFloat(creditosTotal) + parseFloat(valesTotal) + parseFloat(anticiposDespTotal) + parseFloat(trupputDespTotal)) - (parseFloat(totalMonto) + parseFloat(lubricantTotal));
+            const diferencia = (parseFloat(gastosTotal) + parseFloat(remesasTotal) + parseFloat(cuponesTotal) + parseFloat(descuentosTotal) + parseFloat(adelantosTotal) + parseFloat(tarjetasTotal) + parseFloat(chequesTotal) + parseFloat(creditosTotal) + parseFloat(valesTotal) + parseFloat(anticiposDespTotal) + parseFloat(trupputDespTotal)) - (parseFloat(totalMonto) + parseFloat(lubricantTotal));
 
             if (Math.abs(diferencia) > variacionPermitida) {
                 return res.status(400).json({

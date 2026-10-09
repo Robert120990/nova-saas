@@ -11,6 +11,7 @@ const tipoNombres = {
     descuentos: 'Descuentos',
     adelantos: 'Adelantos',
     tarjetas: 'Tarjetas',
+    cheques: 'Cheques',
     vales: 'Vales',
     anticipos_desp: 'Anticipos Despachados',
     lubricantes: 'Lubricantes'

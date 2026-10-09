@@ -70,6 +70,13 @@ export const ANNEX_CONFIG = {
         icon: '💳',
         dataKey: 'tarjetas'
     },
+    cheques: {
+        id: 'cheques',
+        label: 'Cheques',
+        title: 'ANEXO DE CHEQUES',
+        icon: '🏛️',
+        dataKey: 'cheques'
+    },
     vales: {
         id: 'vales',
         label: 'Vales',
@@ -237,6 +244,23 @@ export function buildCloseoutAnnexPrintHtml(data, annexKey) {
             break;
         }
 
+        case 'cheques': {
+            totalMonto = items.reduce((s, ch) => s + (parseFloat(ch.monto) || 0), 0);
+            rowsHtml = items.length === 0
+                ? `<tr><td colspan="6" class="empty">No se registraron cheques en este turno</td></tr>`
+                : items.map((ch, i) => `
+                    <tr>
+                        <td class="center mono">${i + 1}</td>
+                        <td class="mono font-bold">${escHtml(ch.numero_cheque || ch.num_cheque || '—')}</td>
+                        <td>${escHtml(ch.banco || '—')}</td>
+                        <td>${escHtml(ch.despachador_descripcion || ch.despachador || '—')}</td>
+                        <td>${escHtml(ch.tipo_operacion === 'recuperacion_credito' ? 'Recup. Crédito' : 'Venta Combustible')}</td>
+                        <td class="right mono font-bold">${fmtMoney(ch.monto)}</td>
+                    </tr>
+                `).join('');
+            break;
+        }
+
         case 'vales': {
             totalMonto = items.reduce((s, v) => s + (parseFloat(v.monto) || 0), 0);
             rowsHtml = items.length === 0
@@ -329,6 +353,10 @@ export function buildCloseoutAnnexPrintHtml(data, annexKey) {
         case 'tarjetas':
             theadCols = `<th style="width:5%">#</th><th style="width:20%">No. Tarjeta</th><th style="width:18%">Autorización</th><th style="width:18%">Tipo POS</th><th style="width:18%">Despachador</th><th style="width:11%">Operación</th><th style="width:10%" class="right">Monto</th>`;
             footerColspan = 6;
+            break;
+        case 'cheques':
+            theadCols = `<th style="width:6%">#</th><th style="width:20%">No. Cheque</th><th style="width:26%">Banco</th><th style="width:22%">Despachador</th><th style="width:14%">Operación</th><th style="width:12%" class="right">Monto</th>`;
+            footerColspan = 5;
             break;
         case 'vales':
             theadCols = `<th style="width:4%">#</th><th style="width:14%">Documento</th><th style="width:22%">Cliente</th><th style="width:16%">Producto</th><th style="width:16%">Despachador</th><th style="width:8%">Placa</th><th style="width:6%" class="right">Cant.</th><th style="width:7%" class="right">Precio</th><th style="width:7%" class="right">Total</th>`;

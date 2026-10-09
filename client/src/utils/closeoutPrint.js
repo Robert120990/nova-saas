@@ -10,6 +10,7 @@ export function buildCloseoutPrintHtml(data) {
     const adelantos = data.adelantos || [];
     const lubricantes = data.lubricantes || [];
     const tarjetas = data.tarjetas || [];
+    const cheques = data.cheques || [];
     const creditos = data.creditos || [];
     const vales = data.vales || [];
     const anticiposDesp = data.anticiposDesp || [];
@@ -56,6 +57,7 @@ export function buildCloseoutPrintHtml(data) {
             descuentos.filter(matchShiftAndDesp).reduce((s, dd) => s + (parseFloat(dd.total) || 0), 0) +
             adelantos.filter(matchShiftAndDesp).reduce((s, a) => s + (parseFloat(a.monto) || 0), 0) +
             tarjetas.filter(matchShiftAndDesp).reduce((s, t) => s + (parseFloat(t.monto) || 0), 0) +
+            cheques.filter(matchShiftAndDesp).reduce((s, ch) => s + (parseFloat(ch.monto) || 0), 0) +
             creditos.filter(matchShiftAndDesp).reduce((s, c) => s + (parseFloat(c.monto) || 0), 0) +
             vales.filter(matchShiftAndDesp).reduce((s, v) => s + (parseFloat(v.monto) || 0), 0) +
             anticiposDesp.filter(matchShiftAndDesp).reduce((s, a) => s + (parseFloat(a.monto) || 0), 0) +
@@ -158,6 +160,7 @@ export function buildCloseoutPrintHtml(data) {
     const descuentosTotal = descuentos.reduce((s, d) => s + (parseFloat(d.total) || 0), 0);
     const adelantosTotal = adelantos.reduce((s, a) => s + (parseFloat(a.monto) || 0), 0);
     const tarjetasTotal = tarjetas.reduce((s, t) => s + (parseFloat(t.monto) || 0), 0);
+    const chequesTotal = cheques.reduce((s, ch) => s + (parseFloat(ch.monto) || 0), 0);
     const creditosTotal = creditos.reduce((s, c) => s + (parseFloat(c.monto) || 0), 0);
     const valesTotal = vales.reduce((s, v) => s + (parseFloat(v.monto) || 0), 0);
     const anticiposDespTotal = anticiposDesp.reduce((s, a) => s + (parseFloat(a.monto) || 0), 0);
@@ -173,7 +176,7 @@ export function buildCloseoutPrintHtml(data) {
     }, 0) * 100) / 100;
     const totalLectura = readings.reduce((s, r) => s + ((parseFloat(r.lectura_actual) || 0) - (parseFloat(r.lectura_anterior) || 0) - (parseFloat(r.calibracion) || 0)), 0);
 
-    const egresosTotal = gastosTotal + remesasTotal + cuponesTotal + descuentosTotal + adelantosTotal + tarjetasTotal + creditosTotal + valesTotal + anticiposDespTotal + trupputDespTotal;
+    const egresosTotal = gastosTotal + remesasTotal + cuponesTotal + descuentosTotal + adelantosTotal + tarjetasTotal + chequesTotal + creditosTotal + valesTotal + anticiposDespTotal + trupputDespTotal;
     const ingresosTotal = totalMonto + lubricantTotal;
     const diferenciaTotal = egresosTotal - ingresosTotal;
 
@@ -430,6 +433,7 @@ export function buildCloseoutPrintHtml(data) {
                     ${lubricantTotal > 0 ? `<tr><td>Lubricantes</td><td class="right mono">${fmtMoney(lubricantTotal)}</td><td class="right mono">—</td></tr>` : ''}
                     ${remesasTotal > 0 ? `<tr><td>Remesas Bancarias</td><td class="right mono">—</td><td class="right mono">${fmtMoney(remesasTotal)}</td></tr>` : ''}
                     ${tarjetasTotal > 0 ? `<tr><td>Tarjetas (POS)</td><td class="right mono">—</td><td class="right mono">${fmtMoney(tarjetasTotal)}</td></tr>` : ''}
+                    ${chequesTotal > 0 ? `<tr><td>Cheques</td><td class="right mono">—</td><td class="right mono">${fmtMoney(chequesTotal)}</td></tr>` : ''}
                     ${creditosTotal > 0 ? `<tr><td>Ventas a Crédito</td><td class="right mono">—</td><td class="right mono">${fmtMoney(creditosTotal)}</td></tr>` : ''}
                     ${valesTotal > 0 ? `<tr><td>Vales / Órdenes</td><td class="right mono">—</td><td class="right mono">${fmtMoney(valesTotal)}</td></tr>` : ''}
                     ${anticiposDespTotal > 0 ? `<tr><td>Anticipos Despachadores</td><td class="right mono">—</td><td class="right mono">${fmtMoney(anticiposDespTotal)}</td></tr>` : ''}

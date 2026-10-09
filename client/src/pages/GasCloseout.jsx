@@ -4,7 +4,7 @@ import axios from 'axios';
 import {
     Calculator, Lock, Unlock, Loader2, User, Calendar, Hash, X,
     Fuel, Receipt, CreditCard, Gift, Percent, Truck, Droplets,
-    FlaskConical, Banknote, ArrowLeft, UserCheck, BarChart3, LockOpen, ShieldCheck, AlertTriangle
+    FlaskConical, Banknote, ArrowLeft, UserCheck, BarChart3, LockOpen, ShieldCheck, AlertTriangle, Landmark
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useSearchParams, useNavigate } from 'react-router-dom';
@@ -28,6 +28,7 @@ import {
     GasReadingsModal,
     GasDescuentosModal,
     GasTarjetasModal,
+    GasChequesModal,
     GasCreditosModal,
     GasValesModal,
     GasDiferenciasModal,
@@ -137,6 +138,8 @@ const GasCloseout = () => {
     const [lubricantLoading, setLubricantLoading] = useState(false);
     const [showTarjetasModal, setShowTarjetasModal] = useState(false);
     const [tarjetas, setTarjetas] = useState([]);
+    const [showChequesModal, setShowChequesModal] = useState(false);
+    const [cheques, setCheques] = useState([]);
     const [showCreditosModal, setShowCreditosModal] = useState(false);
     const [creditos, setCreditos] = useState([]);
     const [showValesModal, setShowValesModal] = useState(false);
@@ -179,6 +182,7 @@ const GasCloseout = () => {
         descuentos: '[]',
         adelantos: '[]',
         tarjetas: '[]',
+        cheques: '[]',
         creditos: '[]',
         vales: '[]',
         anticipos: '[]',
@@ -244,6 +248,7 @@ const GasCloseout = () => {
                             case 'descuentos': return showDescuentosModal;
                             case 'adelantos': return showAdelantosModal;
                             case 'tarjetas': return showTarjetasModal;
+                            case 'cheques': return showChequesModal;
                             case 'creditos': return showCreditosModal;
                             case 'vales': return showValesModal;
                             case 'anticipos': return showAnticiposModal;
@@ -259,7 +264,7 @@ const GasCloseout = () => {
         };
         window.addEventListener('keydown', onModalEscape);
         return () => window.removeEventListener('keydown', onModalEscape);
-    }, [showGastosModal, showRemesasModal, showCuponesModal, showDescuentosModal, showAdelantosModal, showTarjetasModal, showCreditosModal, showValesModal, showAnticiposModal, showTrupputModal, gastos, remesas, cupones, descuentos, adelantos, tarjetas, creditos, vales, anticiposDesp, trupputDesp, estado, closeoutId]);
+    }, [showGastosModal, showRemesasModal, showCuponesModal, showDescuentosModal, showAdelantosModal, showTarjetasModal, showChequesModal, showCreditosModal, showValesModal, showAnticiposModal, showTrupputModal, gastos, remesas, cupones, descuentos, adelantos, tarjetas, cheques, creditos, vales, anticiposDesp, trupputDesp, estado, closeoutId]);
 
     const handleEstadoBadgeClick = async () => {
         if (!isSuperAdmin || estado !== 'reabierto') return;
@@ -348,6 +353,7 @@ const GasCloseout = () => {
         descuentos: showDescuentosModal,
         adelantos: showAdelantosModal,
         tarjetas: showTarjetasModal,
+        cheques: showChequesModal,
         creditos: showCreditosModal,
         vales: showValesModal,
         anticipos: showAnticiposModal,
@@ -362,6 +368,7 @@ const GasCloseout = () => {
         descuentos,
         adelantos,
         tarjetas,
+        cheques,
         creditos,
         vales,
         anticipos: anticiposDesp,
@@ -444,6 +451,12 @@ const GasCloseout = () => {
             if (modalSnapshotsRef.current) modalSnapshotsRef.current.tarjetas = JSON.stringify(cleanTarjetas);
         }
 
+        const cleanCheques = editData.cheques || [];
+        if (isSectionUnmodified('cheques', currentSectionsRef.current.cheques)) {
+            setCheques(cleanCheques);
+            if (modalSnapshotsRef.current) modalSnapshotsRef.current.cheques = JSON.stringify(cleanCheques);
+        }
+
         const cleanCreditos = editData.creditos || [];
         if (isSectionUnmodified('creditos', currentSectionsRef.current.creditos)) {
             setCreditos(cleanCreditos);
@@ -469,7 +482,7 @@ const GasCloseout = () => {
         }
 
         if (isInitialLoad) {
-            const firstWithDesp = [editData.gastos, editData.remesas, editData.cupones, editData.descuentos, editData.adelantos, editData.tarjetas, editData.creditos, editData.vales, editData.anticipos_despachadores, editData.trupput_despachos]
+            const firstWithDesp = [editData.gastos, editData.remesas, editData.cupones, editData.descuentos, editData.adelantos, editData.tarjetas, editData.cheques, editData.creditos, editData.vales, editData.anticipos_despachadores, editData.trupput_despachos]
                 .flat()
                 .find(r => r && r.despachador_id);
             lastDespachadorRef.current = firstWithDesp?.despachador_id || editData.despachadores?.[0]?.despachador_id || null;
@@ -497,6 +510,7 @@ const GasCloseout = () => {
             setDescuentos([]);
             setAdelantos([]);
             setTarjetas([]);
+            setCheques([]);
             setCreditos([]);
             setVales([]);
             setAnticiposDesp([]);
@@ -508,6 +522,7 @@ const GasCloseout = () => {
                 descuentos: '[]',
                 adelantos: '[]',
                 tarjetas: '[]',
+                cheques: '[]',
                 creditos: '[]',
                 vales: '[]',
                 anticipos: '[]',
@@ -643,13 +658,14 @@ const GasCloseout = () => {
             const descuentosSum = descuentos.filter(dd => parseInt(dd.despachador_id) === did).reduce((s, dd) => s + (parseFloat(dd.total) || 0), 0);
             const adelantosSum = adelantos.filter(a => parseInt(a.despachador_id) === did).reduce((s, a) => s + (parseFloat(a.monto) || 0), 0);
             const tarjetasSum = tarjetas.filter(t => parseInt(t.despachador_id) === did).reduce((s, t) => s + (parseFloat(t.monto) || 0), 0);
+            const chequesSum = cheques.filter(ch => parseInt(ch.despachador_id) === did).reduce((s, ch) => s + (parseFloat(ch.monto) || 0), 0);
             const creditosSum = creditos.filter(c => parseInt(c.despachador_id) === did).reduce((s, c) => s + (parseFloat(c.monto) || 0), 0);
             const valesSum = vales.filter(v => parseInt(v.despachador_id) === did).reduce((s, v) => s + (parseFloat(v.monto) || 0), 0);
             const anticiposDespSum = anticiposDesp.filter(a => parseInt(a.despachador_id) === did).reduce((s, a) => s + (parseFloat(a.monto) || 0), 0);
-            map[did] = gastosSum + cuponesSum + descuentosSum + adelantosSum + tarjetasSum + creditosSum + valesSum + anticiposDespSum;
+            map[did] = gastosSum + cuponesSum + descuentosSum + adelantosSum + tarjetasSum + chequesSum + creditosSum + valesSum + anticiposDespSum;
         }
         return map;
-    }, [closeoutDespachadores, gastos, cupones, descuentos, adelantos, tarjetas, creditos, vales, anticiposDesp]);
+    }, [closeoutDespachadores, gastos, cupones, descuentos, adelantos, tarjetas, cheques, creditos, vales, anticiposDesp]);
 
     const despachadorEntregado = useMemo(() => {
         const map = {};
@@ -1321,6 +1337,23 @@ const GasCloseout = () => {
         return Object.values(map).sort((a, b) => a.nombre.localeCompare(b.nombre));
     }, [tarjetas, posTypesList]);
 
+    const chequesTotal = useMemo(() =>
+        cheques.reduce((s, c) => s + (parseFloat(c.monto) || 0), 0),
+    [cheques]);
+
+    const chequesResumenPorTipo = useMemo(() => {
+        const venta = cheques
+            .filter(c => c.tipo_operacion !== 'recuperacion_credito')
+            .reduce((s, c) => s + (parseFloat(c.monto) || 0), 0);
+        const recup = cheques
+            .filter(c => c.tipo_operacion === 'recuperacion_credito')
+            .reduce((s, c) => s + (parseFloat(c.monto) || 0), 0);
+        const list = [];
+        if (venta > 0) list.push({ tipo: 'venta_combustible', label: 'Vta. Combustible', total: venta });
+        if (recup > 0) list.push({ tipo: 'recuperacion_credito', label: 'Recup. Crédito', total: recup });
+        return list;
+    }, [cheques]);
+
     const creditosTotal = useMemo(() =>
         creditos.reduce((s, c) => s + (parseFloat(c.monto) || 0), 0),
     [creditos]);
@@ -1383,6 +1416,33 @@ const GasCloseout = () => {
         onError: (error) => {
             if (handleCloseoutNotFound(error)) return;
             toast.error(error.response?.data?.message || 'Error al guardar tarjetas');
+        }
+    });
+
+    const saveChequesMutation = useMutation({
+        mutationFn: (cheques) => axios.post(`/api/gas-station/closeouts/${closeoutId}/cheques`, { cheques }),
+        onSuccess: (res) => {
+            setCheques(res.data);
+            if (modalSnapshotsRef.current) modalSnapshotsRef.current.cheques = JSON.stringify(res.data);
+            if (editId) {
+                queryClient.setQueryData(['gas-closeout-edit', editId], (old) => {
+                    if (!old) return old;
+                    return { ...old, cheques: res.data };
+                });
+            }
+            queryClient.invalidateQueries({ queryKey: ['gas-closeout-edit'] });
+            queryClient.invalidateQueries({ queryKey: ['gas-closeouts'] });
+            setShowChequesModal(false);
+            if (isAutoSavingRef.current) {
+                toast.success('Cheques guardados automáticamente al salir');
+                isAutoSavingRef.current = false;
+            } else {
+                toast.success('Cheques guardados');
+            }
+        },
+        onError: (error) => {
+            if (handleCloseoutNotFound(error)) return;
+            toast.error(error.response?.data?.message || 'Error al guardar cheques');
         }
     });
 
@@ -1588,6 +1648,21 @@ const GasCloseout = () => {
                 return null;
             }
         },
+        cheques: {
+            name: 'Cheques',
+            getData: () => cheques,
+            setData: setCheques,
+            setShow: setShowChequesModal,
+            mutate: (data) => saveChequesMutation.mutate(data),
+            mutateAsync: (data) => saveChequesMutation.mutateAsync(data),
+            isPending: () => saveChequesMutation.isPending,
+            isEmptyRow: (r) => (!r.numero_cheque || r.numero_cheque.trim() === '') && (!r.banco || r.banco.trim() === '') && (parseFloat(r.monto) || 0) === 0,
+            validateRow: (r) => {
+                if (!r.despachador_id) return 'Falta asignar despachador';
+                if ((parseFloat(r.monto) || 0) <= 0) return 'El monto debe ser mayor a 0';
+                return null;
+            }
+        },
         creditos: {
             name: 'Créditos',
             getData: () => creditos,
@@ -1664,7 +1739,7 @@ const GasCloseout = () => {
 
     const isAnySectionDirty = () => {
         if (!modalSnapshotsRef.current) return false;
-        return ['gastos', 'remesas', 'cupones', 'descuentos', 'adelantos', 'tarjetas', 'creditos', 'vales', 'anticipos', 'trupput'].some(k => isSectionDirty(k));
+        return ['gastos', 'remesas', 'cupones', 'descuentos', 'adelantos', 'tarjetas', 'cheques', 'creditos', 'vales', 'anticipos', 'trupput'].some(k => isSectionDirty(k));
     };
 
     useDirtyTracker('cierre', readings.some(r => r.valor) || isAnySectionDirty());
@@ -2205,6 +2280,31 @@ const GasCloseout = () => {
 
     const handleRemoveTarjeta = (id) => {
         setTarjetas(prev => prev.filter(t => t.id !== id));
+    };
+
+    const handleOpenCheques = () => {
+        setShowChequesModal(true);
+    };
+
+    const handleAddChequeRow = () => {
+        const defaultDesp = getDefaultDespachador();
+        setCheques(prev => [...prev, {
+            id: Date.now(),
+            numero_cheque: '',
+            banco: '',
+            despachador_id: defaultDesp,
+            tipo_operacion: 'venta_combustible',
+            monto: 0
+        }]);
+    };
+
+    const handleChequeChange = (id, field, value) => {
+        trackDespachadorChange(field, value);
+        setCheques(prev => prev.map(c => c.id === id ? { ...c, [field]: value } : c));
+    };
+
+    const handleRemoveCheque = (id) => {
+        setCheques(prev => prev.filter(c => c.id !== id));
     };
 
     const handleOpenCreditos = () => {
@@ -2938,6 +3038,7 @@ const GasCloseout = () => {
         { label: 'Lubricantes', icon: Droplets, key: 'lubricantes', enabled: true },
         { label: 'Tanques', icon: FlaskConical, key: 'tanques', enabled: true },
         { label: 'Tarjetas', icon: CreditCard, key: 'tarjetas', enabled: true },
+        { label: 'Cheques', icon: Landmark, key: 'cheques', enabled: true },
         { label: 'Adelantos', icon: Banknote, key: 'adelantos', enabled: true },
         { label: 'Lecturas/Vtas', icon: BarChart3, key: 'diferencias', enabled: true },
     ];
@@ -3020,7 +3121,7 @@ const GasCloseout = () => {
     }
 
     if (closeoutId && readings.length > 0) {
-        const diferenciaTotal = gastosTotal + remesasTotal + cuponesTotal + descuentosTotal + adelantosTotal + tarjetasTotal + creditosTotal + valesTotal + anticiposDespTotal + trupputDespTotal - totals.totalMonto - lubricantTotal;
+        const diferenciaTotal = gastosTotal + remesasTotal + cuponesTotal + descuentosTotal + adelantosTotal + tarjetasTotal + chequesTotal + creditosTotal + valesTotal + anticiposDespTotal + trupputDespTotal - totals.totalMonto - lubricantTotal;
         return (
             <>
                 <div className="space-y-3">
@@ -3262,11 +3363,15 @@ const GasCloseout = () => {
                                                 <td className="px-3 py-1.5 text-slate-700 font-semibold">Tarjetas</td>
                                                 <td className="px-3 py-1.5 text-right font-mono font-semibold text-red-600"><Money value={tarjetasTotal} /></td>
                                             </tr>
+                                            <tr className="hover:bg-slate-50 transition-colors bg-slate-50/50">
+                                                <td className="px-3 py-1.5 text-slate-700 font-semibold">Cheques</td>
+                                                <td className="px-3 py-1.5 text-right font-mono font-semibold text-red-600"><Money value={chequesTotal} /></td>
+                                            </tr>
                                         </tbody>
                                         <tfoot className="bg-slate-50 border-t border-slate-100 text-xs font-bold">
                                             <tr>
                                                 <td className="px-3 py-1.5 text-right text-slate-600 uppercase tracking-wider">Total Egresos</td>
-                                                <td className="px-3 py-1.5 text-right font-mono text-red-600"><Money value={gastosTotal + remesasTotal + cuponesTotal + descuentosTotal + adelantosTotal + tarjetasTotal + creditosTotal + valesTotal + anticiposDespTotal + trupputDespTotal} /></td>
+                                                <td className="px-3 py-1.5 text-right font-mono text-red-600"><Money value={gastosTotal + remesasTotal + cuponesTotal + descuentosTotal + adelantosTotal + tarjetasTotal + chequesTotal + creditosTotal + valesTotal + anticiposDespTotal + trupputDespTotal} /></td>
                                             </tr>
                                         </tfoot>
                                     </table>
@@ -3516,6 +3621,7 @@ const GasCloseout = () => {
                                         const isAdelantos = btn.key === 'adelantos';
                                         const isLubricantes = btn.key === 'lubricantes';
                                         const isTarjetas = btn.key === 'tarjetas';
+                                        const isCheques = btn.key === 'cheques';
                                         const isCreditos = btn.key === 'creditos';
                                         const isVales = btn.key === 'vales';
                                         const isAnticipos = btn.key === 'anticipos';
@@ -3523,7 +3629,7 @@ const GasCloseout = () => {
                                         const isTanques = btn.key === 'tanques';
                                         const isDiferencias = btn.key === 'diferencias';
                                         const isBlockedReabierto = estado === 'reabierto' && (isLectura || (isTanques && !superAdminTankEdit));
-                                        const canClick = !isBlockedReabierto && (isLectura || isGastos || isRemesas || isCupones || isDescuentos || isAdelantos || isLubricantes || isTarjetas || isCreditos || isVales || isAnticipos || isTrupput || isTanques || isDiferencias || (btn.enabled && estado === 'abierto'));
+                                        const canClick = !isBlockedReabierto && (isLectura || isGastos || isRemesas || isCupones || isDescuentos || isAdelantos || isLubricantes || isTarjetas || isCheques || isCreditos || isVales || isAnticipos || isTrupput || isTanques || isDiferencias || (btn.enabled && estado === 'abierto'));
                                         const isBtnDirty = isSectionDirty(btn.key) && estado !== 'cerrado';
                                         return (
                                             <button
@@ -3538,6 +3644,7 @@ const GasCloseout = () => {
                                                     if (isAdelantos) handleOpenAdelantos();
                                                     if (isLubricantes) handleOpenLubricantes();
                                                     if (isTarjetas) handleOpenTarjetas();
+                                                    if (isCheques) handleOpenCheques();
                                                     if (isCreditos) handleOpenCreditos();
                                                     if (isVales) handleOpenVales();
                                                     if (btn.key === 'anticipos') handleOpenAnticipos();
@@ -3696,6 +3803,22 @@ const GasCloseout = () => {
                     handleSaveSection={handleSaveSection}
                     isSaving={saveTarjetasMutation.isPending}
                     tarjetasResumenPorTipo={tarjetasResumenPorTipo}
+                />
+
+                <GasChequesModal
+                    isOpen={showChequesModal}
+                    onClose={() => handleSafeCloseModal('cheques')}
+                    isDirty={isSectionDirty('cheques')}
+                    estado={estado}
+                    cheques={cheques}
+                    despachadoresOptions={despachadoresOptions}
+                    handleChequeChange={handleChequeChange}
+                    handleRemoveCheque={handleRemoveCheque}
+                    handleAddChequeRow={handleAddChequeRow}
+                    chequesTotal={chequesTotal}
+                    handleSaveSection={handleSaveSection}
+                    isSaving={saveChequesMutation.isPending}
+                    chequesResumenPorTipo={chequesResumenPorTipo}
                 />
 
                 <GasLubricantesModal

@@ -2302,8 +2302,21 @@ const generateCloseoutConsolidatedAnnexesPDF = async (data) => {
             ]
         },
         {
+            key: 'cheques',
+            title: '8. CHEQUES',
+            items: data.cheques || [],
+            sumField: 'monto',
+            columns: [
+                { label: 'NO. CHEQUE', w: 85, getValue: it => it.numero_cheque || it.num_cheque || '—' },
+                { label: 'BANCO', w: 120, getValue: it => it.banco || '—' },
+                { label: 'DESPACHADOR', w: 130, getValue: it => it.despachador || it.despachador_descripcion || '—' },
+                { label: 'TIPO DE OPERACIÓN', w: 127, getValue: it => it.tipo_operacion === 'recuperacion_credito' ? 'Recup. Crédito' : 'Venta Combustible' },
+                { label: 'MONTO', w: 90, getValue: it => it.monto || 0, format: 'money', align: 'right' }
+            ]
+        },
+        {
             key: 'vales',
-            title: '8. VALES Y ÓRDENES DE DESPACHO',
+            title: '9. VALES Y ÓRDENES DE DESPACHO',
             items: data.vales || [],
             sumField: 'monto',
             columns: [
@@ -2319,7 +2332,7 @@ const generateCloseoutConsolidatedAnnexesPDF = async (data) => {
         },
         {
             key: 'anticipos_desp',
-            title: '9. ANTICIPOS DESPACHADOS',
+            title: '10. ANTICIPOS DESPACHADOS',
             items: data.anticipos_desp || data.anticiposDesp || [],
             sumField: 'monto',
             columns: [
@@ -2335,7 +2348,7 @@ const generateCloseoutConsolidatedAnnexesPDF = async (data) => {
         },
         {
             key: 'lubricantes',
-            title: '10. VENTAS Y LECTURAS DE LUBRICANTES',
+            title: '11. VENTAS Y LECTURAS DE LUBRICANTES',
             items: (data.lubricantes || []).filter(it => {
                 const stockFinal = parseFloat(it.stock_final ?? it.lectura_final ?? 0) || 0;
                 const ventas = parseFloat(it.cantidad ?? it.ventas ?? 0) || 0;

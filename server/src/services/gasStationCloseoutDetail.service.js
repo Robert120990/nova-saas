@@ -32,6 +32,7 @@ async function handleCloseoutDetailTodos(req, res) {
         [descuentos],
         [adelantos],
         [tarjetas],
+        [cheques],
         [vales],
         [anticiposDesp],
         [lubricantes]
@@ -135,6 +136,21 @@ async function handleCloseoutDetailTodos(req, res) {
             LEFT JOIN gas_station_pos_types pt ON t.pos_type_id = pt.id
             WHERE g.company_id = ? AND g.fecha_turno BETWEEN ? AND ? ${branchFilter}
             ORDER BY tipo_pos, g.fecha_turno, g.numero_turno, t.id
+        `, queryParams),
+
+        pool.query(`
+            SELECT g.fecha_turno, g.numero_turno,
+                   COALESCE(NULLIF(ch.numero_cheque, ''), '—') as numero_cheque,
+                   COALESCE(NULLIF(ch.banco, ''), '—') as banco,
+                   ch.tipo_operacion,
+                   COALESCE(NULLIF(cd.nombre, ''), d.descripcion, d.codigo, '—') as despachador,
+                   ch.monto
+            FROM gas_station_closeout_cheques ch
+            JOIN gas_station_closeouts g ON ch.closeout_id = g.id
+            LEFT JOIN gas_station_despachadores d ON ch.despachador_id = d.id
+            LEFT JOIN gas_station_closeout_despachadores cd ON cd.closeout_id = ch.closeout_id AND cd.despachador_id = ch.despachador_id
+            WHERE g.company_id = ? AND g.fecha_turno BETWEEN ? AND ? ${branchFilter}
+            ORDER BY g.fecha_turno, g.numero_turno, ch.id
         `, queryParams),
 
         pool.query(`
@@ -264,6 +280,15 @@ async function handleCloseoutDetailTodos(req, res) {
             { label: 'Despachador', key: 'despachador', w: 20 },
             { label: 'Monto', key: 'monto', w: 12 }
         ]);
+        addSheet('Cheques', cheques, [
+            { label: 'Turno', key: 'numero_turno', w: 10 },
+            { label: 'Fecha', key: 'fecha_turno', w: 12 },
+            { label: 'No. Cheque', key: 'numero_cheque', w: 15 },
+            { label: 'Banco', key: 'banco', w: 20 },
+            { label: 'Tipo Operación', key: 'tipo_operacion', w: 20 },
+            { label: 'Despachador', key: 'despachador', w: 20 },
+            { label: 'Monto', key: 'monto', w: 12 }
+        ]);
         addSheet('Vales', vales, [
             { label: 'Turno', key: 'numero_turno', w: 10 },
             { label: 'Fecha', key: 'fecha_turno', w: 12 },
@@ -322,6 +347,7 @@ async function handleCloseoutDetailTodos(req, res) {
         descuentos,
         adelantos,
         tarjetas,
+        cheques,
         vales,
         anticipos_desp: anticiposDesp,
         lubricantes

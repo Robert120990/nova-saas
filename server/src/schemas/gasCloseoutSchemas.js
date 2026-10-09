@@ -148,6 +148,17 @@ const closeoutTarjetasSchema = z.object({
     }).passthrough()).optional().default([])
 }).passthrough();
 
+const closeoutChequesSchema = z.object({
+    cheques: z.array(z.object({
+        id: z.union([z.number(), z.string()]).optional().nullable(),
+        numero_cheque: optionalString,
+        banco: optionalString,
+        despachador_id: emptyToNullId,
+        tipo_operacion: optionalString,
+        monto: z.coerce.number().optional().default(0)
+    }).passthrough()).optional().default([])
+}).passthrough();
+
 const closeoutCreditosSchema = z.object({
     creditos: z.array(z.object({
         id: z.union([z.number(), z.string()]).optional().nullable(),
@@ -250,6 +261,7 @@ module.exports = {
     closeoutDescuentosSchema,
     closeoutAdelantosSchema,
     closeoutTarjetasSchema,
+    closeoutChequesSchema,
     closeoutCreditosSchema,
     closeoutValesSchema,
     closeoutAnticiposDespSchema,

@@ -12,6 +12,7 @@ const ANNEX_OPTIONS = [
     { key: 'descuentos', label: 'Descuentos' },
     { key: 'adelantos', label: 'Adelantos' },
     { key: 'tarjetas', label: 'Tarjetas' },
+    { key: 'cheques', label: 'Cheques' },
     { key: 'vales', label: 'Vales' },
     { key: 'anticipos', label: 'Anticipos Despachados' },
     { key: 'lubricantes', label: 'Lubricantes' },

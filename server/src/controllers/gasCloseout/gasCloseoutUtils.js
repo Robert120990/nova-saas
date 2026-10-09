@@ -14,6 +14,7 @@ const CLOSEOUT_SECTIONS = {
     descuentos: { label: 'Descuentos', table: 'gas_station_closeout_descuentos' },
     adelantos: { label: 'Adelantos', table: 'gas_station_closeout_adelantos' },
     tarjetas: { label: 'Tarjetas', table: 'gas_station_closeout_tarjetas' },
+    cheques: { label: 'Cheques', table: 'gas_station_closeout_cheques' },
     creditos: { label: 'Créditos', table: 'gas_station_closeout_creditos' },
     vales: { label: 'Vales', table: 'gas_station_closeout_vales' },
     anticipos: { label: 'Anticipos despachados', table: 'gas_station_closeout_anticipos_despachados' },
@@ -30,6 +31,7 @@ const SECTION_BUSINESS_FIELDS = {
     descuentos: ['descripcion', 'monto', 'despachador_id'],
     adelantos: ['monto', 'comentario', 'despachador_id'],
     tarjetas: ['num_tarjeta', 'num_autorizacion', 'pos_type_id', 'despachador_id', 'tipo_operacion', 'monto'],
+    cheques: ['numero_cheque', 'banco', 'despachador_id', 'tipo_operacion', 'monto'],
     creditos: ['documento', 'tipo_documento', 'cliente_id', 'cliente_nombre', 'producto_codigo', 'producto_descripcion', 'despachador_id', 'cantidad', 'precio', 'monto', 'placa', 'kilometraje'],
     vales: ['cliente_id', 'cliente_nombre', 'documento', 'monto', 'despachador_id'],
     anticipos: ['cliente_id', 'despachador_id', 'monto', 'comentario'],
@@ -58,6 +60,16 @@ function formatItemLabel(section, row) {
                 row.pos_type_nombre ? `(${row.pos_type_nombre})` : (row.pos_type_id ? `(POS #${row.pos_type_id})` : null),
                 row.monto != null ? `$${parseFloat(row.monto).toFixed(2)}` : null,
                 row.num_autorizacion ? `[Aut: #${row.num_autorizacion}]` : null,
+                row.despachador_descripcion ? `· Desp: ${row.despachador_descripcion}` : (row.despachador_id ? `· Desp #${row.despachador_id}` : null)
+            ].filter(Boolean).join(' ');
+        }
+        if (section === 'cheques') {
+            const opLabel = row.tipo_operacion === 'recuperacion_credito' ? 'Recup. Crédito' : 'Vta. Combustible';
+            return [
+                row.numero_cheque ? `Cheque #${row.numero_cheque}` : (row.id ? `Cheque #${row.id}` : 'Cheque'),
+                row.banco ? `(${row.banco})` : null,
+                row.monto != null ? `$${parseFloat(row.monto).toFixed(2)}` : null,
+                `[${opLabel}]`,
                 row.despachador_descripcion ? `· Desp: ${row.despachador_descripcion}` : (row.despachador_id ? `· Desp #${row.despachador_id}` : null)
             ].filter(Boolean).join(' ');
         }
@@ -147,6 +159,9 @@ function getNaturalKey(section, row) {
     }
     if (section === 'tarjetas') {
         return row.num_tarjeta ? `${String(row.num_tarjeta).trim()}_${String(row.num_autorizacion || '').trim()}` : null;
+    }
+    if (section === 'cheques') {
+        return row.numero_cheque ? `${String(row.numero_cheque).trim()}_${String(row.banco || '').trim()}` : null;
     }
     if (section === 'creditos') {
         return row.documento ? `${String(row.documento).trim()}_${row.cliente_id || ''}` : null;

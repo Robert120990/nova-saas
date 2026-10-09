@@ -78,6 +78,10 @@ async function fetchCloseoutData(closeoutId, companyId) {
         `SELECT * FROM gas_station_closeout_tarjetas WHERE closeout_id = ? ORDER BY id ASC`, [closeoutId]
     );
 
+    const [cheques] = await pool.query(
+        `SELECT * FROM gas_station_closeout_cheques WHERE closeout_id = ? ORDER BY id ASC`, [closeoutId]
+    );
+
     const [creditos] = await pool.query(
         `SELECT * FROM gas_station_closeout_creditos WHERE closeout_id = ? ORDER BY id ASC`, [closeoutId]
     );
@@ -100,7 +104,7 @@ async function fetchCloseoutData(closeoutId, companyId) {
          WHERE cd.closeout_id = ?`, [closeoutId]
     );
 
-    return { closeout, readings, tankReadings, despachadores, gastos, remesas, cupones, descuentos, adelantos, lubricantes, tarjetas, creditos, vales, anticiposDesp, trupput, nozzleAssignments };
+    return { closeout, readings, tankReadings, despachadores, gastos, remesas, cupones, descuentos, adelantos, lubricantes, tarjetas, cheques, creditos, vales, anticiposDesp, trupput, nozzleAssignments };
 }
 
 function getDespachadorCodigo(despachadorId, despachadores) {

@@ -7,6 +7,7 @@ module.exports = {
     ...require('./gasCloseoutCore.controller'),
     ...require('./gasExpensesAdelantos.controller'),
     ...require('./gasPayments.controller'),
+    ...require('./gasCheques.controller'),
     ...require('./gasStationOperations.controller'),
     ...require('./gasLubricantsAndPrint.controller')
 };
