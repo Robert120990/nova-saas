@@ -106,6 +106,7 @@ export default function EggProduction() {
                 remanenteModal={remanenteModal}
                 setRemanenteModal={setRemanenteModal}
                 onSubmit={handleRemanenteSubmit}
+                productConfig={model.productConfig}
             />
 
             {/* MODAL REGISTRO Y GESTIÓN DE MERMAS POR LOTE */}

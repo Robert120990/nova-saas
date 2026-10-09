@@ -1,12 +1,63 @@
+import { useMemo } from 'react';
 import { Sparkles, XCircle } from 'lucide-react';
+
+const CANONICAL_REMANENTE_PRODUCTS = [
+    { value: 'huevo entero', label: 'Huevo Entero' },
+    { value: 'huevo rapido', label: 'Huevo Rápido' },
+    { value: 'clara', label: 'Clara de Huevo' },
+    { value: 'clara ppg', label: 'Clara PPG' },
+    { value: 'yema', label: 'Yema Líquida' },
+    { value: 'huevo en leche', label: 'Huevo en Leche / Formulado' },
+    { value: 'yema azucarada', label: 'Yema Azucarada' },
+    { value: 'yema salada', label: 'Yema Salada' },
+    { value: 'fórmula especial', label: 'Fórmula Especial / HE Plus' },
+    { value: 'reproceso', label: 'Lote a Reproceso' }
+];
 
 const EggRemanenteModal = ({
     isOpen,
     onClose,
     remanenteModal,
     setRemanenteModal,
-    onSubmit
+    onSubmit,
+    productConfig = []
 }) => {
+    // Generar opciones dinámicas y deduplicadas combinando catálogo base, configuración de empresa y lote activo
+    const productOptions = useMemo(() => {
+        const seen = new Set();
+        const list = [];
+
+        const addOpt = (val, lbl) => {
+            if (!val || typeof val !== 'string') return;
+            const key = val.trim().toLowerCase();
+            if (!key || seen.has(key)) return;
+            seen.add(key);
+            list.push({ value: key, label: lbl || val });
+        };
+
+        // 1. Productos estándar canónicos
+        CANONICAL_REMANENTE_PRODUCTS.forEach(p => addOpt(p.value, p.label));
+
+        // 2. Productos configurados en la empresa (egg_product_config)
+        if (Array.isArray(productConfig)) {
+            productConfig.forEach(cfg => {
+                if (cfg && cfg.product_type) {
+                    addOpt(cfg.product_type, cfg.label || cfg.product_name || cfg.product_type);
+                }
+            });
+        }
+
+        // 3. Valor actual del remanente o del lote padre si fuera un tipo personalizado
+        if (remanenteModal?.product_type) {
+            addOpt(remanenteModal.product_type, remanenteModal.product_type);
+        }
+        if (remanenteModal?.batch?.product_type) {
+            addOpt(remanenteModal.batch.product_type, remanenteModal.batch.product_type);
+        }
+
+        return list;
+    }, [productConfig, remanenteModal?.product_type, remanenteModal?.batch?.product_type]);
+
     if (!isOpen || !remanenteModal) return null;
 
     return (
@@ -27,7 +78,7 @@ const EggRemanenteModal = ({
                 </div>
 
                 <p className="text-xs text-slate-500 font-medium">
-                    Sobrante de producto (ej: huevo en leche, huevo entero pasteurizado o sin pasteurizar) guardado para próximo empaque, otra producción o reproceso.
+                    Sobrante de producto (ej: huevo rápido, huevo en leche, huevo entero pasteurizado o sin pasteurizar) guardado para próximo empaque, otra producción o reproceso.
                 </p>
 
                 <form onSubmit={onSubmit} className="space-y-4">
@@ -36,17 +87,15 @@ const EggRemanenteModal = ({
                             Tipo de Producto Sobrante *
                         </label>
                         <select
-                            value={remanenteModal.product_type}
+                            value={remanenteModal.product_type?.toLowerCase() || 'huevo entero'}
                             onChange={(e) => setRemanenteModal(prev => ({ ...prev, product_type: e.target.value }))}
                             className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500"
                         >
-                            <option value="huevo entero">Huevo Entero</option>
-                            <option value="clara">Clara de Huevo</option>
-                            <option value="yema">Yema Líquida</option>
-                            <option value="huevo en leche">Huevo en Leche / Formulado</option>
-                            <option value="yema azucarada">Yema Azucarada</option>
-                            <option value="yema salada">Yema Salada</option>
-                            <option value="reproceso">Lote a Reproceso</option>
+                            {productOptions.map(opt => (
+                                <option key={opt.value} value={opt.value}>
+                                    {opt.label}
+                                </option>
+                            ))}
                         </select>
                     </div>
 
