@@ -999,7 +999,7 @@ export default function ProductionIsNewBatchModalOpenModal({ model, open = model
                                         <label className="text-[10px] text-slate-600 font-bold uppercase block mb-1">Azúcar (Lbs)</label>
                                         <input
                                             type="number"
-                                            step="0.1"
+                                            step="any"
                                             placeholder="0.0"
                                             value={batchForm.ingredients.sugar_lbs}
                                             onChange={(e) => setBatchForm({ ...batchForm, ingredients: { ...batchForm.ingredients, sugar_lbs: e.target.value } })}
@@ -1010,7 +1010,7 @@ export default function ProductionIsNewBatchModalOpenModal({ model, open = model
                                         <label className="text-[10px] text-slate-600 font-bold uppercase block mb-1">Sal (Lbs)</label>
                                         <input
                                             type="number"
-                                            step="0.1"
+                                            step="any"
                                             placeholder="0.0"
                                             value={batchForm.ingredients.salt_lbs}
                                             onChange={(e) => setBatchForm({ ...batchForm, ingredients: { ...batchForm.ingredients, salt_lbs: e.target.value } })}
@@ -1021,7 +1021,7 @@ export default function ProductionIsNewBatchModalOpenModal({ model, open = model
                                         <label className="text-[10px] text-slate-600 font-bold uppercase block mb-1">Ác. Cítrico (Lbs)</label>
                                         <input
                                             type="number"
-                                            step="0.01"
+                                            step="any"
                                             placeholder="0.0"
                                             value={batchForm.ingredients.citric_acid_lbs}
                                             onChange={(e) => setBatchForm({ ...batchForm, ingredients: { ...batchForm.ingredients, citric_acid_lbs: e.target.value } })}
@@ -1032,7 +1032,7 @@ export default function ProductionIsNewBatchModalOpenModal({ model, open = model
                                         <label className="text-[10px] text-slate-600 font-bold uppercase block mb-1">Leche Polvo (Lbs)</label>
                                         <input
                                             type="number"
-                                            step="0.1"
+                                            step="any"
                                             placeholder="0.0"
                                             value={batchForm.ingredients.milk_powder_lbs}
                                             onChange={(e) => setBatchForm({ ...batchForm, ingredients: { ...batchForm.ingredients, milk_powder_lbs: e.target.value } })}
@@ -1043,7 +1043,7 @@ export default function ProductionIsNewBatchModalOpenModal({ model, open = model
                                         <label className="text-[10px] text-slate-600 font-bold uppercase block mb-1">PPG (Gramos)</label>
                                         <input
                                             type="number"
-                                            step="0.1"
+                                            step="any"
                                             placeholder="0.0"
                                             value={batchForm.ingredients.ppg_g}
                                             onChange={(e) => setBatchForm({ ...batchForm, ingredients: { ...batchForm.ingredients, ppg_g: e.target.value } })}

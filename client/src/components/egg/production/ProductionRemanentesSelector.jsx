@@ -21,7 +21,9 @@ export default function ProductionRemanentesSelector({
     // Manejo de cambio de porcentaje mediante preset buttons
     const handleSetPct = (remId, pctVal, totalLbs) => {
         const clampedPct = Math.min(100, Math.max(1, pctVal));
-        const calculatedLbs = Math.round(((totalLbs * clampedPct) / 100) * 100) / 100;
+        const calculatedLbs = clampedPct === 100
+            ? totalLbs
+            : Math.round(((totalLbs * clampedPct) / 100) * 100) / 100;
         if (onUpdateUsage) {
             onUpdateUsage(remId, {
                 used_lbs: calculatedLbs,
@@ -33,10 +35,20 @@ export default function ProductionRemanentesSelector({
 
     // Manejo de cambio manual de libras
     const handleUsedLbsChange = (remId, valStr, totalLbs) => {
+        if (valStr === '') {
+            if (onUpdateUsage) {
+                onUpdateUsage(remId, {
+                    used_lbs: '',
+                    percentage: '',
+                    pct: ''
+                });
+            }
+            return;
+        }
         let val = parseFloat(valStr);
         if (isNaN(val) || val < 0) val = 0;
         if (val > totalLbs) val = totalLbs;
-        const calculatedPct = totalLbs > 0 ? Math.round(((val / totalLbs) * 100) * 10) / 10 : 0;
+        const calculatedPct = totalLbs > 0 ? Math.round(((val / totalLbs) * 100) * 100) / 100 : 0;
         if (onUpdateUsage) {
             onUpdateUsage(remId, {
                 used_lbs: val,
@@ -48,10 +60,20 @@ export default function ProductionRemanentesSelector({
 
     // Manejo de cambio manual de porcentaje
     const handlePctInputChange = (remId, valStr, totalLbs) => {
+        if (valStr === '') {
+            if (onUpdateUsage) {
+                onUpdateUsage(remId, {
+                    used_lbs: '',
+                    percentage: '',
+                    pct: ''
+                });
+            }
+            return;
+        }
         let pct = parseFloat(valStr);
         if (isNaN(pct) || pct < 0) pct = 0;
         if (pct > 100) pct = 100;
-        const calculatedLbs = Math.round(((totalLbs * pct) / 100) * 100) / 100;
+        const calculatedLbs = pct === 100 ? totalLbs : Math.round(((totalLbs * pct) / 100) * 100) / 100;
         if (onUpdateUsage) {
             onUpdateUsage(remId, {
                 used_lbs: calculatedLbs,
@@ -222,7 +244,7 @@ export default function ProductionRemanentesSelector({
                                     {/* Metadatos: tipo de huevo, peso disponible, fecha */}
                                     <div className="flex items-center justify-between text-[11px] text-slate-600">
                                         <span className="capitalize font-medium">{rem.product_type}</span>
-                                        <span className="text-teal-800 font-bold">{totalLbs.toFixed(1)} Lbs disponibles</span>
+                                        <span className="text-teal-800 font-bold">{Number(totalLbs.toFixed(2))} Lbs disponibles</span>
                                     </div>
 
                                     <div className="flex items-center justify-between text-[10px] text-slate-400">
@@ -278,10 +300,10 @@ export default function ProductionRemanentesSelector({
                                                     <div className="relative">
                                                         <input
                                                             type="number"
-                                                            step="0.1"
-                                                            min="0.1"
+                                                            step="any"
+                                                            min="0.01"
                                                             max={totalLbs}
-                                                            value={currentUsedLbs}
+                                                            value={currentUsedLbs !== undefined ? currentUsedLbs : ''}
                                                             onChange={(e) => handleUsedLbsChange(rem.id, e.target.value, totalLbs)}
                                                             className="w-full px-2 py-1 bg-white border border-teal-300 rounded text-xs font-bold text-teal-900 focus:ring-1 focus:ring-teal-500"
                                                         />
@@ -297,10 +319,10 @@ export default function ProductionRemanentesSelector({
                                                     <div className="relative">
                                                         <input
                                                             type="number"
-                                                            step="1"
-                                                            min="1"
+                                                            step="any"
+                                                            min="0.1"
                                                             max="100"
-                                                            value={currentPct}
+                                                            value={currentPct !== undefined ? currentPct : ''}
                                                             onChange={(e) => handlePctInputChange(rem.id, e.target.value, totalLbs)}
                                                             className="w-full px-2 py-1 bg-white border border-teal-300 rounded text-xs font-bold text-teal-900 focus:ring-1 focus:ring-teal-500"
                                                         />
@@ -312,9 +334,9 @@ export default function ProductionRemanentesSelector({
                                             </div>
 
                                             <div className="text-[10px] text-teal-900 flex items-center justify-between bg-white/90 px-2 py-1 rounded border border-teal-200">
-                                                <span>✓ Incorpora: <strong>{currentUsedLbs.toFixed(1)} Lbs</strong></span>
+                                                <span>✓ Incorpora: <strong>{typeof currentUsedLbs === 'number' ? Number(currentUsedLbs.toFixed(2)) : 0} Lbs</strong></span>
                                                 <span className="text-slate-600">
-                                                    Quedarán: <strong className="text-teal-800">{remainingLbs.toFixed(1)} Lbs</strong> en stock
+                                                    Quedarán: <strong className="text-teal-800">{Number(remainingLbs.toFixed(2))} Lbs</strong> en stock
                                                 </span>
                                             </div>
                                         </div>
