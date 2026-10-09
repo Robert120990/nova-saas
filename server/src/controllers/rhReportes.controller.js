@@ -3,6 +3,9 @@ const excelService = require('../services/excel.service');
 const rhReportPdfService = require('../services/rhReportPdf.service');
 const reportPdfHelper = require('../utils/reportPdfHelper');
 
+const { executeExcelServiceInWorker } = require('../services/reportWorkerPool.service');
+const rhIsssReportExcelService = require('../services/rhIsssReportExcel.service');
+
 const MONTH_NAMES = [
     'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
     'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
@@ -14,152 +17,24 @@ const MONTH_NAMES = [
 const getPlanillaIsssReport = async (req, res) => {
     try {
         const companyId = req.company_id;
-        const anio = parseInt(req.query.anio) || new Date().getFullYear();
-        const mes = parseInt(req.query.mes) || (new Date().getMonth() + 1);
+        const anio = parseInt(req.query.anio, 10) || new Date().getFullYear();
+        const mes = parseInt(req.query.mes, 10) || (new Date().getMonth() + 1);
         const quincena = req.query.quincena || 'todas';
         const format = req.query.format;
 
-        const company = await reportPdfHelper.getCompanyInfo(companyId);
-
-        let query = `
-            SELECT 
-                p.id, p.empleado_id, p.dias_trabajados, p.sueldo_base, p.total_percepciones,
-                p.descuento_isss, p.quincena,
-                e.codigo, e.nombres, e.apellidos, e.num_dui, e.num_isss, e.es_jubilado
-            FROM rh_planillas p
-            JOIN rh_empleados e ON p.empleado_id = e.id
-            WHERE p.company_id = ? AND p.periodo_anio = ? AND p.periodo_mes = ? AND p.estado != 'anulado'
-        `;
-        const params = [companyId, anio, mes];
-
-        if (quincena && quincena !== 'todas') {
-            query += ` AND p.quincena = ?`;
-            params.push(quincena);
-        }
-        query += ` ORDER BY e.codigo ASC, p.id ASC`;
-
-        const [rows] = await pool.query(query, params);
-
-        // Group / consolidate per employee
-        const empMap = new Map();
-        rows.forEach(r => {
-            const empId = r.empleado_id;
-            const perc = parseFloat(r.total_percepciones || 0);
-            const dias = parseInt(r.dias_trabajados || 0);
-            const isssLab = parseFloat(r.descuento_isss || 0);
-
-            if (!empMap.has(empId)) {
-                empMap.set(empId, {
-                    id: empId,
-                    codigo: r.codigo,
-                    nombre: `${r.nombres || ''} ${r.apellidos || ''}`.trim(),
-                    num_isss: r.num_isss || '',
-                    num_dui: r.num_dui || '',
-                    dias_trabajados: dias,
-                    salario_devengado: perc,
-                    isss_laboral: isssLab,
-                    es_jubilado: r.es_jubilado
-                });
-            } else {
-                const existing = empMap.get(empId);
-                existing.dias_trabajados += dias;
-                existing.salario_devengado += perc;
-                existing.isss_laboral += isssLab;
-            }
-        });
-
-        // Calculate patronal ISSS (7.5%) with legal caps ($1,000 monthly / $500 quincenal)
-        const cap = quincena === 'todas' ? 1000.00 : 500.00;
-        const items = Array.from(empMap.values()).map(emp => {
-            // If employee had 0 isss laboral (e.g. exempt), check if patronal applies
-            const cotizable = Math.min(emp.salario_devengado, cap);
-            const isssPatronal = emp.isss_laboral > 0 || !emp.es_jubilado
-                ? Math.round(cotizable * 0.075 * 100) / 100
-                : 0;
-            const totalIsss = Math.round((emp.isss_laboral + isssPatronal) * 100) / 100;
-
-            return {
-                ...emp,
-                salario_devengado: Math.round(emp.salario_devengado * 100) / 100,
-                isss_laboral: Math.round(emp.isss_laboral * 100) / 100,
-                isss_patronal: isssPatronal,
-                total_isss: totalIsss
-            };
-        });
-
-        const totals = items.reduce((acc, curr) => {
-            acc.salario_devengado += curr.salario_devengado;
-            acc.isss_laboral += curr.isss_laboral;
-            acc.isss_patronal += curr.isss_patronal;
-            acc.total_isss += curr.total_isss;
-            return acc;
-        }, { salario_devengado: 0, isss_laboral: 0, isss_patronal: 0, total_isss: 0 });
-
-        const mesName = MONTH_NAMES[mes - 1] || `Mes ${mes}`;
-        const quincenaText = quincena === 'primera' ? 'PRIMERA QUINCENA' : quincena === 'segunda' ? 'SEGUNDA QUINCENA' : 'TODO EL MES';
-        const periodText = `PERÍODO: ${mesName.toUpperCase()} ${anio} (${quincenaText})`;
-        const subtitle = `PLANILLA DE APORTES AL RÉGIMEN GENERAL DE SALUD`;
-
-        const reportData = {
-            company,
-            items,
-            totals,
-            periodText,
-            subtitle,
-            anio,
-            mes,
-            quincena
-        };
+        const reportData = await rhIsssReportExcelService.getPlanillaIsssReportData(companyId, { anio, mes, quincena });
 
         if (format === 'json') {
             return res.json(reportData);
         }
 
         if (format === 'excel') {
-            const buffer = await excelService.createExcelBuffer({
-                title: `${company.razon_social} - PLANILLA DE ISSS - ${periodText}`,
-                sheets: [{
-                    name: 'Planilla ISSS',
-                    columns: [
-                        { header: 'N°', key: 'num', width: 6 },
-                        { header: 'Código', key: 'codigo', width: 12 },
-                        { header: 'Nombre del Empleado', key: 'nombre', width: 35 },
-                        { header: 'No. ISSS', key: 'num_isss', width: 16 },
-                        { header: 'No. DUI', key: 'num_dui', width: 16 },
-                        { header: 'Días', key: 'dias_trabajados', width: 8 },
-                        { header: 'Salario Devengado ($)', key: 'salario_devengado', width: 18 },
-                        { header: 'ISSS Laboral (3%) ($)', key: 'isss_laboral', width: 18 },
-                        { header: 'ISSS Patronal (7.5%) ($)', key: 'isss_patronal', width: 18 },
-                        { header: 'Total ISSS ($)', key: 'total_isss', width: 18 }
-                    ],
-                    data: [
-                        ...items.map((item, idx) => ({
-                            num: idx + 1,
-                            codigo: item.codigo,
-                            nombre: item.nombre,
-                            num_isss: item.num_isss,
-                            num_dui: item.num_dui,
-                            dias_trabajados: item.dias_trabajados,
-                            salario_devengado: item.salario_devengado.toFixed(2),
-                            isss_laboral: item.isss_laboral.toFixed(2),
-                            isss_patronal: item.isss_patronal.toFixed(2),
-                            total_isss: item.total_isss.toFixed(2)
-                        })),
-                        {
-                            num: '',
-                            codigo: 'TOTALES',
-                            nombre: '',
-                            num_isss: '',
-                            num_dui: '',
-                            dias_trabajados: '',
-                            salario_devengado: totals.salario_devengado.toFixed(2),
-                            isss_laboral: totals.isss_laboral.toFixed(2),
-                            isss_patronal: totals.isss_patronal.toFixed(2),
-                            total_isss: totals.total_isss.toFixed(2)
-                        }
-                    ]
-                }]
-            });
+            const buffer = await executeExcelServiceInWorker({
+                serviceRelativePath: 'services/rhIsssReportExcel.service',
+                methodName: 'generatePlanillaIsssExcelBuffer',
+                data: reportData
+            }, () => rhIsssReportExcelService.generatePlanillaIsssExcelBuffer(reportData));
+
             return excelService.sendExcelResponse(res, buffer, `planilla_isss_${anio}_${mes}.xlsx`);
         }
 
