@@ -254,7 +254,8 @@ router.post('/code-mappings', permit('manage_industrial_settings'), eggControlle
 router.put('/code-mappings/:id', permit('manage_industrial_settings'), eggController.saveCodeMapping);
 router.delete('/code-mappings/:id', permit('manage_industrial_settings'), eggController.deleteCodeMapping);
 
-// 25. Inventario Traducido de Huevo Industrial
+// 25. Inventario de Huevo Industrial (Materia Prima, Producto Terminado x Presentaciones, Mermas, Traducido)
+router.get('/inventory-overview', permit('view_egg_inventory'), eggController.getInventoryOverview);
 router.get('/inventory-translated/export', permit('view_egg_inventory'), eggController.exportTranslatedInventory);
 router.get('/inventory-translated', permit('view_egg_inventory'), eggController.getTranslatedInventory);
 // 26. Metas, Comisiones y Simulador con Tope ($1,000) e Integración a Planilla

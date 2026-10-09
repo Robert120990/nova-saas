@@ -1,5 +1,6 @@
 const { eggRules, hasPermission, pool, notificationService } = require('../../../controllers/eggIndustrial/eggProduction/shared');
 const { insertSecondaryBatch } = require('./insertSecondaryBatch');
+const calendarBatchSync = require('../eggPlanning/calendarBatchSync.service');
 
 const createProductionBatch = async (req) => {
     const responseHeaders = {};
@@ -7,7 +8,8 @@ const createProductionBatch = async (req) => {
     try {
         await connection.beginTransaction();
 
-        const { product_type, presentation, operator_name } = req.body;
+        const { product_type, presentation, operator_name, quebraje_inicio, quebraje_fin, egg_condition, empaque_inicio, empaque_fin } = req.body;
+        const resolvedOperator = operator_name || req.user?.name || req.user?.username || 'Operador';
         let scheduled_production_id = req.body.scheduled_production_id ? parseInt(req.body.scheduled_production_id, 10) : null;
         let parent_batch_id = req.body.parent_batch_id ? parseInt(req.body.parent_batch_id, 10) : null;
         let is_coproduct = Boolean(req.body.is_coproduct || parent_batch_id);
@@ -108,10 +110,16 @@ const createProductionBatch = async (req) => {
                     }, headers: responseHeaders });
                 }
                 const reqBoxes = parseInt(rm.boxes_count ?? rm.total_boxes ?? rm.boxes ?? 0, 10) || 0;
-                if (currentStock < rm.quantity_lbs || (reqBoxes > 0 && Number(rows[0].total_boxes || 0) < reqBoxes)) {
+                if (currentStock < rm.quantity_lbs) {
                     await connection.rollback();
                     return ({ status: 400, body: {
-                        message: `Stock insuficiente para lote ${rows[0].provider_lot} (disponible: ${currentStock.toFixed(2)} Lbs, solicitado: ${parseFloat(rm.quantity_lbs).toFixed(2)} Lbs).`
+                        message: `Stock en libras insuficiente para lote ${rows[0].provider_lot} (disponible: ${currentStock.toFixed(2)} Lbs, solicitado: ${parseFloat(rm.quantity_lbs).toFixed(2)} Lbs).`
+                    }, headers: responseHeaders });
+                }
+                if (reqBoxes > 0 && Number(rows[0].total_boxes || 0) < reqBoxes) {
+                    await connection.rollback();
+                    return ({ status: 400, body: {
+                        message: `Cantidad de cajas insuficiente para lote ${rows[0].provider_lot} (disponible: ${Number(rows[0].total_boxes || 0)} cajas, solicitado: ${reqBoxes} cajas).`
                     }, headers: responseHeaders });
                 }
             }
@@ -190,13 +198,15 @@ const createProductionBatch = async (req) => {
                 `INSERT INTO egg_production_batches (
                     company_id, branch_id, batch_uuid, batch_code_display, scheduled_production_id, parent_batch_id, is_coproduct, product_type,
                     presentation, ingredients_json, status, input_weight_lbs,
-                    target_brix, target_solids_pct, operator_name
+                    target_brix, target_solids_pct, operator_name,
+                    quebraje_inicio, quebraje_fin, egg_condition, empaque_inicio, empaque_fin
                 )
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'en_proceso', ?, ?, ?, ?)`,
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'en_proceso', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 [
                     company_id, branch_id, batch_uuid, batch_code_display, scheduled_production_id, parent_batch_id, is_coproduct ? 1 : 0, resolvedProductType,
                     resolvedPresentation, JSON.stringify(ingredients_json || {}), totalInputWeight,
-                    target_brix || null, target_solids_pct || null, operator_name
+                    target_brix || null, target_solids_pct || null, resolvedOperator,
+                    quebraje_inicio || null, quebraje_fin || null, egg_condition || 'Buenas', empaque_inicio || null, empaque_fin || null
                 ]
             );
             batchId = result.insertId;
@@ -206,13 +216,15 @@ const createProductionBatch = async (req) => {
                 `INSERT INTO egg_production_batches (
                     company_id, branch_id, batch_uuid, batch_code_display, product_type,
                     presentation, ingredients_json, status, input_weight_lbs,
-                    target_brix, target_solids_pct, operator_name
+                    target_brix, target_solids_pct, operator_name,
+                    quebraje_inicio, quebraje_fin, egg_condition, empaque_inicio, empaque_fin
                 )
-                 VALUES (?, ?, ?, ?, ?, ?, ?, 'en_proceso', ?, ?, ?, ?)`,
+                 VALUES (?, ?, ?, ?, ?, ?, ?, 'en_proceso', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 [
                     company_id, branch_id, batch_uuid, batch_code_display, resolvedProductType,
                     resolvedPresentation, JSON.stringify(ingredients_json || {}), totalInputWeight,
-                    target_brix || null, target_solids_pct || null, operator_name
+                    target_brix || null, target_solids_pct || null, resolvedOperator,
+                    quebraje_inicio || null, quebraje_fin || null, egg_condition || 'Buenas', empaque_inicio || null, empaque_fin || null
                 ]
             );
             batchId = result.insertId;
@@ -352,33 +364,43 @@ const createProductionBatch = async (req) => {
             }
         }
 
-        // Si se vinculó a una producción programada del calendario, actualizar su estado y registrar evento
-        if (scheduled_production_id) {
-            try {
-                await connection.query(
-                    'UPDATE egg_scheduled_productions SET status = "en_proceso", batch_id = COALESCE(batch_id, ?) WHERE id = ? AND company_id = ?',
-                    [batchId, scheduled_production_id, company_id]
-                );
+        // Sincronizar o crear automáticamente la programación en el calendario
+        try {
+            scheduled_production_id = await calendarBatchSync.ensureScheduleForDirectBatch(connection, {
+                company_id,
+                branch_id,
+                batchId,
+                batch_code_display,
+                product_type: resolvedProductType,
+                presentation: resolvedPresentation,
+                totalInputWeight,
+                target_solids_pct,
+                ingredients_json,
+                operator_name: resolvedOperator,
+                user_id: req.user?.id,
+                is_coproduct,
+                parent_batch_id,
+                scheduled_production_id
+            });
 
-                await connection.query(
-                    `INSERT INTO egg_industrial_events (company_id, event_type, severity, description, payload, operator_name)
-                     VALUES (?, 'batch.linked_to_schedule', 'info', ?, ?, ?)`,
-                    [
-                        company_id,
-                        `Lote ${batch_code_display} vinculado a la producción programada #${scheduled_production_id}${is_coproduct ? ' (Segundo lote / Co-producto)' : ''}.`,
-                        JSON.stringify({ batch_id: batchId, scheduled_production_id, parent_batch_id, is_coproduct, batch_code_display }),
-                        operator_name
-                    ]
-                );
-            } catch (schedErr) {
-                console.warn("[createProductionBatch] Update egg_scheduled_productions notice:", schedErr.message);
-            }
+            await connection.query(
+                `INSERT INTO egg_industrial_events (company_id, event_type, severity, description, payload, operator_name)
+                 VALUES (?, 'batch.linked_to_schedule', 'info', ?, ?, ?)`,
+                [
+                    company_id,
+                    `Lote ${batch_code_display} vinculado / programado en calendario #${scheduled_production_id}${is_coproduct ? ' (Segundo lote / Co-producto)' : ''}.`,
+                    JSON.stringify({ batch_id: batchId, scheduled_production_id, parent_batch_id, is_coproduct, batch_code_display }),
+                    resolvedOperator
+                ]
+            );
+        } catch (schedErr) {
+            console.warn("[createProductionBatch] ensureScheduleForDirectBatch notice:", schedErr.message);
         }
 
         // Crear evento
         await connection.query(
             'INSERT INTO egg_industrial_events (company_id, event_type, severity, description, payload, operator_name) VALUES (?, "production.started", "info", ?, ?, ?)',
-            [company_id, `Iniciado lote oficial ${batch_code_display} (${product_type} - ${presentation}) con ${totalInputWeight} LBS.`, JSON.stringify({ batch_id: batchId, batch_uuid, batch_code_display, totalInputWeight, raw_materials }), operator_name]
+            [company_id, `Iniciado lote oficial ${batch_code_display} (${product_type} - ${presentation}) con ${totalInputWeight} LBS.`, JSON.stringify({ batch_id: batchId, batch_uuid, batch_code_display, totalInputWeight, raw_materials }), resolvedOperator]
         );
 
         const secInput = Array.isArray(req.body.secondary_batches) && req.body.secondary_batches.length > 0
@@ -389,7 +411,8 @@ const createProductionBatch = async (req) => {
         for (const secData of secInput) {
             const secCreated = await insertSecondaryBatch(connection, {
                 company_id, branch_id, parentBatchId: batchId, raw_materials, scheduled_production_id,
-                secondary_batch: secData, totalInputWeight, operator_name, dayOfYearStr, year2Digit
+                secondary_batch: secData, totalInputWeight, operator_name: resolvedOperator, dayOfYearStr, year2Digit,
+                quebraje_inicio, quebraje_fin, egg_condition, empaque_inicio, empaque_fin
             });
             if (secCreated) secondaryBatches.push(secCreated);
         }

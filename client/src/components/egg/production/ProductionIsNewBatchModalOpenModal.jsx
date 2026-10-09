@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { getJulianDayInfo } from '../../../utils/julianDate';
 import ProductionRemanentesSelector from './ProductionRemanentesSelector';
+import ProductionQuebrajeSection from './ProductionQuebrajeSection';
 
 
 export default function ProductionIsNewBatchModalOpenModal({ model, open = model.isNewBatchModalOpen, onClose = () => { model.setIsNewBatchModalOpen(false); model.setEditingBatch(null); }, onSave = (e) => model.handleCreateBatch(e) }) {
@@ -80,12 +81,15 @@ export default function ProductionIsNewBatchModalOpenModal({ model, open = model
                                     className="w-full px-3 py-2 bg-white border border-indigo-300 rounded-xl text-xs text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-xs"
                                 >
                                     <option value="">-- Iniciar Producción Libre / Sin Programación Previa --</option>
-                                    {(Array.isArray(scheduledProductions) ? scheduledProductions : []).map(p => (
-                                        <option key={p.id} value={p.id}>
-                                            {p.is_coproduct ? '🔗 [Co-Producto] ' : (p.batch_id ? '🔄 [Lote Vinculado] ' : '📅 ')}
-                                            Lote: {p.lot_code} | {p.product_profile} ({parseFloat(p.target_quantity_lbs || 0).toLocaleString()} Lbs) - {p.production_date?.split('T')[0]} ({p.status || p.priority || 'media'})
-                                        </option>
-                                    ))}
+                                    {(Array.isArray(scheduledProductions) ? scheduledProductions : []).map(p => {
+                                        const isDone = p.status === 'completado' || Boolean(p.batch_completed_at) || ['completado', 'congelado', 'empaquetado', 'pasteurizado'].includes(p.batch_status);
+                                        return (
+                                            <option key={p.id} value={p.id} disabled={isDone && p.id !== selectedScheduledProd?.id}>
+                                                {isDone ? '✅ [FINALIZADO] ' : (p.is_coproduct ? '🔗 [Co-Producto] ' : (p.batch_id ? '🔄 [Lote Vinculado] ' : '📅 '))}
+                                                Lote: {p.lot_code} | {p.product_profile} ({parseFloat(p.target_quantity_lbs || 0).toLocaleString()} Lbs) - {p.production_date?.split('T')[0]} ({isDone ? 'Completado' : (p.status || p.priority || 'media')})
+                                            </option>
+                                        );
+                                    })}
                                 </select>
                                 {selectedScheduledProd ? (
                                     <div className="text-[11px] text-indigo-800 font-medium flex items-center gap-2 pt-1 border-t border-indigo-200/60">
@@ -476,12 +480,15 @@ export default function ProductionIsNewBatchModalOpenModal({ model, open = model
                                                         >
                                                             <option value="">-- Sin vincular (Crear nuevo) --</option>
                                                             {(Array.isArray(scheduledProductions) ? scheduledProductions : [])
-                                                                .filter(p => p.id !== batchForm.scheduled_production_id && (!p.batch_id || p.id === secBatch.scheduled_production_id))
-                                                                .map(p => (
-                                                                    <option key={p.id} value={p.id}>
-                                                                        {p.lot_code} - {p.product_profile} ({p.presentation || 'cubeta 30LB'})
-                                                                    </option>
-                                                                ))
+                                                                .filter(p => p.id !== batchForm.scheduled_production_id && (!p.batch_id || p.id === secBatch.scheduled_production_id) && p.status !== 'cancelado')
+                                                                .map(p => {
+                                                                    const isDone = p.status === 'completado' || Boolean(p.batch_completed_at) || ['completado', 'congelado', 'empaquetado', 'pasteurizado'].includes(p.batch_status);
+                                                                    return (
+                                                                        <option key={p.id} value={p.id} disabled={isDone && p.id !== secBatch.scheduled_production_id}>
+                                                                            {isDone ? '✅ [FINALIZADO] ' : ''}{p.lot_code} - {p.product_profile} ({p.presentation || 'cubeta 30LB'}) {isDone ? '(Completado)' : ''}
+                                                                        </option>
+                                                                    );
+                                                                })
                                                             }
                                                         </select>
                                                     </div>
@@ -567,6 +574,12 @@ export default function ProductionIsNewBatchModalOpenModal({ model, open = model
                                     </div>
                                 </div>
                             )}
+
+                            {/* Control de Horarios y Calidad de Quebraje (PRO:006) */}
+                            <ProductionQuebrajeSection
+                                batchForm={batchForm}
+                                setBatchForm={setBatchForm}
+                            />
 
                             {/* Materias Primas con Desglose de Tarimas y Cantidades */}
                             <div className="space-y-4 bg-slate-50/80 p-4 rounded-2xl border border-slate-200">

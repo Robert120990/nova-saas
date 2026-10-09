@@ -5,7 +5,18 @@ const createPasteurizationLog = async (req, res) => {
     const connection = await pool.getConnection();
     try {
         await connection.beginTransaction();
-        const { batch_id, temperature_c, holding_time_seconds, pressure_psi, flow_rate_gpm, operator_name, pasteurization_lot } = req.body;
+        const {
+            batch_id: rawBatchId, temperature_c, holding_time_seconds, pressure_psi, flow_rate_gpm, operator_name, pasteurization_lot,
+            start_time, end_time,
+            temp_agua_inicio, temp_agua_fin,
+            temp_huevo_inicio, temp_huevo_fin,
+            vb_tiempo_inicio, vb_tiempo_fin,
+            vb_booster_inicio, vb_booster_fin,
+            flujo_inicio, flujo_fin,
+            empaque_inicio, empaque_fin,
+            cycle_number
+        } = req.body;
+        const batch_id = rawBatchId || req.params?.id || req.body?.id;
         const company_id = req.company_id;
 
         // Obtener el lote para saber el tipo de producto
@@ -22,7 +33,39 @@ const createPasteurizationLog = async (req, res) => {
             }
         }
 
-        const evaluation = eggRules.evaluatePasteurization(batch.product_type, temperature_c, holding_time_seconds);
+        // Armonizar parámetros PRO:006 (°F a °C para HACCP si corresponde)
+        let effectiveTempC = (temperature_c !== undefined && temperature_c !== null && temperature_c !== '') ? parseFloat(temperature_c) : null;
+        const rawEggTemp = (temp_huevo_fin !== undefined && temp_huevo_fin !== null && temp_huevo_fin !== '')
+            ? parseFloat(temp_huevo_fin)
+            : ((temp_huevo_inicio !== undefined && temp_huevo_inicio !== null && temp_huevo_inicio !== '') ? parseFloat(temp_huevo_inicio) : null);
+
+        if ((effectiveTempC === null || isNaN(effectiveTempC)) && rawEggTemp !== null && !isNaN(rawEggTemp)) {
+            if (rawEggTemp > 90) {
+                // Registro oficial PRO:006 en Fahrenheit (ej. 146.8°F - 147.8°F)
+                effectiveTempC = Math.round(((rawEggTemp - 32) * 5 / 9) * 10) / 10;
+            } else {
+                effectiveTempC = rawEggTemp;
+            }
+        }
+        if (effectiveTempC === null || isNaN(effectiveTempC)) {
+            effectiveTempC = 64.0;
+        }
+
+        let effectiveHoldTime = (holding_time_seconds !== undefined && holding_time_seconds !== null && holding_time_seconds !== '') ? parseInt(holding_time_seconds, 10) : null;
+        if (effectiveHoldTime === null || isNaN(effectiveHoldTime)) {
+            const rawVb = vb_tiempo_fin || vb_tiempo_inicio;
+            effectiveHoldTime = rawVb ? Math.round(parseFloat(rawVb)) : 210;
+        }
+
+        const effectivePressure = (pressure_psi !== undefined && pressure_psi !== null && pressure_psi !== '')
+            ? parseFloat(pressure_psi)
+            : (vb_booster_fin || vb_booster_inicio ? parseFloat(vb_booster_fin || vb_booster_inicio) : 30.0);
+
+        const effectiveFlow = (flow_rate_gpm !== undefined && flow_rate_gpm !== null && flow_rate_gpm !== '')
+            ? parseFloat(flow_rate_gpm)
+            : (flujo_fin || flujo_inicio ? parseFloat(flujo_fin || flujo_inicio) : 10.0);
+
+        const evaluation = eggRules.evaluatePasteurization(batch.product_type, effectiveTempC, effectiveHoldTime);
         const haccp_compliant = evaluation.compliant;
         const deviation_description = evaluation.reason;
 
@@ -30,12 +73,45 @@ const createPasteurizationLog = async (req, res) => {
             ? pasteurization_lot.trim()
             : (batch.pasteurization_lot || (batch.batch_code_display ? `PAST-${batch.batch_code_display.replace(/\s+/g, '')}` : `PAST-${batch_id}`));
 
-        // Insertar log con lote de pasteurización
+        // Insertar log con lote de pasteurización y parámetros PRO:006 completos
         const [result] = await connection.query(
-            `INSERT INTO egg_pasteurization_logs (company_id, batch_id, pasteurization_lot, temperature_c, holding_time_seconds, pressure_psi, flow_rate_gpm, haccp_compliant, deviation_description, operator_name)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [company_id, batch_id, resolvedPastLot, temperature_c, holding_time_seconds, pressure_psi, flow_rate_gpm, haccp_compliant ? 1 : 0, deviation_description, operator_name]
+            `INSERT INTO egg_pasteurization_logs (
+                company_id, batch_id, pasteurization_lot, temperature_c, holding_time_seconds, pressure_psi, flow_rate_gpm,
+                haccp_compliant, deviation_description, operator_name,
+                start_time, end_time,
+                temp_agua_inicio, temp_agua_fin,
+                temp_huevo_inicio, temp_huevo_fin,
+                vb_tiempo_inicio, vb_tiempo_fin,
+                vb_booster_inicio, vb_booster_fin,
+                flujo_inicio, flujo_fin,
+                empaque_inicio, empaque_fin,
+                cycle_number
+            )
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+                company_id, batch_id, resolvedPastLot, effectiveTempC, effectiveHoldTime, effectivePressure, effectiveFlow,
+                haccp_compliant ? 1 : 0, deviation_description, operator_name,
+                start_time || null, end_time || null,
+                temp_agua_inicio || null, temp_agua_fin || null,
+                temp_huevo_inicio || null, temp_huevo_fin || null,
+                vb_tiempo_inicio || null, vb_tiempo_fin || null,
+                vb_booster_inicio || null, vb_booster_fin || null,
+                flujo_inicio || null, flujo_fin || null,
+                empaque_inicio || null, empaque_fin || null,
+                cycle_number || 1
+            ]
         );
+
+        // Actualizar tiempos de empaque en el lote si se indicaron en la hoja PRO:006
+        if (empaque_inicio || empaque_fin) {
+            await connection.query(
+                `UPDATE egg_production_batches
+                 SET empaque_inicio = COALESCE(?, empaque_inicio),
+                     empaque_fin = COALESCE(?, empaque_fin)
+                 WHERE id = ? AND company_id = ?`,
+                [empaque_inicio || null, empaque_fin || null, batch_id, company_id]
+            );
+        }
 
         // Independientemente de los parámetros, el lote avanza a pasteurizado operativamente.
         // Control de Calidad es quien da de alta o bloquea el lote tras análisis de laboratorio LAB-004.

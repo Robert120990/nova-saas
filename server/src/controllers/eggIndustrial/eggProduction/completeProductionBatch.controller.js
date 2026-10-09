@@ -1,5 +1,6 @@
 const bcrypt = require('bcryptjs');
 const { eggRules, hasPermission, pool, notificationService } = require('./shared');
+const calendarBatchSync = require('../../../services/eggIndustrial/eggPlanning/calendarBatchSync.service');
 
 const completeProductionBatch = async (req, res) => {
     const connection = await pool.getConnection();
@@ -109,6 +110,13 @@ const completeProductionBatch = async (req, res) => {
                 [yield_liquid_lbs, waste_shell_lbs, waste_loss_lbs, id, req.company_id]
             );
 
+            await calendarBatchSync.markScheduleCompleted(connection, {
+                company_id: req.company_id,
+                batchId: id,
+                scheduled_production_id: batch.scheduled_production_id,
+                batch_code_display: batch.batch_code_display
+            });
+
             await connection.query(
                 `INSERT INTO egg_industrial_events (company_id, event_type, severity, description, payload, operator_name)
                  VALUES (?, 'production.balance_corrected', 'warning', ?, ?, ?)`,
@@ -148,6 +156,14 @@ const completeProductionBatch = async (req, res) => {
              WHERE id = ? AND company_id = ?`,
             [yield_liquid_lbs, waste_shell_lbs, waste_loss_lbs, nextStatus, id, req.company_id]
         );
+
+        // Sincronizar estado en el calendario de planificación
+        await calendarBatchSync.markScheduleCompleted(connection, {
+            company_id: req.company_id,
+            batchId: id,
+            scheduled_production_id: batch.scheduled_production_id,
+            batch_code_display: batch.batch_code_display
+        });
 
         // Crear evento
         await connection.query(

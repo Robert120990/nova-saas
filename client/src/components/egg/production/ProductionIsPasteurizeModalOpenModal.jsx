@@ -224,71 +224,14 @@ export default function ProductionIsPasteurizeModalOpenModal({
                             />
                         </div>
                     ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50/50 border border-slate-200 rounded-2xl p-4">
-                            <div>
-                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">
-                                    Temperatura Pasteurización (°C) *
-                                </label>
-                                <input
-                                    type="number"
-                                    value={pasteurizeForm.temperature_c}
-                                    onChange={(e) => setPasteurizeForm({ ...pasteurizeForm, temperature_c: e.target.value })}
-                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                                    step="0.01"
-                                    placeholder="Ej: 64.5"
-                                />
-                            </div>
-
-                            <div>
-                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">
-                                    Tiempo de Retención (Segundos) *
-                                </label>
-                                <input
-                                    type="number"
-                                    value={pasteurizeForm.holding_time_seconds}
-                                    onChange={(e) => setPasteurizeForm({ ...pasteurizeForm, holding_time_seconds: e.target.value })}
-                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                                    placeholder="Ej: 210"
-                                />
-                            </div>
-
-                            <div>
-                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">Presión Hidráulica (PSI)</label>
-                                <input
-                                    type="number"
-                                    value={pasteurizeForm.pressure_psi}
-                                    onChange={(e) => setPasteurizeForm({ ...pasteurizeForm, pressure_psi: e.target.value })}
-                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                                    step="0.01"
-                                    placeholder="Ej: 48.0"
-                                />
-                            </div>
-
-                            <div>
-                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">Flujo de Bomba (GPM)</label>
-                                <input
-                                    type="number"
-                                    value={pasteurizeForm.flow_rate_gpm}
-                                    onChange={(e) => setPasteurizeForm({ ...pasteurizeForm, flow_rate_gpm: e.target.value })}
-                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                                    step="0.01"
-                                    placeholder="Ej: 12.5"
-                                />
-                            </div>
-
-                            <div className="md:col-span-2">
-                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">
-                                    Código Lote de Pasteurización
-                                </label>
-                                <input
-                                    type="text"
-                                    value={pasteurizeForm.pasteurization_lot || ''}
-                                    onChange={(e) => setPasteurizeForm({ ...pasteurizeForm, pasteurization_lot: e.target.value })}
-                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-mono font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                                    placeholder="Ej: PAST-01-274"
-                                />
-                            </div>
-                        </div>
+                        <PasteurizeLotCard
+                            title={`🥚 Lote: ${selectedBatchObj?.batch_code_display || selectedBatchObj?.batch_uuid || 'Seleccionado'}`}
+                            batch={selectedBatchObj}
+                            haccpGuide={getHaccpGuide(selectedBatchObj?.product_type)}
+                            form={pasteurizeForm}
+                            onChange={(field, val) => setPasteurizeForm(prev => ({ ...prev, [field]: val }))}
+                            colorScheme="indigo"
+                        />
                     )}
 
                     <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">

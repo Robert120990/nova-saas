@@ -54,6 +54,11 @@ export default function useProductionModel() {
         second_product_type: 'clara',
         second_presentation: 'galón 8LB',
         second_presentations: ['galón 8LB'],
+        quebraje_inicio: '',
+        quebraje_fin: '',
+        egg_condition: 'Buenas',
+        empaque_inicio: '',
+        empaque_fin: '',
         raw_materials: [],
         remanente_ids: [],
         remanente_usages: {},
@@ -88,7 +93,21 @@ export default function useProductionModel() {
         pressure_psi: '48.0',
         flow_rate_gpm: '12.5',
         operator_name: user?.nombre || '',
-        pasteurization_lot: ''
+        pasteurization_lot: '',
+        start_time: '',
+        end_time: '',
+        temp_agua_inicio: '',
+        temp_agua_fin: '',
+        temp_huevo_inicio: '',
+        temp_huevo_fin: '',
+        vb_tiempo_inicio: '',
+        vb_tiempo_fin: '',
+        vb_booster_inicio: '',
+        vb_booster_fin: '',
+        flujo_inicio: '',
+        flujo_fin: '',
+        empaque_inicio: '',
+        empaque_fin: ''
     });
 
     const [secondPasteurizeForm, setSecondPasteurizeForm] = useState({
@@ -97,7 +116,21 @@ export default function useProductionModel() {
         pressure_psi: '48.0',
         flow_rate_gpm: '12.5',
         operator_name: user?.nombre || '',
-        pasteurization_lot: ''
+        pasteurization_lot: '',
+        start_time: '',
+        end_time: '',
+        temp_agua_inicio: '',
+        temp_agua_fin: '',
+        temp_huevo_inicio: '',
+        temp_huevo_fin: '',
+        vb_tiempo_inicio: '',
+        vb_tiempo_fin: '',
+        vb_booster_inicio: '',
+        vb_booster_fin: '',
+        flujo_inicio: '',
+        flujo_fin: '',
+        empaque_inicio: '',
+        empaque_fin: ''
     });
 
     const [selectedBatchForComplete, setSelectedBatchForComplete] = useState(null);
@@ -506,6 +539,11 @@ export default function useProductionModel() {
             batch_code_display: batch.batch_code_display || '',
             pasteurization_lot: batch.pasteurization_lot || '',
             scheduled_production_id: batch.scheduled_production_id || null,
+            quebraje_inicio: batch.quebraje_inicio || '',
+            quebraje_fin: batch.quebraje_fin || '',
+            egg_condition: batch.egg_condition || 'Buenas',
+            empaque_inicio: batch.empaque_inicio || '',
+            empaque_fin: batch.empaque_fin || '',
             raw_materials: mappedRms.length > 0 ? mappedRms : [{ raw_material_id: '', quantity_lbs: '', boxes_count: '', tarimas: [] }],
             remanente_ids: assignedRemIds,
             remanente_usages: {},
@@ -1146,6 +1184,12 @@ export default function useProductionModel() {
                 parent_batch_id: null,
                 is_coproduct: false
             }));
+            return;
+        }
+
+        const isDone = sched.status === 'completado' || Boolean(sched.batch_completed_at) || ['completado', 'congelado', 'empaquetado', 'pasteurizado'].includes(sched.batch_status);
+        if (isDone) {
+            toast.warning(`La actividad ${sched.lot_code} ya fue finalizada en producción. No puede iniciarse nuevamente para evitar duplicados.`);
             return;
         }
 
@@ -1794,7 +1838,12 @@ export default function useProductionModel() {
                     })),
                     ingredients: batchForm.ingredients,
                     batch_code_display: canManageLots ? batchForm.batch_code_display : undefined,
-                    pasteurization_lot: canManageLots ? batchForm.pasteurization_lot : undefined
+                    pasteurization_lot: canManageLots ? batchForm.pasteurization_lot : undefined,
+                    quebraje_inicio: batchForm.quebraje_inicio || null,
+                    quebraje_fin: batchForm.quebraje_fin || null,
+                    egg_condition: batchForm.egg_condition || 'Buenas',
+                    empaque_inicio: batchForm.empaque_inicio || null,
+                    empaque_fin: batchForm.empaque_fin || null
                 });
                 toast.success(res.data?.message || 'Lote de producción actualizado exitosamente.');
                 setEditingBatch(null);
@@ -1863,6 +1912,11 @@ export default function useProductionModel() {
                 second_product_type: 'clara',
                 second_presentation: 'galón 8LB',
                 second_presentations: ['galón 8LB'],
+                quebraje_inicio: '',
+                quebraje_fin: '',
+                egg_condition: 'Buenas',
+                empaque_inicio: '',
+                empaque_fin: '',
                 raw_materials: [],
                 remanente_ids: [],
                 remanente_usages: {},
@@ -1961,9 +2015,34 @@ export default function useProductionModel() {
         }
     };
 
+    // Helper para armar payload oficial PRO:006 de pasteurización
+    const buildPasteurizePayload = (batchId, form) => ({
+        batch_id: parseInt(batchId),
+        temperature_c: form.temperature_c ? parseFloat(form.temperature_c) : undefined,
+        holding_time_seconds: form.holding_time_seconds ? parseInt(form.holding_time_seconds, 10) : undefined,
+        pressure_psi: form.pressure_psi ? parseFloat(form.pressure_psi) : undefined,
+        flow_rate_gpm: form.flow_rate_gpm ? parseFloat(form.flow_rate_gpm) : undefined,
+        operator_name: form.operator_name,
+        pasteurization_lot: form.pasteurization_lot?.trim() || undefined,
+        start_time: form.start_time || undefined,
+        end_time: form.end_time || undefined,
+        temp_agua_inicio: form.temp_agua_inicio !== '' && form.temp_agua_inicio !== undefined ? parseFloat(form.temp_agua_inicio) : undefined,
+        temp_agua_fin: form.temp_agua_fin !== '' && form.temp_agua_fin !== undefined ? parseFloat(form.temp_agua_fin) : undefined,
+        temp_huevo_inicio: form.temp_huevo_inicio !== '' && form.temp_huevo_inicio !== undefined ? parseFloat(form.temp_huevo_inicio) : undefined,
+        temp_huevo_fin: form.temp_huevo_fin !== '' && form.temp_huevo_fin !== undefined ? parseFloat(form.temp_huevo_fin) : undefined,
+        vb_tiempo_inicio: form.vb_tiempo_inicio !== '' && form.vb_tiempo_inicio !== undefined ? parseFloat(form.vb_tiempo_inicio) : undefined,
+        vb_tiempo_fin: form.vb_tiempo_fin !== '' && form.vb_tiempo_fin !== undefined ? parseFloat(form.vb_tiempo_fin) : undefined,
+        vb_booster_inicio: form.vb_booster_inicio !== '' && form.vb_booster_inicio !== undefined ? parseFloat(form.vb_booster_inicio) : undefined,
+        vb_booster_fin: form.vb_booster_fin !== '' && form.vb_booster_fin !== undefined ? parseFloat(form.vb_booster_fin) : undefined,
+        flujo_inicio: form.flujo_inicio !== '' && form.flujo_inicio !== undefined ? parseFloat(form.flujo_inicio) : undefined,
+        flujo_fin: form.flujo_fin !== '' && form.flujo_fin !== undefined ? parseFloat(form.flujo_fin) : undefined,
+        empaque_inicio: form.empaque_inicio || undefined,
+        empaque_fin: form.empaque_fin || undefined
+    });
+
     // Handle pasteurization logging (HACCP Check)
     const handlePasteurize = async (e) => {
-        e.preventDefault();
+        if (e && e.preventDefault) e.preventDefault();
         setHaccpViolationAlert(null);
 
         if (!selectedBatchForPasteurize) {
@@ -1972,15 +2051,8 @@ export default function useProductionModel() {
 
         setIsSubmitting(true);
         try {
-            const res = await axios.post('/api/egg-industrial/pasteurize', {
-                batch_id: parseInt(selectedBatchForPasteurize),
-                temperature_c: parseFloat(pasteurizeForm.temperature_c),
-                holding_time_seconds: parseInt(pasteurizeForm.holding_time_seconds),
-                pressure_psi: parseFloat(pasteurizeForm.pressure_psi),
-                flow_rate_gpm: parseFloat(pasteurizeForm.flow_rate_gpm),
-                operator_name: pasteurizeForm.operator_name,
-                pasteurization_lot: pasteurizeForm.pasteurization_lot?.trim() || undefined
-            });
+            const payload = buildPasteurizePayload(selectedBatchForPasteurize, pasteurizeForm);
+            const res = await axios.post('/api/egg-industrial/pasteurize', payload);
 
             const { haccp_compliant, deviation_description } = res.data;
 
@@ -2005,25 +2077,11 @@ export default function useProductionModel() {
         setIsSubmitting(true);
         setHaccpViolationAlert(null);
         try {
-            const res1 = await axios.post('/api/egg-industrial/pasteurize', {
-                batch_id: parseInt(primaryBatchId),
-                temperature_c: parseFloat(pasteurizeForm.temperature_c),
-                holding_time_seconds: parseInt(pasteurizeForm.holding_time_seconds),
-                pressure_psi: parseFloat(pasteurizeForm.pressure_psi),
-                flow_rate_gpm: parseFloat(pasteurizeForm.flow_rate_gpm),
-                operator_name: pasteurizeForm.operator_name,
-                pasteurization_lot: pasteurizeForm.pasteurization_lot?.trim() || undefined
-            });
+            const payload1 = buildPasteurizePayload(primaryBatchId, pasteurizeForm);
+            const payload2 = buildPasteurizePayload(secondaryBatchId, secondPasteurizeForm);
 
-            const res2 = await axios.post('/api/egg-industrial/pasteurize', {
-                batch_id: parseInt(secondaryBatchId),
-                temperature_c: parseFloat(secondPasteurizeForm.temperature_c),
-                holding_time_seconds: parseInt(secondPasteurizeForm.holding_time_seconds),
-                pressure_psi: parseFloat(secondPasteurizeForm.pressure_psi),
-                flow_rate_gpm: parseFloat(secondPasteurizeForm.flow_rate_gpm),
-                operator_name: secondPasteurizeForm.operator_name,
-                pasteurization_lot: secondPasteurizeForm.pasteurization_lot?.trim() || undefined
-            });
+            const res1 = await axios.post('/api/egg-industrial/pasteurize', payload1);
+            const res2 = await axios.post('/api/egg-industrial/pasteurize', payload2);
 
             const fail1 = !res1.data.haccp_compliant;
             const fail2 = !res2.data.haccp_compliant;

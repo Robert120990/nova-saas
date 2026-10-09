@@ -40,7 +40,9 @@ export default function usePackagingModel() {
         ],
         product_state: 'líquido', // 'líquido' (28 días) o 'congelado' (365 días)
         warehouse_zone: 'COOLER', // 'COOLER', 'BLAST', 'HOLDING'
-        operator_name: user?.nombre || ''
+        operator_name: user?.nombre || '',
+        packaging_start_time: '',
+        packaging_end_time: ''
     });
 
     const [freezerForm, setFreezerForm] = useState({
@@ -203,7 +205,9 @@ export default function usePackagingModel() {
                 product_state: packagingForm.product_state,
                 warehouse_zone: packagingForm.warehouse_zone,
                 shelf_life_days: packagingForm.product_state === 'congelado' ? 365 : 28,
-                operator_name: packagingForm.operator_name
+                operator_name: packagingForm.operator_name,
+                packaging_start_time: packagingForm.packaging_start_time || undefined,
+                packaging_end_time: packagingForm.packaging_end_time || undefined
             });
             toast.success(`Registro de empaque envasado con éxito (${res.data.records?.length || validItems.length} presentación(es)).`);
             setIsNewPackagingModalOpen(false);
@@ -213,7 +217,9 @@ export default function usePackagingModel() {
                 items: [{ presentation: 'cubeta 30LB', units_packaged: '', weight_per_unit_lbs: '30.00', product_id: null }],
                 product_state: 'líquido',
                 warehouse_zone: 'COOLER',
-                operator_name: user?.nombre || ''
+                operator_name: user?.nombre || '',
+                packaging_start_time: '',
+                packaging_end_time: ''
             });
             fetchData();
         } catch (error) {
@@ -417,6 +423,8 @@ export default function usePackagingModel() {
             units_packaged: String(p.units_packaged || ''),
             weight_per_unit_lbs: String(p.weight_per_unit_lbs || '32.00'),
             operator_name: p.operator_name || user?.nombre || '',
+            packaging_start_time: p.packaging_start_time || '',
+            packaging_end_time: p.packaging_end_time || '',
             reopen_packaging: false
         });
         setIsEditModalOpen(true);
@@ -439,12 +447,14 @@ export default function usePackagingModel() {
                 product_type: packagingForm.product_type,
                 presentation: packagingForm.presentation,
                 batch_id: packagingForm.batch_id ? parseInt(packagingForm.batch_id) : undefined,
-                reopen_packaging: packagingForm.reopen_packaging
+                reopen_packaging: packagingForm.reopen_packaging,
+                packaging_start_time: packagingForm.packaging_start_time || undefined,
+                packaging_end_time: packagingForm.packaging_end_time || undefined
             });
             toast.success('Empaque actualizado correctamente.');
             setIsEditModalOpen(false);
             setEditingPackaging(null);
-            setPackagingForm({ batch_id: '', units_packaged: '', weight_per_unit_lbs: '32.00', operator_name: user?.nombre || '' });
+            setPackagingForm({ batch_id: '', units_packaged: '', weight_per_unit_lbs: '32.00', operator_name: user?.nombre || '', packaging_start_time: '', packaging_end_time: '' });
             fetchData();
         } catch (error) {
             toast.error(error.response?.data?.message || 'Error al actualizar empaque.');

@@ -160,7 +160,7 @@ export default function ProductionCalendarContent({ model }) {
                                                                     <Wand2 className="w-2.5 h-2.5" />
                                                                 </button>
                                                             )}
-                                                            {(!prod.batch_id && prod.status !== 'completado' && prod.status !== 'cancelado') && (
+                                                            {(!isFinished && !prod.batch_id && prod.status !== 'completado' && prod.status !== 'cancelado') && (
                                                                 <button
                                                                     type="button"
                                                                     onClick={(e) => {

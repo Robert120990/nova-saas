@@ -27,7 +27,12 @@ const updateProductionBatch = async (req, res) => {
             ingredients_json,
             raw_materials: requestedMaterials,
             batch_code_display,
-            pasteurization_lot
+            pasteurization_lot,
+            quebraje_inicio,
+            quebraje_fin,
+            egg_condition,
+            empaque_inicio,
+            empaque_fin
         } = req.body;
 
         const raw_materials = requestedMaterials === undefined ? undefined : eggRules.normalizeMaterials(requestedMaterials);
@@ -141,11 +146,16 @@ const updateProductionBatch = async (req, res) => {
             ? (Array.isArray(presentation) ? presentation.join(', ') : presentation)
             : existing[0].presentation;
 
-        const resolvedIngredients = ingredients
-            ? JSON.stringify(ingredients)
-            : (ingredients_json
-                ? (typeof ingredients_json === 'string' ? ingredients_json : JSON.stringify(ingredients_json))
-                : existing[0].ingredients_json);
+        let resolvedIngredients = existing[0].ingredients_json;
+        if (ingredients !== undefined) {
+            resolvedIngredients = typeof ingredients === 'string' ? ingredients : JSON.stringify(ingredients || {});
+        } else if (ingredients_json !== undefined) {
+            resolvedIngredients = typeof ingredients_json === 'string' ? ingredients_json : JSON.stringify(ingredients_json || {});
+        } else if (resolvedIngredients && typeof resolvedIngredients === 'object') {
+            resolvedIngredients = JSON.stringify(resolvedIngredients);
+        } else if (!resolvedIngredients) {
+            resolvedIngredients = '{}';
+        }
 
         const resolvedBatchCode = (canManageLots && normalizedBatchCode !== undefined)
             ? normalizedBatchCode
@@ -166,13 +176,24 @@ const updateProductionBatch = async (req, res) => {
                  ingredients_json = ?,
                  input_weight_lbs = ?,
                  batch_code_display = ?,
-                 pasteurization_lot = ?
+                 pasteurization_lot = ?,
+                 quebraje_inicio = COALESCE(?, quebraje_inicio),
+                 quebraje_fin = COALESCE(?, quebraje_fin),
+                 egg_condition = COALESCE(?, egg_condition),
+                 empaque_inicio = COALESCE(?, empaque_inicio),
+                 empaque_fin = COALESCE(?, empaque_fin)
              WHERE id = ? AND company_id = ?`,
             [
                 resolvedProductType, resolvedPresentation, operator_name,
                 target_brix || null, target_solids_pct || null,
                 notes, resolvedIngredients, inputWeightLbs,
-                resolvedBatchCode, resolvedPastLot, id, company_id
+                resolvedBatchCode, resolvedPastLot,
+                quebraje_inicio !== undefined ? quebraje_inicio : null,
+                quebraje_fin !== undefined ? quebraje_fin : null,
+                egg_condition !== undefined ? egg_condition : null,
+                empaque_inicio !== undefined ? empaque_inicio : null,
+                empaque_fin !== undefined ? empaque_fin : null,
+                id, company_id
             ]
         );
 

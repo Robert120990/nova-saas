@@ -1,4 +1,5 @@
 const { pool } = require('./shared');
+const calendarBatchSync = require('../../../services/eggIndustrial/eggPlanning/calendarBatchSync.service');
 
 const getForecasting = async (req, res) => {
     try {
@@ -194,6 +195,9 @@ const getProviderLotIntelligence = async (req, res) => {
 
 const getScheduledProductions = async (req, res) => {
     try {
+        const company_id = req.company_id || req.user?.company_id;
+        await calendarBatchSync.reconcileSchedules(pool, company_id);
+
         const { start_date, end_date, status, product_profile } = req.query;
         let sql = `
             SELECT p.*, b.batch_code_display, b.status as batch_status, b.started_at as batch_started_at, b.completed_at as batch_completed_at
@@ -201,7 +205,6 @@ const getScheduledProductions = async (req, res) => {
             LEFT JOIN egg_production_batches b ON p.batch_id = b.id
             WHERE p.company_id = ?
         `;
-        const company_id = req.company_id || req.user?.company_id;
         const params = [company_id];
 
         if (start_date) {

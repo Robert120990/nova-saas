@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const calendarBatchSync = require('../eggPlanning/calendarBatchSync.service');
 
 async function insertSecondaryBatch(connection, {
     company_id,
@@ -10,7 +11,12 @@ async function insertSecondaryBatch(connection, {
     totalInputWeight = 0,
     operator_name = 'Operador',
     dayOfYearStr,
-    year2Digit
+    year2Digit,
+    quebraje_inicio = null,
+    quebraje_fin = null,
+    egg_condition = 'Buenas',
+    empaque_inicio = null,
+    empaque_fin = null
 }) {
     if (!secondary_batch || typeof secondary_batch !== 'object') return null;
 
@@ -40,8 +46,9 @@ async function insertSecondaryBatch(connection, {
         `INSERT INTO egg_production_batches (
             company_id, branch_id, batch_uuid, batch_code_display, scheduled_production_id,
             parent_batch_id, is_coproduct, product_type, presentation, ingredients_json,
-            status, input_weight_lbs, target_brix, target_solids_pct, operator_name
-        ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, 'en_proceso', ?, ?, ?, ?)`,
+            status, input_weight_lbs, target_brix, target_solids_pct, operator_name,
+            quebraje_inicio, quebraje_fin, egg_condition, empaque_inicio, empaque_fin
+        ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, 'en_proceso', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
             company_id, branch_id, secUuid, secCode, secSchedId,
             parentBatchId, secProductType, secPresentation,
@@ -49,32 +56,45 @@ async function insertSecondaryBatch(connection, {
             totalInputWeight,
             secondary_batch.target_brix || null,
             secondary_batch.target_solids_pct || null,
-            operator_name
+            operator_name,
+            secondary_batch.quebraje_inicio || quebraje_inicio || null,
+            secondary_batch.quebraje_fin || quebraje_fin || null,
+            secondary_batch.egg_condition || egg_condition || 'Buenas',
+            secondary_batch.empaque_inicio || empaque_inicio || null,
+            secondary_batch.empaque_fin || empaque_fin || null
         ]
     );
 
     const secBatchId = secResult.insertId;
 
-    if (secSchedId) {
-        try {
-            await connection.query(
-                'UPDATE egg_scheduled_productions SET status = "en_proceso", batch_id = COALESCE(batch_id, ?) WHERE id = ? AND company_id = ?',
-                [secBatchId, secSchedId, company_id]
-            );
+    try {
+        const resolvedSecSchedId = await calendarBatchSync.ensureSecondaryBatchSchedule(connection, {
+            company_id,
+            branch_id,
+            secBatchId,
+            secCode,
+            secProductType,
+            secPresentation,
+            totalInputWeight,
+            target_solids_pct: secondary_batch.target_solids_pct || null,
+            ingredients_json: secondary_batch.ingredients_json || {},
+            operator_name,
+            parentSchedId: scheduled_production_id,
+            secSchedId
+        });
 
-            await connection.query(
-                `INSERT INTO egg_industrial_events (company_id, event_type, severity, description, payload, operator_name)
-                 VALUES (?, 'batch.linked_to_schedule', 'info', ?, ?, ?)`,
-                [
-                    company_id,
-                    `Lote co-producto ${secCode} vinculado a la producción programada #${secSchedId}.`,
-                    JSON.stringify({ batch_id: secBatchId, scheduled_production_id: secSchedId, parent_batch_id: parentBatchId, is_coproduct: true, batch_code_display: secCode }),
-                    operator_name
-                ]
-            );
-        } catch (schedErr) {
-            console.warn('[insertSecondaryBatch] Update egg_scheduled_productions error:', schedErr.message);
-        }
+        await connection.query(
+            `INSERT INTO egg_industrial_events (company_id, event_type, severity, description, payload, operator_name)
+             VALUES (?, 'batch.linked_to_schedule', 'info', ?, ?, ?)`,
+            [
+                company_id,
+                `Lote co-producto ${secCode} vinculado / programado en calendario #${resolvedSecSchedId}.`,
+                JSON.stringify({ batch_id: secBatchId, scheduled_production_id: resolvedSecSchedId, parent_batch_id: parentBatchId, is_coproduct: true, batch_code_display: secCode }),
+                operator_name
+            ]
+        );
+    } catch (schedErr) {
+        console.warn('[insertSecondaryBatch] Update egg_scheduled_productions error:', schedErr.message);
     }
 
     // Registrar materias primas compartidas (sin descontar inventario dos veces)

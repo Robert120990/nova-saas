@@ -1,9 +1,9 @@
 import {
     Layers, XCircle, FileText, FileSpreadsheet, FileCheck,
     Plus, AlertOctagon, CheckCircle2, ChevronRight, Pencil, Trash2, Scale,
-    Lock, Boxes, FlaskConical
+    Lock, Boxes, FlaskConical, Thermometer
 } from 'lucide-react';
-import { formatDate } from '../../utils/dateUtils';
+import { formatDate, formatTime } from '../../utils/dateUtils';
 
 const EggBatchStagesModal = ({
     isOpen,
@@ -34,6 +34,7 @@ const EggBatchStagesModal = ({
     const remanentesGeneratedList = stagesModal.data?.remanentes || [];
     const wastesList = stagesModal.data?.wastes || [];
     const packagingList = stagesModal.data?.packaging_records || stagesModal.data?.packagingRecords || [];
+    const pasteurizeLogsList = stagesModal.data?.pasteurization_logs || (stagesModal.data?.pasteurize_log ? [stagesModal.data.pasteurize_log] : []);
     const isPastClosed = stagesModal.data?.batch?.pasteurization_status === 'cerrado';
     const isPkgClosed = stagesModal.data?.batch?.packaging_status === 'cerrado';
 
@@ -117,6 +118,16 @@ const EggBatchStagesModal = ({
                                             <div>Total: <b className="text-slate-900">{parseFloat(stagesModal.data?.totals?.totalInputWeight ?? stagesModal.data?.batch?.total_input_weight_lbs ?? stagesModal.data?.batch?.input_weight_lbs ?? 0).toLocaleString()} Lbs</b></div>
                                             <div>Materia Prima: <span className="font-medium">{stagesModal.data?.raw_materials?.length || 0} ingresos</span></div>
                                             <div>Tarimas: <span className="font-medium text-indigo-700">{tarimasUsedList.length} tarimas</span></div>
+                                            {(stagesModal.data?.batch?.quebraje_inicio || stagesModal.batch?.quebraje_inicio) && (
+                                                <div className="text-[11px] text-amber-950 font-bold bg-amber-50 border border-amber-200 px-2 py-1 rounded-md mt-1">
+                                                    Horario: {stagesModal.data?.batch?.quebraje_inicio || stagesModal.batch?.quebraje_inicio} - {stagesModal.data?.batch?.quebraje_fin || stagesModal.batch?.quebraje_fin || 'En proceso'}
+                                                    {(stagesModal.data?.batch?.egg_condition || stagesModal.batch?.egg_condition) && (
+                                                        <span className="block text-[10px] text-amber-800 font-semibold mt-0.5">
+                                                            Condición: {stagesModal.data?.batch?.egg_condition || stagesModal.batch?.egg_condition}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            )}
                                             {Boolean(stagesModal.batch?.is_coproduct || stagesModal.data?.batch?.is_coproduct) && (
                                                 <div className="text-[10px] text-teal-800 bg-teal-50 border border-teal-200 rounded px-1.5 py-1 font-medium mt-1">
                                                     🔗 Materia prima compartida con corrida origen.
@@ -175,6 +186,19 @@ const EggBatchStagesModal = ({
                                                 <>
                                                     <div>Temp: <b>{stagesModal.data.pasteurize_log.temperature_c}°C</b></div>
                                                     <div>Tiempo: <b>{stagesModal.data.pasteurize_log.holding_time_seconds}s</b></div>
+                                                    {(stagesModal.data.pasteurize_log.start_time || stagesModal.data.pasteurize_log.end_time) && (
+                                                        <div className="text-[11px] text-amber-950 font-bold bg-amber-50 border border-amber-200 px-2 py-0.5 rounded mt-1">
+                                                            Horario: {stagesModal.data.pasteurize_log.start_time || '-'} a {stagesModal.data.pasteurize_log.end_time || '-'}
+                                                        </div>
+                                                    )}
+                                                    {(stagesModal.data.pasteurize_log.temp_huevo_inicio || stagesModal.data.pasteurize_log.temp_agua_inicio) && (
+                                                        <div className="grid grid-cols-2 gap-1 text-[10px] bg-white border border-amber-100 rounded p-1.5 mt-1 font-mono">
+                                                            <div>T° Huevo: <b className="text-amber-800">{stagesModal.data.pasteurize_log.temp_huevo_inicio || '-'} / {stagesModal.data.pasteurize_log.temp_huevo_fin || '-'}</b></div>
+                                                            <div>T° Agua: <b className="text-blue-800">{stagesModal.data.pasteurize_log.temp_agua_inicio || '-'} / {stagesModal.data.pasteurize_log.temp_agua_fin || '-'}</b></div>
+                                                            <div>Flujo: <b>{stagesModal.data.pasteurize_log.flujo_inicio || '-'} / {stagesModal.data.pasteurize_log.flujo_fin || '-'}</b></div>
+                                                            <div>V.B. T: <b>{stagesModal.data.pasteurize_log.vb_tiempo_inicio || '-'} / {stagesModal.data.pasteurize_log.vb_tiempo_fin || '-'}</b></div>
+                                                        </div>
+                                                    )}
                                                 </>
                                             ) : (
                                                 <div className="text-amber-700 text-[11px] font-medium italic">Sin registro térmico</div>
@@ -286,6 +310,11 @@ const EggBatchStagesModal = ({
                                                     Eficiencia: {stagesModal.data.batch.packaging_efficiency_pct}%
                                                 </div>
                                             ) : null}
+                                            {(stagesModal.data?.batch?.empaque_inicio || stagesModal.batch?.empaque_inicio) && (
+                                                <div className="text-[11px] text-purple-950 font-bold bg-purple-50 border border-purple-200 px-2 py-0.5 rounded mt-1">
+                                                    Horario: {stagesModal.data?.batch?.empaque_inicio || stagesModal.batch?.empaque_inicio} a {stagesModal.data?.batch?.empaque_fin || stagesModal.batch?.empaque_fin || 'En proceso'}
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                     <div className="mt-4 flex flex-col gap-1.5">
@@ -458,6 +487,73 @@ const EggBatchStagesModal = ({
                                     <p className="text-xs text-slate-400 italic">No hay detalle individual de tarimas disponible para este lote.</p>
                                 )}
                             </div>
+
+                            {/* REGISTROS TÉRMICOS DE PASTEURIZACIÓN (PRO:006) */}
+                            {pasteurizeLogsList.length > 0 && (
+                                <div className="border border-slate-200 rounded-xl p-4 bg-white space-y-2">
+                                    <div className="flex items-center justify-between">
+                                        <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                                            <Thermometer size={14} className="text-amber-600" />
+                                            Registros de Pasteurización PRO:006 ({pasteurizeLogsList.length})
+                                        </h4>
+                                        <span className="text-[11px] font-bold text-amber-800">
+                                            {stagesModal.data?.batch?.pasteurization_lot ? `Lote: ${stagesModal.data.batch.pasteurization_lot}` : ''}
+                                        </span>
+                                    </div>
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-left text-xs">
+                                            <thead>
+                                                <tr className="border-b border-slate-100 text-slate-500 font-bold uppercase text-[10px]">
+                                                    <th className="py-1.5">Horario</th>
+                                                    <th className="py-1.5 text-center">T° Huevo (Ini / Fin)</th>
+                                                    <th className="py-1.5 text-center">T° Agua (Ini / Fin)</th>
+                                                    <th className="py-1.5 text-center">V.B. Tiempo</th>
+                                                    <th className="py-1.5 text-center">V.B. Booster</th>
+                                                    <th className="py-1.5 text-center">Flujo</th>
+                                                    <th className="py-1.5 text-center">Empaque #1</th>
+                                                    <th className="py-1.5 text-center">T° Efectiva / Sostén</th>
+                                                    <th className="py-1.5">Operador</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100">
+                                                {(Array.isArray(pasteurizeLogsList) ? pasteurizeLogsList : []).map((log, li) => (
+                                                    <tr key={log.id || li} className="hover:bg-slate-50">
+                                                        <td className="py-2 font-mono font-bold text-amber-800">
+                                                            {(log.start_time || log.end_time) ? `${log.start_time || '-'} a ${log.end_time || '-'}` : (log.created_at ? formatTime(log.created_at) : `Ciclo #${li + 1}`)}
+                                                        </td>
+                                                        <td className="py-2 text-center font-mono font-bold text-amber-900">
+                                                            {(log.temp_huevo_inicio || log.temp_huevo_fin) ? `${log.temp_huevo_inicio || '-'} / ${log.temp_huevo_fin || '-'}` : '-'}
+                                                        </td>
+                                                        <td className="py-2 text-center font-mono text-blue-700">
+                                                            {(log.temp_agua_inicio || log.temp_agua_fin) ? `${log.temp_agua_inicio || '-'} / ${log.temp_agua_fin || '-'}` : '-'}
+                                                        </td>
+                                                        <td className="py-2 text-center font-mono text-slate-700">
+                                                            {(log.vb_tiempo_inicio || log.vb_tiempo_fin) ? `${log.vb_tiempo_inicio || '-'} / ${log.vb_tiempo_fin || '-'}` : '-'}
+                                                        </td>
+                                                        <td className="py-2 text-center font-mono text-slate-700">
+                                                            {(log.vb_booster_inicio || log.vb_booster_fin) ? `${log.vb_booster_inicio || '-'} / ${log.vb_booster_fin || '-'}` : '-'}
+                                                        </td>
+                                                        <td className="py-2 text-center font-mono text-slate-700">
+                                                            {(log.flujo_inicio || log.flujo_fin) ? `${log.flujo_inicio || '-'} / ${log.flujo_fin || '-'}` : '-'}
+                                                        </td>
+                                                        <td className="py-2 text-center font-mono text-purple-700">
+                                                            {(log.empaque_inicio || log.empaque_fin) ? `${log.empaque_inicio || '-'} / ${log.empaque_fin || '-'}` : '-'}
+                                                        </td>
+                                                        <td className="py-2 text-center font-medium">
+                                                            <span className="bg-amber-50 text-amber-800 border border-amber-200 px-1.5 py-0.5 rounded text-[10px] font-bold">
+                                                                {log.temperature_c}°C • {log.holding_time_seconds}s
+                                                            </span>
+                                                        </td>
+                                                        <td className="py-2 text-slate-600 text-[11px]">
+                                                            {log.operator_name || '-'}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            )}
 
                             {/* REMANENTES DE OTRAS PRODUCCIONES UTILIZADOS */}
                             <div className="border border-slate-200 rounded-xl p-4 bg-white space-y-2">
@@ -677,6 +773,7 @@ const EggBatchStagesModal = ({
                                                     <th className="py-1.5 text-center">Unidades</th>
                                                     <th className="py-1.5 text-right">Peso Unit.</th>
                                                     <th className="py-1.5 text-right">Peso Total (Lbs)</th>
+                                                    <th className="py-1.5 text-center">Horario</th>
                                                     <th className="py-1.5 text-center">Zona / Temp</th>
                                                     <th className="py-1.5 text-center">Calidad</th>
                                                     <th className="py-1.5">Fecha</th>
@@ -690,6 +787,9 @@ const EggBatchStagesModal = ({
                                                         <td className="py-2 text-center font-bold text-slate-900">{p.units_packaged} u.</td>
                                                         <td className="py-2 text-right text-slate-600">{parseFloat(p.weight_per_unit_lbs || 0).toFixed(1)} Lbs</td>
                                                         <td className="py-2 text-right font-black text-purple-800">{parseFloat(p.total_batch_weight_lbs || 0).toLocaleString()} Lbs</td>
+                                                        <td className="py-2 text-center font-mono text-purple-900 text-[10px]">
+                                                            {(p.packaging_start_time || p.packaging_end_time) ? `${p.packaging_start_time || '-'} a ${p.packaging_end_time || '-'}` : '-'}
+                                                        </td>
                                                         <td className="py-2 text-center">
                                                             <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-slate-100 text-slate-700">
                                                                 {p.warehouse_zone || 'COOLER'} ({p.product_state || 'líquido'})

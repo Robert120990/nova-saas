@@ -1,4 +1,4 @@
-import { Pencil, ShieldCheck, Lock, X } from 'lucide-react';
+import { Pencil, ShieldCheck, Lock, X, Clock } from 'lucide-react';
 
 const PRODUCT_OPTIONS = [
     { value: 'huevo entero', label: 'Huevo Entero Pasteurizado' },
@@ -220,6 +220,38 @@ const EggEditPackagingModal = ({
                         ) : (
                             <span className="text-amber-600 font-medium">Sin producto comercial asignado</span>
                         )}
+                    </div>
+
+                    {/* Horarios PRO:006 de Empaque */}
+                    <div className="bg-purple-50/50 border border-purple-200/80 rounded-2xl p-3 space-y-2">
+                        <label className="text-[10px] font-black text-purple-950 uppercase tracking-wide flex items-center gap-1.5">
+                            <Clock size={13} className="text-purple-600" />
+                            <span>Horario de Empaque (PRO:006)</span>
+                        </label>
+                        <div className="grid grid-cols-2 gap-3">
+                            <div>
+                                <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">
+                                    Inicio
+                                </label>
+                                <input
+                                    type="time"
+                                    value={packagingForm.packaging_start_time || ''}
+                                    onChange={(e) => setPackagingForm({ ...packagingForm, packaging_start_time: e.target.value })}
+                                    className="w-full px-2.5 py-1.5 bg-white border border-purple-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-purple-500/20"
+                                />
+                            </div>
+                            <div>
+                                <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">
+                                    Finalizó
+                                </label>
+                                <input
+                                    type="time"
+                                    value={packagingForm.packaging_end_time || ''}
+                                    onChange={(e) => setPackagingForm({ ...packagingForm, packaging_end_time: e.target.value })}
+                                    className="w-full px-2.5 py-1.5 bg-white border border-purple-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-purple-500/20"
+                                />
+                            </div>
+                        </div>
                     </div>
 
                     <div className="grid grid-cols-2 gap-3">

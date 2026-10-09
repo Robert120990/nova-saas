@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, Lock, X } from 'lucide-react';
+import { Plus, Lock, X, Clock } from 'lucide-react';
 import PackagingColdChainSection from './PackagingColdChainSection';
 import PackagingBatchBalanceCard from './PackagingBatchBalanceCard';
 import PackagingItemsSection from './PackagingItemsSection';
@@ -229,6 +229,45 @@ const EggNewPackagingModal = ({
                         catalogProducts={catalogProducts}
                         codeMappings={codeMappings}
                     />
+
+                    {/* Control de Horario de Empaque / Envasado (PRO:006) */}
+                    <div className="bg-purple-50/50 border border-purple-200/80 rounded-2xl p-3.5 space-y-2.5">
+                        <div className="flex items-center justify-between">
+                            <label className="text-xs font-black text-purple-950 uppercase tracking-wide flex items-center gap-1.5">
+                                <Clock size={14} className="text-purple-600" />
+                                <span>Horario de Empaque / Envasado (PRO:006)</span>
+                            </label>
+                            <span className="text-[10px] font-bold text-purple-700 bg-purple-100 px-2 py-0.5 rounded-full">
+                                Hoja PRO:006
+                            </span>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                                <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">
+                                    Inicio de Empaque
+                                </label>
+                                <input
+                                    type="time"
+                                    value={packagingForm.packaging_start_time || ''}
+                                    onChange={(e) => setPackagingForm({ ...packagingForm, packaging_start_time: e.target.value })}
+                                    className="w-full px-3 py-1.5 bg-white border border-purple-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-purple-500/20"
+                                />
+                                <span className="text-[9px] text-slate-400 block mt-0.5">Ej: 01:10 pm</span>
+                            </div>
+                            <div>
+                                <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">
+                                    Fin de Empaque
+                                </label>
+                                <input
+                                    type="time"
+                                    value={packagingForm.packaging_end_time || ''}
+                                    onChange={(e) => setPackagingForm({ ...packagingForm, packaging_end_time: e.target.value })}
+                                    className="w-full px-3 py-1.5 bg-white border border-purple-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-purple-500/20"
+                                />
+                                <span className="text-[9px] text-slate-400 block mt-0.5">Ej: 03:00 pm</span>
+                            </div>
+                        </div>
+                    </div>
 
                     <PackagingColdChainSection
                         packagingForm={packagingForm}

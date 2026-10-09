@@ -247,6 +247,16 @@ const getProductionBatches = async (req, res) => {
             } catch (remErr) {
                 batch.remanentes_used = [];
             }
+
+            try {
+                const [pastLogs] = await pool.query(
+                    'SELECT * FROM egg_pasteurization_logs WHERE batch_id = ? AND company_id = ? ORDER BY id ASC',
+                    [batch.id, companyId]
+                );
+                batch.pasteurization_logs = pastLogs;
+            } catch (pastErr) {
+                batch.pasteurization_logs = [];
+            }
         }
 
         res.json(rows);

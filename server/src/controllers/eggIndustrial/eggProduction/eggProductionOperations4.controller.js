@@ -1,4 +1,5 @@
 const { eggRules, pool } = require('./shared');
+const calendarBatchSync = require('../../../services/eggIndustrial/eggPlanning/calendarBatchSync.service');
 
 const deleteProductionBatch = async (req, res) => {
     const connection = await pool.getConnection();
@@ -62,12 +63,13 @@ const deleteProductionBatch = async (req, res) => {
         await connection.query('DELETE FROM egg_batch_remanentes WHERE batch_id = ? AND company_id = ?', [id, company_id]);
         await connection.query('DELETE FROM egg_pasteurization_logs WHERE batch_id = ? AND company_id = ?', [id, company_id]);
 
-        // Si estaba vinculado al calendario, restaurar estado a 'programado'
+        // Si estaba vinculado al calendario, gestionar supervivencia o desvinculación
         if (batch.scheduled_production_id) {
-            await connection.query(
-                'UPDATE egg_scheduled_productions SET status = "programado", batch_id = NULL WHERE id = ? AND company_id = ?',
-                [batch.scheduled_production_id, company_id]
-            );
+            await calendarBatchSync.handleBatchDeleted(connection, {
+                company_id,
+                batchId: id,
+                scheduled_production_id: batch.scheduled_production_id
+            });
         }
 
         await connection.query('DELETE FROM egg_production_batches WHERE id = ? AND company_id = ?', [id, company_id]);

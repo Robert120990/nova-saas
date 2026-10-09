@@ -2,6 +2,7 @@ import { toast } from 'sonner';
 import Modal from '../../ui/Modal';
 import { Trash2, Play, Sparkles } from 'lucide-react';
 import { getJulianDayInfo, generateJulianLotCode } from '../../../utils/julianDate';
+import { isProductionFinished } from '../EggCalendarPreviewPopover';
 import ProductionCalendarBatchCard from './ProductionCalendarBatchCard';
 import ProductionCalendarMixFormulaSection from './ProductionCalendarMixFormulaSection';
 import ProductionCalendarTasksSection from './ProductionCalendarTasksSection';
@@ -280,7 +281,7 @@ export default function ProductionCalendarSection5({ model }) {
                 {/* Botones de Acción */}
                 <div className="flex items-center justify-between gap-2.5 pt-4 border-t border-slate-100">
                     <div className="flex items-center gap-2">
-                        {formData.id && formData.status !== 'completado' && formData.status !== 'cancelado' && (
+                        {formData.id && formData.status !== 'completado' && formData.status !== 'cancelado' && !isProductionFinished(formData) && (
                             <button
                                 type="button"
                                 onClick={() => {
