@@ -5,5 +5,6 @@ module.exports = {
     ...require('./eggPackaging/eggPackagingOperations3.controller'),
     ...require('./eggPackaging/eggPackagingOperations4.controller'),
     ...require('./eggPackaging/getTranslatedInventory.controller'),
+    ...require('./eggPackaging/getInventoryOverview.controller'),
     ...require('./eggPackaging/exportTranslatedInventory.controller')
 };

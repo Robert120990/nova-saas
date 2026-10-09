@@ -14,7 +14,11 @@ const updatePackagingRecord = async (req, res) => {
             product_type,
             presentation,
             batch_id,
-            reopen_packaging
+            reopen_packaging,
+            packaging_start_time,
+            packaging_end_time,
+            empaque_inicio,
+            empaque_fin
         } = req.body;
         const company_id = req.company_id;
 
@@ -73,6 +77,9 @@ const updatePackagingRecord = async (req, res) => {
             });
         }
 
+        const resolvedStartTime = packaging_start_time || empaque_inicio || currentRecord.packaging_start_time || null;
+        const resolvedEndTime = packaging_end_time || empaque_fin || currentRecord.packaging_end_time || null;
+
         await connection.query(
             `UPDATE egg_packaging_records
              SET units_packaged = ?,
@@ -83,7 +90,9 @@ const updatePackagingRecord = async (req, res) => {
                  presentation = ?,
                  batch_id = ?,
                  qr_code_payload = ?,
-                 operator_name = ?
+                 operator_name = ?,
+                 packaging_start_time = ?,
+                 packaging_end_time = ?
              WHERE id = ? AND company_id = ?`,
             [
                 finalUnits,
@@ -95,10 +104,22 @@ const updatePackagingRecord = async (req, res) => {
                 finalBatchId,
                 updatedQrPayload,
                 operator_name || currentRecord.operator_name,
+                resolvedStartTime,
+                resolvedEndTime,
                 id,
                 company_id
             ]
         );
+
+        if (resolvedStartTime || resolvedEndTime) {
+            await connection.query(
+                `UPDATE egg_production_batches
+                 SET empaque_inicio = COALESCE(?, empaque_inicio),
+                     empaque_fin = COALESCE(?, empaque_fin)
+                 WHERE id = ? AND company_id = ?`,
+                [resolvedStartTime, resolvedEndTime, finalBatchId, company_id]
+            );
+        }
 
         // Ajustar inventario comercial y registrar movimiento Kardex de ser necesario
         await adjustPackagingStock(

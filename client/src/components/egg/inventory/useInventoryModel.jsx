@@ -1,15 +1,23 @@
 import { getTodayString } from '../../../utils/dateUtils';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { toast } from 'sonner';
-
-
 
 export default function useInventoryModel() {
     const navigate = useNavigate();
 
     const [loading, setLoading] = useState(true);
+    const [activeTab, setActiveTab] = useState('finished_product'); // 'finished_product' | 'raw_material' | 'wastes'
+
+    // Datos del inventario general (Materia prima, Producto terminado x presentación, Mermas)
+    const [overviewData, setOverviewData] = useState({
+        raw_materials: { summary: {}, lots: [] },
+        finished_products: { summary: {}, by_presentation: [], lots: [] },
+        wastes: { summary: {}, by_stage: [], logs: [], batch_wastes: [] }
+    });
+
+    // Datos de inventario traducido a catálogo comercial
     const [inventoryData, setInventoryData] = useState({
         totals: {
             total_items: 0,
@@ -26,20 +34,57 @@ export default function useInventoryModel() {
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedType, setSelectedType] = useState('todos');
     const [unitOfMeasure, setUnitOfMeasure] = useState('lbs'); // 'lbs' | 'kg' | 'units'
-    const [viewMode, setViewMode] = useState('mapping'); // 'mapping' (agrupado por vinculación) | 'detail' (por código)
+    const [viewMode, setViewMode] = useState('mapping'); // 'mapping' | 'detail' (para catálogo comercial)
 
+    // Estados de Modales
+    const [isTarimasModalOpen, setIsTarimasModalOpen] = useState(false);
+    const [selectedRmLot, setSelectedRmLot] = useState(null);
+
+    const [isLotsModalOpen, setIsLotsModalOpen] = useState(false);
+    const [selectedPresentation, setSelectedPresentation] = useState(null);
+
+    const onOpenTarimasModal = useCallback((lot) => {
+        setSelectedRmLot(lot);
+        setIsTarimasModalOpen(true);
+    }, []);
+
+    const onCloseTarimasModal = useCallback(() => {
+        setIsTarimasModalOpen(false);
+        setSelectedRmLot(null);
+    }, []);
+
+    const onOpenLotsModal = useCallback((presentation) => {
+        setSelectedPresentation(presentation);
+        setIsLotsModalOpen(true);
+    }, []);
+
+    const onCloseLotsModal = useCallback(() => {
+        setIsLotsModalOpen(false);
+        setSelectedPresentation(null);
+    }, []);
+
+    // Carga de inventario unificada
     const fetchInventory = async () => {
         setLoading(true);
         try {
-            const res = await axios.get('/api/egg-industrial/inventory-translated');
-            setInventoryData(res.data || {
-                totals: { total_items: 0, total_stock_units: 0, total_weight_lbs: 0, total_weight_kg: 0 },
-                items: [],
-                by_mapping: [],
-                unmapped_products: []
-            });
+            const [overviewRes, translatedRes] = await Promise.allSettled([
+                axios.get('/api/egg-industrial/inventory-overview'),
+                axios.get('/api/egg-industrial/inventory-translated')
+            ]);
+
+            if (overviewRes.status === 'fulfilled' && overviewRes.value?.data) {
+                setOverviewData(overviewRes.value.data);
+            } else {
+                console.error('Error fetching inventory-overview:', overviewRes.reason);
+            }
+
+            if (translatedRes.status === 'fulfilled' && translatedRes.value?.data) {
+                setInventoryData(translatedRes.value.data);
+            } else {
+                console.error('Error fetching inventory-translated:', translatedRes.reason);
+            }
         } catch (err) {
-            console.error('Error cargando inventario traducido:', err);
+            console.error('Error cargando inventario industrial:', err);
             toast.error('No se pudo cargar el inventario industrial.');
         } finally {
             setLoading(false);
@@ -109,11 +154,41 @@ export default function useInventoryModel() {
         });
     }, [inventoryData.items, searchTerm, selectedType]);
 
-    // Tipos de producto para filtro
+    // Tipos de producto para filtro de catálogo comercial
     const productTypes = useMemo(() => {
         return Array.from(new Set((inventoryData.items || []).map(i => i.product_type).filter(Boolean)));
     }, [inventoryData.items]);
 
-
- return { navigate, loading, setLoading, inventoryData, setInventoryData, searchTerm, setSearchTerm, selectedType, setSelectedType, unitOfMeasure, setUnitOfMeasure, viewMode, setViewMode, fetchInventory, handleExport, filteredMappings, filteredItems, productTypes };
+    return {
+        navigate,
+        loading,
+        setLoading,
+        activeTab,
+        setActiveTab,
+        overviewData,
+        inventoryData,
+        searchTerm,
+        setSearchTerm,
+        selectedType,
+        setSelectedType,
+        unitOfMeasure,
+        setUnitOfMeasure,
+        viewMode,
+        setViewMode,
+        fetchInventory,
+        handleExport,
+        filteredMappings,
+        filteredItems,
+        productTypes,
+        // Modal tarimas
+        isTarimasModalOpen,
+        selectedRmLot,
+        onOpenTarimasModal,
+        onCloseTarimasModal,
+        // Modal lotes envasado
+        isLotsModalOpen,
+        selectedPresentation,
+        onOpenLotsModal,
+        onCloseLotsModal
+    };
 }

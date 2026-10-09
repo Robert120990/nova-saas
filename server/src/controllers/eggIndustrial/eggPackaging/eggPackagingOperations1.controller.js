@@ -187,20 +187,36 @@ const createPackagingRecord = async (req, res) => {
             // Determinar estado de calidad inicial según el estatus del lote
             const initialQualityStatus = 'cuarentena'; // La liberación requiere el dictamen de laboratorio para el empaque.
 
-            // Insertar registro con product_type y presentation independientes
+            const pkgStartTime = item.packaging_start_time || item.empaque_inicio || req.body.packaging_start_time || req.body.empaque_inicio || null;
+            const pkgEndTime = item.packaging_end_time || item.empaque_fin || req.body.packaging_end_time || req.body.empaque_fin || null;
+
+            // Insertar registro con product_type y presentation independientes y horarios PRO:006
             const [result] = await connection.query(
                 `INSERT INTO egg_packaging_records (
                     company_id, batch_id, product_type, presentation, units_packaged, warehouse_zone, product_state, quality_status,
                     weight_per_unit_lbs, total_batch_weight_lbs, lot_code, barcode, label_type,
-                    customer_destination, qr_code_payload, expiry_date, operator_name
+                    customer_destination, qr_code_payload, expiry_date, operator_name,
+                    packaging_start_time, packaging_end_time
                 )
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, DATE_ADD(CURDATE(), INTERVAL ? DAY), ?)`,
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, DATE_ADD(CURDATE(), INTERVAL ? DAY), ?, ?, ?)`,
                 [
                     company_id, batch_id, resolvedProduct, resolvedPresentation, units_packaged, itemWarehouseZone, itemProductState, initialQualityStatus,
                     weight_per_unit_lbs, total_batch_weight_lbs, lot_code, barcode, label_type,
-                    customer_destination, qr_code_payload, shelfLifeDays, operator_name || req.user?.nombre || ''
+                    customer_destination, qr_code_payload, shelfLifeDays, operator_name || req.user?.nombre || '',
+                    pkgStartTime, pkgEndTime
                 ]
             );
+
+            // Sincronizar tiempos de empaque en el lote de producción
+            if (pkgStartTime || pkgEndTime) {
+                await connection.query(
+                    `UPDATE egg_production_batches
+                     SET empaque_inicio = COALESCE(?, empaque_inicio),
+                         empaque_fin = COALESCE(?, empaque_fin)
+                     WHERE id = ? AND company_id = ?`,
+                    [pkgStartTime || null, pkgEndTime || null, batch_id, company_id]
+                );
+            }
 
             // Alimentar inventario comercial y Kardex automáticamente
             const explicitProductId = item.product_id || item.catalog_product_id || req.body.product_id || req.body.catalog_product_id || null;
