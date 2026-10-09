@@ -80,8 +80,20 @@ async function insertSecondaryBatch(connection, {
     // Registrar materias primas compartidas (sin descontar inventario dos veces)
     for (const rm of raw_materials) {
         const qty = parseFloat(rm.quantity_lbs || 0);
-        const boxes = parseInt(rm.boxes_count || rm.total_boxes || 0, 10);
-        const tarimasJson = rm.tarimas && Array.isArray(rm.tarimas) ? JSON.stringify(rm.tarimas) : (rm.tarimas_json || null);
+        let boxes = parseInt(rm.boxes_count ?? rm.total_boxes ?? rm.boxes ?? 0, 10);
+        if (isNaN(boxes) || boxes < 0) boxes = 0;
+        if (boxes === 0 && Array.isArray(rm.tarimas) && rm.tarimas.length > 0) {
+            boxes = rm.tarimas.reduce((sum, t) => sum + (parseInt(t.boxes_count || t.boxes || 0, 10) || 0), 0);
+        }
+        let taggedTarimas = rm.tarimas;
+        if (Array.isArray(rm.tarimas) && rm.tarimas.length > 0) {
+            taggedTarimas = rm.tarimas.map(t => ({
+                ...t,
+                is_initial: false,
+                is_added: true
+            }));
+        }
+        const tarimasJson = taggedTarimas && Array.isArray(taggedTarimas) ? JSON.stringify(taggedTarimas) : (rm.tarimas_json || null);
 
         await connection.query(
             'INSERT INTO batch_raw_materials (batch_id, raw_material_id, quantity_lbs, tarimas_json, boxes_count, is_shared) VALUES (?, ?, ?, ?, ?, 1)',

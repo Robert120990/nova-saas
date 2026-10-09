@@ -15,7 +15,8 @@ import {
     Scale,
     FlaskConical,
     MoreVertical,
-    Split
+    Split,
+    Plus
 } from 'lucide-react';
 
 

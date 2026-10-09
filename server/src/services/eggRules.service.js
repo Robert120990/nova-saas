@@ -13,6 +13,8 @@ function normalizeMaterials(materials) {
     for (const material of materials) {
         const id = number(material.raw_material_id, 'Materia prima', 1);
         if (!Number.isInteger(id)) fail('Materia prima inválida.');
+        const rawQty = material.quantity_lbs !== undefined ? material.quantity_lbs : material.weight_lbs;
+        const quantity = number(rawQty, 'Libras', 0.001);
         const rawBoxes = (material.boxes_count !== undefined && material.boxes_count !== '' && material.boxes_count !== null)
             ? material.boxes_count
             : ((material.total_boxes !== undefined && material.total_boxes !== '' && material.total_boxes !== null)
