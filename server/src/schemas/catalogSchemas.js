@@ -100,7 +100,8 @@ const productSchema = z.object({
     status: z.enum(['activo', 'inactivo']).optional(),
     branches: z.array(z.any()).optional(),
     pos: z.array(z.any()).optional(),
-    tributes: z.array(z.any()).optional()
+    tributes: z.array(z.any()).optional(),
+    additional_barcodes: z.array(z.any()).optional()
 }).passthrough();
 
 const productUpdateSchema = productSchema.partial().passthrough();

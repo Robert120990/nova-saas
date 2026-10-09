@@ -113,7 +113,8 @@ const getScanSession = async (req, res) => {
         // Obtener productos válidos para este conteo (solo los cargados en physical_inventory_items)
         const [products] = await pool.query(
             `SELECT pi.id as item_id, pi.product_id, pi.stock_sistema, pi.costo,
-                    p.codigo, p.nombre
+                    p.codigo, p.codigo_barra, p.nombre,
+                    (SELECT GROUP_CONCAT(pb.barcode SEPARATOR ',') FROM product_barcodes pb WHERE pb.product_id = p.id) as extra_barcodes
              FROM physical_inventory_items pi
              JOIN products p ON pi.product_id = p.id
              WHERE pi.physical_inventory_id = ?`,
@@ -136,6 +137,13 @@ const getScanSession = async (req, res) => {
         const productMap = {};
         products.forEach(p => {
             if (p.codigo) productMap[p.codigo.toUpperCase()] = p;
+            if (p.codigo_barra) productMap[p.codigo_barra.toUpperCase()] = p;
+            if (p.extra_barcodes) {
+                p.extra_barcodes.split(',').forEach(b => {
+                    const cleanB = (b || '').trim().toUpperCase();
+                    if (cleanB) productMap[cleanB] = p;
+                });
+            }
         });
 
         res.json({
@@ -223,9 +231,18 @@ const submitScan = async (req, res) => {
              FROM physical_inventory_items pi
              JOIN products p ON pi.product_id = p.id
              WHERE pi.physical_inventory_id = ? 
-               AND UPPER(p.codigo) = ?
+               AND (
+                   UPPER(p.codigo) = ? 
+                   OR UPPER(COALESCE(p.codigo_barra, '')) = ?
+                   OR EXISTS (
+                       SELECT 1 FROM product_barcodes pb 
+                       WHERE pb.company_id = session.company_id 
+                         AND pb.product_id = p.id 
+                         AND UPPER(pb.barcode) = ?
+                   )
+               )
              LIMIT 1`,
-            [session.physical_inventory_id, searchCode]
+            [session.physical_inventory_id, searchCode, searchCode, searchCode]
         );
 
         if (productItems.length === 0) {

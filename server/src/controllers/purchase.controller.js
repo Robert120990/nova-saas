@@ -49,8 +49,15 @@ const resolveProductId = async (connection, companyId, item) => {
     const itemCode = (item.codigo || item.codigo_barra || '').trim();
     if (itemCode && itemCode !== '—') {
         const [matchedByCode] = await connection.query(
-            `SELECT id FROM products WHERE company_id = ? AND status = 'activo' AND (codigo = ? OR codigo_barra = ?) LIMIT 1`,
-            [companyId, itemCode, itemCode]
+            `SELECT id FROM products WHERE company_id = ? AND status = 'activo' AND (
+                codigo = ? 
+                OR codigo_barra = ?
+                OR EXISTS (
+                    SELECT 1 FROM product_barcodes pb 
+                    WHERE pb.company_id = products.company_id AND pb.product_id = products.id AND pb.barcode = ?
+                )
+            ) LIMIT 1`,
+            [companyId, itemCode, itemCode, itemCode]
         );
         if (matchedByCode.length > 0) {
             return matchedByCode[0].id;
@@ -1229,7 +1236,10 @@ const matchProductsForItems = async (items, companyId) => {
     if (!items || !Array.isArray(items) || items.length === 0) return items;
     try {
         const [dbProducts] = await pool.query(
-            `SELECT id, codigo, codigo_barra, nombre, tipo_combustible FROM products WHERE company_id = ? AND status = 'activo'`,
+            `SELECT p.id, p.codigo, p.codigo_barra, p.nombre, p.tipo_combustible,
+                    (SELECT GROUP_CONCAT(pb.barcode SEPARATOR ',') FROM product_barcodes pb WHERE pb.product_id = p.id) as extra_barcodes
+             FROM products p 
+             WHERE p.company_id = ? AND p.status = 'activo'`,
             [companyId]
         );
         return items.map(item => {
@@ -1237,10 +1247,12 @@ const matchProductsForItems = async (items, companyId) => {
             const rawDesc = (item.descripcion || '').trim().toLowerCase();
             let matched = null;
             if (rawCode && rawCode !== '—') {
-                matched = dbProducts.find(p => 
-                    (p.codigo || '').trim().toLowerCase() === rawCode ||
-                    (p.codigo_barra || '').trim().toLowerCase() === rawCode
-                );
+                matched = dbProducts.find(p => {
+                    const c = (p.codigo || '').trim().toLowerCase();
+                    const b = (p.codigo_barra || '').trim().toLowerCase();
+                    const extras = (p.extra_barcodes || '').toLowerCase().split(',').map(x => x.trim()).filter(Boolean);
+                    return c === rawCode || b === rawCode || extras.includes(rawCode);
+                });
             }
             if (!matched && rawDesc && rawDesc.length > 2) {
                 matched = dbProducts.find(p => (p.nombre || '').trim().toLowerCase() === rawDesc);

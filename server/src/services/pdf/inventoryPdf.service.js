@@ -319,7 +319,10 @@ const generateKardexReportPDF = async (data) => {
     const valorizacion = stockActual * costo;
 
     doc.fontSize(7).font('Helvetica').fillColor('#475569');
-    const barcodeText = product.barcode ? `CÓDIGO BARRA: ${product.barcode}   |   ` : '';
+    const baseBc = product.barcode || '';
+    const aliasBc = product.alias_barcodes ? `(Alias: ${product.alias_barcodes})` : '';
+    const fullBc = [baseBc, aliasBc].filter(Boolean).join(' ');
+    const barcodeText = fullBc ? `CÓDIGO BARRA: ${fullBc}   |   ` : '';
     doc.text(`${barcodeText}COSTO UNITARIO: ${reportPdfHelper.fmt(costo)}   |   PRECIO VENTA: ${reportPdfHelper.fmt(precio)}`, startX + 8, currentY + 20, { width: 340, truncate: true });
 
     doc.font('Helvetica-Bold').fillColor('#0f172a');

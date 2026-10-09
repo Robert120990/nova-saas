@@ -138,6 +138,12 @@ REGLAS DE MULTI-TENENCIA:
 - tipo_operacion (1=Gravada, 2=Exenta, 3=No Sujeta)
 - created_at
 
+### product_barcodes (Códigos de barra adicionales / alias)
+- id, company_id, product_id (FK → products.id ON DELETE CASCADE)
+- barcode VARCHAR(100), description VARCHAR(150), created_at
+- UNIQUE(company_id, barcode)
+
+
 ### product_categories (Categorías de Producto)
 - id, company_id, name, description, created_at
 

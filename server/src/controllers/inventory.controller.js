@@ -905,6 +905,7 @@ const getKardexReport = async (req, res) => {
                 p.nombre,
                 p.codigo,
                 p.codigo_barra as barcode,
+                (SELECT GROUP_CONCAT(pb.barcode SEPARATOR ', ') FROM product_barcodes pb WHERE pb.product_id = p.id) as alias_barcodes,
                 p.costo,
                 c.name as categoria,
                 COALESCE(pbp.precio_unitario, 0) as precio_venta,

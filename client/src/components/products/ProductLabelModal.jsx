@@ -1106,6 +1106,41 @@ const ProductLabelModal = ({
                                                 />
                                             </div>
 
+                                            {currentProduct?.additional_barcodes?.length > 0 && (
+                                                <div className="sm:col-span-2 flex flex-wrap items-center gap-1.5 pt-1">
+                                                    <span className="text-[10px] text-slate-500 font-bold uppercase tracking-tight">Usar código:</span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setBarcodeValue(currentProduct.codigo_barra || currentProduct.codigo || '')}
+                                                        className={`text-[10px] font-mono px-2 py-0.5 rounded-md border transition-colors cursor-pointer ${
+                                                            barcodeValue === (currentProduct.codigo_barra || currentProduct.codigo)
+                                                                ? 'bg-indigo-50 border-indigo-300 text-indigo-700 font-bold'
+                                                                : 'bg-white hover:bg-slate-100 border-slate-200 text-slate-600'
+                                                        }`}
+                                                    >
+                                                        Principal ({currentProduct.codigo_barra || currentProduct.codigo})
+                                                    </button>
+                                                    {currentProduct.additional_barcodes.map((b, idx) => {
+                                                        const bCode = typeof b === 'string' ? b : b.barcode;
+                                                        const bDesc = typeof b === 'object' ? b.description : null;
+                                                        return (
+                                                            <button
+                                                                key={idx}
+                                                                type="button"
+                                                                onClick={() => setBarcodeValue(bCode)}
+                                                                className={`text-[10px] font-mono px-2 py-0.5 rounded-md border transition-colors cursor-pointer ${
+                                                                    barcodeValue === bCode
+                                                                        ? 'bg-indigo-50 border-indigo-300 text-indigo-700 font-bold'
+                                                                        : 'bg-white hover:bg-slate-100 border-slate-200 text-slate-600'
+                                                                }`}
+                                                            >
+                                                                {bCode} {bDesc ? `(${bDesc})` : ''}
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+                                            )}
+
                                             {barcodeType !== 'QR' && (
                                                 <div className="sm:col-span-2 flex items-center gap-2 pt-1">
                                                     <input

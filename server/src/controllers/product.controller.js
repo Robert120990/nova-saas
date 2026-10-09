@@ -46,9 +46,12 @@ const getProducts = async (req, res) => {
         }
 
         if (search) {
-            query += ` AND (p.nombre LIKE ? OR p.descripcion LIKE ? OR p.codigo LIKE ? OR p.codigo_barra LIKE ?)`;
+            query += ` AND (p.nombre LIKE ? OR p.descripcion LIKE ? OR p.codigo LIKE ? OR p.codigo_barra LIKE ? OR EXISTS (
+                SELECT 1 FROM product_barcodes pb_alt 
+                WHERE pb_alt.company_id = p.company_id AND pb_alt.product_id = p.id AND pb_alt.barcode LIKE ?
+            ))`;
             const searchTerm = `%${search}%`;
-            params.push(searchTerm, searchTerm, searchTerm, searchTerm);
+            params.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
         }
 
         if (category_id) {
@@ -80,10 +83,14 @@ const getProducts = async (req, res) => {
             const [branchPrices] = await pool.query(
                 'SELECT branch_id, precio_unitario FROM product_branch_prices WHERE product_id = ?', [p.id]
             );
+            const [additionalBarcodes] = await pool.query(
+                'SELECT id, barcode, description FROM product_barcodes WHERE product_id = ? ORDER BY id ASC', [p.id]
+            );
             const branchPricesMap = {};
             branchPrices.forEach(bp => { branchPricesMap[bp.branch_id] = bp.precio_unitario; });
             return {
                 ...p,
+                additional_barcodes: additionalBarcodes,
                 branches: branches.map(b => b.branch_id),
                 branchPrices: branchPricesMap,
                 pos: pos.map(pos => pos.pos_id),
@@ -104,7 +111,7 @@ const getProducts = async (req, res) => {
 };
 
 const createProduct = async (req, res) => {
-    const { branches, pos, tributes, ...productData } = req.body;
+    const { branches, pos, tributes, additional_barcodes, ...productData } = req.body;
     productData.company_id = req.company_id;
 
     const connection = await pool.getConnection();
@@ -144,8 +151,42 @@ const createProduct = async (req, res) => {
             await connection.query('INSERT INTO product_tributes (product_id, tribute_code) VALUES ?', [values]);
         }
 
+        if (additional_barcodes && Array.isArray(additional_barcodes) && additional_barcodes.length > 0) {
+            const cleanBarcodes = additional_barcodes
+                .map(b => (typeof b === 'string' ? { barcode: b.trim(), description: null } : { barcode: (b.barcode || '').trim(), description: (b.description || '').trim() || null }))
+                .filter(b => b.barcode.length > 0);
+
+            for (const item of cleanBarcodes) {
+                const [existsInProducts] = await connection.query(
+                    'SELECT id, nombre FROM products WHERE company_id = ? AND (codigo_barra = ? OR codigo = ?) LIMIT 1',
+                    [req.company_id, item.barcode, item.barcode]
+                );
+                if (existsInProducts.length > 0) {
+                    await connection.rollback();
+                    return res.status(409).json({ message: `El código de barra "${item.barcode}" ya pertenece al producto "${existsInProducts[0].nombre}"` });
+                }
+
+                const [existsInBarcodes] = await connection.query(
+                    `SELECT pb.product_id, p.nombre 
+                     FROM product_barcodes pb 
+                     JOIN products p ON pb.product_id = p.id 
+                     WHERE pb.company_id = ? AND pb.barcode = ? LIMIT 1`,
+                    [req.company_id, item.barcode]
+                );
+                if (existsInBarcodes.length > 0) {
+                    await connection.rollback();
+                    return res.status(409).json({ message: `El código de barra "${item.barcode}" ya está asignado como alias al producto "${existsInBarcodes[0].nombre}"` });
+                }
+            }
+
+            if (cleanBarcodes.length > 0) {
+                const barcodeValues = cleanBarcodes.map(b => [req.company_id, productId, b.barcode, b.description]);
+                await connection.query('INSERT INTO product_barcodes (company_id, product_id, barcode, description) VALUES ?', [barcodeValues]);
+            }
+        }
+
         await connection.commit();
-        res.status(201).json({ id: productId, ...productData });
+        res.status(201).json({ id: productId, ...productData, additional_barcodes: additional_barcodes || [] });
     } catch (error) {
         await connection.rollback();
         console.error('Error al crear producto:', error.message);
@@ -157,7 +198,7 @@ const createProduct = async (req, res) => {
 
 const updateProduct = async (req, res) => {
     const { id } = req.params;
-    const { branches, pos, tributes, ...productData } = req.body;
+    const { branches, pos, tributes, additional_barcodes, ...productData } = req.body;
     
     const connection = await pool.getConnection();
     await connection.beginTransaction();
@@ -196,6 +237,41 @@ const updateProduct = async (req, res) => {
             }
         }
 
+        if (additional_barcodes !== undefined && Array.isArray(additional_barcodes)) {
+            const cleanBarcodes = additional_barcodes
+                .map(b => (typeof b === 'string' ? { barcode: b.trim(), description: null } : { barcode: (b.barcode || '').trim(), description: (b.description || '').trim() || null }))
+                .filter(b => b.barcode.length > 0);
+
+            for (const item of cleanBarcodes) {
+                const [existsInProducts] = await connection.query(
+                    'SELECT id, nombre FROM products WHERE company_id = ? AND id != ? AND (codigo_barra = ? OR codigo = ?) LIMIT 1',
+                    [req.company_id, id, item.barcode, item.barcode]
+                );
+                if (existsInProducts.length > 0) {
+                    await connection.rollback();
+                    return res.status(409).json({ message: `El código de barra "${item.barcode}" ya pertenece al producto "${existsInProducts[0].nombre}"` });
+                }
+
+                const [existsInBarcodes] = await connection.query(
+                    `SELECT pb.product_id, p.nombre 
+                     FROM product_barcodes pb 
+                     JOIN products p ON pb.product_id = p.id 
+                     WHERE pb.company_id = ? AND pb.product_id != ? AND pb.barcode = ? LIMIT 1`,
+                    [req.company_id, id, item.barcode]
+                );
+                if (existsInBarcodes.length > 0) {
+                    await connection.rollback();
+                    return res.status(409).json({ message: `El código de barra "${item.barcode}" ya está asignado como alias al producto "${existsInBarcodes[0].nombre}"` });
+                }
+            }
+
+            await connection.query('DELETE FROM product_barcodes WHERE product_id = ?', [id]);
+            if (cleanBarcodes.length > 0) {
+                const barcodeValues = cleanBarcodes.map(b => [req.company_id, id, b.barcode, b.description]);
+                await connection.query('INSERT INTO product_barcodes (company_id, product_id, barcode, description) VALUES ?', [barcodeValues]);
+            }
+        }
+
         await connection.commit();
         res.json({ message: 'Producto actualizado' });
     } catch (error) {
@@ -222,9 +298,18 @@ const lookupProduct = async (req, res) => {
             JOIN product_branch pb ON p.id = pb.product_id AND pb.branch_id = ?
             LEFT JOIN product_branch_prices pbp ON p.id = pbp.product_id AND pbp.branch_id = pb.branch_id
             LEFT JOIN providers pr ON p.provider_id = pr.id
-            WHERE p.company_id = ? AND (p.codigo = ? OR p.codigo_barra = ?)
+            WHERE p.company_id = ? AND (
+                p.codigo = ? 
+                OR p.codigo_barra = ?
+                OR EXISTS (
+                    SELECT 1 FROM product_barcodes pb_alt 
+                    WHERE pb_alt.company_id = p.company_id 
+                      AND pb_alt.product_id = p.id 
+                      AND pb_alt.barcode = ?
+                )
+            )
         `;
-        let params = [branch_id, req.company_id, code, code];
+        let params = [branch_id, req.company_id, code, code, code];
 
         if (pos_id) {
             query += ` AND (NOT EXISTS (SELECT 1 FROM product_pos pp WHERE pp.product_id = p.id)
@@ -237,7 +322,8 @@ const lookupProduct = async (req, res) => {
         if (rows.length === 0) return res.status(404).json({ message: 'Producto no encontrado' });
 
         const [branches] = await pool.query('SELECT branch_id FROM product_branch WHERE product_id = ?', [rows[0].id]);
-        res.json({ ...rows[0], branches: branches.map(b => b.branch_id) });
+        const [additionalBarcodes] = await pool.query('SELECT id, barcode, description FROM product_barcodes WHERE product_id = ? ORDER BY id ASC', [rows[0].id]);
+        res.json({ ...rows[0], branches: branches.map(b => b.branch_id), additional_barcodes: additionalBarcodes });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -472,9 +558,9 @@ const getPriceAnalysis = async (req, res) => {
         }
 
         if (search) {
-            where += ' AND (p.nombre LIKE ? OR p.descripcion LIKE ? OR p.codigo LIKE ? OR p.codigo_barra LIKE ?)';
+            where += ' AND (p.nombre LIKE ? OR p.descripcion LIKE ? OR p.codigo LIKE ? OR p.codigo_barra LIKE ? OR EXISTS (SELECT 1 FROM product_barcodes pb_alt WHERE pb_alt.company_id = p.company_id AND pb_alt.product_id = p.id AND pb_alt.barcode LIKE ?))';
             const st = `%${search}%`;
-            params.push(st, st, st, st);
+            params.push(st, st, st, st, st);
         }
 
         const priceJoin = effectiveBranchId

@@ -316,8 +316,22 @@ const Kardex = () => {
                                 onClick={() => setIsProductModalOpen(true)}
                                 className="flex-1 px-3 py-1.5 bg-indigo-50/20 hover:bg-indigo-50/40 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 flex items-center justify-between group overflow-hidden h-[36px] cursor-pointer transition-all"
                             >
-                                <span className={productId ? 'text-indigo-700 truncate font-bold text-xs' : 'text-slate-400 italic truncate text-xs font-normal'}>
-                                    {selectedProduct ? `${selectedProduct.nombre} (${selectedProduct.codigo})` : 'Seleccione o presione F3 para buscar producto...'}
+                                <span className={productId ? 'text-indigo-700 truncate font-bold text-xs flex items-center gap-1.5' : 'text-slate-400 italic truncate text-xs font-normal'}>
+                                    {selectedProduct ? (
+                                        <>
+                                            <span className="truncate">{selectedProduct.nombre} ({selectedProduct.codigo})</span>
+                                            {Array.isArray(selectedProduct.additional_barcodes) && selectedProduct.additional_barcodes.length > 0 && (
+                                                <span 
+                                                    title={selectedProduct.additional_barcodes.map(b => `${b.barcode}${b.description ? ` (${b.description})` : ''}`).join('\n')}
+                                                    className="inline-flex items-center text-[9px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200 shrink-0"
+                                                >
+                                                    +{selectedProduct.additional_barcodes.length} alias
+                                                </span>
+                                            )}
+                                        </>
+                                    ) : (
+                                        'Seleccione o presione F3 para buscar producto...'
+                                    )}
                                 </span>
                                 <div className="flex items-center gap-1.5 ml-2 shrink-0">
                                     <span className="hidden sm:inline-block px-1.5 py-0.5 bg-indigo-100 text-indigo-700 rounded text-[9px] font-mono font-black">F3</span>

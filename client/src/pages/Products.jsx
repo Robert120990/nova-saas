@@ -10,6 +10,7 @@ import { useConfirm } from '../context/ConfirmContext';
 import Pagination from '../components/ui/Pagination';
 import ProductLabelModal from '../components/products/ProductLabelModal';
 import ProductPriceAnalysisModal from '../components/products/ProductPriceAnalysisModal';
+import ProductAdditionalBarcodes from '../components/products/ProductAdditionalBarcodes';
 import SearchableSelect from '../components/ui/SearchableSelect';
 
 const Products = () => {
@@ -27,6 +28,8 @@ const Products = () => {
     const [mappingSearch, setMappingSearch] = useState('');
     const [selectedProviderId, setSelectedProviderId] = useState('');
     const [selectedProviderName, setSelectedProviderName] = useState('');
+    const [additionalBarcodes, setAdditionalBarcodes] = useState([]);
+    const [mainBarcode, setMainBarcode] = useState('');
 
     const [searchTerm, setSearchTerm] = useState('');
     const [page, setPage] = useState(1);
@@ -202,6 +205,8 @@ const Products = () => {
         if (data.discount_from_id === '' || data.discount_from_id === 'null') data.discount_from_id = null;
         else data.discount_from_id = parseInt(data.discount_from_id);
 
+        data.additional_barcodes = additionalBarcodes;
+
         mutation.mutate(data);
     };
 
@@ -209,6 +214,15 @@ const Products = () => {
         setSelectedProduct(product);
         setSelectedProviderId(product.provider_id || '');
         setSelectedProviderName(product.provider_name || '');
+        setMainBarcode(product.codigo_barra || '');
+        setAdditionalBarcodes(
+            Array.isArray(product.additional_barcodes)
+                ? product.additional_barcodes.map(b => ({
+                    barcode: b.barcode || '',
+                    description: b.description || null
+                }))
+                : []
+        );
         setActiveTab('general');
         setIsModalOpen(true);
     };
@@ -262,7 +276,15 @@ const Products = () => {
                         <span>Imprimir Etiquetas</span>
                     </button>
                     <button 
-                        onClick={() => { setSelectedProduct(null); setSelectedProviderId(''); setSelectedProviderName(''); setActiveTab('general'); setIsModalOpen(true); }}
+                        onClick={() => { 
+                            setSelectedProduct(null); 
+                            setSelectedProviderId(''); 
+                            setSelectedProviderName(''); 
+                            setMainBarcode('');
+                            setAdditionalBarcodes([]);
+                            setActiveTab('general'); 
+                            setIsModalOpen(true); 
+                        }}
                         className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-1.5 rounded-xl font-bold text-sm transition-all shadow-lg shadow-indigo-600/20 active:scale-95"
                     >
                         <Plus size={20}/>
@@ -304,6 +326,16 @@ const Products = () => {
                             <td className="px-3 py-1">
                                 <span className="text-[10px] font-mono font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">{p.codigo}</span>
                                 {p.codigo_barra && <div className="text-[9px] text-slate-400 flex items-center gap-1"><Barcode size={9}/> {p.codigo_barra}</div>}
+                                {Array.isArray(p.additional_barcodes) && p.additional_barcodes.length > 0 && (
+                                    <div className="mt-0.5">
+                                        <span 
+                                            title={p.additional_barcodes.map(b => `${b.barcode}${b.description ? ` (${b.description})` : ''}`).join('\n')}
+                                            className="inline-flex items-center gap-0.5 text-[9px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200 cursor-help"
+                                        >
+                                            +{p.additional_barcodes.length} alias
+                                        </span>
+                                    </div>
+                                )}
                             </td>
                             <td className="px-3 py-1">
                                 <div className="text-xs font-bold text-slate-900">{p.nombre}</div>
@@ -362,6 +394,16 @@ const Products = () => {
                                         <p className="text-[10px] text-slate-400 font-mono flex items-center gap-1 mt-0.5">
                                             <Barcode size={10}/> {p.codigo_barra}
                                         </p>
+                                    )}
+                                    {Array.isArray(p.additional_barcodes) && p.additional_barcodes.length > 0 && (
+                                        <div className="mt-0.5">
+                                            <span 
+                                                title={p.additional_barcodes.map(b => `${b.barcode}${b.description ? ` (${b.description})` : ''}`).join('\n')}
+                                                className="inline-flex items-center gap-0.5 text-[9px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200 cursor-help"
+                                            >
+                                                +{p.additional_barcodes.length} alias
+                                            </span>
+                                        </div>
                                     )}
                                 </div>
                                 {p.category_name && (
@@ -480,10 +522,21 @@ const Products = () => {
                                     <input name="codigo" defaultValue={selectedProduct?.codigo} required placeholder="PROD-001" className={fieldCls} />
                                 </div>
                                 <div>
-                                    <label className={labelCls}>Código de Barras</label>
-                                    <input name="codigo_barra" defaultValue={selectedProduct?.codigo_barra} placeholder="741000..." className={fieldCls} />
+                                    <label className={labelCls}>Código de Barras Principal</label>
+                                    <input 
+                                        name="codigo_barra" 
+                                        defaultValue={selectedProduct?.codigo_barra} 
+                                        onChange={(e) => setMainBarcode(e.target.value)}
+                                        placeholder="741000..." 
+                                        className={fieldCls} 
+                                    />
                                 </div>
                             </div>
+                            <ProductAdditionalBarcodes
+                                barcodes={additionalBarcodes}
+                                onChange={setAdditionalBarcodes}
+                                mainBarcode={mainBarcode}
+                            />
                             <div>
                                 <label className={labelCls}>Nombre del Producto</label>
                                 <input name="nombre" defaultValue={selectedProduct?.nombre} required placeholder="Nombre descriptivo" className={fieldCls} />
