@@ -163,15 +163,20 @@ async function processBatchPunches(companyId, deviceId, punches = []) {
     );
 
     const empMap = new Map();
+    // Fallbacks secundarios (código e id)
     for (const emp of employees) {
-        if (emp.codigo_biometrico) empMap.set(String(emp.codigo_biometrico).trim().toLowerCase(), emp.id);
         if (emp.codigo) {
-            empMap.set(String(emp.codigo).trim().toLowerCase(), emp.id);
-            // También normalizado sin ceros iniciales
             const num = String(emp.codigo).replace(/^0+/, '');
             if (num) empMap.set(num.toLowerCase(), emp.id);
+            empMap.set(String(emp.codigo).trim().toLowerCase(), emp.id);
         }
         empMap.set(String(emp.id), emp.id);
+    }
+    // Prioridad máxima: codigo_biometrico configurado
+    for (const emp of employees) {
+        if (emp.codigo_biometrico) {
+            empMap.set(String(emp.codigo_biometrico).trim().toLowerCase(), emp.id);
+        }
     }
 
     let insertedCount = 0;

@@ -10,11 +10,13 @@ const coreController = require('./rhBiometric/rhBiometricCore.controller');
 const configController = require('./rhBiometric/rhBiometricConfig.controller');
 const reportController = require('./rhBiometric/rhBiometricReport.controller');
 const cortesController = require('./rhBiometric/rhBiometricCortes.controller');
+const importController = require('./rhBiometric/rhBiometricImport.controller');
 
 module.exports = {
     ...coreController,
     ...configController,
     ...reportController,
-    ...cortesController
+    ...cortesController,
+    ...importController
 };
 

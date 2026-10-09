@@ -53,29 +53,49 @@ async function getLastCorte(companyId) {
     };
 }
 
+function getTodayDateOnly() {
+    try {
+        return new Intl.DateTimeFormat('en-CA', {
+            timeZone: 'America/El_Salvador',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit'
+        }).format(new Date());
+    } catch {
+        return extractDateOnly(new Date());
+    }
+}
+
 /**
  * Resumen de período pendiente de reporte
  */
 async function getPendingRangeSummary(companyId) {
+    const today = getTodayDateOnly();
     const lastCorte = await getLastCorte(companyId);
     let startDate;
-    if (lastCorte) {
+
+    if (lastCorte && lastCorte.fecha_fin) {
+        // Día siguiente del último corte congelado
         startDate = addDays(lastCorte.fecha_fin, 1);
     } else {
+        // Si no hay corte previo, buscar la primera marcación válida reciente (últimos 30 días)
         const [minRow] = await pool.query(
-            `SELECT MIN(DATE(punch_time)) as min_date FROM rh_biometric_attendance_logs WHERE company_id = ?`,
+            `SELECT MIN(DATE(punch_time)) as min_date 
+             FROM rh_biometric_attendance_logs 
+             WHERE company_id = ? 
+               AND punch_time >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) 
+               AND punch_time <= NOW()`,
             [companyId]
         );
-        startDate = minRow[0]?.min_date ? extractDateOnly(minRow[0].min_date) : extractDateOnly(new Date());
+        startDate = minRow[0]?.min_date ? extractDateOnly(minRow[0].min_date) : `${today.slice(0, 8)}01`;
     }
 
-    const [maxRow] = await pool.query(
-        `SELECT MAX(DATE(punch_time)) as max_date FROM rh_biometric_attendance_logs WHERE company_id = ?`,
-        [companyId]
-    );
-    const today = extractDateOnly(new Date());
-    const latestPunchDate = maxRow[0]?.max_date ? extractDateOnly(maxRow[0].max_date) : today;
-    const endDate = latestPunchDate > today ? latestPunchDate : today;
+    if (!startDate || startDate > today) {
+        startDate = today;
+    }
+
+    // Hasta el día actual en todo caso, nunca fechas futuras (como 2118)
+    const endDate = today;
 
     // Calcular totales estimados para el rango pendiente
     const pendingData = await getDailyOvertimeRows(companyId, {
@@ -119,10 +139,13 @@ async function getDailyOvertimeRows(companyId, filters = {}) {
         }
     }
 
+    const today = getTodayDateOnly();
     if (!startDate || !endDate) {
-        const today = extractDateOnly(new Date());
         startDate = startDate || today;
         endDate = endDate || today;
+    }
+    if (filters.mode === 'pending' && endDate > today) {
+        endDate = today;
     }
 
     const settings = await getSettings(companyId);

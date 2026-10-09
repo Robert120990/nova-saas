@@ -1313,6 +1313,10 @@ router.put('/rh/biometric/cortes/overtime-entry', tenantMiddleware, checkPermiss
 router.post('/rh/biometric/cortes/freeze', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.freezePeriod);
 router.get('/rh/biometric/cortes', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.getCortesList);
 router.post('/rh/biometric/cortes/:id/unfreeze', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.unfreezeCorte);
+router.get('/rh/biometric/zk-import/folders', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.getZkFolders);
+router.post('/rh/biometric/zk-import/preview', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.previewZkFolder);
+router.post('/rh/biometric/zk-import/import', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.importZkFolder);
+router.get('/rh/biometric/zk-import/export-excel', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.exportZkConsolidatedExcel);
 
 
 router.get('/logs/stream/:service', verifyToken, settingsController.streamLogs);

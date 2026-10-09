@@ -3,10 +3,11 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { toast } from 'sonner';
 import {
-    Lock, RefreshCw, Clock, FileSpreadsheet, Loader2
+    Lock, RefreshCw, Clock, FileSpreadsheet, Loader2, FolderArchive
 } from 'lucide-react';
 import BiometricEditOvertimeModal from '../BiometricEditOvertimeModal';
 import BiometricFreezePeriodModal from '../BiometricFreezePeriodModal';
+import BiometricImportZkModal from '../BiometricImportZkModal';
 import BiometricCortesHistoryTable from '../BiometricCortesHistoryTable';
 import BiometricOvertimeTable from '../BiometricOvertimeTable';
 import { BiometricPendingBanner, BiometricFrozenBanner } from '../BiometricOvertimeBanners';
@@ -23,6 +24,7 @@ const BiometricOvertimeCortesTab = () => {
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [selectedEntry, setSelectedEntry] = useState(null);
     const [isFreezeModalOpen, setIsFreezeModalOpen] = useState(false);
+    const [isZkImportModalOpen, setIsZkImportModalOpen] = useState(false);
 
     // 1. Fetch pending summary (detects last frozen cutoff and pending date range)
     const {
@@ -117,6 +119,8 @@ const BiometricOvertimeCortesTab = () => {
             queryClient.invalidateQueries({ queryKey: ['rh-biometric-cortes-list'] });
             setSelectedCorte(null);
             setSubView('pending');
+            setStartDate('');
+            setEndDate('');
         },
         onError: (err) => {
             toast.error(err.response?.data?.message || 'Error al descongelar el corte');
@@ -199,6 +203,15 @@ const BiometricOvertimeCortesTab = () => {
                 </div>
 
                 <div className="flex items-center gap-2 flex-wrap">
+                    <button
+                        type="button"
+                        onClick={() => setIsZkImportModalOpen(true)}
+                        className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-indigo-800 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-xl transition-all shadow-sm"
+                        title="Cargar y validar archivos quincenales de ZKTeco (.xls)"
+                    >
+                        <FolderArchive className="w-4 h-4 text-indigo-600" />
+                        <span>Cargar Archivos ZK</span>
+                    </button>
                     <button
                         type="button"
                         onClick={handleExportQuincenal}
@@ -295,10 +308,18 @@ const BiometricOvertimeCortesTab = () => {
                 onClose={() => setIsFreezeModalOpen(false)}
                 suggestedRange={pendingRange}
                 onSuccess={() => {
+                    setStartDate('');
+                    setEndDate('');
                     refetchSummary();
                     refetchOvertime();
                     refetchCortes();
                 }}
+            />
+
+            <BiometricImportZkModal
+                open={isZkImportModalOpen}
+                onClose={() => setIsZkImportModalOpen(false)}
+                onSuccess={() => handleRefreshAll()}
             />
         </div>
     );
