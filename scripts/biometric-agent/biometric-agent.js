@@ -90,6 +90,29 @@ function saveSyncState() {
     }
 }
 
+function formatLocalDateTime(val) {
+    if (!val) return null;
+    if (val instanceof Date) {
+        if (isNaN(val.getTime())) return null;
+        const pad = (n) => String(n).padStart(2, '0');
+        const Y = val.getFullYear();
+        const M = pad(val.getMonth() + 1);
+        const D = pad(val.getDate());
+        const h = pad(val.getHours());
+        const m = pad(val.getMinutes());
+        const s = pad(val.getSeconds());
+        return `${Y}-${M}-${D} ${h}:${m}:${s}`;
+    }
+    if (typeof val === 'string') {
+        const str = val.trim();
+        const match = str.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})/);
+        if (match) {
+            return `${match[1]}-${match[2]}-${match[3]} ${match[4]}:${match[5]}:${match[6]}`;
+        }
+    }
+    return String(val);
+}
+
 function appendToLocalBackup(punches) {
     if (!Array.isArray(punches) || punches.length === 0) return;
     try {
@@ -98,7 +121,7 @@ function appendToLocalBackup(punches) {
             time: p.punch_time,
             code: p.punch_code,
             verify: p.verify_type,
-            recorded_at: new Date().toISOString()
+            recorded_at: formatLocalDateTime(new Date())
         })).join('\n') + '\n';
         fs.appendFileSync(backupPath, lines, 'utf8');
     } catch (e) {
@@ -230,11 +253,11 @@ async function connectToDevice() {
             log('Estado [ONLINE] reportado al servidor SIPE SaaS.', 'SUCCESS');
 
             if (hbRes?.last_punch_time) {
-                const serverTimeStr = new Date(hbRes.last_punch_time).toISOString();
-                if (!syncState.lastPunchTime || new Date(serverTimeStr) > new Date(syncState.lastPunchTime)) {
+                const serverTimeStr = formatLocalDateTime(hbRes.last_punch_time);
+                if (!syncState.lastPunchTime || new Date(serverTimeStr.replace(' ', 'T')) > new Date(syncState.lastPunchTime.replace(' ', 'T'))) {
                     syncState.lastPunchTime = serverTimeStr;
                     saveSyncState();
-                    log(`Servidor SIPE reporta última marcación: ${serverTimeStr.replace('T', ' ').substring(0, 19)} (${hbRes.total_server_logs || 0} registradas en nube).`);
+                    log(`Servidor SIPE reporta última marcación: ${serverTimeStr} (${hbRes.total_server_logs || 0} registradas en nube).`);
                 }
             }
         } catch (serverErr) {
@@ -247,19 +270,20 @@ async function connectToDevice() {
                 await zk.getRealTimeLogs(async (event) => {
                     if (event && (event.userId || event.uid || event.user_id)) {
                         const uid = String(event.userId || event.user_id);
-                        const rawTime = event.attTime || event.time || new Date().toISOString();
-                        log(`🔔 Marcación detectada en tiempo real: Empleado PIN: ${uid}`);
+                        const rawTime = event.attTime || event.time || new Date();
+                        const timeStr = formatLocalDateTime(rawTime);
+                        log(`🔔 Marcación detectada en tiempo real: Empleado PIN: ${uid} a las ${timeStr}`);
                         try {
                             const singlePunch = [{
                                 device_uid: uid,
-                                punch_time: rawTime,
+                                punch_time: timeStr,
                                 punch_code: typeof event.state === 'number' ? event.state : 0,
                                 verify_type: typeof event.verifyType === 'number' ? event.verifyType : 1,
                                 source: 'biometric'
                             }];
                             const res = await sendToServer('/api/rh/biometric/sync', 'POST', { punches: singlePunch });
                             appendToLocalBackup(singlePunch);
-                            syncState.lastPunchTime = new Date(rawTime).toISOString();
+                            syncState.lastPunchTime = timeStr;
                             syncState.totalPunchesSynced += (res.insertedCount || 0);
                             saveSyncState();
                             log(`✓ Marcación en tiempo real sincronizada con SIPE`, 'SUCCESS');
@@ -304,25 +328,33 @@ async function syncAttendances() {
             return;
         }
 
-        // Mapear al formato esperado
-        const punchesPayload = logsList.map(item => ({
-            device_uid: String(item.deviceUserId || item.userId || item.user_id || item.uid || '').trim(),
-            punch_time: item.recordTime || item.attTime || item.timestamp,
-            punch_code: typeof item.punch === 'number' ? item.punch : (typeof item.state === 'number' ? item.state : 0),
-            verify_type: typeof item.verifyType === 'number' ? item.verifyType : 1,
-            raw_data: item
-        })).filter(p => p.device_uid && p.punch_time && !isNaN(new Date(p.punch_time).getTime()));
+        // Mapear al formato esperado manteniendo la hora local exacta del marcador
+        const punchesPayload = logsList.map(item => {
+            const rawTime = item.recordTime || item.attTime || item.timestamp;
+            const timeStr = formatLocalDateTime(rawTime);
+            return {
+                device_uid: String(item.deviceUserId || item.userId || item.user_id || item.uid || '').trim(),
+                punch_time: timeStr,
+                punch_code: typeof item.punch === 'number' ? item.punch : (typeof item.state === 'number' ? item.state : 0),
+                verify_type: typeof item.verifyType === 'number' ? item.verifyType : 1,
+                raw_data: {
+                    ...item,
+                    recordTime: timeStr
+                }
+            };
+        }).filter(p => p.device_uid && p.punch_time);
 
         // Ordenar cronológicamente
-        punchesPayload.sort((a, b) => new Date(a.punch_time) - new Date(b.punch_time));
+        punchesPayload.sort((a, b) => new Date(a.punch_time.replace(' ', 'T')) - new Date(b.punch_time.replace(' ', 'T')));
 
         // FILTRADO INCREMENTAL: Solo procesar los NUEVOS
         let toSync = punchesPayload;
         if (!isFullSync && syncState.lastPunchTime) {
-            const lastTimeMs = new Date(syncState.lastPunchTime).getTime();
+            const lastTimeStr = formatLocalDateTime(syncState.lastPunchTime);
+            const lastTimeMs = new Date(lastTimeStr.replace(' ', 'T')).getTime();
             // Margen de seguridad defensivo de 60 segundos por variaciones de reloj
             const cutoffMs = lastTimeMs - (60 * 1000);
-            toSync = punchesPayload.filter(p => new Date(p.punch_time).getTime() > cutoffMs);
+            toSync = punchesPayload.filter(p => new Date(p.punch_time.replace(' ', 'T')).getTime() > cutoffMs);
         }
 
         if (toSync.length === 0) {
@@ -350,7 +382,7 @@ async function syncAttendances() {
                 punches: chunk,
                 device_info: {
                     last_sync_logs: logsList.length,
-                    sync_time: new Date().toISOString()
+                    sync_time: formatLocalDateTime(new Date())
                 }
             });
             totalInserted += (res.insertedCount || 0);
@@ -360,7 +392,7 @@ async function syncAttendances() {
 
             const chunkLastTime = chunk[chunk.length - 1]?.punch_time;
             if (chunkLastTime) {
-                if (!latestPunchTime || new Date(chunkLastTime) > new Date(latestPunchTime)) {
+                if (!latestPunchTime || new Date(chunkLastTime.replace(' ', 'T')) > new Date(latestPunchTime.replace(' ', 'T'))) {
                     latestPunchTime = chunkLastTime;
                 }
             }
@@ -368,7 +400,7 @@ async function syncAttendances() {
 
         // Actualizar y persistir estado local
         if (latestPunchTime) {
-            syncState.lastPunchTime = new Date(latestPunchTime).toISOString();
+            syncState.lastPunchTime = formatLocalDateTime(latestPunchTime);
         }
         syncState.lastLogCount = logsList.length;
         syncState.totalPunchesSynced += totalInserted;

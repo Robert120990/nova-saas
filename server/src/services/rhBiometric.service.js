@@ -99,18 +99,49 @@ async function updateDeviceHeartbeat(deviceId, deviceInfo = null, status = 'onli
     );
 }
 
+function formatToSqlDateTime(val) {
+    if (!val) return null;
+    if (typeof val === 'string') {
+        const s = val.trim();
+        const match = s.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})/);
+        if (match && !s.endsWith('Z')) {
+            return `${match[1]}-${match[2]}-${match[3]} ${match[4]}:${match[5]}:${match[6]}`;
+        }
+        const d = new Date(s);
+        if (isNaN(d.getTime())) return null;
+        const svParts = new Intl.DateTimeFormat('en-CA', {
+            timeZone: 'America/El_Salvador',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false
+        }).formatToParts(d);
+        const getP = (type) => svParts.find(p => p.type === type)?.value;
+        return `${getP('year')}-${getP('month')}-${getP('day')} ${getP('hour')}:${getP('minute')}:${getP('second')}`;
+    }
+    if (val instanceof Date) {
+        if (isNaN(val.getTime())) return null;
+        const pad = (n) => String(n).padStart(2, '0');
+        return `${val.getFullYear()}-${pad(val.getMonth() + 1)}-${pad(val.getDate())} ${pad(val.getHours())}:${pad(val.getMinutes())}:${pad(val.getSeconds())}`;
+    }
+    return null;
+}
+
 /**
  * Obtener la última marcación registrada para un dispositivo en la empresa
  */
 async function getDeviceLastPunch(deviceId, companyId) {
     const [rows] = await pool.query(
-        `SELECT MAX(punch_time) as last_punch_time, COUNT(*) as total_logs
+        `SELECT DATE_FORMAT(MAX(punch_time), '%Y-%m-%d %H:%i:%s') as last_punch_time, COUNT(*) as total_logs
          FROM rh_biometric_attendance_logs
          WHERE device_id = ? AND company_id = ?`,
         [deviceId, companyId]
     );
     return {
-        last_punch_time: rows[0]?.last_punch_time ? new Date(rows[0].last_punch_time).toISOString() : null,
+        last_punch_time: rows[0]?.last_punch_time || null,
         total_logs: rows[0]?.total_logs || 0
     };
 }
@@ -153,10 +184,9 @@ async function processBatchPunches(companyId, deviceId, punches = []) {
         let punchTimeStr = p.punch_time || p.record_time || p.timestamp || p.time;
         if (!punchTimeStr) continue;
 
-        // Normalizar fecha
-        const dateObj = new Date(punchTimeStr);
-        if (isNaN(dateObj.getTime())) continue;
-        const normalizedTime = dateObj.toISOString().slice(0, 19).replace('T', ' ');
+        // Normalizar fecha a la hora local exacta de El Salvador
+        const normalizedTime = formatToSqlDateTime(punchTimeStr);
+        if (!normalizedTime) continue;
 
         // Resolver empleado
         const cleanUid = uid.toLowerCase();
@@ -237,8 +267,7 @@ async function createManualPunch(companyId, data) {
     if (!emp.length) throw Object.assign(new Error('Empleado no encontrado.'), { status: 404 });
 
     const uid = emp[0].codigo_biometrico || emp[0].codigo || String(emp[0].id);
-    const dateObj = new Date(punch_time);
-    const normalizedTime = isNaN(dateObj.getTime()) ? punch_time : dateObj.toISOString().slice(0, 19).replace('T', ' ');
+    const normalizedTime = formatToSqlDateTime(punch_time) || punch_time;
 
     const [res] = await pool.query(
         `INSERT INTO rh_biometric_attendance_logs
