@@ -25,10 +25,18 @@ const getChangelog = async (req, res) => {
             const msg = msgParts.join('|');
             const colonIdx = msg.indexOf(': ');
 
-            // Extracción o cálculo de la versión autoincrementable v2.7.<commitNumber>
-            const versionMatch = msg.match(/v2\.7\.\d+/i);
-            const versionNumber = totalCommits > 0 ? (totalCommits - index) : null;
-            const version = versionMatch ? versionMatch[0] : (versionNumber ? `v2.7.${versionNumber}` : null);
+            // Extracción o cálculo de la versión autoincrementable (v2.8.x a partir de commit 1000)
+            const versionMatch = msg.match(/v\d+\.\d+\.\d+/i);
+            const rawCommitNumber = totalCommits > 0 ? (totalCommits - index) : null;
+            let calculatedVersion = null;
+            if (rawCommitNumber) {
+                if (rawCommitNumber >= 1000) {
+                    calculatedVersion = `v2.8.${rawCommitNumber - 999}`;
+                } else {
+                    calculatedVersion = `v2.7.${rawCommitNumber}`;
+                }
+            }
+            const version = versionMatch ? versionMatch[0] : calculatedVersion;
 
             return {
                 hash,

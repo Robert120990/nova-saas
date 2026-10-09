@@ -90,7 +90,15 @@ app.post('/api/restart', express.json(), async (req, res) => {
 app.use('/api', apiRoutes);
 
 // Health check & Versioning
-let cachedVersionInfo = { commit: 'unknown', version: 'v2.7.0', lastCheck: 0 };
+const formatSemanticVersion = (commitCount) => {
+    const count = parseInt(commitCount, 10);
+    if (!isNaN(count) && count >= 1000) {
+        return `v2.8.${count - 999}`;
+    }
+    return `v2.7.${count || 0}`;
+};
+
+let cachedVersionInfo = { commit: 'unknown', version: 'v2.8.2', lastCheck: 0 };
 
 const getAppVersionInfo = () => {
     const now = Date.now();
@@ -102,7 +110,7 @@ const getAppVersionInfo = () => {
         const count = require('child_process').execSync('git rev-list --count HEAD', { cwd: __dirname }).toString().trim();
         cachedVersionInfo = {
             commit,
-            version: `v2.7.${count}`,
+            version: formatSemanticVersion(count),
             lastCheck: now
         };
     } catch {

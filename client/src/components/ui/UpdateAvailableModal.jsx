@@ -10,7 +10,7 @@ import { Sparkles, RotateCw, X } from 'lucide-react';
  * @param {boolean} open - Control de visibilidad
  * @param {Function} onClose - Callback al descartar ("Más tarde" o botón "X")
  * @param {Function} onUpdate - Callback para proceder con la actualización
- * @param {string} [version] - Versión semántica (ej. "v2.7.143")
+ * @param {string} [version] - Versión semántica (ej. "v2.8.2")
  * @param {string} [commit] - Hash de commit de git (ej. "3503e5c")
  * @param {boolean} [isUpdating] - Estado de carga mientras se actualiza
  */
@@ -18,7 +18,7 @@ const UpdateAvailableModal = ({
     open = false,
     onClose,
     onUpdate,
-    version = 'v2.7.143',
+    version = 'v2.8.2',
     commit = '',
     isUpdating = false
 }) => {
@@ -31,7 +31,7 @@ const UpdateAvailableModal = ({
     if (!visible) return null;
 
     const formattedCommit = commit ? (commit.startsWith('#') ? commit : `#${commit}`) : '';
-    const displayVersion = version?.startsWith('v') ? version : `v${version || '2.7'}`;
+    const displayVersion = version?.startsWith('v') ? version : `v${version || '2.8'}`;
 
     return (
         <div 

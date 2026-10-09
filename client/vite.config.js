@@ -16,14 +16,22 @@ const commitCount = (() => {
   try {
     return execSync('git rev-list --count HEAD').toString().trim()
   } catch {
-    return '143'
+    return '1001'
   }
+})()
+
+const semanticVersion = (() => {
+  const count = parseInt(commitCount, 10);
+  if (!isNaN(count) && count >= 1000) {
+    return `v2.8.${count - 999}`;
+  }
+  return `v2.7.${count || 0}`;
 })()
 
 export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(commitHash),
-    __APP_SEMANTIC_VERSION__: JSON.stringify(`v2.7.${commitCount}`)
+    __APP_SEMANTIC_VERSION__: JSON.stringify(semanticVersion)
   },
   plugins: [
     basicSsl(),
