@@ -722,7 +722,7 @@ const getSales = async (req, res) => {
             SELECT h.*, s.nombre as seller_name, p.nombre as pos_name, b.nombre as branch_name, c.correo as customer_email,
             c.nit as customer_nit, c.nrc as customer_nrc, c.numero_documento as customer_dui,
             COALESCE(c.nombre, h.cliente_nombre, 'Consumidor Final') as customer_name,
-            COALESCE(d_c.status, d_v.status) as dte_status, COALESCE(d_c.numero_control, d_v.numero_control) as dte_control, COALESCE(d_c.ambiente, d_v.ambiente, '00') as dte_ambiente, COALESCE(d_c.respuesta_hacienda, d_v.respuesta_hacienda) as respuesta_hacienda, COALESCE(d_c.respuesta_hacienda, d_v.respuesta_hacienda) as dte_error,
+            CASE WHEN h.estado IN ('anulado', 'invalidado') THEN 'INVALIDADO' ELSE COALESCE(d_c.status, d_v.status) END as dte_status, COALESCE(d_c.numero_control, d_v.numero_control) as dte_control, COALESCE(d_c.ambiente, d_v.ambiente, '00') as dte_ambiente, COALESCE(d_c.respuesta_hacienda, d_v.respuesta_hacienda) as respuesta_hacienda, COALESCE(d_c.respuesta_hacienda, d_v.respuesta_hacienda) as dte_error,
             comp.nit as company_nit,
             CASE h.tipo_documento 
                 WHEN '01' THEN 'Factura'

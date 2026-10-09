@@ -670,6 +670,9 @@ const SalesHistory = () => {
     };
 
     const getStatusBadge = (status, sale) => {
+        if (sale?.estado === 'anulado' || sale?.estado === 'invalidado' || status === 'INVALIDADO' || status === 'anulado') {
+            return <span className="flex items-center gap-1 px-2 py-0.5 bg-amber-50 text-amber-700 rounded-lg text-[9px] font-black uppercase tracking-wider"><Ban size={11} /> Anulado</span>;
+        }
         switch (status) {
             case 'ACCEPTED':
                 return <span className="flex items-center gap-1 px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-lg text-[9px] font-black uppercase tracking-wider"><CheckCircle2 size={11} /> Aceptado</span>;
