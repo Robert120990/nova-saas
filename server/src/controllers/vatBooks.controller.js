@@ -36,7 +36,7 @@ const getPeriodText = (month, year) => {
  */
 const DTE_JOIN_SQL = `
     LEFT JOIN (
-        SELECT dd.venta_id, dd.numero_control, dd.status, dd.sello_recepcion, dd.json_original
+        SELECT dd.venta_id, dd.numero_control, dd.status, dd.sello_recepcion, dd.json_original, dd.ambiente
         FROM dtes dd
         INNER JOIN (
             SELECT venta_id, MAX(id) AS max_id
@@ -56,6 +56,7 @@ const DTE_JOIN_SQL = `
 const DTE_VALIDO_SQL = `(
     d.venta_id IS NOT NULL
     AND d.status NOT IN ('REJECTED', 'ERROR', 'INVALIDADO')
+    AND (d.ambiente IS NULL OR d.ambiente = '01')
 )`;
 
 /**
