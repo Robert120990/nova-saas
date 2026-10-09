@@ -1,117 +1,20 @@
-import { formatDate } from '../utils/dateUtils';
 import { useState, useEffect, useMemo } from 'react';
-import { Search, Plus, Calendar, DollarSign, FileText, Eye, Check, X, History, FilterX, Printer, Mail, Trash2 } from 'lucide-react';
+import { Plus, History, DollarSign } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { toast } from 'sonner';
 import SearchableSelect from '../components/ui/SearchableSelect';
 import { useAuth } from '../context/AuthContext';
 import { useConfirm } from '../context/ConfirmContext';
-import Money, { MoneyInput } from '../components/ui/Money';
+import Money from '../components/ui/Money';
 import { useDirtyTracker } from '../hooks/useDirtyTracker';
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-
-
-const metodoBadge = (m) => {
-    const map = {
-        Efectivo: 'bg-emerald-50 text-emerald-700 border-emerald-100',
-        Transferencia: 'bg-blue-50 text-blue-700 border-blue-100',
-        Cheque: 'bg-violet-50 text-violet-700 border-violet-100',
-        Tarjeta: 'bg-amber-50 text-amber-700 border-amber-100',
-    };
-    return map[m] || 'bg-slate-50 text-slate-600 border-slate-100';
-};
-
-// ── Sub-components (Modals) ──────────────────────────────────────────────────
-
-const DetailsModal = ({ doc, onClose }) => {
-    if (!doc) return null;
-    return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={onClose} />
-            <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-xl z-10 overflow-hidden animate-in zoom-in-95 duration-300 border border-slate-100">
-                <div className="p-4 md:p-8 border-b border-slate-100 flex items-center justify-between bg-slate-50/30">
-                    <div>
-                        <h2 className="text-xl font-black text-slate-800 uppercase italic leading-none">Detalles del Documento</h2>
-                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-2">{doc.tipo} #{doc.documento || doc.id}</p>
-                    </div>
-                    <button onClick={onClose} className="p-3 hover:bg-white rounded-2xl transition-all text-slate-400 hover:text-slate-600 shadow-sm"><X size={20} /></button>
-                </div>
-                <div className="p-4 md:p-8 grid grid-cols-1 sm:grid-cols-2 gap-8 text-sm">
-                    <div className="space-y-6">
-                        <div>
-                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Monto Original</span>
-                            <span className="text-lg font-black text-slate-800 italic underline tracking-tighter"><Money value={doc.total_original || 0} /></span>
-                        </div>
-                        <div>
-                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Saldo Pendiente</span>
-                            <span className="text-lg font-black text-indigo-600 italic underline tracking-tighter"><Money value={doc.saldo_pendiente || 0} /></span>
-                        </div>
-                    </div>
-                    <div className="space-y-6">
-                        <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Fecha Emisión</span>
-                            <span className="text-sm font-bold text-slate-700 flex items-center gap-2"><Calendar size={14} className="text-indigo-400" /> {formatDate(doc.fecha)}</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-};
-
-const ViewModal = ({ paymentId, onClose }) => {
-    const { data: pay } = useQuery({
-        queryKey: ['cxc-payment-detail', paymentId],
-        queryFn: async () => (await axios.get(`/api/cxc/payments/${paymentId}`)).data,
-        enabled: !!paymentId
-    });
-
-    if (!paymentId) return null;
-    return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={onClose} />
-            <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-2xl z-10 overflow-hidden animate-in slide-in-from-bottom-8 duration-300">
-                <div className="p-4 md:p-8 border-b border-slate-100 flex items-center justify-between">
-                    <div>
-                        <h2 className="text-xl font-black text-slate-800 uppercase italic leading-none text-indigo-600">Comprobante de Abono</h2>
-                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-2">RECIBO #{paymentId}</p>
-                    </div>
-                    <button onClick={onClose} className="p-3 hover:bg-slate-100 rounded-2xl transition-all text-slate-400"><X size={20} /></button>
-                </div>
-                {pay ? (
-                    <div className="p-4 md:p-8 space-y-8">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
-                            <div className="space-y-6">
-                                <div>
-                                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Cliente</span>
-                                    <span className="text-sm font-black text-slate-800 uppercase">{pay.cliente_nombre}</span>
-                                </div>
-                                <div>
-                                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Monto Cobrado</span>
-                                    <span className="text-3xl font-black text-slate-900 italic tracking-tighter"><Money value={pay.monto || 0} /></span>
-                                </div>
-                            </div>
-                            <div className="space-y-6 text-right">
-                                <div>
-                                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Fecha de Cobro</span>
-                                    <span className="text-sm font-bold text-slate-700 block">{formatDate(pay.fecha_pago, true)}</span>
-                                </div>
-                                <div className="mt-4">
-                                    <span className={`px-4 py-1.5 rounded-xl font-black text-[10px] uppercase border inline-block ${metodoBadge(pay.metodo_pago)}`}>{pay.metodo_pago}</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                ) : <div className="p-20 text-center text-slate-400 italic">Cargando recibo...</div>}
-            </div>
-        </div>
-    );
-};
-
-// ── Main Component ───────────────────────────────────────────────────────────
+import {
+    CxcDocDetailsModal,
+    CxcPaymentReceiptModal,
+    CxcPendingDocumentsTable,
+    CxcTotalsSidebar,
+    CxcHistoryTab,
+} from '../components/cxc';
 
 const AddPayment = () => {
     const { user } = useAuth();
@@ -127,8 +30,8 @@ const AddPayment = () => {
     const [docRows, setDocRows] = useState([]);
     const [detailsModal, setDetailsModal] = useState(null);
     const [viewPaymentId, setViewPaymentId] = useState(null);
-    const [histPage, setHistPage] = useState(1);
     const [histSearch, setHistSearch] = useState('');
+    const [montoManual, setMontoManual] = useState('');
     
     const [formData, setFormData] = useState({
         fecha: new Date().toISOString().split('T')[0],
@@ -137,10 +40,11 @@ const AddPayment = () => {
         user_id: user?.id
     });
 
-    useDirtyTracker('pagos', docRows.some(r => r.abono) || selectedCustomerId);
+    useDirtyTracker('pagos', docRows.some(r => parseFloat(r.abono || 0) > 0) || Boolean(selectedCustomerId));
 
     const totalAbonado = useMemo(() => {
-        return docRows.reduce((acc, r) => acc + (parseFloat(r.abono || 0) || 0), 0);
+        const total = docRows.reduce((acc, r) => acc + (parseFloat(r.abono || 0) || 0), 0);
+        return Math.round(total * 100) / 100;
     }, [docRows]);
 
     // Queries
@@ -158,46 +62,51 @@ const AddPayment = () => {
 
     const { data: statementData } = useQuery({
         queryKey: ['customer-summary-balance', selectedCustomerId, selectedBranchId],
-        queryFn: async () => (await axios.get(`/api/cxc/statement`, { params: { customer_id: selectedCustomerId, branch_id: selectedBranchId, limit: 1 } })).data,
-        enabled: !!selectedCustomerId && !!selectedBranchId
+        queryFn: async () => (await axios.get(`/api/cxc/statement`, { 
+            params: { customer_id: selectedCustomerId, branch_id: selectedBranchId, limit: 1 } 
+        })).data,
+        enabled: Boolean(selectedCustomerId && selectedBranchId)
     });
 
     const { data: pendingDocs = [], isSuccess: loadSuccess } = useQuery({
         queryKey: ['pending-documents', selectedCustomerId, selectedBranchId],
-        queryFn: async () => (await axios.get(`/api/cxc/pending-documents`, { params: { customer_id: selectedCustomerId, branch_id: selectedBranchId } })).data,
-        enabled: !!selectedCustomerId && !!selectedBranchId
-    });
-
-    const { data: histData = { payments: [], pagination: { total: 0, pages: 1 } } } = useQuery({
-        queryKey: ['payment-history', selectedCustomerId, selectedBranchId, histPage, histSearch],
-        queryFn: async () => (await axios.get(`/api/cxc/payments`, {
-            params: { customer_id: selectedCustomerId, branch_id: selectedBranchId, page: histPage, search: histSearch }
+        queryFn: async () => (await axios.get(`/api/cxc/pending-documents`, { 
+            params: { customer_id: selectedCustomerId, branch_id: selectedBranchId } 
         })).data,
-        enabled: activeTab === 'historial' && !!selectedCustomerId,
+        enabled: Boolean(selectedCustomerId && selectedBranchId)
     });
 
-    // Reset loop protection
+    const { data: histData = { payments: [] } } = useQuery({
+        queryKey: ['payment-history', selectedCustomerId, selectedBranchId, histSearch],
+        queryFn: async () => (await axios.get(`/api/cxc/payments`, {
+            params: { customer_id: selectedCustomerId, branch_id: selectedBranchId, limit: 100, search: histSearch }
+        })).data,
+        enabled: activeTab === 'historial' && Boolean(selectedCustomerId),
+    });
+
+    // Sincronización de documentos pendientes
     useEffect(() => {
         if (loadSuccess && Array.isArray(pendingDocs)) {
             const currentIds = docRows.map(r => r.sale_id ? `s_${r.sale_id}` : `g_${r.gas_credito_id || r.id}`).sort().join(',');
             const nextIds = pendingDocs.map(r => r.sale_id ? `s_${r.sale_id}` : `g_${r.gas_credito_id || r.id}`).sort().join(',');
             if (currentIds !== nextIds || docRows.length === 0) {
-                 setDocRows(pendingDocs.map(d => ({
-                     ...d,
-                     id: d.sale_id ? `s_${d.sale_id}` : `g_${d.gas_credito_id}`,
-                     sale_id: d.sale_id || null,
-                     gas_credito_id: d.gas_credito_id || null,
-                     abono: '',
-                     originalSaldo: d.saldo_pendiente
-                 })));
+                setDocRows(pendingDocs.map(d => ({
+                    ...d,
+                    id: d.sale_id ? `s_${d.sale_id}` : `g_${d.gas_credito_id}`,
+                    sale_id: d.sale_id || null,
+                    gas_credito_id: d.gas_credito_id || null,
+                    abono: '',
+                    originalSaldo: d.saldo_pendiente
+                })));
+                setMontoManual('');
             }
         }
     }, [pendingDocs, loadSuccess]);
 
     useEffect(() => {
-        setHistPage(1);
         setHistSearch('');
         setDocRows([]);
+        setMontoManual('');
     }, [selectedCustomerId, selectedBranchId]);
 
     const paymentMutation = useMutation({
@@ -205,6 +114,7 @@ const AddPayment = () => {
         onSuccess: async () => {
             toast.success('Abono registrado correctamente');
             setDocRows(prev => prev.map(d => ({ ...d, abono: '' })));
+            setMontoManual('');
             queryClient.invalidateQueries(['pending-documents']);
             queryClient.invalidateQueries(['payment-history']);
             queryClient.invalidateQueries(['customer-summary-balance']);
@@ -212,25 +122,74 @@ const AddPayment = () => {
         onError: (err) => toast.error(err.response?.data?.message || 'Error al abonar')
     });
 
-    const handleMontoManual = (val) => {
-        let rem = val === '' ? 0 : parseFloat(val);
+    // Auto-distribución manual desde la barra lateral
+    const handleMontoManualChange = (val) => {
+        const cleanVal = String(val).replace(',', '.');
+        if (!/^\d*\.?\d{0,2}$/.test(cleanVal)) return;
+
+        setMontoManual(cleanVal);
+        let rem = cleanVal === '' ? 0 : Math.round(parseFloat(cleanVal) * 100) / 100;
+
         setDocRows(prev => prev.map(d => {
-            const s = parseFloat(d.originalSaldo || d.saldo_pendiente || 0);
-            const p = Math.min(rem, s);
-            rem = Math.max(0, rem - p);
+            const s = Math.round(parseFloat(d.originalSaldo || d.saldo_pendiente || 0) * 100) / 100;
+            const p = Math.round(Math.min(rem, s) * 100) / 100;
+            rem = Math.round(Math.max(0, rem - p) * 100) / 100;
             return { ...d, abono: p > 0 ? p.toFixed(2) : '' };
         }));
     };
 
+    // Edición manual de cada abono en la tabla (sin trabas al escribir decimales)
     const handleAbonoChange = (idx, val) => {
+        const cleanVal = String(val).replace(',', '.');
+        if (!/^\d*\.?\d{0,2}$/.test(cleanVal)) return;
+
         setDocRows(prev => {
             const next = [...prev];
             if (!next[idx]) return next;
-            const s = parseFloat(next[idx].originalSaldo || next[idx].saldo_pendiente || 0);
-            const p = val === '' ? 0 : parseFloat(val);
-            next[idx] = { ...next[idx], abono: val === '' ? '' : Math.min(p, s).toFixed(2) };
+            const s = Math.round(parseFloat(next[idx].originalSaldo || next[idx].saldo_pendiente || 0) * 100) / 100;
+            
+            if (cleanVal !== '' && parseFloat(cleanVal) > s) {
+                next[idx] = { ...next[idx], abono: s.toFixed(2) };
+            } else {
+                next[idx] = { ...next[idx], abono: cleanVal };
+            }
             return next;
         });
+    };
+
+    const handleAbonoBlur = (idx) => {
+        setDocRows(prev => {
+            const next = [...prev];
+            if (!next[idx]) return next;
+            const s = Math.round(parseFloat(next[idx].originalSaldo || next[idx].saldo_pendiente || 0) * 100) / 100;
+            const num = parseFloat(next[idx].abono);
+            if (!isNaN(num) && num > 0) {
+                next[idx] = { ...next[idx], abono: Math.min(num, s).toFixed(2) };
+            } else {
+                next[idx] = { ...next[idx], abono: '' };
+            }
+            return next;
+        });
+    };
+
+    // Abonar el 100% del saldo de una fila con un clic
+    const handleFillAllSaldo = (idx, saldo) => {
+        setDocRows(prev => {
+            const next = [...prev];
+            if (!next[idx]) return next;
+            const currentAbono = parseFloat(next[idx].abono || 0);
+            next[idx] = { ...next[idx], abono: currentAbono === saldo ? '' : saldo.toFixed(2) };
+            return next;
+        });
+    };
+
+    const handleClearAllAbonos = () => {
+        setDocRows(prev => prev.map(d => ({ ...d, abono: '' })));
+        setMontoManual('');
+    };
+
+    const handleFormDataChange = (field, value) => {
+        setFormData(prev => ({ ...prev, [field]: value }));
     };
 
     const handlePrintPDF = async (id) => {
@@ -281,7 +240,7 @@ const AddPayment = () => {
             .map(r => ({
                 sale_id: r.sale_id || null,
                 gas_credito_id: r.gas_credito_id || null,
-                monto: r.abono
+                monto: parseFloat(r.abono).toFixed(2)
             }));
         if (abs.length === 0) return toast.error('Ingrese un monto mayor a 0');
         paymentMutation.mutate({ 
@@ -295,24 +254,36 @@ const AddPayment = () => {
     };
 
     return (
-        <div className="max-w-7xl mx-auto space-y-6 pb-20 animate-in fade-in duration-500">
-            {/* Header */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div className="max-w-7xl mx-auto space-y-4 pb-16 animate-in fade-in duration-300">
+            {/* Cabecera Principal */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
-                    <h2 className="text-2xl font-black tracking-tighter text-slate-900 uppercase italic">Abonos de Clientes</h2>
-                    <p className="text-slate-500 mt-1 font-medium text-xs uppercase tracking-widest">Distribución de saldos y gestión de CXC</p>
+                    <h2 className="text-xl sm:text-2xl font-black tracking-tight text-slate-900 uppercase">
+                        Abonos de Clientes
+                    </h2>
+                    <p className="text-slate-500 text-xs uppercase tracking-wider mt-0.5">
+                        Distribución de saldos y gestión de CXC
+                    </p>
                 </div>
-                <div className="flex flex-wrap bg-slate-100 p-1 rounded-xl shadow-inner">
+                <div className="flex bg-slate-100 p-1 rounded-xl shadow-inner w-fit">
                     <button 
                         onClick={() => setActiveTab('nuevo')}
-                        className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${activeTab === 'nuevo' ? 'bg-white text-indigo-600 shadow-sm scale-[1.02]' : 'text-slate-500 hover:text-slate-700'}`}
+                        className={`px-3.5 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${
+                            activeTab === 'nuevo' 
+                                ? 'bg-white text-indigo-600 shadow-xs' 
+                                : 'text-slate-500 hover:text-slate-800'
+                        }`}
                     >
                         <Plus size={14} />
                         Nuevo Abono
                     </button>
                     <button 
                         onClick={() => setActiveTab('historial')}
-                        className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${activeTab === 'historial' ? 'bg-white text-indigo-600 shadow-sm scale-[1.02]' : 'text-slate-500 hover:text-slate-700'}`}
+                        className={`px-3.5 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${
+                            activeTab === 'historial' 
+                                ? 'bg-white text-indigo-600 shadow-xs' 
+                                : 'text-slate-500 hover:text-slate-800'
+                        }`}
                     >
                         <History size={14} />
                         Historial
@@ -320,23 +291,28 @@ const AddPayment = () => {
                 </div>
             </div>
 
-            {/* Selectors Bar (Compact) */}
-            <div className="bg-white p-4 rounded-[1.5rem] border border-slate-100 shadow-sm grid grid-cols-1 md:grid-cols-4 gap-4 relative">
-                <div className="md:col-span-1">
-                    <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 ml-1">SUCURSAL</label>
+            {/* Barra de Filtros y Saldo */}
+            <div className="bg-white p-3 sm:p-4 rounded-2xl border border-slate-200/80 shadow-xs grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 items-center">
+                <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                        Sucursal
+                    </label>
                     <select 
-                        className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-4 focus:ring-indigo-500/5 focus:border-indigo-400 transition-all text-[11px] font-bold uppercase h-[38px] cursor-pointer"
+                        className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-xl outline-none focus:border-indigo-500 transition-all text-xs font-bold uppercase h-[36px] cursor-pointer"
                         value={selectedBranchId}
                         onChange={(e) => setSelectedBranchId(e.target.value)}
                     >
-                        <option value="">-- SUCURSAL --</option>
+                        <option value="">-- SELECCIONAR SUCURSAL --</option>
                         {branches.map(b => <option key={b.id} value={b.id}>{b.nombre?.toUpperCase()}</option>)}
                     </select>
                 </div>
-                <div className="md:col-span-1">
-                    <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 ml-1">CLIENTE</label>
+
+                <div className="sm:col-span-1 md:col-span-2">
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                        Cliente
+                    </label>
                     <SearchableSelect 
-                        placeholder="BUSCAR CLIENTE..."
+                        placeholder="BUSCAR CLIENTE POR NOMBRE O NRC/NIT..."
                         loadOptions={loadCustomersOptions}
                         value={selectedCustomerId}
                         onChange={(e) => setSelectedCustomerId(e.target.value)}
@@ -347,180 +323,63 @@ const AddPayment = () => {
                     />
                 </div>
 
-                {/* Resumen de Saldo */}
-                <div className="md:col-span-2 flex flex-col justify-center">
-                    {selectedCustomerId && selectedBranchId && statementData ? (
-                        <div className="bg-indigo-600 rounded-2xl p-4 text-white shadow-xl shadow-indigo-100 flex items-center justify-between animate-in zoom-in-95 duration-300 italic h-[56px] mt-4 md:mt-2">
-                           <div className="flex items-center gap-4">
-                                <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-md shadow-inner">
-                                    <DollarSign size={20} />
-                                </div>
-                                <div>
-                                    <h3 className="text-[10px] font-black uppercase tracking-widest text-indigo-100 italic">Saldo Total</h3>
-                                    <p className="text-xl font-black leading-tight tracking-tighter"><Money value={statementData.total_balance || 0} /></p>
-                                </div>
-                           </div>
-                           <div className="text-right hidden md:block border-l border-white/20 pl-4">
-                                <span className="text-[9px] font-black opacity-60 uppercase block tracking-wider font-mono leading-none">Corte al</span>
-                                <span className="text-[10px] font-black uppercase block tracking-widest">{new Date().toLocaleDateString('es-SV')}</span>
-                           </div>
+                {/* Badge Saldo Total del Cliente */}
+                <div className="bg-indigo-600 text-white rounded-xl p-2.5 flex items-center justify-between shadow-sm">
+                    <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center">
+                            <DollarSign size={16} />
                         </div>
-                    ) : (
-                        <div className="h-[56px] mt-4 md:mt-2 border-2 border-dashed border-slate-100 rounded-2xl flex flex-col items-center justify-center text-slate-300 px-4 bg-slate-50/30">
-                            <p className="text-[9px] font-black uppercase tracking-widest">Seleccione cliente para cargar saldos</p>
+                        <div>
+                            <span className="text-[9px] font-bold uppercase tracking-wider text-indigo-200 block">Saldo Total</span>
+                            <span className="text-sm sm:text-base font-black tracking-tight leading-tight">
+                                <Money value={statementData?.total_balance ?? 0} />
+                            </span>
                         </div>
-                    )}
+                    </div>
                 </div>
             </div>
 
+            {/* Contenido Principal */}
             {activeTab === 'nuevo' ? (
-                <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 items-start animate-in slide-in-from-top-2 duration-300">
-                    <div className="lg:col-span-3 space-y-6">
-                        <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-x-auto">
-                            <table className="w-full text-left text-sm italic table-cards">
-                                <thead className="bg-slate-50/50 border-b border-slate-100 text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                                    <tr>
-                                        <th className="px-6 py-5">Documento</th>
-                                        <th className="px-6 py-5">Fecha</th>
-                                        <th className="px-6 py-5 text-right whitespace-nowrap">Saldo Pend.</th>
-                                        <th className="px-6 py-5 text-right pr-12">Abono</th>
-                                        <th className="px-6 py-5 text-center">Info</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-50">
-                                    {docRows.map((d, i) => (
-                                        <tr key={d.id} className="hover:bg-indigo-50/30 transition-colors group">
-                                            <td className="px-6 py-4" data-label="Documento">
-                                                <div className="flex flex-col">
-                                                    <span className="text-xs font-black text-slate-700 uppercase leading-none mb-1">{d.tipo}</span>
-                                                    <span className="text-[10px] font-bold text-indigo-500 font-mono tracking-tighter">#{d.documento || d.id}</span>
-                                                </div>
-                                            </td>
-                                            <td className="px-6 py-4 text-xs font-bold text-slate-400 font-mono" data-label="Fecha">{formatDate(d.fecha)}</td>
-                                            <td className="px-6 py-4 text-right" data-label="Saldo Pend.">
-                                                <span className="text-xs font-black text-slate-900 tracking-tighter"><Money value={d.originalSaldo || 0} /></span>
-                                            </td>
-                                            <td className="px-6 py-4 text-right pr-10" data-label="Abono">
-                                                <div className="flex items-center justify-end gap-2">
-                                                    <span className="text-[10px] font-bold text-slate-300">$</span>
-                                                    <MoneyInput step="0.01" value={d.abono} onChange={e => handleAbonoChange(i, e.target.value)} className="w-24 px-2 py-1.5 bg-slate-50 border border-slate-100 rounded-xl text-right font-black text-indigo-600 outline-none focus:ring-4 focus:ring-indigo-500/5 focus:border-indigo-400 transition-all" />
-                                                </div>
-                                            </td>
-                                            <td className="px-6 py-4 text-center" data-label="">
-                                                <button onClick={() => setDetailsModal(d)} className="p-2 hover:bg-white rounded-xl text-slate-400 transition-colors hover:text-indigo-600 shadow-sm border border-transparent hover:border-slate-100"><Eye size={16} /></button>
-                                            </td>
-                                        </tr>
-                                    ))}
-                                    {docRows.length === 0 && (
-                                        <tr><td colSpan="5" className="px-6 py-24 text-center">
-                                            <div className="flex flex-col items-center gap-3 opacity-30">
-                                                <FilterX size={48} />
-                                                <p className="text-xs font-black uppercase tracking-widest">Sin documentos pendientes</p>
-                                            </div>
-                                        </td></tr>
-                                    )}
-                                </tbody>
-                            </table>
-                        </div>
+                <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 items-start">
+                    <div className="lg:col-span-3">
+                        <CxcPendingDocumentsTable 
+                            docRows={docRows}
+                            onAbonoChange={handleAbonoChange}
+                            onAbonoBlur={handleAbonoBlur}
+                            onFillAllSaldo={handleFillAllSaldo}
+                            onClearAllAbonos={handleClearAllAbonos}
+                            onViewDetails={setDetailsModal}
+                        />
                     </div>
 
                     <div className="lg:col-span-1">
-                        <form onSubmit={handleSubmit} className="bg-slate-900 rounded-[2rem] p-6 shadow-xl text-white space-y-6 sticky top-6 border border-white/5 italic">
-                            <div className="flex justify-between items-center text-[10px] opacity-40 uppercase font-black tracking-widest">
-                                <span>DISTRIBUCIÓN TOTAL</span>
-                                <span><Money value={totalAbonado} /></span>
-                            </div>
-                            <div className="text-4xl font-black text-center border-b border-white/10 pb-6 tracking-tighter decoration-indigo-500 underline underline-offset-8"><Money value={totalAbonado} /></div>
-                            
-                            <div className="space-y-5">
-                                <div>
-                                    <label className="text-[10px] font-black opacity-40 uppercase block mb-2 ml-1 tracking-widest flex items-center gap-2 italic"><Calendar size={12} className="text-indigo-400" /> Fecha de Abono</label>
-                                    <input 
-                                        type="date"
-                                        className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-[11px] font-bold outline-none focus:border-indigo-400 transition-all font-mono"
-                                        value={formData.fecha}
-                                        onChange={e => setFormData(f => ({ ...f, fecha: e.target.value }))}
-                                    />
-                                </div>
-                                <div>
-                                    <label className="text-[10px] font-black opacity-40 uppercase block mb-2 ml-1 tracking-widest flex items-center gap-2 italic"><DollarSign size={12} className="text-indigo-400" /> Distribuir Saldo</label>
-                                    <input type="number" step="0.01" className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-xs font-black outline-none focus:border-indigo-400 transition-all" placeholder="0.00" onChange={e => handleMontoManual(e.target.value)} />
-                                </div>
-                                <div>
-                                    <label className="text-[10px] font-black opacity-40 uppercase block mb-2 ml-1 tracking-widest flex items-center gap-2 italic"><Check size={12} className="text-indigo-400" /> Método de Cobro</label>
-                                    <select value={formData.metodo} onChange={e => setFormData(f => ({ ...f, metodo: e.target.value }))} className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-[11px] font-black outline-none focus:border-indigo-400 transition-all uppercase cursor-pointer">
-                                        <option value="Efectivo" className="bg-slate-900">Efectivo</option>
-                                        <option value="Transferencia" className="bg-slate-900">Transferencia</option>
-                                        <option value="Cheque" className="bg-slate-900">Cheque</option>
-                                        <option value="Tarjeta" className="bg-slate-900">Tarjeta</option>
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="text-[10px] font-black opacity-40 uppercase block mb-2 ml-1 tracking-widest italic flex items-center gap-2"><FileText size={12} className="text-indigo-400" /> Notas / Referencia</label>
-                                    <input type="text" className="w-full px-4 py-2 bg-white/5 border border-white/10 rounded-xl text-white text-[10px] font-bold outline-none focus:border-indigo-400 transition-all uppercase placeholder:text-white/20" placeholder="DOC # O NOTAS..." value={formData.comentario} onChange={e => setFormData(f => ({ ...f, comentario: e.target.value }))} />
-                                </div>
-                            </div>
-
-                            <button type="submit" disabled={paymentMutation.isPending || totalAbonado <= 0} className="w-full bg-indigo-600 hover:bg-indigo-500 py-4 rounded-2xl font-black transition-all active:scale-95 disabled:opacity-50 shadow-2xl shadow-indigo-600/20 uppercase text-[11px] tracking-[0.2em]">
-                                {paymentMutation.isPending ? 'PROCESANDO...' : 'GUARDAR RECIBO'}
-                            </button>
-                        </form>
+                        <CxcTotalsSidebar 
+                            totalAbonado={totalAbonado}
+                            montoManual={montoManual}
+                            onMontoManualChange={handleMontoManualChange}
+                            formData={formData}
+                            onFormDataChange={handleFormDataChange}
+                            onSubmit={handleSubmit}
+                            isSubmitting={paymentMutation.isPending}
+                        />
                     </div>
                 </div>
             ) : (
-                <div className="space-y-4 animate-in slide-in-from-right-2 duration-300">
-                    <div className="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm flex items-center gap-4">
-                        <div className="flex-1 relative italic">
-                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
-                            <input type="text" placeholder="FILTRAR MOVIMIENTOS POR NÚMERO O CLIENTE..." value={histSearch} onChange={e => setHistSearch(e.target.value)} className="w-full pl-12 pr-4 py-3 bg-slate-50/50 border-none rounded-2xl text-[11px] font-black uppercase tracking-widest outline-none focus:ring-4 focus:ring-indigo-500/5 transition-all" />
-                        </div>
-                    </div>
-                    <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-x-auto text-[11px]">
-                        <table className="w-full text-left italic">
-                            <thead className="bg-slate-50/50 border-b border-slate-100 text-[9px] font-black text-slate-400 uppercase tracking-widest">
-                                <tr>
-                                    <th className="px-6 py-5">Recibo</th>
-                                    <th className="px-6 py-5">Fecha</th>
-                                    <th className="px-6 py-5 whitespace-nowrap">Aplicado a</th>
-                                    <th className="px-6 py-5 text-right">Monto</th>
-                                    <th className="px-6 py-5 text-center">Método</th>
-                                    <th className="px-6 py-5 text-right">Acciones</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-50">
-                                {(histData.payments || []).map(p => (
-                                    <tr key={p.id} className="hover:bg-slate-50/50 transition-colors group">
-                                        <td className="px-6 py-4 font-black text-indigo-600 font-mono text-xs tracking-tighter">REC-{String(p.id).padStart(5, '0')}</td>
-                                        <td className="px-6 py-4 text-xs font-bold text-slate-400 font-mono">{formatDate(p.fecha_pago)}</td>
-                                        <td className="px-6 py-4">
-                                            <div className="flex flex-col">
-                                                <span className="text-[10px] font-black text-slate-700 uppercase leading-none mb-1">{p.documento_aplicado || 'COMPOSITE'}</span>
-                                                <span className="text-[9px] font-bold text-slate-300 uppercase tracking-widest truncate max-w-[120px]">{p.cliente_nombre}</span>
-                                            </div>
-                                        </td>
-                                        <td className="px-6 py-4 text-right font-black text-slate-900 italic tracking-tighter text-xs"><Money value={p.monto || 0} /></td>
-                                        <td className="px-6 py-4 text-center"><span className={`px-2 py-0.5 rounded-xl text-[8px] font-black uppercase border shadow-sm ${metodoBadge(p.metodo_pago)}`}>{p.metodo_pago}</span></td>
-                                        <td className="px-6 py-4">
-                                            <div className="flex items-center justify-end gap-1">
-                                                <button onClick={() => setViewPaymentId(p.id)} title="Ver Detalle" className="p-1.5 hover:bg-white text-slate-600 hover:text-indigo-600 rounded-lg transition-all shadow-sm border border-transparent hover:border-slate-100"><Eye size={14} /></button>
-                                                <button onClick={() => handlePrintPDF(p.id)} title="Imprimir Recibo" className="p-1.5 hover:bg-white text-slate-600 hover:text-rose-600 rounded-lg transition-all shadow-sm border border-transparent hover:border-slate-100"><Printer size={14} /></button>
-                                                <button onClick={() => handleSendEmail(p.id)} title="Enviar por Correo" className="p-1.5 hover:bg-white text-slate-600 hover:text-blue-600 rounded-lg transition-all shadow-sm border border-transparent hover:border-slate-100"><Mail size={14} /></button>
-                                                <button onClick={() => handleDelete(p.id)} title="Eliminar Abono" className="p-1.5 hover:bg-white text-slate-600 hover:text-rose-600 rounded-lg transition-all shadow-sm border border-transparent hover:border-slate-100"><Trash2 size={14} /></button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                ))}
-                                {(!histData.payments || histData.payments.length === 0) && (
-                                    <tr><td colSpan="6" className="px-8 py-32 text-center text-slate-300 italic uppercase font-black text-[10px] tracking-[0.3em] opacity-20">No se encontraron movimientos registrados</td></tr>
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
+                <CxcHistoryTab 
+                    histData={histData}
+                    histSearch={histSearch}
+                    onHistSearchChange={setHistSearch}
+                    onViewPayment={setViewPaymentId}
+                    onPrintPDF={handlePrintPDF}
+                    onSendEmail={handleSendEmail}
+                    onDeletePayment={handleDelete}
+                />
             )}
 
-            {detailsModal && <DetailsModal doc={detailsModal} onClose={() => setDetailsModal(null)} />}
-            {viewPaymentId && <ViewModal paymentId={viewPaymentId} onClose={() => setViewPaymentId(null)} />}
+            {/* Modales Desacoplados */}
+            <CxcDocDetailsModal doc={detailsModal} onClose={() => setDetailsModal(null)} />
+            <CxcPaymentReceiptModal paymentId={viewPaymentId} onClose={() => setViewPaymentId(null)} />
         </div>
     );
 };

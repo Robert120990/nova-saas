@@ -162,7 +162,10 @@ async function run() {
 
         // Si tiene abono registrado en el estado de cuenta
         if (grp.totalAbono > 0) {
-          const abonoMonto = Math.round(grp.totalAbono * 100) / 100;
+          let abonoMonto = Math.round(grp.totalAbono * 100) / 100;
+          if (Math.abs(docTotal - abonoMonto) <= 0.02) {
+            abonoMonto = docTotal;
+          }
           await conn.query(`
             INSERT INTO customer_payments (
               company_id, branch_id, customer_id, sale_id, monto, fecha_pago,

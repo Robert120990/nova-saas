@@ -222,12 +222,34 @@ const AddProviderPayment = () => {
     };
 
     const handleAbonoChange = (idx, val) => {
+        const cleanVal = String(val).replace(',', '.');
+        if (!/^\d*\.?\d{0,2}$/.test(cleanVal)) return;
+
         setDocRows(prev => {
             const next = [...prev];
             if (!next[idx]) return next;
-            const s = parseFloat(next[idx].originalSaldo || next[idx].saldo_pendiente || 0);
-            const p = val === '' ? 0 : parseFloat(val);
-            next[idx] = { ...next[idx], abono: val === '' ? '' : Math.min(p, s).toFixed(2) };
+            const s = Math.round(parseFloat(next[idx].originalSaldo || next[idx].saldo_pendiente || 0) * 100) / 100;
+            
+            if (cleanVal !== '' && parseFloat(cleanVal) > s) {
+                next[idx] = { ...next[idx], abono: s.toFixed(2) };
+            } else {
+                next[idx] = { ...next[idx], abono: cleanVal };
+            }
+            return next;
+        });
+    };
+
+    const handleAbonoBlur = (idx) => {
+        setDocRows(prev => {
+            const next = [...prev];
+            if (!next[idx]) return next;
+            const s = Math.round(parseFloat(next[idx].originalSaldo || next[idx].saldo_pendiente || 0) * 100) / 100;
+            const num = parseFloat(next[idx].abono);
+            if (!isNaN(num) && num > 0) {
+                next[idx] = { ...next[idx], abono: Math.min(num, s).toFixed(2) };
+            } else {
+                next[idx] = { ...next[idx], abono: '' };
+            }
             return next;
         });
     };
@@ -397,7 +419,15 @@ const AddProviderPayment = () => {
                                             <td className="px-6 py-4 text-right pr-10" data-label="Pagar">
                                                  <div className="flex items-center justify-end gap-2">
                                                     <span className="text-[10px] font-bold text-slate-300 italic">$</span>
-                                                    <MoneyInput step="0.01" value={d.abono} onChange={e => handleAbonoChange(i, e.target.value)} className="w-24 px-2 py-1.5 bg-slate-50 border border-slate-100 rounded-xl text-right font-black text-rose-600 outline-none focus:ring-4 focus:ring-rose-500/5 focus:border-rose-400 transition-all shadow-sm" />
+                                                    <MoneyInput 
+                                                        type="text"
+                                                        inputMode="decimal"
+                                                        value={d.abono || ''} 
+                                                        onChange={e => handleAbonoChange(i, e.target.value)} 
+                                                        onBlur={() => handleAbonoBlur(i)}
+                                                        placeholder="0.00"
+                                                        className="w-24 px-2 py-1.5 bg-slate-50 border border-slate-100 rounded-xl text-right font-black text-rose-600 outline-none focus:ring-4 focus:ring-rose-500/5 focus:border-rose-400 transition-all shadow-sm" 
+                                                    />
                                                 </div>
                                             </td>
                                             <td className="px-6 py-4 text-center" data-label="">

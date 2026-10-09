@@ -243,7 +243,7 @@ const getPendingDocuments = async (req, res) => {
                 COALESCE(${dteLatestColSql('h', 'numero_control')}, CONCAT('VTA-', h.id)) as documento,
                 h.total_pagar as total_original,
                 COALESCE(SUM(p.monto), 0) as total_abonado,
-                (h.total_pagar - COALESCE(SUM(p.monto), 0)) as saldo_pendiente
+                ROUND(h.total_pagar - COALESCE(SUM(p.monto), 0), 2) as saldo_pendiente
             FROM sales_headers h
             LEFT JOIN cat_002_tipo_dte cat ON h.tipo_documento = cat.code
             LEFT JOIN customer_payments p ON p.sale_id = h.id
@@ -252,7 +252,7 @@ const getPendingDocuments = async (req, res) => {
             AND h.estado != 'ANULADO'
             AND ${dteValidoExistsSql('h')}
             GROUP BY h.id, h.fecha_emision, h.tipo_documento, cat.description, h.total_pagar
-            HAVING saldo_pendiente > 0.001
+            HAVING saldo_pendiente >= 0.01
             ORDER BY h.fecha_emision ASC, h.id ASC
         `, [company_id, branch_id, customer_id]);
 
@@ -267,14 +267,14 @@ const getPendingDocuments = async (req, res) => {
                     CONCAT('VALE/CRÉDITO #', COALESCE(NULLIF(gcc.documento, ''), gcc.id), ' (Turno #', COALESCE(c.numero_turno, c.id), ')') as documento,
                     gcc.monto as total_original,
                     COALESCE(SUM(p.monto), 0) as total_abonado,
-                    (gcc.monto - COALESCE(SUM(p.monto), 0)) as saldo_pendiente
+                    ROUND(gcc.monto - COALESCE(SUM(p.monto), 0), 2) as saldo_pendiente
                 FROM gas_station_closeout_creditos gcc
                 JOIN gas_station_closeouts c ON gcc.closeout_id = c.id
                 LEFT JOIN customer_payments p ON p.gas_credito_id = gcc.id
                 WHERE c.company_id = ? AND c.branch_id = ? AND gcc.cliente_id = ?
                 ${desdeFecha ? 'AND c.fecha_turno >= ?' : ''}
                 GROUP BY gcc.id, c.fecha_turno, gcc.tipo_documento, gcc.documento, c.numero_turno, c.id, gcc.monto
-                HAVING saldo_pendiente > 0.001
+                HAVING saldo_pendiente >= 0.01
                 ORDER BY c.fecha_turno ASC, gcc.id ASC
             `, [
                 company_id, branch_id, customer_id,
