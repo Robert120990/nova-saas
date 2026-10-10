@@ -938,6 +938,15 @@ const getVatBookSalesTaxpayersPDF = async (req, res) => {
             drawPageHeader();
         }
 
+        // --- CÁLCULO DE IVA EN CUADRO RESUMEN ---
+        // Opción A (Original - Sumatoria estricta del IVA de cada DTE individual transmitido a Hacienda):
+        // const ivaOriginalSumatoria = t.iva;
+        // const totalOriginalSumatoria = t.total;
+
+        // Opción B (Solicitada - 13% exacto sobre el total gravado acumulado neto):
+        t.iva = Number((t.grav * 0.13).toFixed(2));
+        t.total = Number((t.grav + t.exe + (t.no_sujeta || 0) + t.iva + t.fovial + t.cotrans - (t.ret || 0)).toFixed(2));
+
         const boxX = startX + totalWidth - 260;
         const boxEndY = drawPdfSummaryBox(doc, boxX, doc.y + 10, t, 'RESUMEN VENTAS CCF');
 
@@ -1197,6 +1206,15 @@ const getVatBookSalesConsumersPDF = async (req, res) => {
                 drawPageHeader();
             }
 
+            // --- CÁLCULO DE IVA EN CUADRO RESUMEN ---
+            // Opción A (Original - Sumatoria estricta del IVA de cada DTE individual transmitido a Hacienda):
+            // const ivaOriginalSumatoria = t.iva;
+            // const totalOriginalSumatoria = t.total;
+
+            // Opción B (Solicitada - 13% exacto sobre el total gravado acumulado neto):
+            t.iva = Number((t.grav * 0.13).toFixed(2));
+            t.total = Number((t.grav + t.exe + (t.no_sujeta || 0) + t.iva + t.fovial + t.cotrans - (t.ret || 0)).toFixed(2));
+
             const boxX = startX + totalWidth - 260;
             const boxEndY = drawPdfSummaryBox(doc, boxX, doc.y + 10, t, 'RESUMEN VENTAS FAC');
 
@@ -1287,6 +1305,15 @@ const getVatBookSalesConsumersPDF = async (req, res) => {
                 doc.addPage();
                 drawPageHeader();
             }
+
+            // --- CÁLCULO DE IVA EN CUADRO RESUMEN ---
+            // Opción A (Original - Sumatoria estricta del IVA de cada DTE individual transmitido a Hacienda):
+            // const ivaOriginalSumatoria = t.iva;
+            // const totalOriginalSumatoria = t.total;
+
+            // Opción B (Solicitada - 13% exacto sobre el total gravado acumulado neto):
+            t.iva = Number((t.grav * 0.13).toFixed(2));
+            t.total = Number((t.grav + t.exe + (t.no_sujeta || 0) + t.iva + t.fovial + t.cotrans - (t.ret || 0)).toFixed(2));
 
             const boxX = startX + totalWidth - 260;
             const boxEndY = drawPdfSummaryBox(doc, boxX, doc.y + 10, t, 'RESUMEN VENTAS FAC');
