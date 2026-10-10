@@ -38,12 +38,35 @@ function formatTimeOnly(val) {
     return '';
 }
 
-function calculateQuincenaTitle(startDateStr) {
-    if (!startDateStr) return 'Reporte de Horas Extras';
-    const [y, m, d] = startDateStr.split('-').map(Number);
-    const monthName = MONTHS_ES[(m - 1) % 12];
-    const isSecondQuincena = d >= 11;
-    return `${isSecondQuincena ? '2°' : '1°'} Quincena ${monthName}  ${y}`;
+function calculateQuincenaTitle(startDateStr, endDateStr, explicitTitle) {
+    if (explicitTitle && typeof explicitTitle === 'string' && explicitTitle.trim()) {
+        return explicitTitle.trim();
+    }
+    // Si tenemos fecha de fin (endDateStr), la quincena de pago corresponde a dicha fecha de cierre:
+    // Cierre del 1 al 15 -> 1° Quincena del mes de cierre (ej. corte al 10 de octubre -> 1° Quincena Octubre)
+    // Cierre del 16 en adelante -> 2° Quincena del mes de cierre (ej. corte al 25 de septiembre -> 2° Quincena Septiembre)
+    if (endDateStr) {
+        const [y, m, d] = endDateStr.split('-').map(Number);
+        if (!isNaN(y) && !isNaN(m) && !isNaN(d)) {
+            const monthName = MONTHS_ES[(m - 1) % 12];
+            const quincenaLabel = d <= 15 ? '1°' : '2°';
+            return `${quincenaLabel} Quincena ${monthName}  ${y}`;
+        }
+    }
+    if (startDateStr) {
+        const [y, m, d] = startDateStr.split('-').map(Number);
+        if (!isNaN(y) && !isNaN(m) && !isNaN(d)) {
+            if (d >= 20) {
+                const nextM = m === 12 ? 1 : m + 1;
+                const nextY = m === 12 ? y + 1 : y;
+                return `1° Quincena ${MONTHS_ES[nextM - 1]}  ${nextY}`;
+            }
+            const monthName = MONTHS_ES[(m - 1) % 12];
+            const quincenaLabel = d <= 5 ? '1°' : '2°';
+            return `${quincenaLabel} Quincena ${monthName}  ${y}`;
+        }
+    }
+    return 'Reporte de Horas Extras';
 }
 
 function calculateDayTimes(sortedTimeStrings, jornadaHoras = 9) {
@@ -102,8 +125,21 @@ function calculateDayTimes(sortedTimeStrings, jornadaHoras = 9) {
 }
 
 async function generateAndelsaOvertimeExcel(companyId, filters = {}) {
-    const startDate = filters.startDate || filters.start_date || '2026-09-11';
-    const endDate = filters.endDate || filters.end_date || '2026-09-24';
+    let startDate = filters.startDate || filters.start_date;
+    let endDate = filters.endDate || filters.end_date;
+
+    if (!startDate || !endDate) {
+        const today = new Date();
+        const y = today.getFullYear();
+        const m = String(today.getMonth() + 1).padStart(2, '0');
+        const d = today.getDate();
+        if (!endDate) {
+            endDate = `${y}-${m}-${String(d).padStart(2, '0')}`;
+        }
+        if (!startDate) {
+            startDate = d <= 15 ? `${y}-${m}-01` : `${y}-${m}-16`;
+        }
+    }
     const { branchId, departamentoId, search } = filters;
 
     const [compRows] = await pool.query('SELECT * FROM companies WHERE id = ?', [companyId]);
@@ -148,15 +184,22 @@ async function generateAndelsaOvertimeExcel(companyId, filters = {}) {
 
     const punchMap = new Map();
     punches.forEach(p => {
-        const k1 = p.empleado_id ? `${p.empleado_id}_${p.fecha}` : null;
-        const k2 = p.device_uid ? `uid_${p.device_uid}_${p.fecha}` : null;
-        if (k1) {
+        if (p.empleado_id) {
+            const k1 = `${p.empleado_id}_${p.fecha}`;
             if (!punchMap.has(k1)) punchMap.set(k1, []);
             punchMap.get(k1).push(p.hora);
         }
-        if (k2) {
+        if (p.device_uid) {
+            const cleanUid = String(p.device_uid).trim().replace(/^0+/, '');
+            const k2 = `uid_${cleanUid}_${p.fecha}`;
             if (!punchMap.has(k2)) punchMap.set(k2, []);
             punchMap.get(k2).push(p.hora);
+
+            const k2Raw = `uid_${String(p.device_uid).trim()}_${p.fecha}`;
+            if (k2Raw !== k2) {
+                if (!punchMap.has(k2Raw)) punchMap.set(k2Raw, []);
+                punchMap.get(k2Raw).push(p.hora);
+            }
         }
     });
 
@@ -170,8 +213,14 @@ async function generateAndelsaOvertimeExcel(companyId, filters = {}) {
 
     const adjMap = new Map();
     adjustments.forEach(a => {
-        if (a.empleado_id) adjMap.set(`${a.empleado_id}_${a.fecha}`, a);
-        if (a.device_uid) adjMap.set(`uid_${a.device_uid}_${a.fecha}`, a);
+        if (a.empleado_id) {
+            adjMap.set(`${a.empleado_id}_${a.fecha}`, a);
+        }
+        if (a.device_uid) {
+            const cleanUid = String(a.device_uid).trim().replace(/^0+/, '');
+            adjMap.set(`uid_${cleanUid}_${a.fecha}`, a);
+            adjMap.set(`uid_${String(a.device_uid).trim()}_${a.fecha}`, a);
+        }
     });
 
     // 4. Festivos
@@ -198,8 +247,8 @@ async function generateAndelsaOvertimeExcel(companyId, filters = {}) {
     let totalOtrosTransporte = 0;
 
     for (const emp of employees) {
-        const uid = emp.codigo_biometrico || emp.codigo || String(emp.id);
-        const rawUid = String(uid).replace(/^0+/, '');
+        const bioUid = emp.codigo_biometrico ? String(emp.codigo_biometrico).trim() : null;
+        const bioUidClean = bioUid ? bioUid.replace(/^0+/, '') : null;
         const specificArea = KNOWN_ANDELSA_AREAS[String(emp.id)] || emp.ocupacion || emp.cargo_nombre || emp.depto_nombre || 'Producción';
         const isTransporteArea = /logistica|bodega|transporte/i.test(specificArea);
         const jornadaHoras = parseFloat(emp.horas_jornada_diaria || (isTransporteArea ? 8 : 9));
@@ -209,13 +258,26 @@ async function generateAndelsaOvertimeExcel(companyId, filters = {}) {
         const daysData = [];
 
         for (const d of dateList) {
-            const punchList = punchMap.get(`${emp.id}_${d.dateStr}`) ||
-                              punchMap.get(`uid_${uid}_${d.dateStr}`) ||
-                              punchMap.get(`uid_${rawUid}_${d.dateStr}`) || [];
+            // Buscar marcaciones estrictamente vinculadas a este empleado:
+            // 1. Por empleado_id (prioridad máxima y relación directa en BD)
+            let punchList = punchMap.get(`${emp.id}_${d.dateStr}`);
+            
+            // 2. Si no hay por empleado_id, solo buscar por codigo_biometrico si el empleado lo tiene configurado
+            // (NUNCA por emp.codigo de planilla o ID numérico suelto para evitar cruzamiento de empleados)
+            if ((!punchList || punchList.length === 0) && bioUid) {
+                punchList = (bioUidClean ? punchMap.get(`uid_${bioUidClean}_${d.dateStr}`) : null) ||
+                            punchMap.get(`uid_${bioUid}_${d.dateStr}`);
+            }
+            punchList = punchList ? [...punchList] : [];
             punchList.sort();
 
             const timeCalc = calculateDayTimes(punchList, jornadaHoras);
-            const adj = adjMap.get(`${emp.id}_${d.dateStr}`) || adjMap.get(`uid_${uid}_${d.dateStr}`);
+            let adj = adjMap.get(`${emp.id}_${d.dateStr}`);
+            if (!adj && bioUid) {
+                adj = (bioUidClean ? adjMap.get(`uid_${bioUidClean}_${d.dateStr}`) : null) ||
+                      adjMap.get(`uid_${bioUid}_${d.dateStr}`);
+            }
+
             const [, m, dayNum] = d.dateStr.split('-');
             const holidayName = holidayMap.get(`${m}-${dayNum}`);
 
@@ -258,9 +320,10 @@ async function generateAndelsaOvertimeExcel(companyId, filters = {}) {
             });
         }
 
-        // Si el empleado no tiene marcaciones ni ajustes, verificar si se omite o incluye
+        // Solo incluir al empleado si tiene actividad (marcaciones o ajustes con horas extra)
+        // para coincidir exactamente con los que aparecen en la pantalla de Marcador Digital
         const hasActivity = daysData.some(d => d.mEnt1 || d.mSal1 || d.mEnt2 || d.mSal2 || (typeof d.extraVal === 'number' && d.extraVal !== 0));
-        if (hasActivity || employees.length <= 15) {
+        if (hasActivity) {
             if (isTransporteArea) {
                 totalOtrosTransporte += totalHorasEmp;
             } else {
@@ -297,7 +360,7 @@ async function generateAndelsaOvertimeExcel(companyId, filters = {}) {
         right: { style: 'thin', color: { argb: 'FFCBD5E1' } }
     };
 
-    const quincenaTitle = calculateQuincenaTitle(startDate);
+    const quincenaTitle = calculateQuincenaTitle(startDate, endDate, filters.title || filters.corteNombre);
     const emissionDate = new Date().toISOString().slice(0, 10);
     let rIdx = 1;
 
