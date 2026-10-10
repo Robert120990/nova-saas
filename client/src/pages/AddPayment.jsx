@@ -1,12 +1,10 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Plus, History, DollarSign } from 'lucide-react';
+import { Plus, History } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { toast } from 'sonner';
-import SearchableSelect from '../components/ui/SearchableSelect';
 import { useAuth } from '../context/AuthContext';
 import { useConfirm } from '../context/ConfirmContext';
-import Money from '../components/ui/Money';
 import { useDirtyTracker } from '../hooks/useDirtyTracker';
 import {
     CxcDocDetailsModal,
@@ -14,6 +12,7 @@ import {
     CxcPendingDocumentsTable,
     CxcTotalsSidebar,
     CxcHistoryTab,
+    CxcFiltersBar,
 } from '../components/cxc';
 
 const AddPayment = () => {
@@ -40,7 +39,7 @@ const AddPayment = () => {
         user_id: user?.id
     });
 
-    useDirtyTracker('pagos', docRows.some(r => parseFloat(r.abono || 0) > 0) || Boolean(selectedCustomerId));
+    useDirtyTracker('pagos', docRows.some(r => parseFloat(r.abono || 0) > 0) || (parseFloat(montoManual || 0) > 0));
 
     const totalAbonado = useMemo(() => {
         const total = docRows.reduce((acc, r) => acc + (parseFloat(r.abono || 0) || 0), 0);
@@ -62,25 +61,19 @@ const AddPayment = () => {
 
     const { data: statementData } = useQuery({
         queryKey: ['customer-summary-balance', selectedCustomerId, selectedBranchId],
-        queryFn: async () => (await axios.get(`/api/cxc/statement`, { 
-            params: { customer_id: selectedCustomerId, branch_id: selectedBranchId, limit: 1 } 
-        })).data,
+        queryFn: async () => (await axios.get('/api/cxc/statement', { params: { customer_id: selectedCustomerId, branch_id: selectedBranchId, limit: 1 } })).data,
         enabled: Boolean(selectedCustomerId && selectedBranchId)
     });
 
     const { data: pendingDocs = [], isSuccess: loadSuccess } = useQuery({
         queryKey: ['pending-documents', selectedCustomerId, selectedBranchId],
-        queryFn: async () => (await axios.get(`/api/cxc/pending-documents`, { 
-            params: { customer_id: selectedCustomerId, branch_id: selectedBranchId } 
-        })).data,
+        queryFn: async () => (await axios.get('/api/cxc/pending-documents', { params: { customer_id: selectedCustomerId, branch_id: selectedBranchId } })).data,
         enabled: Boolean(selectedCustomerId && selectedBranchId)
     });
 
     const { data: histData = { payments: [] } } = useQuery({
         queryKey: ['payment-history', selectedCustomerId, selectedBranchId, histSearch],
-        queryFn: async () => (await axios.get(`/api/cxc/payments`, {
-            params: { customer_id: selectedCustomerId, branch_id: selectedBranchId, limit: 100, search: histSearch }
-        })).data,
+        queryFn: async () => (await axios.get('/api/cxc/payments', { params: { customer_id: selectedCustomerId, branch_id: selectedBranchId, limit: 100, search: histSearch } })).data,
         enabled: activeTab === 'historial' && Boolean(selectedCustomerId),
     });
 
@@ -115,9 +108,11 @@ const AddPayment = () => {
             toast.success('Abono registrado correctamente');
             setDocRows(prev => prev.map(d => ({ ...d, abono: '' })));
             setMontoManual('');
+            setFormData(prev => ({ ...prev, comentario: '' }));
             queryClient.invalidateQueries(['pending-documents']);
             queryClient.invalidateQueries(['payment-history']);
             queryClient.invalidateQueries(['customer-summary-balance']);
+            setActiveTab('historial');
         },
         onError: (err) => toast.error(err.response?.data?.message || 'Error al abonar')
     });
@@ -292,52 +287,15 @@ const AddPayment = () => {
             </div>
 
             {/* Barra de Filtros y Saldo */}
-            <div className="bg-white p-3 sm:p-4 rounded-2xl border border-slate-200/80 shadow-xs grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 items-center">
-                <div>
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                        Sucursal
-                    </label>
-                    <select 
-                        className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-xl outline-none focus:border-indigo-500 transition-all text-xs font-bold uppercase h-[36px] cursor-pointer"
-                        value={selectedBranchId}
-                        onChange={(e) => setSelectedBranchId(e.target.value)}
-                    >
-                        <option value="">-- SELECCIONAR SUCURSAL --</option>
-                        {branches.map(b => <option key={b.id} value={b.id}>{b.nombre?.toUpperCase()}</option>)}
-                    </select>
-                </div>
-
-                <div className="sm:col-span-1 md:col-span-2">
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                        Cliente
-                    </label>
-                    <SearchableSelect 
-                        placeholder="BUSCAR CLIENTE POR NOMBRE O NRC/NIT..."
-                        loadOptions={loadCustomersOptions}
-                        value={selectedCustomerId}
-                        onChange={(e) => setSelectedCustomerId(e.target.value)}
-                        valueKey="id"
-                        labelKey="nombre"
-                        codeKey="numero_documento"
-                        displayKey="nombre"
-                    />
-                </div>
-
-                {/* Badge Saldo Total del Cliente */}
-                <div className="bg-indigo-600 text-white rounded-xl p-2.5 flex items-center justify-between shadow-sm">
-                    <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center">
-                            <DollarSign size={16} />
-                        </div>
-                        <div>
-                            <span className="text-[9px] font-bold uppercase tracking-wider text-indigo-200 block">Saldo Total</span>
-                            <span className="text-sm sm:text-base font-black tracking-tight leading-tight">
-                                <Money value={statementData?.total_balance ?? 0} />
-                            </span>
-                        </div>
-                    </div>
-                </div>
-            </div>
+            <CxcFiltersBar 
+                branches={branches}
+                selectedBranchId={selectedBranchId}
+                onBranchChange={setSelectedBranchId}
+                selectedCustomerId={selectedCustomerId}
+                onCustomerChange={setSelectedCustomerId}
+                loadCustomersOptions={loadCustomersOptions}
+                totalBalance={statementData?.total_balance ?? 0}
+            />
 
             {/* Contenido Principal */}
             {activeTab === 'nuevo' ? (

@@ -137,7 +137,7 @@ const AddProviderPayment = () => {
         user_id: user?.id
     });
 
-    useDirtyTracker('pagos-prov', docRows.some(r => r.abono) || selectedProviderId);
+    useDirtyTracker('pagos-prov', docRows.some(r => parseFloat(r.abono || 0) > 0));
 
     const totalAbonado = useMemo(() => {
         return docRows.reduce((acc, r) => acc + (parseFloat(r.abono || 0) || 0), 0);
@@ -204,6 +204,7 @@ const AddProviderPayment = () => {
         onSuccess: async () => {
             toast.success('Pago registrado correctamente');
             setDocRows(prev => prev.map(d => ({ ...d, abono: '' })));
+            setFormData(prev => ({ ...prev, comentario: '' }));
             queryClient.invalidateQueries(['pending-provider-documents']);
             queryClient.invalidateQueries(['provider-payment-history']);
             queryClient.invalidateQueries(['provider-summary-balance']);
