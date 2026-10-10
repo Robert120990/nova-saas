@@ -376,9 +376,9 @@ export default function TarimaLabelModal({
                                     <div style="text-align: center; margin-top: 2.5mm; margin-bottom: 1.5mm;">
                                         ${generateBarcodeSvg(tCode, { width: 1.15, height: 30, fontSize: 9 })}
                                     </div>
-                                    <div style="text-align: center; margin-top: 1mm;">
-                                        <div style="display: inline-block; padding: 1.5mm; border: 1.5px solid #000; border-radius: 4px; background: #fff;">
-                                            ${generateQrSvg(qrPayload, 96)}
+                                    <div style="text-align: center; margin-top: 1.5mm; margin-bottom: 1mm;">
+                                        <div style="display: inline-block; padding: 1.5mm; border: 2px solid #000; border-radius: 4px; background: #fff;">
+                                            ${generateQrSvg(qrPayload, 145)}
                                         </div>
                                     </div>
 
@@ -735,7 +735,7 @@ export default function TarimaLabelModal({
                                 <div className="my-1.5">
                                     <BarcodeRenderer value={uniquePalletCode} width={1.15} height={30} fontSize={9} />
                                 </div>
-                                <div className="p-2 bg-white border-2 border-slate-900 rounded-xl inline-block mt-1">
+                                <div className="p-2 bg-white border-2 border-slate-900 rounded-2xl inline-block mt-1 shadow-xs">
                                     <QRCodeSVG
                                         value={JSON.stringify({
                                             id: uniquePalletCode,
@@ -745,7 +745,7 @@ export default function TarimaLabelModal({
                                             boxes: boxesCount,
                                             date: receptionDate
                                         })}
-                                        size={92}
+                                        size={168}
                                         level="M"
                                     />
                                 </div>
