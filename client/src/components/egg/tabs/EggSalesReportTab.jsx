@@ -1,5 +1,5 @@
 import { useState, Fragment } from 'react';
-import { ChevronDown, ChevronRight, ExternalLink } from 'lucide-react';
+import { ChevronDown, ChevronRight, ExternalLink, BarChart3 } from 'lucide-react';
 import Money from '../../ui/Money';
 import EggSalesCustomerDetailModal from './EggSalesCustomerDetailModal';
 import EggSalesFiltersBar from './EggSalesFiltersBar';
@@ -26,6 +26,7 @@ export default function EggSalesReportTab({
 }) {
     const [expanded, setExpanded] = useState({});
     const [modalCustomer, setModalCustomer] = useState(null);
+    const [showCharts, setShowCharts] = useState(false);
 
     const isProduct = type === 'sales-product';
     const items = Array.isArray(rows) ? rows : [];
@@ -52,6 +53,8 @@ export default function EggSalesReportTab({
                     onViewPdf={onViewPdf}
                     customers={customers}
                     isExporting={isExporting}
+                    showCharts={showCharts}
+                    onToggleCharts={() => setShowCharts(prev => !prev)}
                 />
             )}
 
@@ -65,18 +68,9 @@ export default function EggSalesReportTab({
                 items={items}
             />
 
-            {/* 3. Panel de Gráficos (Barras, Lineal, Circular, y Huevo Líquido en Producto) */}
-            {!loading && !error && items.length > 0 && (
-                <EggSalesCharts
-                    items={items}
-                    isProduct={isProduct}
-                    summary={summary}
-                />
-            )}
-
             {/* 3. Selector de Subvista e Indicador de interacción */}
             <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-100/90 p-1.5 rounded-xl border border-slate-200">
-                <div className="flex gap-1.5">
+                <div className="flex flex-wrap items-center gap-1.5">
                     <button
                         onClick={() => onSwitchTab?.('sales-product')}
                         className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
@@ -93,11 +87,34 @@ export default function EggSalesReportTab({
                     >
                         👥 Por Cliente
                     </button>
+                    <button
+                        type="button"
+                        onClick={() => setShowCharts(prev => !prev)}
+                        className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                            showCharts
+                                ? 'bg-indigo-600 text-white shadow-sm'
+                                : 'bg-white text-slate-700 hover:text-indigo-700 shadow-2xs border border-slate-200'
+                        }`}
+                        title={showCharts ? 'Ocultar gráficas' : 'Desplegar gráficas de ventas'}
+                    >
+                        <BarChart3 className="w-3.5 h-3.5" />
+                        <span>{showCharts ? 'Ocultar Gráficas' : '📊 Gráficas'}</span>
+                    </button>
                 </div>
                 <span className="text-xs font-medium text-slate-600 pr-2">
                     💡 <span className="font-bold text-indigo-700">Haga clic en cualquier fila</span> para interactuar y ver el desglose
                 </span>
             </div>
+
+            {/* 4. Panel de Gráficos (Desplegado solo al pulsar el botón de Gráficas) */}
+            {showCharts && !loading && !error && items.length > 0 && (
+                <EggSalesCharts
+                    items={items}
+                    isProduct={isProduct}
+                    summary={summary}
+                    onClose={() => setShowCharts(false)}
+                />
+            )}
 
             {/* 4. Estado de Carga o Error */}
             {loading && (

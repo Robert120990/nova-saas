@@ -1,4 +1,4 @@
-import { Filter, FileSpreadsheet, FileText, Loader2, Calendar, Download } from 'lucide-react';
+import { Filter, FileSpreadsheet, FileText, Loader2, Calendar, Download, BarChart3 } from 'lucide-react';
 
 export default function EggSalesFiltersBar({
     filters,
@@ -9,7 +9,9 @@ export default function EggSalesFiltersBar({
     onDownloadPdf,
     onViewPdf,
     customers = [],
-    isExporting = false
+    isExporting = false,
+    showCharts = false,
+    onToggleCharts
 }) {
     const currentMonth = (() => {
         if (filters.from && filters.to) {
@@ -226,6 +228,23 @@ export default function EggSalesFiltersBar({
 
                 {/* Botones de Descarga y Visualización */}
                 <div className="flex flex-wrap items-center gap-1.5 w-full sm:w-auto">
+                    {/* Botón Desplegar / Ocultar Gráficas */}
+                    {onToggleCharts && (
+                        <button
+                            type="button"
+                            onClick={onToggleCharts}
+                            className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-2 border rounded-xl font-bold transition-all active:scale-95 ${
+                                showCharts
+                                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                                    : 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100'
+                            }`}
+                            title={showCharts ? 'Ocultar gráficas' : 'Desplegar gráficas de ventas'}
+                        >
+                            <BarChart3 className="w-4 h-4" />
+                            <span>{showCharts ? 'Ocultar Gráficas' : 'Gráficas'}</span>
+                        </button>
+                    )}
+
                     {/* Descargar XLSX */}
                     <button
                         type="button"

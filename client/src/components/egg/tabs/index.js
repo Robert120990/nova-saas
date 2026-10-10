@@ -3,5 +3,8 @@ export { default as EggForecastTab } from './EggForecastTab';
 export { default as EggSalesReportTab } from './EggSalesReportTab';
 export { default as EggSalesCustomerDetailModal } from './EggSalesCustomerDetailModal';
 export { default as EggSalesFiltersBar } from './EggSalesFiltersBar';
-
-
+export { default as EggSalesCharts } from './EggSalesCharts';
+export { default as EggLiquidGauge } from './EggLiquidGauge';
+export { default as EggSalesLineChart } from './EggSalesLineChart';
+export { default as EggSalesKpiCards } from './EggSalesKpiCards';
+export { default as EggSalesRowAccordion } from './EggSalesRowAccordion';

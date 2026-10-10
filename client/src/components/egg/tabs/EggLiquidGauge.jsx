@@ -2,6 +2,41 @@ import { useState } from 'react';
 import { Droplets, Sparkles, TrendingUp, Users, DollarSign, Scale } from 'lucide-react';
 import Money from '../../ui/Money';
 
+const PALETTES = {
+    clara: {
+        id: 'clara', bgGradientFrom: '#fef08a', bgGradientTo: '#ca8a04',
+        frontGradientFrom: '#facc15', frontGradientTo: '#eab308', backFill: '#fef9c3',
+        glow: 'rgba(250, 204, 21, 0.35)', badgeBg: 'bg-amber-500/10 text-amber-700 border-amber-500/30',
+        title: 'Clara Líquida Pasteurizada'
+    },
+    yema: {
+        id: 'yema', bgGradientFrom: '#fb923c', bgGradientTo: '#c2410c',
+        frontGradientFrom: '#f97316', frontGradientTo: '#ea580c', backFill: '#fed7aa',
+        glow: 'rgba(249, 115, 22, 0.35)', badgeBg: 'bg-orange-500/10 text-orange-700 border-orange-500/30',
+        title: 'Yema Líquida Pasteurizada'
+    },
+    rapido: {
+        id: 'rapido', bgGradientFrom: '#38bdf8', bgGradientTo: '#0284c7',
+        frontGradientFrom: '#0ea5e9', frontGradientTo: '#0369a1', backFill: '#bae6fd',
+        glow: 'rgba(14, 165, 233, 0.35)', badgeBg: 'bg-sky-500/10 text-sky-700 border-sky-500/30',
+        title: 'Huevo Rápido / Especial'
+    },
+    entero: {
+        id: 'entero', bgGradientFrom: '#f59e0b', bgGradientTo: '#b45309',
+        frontGradientFrom: '#fbbf24', frontGradientTo: '#d97706', backFill: '#fde68a',
+        glow: 'rgba(245, 158, 11, 0.35)', badgeBg: 'bg-amber-500/10 text-amber-800 border-amber-500/30',
+        title: 'Huevo Entero Pasteurizado'
+    }
+};
+
+const getLiquidPalette = (name = '') => {
+    const u = name.toUpperCase();
+    if (u.includes('CLARA')) return PALETTES.clara;
+    if (u.includes('YEMA')) return PALETTES.yema;
+    if (u.includes('RAPIDO') || u.includes('RÁPIDO')) return PALETTES.rapido;
+    return PALETTES.entero;
+};
+
 /**
  * Visualizador Temático de Ovoproductos en Forma de Huevo con Contenido Líquido Dinámico.
  * Cuenta con silueta SVG paramétrica de huevo, oleaje líquido animado, partículas y selector de ovoproducto.
@@ -37,63 +72,7 @@ export default function EggLiquidGauge({ items = [], summary = {} }) {
     const wavePathFront = `M 0,${liquidY} Q 60,${liquidY - waveAmp1} 120,${liquidY} T 240,${liquidY} V 310 H 0 Z`;
     const wavePathBack = `M 0,${liquidY} Q 60,${liquidY + waveAmp2} 120,${liquidY} T 240,${liquidY} V 310 H 0 Z`;
 
-    // Paleta de líquidos según el ovoproducto
-    const getLiquidPalette = (name = '') => {
-        const u = name.toUpperCase();
-        if (u.includes('CLARA')) {
-            return {
-                id: 'clara',
-                bgGradientFrom: '#fef08a',
-                bgGradientTo: '#ca8a04',
-                frontGradientFrom: '#facc15',
-                frontGradientTo: '#eab308',
-                backFill: '#fef9c3',
-                glow: 'rgba(250, 204, 21, 0.35)',
-                badgeBg: 'bg-amber-500/10 text-amber-700 border-amber-500/30',
-                title: 'Clara Líquida Pasteurizada'
-            };
-        }
-        if (u.includes('YEMA')) {
-            return {
-                id: 'yema',
-                bgGradientFrom: '#fb923c',
-                bgGradientTo: '#c2410c',
-                frontGradientFrom: '#f97316',
-                frontGradientTo: '#ea580c',
-                backFill: '#fed7aa',
-                glow: 'rgba(249, 115, 22, 0.35)',
-                badgeBg: 'bg-orange-500/10 text-orange-700 border-orange-500/30',
-                title: 'Yema Líquida Pasteurizada'
-            };
-        }
-        if (u.includes('RAPIDO') || u.includes('RÁPIDO')) {
-            return {
-                id: 'rapido',
-                bgGradientFrom: '#38bdf8',
-                bgGradientTo: '#0284c7',
-                frontGradientFrom: '#0ea5e9',
-                frontGradientTo: '#0369a1',
-                backFill: '#bae6fd',
-                glow: 'rgba(14, 165, 233, 0.35)',
-                badgeBg: 'bg-sky-500/10 text-sky-700 border-sky-500/30',
-                title: 'Huevo Rápido / Especial'
-            };
-        }
-        // Huevo Entero por defecto (Dorado ámbar brillante)
-        return {
-            id: 'entero',
-            bgGradientFrom: '#f59e0b',
-            bgGradientTo: '#b45309',
-            frontGradientFrom: '#fbbf24',
-            frontGradientTo: '#d97706',
-            backFill: '#fde68a',
-            glow: 'rgba(245, 158, 11, 0.35)',
-            badgeBg: 'bg-amber-500/10 text-amber-800 border-amber-500/30',
-            title: 'Huevo Entero Pasteurizado'
-        };
-    };
-
-    const palette = getLiquidPalette(currentProd?.product_name);
+    const palette = getLiquidPalette(currentProd?.product_name || '');
 
     return (
         <div className="bg-gradient-to-br from-amber-50/60 via-white to-indigo-50/40 p-4 sm:p-6 rounded-2xl border border-amber-200/60 shadow-sm space-y-5">
@@ -149,38 +128,22 @@ export default function EggLiquidGauge({ items = [], summary = {} }) {
                             style={{ filter: `drop-shadow(0 15px 25px ${palette.glow})` }}
                         >
                             <defs>
-                                {/* Clip-path con forma de huevo */}
-                                <clipPath id="eggClip">
-                                    <path d={eggSilhouettePath} />
-                                </clipPath>
-
-                                {/* Gradiente del fondo del cascarón */}
+                                <clipPath id="eggClip"><path d={eggSilhouettePath} /></clipPath>
                                 <radialGradient id="eggShellBg" cx="35%" cy="30%" r="70%">
                                     <stop offset="0%" stopColor="#ffffff" />
                                     <stop offset="70%" stopColor="#f8fafc" />
                                     <stop offset="100%" stopColor="#e2e8f0" />
                                 </radialGradient>
-
-                                {/* Gradiente de líquido frontal */}
                                 <linearGradient id="eggLiquidFront" x1="0" y1="0" x2="0" y2="1">
                                     <stop offset="0%" stopColor={palette.frontGradientFrom} stopOpacity="0.95" />
                                     <stop offset="100%" stopColor={palette.frontGradientTo} stopOpacity="0.98" />
                                 </linearGradient>
-
-                                {/* Gradiente de líquido trasero para oleaje */}
                                 <linearGradient id="eggLiquidBack" x1="0" y1="0" x2="0" y2="1">
                                     <stop offset="0%" stopColor={palette.backFill} stopOpacity="0.6" />
                                     <stop offset="100%" stopColor={palette.bgGradientTo} stopOpacity="0.8" />
                                 </linearGradient>
                             </defs>
-
-                            {/* 1. Fondo del Cascarón Translúcido */}
-                            <path
-                                d={eggSilhouettePath}
-                                fill="url(#eggShellBg)"
-                                stroke="#cbd5e1"
-                                strokeWidth="2.5"
-                            />
+                            <path d={eggSilhouettePath} fill="url(#eggShellBg)" stroke="#cbd5e1" strokeWidth="2.5" />
 
                             {/* 2. Contenido Líquido Recortado por el Huevo */}
                             <g clipPath="url(#eggClip)">
@@ -253,24 +216,24 @@ export default function EggLiquidGauge({ items = [], summary = {} }) {
                             />
                         </svg>
 
-                        {/* Placa Glassmorphic Central con Porcentaje de Llenado */}
-                        <div className="absolute inset-x-6 top-1/2 -translate-y-1/2 flex flex-col items-center justify-center p-3 rounded-2xl bg-white/85 backdrop-blur-md border border-white/70 shadow-lg text-center pointer-events-none">
-                            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                                {currentProd?.product_name || 'Ovoproducto'}
-                            </span>
-                            <div className="flex items-baseline gap-1 my-0.5">
-                                <span className="text-3xl font-black text-slate-900 tracking-tight">
-                                    {pctDisplay}%
-                                </span>
-                                <span className="text-xs font-bold text-amber-700">del total</span>
-                            </div>
-                            <span className="text-xs font-semibold text-slate-700 tabular-nums">
-                                {Number(prodLbs).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} Lb
-                            </span>
-                        </div>
                     </div>
 
-                    <span className="text-[11px] text-slate-400 font-medium mt-2 flex items-center gap-1">
+                    {/* Resumen al pie del huevo sin recuadros tapando la gráfica */}
+                    <div className="mt-3 flex flex-col items-center text-center">
+                        <div className="flex items-center gap-2">
+                            <span className="text-sm font-black text-slate-800 uppercase tracking-wide">
+                                {currentProd?.product_name || 'Ovoproducto'}
+                            </span>
+                            <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-amber-100 text-amber-900 border border-amber-300">
+                                {pctDisplay}% del total
+                            </span>
+                        </div>
+                        <span className="text-xs font-semibold text-slate-600 tabular-nums mt-0.5">
+                            {Number(prodLbs).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} Lb
+                        </span>
+                    </div>
+
+                    <span className="text-[11px] text-slate-400 font-medium mt-1 flex items-center gap-1">
                         🥚 Silueta a escala volumétrica • Densidad calculada en libras
                     </span>
                 </div>
