@@ -74,8 +74,8 @@ async function generateEggSalesExcel(companyId, filters = {}, dataParam = null) 
         (c.invoices || []).forEach(inv => {
             detailRows.push({
                 fecha: inv.fecha_emision ? new Date(inv.fecha_emision).toLocaleDateString() : 'N/A',
-                tipo_doc: inv.tipo_documento === '03' ? 'CCF' : (inv.tipo_documento === '11' ? 'FEX' : (inv.tipo_documento === '04' ? 'REM' : (inv.tipo_documento === '01' ? 'FAC' : (inv.tipo_documento || 'DTE')))),
-                control: (inv.numero_control || inv.codigo_generacion || `Venta #${inv.sale_id}`) + (inv.linked_remisiones ? ` (Ref: ${inv.linked_remisiones})` : '') + (inv.tipo_documento === '04' ? ' [Pendiente]' : ''),
+                tipo_doc: inv.tipo_documento === '05' ? 'NC' : (inv.tipo_documento === '03' ? 'CCF' : (inv.tipo_documento === '11' ? 'FEX' : (inv.tipo_documento === '04' ? 'REM' : (inv.tipo_documento === '01' ? 'FAC' : (inv.tipo_documento || 'DTE'))))),
+                control: (inv.numero_control || inv.codigo_generacion || `Venta #${inv.sale_id}`) + (inv.linked_remisiones ? ` (Ref: ${inv.linked_remisiones})` : '') + (inv.tipo_documento === '04' ? ' [Pendiente]' : '') + (inv.tipo_documento === '05' ? ' [Nota de Crédito]' : ''),
                 cliente: c.customer_name,
                 producto: inv.product_name,
                 desc: inv.descripcion,
@@ -120,9 +120,12 @@ async function generateEggSalesPdf(companyId, filters = {}, dataParam = null) {
             ? 'Criterio: Despachos Físicos (Remisiones 04 Salidas)'
             : 'Criterio: Facturación + Remisiones Pendientes (Sin duplicidad)');
 
+    const hasNC = filters.includeCreditNotes === true || filters.includeCreditNotes === 'true' || filters.includeCreditNotes === '1' || filters.includeCreditNotes === 1;
+    const ncLabel = hasNC ? ' • Deducción Notas de Crédito (DTE 05)' : '';
+
     const periodText = (filters.startDate && filters.endDate
         ? `Período: ${filters.startDate} al ${filters.endDate}`
-        : 'Historial General de Ventas') + ` • ${criterionLabel}`;
+        : 'Historial General de Ventas') + ` • ${criterionLabel}${ncLabel}`;
 
     const subtitle = 'Consolidado de Libras Vendidas, Monto Total y Precio Promedio Ponderado ($/Lb)';
 

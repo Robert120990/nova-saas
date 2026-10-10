@@ -128,8 +128,24 @@ const getWastesReport = async (req, res) => {
 
 const getSalesByProductReport = async (req, res) => {
     try {
-        const { format, start_date = req.query.from, end_date = req.query.to, customer_id, product_type, remission_mode = req.query.remissionMode } = req.query;
-        const filters = { startDate: start_date, endDate: end_date, customerId: customer_id, productType: product_type, remissionMode: remission_mode, viewType: 'product' };
+        const {
+            format,
+            start_date = req.query.from,
+            end_date = req.query.to,
+            customer_id,
+            product_type,
+            remission_mode = req.query.remissionMode,
+            include_credit_notes = req.query.includeCreditNotes
+        } = req.query;
+        const filters = {
+            startDate: start_date,
+            endDate: end_date,
+            customerId: customer_id,
+            productType: product_type,
+            remissionMode: remission_mode,
+            includeCreditNotes: include_credit_notes,
+            viewType: 'product'
+        };
 
         if (format === 'excel') {
             const buffer = await eggSalesReportService.generateEggSalesExcel(req.company_id, filters);
@@ -160,8 +176,24 @@ const getSalesByProductReport = async (req, res) => {
 
 const getSalesByCustomerReport = async (req, res) => {
     try {
-        const { format, start_date = req.query.from, end_date = req.query.to, customer_id, product_type, remission_mode = req.query.remissionMode } = req.query;
-        const filters = { startDate: start_date, endDate: end_date, customerId: customer_id, productType: product_type, remissionMode: remission_mode, viewType: 'customer' };
+        const {
+            format,
+            start_date = req.query.from,
+            end_date = req.query.to,
+            customer_id,
+            product_type,
+            remission_mode = req.query.remissionMode,
+            include_credit_notes = req.query.includeCreditNotes
+        } = req.query;
+        const filters = {
+            startDate: start_date,
+            endDate: end_date,
+            customerId: customer_id,
+            productType: product_type,
+            remissionMode: remission_mode,
+            includeCreditNotes: include_credit_notes,
+            viewType: 'customer'
+        };
 
         if (format === 'excel') {
             const buffer = await eggSalesReportService.generateEggSalesExcel(req.company_id, filters);

@@ -4,6 +4,8 @@ import Money from '../../ui/Money';
 import EggSalesCustomerDetailModal from './EggSalesCustomerDetailModal';
 import EggSalesFiltersBar from './EggSalesFiltersBar';
 import EggSalesKpiCards from './EggSalesKpiCards';
+import EggSalesCharts from './EggSalesCharts';
+import EggSalesRowAccordion from './EggSalesRowAccordion';
 
 export default function EggSalesReportTab({
     type,
@@ -17,6 +19,7 @@ export default function EggSalesReportTab({
     onChangeFilters,
     onApplyFilters,
     onExportExcel,
+    onDownloadPdf,
     onViewPdf,
     customers,
     isExporting
@@ -45,6 +48,7 @@ export default function EggSalesReportTab({
                     onChangeFilters={onChangeFilters}
                     onApply={onApplyFilters}
                     onExportExcel={onExportExcel}
+                    onDownloadPdf={onDownloadPdf}
                     onViewPdf={onViewPdf}
                     customers={customers}
                     isExporting={isExporting}
@@ -60,6 +64,15 @@ export default function EggSalesReportTab({
                 summary={summary}
                 items={items}
             />
+
+            {/* 3. Panel de Gráficos (Barras, Lineal, Circular, y Huevo Líquido en Producto) */}
+            {!loading && !error && items.length > 0 && (
+                <EggSalesCharts
+                    items={items}
+                    isProduct={isProduct}
+                    summary={summary}
+                />
+            )}
 
             {/* 3. Selector de Subvista e Indicador de interacción */}
             <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-100/90 p-1.5 rounded-xl border border-slate-200">
@@ -211,90 +224,11 @@ export default function EggSalesReportTab({
                                         {isExpanded && (
                                             <tr className="bg-slate-50/70">
                                                 <td colSpan={isProduct ? 8 : 9} className="px-6 py-4 border-y border-indigo-100">
-                                                    {isProduct ? (
-                                                        <div className="space-y-2">
-                                                            <div className="flex items-center justify-between mb-1">
-                                                                <span className="text-[11px] font-bold text-slate-700 uppercase">
-                                                                    Clientes que compraron {row.product_name} ({row.customers?.length || 0})
-                                                                </span>
-                                                            </div>
-                                                            <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
-                                                                <table className="w-full text-xs">
-                                                                    <thead className="bg-slate-100/80 text-slate-600 text-[10px] font-bold uppercase">
-                                                                        <tr>
-                                                                            <th className="p-2.5 text-left">Cliente</th>
-                                                                            <th className="p-2.5 text-right">Volumen</th>
-                                                                            <th className="p-2.5 text-right">Monto ($)</th>
-                                                                            <th className="p-2.5 text-right text-amber-800">Precio Prom.</th>
-                                                                            <th className="p-2.5 text-right">% del Producto</th>
-                                                                        </tr>
-                                                                    </thead>
-                                                                    <tbody className="divide-y divide-slate-100">
-                                                                        {(row.customers || []).map((c, cIdx) => (
-                                                                            <tr key={cIdx} className="hover:bg-slate-50">
-                                                                                <td className="p-2.5 font-medium text-slate-800">{c.customer_name}</td>
-                                                                                <td className="p-2.5 text-right text-slate-700 tabular-nums">
-                                                                                    {c.is_shell ? c.display_quantity : `${Number(c.lbs || 0).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} Lb`}
-                                                                                </td>
-                                                                                <td className="p-2.5 text-right font-bold text-slate-800 tabular-nums">
-                                                                                    <Money value={c.amount} />
-                                                                                </td>
-                                                                                <td className="p-2.5 text-right font-bold text-amber-700 tabular-nums">
-                                                                                    {c.is_shell ? (c.avg_price_display || `$${c.avg_price}`) : <Money value={c.avg_price} />}
-                                                                                </td>
-                                                                                <td className="p-2.5 text-right text-slate-500 tabular-nums">{c.is_shell ? '—' : `${c.pct_of_product_lbs}%`}</td>
-                                                                            </tr>
-                                                                        ))}
-                                                                    </tbody>
-                                                                </table>
-                                                            </div>
-                                                        </div>
-                                                    ) : (
-                                                        <div className="space-y-2">
-                                                            <div className="flex items-center justify-between mb-1">
-                                                                <span className="text-[11px] font-bold text-slate-700 uppercase">
-                                                                    Desglose de productos vendidos a este cliente
-                                                                </span>
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => setModalCustomer(row)}
-                                                                    className="text-xs font-bold text-indigo-600 hover:text-indigo-800 underline flex items-center gap-1"
-                                                                >
-                                                                    Ver DTEs y facturas completas <ExternalLink className="w-3.5 h-3.5" />
-                                                                </button>
-                                                            </div>
-                                                            <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
-                                                                <table className="w-full text-xs">
-                                                                    <thead className="bg-slate-100/80 text-slate-600 text-[10px] font-bold uppercase">
-                                                                        <tr>
-                                                                            <th className="p-2.5 text-left">Producto</th>
-                                                                            <th className="p-2.5 text-right">Volumen</th>
-                                                                            <th className="p-2.5 text-right">Monto ($)</th>
-                                                                            <th className="p-2.5 text-right text-amber-800">Precio Prom.</th>
-                                                                            <th className="p-2.5 text-right">% del Cliente</th>
-                                                                        </tr>
-                                                                    </thead>
-                                                                    <tbody className="divide-y divide-slate-100">
-                                                                        {(row.products || []).map((prod, pIdx) => (
-                                                                            <tr key={pIdx} className="hover:bg-slate-50">
-                                                                                <td className="p-2.5 font-medium text-slate-800">{prod.product_name}</td>
-                                                                                <td className="p-2.5 text-right text-slate-700 tabular-nums">
-                                                                                    {prod.is_shell ? prod.display_quantity : `${Number(prod.lbs || 0).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} Lb`}
-                                                                                </td>
-                                                                                <td className="p-2.5 text-right font-bold text-slate-800 tabular-nums">
-                                                                                    <Money value={prod.amount} />
-                                                                                </td>
-                                                                                <td className="p-2.5 text-right font-bold text-amber-700 tabular-nums">
-                                                                                    {prod.is_shell ? (prod.avg_price_display || `$${prod.avg_price}`) : <Money value={prod.avg_price} />}
-                                                                                </td>
-                                                                                <td className="p-2.5 text-right text-slate-500 tabular-nums">{prod.is_shell ? '—' : `${prod.pct_of_customer_lbs}%`}</td>
-                                                                            </tr>
-                                                                        ))}
-                                                                    </tbody>
-                                                                </table>
-                                                            </div>
-                                                        </div>
-                                                    )}
+                                                    <EggSalesRowAccordion
+                                                        row={row}
+                                                        isProduct={isProduct}
+                                                        onOpenCustomerModal={setModalCustomer}
+                                                    />
                                                 </td>
                                             </tr>
                                         )}

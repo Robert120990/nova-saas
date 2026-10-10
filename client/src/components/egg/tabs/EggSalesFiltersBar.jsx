@@ -1,4 +1,4 @@
-import { Filter, FileSpreadsheet, FileText, Loader2, Calendar } from 'lucide-react';
+import { Filter, FileSpreadsheet, FileText, Loader2, Calendar, Download } from 'lucide-react';
 
 export default function EggSalesFiltersBar({
     filters,
@@ -6,6 +6,7 @@ export default function EggSalesFiltersBar({
     onChangeFilters,
     onApply,
     onExportExcel,
+    onDownloadPdf,
     onViewPdf,
     customers = [],
     isExporting = false
@@ -160,7 +161,7 @@ export default function EggSalesFiltersBar({
                 </div>
 
                 {/* Criterio de Documentos y Remisiones */}
-                <div className="w-full sm:w-56">
+                <div className="w-full sm:w-52">
                     <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1" title="Contemplar remisiones y deduplicar al facturar">
                         Criterio de Documentos
                     </label>
@@ -176,8 +177,43 @@ export default function EggSalesFiltersBar({
                     </select>
                 </div>
 
+                {/* Toggle Switch: Contemplar / Deducir Notas de Crédito (DTE 05 - resta) */}
+                <div className="w-full sm:w-auto flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200">
+                    <button
+                        type="button"
+                        role="switch"
+                        aria-checked={!!filters.includeCreditNotes}
+                        onClick={() => {
+                            const nextVal = !filters.includeCreditNotes;
+                            onChangeFilter('includeCreditNotes', nextVal);
+                        }}
+                        className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                            filters.includeCreditNotes ? 'bg-indigo-600' : 'bg-slate-300'
+                        }`}
+                        title="Activar para contemplar y restar Notas de Crédito (DTE 05) de las ventas y libras"
+                    >
+                        <span
+                            className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                                filters.includeCreditNotes ? 'translate-x-4' : 'translate-x-0'
+                            }`}
+                        />
+                    </button>
+                    <div className="flex flex-col text-left">
+                        <span className="text-[11px] font-bold text-slate-700 leading-tight">
+                            Notas de Crédito (05)
+                        </span>
+                        <span className="text-[9px] font-semibold text-slate-400">
+                            {filters.includeCreditNotes ? (
+                                <strong className="text-amber-700">Resta activa (-)</strong>
+                            ) : (
+                                'Omitidas'
+                            )}
+                        </span>
+                    </div>
+                </div>
+
                 {/* Botón Aplicar */}
-                <div className="flex-1 min-w-[110px]">
+                <div className="flex-1 min-w-[100px]">
                     <button
                         type="button"
                         onClick={onApply}
@@ -188,25 +224,39 @@ export default function EggSalesFiltersBar({
                     </button>
                 </div>
 
-                {/* Botones de Exportación */}
-                <div className="flex items-center gap-2 w-full sm:w-auto">
+                {/* Botones de Descarga y Visualización */}
+                <div className="flex flex-wrap items-center gap-1.5 w-full sm:w-auto">
+                    {/* Descargar XLSX */}
                     <button
                         type="button"
                         onClick={onExportExcel}
                         disabled={isExporting}
                         className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-2 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-xl font-bold hover:bg-emerald-100 transition-colors disabled:opacity-50 active:scale-95"
-                        title="Descargar libro Excel con 3 hojas"
+                        title="Descargar libro Excel (.xlsx) con 3 pestañas completas"
                     >
                         {isExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileSpreadsheet className="w-4 h-4 text-emerald-600" />}
-                        <span>Excel</span>
+                        <span>Descargar XLSX</span>
                     </button>
 
+                    {/* Descargar PDF Directo */}
+                    <button
+                        type="button"
+                        onClick={onDownloadPdf}
+                        disabled={isExporting}
+                        className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-2 bg-rose-50 text-rose-700 border border-rose-200 rounded-xl font-bold hover:bg-rose-100 transition-colors disabled:opacity-50 active:scale-95"
+                        title="Descargar documento oficial en formato PDF (.pdf)"
+                    >
+                        {isExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4 text-rose-600" />}
+                        <span>Descargar PDF</span>
+                    </button>
+
+                    {/* Ver PDF Modal */}
                     <button
                         type="button"
                         onClick={onViewPdf}
                         disabled={isExporting}
                         className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-2 bg-slate-100 text-slate-700 border border-slate-200 rounded-xl font-bold hover:bg-slate-200 transition-colors disabled:opacity-50 active:scale-95"
-                        title="Abrir visor PDF contable"
+                        title="Abrir visor modal de PDF contable"
                     >
                         {isExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4 text-indigo-600" />}
                         <span>Ver PDF</span>

@@ -32,11 +32,17 @@ async function getEggSalesReportData(companyId, filters = {}) {
         }
 
         const isShell = prodCategory === 'HUEVO EN CASCARA';
-        const lbs = isShell ? 0 : calculateLbs(item);
+        const isCreditNote = String(item.tipo_documento) === '05';
+        const sign = isCreditNote ? -1 : 1;
+
+        const rawLbs = isShell ? 0 : calculateLbs(item);
+        const lbs = rawLbs * sign;
         const rawAmount = parseFloat(item.venta_gravada || 0) + parseFloat(item.venta_exenta || 0);
         const qty = parseFloat(item.cantidad || 0);
         const unitPrice = parseFloat(item.precio_unitario || 0);
-        const amount = rawAmount > 0 ? rawAmount : (qty > 0 && unitPrice > 0 ? (qty * unitPrice) : 0);
+        const baseAmount = rawAmount > 0 ? rawAmount : (qty > 0 && unitPrice > 0 ? (qty * unitPrice) : 0);
+        const amount = baseAmount * sign;
+        const signedQty = qty * sign;
 
         const codeUpper = String(item.codigo || '').toUpperCase();
         const descUpper = String(item.descripcion || '').toUpperCase();
@@ -51,9 +57,9 @@ async function getEggSalesReportData(companyId, filters = {}) {
 
         if (isShell) {
             totalShellAmount += amount;
-            if (isBox) totalShellBoxes += qty;
-            else if (isCarton) totalShellCartons += qty;
-            else totalShellUnits += qty;
+            if (isBox) totalShellBoxes += signedQty;
+            else if (isCarton) totalShellCartons += signedQty;
+            else totalShellUnits += signedQty;
         } else {
             totalOvoproductsLbs += lbs;
             totalOvoproductsAmount += amount;
@@ -70,17 +76,19 @@ async function getEggSalesReportData(companyId, filters = {}) {
                 cartons: 0,
                 units: 0,
                 transactions_count: 0,
+                credit_notes_count: 0,
                 customersMap: {}
             };
         }
         const pGroup = byProductMap[prodCategory];
         pGroup.total_lbs += lbs;
         pGroup.total_amount += amount;
-        pGroup.transactions_count++;
+        pGroup.transactions_count += (isCreditNote ? 0 : 1);
+        if (isCreditNote) pGroup.credit_notes_count = (pGroup.credit_notes_count || 0) + 1;
         if (isShell) {
-            if (isBox) pGroup.boxes += qty;
-            else if (isCarton) pGroup.cartons += qty;
-            else pGroup.units += qty;
+            if (isBox) pGroup.boxes += signedQty;
+            else if (isCarton) pGroup.cartons += signedQty;
+            else pGroup.units += signedQty;
         }
 
         if (!pGroup.customersMap[custId]) {
@@ -93,16 +101,18 @@ async function getEggSalesReportData(companyId, filters = {}) {
                 boxes: 0,
                 cartons: 0,
                 units: 0,
-                transactions_count: 0
+                transactions_count: 0,
+                credit_notes_count: 0
             };
         }
         pGroup.customersMap[custId].lbs += lbs;
         pGroup.customersMap[custId].amount += amount;
-        pGroup.customersMap[custId].transactions_count++;
+        pGroup.customersMap[custId].transactions_count += (isCreditNote ? 0 : 1);
+        if (isCreditNote) pGroup.customersMap[custId].credit_notes_count = (pGroup.customersMap[custId].credit_notes_count || 0) + 1;
         if (isShell) {
-            if (isBox) pGroup.customersMap[custId].boxes += qty;
-            else if (isCarton) pGroup.customersMap[custId].cartons += qty;
-            else pGroup.customersMap[custId].units += qty;
+            if (isBox) pGroup.customersMap[custId].boxes += signedQty;
+            else if (isCarton) pGroup.customersMap[custId].cartons += signedQty;
+            else pGroup.customersMap[custId].units += signedQty;
         }
 
         // Agrupación Por Cliente
@@ -119,6 +129,7 @@ async function getEggSalesReportData(companyId, filters = {}) {
                 shell_cartons: 0,
                 shell_units: 0,
                 sales_count: 0,
+                credit_notes_count: 0,
                 productsMap: {},
                 invoices: []
             };
@@ -126,12 +137,13 @@ async function getEggSalesReportData(companyId, filters = {}) {
         const cGroup = byCustomerMap[custId];
         cGroup.total_lbs += lbs;
         cGroup.total_amount += amount;
-        cGroup.sales_count++;
+        cGroup.sales_count += (isCreditNote ? 0 : 1);
+        if (isCreditNote) cGroup.credit_notes_count = (cGroup.credit_notes_count || 0) + 1;
         if (isShell) {
             cGroup.shell_amount += amount;
-            if (isBox) cGroup.shell_boxes += qty;
-            else if (isCarton) cGroup.shell_cartons += qty;
-            else cGroup.shell_units += qty;
+            if (isBox) cGroup.shell_boxes += signedQty;
+            else if (isCarton) cGroup.shell_cartons += signedQty;
+            else cGroup.shell_units += signedQty;
         }
 
         if (!cGroup.productsMap[prodCategory]) {
@@ -143,16 +155,18 @@ async function getEggSalesReportData(companyId, filters = {}) {
                 boxes: 0,
                 cartons: 0,
                 units: 0,
-                transactions_count: 0
+                transactions_count: 0,
+                credit_notes_count: 0
             };
         }
         cGroup.productsMap[prodCategory].lbs += lbs;
         cGroup.productsMap[prodCategory].amount += amount;
-        cGroup.productsMap[prodCategory].transactions_count++;
+        cGroup.productsMap[prodCategory].transactions_count += (isCreditNote ? 0 : 1);
+        if (isCreditNote) cGroup.productsMap[prodCategory].credit_notes_count = (cGroup.productsMap[prodCategory].credit_notes_count || 0) + 1;
         if (isShell) {
-            if (isBox) cGroup.productsMap[prodCategory].boxes += qty;
-            else if (isCarton) cGroup.productsMap[prodCategory].cartons += qty;
-            else cGroup.productsMap[prodCategory].units += qty;
+            if (isBox) cGroup.productsMap[prodCategory].boxes += signedQty;
+            else if (isCarton) cGroup.productsMap[prodCategory].cartons += signedQty;
+            else cGroup.productsMap[prodCategory].units += signedQty;
         }
 
         cGroup.invoices.push({
@@ -167,15 +181,16 @@ async function getEggSalesReportData(companyId, filters = {}) {
             product_name: prodCategory,
             is_shell: isShell,
             is_remision: item.tipo_documento === '04',
+            is_credit_note: isCreditNote,
             linked_remisiones: item.linked_remisiones || null,
-            cantidad: qty,
+            cantidad: signedQty,
             precio_unitario: unitPrice,
             lbs: Math.round(lbs * 100) / 100,
             amount: Math.round(amount * 100) / 100,
             unit_label: isShell ? (isBox ? 'Caja' : (isCarton ? 'Cartón' : 'Unid')) : 'Lb',
             avg_price: isShell
-                ? (qty > 0 ? Math.round((amount / qty) * 100) / 100 : 0)
-                : (lbs > 0 ? Math.round((amount / lbs) * 100) / 100 : 0)
+                ? (qty > 0 ? Math.round((baseAmount / qty) * 100) / 100 : 0)
+                : (rawLbs > 0 ? Math.round((baseAmount / rawLbs) * 100) / 100 : 0)
         });
     }
 

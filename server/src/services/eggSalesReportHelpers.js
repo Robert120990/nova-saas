@@ -148,25 +148,28 @@ function buildEggSalesReportQuery(companyId, filters = {}) {
           )
     `;
 
+    const includeCreditNotes = filters.includeCreditNotes === true || filters.includeCreditNotes === 'true' || filters.includeCreditNotes === '1' || filters.includeCreditNotes === 1;
+    const fiscalDocTypes = includeCreditNotes ? "'01', '03', '11', '05'" : "'01', '03', '11'";
+
     if (remissionMode === 'solo_fiscal') {
-        query += ` AND COALESCE(sh.tipo_documento, sh.dte_type) IN ('01', '03', '11')
-                   AND (si.venta_gravada > 0 OR si.venta_exenta > 0)`;
+        query += ` AND COALESCE(sh.tipo_documento, sh.dte_type) IN (${fiscalDocTypes})
+                   AND (si.venta_gravada > 0 OR si.venta_exenta > 0 OR (COALESCE(sh.tipo_documento, sh.dte_type) = '05' AND si.cantidad > 0))`;
     } else if (remissionMode === 'despachos_fisicos') {
         query += ` AND (
                        COALESCE(sh.tipo_documento, sh.dte_type) = '04'
                        OR (
-                           COALESCE(sh.tipo_documento, sh.dte_type) IN ('01', '03', '11')
+                           COALESCE(sh.tipo_documento, sh.dte_type) IN (${fiscalDocTypes})
                            AND NOT EXISTS (
                                SELECT 1 FROM sales_linked_documents ld
                                WHERE ld.sale_id = sh.id AND ld.doc_type = '04'
                            )
                        )
                    )
-                   AND (si.venta_gravada > 0 OR si.venta_exenta > 0 OR (COALESCE(sh.tipo_documento, sh.dte_type) = '04' AND si.cantidad > 0))`;
+                   AND (si.venta_gravada > 0 OR si.venta_exenta > 0 OR (COALESCE(sh.tipo_documento, sh.dte_type) IN ('04', '05') AND si.cantidad > 0))`;
     } else {
         // 'facturado_pendiente' (por defecto): Suman facturas fiscales y remisiones solo si NO han sido facturadas
         query += ` AND (
-                       COALESCE(sh.tipo_documento, sh.dte_type) IN ('01', '03', '11')
+                       COALESCE(sh.tipo_documento, sh.dte_type) IN (${fiscalDocTypes})
                        OR (
                            COALESCE(sh.tipo_documento, sh.dte_type) = '04'
                            AND NOT EXISTS (
@@ -180,7 +183,7 @@ function buildEggSalesReportQuery(companyId, filters = {}) {
                            )
                        )
                    )
-                   AND (si.venta_gravada > 0 OR si.venta_exenta > 0 OR (COALESCE(sh.tipo_documento, sh.dte_type) = '04' AND si.cantidad > 0))`;
+                   AND (si.venta_gravada > 0 OR si.venta_exenta > 0 OR (COALESCE(sh.tipo_documento, sh.dte_type) IN ('04', '05') AND si.cantidad > 0))`;
     }
 
     const params = [companyId];

@@ -196,11 +196,12 @@ export default function EggSalesCustomerDetailModal({ open, onClose, customer })
                                             </td>
                                             <td className="p-3 whitespace-nowrap">
                                                 <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold ${
-                                                    inv.tipo_documento === '03' ? 'bg-purple-100 text-purple-700' :
+                                                    inv.tipo_documento === '05' ? 'bg-rose-100 text-rose-800 border border-rose-200' :
+                                                    (inv.tipo_documento === '03' ? 'bg-purple-100 text-purple-700' :
                                                     (inv.tipo_documento === '11' ? 'bg-emerald-100 text-emerald-700' :
-                                                    (inv.tipo_documento === '04' ? 'bg-amber-100 text-amber-800 border border-amber-200' : 'bg-blue-100 text-blue-700'))
+                                                    (inv.tipo_documento === '04' ? 'bg-amber-100 text-amber-800 border border-amber-200' : 'bg-blue-100 text-blue-700')))
                                                 }`}>
-                                                    {inv.tipo_documento === '03' ? 'CCF' : (inv.tipo_documento === '11' ? 'FEX' : (inv.tipo_documento === '04' ? 'REM (04)' : 'FAC'))}
+                                                    {inv.tipo_documento === '05' ? 'NC (05)' : (inv.tipo_documento === '03' ? 'CCF' : (inv.tipo_documento === '11' ? 'FEX' : (inv.tipo_documento === '04' ? 'REM (04)' : 'FAC')))}
                                                 </span>
                                             </td>
                                             <td className="p-3 whitespace-nowrap font-mono text-[11px] text-slate-700">
@@ -213,6 +214,11 @@ export default function EggSalesCustomerDetailModal({ open, onClose, customer })
                                                 {inv.tipo_documento === '04' && (
                                                     <div className="text-[10px] text-amber-600 font-sans font-medium">
                                                         ⏳ Pendiente de facturar
+                                                    </div>
+                                                )}
+                                                {inv.tipo_documento === '05' && (
+                                                    <div className="text-[10px] text-rose-600 font-sans font-bold">
+                                                        ↩️ Deducción / Nota de Crédito
                                                     </div>
                                                 )}
                                             </td>

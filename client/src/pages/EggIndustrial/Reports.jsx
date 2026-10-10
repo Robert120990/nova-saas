@@ -22,7 +22,16 @@ const tabs = [
 
 const initialFilters = () => {
     const start = new Date(); start.setDate(start.getDate() - 30);
-    return { from: getTodayString(start), to: getTodayString(), provider_id: '', product_type: '', batch_id: '', customer_id: '', remissionMode: 'facturado_pendiente' };
+    return {
+        from: getTodayString(start),
+        to: getTodayString(),
+        provider_id: '',
+        product_type: '',
+        batch_id: '',
+        customer_id: '',
+        remissionMode: 'facturado_pendiente',
+        includeCreditNotes: true
+    };
 };
 
 export default function EggReports() {
@@ -102,17 +111,17 @@ export default function EggReports() {
         }
     };
 
-    const exportReport = async format => {
+    const exportReport = async (format, directDownload = false) => {
         setExporting(true);
         try {
             const { data } = await axios.get(endpoint, { params: { ...params, format }, responseType: 'blob' });
             const url = URL.createObjectURL(data);
-            if (format === 'pdf') {
+            if (format === 'pdf' && !directDownload) {
                 setPdfUrl(url);
             } else {
                 const link = document.createElement('a');
                 link.href = url;
-                link.download = `huevo_${activeTab}_${applied.from}_${applied.to}.xlsx`;
+                link.download = `huevo_${activeTab}_${applied.from}_${applied.to}.${format === 'excel' ? 'xlsx' : 'pdf'}`;
                 link.click();
                 setTimeout(() => URL.revokeObjectURL(url), 1000);
             }
@@ -162,6 +171,7 @@ export default function EggReports() {
                         onChangeFilters={updateFilters}
                         onApplyFilters={apply}
                         onExportExcel={() => exportReport('excel')}
+                        onDownloadPdf={() => exportReport('pdf', true)}
                         onViewPdf={handleViewPdfModal}
                         customers={customers.data}
                         isExporting={exporting}
