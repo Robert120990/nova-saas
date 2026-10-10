@@ -423,6 +423,7 @@ router.get('/providers', providerController.getProviders);
 router.get('/providers/reports/pdf', providerController.getProvidersReportPDF);
 router.post('/providers', validate(providerSchema), providerController.createProvider);
 router.put('/providers/:id', validate(providerUpdateSchema), providerController.updateProvider);
+router.patch('/providers/:id/credit-days', providerController.updateProviderCreditDays);
 router.delete('/providers/:id', providerController.deleteProvider);
 
 // Categories
@@ -527,6 +528,7 @@ const quedanController = require('../controllers/quedan.controller');
 router.get('/purchases/quedans/reports/pdf', quedanController.getQuedanReportPDF);
 router.get('/purchases/quedans', quedanController.getQuedans);
 router.post('/purchases/quedans', validate(quedanSchema), quedanController.createQuedan);
+router.post('/purchases/quedans/rrs-num-cheque', quedanController.getRrsNumCheque);
 router.get('/purchases/quedans/:id', quedanController.getQuedanById);
 router.put('/purchases/quedans/:id', validate(quedanUpdateSchema), quedanController.updateQuedan);
 router.delete('/purchases/quedans/:id', quedanController.deleteQuedan);

@@ -18,7 +18,8 @@ import {
     Pencil,
     RefreshCw,
     CloudUpload,
-    AlertTriangle
+    AlertTriangle,
+    FileText
 } from 'lucide-react';
 import { toast } from 'sonner';
 import Modal from '../components/ui/Modal';
@@ -58,6 +59,7 @@ const CashClosing = () => {
     const [incomes, setIncomes] = useState([{ description: '', amount: '', payment_method: '01' }]);
     const [remesas, setRemesas] = useState([{ description: '', amount: '' }]);
     const [puntos, setPuntos] = useState([{ description: '', amount: '' }]);
+    const [tarjetas, setTarjetas] = useState([{ description: '', amount: '' }]);
     const [arqueoActiveTab, setArqueoActiveTab] = useState('incomes');
     const [selectedResponsibleId, setSelectedResponsibleId] = useState('');
     const [selectedSellers, setSelectedSellers] = useState([]);
@@ -74,7 +76,7 @@ const CashClosing = () => {
     const [tiendaEndDate, setTiendaEndDate] = useState('');
     const [sendingTiendaFecha, setSendingTiendaFecha] = useState(null);
 
-    useDirtyTracker('arqueo', actualCash || expenses.some(e => e.amount));
+    useDirtyTracker('arqueo', actualCash || expenses.some(e => e.amount) || tarjetas.some(t => t.amount));
 
     const formatFechaEs = (fecha) => {
         if (!fecha) return '';
@@ -207,7 +209,7 @@ const CashClosing = () => {
     });
 
     const closeShiftMutation = useMutation({
-        mutationFn: async ({ id, actualCash, expenses, incomes, remesas, puntos }) => (await axios.post(`/api/shifts/${id}/close`, { actual_cash: actualCash, expenses, incomes, remesas, puntos })).data,
+        mutationFn: async ({ id, actualCash, expenses, incomes, remesas, puntos, tarjetas }) => (await axios.post(`/api/shifts/${id}/close`, { actual_cash: actualCash, expenses, incomes, remesas, puntos, tarjetas })).data,
         onSuccess: (data) => {
             queryClient.invalidateQueries(['shifts']);
             setShiftSummary(data.summary);
@@ -217,13 +219,14 @@ const CashClosing = () => {
             setIncomes([{ description: '', amount: '', payment_method: '01' }]); // Reset
             setRemesas([{ description: '', amount: '' }]); // Reset
             setPuntos([{ description: '', amount: '' }]); // Reset
+            setTarjetas([{ description: '', amount: '' }]); // Reset
             toast.success('Turno finalizado correctamente');
         },
         onError: (err) => toast.error(err.response?.data?.message || 'Error al finalizar turno')
     });
 
     const arqueoMutation = useMutation({
-        mutationFn: async ({ id, actualCash, expenses, incomes, remesas, puntos }) => (await axios.post(`/api/shifts/${id}/arqueo`, { actual_cash: actualCash, expenses, incomes, remesas, puntos })).data,
+        mutationFn: async ({ id, actualCash, expenses, incomes, remesas, puntos, tarjetas }) => (await axios.post(`/api/shifts/${id}/arqueo`, { actual_cash: actualCash, expenses, incomes, remesas, puntos, tarjetas })).data,
         onSuccess: () => {
             queryClient.invalidateQueries(['shifts']);
             setIsClosingModalOpen(false);
@@ -231,6 +234,7 @@ const CashClosing = () => {
             setIncomes([{ description: '', amount: '', payment_method: '01' }]); // Reset
             setRemesas([{ description: '', amount: '' }]); // Reset
             setPuntos([{ description: '', amount: '' }]); // Reset
+            setTarjetas([{ description: '', amount: '' }]); // Reset
             toast.success('Arqueo guardado correctamente');
         },
         onError: (err) => toast.error(err.response?.data?.message || 'Error al guardar arqueo')
@@ -267,12 +271,19 @@ const CashClosing = () => {
                 setPuntos(data.puntos?.length
                     ? data.puntos.map(p => ({ description: p.description, amount: p.amount ? p.amount.toString() : '' }))
                     : [{ description: '', amount: '' }]);
+                setTarjetas(data.tarjetas?.length
+                    ? data.tarjetas.map(t => ({
+                        description: t.description || '',
+                        amount: t.amount ? t.amount.toString() : ''
+                    }))
+                    : [{ description: '', amount: '' }]);
             } else {
                 setActualCash('');
                 setExpenses([{ description: '', amount: '' }]);
                 setIncomes([{ description: '', amount: '', payment_method: '01' }]);
                 setRemesas([{ description: '', amount: '' }]);
                 setPuntos([{ description: '', amount: '' }]);
+                setTarjetas([{ description: '', amount: '' }]);
             }
         } catch (err) {
             toast.error('Error al cargar el resumen del turno');
@@ -811,13 +822,13 @@ const CashClosing = () => {
                 isOpen={isClosingModalOpen}
                 onClose={() => setIsClosingModalOpen(false)}
                 title="Realizar Arqueo de Caja"
-                maxWidth="max-w-5xl"
+                maxWidth="max-w-6xl"
             >
                 {shiftSummary && (
-                    <div className="flex flex-col gap-8 py-4">
-                        <div className="grid grid-cols-1 md:grid-cols-12 gap-8">
+                    <div className="flex flex-col gap-6 py-2">
+                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
                             {/* Resumen de Valores Esperados */}
-                            <div className="md:col-span-5 bg-slate-50 p-8 rounded-[2rem] border border-slate-100 space-y-6 flex flex-col justify-between">
+                            <div className="lg:col-span-5 bg-slate-50 p-6 rounded-[2rem] border border-slate-100 space-y-6 flex flex-col justify-between">
                                 <div>
                                     <div className="flex items-center justify-between mb-6">
                                         <h4 className="text-[10px] font-black uppercase text-indigo-600 tracking-widest">Desglose Detallado de Ventas</h4>
@@ -877,14 +888,22 @@ const CashClosing = () => {
                                                 <span>-<Money value={puntos.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0)} /></span>
                                             </div>
                                         )}
+
+                                        {/* Sección de Tarjetas (Resumen) */}
+                                        {tarjetas.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0) > 0 && (
+                                            <div className="flex justify-between items-center text-sm font-bold text-blue-600 italic pt-2 border-t border-slate-200">
+                                                <span>Tarjetas Ingresadas</span>
+                                                <span><Money value={tarjetas.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0)} /></span>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
 
                                 <div className="h-px bg-slate-200 my-4"></div>
-                                <div className="flex justify-between items-center bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
+                                <div className="flex justify-between items-center bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
                                     <div className="flex flex-col">
                                         <span className="text-xs font-black uppercase text-slate-900 tracking-widest">Efectivo Físico Esperado</span>
-                                        <span className="text-[10px] text-slate-400 font-bold italic">(Saldo + Cash Sales + Cash In - Expenses - Remesas - Puntos)</span>
+                                        <span className="text-[10px] text-slate-400 font-bold italic">(Saldo + Cash Sales + Cash In - Expenses - Remesas - Puntos - Tarjetas)</span>
                                     </div>
                                     <span className="text-3xl font-black text-emerald-600">
                                         <Money value={(
@@ -893,26 +912,28 @@ const CashClosing = () => {
                                             incomes.filter(i => i.payment_method === '01').reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0) - 
                                             expenses.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0) - 
                                             remesas.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0) -
-                                            puntos.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0)
+                                            puntos.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0) -
+                                            tarjetas.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0)
                                         )} />
                                     </span>
                                 </div>
                             </div>
 
                             {/* Formularios de Ajuste - Tabs */}
-                            <div className="md:col-span-7 space-y-4">
+                            <div className="lg:col-span-7 space-y-4 min-w-0">
                                 {/* Tab Bar */}
-                                <div className="flex gap-1 bg-slate-100 p-1.5 rounded-2xl">
+                                <div className="flex gap-1 bg-slate-100 p-1.5 rounded-2xl overflow-x-auto no-scrollbar">
                                     {[
                                         { key: 'incomes', label: 'Ingresos', color: 'emerald', total: incomes.reduce((a, e) => a + (parseFloat(e.amount) || 0), 0) },
+                                        { key: 'tarjetas', label: 'Tarjetas', color: 'blue', total: tarjetas.reduce((a, e) => a + (parseFloat(e.amount) || 0), 0) },
                                         { key: 'remesas', label: 'Remesas', color: 'amber', total: remesas.reduce((a, e) => a + (parseFloat(e.amount) || 0), 0) },
                                         { key: 'puntos', label: 'Puntos', color: 'violet', total: puntos.reduce((a, e) => a + (parseFloat(e.amount) || 0), 0) },
                                         { key: 'expenses', label: 'Gastos', color: 'rose', total: expenses.reduce((a, e) => a + (parseFloat(e.amount) || 0), 0) },
                                     ].map(tab => (
                                         <button key={tab.key} onClick={() => setArqueoActiveTab(tab.key)}
-                                            className={`flex-1 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${arqueoActiveTab === tab.key ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
-                                            {tab.label}
-                                            {tab.total > 0 && <span className="ml-1.5 tabular-nums text-slate-500">(<Money value={tab.total} />)</span>}
+                                            className={`flex-1 min-w-[65px] py-2 px-1 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all whitespace-nowrap text-center ${arqueoActiveTab === tab.key ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
+                                            <span>{tab.label}</span>
+                                            {tab.total > 0 && <span className="ml-1 tabular-nums text-slate-500 font-bold">(<Money value={tab.total} />)</span>}
                                         </button>
                                     ))}
                                 </div>
@@ -925,29 +946,80 @@ const CashClosing = () => {
                                             <button onClick={() => setIncomes([...incomes, { description: '', amount: '', payment_method: '01' }])}
                                                 className="text-[10px] font-black text-emerald-600 hover:text-emerald-700 uppercase">+ Agregar</button>
                                         </div>
-                                        <div className="space-y-2 max-h-36 overflow-y-auto custom-scrollbar">
+                                        <div className="space-y-2 max-h-48 overflow-y-auto overflow-x-hidden custom-scrollbar pr-1">
                                             {incomes.map((inc, idx) => (
-                                                <div key={idx} className="flex gap-2 items-center">
-                                                    <input className="flex-[2] px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-bold outline-none focus:border-emerald-300"
-                                                        placeholder="Motivo" value={inc.description}
-                                                        onChange={(e) => { const n = [...incomes]; n[idx].description = e.target.value; setIncomes(n); }} />
-                                                    <select className="flex-1 px-2 py-2 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-bold outline-none"
+                                                <div key={idx} className="flex gap-2 items-center w-full min-w-0">
+                                                    <input className="flex-[2] min-w-0 px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-bold outline-none focus:border-emerald-300 uppercase"
+                                                        placeholder="MOTIVO" value={inc.description}
+                                                        onChange={(e) => { const n = [...incomes]; n[idx].description = e.target.value.toUpperCase(); setIncomes(n); }} />
+                                                    <select className="flex-1 min-w-0 px-2 py-2 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-bold outline-none"
                                                         value={inc.payment_method}
                                                         onChange={(e) => { const n = [...incomes]; n[idx].payment_method = e.target.value; setIncomes(n); }}>
                                                         {paymentMethods.map(m => <option key={m.code} value={m.code}>{m.description}</option>)}
                                                     </select>
-                                                    <MoneyInput className="w-28 px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-bold outline-none focus:border-emerald-300 text-right"
+                                                    <MoneyInput className="w-24 px-2.5 py-2 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-bold outline-none focus:border-emerald-300 text-right shrink-0"
                                                         placeholder="0.00" value={inc.amount}
                                                         onChange={(e) => { const n = [...incomes]; n[idx].amount = e.target.value; setIncomes(n); }} />
                                                     <button onClick={() => {
                                                         if (incomes.length > 1) {
-                                                            setIncomes(incomes.filter((_, i) => i !== idx));
+                                                             setIncomes(incomes.filter((_, i) => i !== idx));
                                                         } else {
                                                             const n = [...incomes];
                                                             n[idx] = { description: '', amount: '', payment_method: '01' };
                                                             setIncomes(n);
                                                         }
-                                                    }} className="p-2 text-rose-300 hover:text-rose-500"><Trash2 size={14} /></button>
+                                                    }} className="p-1.5 text-rose-300 hover:text-rose-500 shrink-0"><Trash2 size={14} /></button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Tab Content: Tarjetas */}
+                                {arqueoActiveTab === 'tarjetas' && (
+                                    <div className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm space-y-3">
+                                        <div className="flex items-center justify-between">
+                                            <div>
+                                                <h5 className="text-[10px] font-black uppercase text-blue-600 tracking-widest">Comprobantes de Tarjetas (Vouchers)</h5>
+                                                <p className="text-[10px] text-slate-400 font-medium">Vouchers y lotes cobrados con terminal POS</p>
+                                            </div>
+                                            <button 
+                                                type="button"
+                                                onClick={() => setTarjetas([...tarjetas, { description: '', amount: '' }])}
+                                                className="text-[10px] font-black text-blue-600 hover:text-blue-700 uppercase"
+                                            >
+                                                + Agregar
+                                            </button>
+                                        </div>
+                                        <div className="space-y-2 max-h-48 overflow-y-auto overflow-x-hidden custom-scrollbar pr-1">
+                                            {tarjetas.map((tar, idx) => (
+                                                <div key={idx} className="flex gap-2 items-center w-full min-w-0">
+                                                    <span className="w-4 text-[10px] font-black text-blue-600 text-center shrink-0">#{idx + 1}</span>
+                                                    <input 
+                                                        className="flex-1 min-w-0 px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-bold outline-none focus:border-blue-300 uppercase"
+                                                        placeholder="DESCRIPCIÓN" 
+                                                        value={tar.description}
+                                                        onChange={(e) => { const n = [...tarjetas]; n[idx].description = e.target.value.toUpperCase(); setTarjetas(n); }} 
+                                                    />
+                                                    <MoneyInput 
+                                                        className="w-24 px-2.5 py-2 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-bold outline-none focus:border-blue-300 text-right shrink-0"
+                                                        placeholder="0.00" 
+                                                        value={tar.amount}
+                                                        onChange={(e) => { const n = [...tarjetas]; n[idx].amount = e.target.value; setTarjetas(n); }} 
+                                                    />
+                                                    <button 
+                                                        type="button"
+                                                        onClick={() => {
+                                                            if (tarjetas.length > 1) {
+                                                                setTarjetas(tarjetas.filter((_, i) => i !== idx));
+                                                            } else {
+                                                                setTarjetas([{ description: '', amount: '' }]);
+                                                            }
+                                                        }} 
+                                                        className="p-1.5 text-rose-300 hover:text-rose-500 shrink-0"
+                                                    >
+                                                        <Trash2 size={14} />
+                                                    </button>
                                                 </div>
                                             ))}
                                         </div>
@@ -962,14 +1034,14 @@ const CashClosing = () => {
                                             <button onClick={() => setRemesas([...remesas, { description: '', amount: '' }])}
                                                 className="text-[10px] font-black text-amber-600 hover:text-amber-700 uppercase">+ Agregar</button>
                                         </div>
-                                        <div className="space-y-2 max-h-36 overflow-y-auto custom-scrollbar">
+                                        <div className="space-y-2 max-h-48 overflow-y-auto overflow-x-hidden custom-scrollbar pr-1">
                                             {remesas.map((rem, idx) => (
-                                                <div key={idx} className="flex gap-2 items-center">
-                                                    <span className="w-5 text-[10px] font-black text-amber-600 text-center shrink-0">#{idx + 1}</span>
-                                                    <input className="flex-[2] px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-bold outline-none focus:border-amber-300"
-                                                        placeholder="Descripción" value={rem.description}
-                                                        onChange={(e) => { const n = [...remesas]; n[idx].description = e.target.value; setRemesas(n); }} />
-                                                    <MoneyInput className="w-28 px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-bold outline-none focus:border-amber-300 text-right"
+                                                <div key={idx} className="flex gap-2 items-center w-full min-w-0">
+                                                    <span className="w-4 text-[10px] font-black text-amber-600 text-center shrink-0">#{idx + 1}</span>
+                                                    <input className="flex-1 min-w-0 px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-bold outline-none focus:border-amber-300 uppercase"
+                                                        placeholder="DESCRIPCIÓN" value={rem.description}
+                                                        onChange={(e) => { const n = [...remesas]; n[idx].description = e.target.value.toUpperCase(); setRemesas(n); }} />
+                                                    <MoneyInput className="w-24 px-2.5 py-2 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-bold outline-none focus:border-amber-300 text-right shrink-0"
                                                         placeholder="0.00" value={rem.amount}
                                                         onChange={(e) => { const n = [...remesas]; n[idx].amount = e.target.value; setRemesas(n); }} />
                                                     <button onClick={() => {
@@ -980,7 +1052,7 @@ const CashClosing = () => {
                                                             n[idx] = { description: '', amount: '' };
                                                             setRemesas(n);
                                                         }
-                                                    }} className="p-2 text-rose-300 hover:text-rose-500"><Trash2 size={14} /></button>
+                                                    }} className="p-1.5 text-rose-300 hover:text-rose-500 shrink-0"><Trash2 size={14} /></button>
                                                 </div>
                                             ))}
                                         </div>
@@ -995,13 +1067,13 @@ const CashClosing = () => {
                                             <button onClick={() => setPuntos([...puntos, { description: '', amount: '' }])}
                                                 className="text-[10px] font-black text-violet-600 hover:text-violet-700 uppercase">+ Agregar</button>
                                         </div>
-                                        <div className="space-y-2 max-h-36 overflow-y-auto custom-scrollbar">
+                                        <div className="space-y-2 max-h-48 overflow-y-auto overflow-x-hidden custom-scrollbar pr-1">
                                             {puntos.map((pto, idx) => (
-                                                <div key={idx} className="flex gap-2 items-center">
-                                                    <input className="flex-[2] px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-bold outline-none focus:border-violet-300"
-                                                        placeholder="Descripción" value={pto.description}
-                                                        onChange={(e) => { const n = [...puntos]; n[idx].description = e.target.value; setPuntos(n); }} />
-                                                    <MoneyInput className="w-28 px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-bold outline-none focus:border-violet-300 text-right"
+                                                <div key={idx} className="flex gap-2 items-center w-full min-w-0">
+                                                    <input className="flex-1 min-w-0 px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-bold outline-none focus:border-violet-300 uppercase"
+                                                        placeholder="DESCRIPCIÓN" value={pto.description}
+                                                        onChange={(e) => { const n = [...puntos]; n[idx].description = e.target.value.toUpperCase(); setPuntos(n); }} />
+                                                    <MoneyInput className="w-24 px-2.5 py-2 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-bold outline-none focus:border-violet-300 text-right shrink-0"
                                                         placeholder="0.00" value={pto.amount}
                                                         onChange={(e) => { const n = [...puntos]; n[idx].amount = e.target.value; setPuntos(n); }} />
                                                     <button onClick={() => {
@@ -1012,7 +1084,7 @@ const CashClosing = () => {
                                                             n[idx] = { description: '', amount: '' };
                                                             setPuntos(n);
                                                         }
-                                                    }} className="p-2 text-rose-300 hover:text-rose-500"><Trash2 size={14} /></button>
+                                                    }} className="p-1.5 text-rose-300 hover:text-rose-500 shrink-0"><Trash2 size={14} /></button>
                                                 </div>
                                             ))}
                                         </div>
@@ -1027,13 +1099,13 @@ const CashClosing = () => {
                                             <button onClick={() => setExpenses([...expenses, { description: '', amount: '' }])}
                                                 className="text-[10px] font-black text-rose-600 hover:text-rose-700 uppercase">+ Agregar</button>
                                         </div>
-                                        <div className="space-y-2 max-h-36 overflow-y-auto custom-scrollbar">
+                                        <div className="space-y-2 max-h-48 overflow-y-auto overflow-x-hidden custom-scrollbar pr-1">
                                             {expenses.map((exp, idx) => (
-                                                <div key={idx} className="flex gap-2 items-center">
-                                                    <input className="flex-[2] px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-bold outline-none focus:border-rose-300"
-                                                        placeholder="Descripción" value={exp.description}
-                                                        onChange={(e) => { const n = [...expenses]; n[idx].description = e.target.value; setExpenses(n); }} />
-                                                    <MoneyInput className="w-28 px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-bold outline-none focus:border-rose-300 text-right"
+                                                <div key={idx} className="flex gap-2 items-center w-full min-w-0">
+                                                    <input className="flex-1 min-w-0 px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-bold outline-none focus:border-rose-300 uppercase"
+                                                        placeholder="DESCRIPCIÓN" value={exp.description}
+                                                        onChange={(e) => { const n = [...expenses]; n[idx].description = e.target.value.toUpperCase(); setExpenses(n); }} />
+                                                    <MoneyInput className="w-24 px-2.5 py-2 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-bold outline-none focus:border-rose-300 text-right shrink-0"
                                                         placeholder="0.00" value={exp.amount}
                                                         onChange={(e) => { const n = [...expenses]; n[idx].amount = e.target.value; setExpenses(n); }} />
                                                     <button onClick={() => {
@@ -1044,7 +1116,7 @@ const CashClosing = () => {
                                                             n[idx] = { description: '', amount: '' };
                                                             setExpenses(n);
                                                         }
-                                                    }} className="p-2 text-rose-300 hover:text-rose-500"><Trash2 size={14} /></button>
+                                                    }} className="p-1.5 text-rose-300 hover:text-rose-500 shrink-0"><Trash2 size={14} /></button>
                                                 </div>
                                             ))}
                                         </div>
@@ -1072,7 +1144,8 @@ const CashClosing = () => {
                                                 incomes.filter(i => i.payment_method === '01').reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0) - 
                                                 expenses.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0) - 
                                                 remesas.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0) -
-                                                puntos.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0)
+                                                puntos.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0) -
+                                                tarjetas.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0)
                                             )) >= 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'
                                         }`}>
                                             <span className="text-[10px] font-black uppercase tracking-widest">Diferencia</span>
@@ -1083,7 +1156,8 @@ const CashClosing = () => {
                                                     incomes.filter(i => i.payment_method === '01').reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0) - 
                                                     expenses.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0) - 
                                                     remesas.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0) -
-                                                    puntos.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0)
+                                                    puntos.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0) -
+                                                    tarjetas.reduce((acc, e) => acc + (parseFloat(e.amount) || 0), 0)
                                                 ))} />
                                             </span>
                                         </div>
@@ -1098,7 +1172,8 @@ const CashClosing = () => {
                                             expenses: expenses.filter(e => parseFloat(e.amount) > 0),
                                             incomes: incomes.filter(i => parseFloat(i.amount) > 0),
                                             remesas: remesas.filter(r => parseFloat(r.amount) > 0),
-                                            puntos: puntos.filter(p => parseFloat(p.amount) > 0)
+                                            puntos: puntos.filter(p => parseFloat(p.amount) > 0),
+                                            tarjetas: tarjetas.filter(t => parseFloat(t.amount) > 0)
                                         });
                                     }}
                                     disabled={!actualCash || arqueoMutation.isPending}
@@ -1239,6 +1314,26 @@ const CashClosing = () => {
                                         </div>
                                     </div>
                                 )}
+                                {parseFloat(shiftSummary.total_tarjetas || 0) > 0 && (
+                                    <div className="space-y-2">
+                                        <div className="flex justify-between items-center text-[10px] font-black text-blue-600 uppercase tracking-widest bg-blue-50 p-2 rounded-lg">
+                                            <span>Comprobantes de Tarjetas (Vouchers)</span>
+                                            <span><Money value={shiftSummary.total_tarjetas || 0} /></span>
+                                        </div>
+                                        <div className="px-1 space-y-1">
+                                            {shiftSummary.tarjetas?.map((tar, i) => (
+                                                <div key={i} className="flex justify-between text-[10px] font-bold text-slate-400">
+                                                    <span className="truncate pr-4">
+                                                        {tar.num_autorizacion ? `Aut: #${tar.num_autorizacion} ` : ''}
+                                                        {tar.num_tarjeta ? `(•••• ${tar.num_tarjeta}) ` : ''}
+                                                        {tar.description || 'Tarjeta'}
+                                                    </span>
+                                                    <span className="shrink-0 text-slate-700 font-black"><Money value={tar.amount} /></span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
 
@@ -1266,6 +1361,9 @@ const CashClosing = () => {
                                     ).join('');
                                     const puntosHtml = (s.puntos || []).map(p =>
                                         `<div class="row"><span>Puntos: ${p.description}</span><span>-$${p.amount.toFixed(2)}</span></div>`
+                                    ).join('');
+                                    const tarjetasHtml = (s.tarjetas || []).map(t =>
+                                        `<div class="row"><span>${t.num_autorizacion ? `Aut #${t.num_autorizacion} ` : ''}${t.description || 'Tarjeta'}${t.num_tarjeta ? ` (*${t.num_tarjeta})` : ''}</span><span>$${parseFloat(t.amount || 0).toFixed(2)}</span></div>`
                                     ).join('');
 
                                     const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Arqueo</title>
@@ -1299,7 +1397,8 @@ const CashClosing = () => {
                                     <div class="dashed"></div>
                                     ${catsHtml ? `<div class="bold" style="margin-bottom:2px;">VENTAS POR CATEGORÍA</div>${catsHtml}<div class="dashed"></div>` : ''}
                                     ${incomesHtml ? `<div class="bold" style="margin-bottom:2px;">INGRESOS</div>${incomesHtml}<div class="dashed"></div>` : ''}
-                                    ${remesasHtml ? `<div class="bold" style="margin-bottom:2px;">REMAS</div>${remesasHtml}<div class="dashed"></div>` : ''}
+                                    ${tarjetasHtml ? `<div class="bold" style="margin-bottom:2px;">TARJETAS / VOUCHERS</div>${tarjetasHtml}<div class="row bold"><span>Total Tarjetas</span><span>$${parseFloat(s.total_tarjetas || 0).toFixed(2)}</span></div><div class="dashed"></div>` : ''}
+                                    ${remesasHtml ? `<div class="bold" style="margin-bottom:2px;">REMESAS</div>${remesasHtml}<div class="dashed"></div>` : ''}
                                     ${puntosHtml ? `<div class="bold" style="margin-bottom:2px;">PUNTOS</div>${puntosHtml}<div class="dashed"></div>` : ''}
                                     ${expensesHtml ? `<div class="bold" style="margin-bottom:2px;">GASTOS</div>${expensesHtml}<div class="dashed"></div>` : ''}
                                     <div class="row bold"><span>Esperado en Caja</span><span>$${(s.expected || 0).toFixed(2)}</span></div>
@@ -1330,12 +1429,30 @@ const CashClosing = () => {
                                         pw.focus();
                                     }
                                 }}
-                                className="w-full bg-slate-900 hover:bg-black text-white py-5 rounded-2xl font-black uppercase text-sm tracking-widest flex items-center justify-center gap-2 shadow-xl"
+                                className="w-full bg-slate-900 hover:bg-black text-white py-4 rounded-2xl font-black uppercase text-xs tracking-wider flex items-center justify-center gap-2 shadow-lg transition-all"
                             >
-                                <Printer size={18} />
-                                Imprimir Reporte Arqueo
+                                <Printer size={16} />
+                                Imprimir Tirilla Térmica
                             </button>
-                            <button onClick={() => setIsSummaryModalOpen(false)} className="w-full py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-slate-600 transition-colors">Cerrar Detalle</button>
+                            <button 
+                                type="button"
+                                onClick={async () => {
+                                    if (!shiftSummary?.id) return;
+                                    try {
+                                        const response = await axios.get(`/api/shifts/reports/arqueos/pdf?shift_id=${shiftSummary.id}`, { responseType: 'blob' });
+                                        const blob = new Blob([response.data], { type: 'application/pdf' });
+                                        const url = URL.createObjectURL(blob);
+                                        window.open(url, '_blank');
+                                    } catch (err) {
+                                        toast.error('Error al generar el PDF del arqueo');
+                                    }
+                                }}
+                                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-4 rounded-2xl font-black uppercase text-xs tracking-wider flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/20 transition-all"
+                            >
+                                <FileText size={16} />
+                                Ver Reporte PDF Oficial (Corte de Tienda)
+                            </button>
+                            <button onClick={() => setIsSummaryModalOpen(false)} className="w-full py-3 text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-slate-600 transition-colors">Cerrar Detalle</button>
                         </div>
                     </div>
                 )}

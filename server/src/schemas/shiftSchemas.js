@@ -64,12 +64,20 @@ const shiftArqueoPuntoSchema = z.object({
     amount: z.coerce.number().min(0, 'El monto no puede ser negativo')
 });
 
+const shiftArqueoTarjetaSchema = z.object({
+    num_tarjeta: optionalString,
+    num_autorizacion: optionalString,
+    description: optionalString,
+    amount: z.coerce.number().min(0, 'El monto no puede ser negativo')
+});
+
 const shiftArqueoSchema = z.object({
     actual_cash: z.coerce.number().min(0, 'El efectivo real no puede ser negativo').optional(),
     expenses: z.array(shiftArqueoExpenseSchema).optional().default([]),
     incomes: z.array(shiftArqueoIncomeSchema).optional().default([]),
     remesas: z.array(shiftArqueoRemesaSchema).optional().default([]),
-    puntos: z.array(shiftArqueoPuntoSchema).optional().default([])
+    puntos: z.array(shiftArqueoPuntoSchema).optional().default([]),
+    tarjetas: z.array(shiftArqueoTarjetaSchema).optional().default([])
 });
 
 const shiftSellersUpdateSchema = z.object({

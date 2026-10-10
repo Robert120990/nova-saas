@@ -320,6 +320,9 @@ const getShiftSummary = async (req, res) => {    const { id } = req.params;
         // Obtener Canjes de Puntos
         const [puntos] = await pool.query('SELECT description, amount FROM pos_shift_puntos WHERE shift_id = ?', [id]);
 
+        // Obtener Comprobantes de Tarjetas
+        const [tarjetas] = await pool.query('SELECT num_tarjeta, num_autorizacion, description, amount FROM pos_shift_tarjetas WHERE shift_id = ? ORDER BY id ASC', [id]);
+
         // Ventas por categoría de producto
         const [salesByCategory] = await pool.query(`
             SELECT 
@@ -365,11 +368,18 @@ const getShiftSummary = async (req, res) => {    const { id } = req.params;
             incomes: incomes.map(i => ({ description: i.description, amount: parseFloat(i.amount || 0), method: i.payment_method_name, payment_method: i.payment_method })),
             remesas: remesas.map(r => ({ numero: r.numero, description: r.description, amount: parseFloat(r.amount || 0) })),
             puntos: puntos.map(p => ({ description: p.description, amount: parseFloat(p.amount || 0) })),
+            tarjetas: tarjetas.map(t => ({
+                num_tarjeta: t.num_tarjeta || '',
+                num_autorizacion: t.num_autorizacion || '',
+                description: t.description || '',
+                amount: parseFloat(t.amount || 0)
+            })),
             arqueado: shift.arqueado ? 1 : 0,
             total_expenses: parseFloat(shift.total_expenses || expenses.reduce((acc, e) => acc + parseFloat(e.amount || 0), 0)),
             total_incomes: parseFloat(shift.total_incomes || incomes.reduce((acc, i) => acc + parseFloat(i.amount || 0), 0)),
             total_remesas: parseFloat(shift.total_remesas || remesas.reduce((acc, r) => acc + parseFloat(r.amount || 0), 0)),
             total_puntos: parseFloat(shift.total_puntos || puntos.reduce((acc, p) => acc + parseFloat(p.amount || 0), 0)),
+            total_tarjetas: parseFloat(shift.total_tarjetas || tarjetas.reduce((acc, t) => acc + parseFloat(t.amount || 0), 0)),
             actual: parseFloat(shift.actual_cash || 0),
             expected: parseFloat(shift.expected_cash || (parseFloat(shift.opening_balance || 0) + cashSales)),
             difference: parseFloat(shift.difference || 0),
@@ -379,7 +389,7 @@ const getShiftSummary = async (req, res) => {    const { id } = req.params;
             }))
         };
 
-        summary.expected_cash = summary.opening_balance + summary.cash + summary.total_incomes - summary.total_expenses - summary.total_remesas - summary.total_puntos;
+        summary.expected_cash = summary.opening_balance + summary.cash + summary.total_incomes - summary.total_expenses - summary.total_remesas - summary.total_puntos - summary.total_tarjetas;
 
         console.log(`[DEBUG] Final Summary:`, JSON.stringify(summary));
         res.json(summary);
@@ -392,7 +402,7 @@ const getShiftSummary = async (req, res) => {    const { id } = req.params;
 // Guarda (o re-guarda) los datos del arqueo de un turno sin cambiar su estado.
 // Se ejecuta en transacción: elimina gastos/ingresos/remesas previos y los re-inserta,
 // recalculando el efectivo esperado, el contado y la diferencia.
-const saveArqueoData = async (conn, shift, { actual_cash, expenses = [], incomes = [], remesas = [], puntos = [] }) => {
+const saveArqueoData = async (conn, shift, { actual_cash, expenses = [], incomes = [], remesas = [], puntos = [], tarjetas = [] }) => {
     const { id } = shift;
 
     // 1. Limpiar datos previos del arqueo (permite re-arqueo sin duplicados)
@@ -400,6 +410,7 @@ const saveArqueoData = async (conn, shift, { actual_cash, expenses = [], incomes
     await conn.query(`DELETE FROM pos_shift_incomes WHERE shift_id = ?`, [id]);
     await conn.query(`DELETE FROM pos_shift_remesas WHERE shift_id = ?`, [id]);
     await conn.query(`DELETE FROM pos_shift_puntos WHERE shift_id = ?`, [id]);
+    await conn.query(`DELETE FROM pos_shift_tarjetas WHERE shift_id = ?`, [id]);
 
     // 2. Guardar gastos
     let totalExpenses = 0;
@@ -460,6 +471,19 @@ const saveArqueoData = async (conn, shift, { actual_cash, expenses = [], incomes
         }
     }
 
+    // 4c. Guardar comprobantes de tarjetas
+    let totalTarjetas = 0;
+    for (const tar of tarjetas) {
+        const amount = parseFloat(tar.amount || 0);
+        if (amount > 0) {
+            await conn.query(`
+                INSERT INTO pos_shift_tarjetas (shift_id, num_tarjeta, num_autorizacion, description, amount)
+                VALUES (?, ?, ?, ?, ?)
+            `, [id, tar.num_tarjeta || '', tar.num_autorizacion || '', tar.description || 'Comprobante de tarjeta', amount]);
+            totalTarjetas += amount;
+        }
+    }
+
     // 5. Calcular totales de ventas del turno.
     // Misma asignación que getShiftSummary: efectivo = remanente de total_pagar por venta.
     const [salesTotals] = await conn.query(`
@@ -498,8 +522,8 @@ const saveArqueoData = async (conn, shift, { actual_cash, expenses = [], incomes
     const transferSales = parseFloat(totals.transfer || 0);
     const otherSales = parseFloat(totals.other || 0);
 
-    // EFECTIVO ESPERADO = (FONDO + VENTAS CASH + INGRESOS CASH) - GASTOS - REMESAS - PUNTOS
-    const expectedCash = parseFloat(shift.opening_balance) + cashSales + cashIncomes - totalExpenses - totalRemesas - totalPuntos;
+    // EFECTIVO ESPERADO = (FONDO + VENTAS CASH + INGRESOS CASH) - GASTOS - REMESAS - PUNTOS - TARJETAS
+    const expectedCash = parseFloat(shift.opening_balance) + cashSales + cashIncomes - totalExpenses - totalRemesas - totalPuntos - totalTarjetas;
     const actualCash = parseFloat(actual_cash || 0);
     const difference = actualCash - expectedCash;
 
@@ -517,6 +541,7 @@ const saveArqueoData = async (conn, shift, { actual_cash, expenses = [], incomes
             total_incomes = ?,
             total_remesas = ?,
             total_puntos = ?,
+            total_tarjetas = ?,
             arqueado = 1
         WHERE id = ?
     `, [
@@ -532,15 +557,16 @@ const saveArqueoData = async (conn, shift, { actual_cash, expenses = [], incomes
         totalIncomes,
         totalRemesas,
         totalPuntos,
+        totalTarjetas,
         id
     ]);
 
-    return { expectedCash, actualCash, difference, cardSales, transferSales, otherSales, totalExpenses, totalIncomes, totalRemesas, totalPuntos };
+    return { expectedCash, actualCash, difference, cardSales, transferSales, otherSales, totalExpenses, totalIncomes, totalRemesas, totalPuntos, totalTarjetas };
 };
 
 const saveArqueo = async (req, res) => {
     const { id } = req.params;
-    const { actual_cash, expenses = [], incomes = [], remesas = [], puntos = [] } = req.body;
+    const { actual_cash, expenses = [], incomes = [], remesas = [], puntos = [], tarjetas = [] } = req.body;
 
     try {
         const [shifts] = await pool.query('SELECT * FROM pos_shifts WHERE id = ? AND company_id = ?', [id, req.company_id]);
@@ -549,7 +575,7 @@ const saveArqueo = async (req, res) => {
         const conn = await pool.getConnection();
         try {
             await conn.beginTransaction();
-            const result = await saveArqueoData(conn, shifts[0], { actual_cash, expenses, incomes, remesas, puntos });
+            const result = await saveArqueoData(conn, shifts[0], { actual_cash, expenses, incomes, remesas, puntos, tarjetas });
             await conn.commit();
             res.json({ message: 'Arqueo guardado correctamente', summary: result });
         } catch (error) {
@@ -566,7 +592,7 @@ const saveArqueo = async (req, res) => {
 
 const closeShift = async (req, res) => {
     const { id } = req.params;
-    const { actual_cash, expenses = [], incomes = [], remesas = [], puntos = [] } = req.body;
+    const { actual_cash, expenses = [], incomes = [], remesas = [], puntos = [], tarjetas = [] } = req.body;
 
     try {
         // Obtener resumen actual
@@ -584,7 +610,7 @@ const closeShift = async (req, res) => {
             let summary = null;
             const hasArqueoData = actual_cash !== undefined && actual_cash !== null && actual_cash !== '';
             if (hasArqueoData) {
-                summary = await saveArqueoData(conn, shift, { actual_cash, expenses, incomes, remesas, puntos });
+                summary = await saveArqueoData(conn, shift, { actual_cash, expenses, incomes, remesas, puntos, tarjetas });
             } else {
                 // Si el cajero cerró sin desglose físico de arqueo, calcular y persistir ventas reales del turno desde sales_headers
                 const [salesTotals] = await conn.query(`
@@ -797,11 +823,11 @@ const getShiftsHistory = async (req, res) => {
 
 const exportArqueosPDF = async (req, res) => {
     try {
-        const { start_date, end_date, branch_id, pos_ids } = req.query;
+        const { start_date, end_date, branch_id, pos_ids, shift_id } = req.query;
         const companyId = req.company_id || req.user?.company_id;
 
         if (!companyId) return res.status(401).json({ message: 'No autorizado' });
-        if (!start_date || !end_date) return res.status(400).json({ message: 'Rango de fechas es requerido' });
+        if (!shift_id && (!start_date || !end_date)) return res.status(400).json({ message: 'Rango de fechas o ID de turno es requerido' });
 
         const [companyRows] = await pool.query('SELECT razon_social, nit, nrc FROM companies WHERE id = ?', [companyId]);
         const company = companyRows[0] || { razon_social: 'EMPRESA', nit: '', nrc: '' };
@@ -830,6 +856,7 @@ const exportArqueosPDF = async (req, res) => {
                 s.total_expenses,
                 s.total_remesas,
                 s.total_puntos,
+                s.total_tarjetas,
                 s.expected_cash,
                 s.actual_cash,
                 s.difference,
@@ -843,15 +870,20 @@ const exportArqueosPDF = async (req, res) => {
             WHERE s.company_id = ?
         `;
         const params = [companyId];
-        sql += ' AND s.start_time BETWEEN ? AND ?';
-        params.push(`${start_date} 00:00:00`, `${end_date} 23:59:59`);
-        if (branch_id && branch_id !== 'all') {
-            sql += ' AND s.branch_id = ?';
-            params.push(branch_id);
-        }
-        if (pos_ids) {
-            const ids = pos_ids.split(',').map(n => parseInt(n, 10)).filter(n => Number.isInteger(n) && n > 0);
-            if (ids.length > 0) sql += ` AND s.pos_id IN (${ids.join(',')})`;
+        if (shift_id) {
+            sql += ' AND s.id = ?';
+            params.push(shift_id);
+        } else {
+            sql += ' AND s.start_time BETWEEN ? AND ?';
+            params.push(`${start_date} 00:00:00`, `${end_date} 23:59:59`);
+            if (branch_id && branch_id !== 'all') {
+                sql += ' AND s.branch_id = ?';
+                params.push(branch_id);
+            }
+            if (pos_ids) {
+                const ids = pos_ids.split(',').map(n => parseInt(n, 10)).filter(n => Number.isInteger(n) && n > 0);
+                if (ids.length > 0) sql += ` AND s.pos_id IN (${ids.join(',')})`;
+            }
         }
         sql += ' ORDER BY s.start_time ASC, s.id ASC';
 
@@ -862,6 +894,7 @@ const exportArqueosPDF = async (req, res) => {
             const start = r.start_time ? new Date(r.start_time) : null;
             const end = r.end_time ? new Date(r.end_time) : null;
             return {
+                id: r.id,
                 fecha: start ? `${String(start.getDate()).padStart(2, '0')}/${String(start.getMonth() + 1).padStart(2, '0')}/${start.getFullYear()}` : '---',
                 hora_inicio: start ? `${String(start.getHours()).padStart(2, '0')}:${String(start.getMinutes()).padStart(2, '0')}` : '',
                 hora_fin: end ? `${String(end.getHours()).padStart(2, '0')}:${String(end.getMinutes()).padStart(2, '0')}` : '',
@@ -876,6 +909,7 @@ const exportArqueosPDF = async (req, res) => {
                 gastos: num(r.total_expenses),
                 remesas: num(r.total_remesas),
                 puntos: num(r.total_puntos),
+                tarjetas: num(r.total_tarjetas),
                 esperado: num(r.expected_cash),
                 contado: num(r.actual_cash),
                 diferencia: num(r.difference),
@@ -884,12 +918,37 @@ const exportArqueosPDF = async (req, res) => {
 
         const mappedRows = rows.map(mapRow);
 
-        // Consultar detalle de gastos y remesas de los turnos listados
+        // Consultar detalle de ingresos, gastos, remesas, tarjetas y puntos de los turnos listados
         const shiftIds = rows.map(r => r.id);
+        let incomesRows = [];
         let expensesRows = [];
         let remesasRows = [];
+        let tarjetasRows = [];
+        let puntosRows = [];
 
         if (shiftIds.length > 0) {
+            const [inc] = await pool.query(`
+                SELECT
+                    i.id,
+                    i.shift_id,
+                    i.description,
+                    i.amount,
+                    i.payment_method,
+                    s.shift_number,
+                    s.start_time,
+                    p.nombre as pos_name,
+                    b.nombre as branch_name,
+                    sel.nombre as seller_name
+                FROM pos_shift_incomes i
+                JOIN pos_shifts s ON i.shift_id = s.id
+                LEFT JOIN points_of_sale p ON s.pos_id = p.id
+                LEFT JOIN branches b ON s.branch_id = b.id
+                LEFT JOIN sellers sel ON s.seller_id = sel.id
+                WHERE i.shift_id IN (?)
+                ORDER BY s.start_time ASC, s.shift_number ASC, i.id ASC
+            `, [shiftIds]);
+            incomesRows = inc;
+
             const [exp] = await pool.query(`
                 SELECT
                     e.id,
@@ -933,7 +992,65 @@ const exportArqueosPDF = async (req, res) => {
                 ORDER BY s.start_time ASC, s.shift_number ASC, r.numero ASC, r.id ASC
             `, [shiftIds]);
             remesasRows = rem;
+
+            const [tar] = await pool.query(`
+                SELECT
+                    t.id,
+                    t.shift_id,
+                    t.num_tarjeta,
+                    t.num_autorizacion,
+                    t.description,
+                    t.amount,
+                    s.shift_number,
+                    s.start_time,
+                    p.nombre as pos_name,
+                    b.nombre as branch_name,
+                    sel.nombre as seller_name
+                FROM pos_shift_tarjetas t
+                JOIN pos_shifts s ON t.shift_id = s.id
+                LEFT JOIN points_of_sale p ON s.pos_id = p.id
+                LEFT JOIN branches b ON s.branch_id = b.id
+                LEFT JOIN sellers sel ON s.seller_id = sel.id
+                WHERE t.shift_id IN (?)
+                ORDER BY s.start_time ASC, s.shift_number ASC, t.id ASC
+            `, [shiftIds]);
+            tarjetasRows = tar;
+
+            const [pto] = await pool.query(`
+                SELECT
+                    pt.id,
+                    pt.shift_id,
+                    pt.description,
+                    pt.amount,
+                    s.shift_number,
+                    s.start_time,
+                    p.nombre as pos_name,
+                    b.nombre as branch_name,
+                    sel.nombre as seller_name
+                FROM pos_shift_puntos pt
+                JOIN pos_shifts s ON pt.shift_id = s.id
+                LEFT JOIN points_of_sale p ON s.pos_id = p.id
+                LEFT JOIN branches b ON s.branch_id = b.id
+                LEFT JOIN sellers sel ON s.seller_id = sel.id
+                WHERE pt.shift_id IN (?)
+                ORDER BY s.start_time ASC, s.shift_number ASC, pt.id ASC
+            `, [shiftIds]);
+            puntosRows = pto;
         }
+
+        const mapIncome = (i) => {
+            const start = i.start_time ? new Date(i.start_time) : null;
+            return {
+                fecha: start ? `${String(start.getDate()).padStart(2, '0')}/${String(start.getMonth() + 1).padStart(2, '0')}/${start.getFullYear()}` : '---',
+                turno: i.shift_number != null ? `#${i.shift_number}` : '---',
+                sucursal: i.branch_name || '---',
+                pos: i.pos_name || '---',
+                vendedor: i.seller_name || '---',
+                descripcion: i.description || 'Ingreso adicional',
+                metodo: i.payment_method || '01',
+                monto: num(i.amount)
+            };
+        };
 
         const mapExpense = (e) => {
             const start = e.start_time ? new Date(e.start_time) : null;
@@ -962,8 +1079,39 @@ const exportArqueosPDF = async (req, res) => {
             };
         };
 
+        const mapTarjeta = (t) => {
+            const start = t.start_time ? new Date(t.start_time) : null;
+            return {
+                fecha: start ? `${String(start.getDate()).padStart(2, '0')}/${String(start.getMonth() + 1).padStart(2, '0')}/${start.getFullYear()}` : '---',
+                turno: t.shift_number != null ? `#${t.shift_number}` : '---',
+                sucursal: t.branch_name || '---',
+                pos: t.pos_name || '---',
+                vendedor: t.seller_name || '---',
+                tarjeta: t.num_tarjeta ? `•••• ${t.num_tarjeta}` : '---',
+                autorizacion: t.num_autorizacion || '---',
+                descripcion: t.description || 'Comprobante de tarjeta',
+                monto: num(t.amount)
+            };
+        };
+
+        const mapPunto = (p) => {
+            const start = p.start_time ? new Date(p.start_time) : null;
+            return {
+                fecha: start ? `${String(start.getDate()).padStart(2, '0')}/${String(start.getMonth() + 1).padStart(2, '0')}/${start.getFullYear()}` : '---',
+                turno: p.shift_number != null ? `#${p.shift_number}` : '---',
+                sucursal: p.branch_name || '---',
+                pos: p.pos_name || '---',
+                vendedor: p.seller_name || '---',
+                descripcion: p.description || 'Canje de puntos',
+                monto: num(p.amount)
+            };
+        };
+
+        const mappedIncomes = incomesRows.map(mapIncome);
         const mappedExpenses = expensesRows.map(mapExpense);
         const mappedRemesas = remesasRows.map(mapRemesa);
+        const mappedTarjetas = tarjetasRows.map(mapTarjeta);
+        const mappedPuntos = puntosRows.map(mapPunto);
 
         const reportData = {
             company_id: companyId,
@@ -972,11 +1120,14 @@ const exportArqueosPDF = async (req, res) => {
             company_nit: company.nit,
             company_nrc: company.nrc,
             branch_name: branchName,
-            start_date,
-            end_date,
+            start_date: start_date || (rows[0] ? rows[0].start_time : null),
+            end_date: end_date || (rows[rows.length - 1] ? rows[rows.length - 1].start_time : null),
             data: mappedRows,
+            ingresos_detalle: mappedIncomes,
             gastos_detalle: mappedExpenses,
             remesas_detalle: mappedRemesas,
+            tarjetas_detalle: mappedTarjetas,
+            puntos_detalle: mappedPuntos,
             totales: {
                 fondo: mappedRows.reduce((s, r) => s + r.fondo, 0),
                 ventas: mappedRows.reduce((s, r) => s + r.ventas, 0),
@@ -984,6 +1135,7 @@ const exportArqueosPDF = async (req, res) => {
                 gastos: mappedRows.reduce((s, r) => s + r.gastos, 0),
                 remesas: mappedRows.reduce((s, r) => s + r.remesas, 0),
                 puntos: mappedRows.reduce((s, r) => s + r.puntos, 0),
+                tarjetas: mappedRows.reduce((s, r) => s + r.tarjetas, 0),
                 esperado: mappedRows.reduce((s, r) => s + r.esperado, 0),
                 contado: mappedRows.reduce((s, r) => s + r.contado, 0),
                 diferencia: mappedRows.reduce((s, r) => s + r.diferencia, 0),
@@ -1007,6 +1159,7 @@ const exportArqueosPDF = async (req, res) => {
                         { header: 'Gastos', key: 'gastos', width: 12 },
                         { header: 'Remesas', key: 'remesas', width: 12 },
                         { header: 'Puntos', key: 'puntos', width: 12 },
+                        { header: 'Tarjetas', key: 'tarjetas', width: 12 },
                         { header: 'Efectivo Esperado', key: 'esperado', width: 16 },
                         { header: 'Efectivo Contado', key: 'contado', width: 16 },
                         { header: 'Diferencia', key: 'diferencia', width: 14 },
@@ -1019,12 +1172,33 @@ const exportArqueosPDF = async (req, res) => {
                         gastos: r.gastos.toFixed(2),
                         remesas: r.remesas.toFixed(2),
                         puntos: r.puntos.toFixed(2),
+                        tarjetas: r.tarjetas.toFixed(2),
                         esperado: r.esperado.toFixed(2),
                         contado: r.contado.toFixed(2),
                         diferencia: r.diferencia.toFixed(2),
                     }))
                 }
             ];
+
+            if (mappedIncomes.length > 0) {
+                sheets.push({
+                    name: 'Detalle Ingresos',
+                    columns: [
+                        { header: 'Fecha', key: 'fecha', width: 16 },
+                        { header: 'Turno', key: 'turno', width: 10 },
+                        { header: 'Sucursal', key: 'sucursal', width: 24 },
+                        { header: 'POS', key: 'pos', width: 20 },
+                        { header: 'Vendedor', key: 'vendedor', width: 22 },
+                        { header: 'Descripción', key: 'descripcion', width: 35 },
+                        { header: 'Forma de Pago', key: 'metodo', width: 16 },
+                        { header: 'Monto', key: 'monto', width: 14 }
+                    ],
+                    data: mappedIncomes.map(i => ({
+                        ...i,
+                        monto: i.monto.toFixed(2)
+                    }))
+                });
+            }
 
             if (mappedExpenses.length > 0) {
                 sheets.push({
@@ -1041,6 +1215,27 @@ const exportArqueosPDF = async (req, res) => {
                     data: mappedExpenses.map(g => ({
                         ...g,
                         monto: g.monto.toFixed(2)
+                    }))
+                });
+            }
+
+            if (mappedTarjetas.length > 0) {
+                sheets.push({
+                    name: 'Detalle Tarjetas',
+                    columns: [
+                        { header: 'Fecha', key: 'fecha', width: 16 },
+                        { header: 'Turno', key: 'turno', width: 10 },
+                        { header: 'Sucursal', key: 'sucursal', width: 24 },
+                        { header: 'POS', key: 'pos', width: 20 },
+                        { header: 'Vendedor', key: 'vendedor', width: 22 },
+                        { header: 'Tarjeta', key: 'tarjeta', width: 14 },
+                        { header: 'Autorización', key: 'autorizacion', width: 18 },
+                        { header: 'Descripción / Banco', key: 'descripcion', width: 28 },
+                        { header: 'Monto', key: 'monto', width: 14 }
+                    ],
+                    data: mappedTarjetas.map(t => ({
+                        ...t,
+                        monto: t.monto.toFixed(2)
                     }))
                 });
             }
@@ -1065,16 +1260,57 @@ const exportArqueosPDF = async (req, res) => {
                 });
             }
 
+            if (mappedPuntos.length > 0) {
+                sheets.push({
+                    name: 'Detalle Puntos',
+                    columns: [
+                        { header: 'Fecha', key: 'fecha', width: 16 },
+                        { header: 'Turno', key: 'turno', width: 10 },
+                        { header: 'Sucursal', key: 'sucursal', width: 24 },
+                        { header: 'POS', key: 'pos', width: 20 },
+                        { header: 'Vendedor', key: 'vendedor', width: 22 },
+                        { header: 'Descripción', key: 'descripcion', width: 35 },
+                        { header: 'Monto', key: 'monto', width: 14 }
+                    ],
+                    data: mappedPuntos.map(p => ({
+                        ...p,
+                        monto: p.monto.toFixed(2)
+                    }))
+                });
+            }
+
+            // Resumen de Operaciones en Excel
+            const opTotales = reportData.totales;
+            sheets.push({
+                name: 'Resumen Operaciones',
+                columns: [
+                    { header: 'Concepto (Ingresos / Caja)', key: 'concepto_izq', width: 28 },
+                    { header: 'Monto', key: 'monto_izq', width: 16 },
+                    { header: 'Concepto (Egresos / Liquidación)', key: 'concepto_der', width: 28 },
+                    { header: 'Monto', key: 'monto_der', width: 16 }
+                ],
+                data: [
+                    { concepto_izq: 'TOTAL VENTA', monto_izq: opTotales.ventas.toFixed(2), concepto_der: 'TOTAL TARJETAS', monto_der: opTotales.tarjetas.toFixed(2) },
+                    { concepto_izq: 'TOTAL INGRESOS', monto_izq: opTotales.ingresos.toFixed(2), concepto_der: 'TOTAL GASTOS', monto_der: opTotales.gastos.toFixed(2) },
+                    { concepto_izq: 'VENTAS + INGRESOS', monto_izq: (opTotales.ventas + opTotales.ingresos).toFixed(2), concepto_der: 'TOTAL RETIRADO (PUNTOS)', monto_der: opTotales.puntos.toFixed(2) },
+                    { concepto_izq: 'TOTAL CONTADO (FÍSICO)', monto_izq: opTotales.contado.toFixed(2), concepto_der: 'TOTAL REMESADO', monto_der: opTotales.remesas.toFixed(2) },
+                    { concepto_izq: 'FONDO INICIAL', monto_izq: opTotales.fondo.toFixed(2), concepto_der: 'SALDO FINAL (ESPERADO)', monto_der: opTotales.esperado.toFixed(2) },
+                    { concepto_izq: 'ESTADO DE CAJA', monto_izq: opTotales.diferencia === 0 ? 'CUADRADA' : (opTotales.diferencia > 0 ? 'SOBRANTE' : 'FALTANTE'), concepto_der: 'DIFERENCIA', monto_der: opTotales.diferencia.toFixed(2) },
+                ]
+            });
+
+            const fileNamePeriod = shift_id ? `Turno_${shift_id}` : `${start_date}_al_${end_date}`;
             const buffer = await excelService.createExcelBuffer({
-                title: `Reporte de Arqueos ${start_date} al ${end_date}`,
+                title: `Reporte de Arqueos ${fileNamePeriod}`,
                 sheets
             });
-            return excelService.sendExcelResponse(res, buffer, `Reporte_Arqueos_${start_date}_al_${end_date}.xlsx`);
+            return excelService.sendExcelResponse(res, buffer, `Reporte_Arqueos_${fileNamePeriod}.xlsx`);
         }
 
+        const fileNamePeriod = shift_id ? `Turno_${shift_id}` : `${start_date}_al_${end_date}`;
         const pdfBuffer = await pdfService.generateArqueosReportPDF(reportData);
         res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', `inline; filename=Reporte_Arqueos_${start_date}_al_${end_date}.pdf`);
+        res.setHeader('Content-Disposition', `inline; filename=Reporte_Arqueos_${fileNamePeriod}.pdf`);
         res.send(pdfBuffer);
     } catch (error) {
         console.error('Error in exportArqueosPDF:', error);
@@ -1199,6 +1435,7 @@ const deleteShift = async (req, res) => {
         await pool.query('DELETE FROM pos_shift_expenses WHERE shift_id = ?', [id]);
         await pool.query('DELETE FROM pos_shift_remesas WHERE shift_id = ?', [id]);
         await pool.query('DELETE FROM pos_shift_puntos WHERE shift_id = ?', [id]);
+        await pool.query('DELETE FROM pos_shift_tarjetas WHERE shift_id = ?', [id]);
         await pool.query('DELETE FROM pos_shifts WHERE id = ? AND company_id = ?', [id, req.company_id]);
 
         res.json({ message: 'Turno eliminado correctamente' });

@@ -9,5 +9,6 @@ module.exports = {
     ...require('./salesBillingPdf.service'),
     ...require('./payrollPdf.service'),
     ...require('./gasStationPdf.service'),
-    ...require('./detailedStatementPdf.service')
+    ...require('./detailedStatementPdf.service'),
+    ...require('./arqueosPdf.service')
 };
