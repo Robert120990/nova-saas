@@ -109,12 +109,23 @@ const generateRTEEModern = (data) => {
             if (logoToRender && typeof logoToRender === 'string') {
                 if (!fs.existsSync(logoToRender)) {
                     const cleanPath = logoToRender.startsWith('/') ? logoToRender.substring(1) : logoToRender;
-                    const alt1 = path.join(__dirname, '..', '..', cleanPath);
                     const fileName = path.basename(cleanPath);
-                    const alt2 = path.join(__dirname, '..', '..', 'uploads', fileName);
-                    if (fs.existsSync(alt1)) logoToRender = alt1;
-                    else if (fs.existsSync(alt2)) logoToRender = alt2;
-                    else logoToRender = null;
+                    const candidates = [
+                        path.join(__dirname, '..', '..', cleanPath),
+                        path.join(__dirname, '..', '..', 'uploads', fileName),
+                        path.join(process.cwd(), cleanPath),
+                        path.join(process.cwd(), 'uploads', fileName),
+                        path.join(__dirname, '..', '..', '..', cleanPath),
+                        path.join(__dirname, '..', '..', '..', 'uploads', fileName)
+                    ];
+                    let found = null;
+                    for (const cand of candidates) {
+                        if (fs.existsSync(cand)) {
+                            found = cand;
+                            break;
+                        }
+                    }
+                    logoToRender = found;
                 }
             }
 

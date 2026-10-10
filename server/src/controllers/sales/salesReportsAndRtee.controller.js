@@ -2115,11 +2115,20 @@ async function resolveRTEELogo(companyId, branchId, branchLogo, compLogo) {
     const checkFile = (rawUrl) => {
         if (!rawUrl) return null;
         const cleanPath = rawUrl.startsWith('/') ? rawUrl.substring(1) : rawUrl;
-        const abs1 = path.join(__dirname, '..', '..', cleanPath);
-        if (fs.existsSync(abs1)) return abs1;
         const fileName = path.basename(cleanPath);
-        const abs2 = path.join(__dirname, '..', '..', 'uploads', fileName);
-        if (fs.existsSync(abs2)) return abs2;
+
+        const candidates = [
+            path.join(__dirname, '..', '..', '..', cleanPath),
+            path.join(__dirname, '..', '..', '..', 'uploads', fileName),
+            path.join(process.cwd(), cleanPath),
+            path.join(process.cwd(), 'uploads', fileName),
+            path.join(__dirname, '..', '..', cleanPath),
+            path.join(__dirname, '..', '..', 'uploads', fileName)
+        ];
+
+        for (const candidate of candidates) {
+            if (fs.existsSync(candidate)) return candidate;
+        }
         return null;
     };
 
@@ -2283,7 +2292,8 @@ const getSaleRTEEPdfBuffer = async (id, companyId) => {
             sucursal_correo: branchRow.correo || branchRow.email || null,
             departamento_nombre: ubicacionInfo.departamento_nombre,
             municipio_nombre: ubicacionInfo.municipio_nombre,
-            logoPath: logoPath
+            logoPath: logoPath,
+            logo_url: branchRow.logo_url || companyRow.logo_url || null
         },
         receptor: {
             nombre: dteJson.receptor?.nombre,
@@ -2449,7 +2459,8 @@ const getPublicRTEE = async (req, res) => {
                 sucursal_correo: branchRow.correo || branchRow.email || null,
                 departamento_nombre: ubicacionInfo.departamento_nombre,
                 municipio_nombre: ubicacionInfo.municipio_nombre,
-                logoPath: logoPath
+                logoPath: logoPath,
+                logo_url: branchRow.logo_url || companyRow.logo_url || null
             },
             receptor: {
                 nombre: dteJson.receptor.nombre,
@@ -2657,7 +2668,8 @@ const sendPublicDTEEmail = async (req, res) => {
                 sucursal_correo: venta.branch_correo || null,
                 departamento_nombre: ubicacionInfo.departamento_nombre,
                 municipio_nombre: ubicacionInfo.municipio_nombre,
-                logoPath: logoPath
+                logoPath: logoPath,
+                logo_url: venta.branch_logo_url || venta.company_logo_url || null
             },
             receptor: {
                 nombre: dteJson.receptor?.nombre,
