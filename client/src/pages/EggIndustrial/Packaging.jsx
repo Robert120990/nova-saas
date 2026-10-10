@@ -11,7 +11,7 @@ import { EggQualityFinishedProductModal } from '../../components/egg/quality';
 export default function EggPackaging() {
  const model = usePackagingModel();
  const { packagingRecords, batches, freezerLogs, isNewPackagingModalOpen, setIsNewPackagingModalOpen, isFreezerModalOpen, setIsFreezerModalOpen, packagingForm, setPackagingForm, freezerForm, setFreezerForm, isSubmitting, selectedLabel, setSelectedLabel, qualityModal, setQualityModal, canClosePackaging, closeBatchModal, setCloseBatchModal, handleCloseBatchPackaging, handleReopenBatchPackaging, fetchData, handleCreatePackaging, handleDeleteFreezerLog, handleCreateFreezerLog, getFreezerStatusBadge, handlePrintLabel, catalogProducts, codeMappings } = model;
- return (<div className="space-y-6 text-slate-900">
+ return (<div className="space-y-4 sm:space-y-6 text-slate-900">
             {/* Header */}
             <PackagingHeader model={model} />
 

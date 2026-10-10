@@ -31,10 +31,10 @@ export default function PackagingActiveBatchesTable({
     return (
         <div className="border border-slate-200 rounded-xl overflow-hidden bg-slate-50/50 shadow-2xs">
             {/* Header con Pestañas y Control de Ocultar/Expandir */}
-            <div className="px-4 py-2.5 bg-slate-100/90 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+            <div className="p-3 sm:px-4 sm:py-2.5 bg-slate-100/90 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
                 <div className="flex items-center gap-2">
                     <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
-                        <Boxes size={15} className="text-purple-600" />
+                        <Boxes size={15} className="text-purple-600 shrink-0" />
                         Lotes en Etapa de Envasado
                     </h3>
                     <span className="text-[11px] font-bold text-slate-500">
@@ -42,13 +42,13 @@ export default function PackagingActiveBatchesTable({
                     </span>
                 </div>
 
-                <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto justify-between sm:justify-end">
                     {/* Selector de Pestañas */}
-                    <div className="inline-flex p-0.5 bg-slate-200/80 rounded-xl gap-0.5 text-xs">
+                    <div className="flex flex-wrap sm:inline-flex p-0.5 bg-slate-200/80 rounded-xl gap-0.5 text-xs w-full sm:w-auto">
                         <button
                             type="button"
                             onClick={() => setFilterTab('activos')}
-                            className={`px-2.5 py-1 rounded-lg font-bold text-[11px] transition-all flex items-center gap-1.5 ${
+                            className={`flex-1 sm:flex-initial justify-center px-2 sm:px-2.5 py-1 rounded-lg font-bold text-[10px] sm:text-[11px] transition-all flex items-center gap-1 sm:gap-1.5 ${
                                 filterTab === 'activos'
                                     ? 'bg-white text-indigo-700 shadow-2xs'
                                     : 'text-slate-600 hover:text-slate-900'
@@ -152,7 +152,7 @@ export default function PackagingActiveBatchesTable({
                         </div>
                     ) : (
                         <div className="overflow-x-auto">
-                            <table className="w-full text-left text-xs">
+                            <table className="w-full min-w-[760px] text-left text-xs">
                                 <thead>
                                     <tr className="border-b border-slate-200 bg-white text-slate-500 font-bold uppercase text-[10px]">
                                         <th className="px-3 py-2">Lote</th>

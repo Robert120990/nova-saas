@@ -47,19 +47,19 @@ const EggBatchStagesModal = ({
     );
 
     return (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
-            <div className="bg-white border border-slate-200 rounded-2xl shadow-2xl max-w-6xl w-full max-h-[90vh] flex flex-col text-slate-900 overflow-hidden">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 z-50 animate-in fade-in duration-150">
+            <div className="bg-white border border-slate-200 rounded-2xl shadow-2xl max-w-6xl w-full max-h-[92vh] sm:max-h-[90vh] flex flex-col text-slate-900 overflow-hidden">
                 {/* Header */}
-                <div className="p-5 border-b border-slate-200 flex items-center justify-between bg-slate-50/80">
-                    <div className="flex items-center gap-3">
-                        <div className="p-2.5 bg-indigo-100 text-indigo-700 rounded-xl">
-                            <Layers size={22} />
+                <div className="p-3.5 sm:p-5 border-b border-slate-200 flex items-center justify-between bg-slate-50/80">
+                    <div className="flex items-center gap-2.5 sm:gap-3">
+                        <div className="p-2 sm:p-2.5 bg-indigo-100 text-indigo-700 rounded-xl shrink-0">
+                            <Layers size={20} className="sm:w-[22px] sm:h-[22px]" />
                         </div>
                         <div>
-                            <h3 className="text-base font-bold text-slate-900 uppercase tracking-tight">
+                            <h3 className="text-sm sm:text-base font-bold text-slate-900 uppercase tracking-tight">
                                 Visualizador y Control de Etapas de Producción
                             </h3>
-                            <div className="flex items-center gap-2 mt-0.5 text-xs text-slate-500 font-medium flex-wrap">
+                            <div className="flex items-center gap-1.5 sm:gap-2 mt-0.5 text-xs text-slate-500 font-medium flex-wrap">
                                 <span>Lote: <b className="text-indigo-600">{stagesModal.batch?.batch_code_display || stagesModal.batch?.batch_uuid}</b></span>
                                 <span>•</span>
                                 <span className="capitalize">{stagesModal.batch?.product_type} ({stagesModal.batch?.presentation})</span>
@@ -95,7 +95,7 @@ const EggBatchStagesModal = ({
                 </div>
 
                 {/* Content */}
-                <div className="p-6 overflow-y-auto space-y-6 flex-1">
+                <div className="p-3.5 sm:p-6 overflow-y-auto space-y-4 sm:space-y-6 flex-1">
                     {stagesModal.loading ? (
                         <div className="p-12 text-center text-slate-500 text-xs font-medium animate-pulse">
                             Cargando flujo y balance de etapas...
@@ -416,18 +416,18 @@ const EggBatchStagesModal = ({
                             </div>
 
                             {/* DETALLE DE TARIMAS UTILIZADAS */}
-                            <div className="border border-slate-200 rounded-xl p-4 bg-white space-y-2">
-                                <div className="flex items-center justify-between">
+                            <div className="border border-slate-200 rounded-xl p-3.5 sm:p-4 bg-white space-y-2">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
                                     <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
-                                        <Layers size={14} className="text-indigo-600" />
+                                        <Layers size={14} className="text-indigo-600 shrink-0" />
                                         Tarimas Utilizadas en esta Producción ({tarimasUsedList.length})
                                     </h4>
-                                    <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 text-right">
+                                    <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 text-left sm:text-right">
                                         <span className="text-[11px] font-bold text-indigo-700">
                                             Total: {tarimasUsedList.reduce((acc, t) => acc + (parseFloat(t.quantity_lbs) || 0), 0).toLocaleString()} Lbs • {tarimasUsedList.reduce((acc, t) => acc + (parseInt(t.boxes_count) || 0), 0)} Cajas
                                         </span>
                                         {tarimasUsedList.some(t => t.is_initial) && tarimasUsedList.some(t => t.is_added) && (
-                                            <span className="text-[10px] text-slate-500 font-semibold bg-slate-100 px-2 py-0.5 rounded-md self-end sm:self-auto">
+                                            <span className="text-[10px] text-slate-500 font-semibold bg-slate-100 px-2 py-0.5 rounded-md self-start sm:self-auto">
                                                 ({tarimasUsedList.filter(t => t.is_initial).length} inicial • {tarimasUsedList.filter(t => t.is_added).length} agregadas)
                                             </span>
                                         )}
@@ -435,7 +435,7 @@ const EggBatchStagesModal = ({
                                 </div>
                                 {tarimasUsedList.length > 0 ? (
                                     <div className="overflow-x-auto">
-                                        <table className="w-full text-left text-xs">
+                                        <table className="w-full min-w-[580px] text-left text-xs">
                                             <thead>
                                                 <tr className="border-b border-slate-100 text-slate-500 font-bold uppercase text-[10px]">
                                                     <th className="py-1.5">Tarima #</th>
@@ -490,10 +490,10 @@ const EggBatchStagesModal = ({
 
                             {/* REGISTROS TÉRMICOS DE PASTEURIZACIÓN (PRO:006) */}
                             {pasteurizeLogsList.length > 0 && (
-                                <div className="border border-slate-200 rounded-xl p-4 bg-white space-y-2">
-                                    <div className="flex items-center justify-between">
+                                <div className="border border-slate-200 rounded-xl p-3.5 sm:p-4 bg-white space-y-2">
+                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
                                         <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
-                                            <Thermometer size={14} className="text-amber-600" />
+                                            <Thermometer size={14} className="text-amber-600 shrink-0" />
                                             Registros de Pasteurización PRO:006 ({pasteurizeLogsList.length})
                                         </h4>
                                         <span className="text-[11px] font-bold text-amber-800">
@@ -501,7 +501,7 @@ const EggBatchStagesModal = ({
                                         </span>
                                     </div>
                                     <div className="overflow-x-auto">
-                                        <table className="w-full text-left text-xs">
+                                        <table className="w-full min-w-[680px] text-left text-xs">
                                             <thead>
                                                 <tr className="border-b border-slate-100 text-slate-500 font-bold uppercase text-[10px]">
                                                     <th className="py-1.5">Horario</th>
@@ -556,10 +556,10 @@ const EggBatchStagesModal = ({
                             )}
 
                             {/* REMANENTES DE OTRAS PRODUCCIONES UTILIZADOS */}
-                            <div className="border border-slate-200 rounded-xl p-4 bg-white space-y-2">
-                                <div className="flex items-center justify-between">
+                            <div className="border border-slate-200 rounded-xl p-3.5 sm:p-4 bg-white space-y-2">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
                                     <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
-                                        <Boxes size={14} className="text-teal-600" />
+                                        <Boxes size={14} className="text-teal-600 shrink-0" />
                                         Remanentes de Otras Producciones Utilizados en este Lote ({remanentesUsedList.length})
                                     </h4>
                                     <span className="text-[11px] font-bold text-teal-700">
@@ -568,7 +568,7 @@ const EggBatchStagesModal = ({
                                 </div>
                                 {remanentesUsedList.length > 0 ? (
                                     <div className="overflow-x-auto">
-                                        <table className="w-full text-left text-xs">
+                                        <table className="w-full min-w-[580px] text-left text-xs">
                                             <thead>
                                                 <tr className="border-b border-slate-100 text-slate-500 font-bold uppercase text-[10px]">
                                                     <th className="py-1.5">Lote Origen</th>
@@ -605,16 +605,16 @@ const EggBatchStagesModal = ({
                             </div>
 
                             {/* Detalle de Remanentes Registrados (Generados en este lote) */}
-                            <div className="border border-slate-200 rounded-xl p-4 bg-white space-y-2">
-                                <div className="flex items-center justify-between">
+                            <div className="border border-slate-200 rounded-xl p-3.5 sm:p-4 bg-white space-y-2">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
                                     <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
-                                        <span className="w-2 h-2 rounded-full bg-teal-500" />
+                                        <span className="w-2 h-2 rounded-full bg-teal-500 shrink-0" />
                                         Materia Prima Remanente Generada en este Lote ({remanentesGeneratedList.length})
                                     </h4>
                                     <button
                                         type="button"
                                         onClick={() => onOpenRemanente && onOpenRemanente(stagesModal.batch)}
-                                        className="px-2 py-1 bg-teal-50 hover:bg-teal-100 text-teal-700 rounded-lg text-xs font-bold transition-colors flex items-center gap-1"
+                                        className="px-2 py-1 bg-teal-50 hover:bg-teal-100 text-teal-700 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 self-start sm:self-auto"
                                     >
                                         <Plus size={12} />
                                         + Registrar Remanente
@@ -622,7 +622,7 @@ const EggBatchStagesModal = ({
                                 </div>
                                 {remanentesGeneratedList.length > 0 ? (
                                     <div className="overflow-x-auto">
-                                        <table className="w-full text-left text-xs">
+                                        <table className="w-full min-w-[580px] text-left text-xs">
                                             <thead>
                                                 <tr className="border-b border-slate-100 text-slate-500 font-bold uppercase text-[10px]">
                                                     <th className="py-1.5">Código</th>
@@ -682,16 +682,16 @@ const EggBatchStagesModal = ({
                             </div>
 
                             {/* Resumen de Mermas de Producción */}
-                            <div className="border border-slate-200 rounded-xl p-4 bg-white space-y-2">
-                                <div className="flex items-center justify-between">
+                            <div className="border border-slate-200 rounded-xl p-3.5 sm:p-4 bg-white space-y-2">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
                                     <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
-                                        <AlertOctagon size={14} className="text-rose-600" />
+                                        <AlertOctagon size={14} className="text-rose-600 shrink-0" />
                                         Mermas y Pérdidas del Lote ({wastesList.length})
                                     </h4>
                                     <button
                                         type="button"
                                         onClick={() => onOpenWastes && onOpenWastes(stagesModal.batch)}
-                                        className="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg text-xs font-bold transition-colors flex items-center gap-1"
+                                        className="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 self-start sm:self-auto"
                                     >
                                         <Plus size={12} />
                                         + Registrar Merma
@@ -699,7 +699,7 @@ const EggBatchStagesModal = ({
                                 </div>
                                 {wastesList.length > 0 ? (
                                     <div className="overflow-x-auto">
-                                        <table className="w-full text-left text-xs">
+                                        <table className="w-full min-w-[560px] text-left text-xs">
                                             <thead>
                                                 <tr className="border-b border-slate-100 text-slate-500 font-bold uppercase text-[10px]">
                                                     <th className="py-1.5">Etapa</th>
@@ -753,10 +753,10 @@ const EggBatchStagesModal = ({
                             </div>
 
                             {/* REGISTROS DE ENVASADO COMERCIAL */}
-                            <div className="border border-slate-200 rounded-xl p-4 bg-white space-y-2">
-                                <div className="flex items-center justify-between">
+                            <div className="border border-slate-200 rounded-xl p-3.5 sm:p-4 bg-white space-y-2">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
                                     <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
-                                        <Boxes size={14} className="text-purple-600" />
+                                        <Boxes size={14} className="text-purple-600 shrink-0" />
                                         Registros de Envasado del Lote ({packagingList.length})
                                     </h4>
                                     <span className="text-[11px] font-bold text-purple-700">
@@ -765,7 +765,7 @@ const EggBatchStagesModal = ({
                                 </div>
                                 {packagingList.length > 0 ? (
                                     <div className="overflow-x-auto">
-                                        <table className="w-full text-left text-xs">
+                                        <table className="w-full min-w-[680px] text-left text-xs">
                                             <thead>
                                                 <tr className="border-b border-slate-100 text-slate-500 font-bold uppercase text-[10px]">
                                                     <th className="py-1.5">Lote Empaque</th>
@@ -815,13 +815,13 @@ const EggBatchStagesModal = ({
                 </div>
 
                 {/* Footer */}
-                <div className="p-4 border-t border-slate-200 bg-slate-50 flex items-center justify-between flex-wrap gap-2">
-                    <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-slate-500 uppercase">Exportar Resumen:</span>
+                <div className="p-3 sm:p-4 border-t border-slate-200 bg-slate-50 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 sm:gap-2">
+                    <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                        <span className="text-[11px] sm:text-xs font-bold text-slate-500 uppercase shrink-0">Exportar:</span>
                         <button
                             type="button"
                             onClick={() => onExportSummary && onExportSummary(stagesModal.batch?.id, 'pdf')}
-                            className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-1 shadow-xs"
+                            className="px-2.5 sm:px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-1 shadow-xs"
                         >
                             <FileText size={13} />
                             PDF
@@ -829,7 +829,7 @@ const EggBatchStagesModal = ({
                         <button
                             type="button"
                             onClick={() => onExportSummary && onExportSummary(stagesModal.batch?.id, 'excel')}
-                            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-1 shadow-xs"
+                            className="px-2.5 sm:px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-1 shadow-xs"
                         >
                             <FileSpreadsheet size={13} />
                             Excel
@@ -837,16 +837,16 @@ const EggBatchStagesModal = ({
                         <button
                             type="button"
                             onClick={() => onExportSummary && onExportSummary(stagesModal.batch?.id, 'word')}
-                            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-1 shadow-xs"
+                            className="px-2.5 sm:px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-1 shadow-xs"
                         >
                             <FileCheck size={13} />
-                            Word (.docx)
+                            Word
                         </button>
                     </div>
                     <button
                         type="button"
                         onClick={onClose}
-                        className="px-5 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-xl text-xs font-bold transition-colors"
+                        className="w-full sm:w-auto px-5 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-xl text-xs font-bold transition-colors text-center"
                     >
                         Cerrar
                     </button>

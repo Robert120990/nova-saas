@@ -64,58 +64,58 @@ export default function WasteLossesInventoryTab({ model }) {
     };
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-4 sm:space-y-6">
             {/* KPI Cards */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
+                <div className="bg-white p-3 sm:p-4 rounded-2xl border border-slate-200 shadow-xs">
                     <div className="flex items-center justify-between text-slate-500 mb-1">
-                        <span className="text-[10px] font-bold uppercase tracking-wider">Total Mermas</span>
-                        <TrendingDown size={16} className="text-rose-600" />
+                        <span className="text-[10px] font-bold uppercase tracking-wider truncate">Total Mermas</span>
+                        <TrendingDown size={15} className="text-rose-600 shrink-0" />
                     </div>
-                    <span className="text-2xl font-black text-rose-600">
+                    <span className="text-xl sm:text-2xl font-black text-rose-600">
                         {parseFloat(summary.total_waste_lbs || 0).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
                     </span>
-                    <span className="text-[11px] text-slate-400 block font-medium mt-0.5">
+                    <span className="text-[10px] sm:text-[11px] text-slate-400 block font-medium mt-0.5 truncate">
                         Lbs ({parseFloat(summary.total_waste_kg || 0).toLocaleString()} Kg)
                     </span>
                 </div>
 
-                <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+                <div className="bg-white p-3 sm:p-4 rounded-2xl border border-slate-200 shadow-xs">
                     <div className="flex items-center justify-between text-slate-500 mb-1">
-                        <span className="text-[10px] font-bold uppercase tracking-wider">Cáscara en Quebraje</span>
-                        <Scale size={16} className="text-amber-600" />
+                        <span className="text-[10px] font-bold uppercase tracking-wider truncate">Cáscara Quebraje</span>
+                        <Scale size={15} className="text-amber-600 shrink-0" />
                     </div>
-                    <span className="text-2xl font-black text-amber-700">
+                    <span className="text-xl sm:text-2xl font-black text-amber-700">
                         {parseFloat(summary.shell_waste_lbs || 0).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
                     </span>
-                    <span className="text-[11px] text-amber-800 font-bold block mt-0.5">
-                        Cascarón separado (Lbs)
+                    <span className="text-[10px] sm:text-[11px] text-amber-800 font-bold block mt-0.5 truncate">
+                        Cascarón (Lbs)
                     </span>
                 </div>
 
-                <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+                <div className="bg-white p-3 sm:p-4 rounded-2xl border border-slate-200 shadow-xs">
                     <div className="flex items-center justify-between text-slate-500 mb-1">
-                        <span className="text-[10px] font-bold uppercase tracking-wider">Pérdidas de Proceso</span>
-                        <AlertOctagon size={16} className="text-orange-600" />
+                        <span className="text-[10px] font-bold uppercase tracking-wider truncate">Pérdidas Proceso</span>
+                        <AlertOctagon size={15} className="text-orange-600 shrink-0" />
                     </div>
-                    <span className="text-2xl font-black text-orange-700">
+                    <span className="text-xl sm:text-2xl font-black text-orange-700">
                         {parseFloat(summary.process_waste_lbs || 0).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
                     </span>
-                    <span className="text-[11px] text-orange-800 font-bold block mt-0.5">
-                        Térmica en pasteurización (Lbs)
+                    <span className="text-[10px] sm:text-[11px] text-orange-800 font-bold block mt-0.5 truncate">
+                        Pasteurización (Lbs)
                     </span>
                 </div>
 
-                <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+                <div className="bg-white p-3 sm:p-4 rounded-2xl border border-slate-200 shadow-xs">
                     <div className="flex items-center justify-between text-slate-500 mb-1">
-                        <span className="text-[10px] font-bold uppercase tracking-wider">Mermas de Envasado</span>
-                        <Scale size={16} className="text-purple-600" />
+                        <span className="text-[10px] font-bold uppercase tracking-wider truncate">Mermas Envasado</span>
+                        <Scale size={15} className="text-purple-600 shrink-0" />
                     </div>
-                    <span className="text-2xl font-black text-purple-700">
+                    <span className="text-xl sm:text-2xl font-black text-purple-700">
                         {parseFloat(summary.packaging_waste_lbs || 0).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
                     </span>
-                    <span className="text-[11px] text-purple-800 font-bold block mt-0.5">
-                        Residuos tubería / faltante (Lbs)
+                    <span className="text-[10px] sm:text-[11px] text-purple-800 font-bold block mt-0.5 truncate">
+                        Tubería / faltante (Lbs)
                     </span>
                 </div>
             </div>
@@ -249,7 +249,7 @@ export default function WasteLossesInventoryTab({ model }) {
                         </div>
                     ) : (
                         <div className="overflow-x-auto">
-                            <table className="w-full text-left text-xs border-collapse">
+                            <table className="w-full min-w-[700px] text-left text-xs border-collapse">
                                 <thead>
                                     <tr className="border-b border-slate-200 bg-slate-50 text-slate-600 font-bold uppercase text-[10px] tracking-wider">
                                         <th className="p-3">Fecha y Hora</th>
@@ -325,7 +325,7 @@ export default function WasteLossesInventoryTab({ model }) {
                         </div>
                     ) : (
                         <div className="overflow-x-auto">
-                            <table className="w-full text-left text-xs border-collapse">
+                            <table className="w-full min-w-[780px] text-left text-xs border-collapse">
                                 <thead>
                                     <tr className="border-b border-slate-200 bg-slate-50 text-slate-600 font-bold uppercase text-[10px] tracking-wider">
                                         <th className="p-3">Lote Producción</th>

@@ -12,9 +12,9 @@ export default function ProductionCipTab({ model }) {
     const { batches, cipLogs, activeTab, cipForm, setCipForm, isSubmitting, handleCreateCip, handleDeleteCip } = model;
 
     return (<>{activeTab === 'cip' && (
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
                     {/* Log New CIP Form */}
-                    <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm h-fit space-y-5">
+                    <div className="bg-white border border-slate-200 rounded-2xl p-3.5 sm:p-6 shadow-sm h-fit space-y-4 sm:space-y-5">
                         <div>
                             <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider mb-1 flex items-center gap-2">
                                 <Wrench className="h-4 w-4 text-teal-600" />
@@ -142,7 +142,7 @@ export default function ProductionCipTab({ model }) {
                     </div>
 
                     {/* CIP History */}
-                    <div className="lg:col-span-2 bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
+                    <div className="lg:col-span-2 bg-white border border-slate-200 rounded-2xl p-3.5 sm:p-6 shadow-sm space-y-4">
                         <div>
                             <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
                                 <Activity className="h-4 w-4 text-indigo-600" />
@@ -156,7 +156,7 @@ export default function ProductionCipTab({ model }) {
                             {(Array.isArray(cipLogs) ? cipLogs : []).length === 0 ? (
                                 <p className="text-xs text-slate-500 text-center py-6">No hay registros de limpieza disponibles.</p>
                             ) : (Array.isArray(cipLogs) ? cipLogs : []).map(log => (
-                                <div key={log.id} className="bg-slate-50 hover:bg-slate-100/70 transition-colors border border-slate-200 rounded-xl p-4 flex flex-col md:flex-row justify-between gap-4">
+                                <div key={log.id} className="bg-slate-50 hover:bg-slate-100/70 transition-colors border border-slate-200 rounded-xl p-3.5 sm:p-4 flex flex-col md:flex-row justify-between gap-3 sm:gap-4">
                                     <div className="space-y-1.5">
                                         <div className="flex flex-wrap items-center gap-2">
                                             <span className="text-xs font-bold text-slate-900 capitalize">{log.equipment_name}</span>

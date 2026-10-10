@@ -15,7 +15,7 @@ export default function EggCosteoClientsTab({
 
     return (
                 <div className="space-y-4">
-                    <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="bg-white p-4 sm:p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                         <div>
                             <h2 className="text-sm font-bold uppercase tracking-wider text-slate-900 flex items-center gap-2">
                                 <Users className="w-4 h-4 text-indigo-600" />
@@ -25,18 +25,18 @@ export default function EggCosteoClientsTab({
                                 Compara precios pactados contra el costo actual de absorción para evaluar la rentabilidad y vigencia de cada contrato.
                             </p>
                         </div>
-                        <div className="flex flex-wrap items-center gap-2">
+                        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
                             <button
                                 type="button"
                                 onClick={() => navigate('/crm/acuerdos')}
-                                className="px-3.5 py-2 bg-slate-100 hover:bg-indigo-50 hover:text-indigo-700 text-slate-700 rounded-xl text-xs font-bold flex items-center gap-2 border border-slate-200 transition-all"
+                                className="w-full sm:w-auto justify-center px-3.5 py-2 bg-slate-100 hover:bg-indigo-50 hover:text-indigo-700 text-slate-700 rounded-xl text-xs font-bold flex items-center gap-2 border border-slate-200 transition-all"
                             >
                                 <Handshake className="w-4 h-4 text-indigo-600" />
                                 <span>Módulo CRM Acuerdos</span>
                             </button>
                             <button
                                 onClick={() => setAgreementModal({ open: true, data: {} })}
-                                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-sm transition-all"
+                                className="w-full sm:w-auto justify-center px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-sm transition-all"
                             >
                                 <Plus className="w-4 h-4" />
                                 <span>Nuevo Acuerdo de Precio</span>
@@ -45,8 +45,8 @@ export default function EggCosteoClientsTab({
                     </div>
 
                     {/* Filtros de Vigencia */}
-                    <div className="flex flex-wrap items-center gap-1.5 bg-white p-2.5 rounded-xl border border-slate-200 text-xs shadow-sm">
-                        <span className="text-[11px] font-bold text-slate-500 uppercase mr-1">Filtrar por Vigencia:</span>
+                    <div className="flex items-center gap-1.5 bg-white p-2.5 rounded-xl border border-slate-200 text-xs shadow-sm overflow-x-auto whitespace-nowrap scrollbar-none">
+                        <span className="shrink-0 text-[11px] font-bold text-slate-500 uppercase mr-1">Filtrar por Vigencia:</span>
                         {(Array.isArray([
                             { id: 'todos', label: 'Todos los Acuerdos' },
                             { id: 'vigente', label: 'Vigentes' },
@@ -64,7 +64,7 @@ export default function EggCosteoClientsTab({
                                 key={f.id}
                                 type="button"
                                 onClick={() => setValidityFilter(f.id)}
-                                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${validityFilter === f.id
+                                className={`shrink-0 px-3 py-1 rounded-lg text-xs font-bold transition-all ${validityFilter === f.id
                                         ? 'bg-indigo-600 text-white shadow-sm'
                                         : 'text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200/70'
                                     }`}
@@ -76,7 +76,7 @@ export default function EggCosteoClientsTab({
 
                     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                         <div className="overflow-x-auto">
-                            <table className="w-full text-left text-xs border-collapse">
+                            <table className="w-full text-left text-xs border-collapse min-w-[900px]">
                                 <thead>
                                     <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px]">
                                         <th className="py-3 px-4">Cliente</th>

@@ -59,7 +59,7 @@ export default function PasteurizeLotCard({
     };
 
     return (
-        <div className={`${bgCls} border-2 rounded-2xl p-4 space-y-3 shadow-2xs`}>
+        <div className={`${bgCls} border-2 rounded-2xl p-3 sm:p-4 space-y-3 shadow-2xs`}>
             {/* Cabecera del Lote */}
             <div className={`border-b ${borderCls} pb-2`}>
                 <div className="flex items-center justify-between">
@@ -85,12 +85,13 @@ export default function PasteurizeLotCard({
             </div>
 
             {/* Tabla Oficial PRO:006 (Parámetros Inicio / Finalizo) */}
-            <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-2xs">
-                <div className="grid grid-cols-12 bg-slate-100/90 text-[10px] font-black text-slate-700 uppercase tracking-wider p-2 border-b border-slate-200 text-center">
-                    <span className="col-span-5 text-left pl-1">Parámetro (PRO:006)</span>
-                    <span className="col-span-3 text-indigo-700">Inicio</span>
-                    <span className="col-span-4 text-emerald-700">Finalizó</span>
-                </div>
+            <div className="bg-white rounded-xl border border-slate-200 overflow-x-auto shadow-2xs">
+                <div className="min-w-[280px]">
+                    <div className="grid grid-cols-12 bg-slate-100/90 text-[10px] font-black text-slate-700 uppercase tracking-wider p-2 border-b border-slate-200 text-center">
+                        <span className="col-span-5 text-left pl-1">Parámetro (PRO:006)</span>
+                        <span className="col-span-3 text-indigo-700">Inicio</span>
+                        <span className="col-span-4 text-emerald-700">Finalizó</span>
+                    </div>
 
                 <div className="divide-y divide-slate-100 text-xs">
                     {/* Horario */}
@@ -274,6 +275,7 @@ export default function PasteurizeLotCard({
                                 className="w-full px-1.5 py-1 text-center bg-white border border-purple-300 rounded-lg text-xs font-bold text-slate-800 focus:border-purple-500"
                             />
                         </div>
+                    </div>
                     </div>
                 </div>
             </div>

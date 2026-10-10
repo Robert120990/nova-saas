@@ -128,10 +128,10 @@ export default function PackagingItemsSection({
     };
 
     return (
-        <div className="space-y-3 bg-slate-50/80 p-4 rounded-2xl border border-slate-200">
-            <div className="flex items-center justify-between border-b border-slate-200/80 pb-2">
+        <div className="space-y-3 bg-slate-50/80 p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-slate-200">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 border-b border-slate-200/80 pb-2">
                 <label className="text-xs font-bold text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
-                    <Boxes className="w-4 h-4 text-purple-600" />
+                    <Boxes className="w-4 h-4 text-purple-600 shrink-0" />
                     <span>Presentaciones Comerciales a Envasar</span>
                 </label>
                 <span className="text-[11px] text-slate-500 font-medium">
@@ -150,7 +150,7 @@ export default function PackagingItemsSection({
                 const projectedStock = currentStock + unitsNum;
 
                 return (
-                    <div key={idx} className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs space-y-3">
+                    <div key={idx} className="bg-white p-3 sm:p-3.5 rounded-xl border border-slate-200 shadow-2xs space-y-3">
                         <div className="flex items-center justify-between">
                             <span className="text-[10px] font-bold text-indigo-700 uppercase">
                                 Presentación #{idx + 1}
@@ -167,7 +167,7 @@ export default function PackagingItemsSection({
                             )}
                         </div>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end">
+                        <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-stretch sm:items-end">
                             <div className="sm:col-span-5">
                                 <label className="text-[10px] font-bold text-slate-600 uppercase block mb-1">
                                     Presentación Comercial *
@@ -215,7 +215,7 @@ export default function PackagingItemsSection({
                                 />
                             </div>
 
-                            <div className="sm:col-span-2 text-right">
+                            <div className="sm:col-span-2 flex sm:block justify-between items-center text-right">
                                 <span className="text-[9px] font-bold text-slate-400 uppercase block">Subtotal</span>
                                 <span className="text-xs font-bold text-teal-700">{itemTotal.toFixed(1)} Lbs</span>
                             </div>
@@ -244,10 +244,12 @@ export default function PackagingItemsSection({
                                 </div>
                             </div>
 
-                            <div className="flex items-center gap-1.5 text-[10px] font-medium text-slate-600 bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 self-end sm:self-auto shrink-0 shadow-2xs">
-                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                                <span>Alimenta:</span>
-                                <strong className="text-emerald-700 font-bold">+{unitsNum} Uds</strong>
+                            <div className="flex items-center gap-1.5 text-[10px] font-medium text-slate-600 bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 w-full sm:w-auto justify-between sm:justify-start flex-wrap shrink-0 shadow-2xs">
+                                <span className="flex items-center gap-1.5">
+                                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                    <span>Alimenta:</span>
+                                    <strong className="text-emerald-700 font-bold">+{unitsNum} Uds</strong>
+                                </span>
                                 {matchedProduct && (
                                     <span className="text-slate-400 border-l border-slate-200 pl-1.5 text-[9px]">
                                         Stock: {currentStock.toFixed(0)} → <strong className="text-slate-800 font-bold">{projectedStock.toFixed(0)}</strong>

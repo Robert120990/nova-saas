@@ -11,15 +11,15 @@ const EggBatchWastesModal = ({
     if (!isOpen || !wastesModal) return null;
 
     return (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
-            <div className="bg-white border border-slate-200 rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col text-slate-900 overflow-hidden">
-                <div className="p-5 border-b border-slate-200 flex items-center justify-between bg-rose-50/70">
-                    <div className="flex items-center gap-3">
-                        <div className="p-2.5 bg-rose-100 text-rose-700 rounded-xl">
-                            <AlertOctagon size={22} />
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 z-50 animate-in fade-in duration-150">
+            <div className="bg-white border border-slate-200 rounded-2xl shadow-2xl max-w-2xl w-full max-h-[92vh] sm:max-h-[90vh] flex flex-col text-slate-900 overflow-hidden">
+                <div className="p-3.5 sm:p-5 border-b border-slate-200 flex items-center justify-between bg-rose-50/70">
+                    <div className="flex items-center gap-2.5 sm:gap-3">
+                        <div className="p-2 sm:p-2.5 bg-rose-100 text-rose-700 rounded-xl shrink-0">
+                            <AlertOctagon size={20} className="sm:w-[22px] sm:h-[22px]" />
                         </div>
                         <div>
-                            <h3 className="text-base font-bold text-slate-900 uppercase tracking-tight">
+                            <h3 className="text-sm sm:text-base font-bold text-slate-900 uppercase tracking-tight">
                                 Mermas y Pérdidas del Lote
                             </h3>
                             <p className="text-xs text-slate-500 font-medium">
@@ -30,13 +30,13 @@ const EggBatchWastesModal = ({
                     <button
                         type="button"
                         onClick={onClose}
-                        className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-200 rounded-lg transition-colors"
+                        className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-200 rounded-lg transition-colors shrink-0"
                     >
                         <XCircle size={20} />
                     </button>
                 </div>
 
-                <div className="p-6 overflow-y-auto space-y-6 flex-1">
+                <div className="p-3.5 sm:p-6 overflow-y-auto space-y-4 sm:space-y-6 flex-1">
                     {/* Formulario de Nueva / Edición de Merma */}
                     <form onSubmit={handleCreateWaste} className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
                         <div className="flex items-center justify-between">
@@ -116,7 +116,7 @@ const EggBatchWastesModal = ({
                             />
                         </div>
 
-                        <div className="flex justify-end gap-2">
+                        <div className="flex flex-col-reverse sm:flex-row justify-end gap-2">
                             {wastesModal.editingWasteId && (
                                 <button
                                     type="button"
@@ -128,7 +128,7 @@ const EggBatchWastesModal = ({
                                         weight_lbs: '',
                                         notes: ''
                                     }))}
-                                    className="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-xs font-bold transition-colors"
+                                    className="w-full sm:w-auto px-3 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-xs font-bold transition-colors text-center"
                                 >
                                     Cancelar
                                 </button>
@@ -136,7 +136,7 @@ const EggBatchWastesModal = ({
                             <button
                                 type="submit"
                                 disabled={wastesModal.isSubmitting}
-                                className="px-4 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold transition-colors shadow-xs"
+                                className="w-full sm:w-auto px-4 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold transition-colors shadow-xs text-center justify-center flex items-center"
                             >
                                 {wastesModal.isSubmitting ? 'Guardando...' : (wastesModal.editingWasteId ? 'Actualizar Merma' : '+ Guardar Merma')}
                             </button>
@@ -152,7 +152,7 @@ const EggBatchWastesModal = ({
                             <p className="text-xs text-slate-400 italic">No hay registros de mermas para este lote.</p>
                         ) : (
                             <div className="overflow-x-auto rounded-xl border border-slate-200">
-                                <table className="w-full text-left text-xs">
+                                <table className="w-full min-w-[560px] text-left text-xs">
                                     <thead>
                                         <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px]">
                                             <th className="p-2.5">Etapa</th>
@@ -207,11 +207,11 @@ const EggBatchWastesModal = ({
                     </div>
                 </div>
 
-                <div className="p-4 border-t border-slate-200 bg-slate-50 flex justify-end">
+                <div className="p-3 sm:p-4 border-t border-slate-200 bg-slate-50 flex justify-end">
                     <button
                         type="button"
                         onClick={onClose}
-                        className="px-5 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-xl text-xs font-bold transition-colors"
+                        className="w-full sm:w-auto px-5 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-xl text-xs font-bold transition-colors text-center"
                     >
                         Cerrar
                     </button>

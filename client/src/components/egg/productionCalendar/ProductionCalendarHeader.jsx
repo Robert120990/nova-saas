@@ -34,12 +34,12 @@ export default function ProductionCalendarHeader({ model }) {
                 </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto">
                 {/* Botón Sugerencias Inteligentes */}
                 <button
                     type="button"
                     onClick={() => setIsSuggestionsDrawerOpen(true)}
-                    className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white text-xs font-bold shadow-md shadow-emerald-200 hover:brightness-105 active:scale-95 transition-all"
+                    className="flex-1 sm:flex-none justify-center flex items-center gap-2 px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white text-xs font-bold shadow-md shadow-emerald-200 hover:brightness-105 active:scale-95 transition-all"
                 >
                     <Sparkles className="w-4 h-4 text-emerald-200" />
                     <span>Sugerencias IA</span>
@@ -54,7 +54,7 @@ export default function ProductionCalendarHeader({ model }) {
                 <button
                     type="button"
                     onClick={() => setIsOrdersModalOpen(true)}
-                    className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200/80 text-slate-700 text-xs font-bold transition-all"
+                    className="flex-1 sm:flex-none justify-center flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200/80 text-slate-700 text-xs font-bold transition-all"
                 >
                     <ShoppingBag className="w-4 h-4 text-slate-500" />
                     <span className="hidden sm:inline">Pedidos Clientes</span>
@@ -70,19 +70,18 @@ export default function ProductionCalendarHeader({ model }) {
                 <button
                     type="button"
                     onClick={() => navigate('/industrial/despachos')}
-                    className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-slate-800 text-white text-xs font-bold shadow-md hover:brightness-110 active:scale-95 transition-all"
+                    className="flex-1 sm:flex-none justify-center flex items-center gap-2 px-3.5 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-slate-800 text-white text-xs font-bold shadow-md hover:brightness-110 active:scale-95 transition-all"
                 >
                     <Truck className="w-4 h-4 text-indigo-200" />
                     <span className="hidden sm:inline">Despachos y Rutas</span>
                     <span className="sm:hidden">Despachos</span>
                 </button>
 
-
                 {/* Botón Planificador de Materia Prima (MRP) */}
                 <button
                     type="button"
                     onClick={() => setIsPlannerModalOpen(true)}
-                    className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white text-xs font-bold shadow-md shadow-amber-200 hover:brightness-105 active:scale-95 transition-all"
+                    className="flex-1 sm:flex-none justify-center flex items-center gap-2 px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white text-xs font-bold shadow-md shadow-amber-200 hover:brightness-105 active:scale-95 transition-all"
                 >
                     <Boxes className="w-4 h-4 text-amber-100" />
                     <span className="hidden sm:inline">Planificador Materia Prima</span>
@@ -93,7 +92,7 @@ export default function ProductionCalendarHeader({ model }) {
                 <button
                     type="button"
                     onClick={() => handleOpenCreateModal()}
-                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-200 active:scale-95 transition-all"
+                    className="w-full sm:w-auto justify-center flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-200 active:scale-95 transition-all"
                 >
                     <Plus className="w-4 h-4" />
                     <span>Nueva Producción</span>

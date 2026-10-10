@@ -7,7 +7,7 @@ import ProviderLotConfigModal from '../../components/egg/ProviderLotConfigModal'
 export default function EggConfig() {
  const model = useConfigModel();
  const { providers, isLotConfigModalOpen, setIsLotConfigModalOpen, editingLotConfig, loadProvidersOptions, handleLotConfigSaved } = model;
- return (<div className="space-y-6 text-slate-900">
+ return (<div className="space-y-4 sm:space-y-6 text-slate-900">
             {/* Header */}
             <ConfigHeader model={model} />
 

@@ -44,18 +44,18 @@ export default function ProductionCalendarAlterDateItemModal({ model, open = mod
                             />
                         </div>
 
-                        <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                        <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 pt-2 border-t border-slate-100">
                             <button
                                 type="button"
                                 onClick={onClose}
-                                className="px-3.5 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition"
+                                className="w-full sm:w-auto px-3.5 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition text-center"
                             >
                                 Cancelar
                             </button>
                             <button
                                 type="submit"
                                 disabled={isAlteringDate}
-                                className="px-4 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow transition flex items-center gap-1.5 disabled:opacity-60"
+                                className="w-full sm:w-auto px-4 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow transition flex items-center justify-center gap-1.5 disabled:opacity-60"
                             >
                                 {isAlteringDate ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <CalendarCheck className="w-3.5 h-3.5" />}
                                 <span>Guardar Nueva Fecha</span>

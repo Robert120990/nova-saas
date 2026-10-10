@@ -19,7 +19,7 @@ export default function TraceabilityLabTab({ model }) {
     return (<>{activeTab === 'lab' && (
                 <div className="space-y-6">
                     {/* Header bar */}
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white border border-slate-200 rounded-2xl p-4 sm:p-6 shadow-sm">
                         <div>
                             <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
                                 <FlaskConical className="h-4 w-4 text-teal-600" />
@@ -27,11 +27,11 @@ export default function TraceabilityLabTab({ model }) {
                             </h2>
                             <p className="text-xs text-slate-500 font-medium">Registro de ensayos microbiológicos, físico-químicos y despacho de certificados</p>
                         </div>
-                        <div className="flex flex-wrap items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
                             {selectedLogIds.length > 0 && (
                                 <button
                                     onClick={handleOpenUnifiedEmailModal}
-                                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm animate-pulse"
+                                    className="flex-1 sm:flex-none justify-center px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm animate-pulse"
                                 >
                                     <Mail size={14} />
                                     Enviar {selectedLogIds.length} COA(s) al Cliente
@@ -39,7 +39,7 @@ export default function TraceabilityLabTab({ model }) {
                             )}
                             <button
                                 onClick={handleExportMarioExcel}
-                                className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm"
+                                className="flex-1 sm:flex-none justify-center px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm"
                                 title="Descargar libro Excel con Hojas FQ y MB según formato oficial de Mario"
                             >
                                 <FileSpreadsheet size={14} />
@@ -47,7 +47,7 @@ export default function TraceabilityLabTab({ model }) {
                             </button>
                             <button
                                 onClick={handleOpenCreateLab}
-                                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm"
+                                className="flex-1 sm:flex-none justify-center px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm"
                             >
                                 <Plus size={14} />
                                 Nuevo Análisis LAB-004
@@ -83,10 +83,10 @@ export default function TraceabilityLabTab({ model }) {
                     )}
 
                     {/* Table of Lab Logs */}
-                    <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
+                    <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-6 shadow-sm space-y-4">
                         {/* Filtros de Dictamen y Liberación */}
                         <div className="flex flex-wrap items-center justify-between gap-3 pb-2 border-b border-slate-100">
-                            <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl">
+                            <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl overflow-x-auto whitespace-nowrap scrollbar-none max-w-full">
                                 {(Array.isArray([
                                     { id: 'todos', label: 'Todos los Ensayos' },
                                     { id: 'cuarentena', label: 'Cuarentena (Incubación)' },
@@ -102,7 +102,7 @@ export default function TraceabilityLabTab({ model }) {
                                         key={f.id}
                                         type="button"
                                         onClick={() => setLabReleaseFilter(f.id)}
-                                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 ${
                                             labReleaseFilter === f.id
                                                 ? 'bg-white text-indigo-700 shadow-xs'
                                                 : 'text-slate-600 hover:text-slate-900'
@@ -127,7 +127,7 @@ export default function TraceabilityLabTab({ model }) {
                             ) : labLogs.length === 0 ? (
                                 <div className="p-8 text-center text-slate-500 text-xs font-medium">No se han registrado análisis de laboratorio aún.</div>
                             ) : (
-                                <table className="w-full text-left text-xs border-collapse">
+                                <table className="w-full text-left text-xs border-collapse min-w-[850px]">
                                     <thead>
                                         <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px]">
                                             <th className="p-3 w-10 text-center">

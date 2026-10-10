@@ -15,7 +15,7 @@ const PRODUCT_STANDARDS = {
     hf: { name: 'Huevo Formulado (HF)', ph: [6.7, 7.7], sol: [22.0, 23.0], temp: [2.0, 4.0], hasSal: false }
 };
 
-export const resolveStandard = (productName = '') => {
+const resolveStandard = (productName = '') => {
     const p = String(productName).toLowerCase();
     if (p.includes('denny') || p.includes('wrd')) return PRODUCT_STANDARDS.wrd;
     if (p.includes('leche') || p.includes('w/l')) return PRODUCT_STANDARDS.wl;
@@ -25,7 +25,7 @@ export const resolveStandard = (productName = '') => {
     return PRODUCT_STANDARDS.we;
 };
 
-export const calculateTheoreticalFQ = (brixValue, tempValue = 3.5, productName = '') => {
+const calculateTheoreticalFQ = (brixValue, tempValue = 3.5, productName = '') => {
     const bx = parseFloat(brixValue);
     if (isNaN(bx) || bx <= 0) return null;
     const std = resolveStandard(productName);
@@ -281,40 +281,40 @@ const EggQualityFinishedProductModal = ({
     const isTempInSpec = standard.temp ? (parseFloat(form.temperature_c) >= standard.temp[0] && parseFloat(form.temperature_c) <= standard.temp[1]) : true;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-3 sm:p-4">
-            <div className="bg-white border border-slate-200 rounded-2xl shadow-2xl max-w-3xl w-full max-h-[92vh] flex flex-col text-slate-900 overflow-hidden">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-2 sm:p-4">
+            <div className="bg-white border border-slate-200 rounded-2xl shadow-2xl max-w-3xl w-full max-h-[92vh] sm:max-h-[90vh] flex flex-col text-slate-900 overflow-hidden">
                 {/* Header */}
-                <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
-                    <div className="flex items-center gap-2.5">
-                        <div className="w-9 h-9 rounded-xl bg-teal-50 border border-teal-200 text-teal-700 flex items-center justify-center">
+                <div className="px-3.5 sm:px-5 py-3 sm:py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
+                    <div className="flex items-center gap-2 sm:gap-2.5">
+                        <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-teal-50 border border-teal-200 text-teal-700 flex items-center justify-center shrink-0">
                             <FlaskConical size={18} />
                         </div>
                         <div>
-                            <h3 className="text-sm font-bold text-slate-900 uppercase tracking-tight flex items-center gap-2">
-                                Control de Calidad Oficial (FQ & MB) • LAB-004
+                            <h3 className="text-xs sm:text-sm font-bold text-slate-900 uppercase tracking-tight flex items-center gap-1.5 sm:gap-2">
+                                Control de Calidad Oficial • LAB-004
                             </h3>
-                            <p className="text-[11px] text-slate-500 font-medium">
+                            <p className="text-[10px] sm:text-[11px] text-slate-500 font-medium">
                                 Lote: <strong className="font-mono text-slate-900">{form.commercial_lot_code || batch?.batch_code_display}</strong> • Perfil: <span className="text-teal-700 font-bold">{standard.name}</span>
                             </p>
                         </div>
                     </div>
-                    <button onClick={onClose} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors">
+                    <button onClick={onClose} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors shrink-0">
                         <X size={18} />
                     </button>
                 </div>
 
                 {/* Sub-tabs Bar */}
-                <div className="px-5 pt-3 border-b border-slate-100 flex gap-2 bg-white">
+                <div className="px-3 sm:px-5 pt-2 sm:pt-3 border-b border-slate-100 flex gap-1.5 sm:gap-2 bg-white overflow-x-auto whitespace-nowrap pb-1">
                     <button
                         onClick={() => setActiveTab('fq')}
-                        className={`px-3.5 py-2 text-xs font-bold rounded-t-xl border-b-2 transition-all flex items-center gap-1.5 ${activeTab === 'fq' ? 'border-teal-600 text-teal-700 bg-teal-50/40' : 'border-transparent text-slate-500 hover:text-slate-800'}`}
+                        className={`px-3 sm:px-3.5 py-1.5 sm:py-2 text-xs font-bold rounded-t-xl border-b-2 transition-all flex items-center gap-1.5 shrink-0 ${activeTab === 'fq' ? 'border-teal-600 text-teal-700 bg-teal-50/40' : 'border-transparent text-slate-500 hover:text-slate-800'}`}
                     >
                         <span>1. Físico-Químico (FQ)</span>
                         {isPhInSpec && isSolInSpec && <CheckCircle2 size={13} className="text-emerald-500" />}
                     </button>
                     <button
                         onClick={() => setActiveTab('mb')}
-                        className={`px-3.5 py-2 text-xs font-bold rounded-t-xl border-b-2 transition-all flex items-center gap-1.5 ${activeTab === 'mb' ? 'border-teal-600 text-teal-700 bg-teal-50/40' : 'border-transparent text-slate-500 hover:text-slate-800'}`}
+                        className={`px-3 sm:px-3.5 py-1.5 sm:py-2 text-xs font-bold rounded-t-xl border-b-2 transition-all flex items-center gap-1.5 shrink-0 ${activeTab === 'mb' ? 'border-teal-600 text-teal-700 bg-teal-50/40' : 'border-transparent text-slate-500 hover:text-slate-800'}`}
                     >
                         <span>2. Microbiológico (MB)</span>
                         <span className={`px-1.5 py-0.2 rounded text-[10px] uppercase font-bold ${form.mb_status === 'aprobado' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
@@ -323,7 +323,7 @@ const EggQualityFinishedProductModal = ({
                     </button>
                     <button
                         onClick={() => setActiveTab('release')}
-                        className={`px-3.5 py-2 text-xs font-bold rounded-t-xl border-b-2 transition-all flex items-center gap-1.5 ${activeTab === 'release' ? 'border-teal-600 text-teal-700 bg-teal-50/40' : 'border-transparent text-slate-500 hover:text-slate-800'}`}
+                        className={`px-3 sm:px-3.5 py-1.5 sm:py-2 text-xs font-bold rounded-t-xl border-b-2 transition-all flex items-center gap-1.5 shrink-0 ${activeTab === 'release' ? 'border-teal-600 text-teal-700 bg-teal-50/40' : 'border-transparent text-slate-500 hover:text-slate-800'}`}
                     >
                         <span>3. Dictamen & Liberación</span>
                         <span className={`w-2 h-2 rounded-full ${form.release_status === 'liberado' ? 'bg-emerald-500' : form.release_status === 'bloqueado_haccp' ? 'bg-rose-500' : 'bg-amber-400'}`} />
@@ -331,7 +331,7 @@ const EggQualityFinishedProductModal = ({
                 </div>
 
                 {/* Content */}
-                <form onSubmit={handleSave} className="flex-1 overflow-y-auto p-5 space-y-4">
+                <form onSubmit={handleSave} className="flex-1 overflow-y-auto p-3.5 sm:p-5 space-y-3.5 sm:space-y-4">
                     {/* TAB 1: FÍSICO-QUÍMICO */}
                     {activeTab === 'fq' && (
                         <div className="space-y-4">
@@ -690,11 +690,11 @@ const EggQualityFinishedProductModal = ({
                 </form>
 
                 {/* Footer Actions & Export Bar */}
-                <div className="px-5 py-3.5 border-t border-slate-200 flex flex-col md:flex-row items-center justify-between gap-3 bg-slate-50/90">
+                <div className="px-3.5 sm:px-5 py-3 sm:py-3.5 border-t border-slate-200 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-2.5 sm:gap-3 bg-slate-50/90">
                     {/* Descargas (PDF, Excel, Word con selector FQ/MB) */}
-                    <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+                    <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 w-full md:w-auto">
                         <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 shadow-2xs">
-                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Ámbito:</span>
+                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider shrink-0">Ámbito:</span>
                             <select
                                 value={downloadScope}
                                 onChange={e => setDownloadScope(e.target.value)}
@@ -713,7 +713,7 @@ const EggQualityFinishedProductModal = ({
                                 type="button"
                                 onClick={() => handleDownload('pdf')}
                                 disabled={downloadingFmt !== null || saving}
-                                className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold rounded-xl transition-all shadow-2xs flex items-center gap-1.5 disabled:opacity-50"
+                                className="px-2.5 sm:px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold rounded-xl transition-all shadow-2xs flex items-center gap-1.5 disabled:opacity-50"
                                 title="Descargar Certificado Oficial en PDF con membrete institucional"
                             >
                                 {downloadingFmt === 'pdf' ? <Loader2 size={13} className="animate-spin" /> : <FileText size={13} className="text-rose-600" />}
@@ -725,7 +725,7 @@ const EggQualityFinishedProductModal = ({
                                 type="button"
                                 onClick={() => handleDownload('excel')}
                                 disabled={downloadingFmt !== null || saving}
-                                className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-xs font-bold rounded-xl transition-all shadow-2xs flex items-center gap-1.5 disabled:opacity-50"
+                                className="px-2.5 sm:px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-xs font-bold rounded-xl transition-all shadow-2xs flex items-center gap-1.5 disabled:opacity-50"
                                 title="Descargar Matriz Oficial en Excel (.xlsx)"
                             >
                                 {downloadingFmt === 'excel' ? <Loader2 size={13} className="animate-spin" /> : <FileSpreadsheet size={13} className="text-emerald-600" />}
@@ -737,7 +737,7 @@ const EggQualityFinishedProductModal = ({
                                 type="button"
                                 onClick={() => handleDownload('word')}
                                 disabled={downloadingFmt !== null || saving}
-                                className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-xs font-bold rounded-xl transition-all shadow-2xs flex items-center gap-1.5 disabled:opacity-50"
+                                className="px-2.5 sm:px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-xs font-bold rounded-xl transition-all shadow-2xs flex items-center gap-1.5 disabled:opacity-50"
                                 title="Descargar Informe Oficial en Word (.docx)"
                             >
                                 {downloadingFmt === 'word' ? <Loader2 size={13} className="animate-spin" /> : <FileDown size={13} className="text-blue-600" />}
@@ -747,11 +747,11 @@ const EggQualityFinishedProductModal = ({
                     </div>
 
                     {/* Botones de acción principales */}
-                    <div className="flex items-center gap-2 w-full md:w-auto justify-end">
+                    <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center gap-2 w-full md:w-auto justify-end">
                         <button
                             type="button"
                             onClick={onClose}
-                            className="px-4 py-2 bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-bold rounded-xl transition-all"
+                            className="w-full sm:w-auto px-4 py-2 bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-bold rounded-xl transition-all text-center justify-center flex items-center"
                         >
                             Cerrar
                         </button>
@@ -759,7 +759,7 @@ const EggQualityFinishedProductModal = ({
                             type="button"
                             onClick={(e) => handleSave(e, true)}
                             disabled={saving || downloadingFmt !== null}
-                            className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold rounded-xl transition-all shadow-xs flex items-center gap-1.5 disabled:opacity-50"
+                            className="w-full sm:w-auto px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold rounded-xl transition-all shadow-xs flex items-center justify-center gap-1.5 disabled:opacity-50 text-center"
                         >
                             {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
                             <span>{saving ? 'Guardando...' : 'Guardar Dictamen LAB-004'}</span>

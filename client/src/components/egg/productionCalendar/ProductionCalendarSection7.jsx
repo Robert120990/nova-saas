@@ -39,7 +39,7 @@ export default function ProductionCalendarSection7({ model }) {
                                 setSelectedOrderToEdit(null);
                                 setIsCustomerOrderModalOpen(true);
                             }}
-                            className="inline-flex items-center gap-1.5 text-xs font-bold bg-indigo-600 text-white px-4 py-2 rounded-xl shadow hover:bg-indigo-700 transition"
+                            className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 text-xs font-bold bg-indigo-600 text-white px-4 py-2 rounded-xl shadow hover:bg-indigo-700 transition"
                         >
                             <Plus className="w-4 h-4" />
                             <span>+ Registrar Nuevo Pedido</span>
@@ -48,7 +48,7 @@ export default function ProductionCalendarSection7({ model }) {
 
                     {/* Tabla de Pedidos */}
                     <div className="overflow-x-auto border border-slate-200 rounded-2xl bg-white shadow-xs">
-                        <table className="w-full text-left text-xs">
+                        <table className="w-full text-left text-xs min-w-[750px]">
                             <thead className="bg-slate-50 text-[10px] font-bold text-slate-600 uppercase border-b border-slate-200">
                                 <tr>
                                     <th className="px-3 py-2.5">Cliente</th>

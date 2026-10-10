@@ -20,16 +20,16 @@ export default function InventoryHeader({ model }) {
     } = model;
 
     return (
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+        <div className="bg-white p-3.5 sm:p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
             {/* Top row: Title and global actions */}
             <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
                 <div className="space-y-1">
                     <div className="flex items-center gap-2.5">
-                        <div className="p-2.5 bg-blue-50 text-blue-600 rounded-xl">
-                            <Boxes size={24} />
+                        <div className="p-2 sm:p-2.5 bg-blue-50 text-blue-600 rounded-xl shrink-0">
+                            <Boxes size={22} className="sm:w-6 sm:h-6" />
                         </div>
                         <div>
-                            <h1 className="text-lg md:text-xl font-bold text-slate-900 tracking-tight">
+                            <h1 className="text-base sm:text-xl font-bold text-slate-900 tracking-tight leading-snug">
                                 Inventario de Planta Industrial
                             </h1>
                             <p className="text-xs text-slate-500 font-medium">
@@ -40,7 +40,7 @@ export default function InventoryHeader({ model }) {
                 </div>
 
                 {/* Acciones: PDF, Excel, Selector de Unidad y Refresco */}
-                <div className="flex items-center gap-2.5 flex-wrap">
+                <div className="flex items-center gap-2 flex-wrap">
                     {/* Botones de Exportar */}
                     <div className="flex items-center gap-1.5">
                         <button
@@ -114,43 +114,43 @@ export default function InventoryHeader({ model }) {
             </div>
 
             {/* Bottom row: Primary Navigation Tabs */}
-            <div className="border-t border-slate-100 pt-3 flex items-center gap-2 overflow-x-auto">
+            <div className="border-t border-slate-100 pt-3 flex items-center gap-2 overflow-x-auto pb-1 -mx-1 px-1">
                 <button
                     type="button"
                     onClick={() => setActiveTab('finished_product')}
-                    className={`px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all flex items-center gap-2 whitespace-nowrap ${
+                    className={`px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all flex items-center gap-2 whitespace-nowrap shrink-0 ${
                         activeTab === 'finished_product'
                             ? 'bg-blue-600 text-white shadow-xs'
                             : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200/80'
                     }`}
                 >
-                    <Package size={17} />
+                    <Package size={16} />
                     <span>Producto Terminado (x Presentación)</span>
                 </button>
 
                 <button
                     type="button"
                     onClick={() => setActiveTab('raw_material')}
-                    className={`px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all flex items-center gap-2 whitespace-nowrap ${
+                    className={`px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all flex items-center gap-2 whitespace-nowrap shrink-0 ${
                         activeTab === 'raw_material'
                             ? 'bg-amber-600 text-white shadow-xs'
                             : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200/80'
                     }`}
                 >
-                    <Layers size={17} />
+                    <Layers size={16} />
                     <span>Materia Prima (Lotes y Tarimas)</span>
                 </button>
 
                 <button
                     type="button"
                     onClick={() => setActiveTab('wastes')}
-                    className={`px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all flex items-center gap-2 whitespace-nowrap ${
+                    className={`px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all flex items-center gap-2 whitespace-nowrap shrink-0 ${
                         activeTab === 'wastes'
                             ? 'bg-rose-600 text-white shadow-xs'
                             : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200/80'
                     }`}
                 >
-                    <TrendingDown size={17} />
+                    <TrendingDown size={16} />
                     <span>Mermas y Desperdicios</span>
                 </button>
             </div>

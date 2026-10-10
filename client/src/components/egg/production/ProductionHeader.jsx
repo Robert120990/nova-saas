@@ -9,27 +9,27 @@ import { getJulianDayInfo } from '../../../utils/julianDate';
 export default function ProductionHeader({ model }) {
     const { user, navigate, batches, activeTab, setActiveTab, setBatchForm, setCipBlockedError, setHaccpViolationAlert, setIsNewBatchModalOpen, setIsPasteurizeModalOpen, setEditingBatch, setSelectedScheduledProd } = model;
 
-    return (<div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
-                <div className="flex flex-wrap gap-1 p-1 bg-slate-100 rounded-xl border border-slate-200 w-fit">
+    return (<div className="flex flex-col md:flex-row gap-4 items-stretch md:items-center justify-between">
+                <div className="flex flex-wrap gap-1 p-1 bg-slate-100 rounded-xl border border-slate-200 w-full sm:w-fit">
                     <button
                         onClick={() => { setActiveTab('batches'); setCipBlockedError(null); setHaccpViolationAlert(null); }}
-                        className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'batches' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                        className={`flex-1 sm:flex-initial text-center justify-center px-3 sm:px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'batches' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'
                             }`}
                     >
                         Lotes de Producción
                     </button>
                     <button
                         onClick={() => { setActiveTab('cip'); setCipBlockedError(null); setHaccpViolationAlert(null); }}
-                        className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'cip' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                        className={`flex-1 sm:flex-initial text-center justify-center px-3 sm:px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'cip' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'
                             }`}
                     >
                         Registros de Sanitización (CIP)
                     </button>
                 </div>
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
                     <button
                         onClick={() => navigate('/industrial/calendario')}
-                        className="px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border border-indigo-200 shadow-sm"
+                        className="w-full sm:w-auto justify-center px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border border-indigo-200 shadow-sm"
                     >
                         <Calendar size={14} />
                         Calendario de Producción
@@ -82,14 +82,14 @@ export default function ProductionHeader({ model }) {
                             setCipBlockedError(null);
                             setIsNewBatchModalOpen(true);
                         }}
-                        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm"
+                        className="w-full sm:w-auto justify-center px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm"
                     >
                         <Plus size={14} />
                         Iniciar Nueva Producción
                     </button>
                     <button
                         onClick={() => { setIsPasteurizeModalOpen(true); setHaccpViolationAlert(null); }}
-                        className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm"
+                        className="w-full sm:w-auto justify-center px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm"
                     >
                         <Flame size={14} />
                         Pasteurizar

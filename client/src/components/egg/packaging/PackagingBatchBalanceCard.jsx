@@ -15,7 +15,7 @@ export default function PackagingBatchBalanceCard({
 
     return (
         <div className="space-y-3">
-            <div className="grid grid-cols-4 gap-2 bg-slate-50 p-3 rounded-xl border border-slate-200 text-center text-xs">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-slate-50 p-2.5 sm:p-3 rounded-xl border border-slate-200 text-center text-xs">
                 <div>
                     <span className="text-[10px] font-bold text-slate-400 uppercase block">Rendimiento</span>
                     <strong className="text-teal-700 font-bold">{parseFloat(currentBatch.yield_liquid_lbs || 0).toLocaleString()} Lbs</strong>
@@ -37,16 +37,16 @@ export default function PackagingBatchBalanceCard({
             </div>
 
             {currentBatch.packaging_status === 'cerrado' ? (
-                <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-xs text-emerald-800 flex flex-col sm:flex-row items-center justify-between gap-3">
+                <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-xs text-emerald-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                     <span className="font-bold flex items-center gap-1.5">
-                        <CheckCircle2 size={16} className="text-emerald-600" />
+                        <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
                         Lote Cerrado Técnicamente (Eficiencia: {currentBatch.packaging_efficiency_pct}%, Merma: {currentBatch.packaging_loss_lbs} Lbs)
                     </span>
                     {onReopenPackaging && (
                         <button
                             type="button"
                             onClick={() => onReopenPackaging(currentBatch)}
-                            className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1 shrink-0"
+                            className="w-full sm:w-auto justify-center px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1 shrink-0"
                         >
                             <Lock size={13} />
                             Reabrir Envasado
@@ -54,10 +54,10 @@ export default function PackagingBatchBalanceCard({
                     )}
                 </div>
             ) : (
-                <div className="bg-amber-50/70 border border-amber-200 rounded-xl p-3 text-xs text-amber-900 flex flex-col sm:flex-row items-center justify-between gap-3">
+                <div className="bg-amber-50/70 border border-amber-200 rounded-xl p-3 text-xs text-amber-900 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                     <div>
                         <span className="font-bold flex items-center gap-1.5 text-amber-800">
-                            <Scale size={15} />
+                            <Scale size={15} className="shrink-0" />
                             Balance de Envasado & Eficiencia
                         </span>
                         <p className="text-[11px] text-amber-700 mt-0.5">
@@ -70,7 +70,7 @@ export default function PackagingBatchBalanceCard({
                         <button
                             type="button"
                             onClick={() => onOpenCloseBatch?.(currentBatch)}
-                            className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1 shrink-0"
+                            className="w-full sm:w-auto justify-center px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1 shrink-0"
                         >
                             <Lock size={13} />
                             Cerrar Envasado de Lote

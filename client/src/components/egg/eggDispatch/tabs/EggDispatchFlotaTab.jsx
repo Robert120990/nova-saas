@@ -12,13 +12,13 @@ export default function EggDispatchFlotaTab({ model }) {
     return (<>{activeTab === 'flota' && (
                 <div className="space-y-6">
                     {/* Header Sección Flota */}
-                    <div className="flex items-center justify-between">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                         <div>
                             <h2 className="text-base font-black text-slate-900">Camiones y Vehículos de Reparto</h2>
                             <p className="text-xs text-slate-500">Control de capacidad de carga, refrigeración Termo-King y estado operativo</p>
                         </div>
 
-                        <div className="flex gap-2">
+                        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
                             <button
                                 onClick={() => {
                                     setVehicleForm({
@@ -38,7 +38,7 @@ export default function EggDispatchFlotaTab({ model }) {
                                     setEditingVehicle(null);
                                     setVehicleModalOpen(true);
                                 }}
-                                className="flex items-center gap-1.5 text-xs font-bold bg-indigo-600 text-white px-3.5 py-2 rounded-xl shadow hover:bg-indigo-700 transition"
+                                className="w-full sm:w-auto justify-center flex items-center gap-1.5 text-xs font-bold bg-indigo-600 text-white px-3.5 py-2 rounded-xl shadow hover:bg-indigo-700 transition"
                             >
                                 <Plus className="w-4 h-4" />
                                 <span>Agregar Vehículo</span>
@@ -63,7 +63,7 @@ export default function EggDispatchFlotaTab({ model }) {
                                     });
                                     setMaintenanceModalOpen(true);
                                 }}
-                                className="flex items-center gap-1.5 text-xs font-bold bg-amber-600 text-white px-3.5 py-2 rounded-xl shadow hover:bg-amber-700 transition"
+                                className="w-full sm:w-auto justify-center flex items-center gap-1.5 text-xs font-bold bg-amber-600 text-white px-3.5 py-2 rounded-xl shadow hover:bg-amber-700 transition"
                             >
                                 <Wrench className="w-4 h-4" />
                                 <span>Registrar Mantenimiento</span>
@@ -168,7 +168,7 @@ export default function EggDispatchFlotaTab({ model }) {
                         </div>
 
                         <div className="overflow-x-auto">
-                            <table className="w-full text-left border-collapse text-xs">
+                            <table className="w-full min-w-[850px] text-left border-collapse text-xs">
                                 <thead>
                                     <tr className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200 text-[11px] uppercase tracking-wider">
                                         <th className="p-3">Vehículo</th>

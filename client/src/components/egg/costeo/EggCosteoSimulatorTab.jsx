@@ -15,7 +15,7 @@ export default function EggCosteoSimulatorTab({
     return (
                 <div className="space-y-6">
                     {/* Simulador Rápido con Precio Libre */}
-                    <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                    <div className="bg-white p-4 sm:p-6 rounded-2xl border border-slate-200 shadow-sm">
                         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4 pb-4 border-b border-slate-200">
                             <div>
                                 <h2 className="text-sm font-bold uppercase tracking-wider text-slate-900 flex items-center gap-2">
@@ -26,9 +26,9 @@ export default function EggCosteoSimulatorTab({
                                     Proyecta el margen bruto y ganancia total para cualquier precio ofertado a clientes.
                                 </p>
                             </div>
-                            <div className="flex items-center gap-3">
+                            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 w-full sm:w-auto">
                                 <label className="text-xs font-bold text-slate-700">Precio Objetivo a Simular:</label>
-                                <div className="w-36">
+                                <div className="w-full sm:w-36">
                                     <MoneyInput
                                         type="number"
                                         step="0.01"
@@ -92,7 +92,7 @@ export default function EggCosteoSimulatorTab({
                     {/* Grid en 2 Columnas: Izquierda = Matriz Escalonada de Margen | Derecha = Simulación Multiformato por Presentación */}
                     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
                         {/* Columna Izquierda: Matriz de Precios Sugeridos por Margen */}
-                        <div className="lg:col-span-5 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                        <div className="lg:col-span-5 bg-white p-4 sm:p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
                             <div className="pb-3 border-b border-slate-100">
                                 <h3 className="text-sm font-bold uppercase tracking-wider text-slate-900 flex items-center gap-2">
                                     <TrendingUp className="w-4 h-4 text-indigo-600" />
@@ -103,7 +103,7 @@ export default function EggCosteoSimulatorTab({
                                 </p>
                             </div>
                             <div className="overflow-x-auto rounded-xl border border-slate-200">
-                                <table className="w-full text-left text-xs border-collapse">
+                                <table className="w-full text-left text-xs border-collapse min-w-[380px]">
                                     <thead>
                                         <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px]">
                                             <th className="py-3 px-3">Margen</th>
@@ -181,7 +181,7 @@ export default function EggCosteoSimulatorTab({
                             </div>
 
                             {showPresentationsMatrixSim && (
-                                <div className="p-6 pt-0 space-y-4 border-t border-slate-100">
+                                <div className="p-4 sm:p-6 pt-0 space-y-4 border-t border-slate-100">
                                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-3">
                                         <p className="text-xs text-slate-500 font-medium">
                                             Impacto del precio simulado de <strong className="text-slate-900 font-bold"><Money value={parseFloat(calcParams.target_sale_price_per_lb) || 0} /> /lb</strong> en cada formato:

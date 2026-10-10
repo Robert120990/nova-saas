@@ -56,9 +56,9 @@ export default function ProductionCalendarFiltersBar({ model }) {
                 </div>
 
                 {/* Vistas (Mes / Semana / Lista) y Filtros */}
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
                     {/* Búsqueda */}
-                    <div className="relative flex-1 sm:w-48">
+                    <div className="relative w-full sm:w-48">
                         <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
                         <input
                             type="text"
@@ -73,7 +73,7 @@ export default function ProductionCalendarFiltersBar({ model }) {
                     <select
                         value={profileFilter}
                         onChange={(e) => setProfileFilter(e.target.value)}
-                        className="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-medium text-slate-700 focus:outline-none"
+                        className="flex-1 sm:flex-none bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-medium text-slate-700 focus:outline-none"
                     >
                         <option value="todos">Todos los perfiles</option>
                         {(Array.isArray(PRODUCT_PROFILES) ? PRODUCT_PROFILES : []).map(p => (
@@ -85,7 +85,7 @@ export default function ProductionCalendarFiltersBar({ model }) {
                     <select
                         value={statusFilter}
                         onChange={(e) => setStatusFilter(e.target.value)}
-                        className="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-medium text-slate-700 focus:outline-none"
+                        className="flex-1 sm:flex-none bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-medium text-slate-700 focus:outline-none"
                     >
                         <option value="todos">Todos los estados</option>
                         <option value="programado">Programado</option>
@@ -104,7 +104,7 @@ export default function ProductionCalendarFiltersBar({ model }) {
                                 }`}
                         >
                             <CalendarDays className="w-3.5 h-3.5" />
-                            <span className="hidden sm:inline">Mes</span>
+                            <span>Mes</span>
                         </button>
                         <button
                             type="button"
@@ -114,6 +114,7 @@ export default function ProductionCalendarFiltersBar({ model }) {
                         >
                             <List className="w-3.5 h-3.5" />
                             <span className="hidden sm:inline">Lista / Agenda</span>
+                            <span className="sm:hidden">Lista</span>
                         </button>
                     </div>
 

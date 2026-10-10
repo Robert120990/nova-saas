@@ -5,20 +5,20 @@ import {
 export default function EggCostsMaintenance() {
  const model = useCostsMaintenanceModel();
 
- return (<div className="space-y-6 text-slate-900">
+ return (<div className="space-y-4 sm:space-y-6 text-slate-900">
             {/* Header Banner - Acceso al Costeo por Libra */}
             <CostsMaintenanceHeader model={model} />
 
             {/* Encabezado Principal */}
-            <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div className="flex items-center gap-4">
-                    <div className="p-3 bg-indigo-50 text-indigo-600 rounded-xl border border-indigo-100">
-                        <Settings className="h-6 w-6" />
+            <div className="bg-white border border-slate-200 rounded-2xl p-3.5 sm:p-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-4">
+                <div className="flex items-center gap-3 sm:gap-4">
+                    <div className="p-2.5 sm:p-3 bg-indigo-50 text-indigo-600 rounded-xl border border-indigo-100 shrink-0">
+                        <Settings className="h-5 w-5 sm:h-6 sm:w-6" />
                     </div>
                     <div>
-                        <h1 className="text-xl font-bold text-slate-900 tracking-tight">Gestión de Costos, Envases y Mantenimiento</h1>
+                        <h1 className="text-base sm:text-xl font-bold text-slate-900 tracking-tight leading-snug">Gestión de Costos, Envases y Mantenimiento</h1>
                         <p className="text-xs text-slate-500 font-medium mt-0.5">
-                            Costos por lote de producción, control de cubetas retornables con clientes y bitácora técnica de equipos.
+                            Costos por lote de producción, control de cubetas retornables y bitácora de equipos.
                         </p>
                     </div>
                 </div>

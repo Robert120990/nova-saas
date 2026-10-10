@@ -19,48 +19,50 @@ export default function ProductionCalendarContent({ model }) {
 
     return (<>{calendarView === 'month' && (
                 <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
-                    {/* Encabezado Días de la Semana */}
-                    <div className="grid grid-cols-7 border-b border-slate-200/80 bg-slate-50/80 text-center py-2.5 text-[11px] font-bold text-slate-600 uppercase tracking-wider">
-                        <div>Lun</div>
-                        <div>Mar</div>
-                        <div>Mié</div>
-                        <div>Jue</div>
-                        <div>Vie</div>
-                        <div className="text-slate-400">Sáb</div>
-                        <div className="text-slate-400">Dom</div>
-                    </div>
+                    <div className="overflow-x-auto">
+                        <div className="min-w-[700px]">
+                            {/* Encabezado Días de la Semana */}
+                            <div className="grid grid-cols-7 border-b border-slate-200/80 bg-slate-50/80 text-center py-2.5 text-[11px] font-bold text-slate-600 uppercase tracking-wider">
+                                <div>Lun</div>
+                                <div>Mar</div>
+                                <div>Mié</div>
+                                <div>Jue</div>
+                                <div>Vie</div>
+                                <div className="text-slate-400">Sáb</div>
+                                <div className="text-slate-400">Dom</div>
+                            </div>
 
-                    {/* Matriz de Días */}
-                    <div className="grid grid-cols-7 divide-x divide-y divide-slate-100">
-                        {(Array.isArray(calendarMonthDays) ? calendarMonthDays : []).map((cell, index) => {
-                            const dayProds = getProductionsForDate(cell.dateStr);
-                            const dayOrders = customerOrders.filter(o => o.required_delivery_date && o.required_delivery_date.split('T')[0] === cell.dateStr);
-                            const isToday = cell.dateStr === todayStr;
-                            const isDropTarget = dragOverDate === cell.dateStr;
+                            {/* Matriz de Días */}
+                            <div className="grid grid-cols-7 divide-x divide-y divide-slate-100">
+                                {(Array.isArray(calendarMonthDays) ? calendarMonthDays : []).map((cell, index) => {
+                                    const dayProds = getProductionsForDate(cell.dateStr);
+                                    const dayOrders = customerOrders.filter(o => o.required_delivery_date && o.required_delivery_date.split('T')[0] === cell.dateStr);
+                                    const isToday = cell.dateStr === todayStr;
+                                    const isDropTarget = dragOverDate === cell.dateStr;
 
-                            return (
-                                <div
-                                    key={index}
-                                    onDragOver={(e) => handleDragOver(e, cell.dateStr)}
-                                    onDragLeave={handleDragLeave}
-                                    onDrop={(e) => handleDrop(e, cell.dateStr)}
-                                    className={`min-h-[125px] sm:min-h-[145px] p-1.5 sm:p-2 flex flex-col transition-all group ${cell.isCurrentMonth ? 'bg-white' : 'bg-slate-50/50 opacity-60'
-                                        } ${isDropTarget ? 'bg-indigo-50/80 ring-2 ring-indigo-400 ring-inset' : ''}`}
-                                >
-                                    {/* Número del día y botón rápido + */}
-                                    <div className="flex items-center justify-between mb-1">
-                                        <span
-                                            className={`text-xs font-bold rounded-lg w-6 h-6 flex items-center justify-center ${isToday
-                                                    ? 'bg-indigo-600 text-white shadow-sm'
-                                                    : cell.isCurrentMonth
-                                                        ? 'text-slate-700'
-                                                        : 'text-slate-400'
-                                                }`}
+                                    return (
+                                        <div
+                                            key={index}
+                                            onDragOver={(e) => handleDragOver(e, cell.dateStr)}
+                                            onDragLeave={handleDragLeave}
+                                            onDrop={(e) => handleDrop(e, cell.dateStr)}
+                                            className={`min-h-[125px] sm:min-h-[145px] p-1.5 sm:p-2 flex flex-col transition-all group ${cell.isCurrentMonth ? 'bg-white' : 'bg-slate-50/50 opacity-60'
+                                                } ${isDropTarget ? 'bg-indigo-50/80 ring-2 ring-indigo-400 ring-inset' : ''}`}
                                         >
-                                            {cell.dayNumber}
-                                        </span>
+                                            {/* Número del día y botón rápido + */}
+                                            <div className="flex items-center justify-between mb-1">
+                                                <span
+                                                    className={`text-xs font-bold rounded-lg w-6 h-6 flex items-center justify-center ${isToday
+                                                            ? 'bg-indigo-600 text-white shadow-sm'
+                                                            : cell.isCurrentMonth
+                                                                ? 'text-slate-700'
+                                                                : 'text-slate-400'
+                                                        }`}
+                                                >
+                                                    {cell.dayNumber}
+                                                </span>
 
-                                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                                                <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all">
                                             <button
                                                 type="button"
                                                 onClick={() => {
@@ -267,6 +269,8 @@ export default function ProductionCalendarContent({ model }) {
                                 </div>
                             );
                         })}
+                    </div>
+                        </div>
                     </div>
                 </div>
             )}</>);

@@ -107,11 +107,11 @@ export default function ProductionCalendarSection6({ model }) {
 
                 {/* Header Tabs */}
                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 border-b border-slate-200 pb-3">
-                    <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl">
+                    <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl overflow-x-auto whitespace-nowrap scrollbar-none">
                         <button
                             type="button"
                             onClick={() => setSuggestionsTab('monthly')}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                            className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
                                 suggestionsTab === 'monthly'
                                     ? 'bg-white text-indigo-700 shadow-xs'
                                     : 'text-slate-600 hover:text-slate-900'
@@ -126,7 +126,7 @@ export default function ProductionCalendarSection6({ model }) {
                         <button
                             type="button"
                             onClick={() => setSuggestionsTab('tactical')}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                            className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
                                 suggestionsTab === 'tactical'
                                     ? 'bg-white text-emerald-700 shadow-xs'
                                     : 'text-slate-600 hover:text-slate-900'
@@ -141,12 +141,12 @@ export default function ProductionCalendarSection6({ model }) {
                     </div>
 
                     {suggestionsTab === 'monthly' && (
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
                             <button
                                 type="button"
                                 onClick={handleCalculateAll}
                                 disabled={loadingMonthlyPlan}
-                                className="px-2.5 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-600 text-xs font-medium flex items-center gap-1.5 transition-colors"
+                                className="w-full sm:w-auto justify-center px-2.5 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-600 text-xs font-medium flex items-center gap-1.5 transition-colors"
                                 title="Recalcular sugerencias del rango"
                             >
                                 <RefreshCw className={`w-3.5 h-3.5 ${loadingMonthlyPlan ? 'animate-spin text-indigo-600' : ''}`} />
@@ -156,7 +156,7 @@ export default function ProductionCalendarSection6({ model }) {
                                 type="button"
                                 onClick={handleApplyMonthlyPlan}
                                 disabled={applyingPlan || selectedPlanRuns.length === 0}
-                                className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-xs shadow-indigo-200 transition-all disabled:opacity-50"
+                                className="w-full sm:w-auto justify-center px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-xs shadow-indigo-200 transition-all disabled:opacity-50"
                             >
                                 <CheckSquare className="w-3.5 h-3.5" />
                                 <span>

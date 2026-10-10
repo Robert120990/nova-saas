@@ -42,10 +42,10 @@ const EggQualityEvaluationModal = ({
     };
 
     return (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-3 sm:p-4">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-2 sm:p-4">
                     <div className="bg-white border border-slate-200 rounded-2xl shadow-2xl max-w-4xl w-full mx-auto max-h-[92vh] flex flex-col text-slate-900 overflow-hidden">
                         {/* Modal Header */}
-                        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3.5 bg-slate-50/80">
+                        <div className="flex items-center justify-between border-b border-slate-200 px-3.5 sm:px-5 py-3 bg-slate-50/80">
                             <div className="flex items-center gap-3">
                                 <div className="p-2.5 bg-amber-500 text-white rounded-xl shadow-xs">
                                     <ShieldCheck className="h-6 w-6" />
@@ -117,7 +117,7 @@ const EggQualityEvaluationModal = ({
 
                         {/* Resumen del Lote en Cabecera */}
                         {qualityModal.rm && (
-                            <div className="bg-amber-50/60 border-b border-amber-200/70 px-5 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
+                            <div className="bg-amber-50/60 border-b border-amber-200/70 px-3.5 sm:px-5 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
                                 <div className="flex items-center gap-4 flex-wrap">
                                     <div>
                                         <span className="text-[10px] font-bold text-amber-900/70 uppercase block">Lote Recepción MP:</span>
@@ -150,7 +150,7 @@ const EggQualityEvaluationModal = ({
                         )}
 
                         {/* Pestañas de Navegación del Formulario LAB 001 y Certificado de Origen */}
-                        <div className="flex items-center border-b border-slate-200 px-5 bg-white overflow-x-auto">
+                        <div className="flex items-center border-b border-slate-200 px-3 sm:px-5 bg-white overflow-x-auto whitespace-nowrap scrollbar-none">
                             <button
                                 type="button"
                                 onClick={() => setQualityModal(prev => ({ ...prev, activeTab: 'general' }))}
@@ -1247,11 +1247,11 @@ const EggQualityEvaluationModal = ({
                                     </button>
                                 </div>
 
-                                <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end">
+                                <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center gap-2 sm:gap-2.5 w-full sm:w-auto justify-end">
                                     <button
                                         type="button"
                                         onClick={handleClose}
-                                        className="px-4 py-2 bg-white hover:bg-slate-100 text-slate-700 rounded-xl text-xs font-bold border border-slate-300 transition-colors shadow-2xs"
+                                        className="w-full sm:w-auto text-center px-4 py-2 bg-white hover:bg-slate-100 text-slate-700 rounded-xl text-xs font-bold border border-slate-300 transition-colors shadow-2xs"
                                     >
                                         {canEditQuality ? 'Cancelar' : 'Cerrar'}
                                     </button>
@@ -1259,7 +1259,7 @@ const EggQualityEvaluationModal = ({
                                         <button
                                             type="submit"
                                             disabled={qualityModal.isSubmitting}
-                                            className="px-5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1.5 disabled:opacity-50"
+                                            className="w-full sm:w-auto px-5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1.5 disabled:opacity-50"
                                         >
                                             <ShieldCheck size={15} />
                                             <span>{qualityModal.isSubmitting ? 'Guardando Reporte...' : 'Guardar Reporte LAB 001'}</span>

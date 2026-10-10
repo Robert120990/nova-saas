@@ -13,7 +13,7 @@ export default function EggDispatchMotoristaTab({ model }) {
     return (<>{activeTab === 'motorista' && (
                 <div className="space-y-4 max-w-2xl mx-auto">
                     {/* Header Móvil del Chofer */}
-                    <div className="bg-gradient-to-br from-indigo-900 to-slate-900 p-5 rounded-3xl text-white shadow-lg space-y-3">
+                    <div className="bg-gradient-to-br from-indigo-900 to-slate-900 p-4 sm:p-5 rounded-2xl sm:rounded-3xl text-white shadow-lg space-y-3">
                         <div className="flex items-center justify-between">
                             <div>
                                 <span className="text-[10px] font-black uppercase tracking-wider text-indigo-300">
@@ -66,7 +66,7 @@ export default function EggDispatchMotoristaTab({ model }) {
                             return (
                                 <div
                                     key={stop.id}
-                                    className={`p-4 rounded-3xl border shadow-sm transition space-y-3 ${
+                                    className={`p-3.5 sm:p-4 rounded-2xl sm:rounded-3xl border shadow-sm transition space-y-3 ${
                                         isDelivered
                                             ? 'bg-emerald-50/60 border-emerald-200'
                                             : 'bg-white border-slate-200'
@@ -185,7 +185,7 @@ export default function EggDispatchMotoristaTab({ model }) {
                                             <span>Escanear QR DTE / Confirmar Entrega</span>
                                         </button>
                                     ) : (
-                                        <div className="bg-emerald-100/80 p-2.5 rounded-2xl border border-emerald-300 text-emerald-900 text-xs flex items-center justify-between">
+                                        <div className="bg-emerald-100/80 p-2.5 rounded-2xl border border-emerald-300 text-emerald-900 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                                             <div className="flex items-center gap-2">
                                                 <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
                                                 <div>

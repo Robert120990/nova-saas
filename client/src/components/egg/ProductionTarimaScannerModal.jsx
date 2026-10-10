@@ -271,17 +271,17 @@ export default function ProductionTarimaScannerModal({
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-xs animate-in fade-in duration-150">
-            <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-4 bg-slate-900/70 backdrop-blur-xs animate-in fade-in duration-150">
+            <div className="bg-white w-full max-w-md rounded-2xl sm:rounded-3xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[92vh] sm:max-h-[90vh]">
 
                 {/* Cabecera del Modal */}
-                <div className="px-6 py-4 bg-gradient-to-r from-indigo-700 via-indigo-600 to-indigo-800 text-white flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                        <div className="p-2.5 bg-white/15 rounded-2xl backdrop-blur-md">
-                            <Camera className="w-5 h-5 text-white" />
+                <div className="px-4 sm:px-6 py-3 sm:py-4 bg-gradient-to-r from-indigo-700 via-indigo-600 to-indigo-800 text-white flex items-center justify-between">
+                    <div className="flex items-center gap-2.5 sm:gap-3">
+                        <div className="p-2 sm:p-2.5 bg-white/15 rounded-xl sm:rounded-2xl backdrop-blur-md shrink-0">
+                            <Camera className="w-4.5 h-4.5 sm:w-5 sm:h-5 text-white" />
                         </div>
                         <div>
-                            <h3 className="text-sm font-black uppercase tracking-wider text-white flex items-center gap-2">
+                            <h3 className="text-xs sm:text-sm font-black uppercase tracking-wider text-white flex items-center gap-1.5 sm:gap-2">
                                 <span>Escanear Tarima</span>
                                 <span className="text-[10px] bg-emerald-400/20 text-emerald-300 border border-emerald-400/30 px-2 py-0.5 rounded-full font-bold">
                                     QR / Barcode
@@ -304,8 +304,8 @@ export default function ProductionTarimaScannerModal({
 
                 {/* Si hay un lote seleccionado con múltiples tarimas */}
                 {pendingLotSelection ? (
-                    <div className="p-6 overflow-y-auto space-y-4 flex-1">
-                        <div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-4 space-y-1">
+                    <div className="p-3.5 sm:p-6 overflow-y-auto space-y-3.5 sm:space-y-4 flex-1">
+                        <div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-3 sm:p-4 space-y-1">
                             <span className="text-[10px] font-black uppercase tracking-wider text-indigo-700">
                                 Lote Identificado
                             </span>
@@ -392,10 +392,10 @@ export default function ProductionTarimaScannerModal({
                     </div>
                 ) : (
                     /* Contenido Central: Visor de Cámara */
-                    <div className="p-6 overflow-y-auto space-y-4 flex-1">
+                    <div className="p-3.5 sm:p-6 overflow-y-auto space-y-3.5 sm:space-y-4 flex-1">
 
                         {/* Viewport del Escáner */}
-                        <div className="relative rounded-2xl overflow-hidden bg-slate-950 aspect-square flex items-center justify-center border-2 border-indigo-100 shadow-inner">
+                        <div className="relative rounded-2xl overflow-hidden bg-slate-950 aspect-[4/3] sm:aspect-square max-h-[220px] sm:max-h-[300px] flex items-center justify-center border-2 border-indigo-100 shadow-inner">
                             <div id="production-tarima-qr-reader" className="w-full h-full object-cover" />
 
                             {/* Línea animada de escaneo si está activo */}
@@ -476,14 +476,14 @@ export default function ProductionTarimaScannerModal({
                 )}
 
                 {/* Footer */}
-                <div className="px-6 py-3.5 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
-                    <span className="text-[11px] text-slate-500 font-medium">
+                <div className="px-4 sm:px-6 py-2.5 sm:py-3.5 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-2">
+                    <span className="text-[10px] sm:text-[11px] text-slate-500 font-medium truncate">
                         Identificación automática de Lote & Tarima
                     </span>
                     <button
                         type="button"
                         onClick={onClose}
-                        className="px-4 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-xl text-xs font-bold transition-all"
+                        className="px-4 py-1.5 sm:py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-xl text-xs font-bold transition-all shrink-0"
                     >
                         Cerrar
                     </button>

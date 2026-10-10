@@ -12,10 +12,10 @@ export default function TraceabilityIsQualityLetterModalOpenModal({ model, open 
     const { isQualityLetterModalOpen, setIsQualityLetterModalOpen, qualityLetterBatch, letterCustomerName, setLetterCustomerName, letterCustomerContact, setLetterCustomerContact, letterScope, setLetterScope, exportingFormat, handleDownloadQualityLetter, downloadingOriginCert, handleDownloadOriginCertificate } = model;
     if (!open) return null;
     return (<>{isQualityLetterModalOpen && (
-                <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200">
-                    <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col">
+                <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 animate-in fade-in duration-200">
+                    <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
                         {/* Modal Header */}
-                        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+                        <div className="p-3.5 sm:px-6 sm:py-4 border-b border-slate-100 flex items-center justify-between shrink-0">
                             <div className="flex items-center gap-2">
                                 <span className="p-1.5 bg-amber-50 text-amber-700 rounded-xl">
                                     <FileText size={18} />
@@ -38,7 +38,7 @@ export default function TraceabilityIsQualityLetterModalOpenModal({ model, open 
                         </div>
 
                         {/* Modal Body */}
-                        <div className="p-6 space-y-5">
+                        <div className="p-3.5 sm:p-6 space-y-4 overflow-y-auto">
                             {/* Lot preview badge */}
                             <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-1.5">
                                 <div className="flex items-center justify-between">
@@ -185,12 +185,12 @@ export default function TraceabilityIsQualityLetterModalOpenModal({ model, open 
                                 <p className="text-[11px] text-slate-600">
                                     Documento técnico emitido por la granja proveedora con condiciones de inocuidad, transporte y edades de aves que amparan este lote procesado.
                                 </p>
-                                <div className="flex items-center gap-2 pt-1">
+                                <div className="flex flex-col sm:flex-row items-center gap-2 pt-1">
                                     <button
                                         type="button"
                                         disabled={downloadingOriginCert}
                                         onClick={() => handleDownloadOriginCertificate(qualityLetterBatch?.batch_id, true, 'pdf')}
-                                        className="flex-1 py-2 px-3 bg-white hover:bg-amber-100 border border-amber-300 text-amber-900 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-xs disabled:opacity-50"
+                                        className="w-full sm:flex-1 py-2 px-3 bg-white hover:bg-amber-100 border border-amber-300 text-amber-900 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-xs disabled:opacity-50"
                                     >
                                         <FileText size={13} className="text-rose-600" />
                                         Certificado Origen (PDF)
@@ -199,7 +199,7 @@ export default function TraceabilityIsQualityLetterModalOpenModal({ model, open 
                                         type="button"
                                         disabled={downloadingOriginCert}
                                         onClick={() => handleDownloadOriginCertificate(qualityLetterBatch?.batch_id, true, 'word')}
-                                        className="flex-1 py-2 px-3 bg-white hover:bg-blue-100 border border-blue-200 text-blue-900 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-xs disabled:opacity-50"
+                                        className="w-full sm:flex-1 py-2 px-3 bg-white hover:bg-blue-100 border border-blue-200 text-blue-900 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-xs disabled:opacity-50"
                                     >
                                         <Download size={13} className="text-blue-600" />
                                         Certificado Origen (Word)
@@ -209,11 +209,11 @@ export default function TraceabilityIsQualityLetterModalOpenModal({ model, open 
                         </div>
 
                         {/* Modal Footer */}
-                        <div className="px-6 py-3 bg-slate-50 border-t border-slate-100 flex justify-end">
+                        <div className="p-3.5 sm:px-6 sm:py-3 bg-slate-50 border-t border-slate-100 flex justify-end shrink-0">
                             <button
                                 type="button"
                                 onClick={() => setIsQualityLetterModalOpen(false)}
-                                className="px-5 py-2 bg-white hover:bg-slate-100 text-slate-700 rounded-xl text-xs font-bold border border-slate-200 transition-all shadow-xs"
+                                className="w-full sm:w-auto px-5 py-2 bg-white hover:bg-slate-100 text-slate-700 rounded-xl text-xs font-bold border border-slate-200 transition-all shadow-xs"
                             >
                                 Cancelar
                             </button>

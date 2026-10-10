@@ -13,8 +13,8 @@ export default function EggAgreementHistoryModal({
     if (!open) return null;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-            <div className="bg-white rounded-2xl max-w-2xl w-full p-6 border border-slate-200 shadow-2xl space-y-4 text-xs">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-900/60 backdrop-blur-sm">
+            <div className="bg-white rounded-2xl max-w-2xl w-full p-3.5 sm:p-6 border border-slate-200 shadow-2xl space-y-4 text-xs max-h-[92vh] sm:max-h-[90vh] flex flex-col">
                 <div className="flex items-center justify-between border-b border-slate-200 pb-3">
                     <div>
                         <div className="flex items-center gap-2 text-indigo-600 text-[10px] font-bold uppercase tracking-wider mb-0.5">
@@ -48,7 +48,7 @@ export default function EggAgreementHistoryModal({
                         <span>No hay revisiones previas archivadas para este cliente todavía.</span>
                     </div>
                 ) : (
-                    <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
+                    <div className="space-y-3 overflow-y-auto pr-1 flex-1">
                         {(Array.isArray(history) ? history : []).map((item, index) => (
                             <div key={item.id || index} className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2 relative">
                                 <div className="flex items-center justify-between gap-2">
@@ -96,7 +96,7 @@ export default function EggAgreementHistoryModal({
                     <button
                         type="button"
                         onClick={onClose}
-                        className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all"
+                        className="w-full sm:w-auto px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all text-center"
                     >
                         Cerrar
                     </button>

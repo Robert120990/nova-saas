@@ -6,7 +6,7 @@ import PdfViewerModal from '../../components/ui/PdfViewerModal';
 export default function EggDispatch() {
  const model = useEggDispatchModel();
  const { autoInvoiceModalOpen, setAutoInvoiceModalOpen, pdfPreviewModal, handleClosePdfPreview, routeDetail, fetchOrders, fetchRoutes, fetchRouteDetail } = model;
- return (<div className="p-4 md:p-6 max-w-7xl mx-auto space-y-6">
+ return (<div className="p-3 sm:p-4 md:p-6 max-w-7xl mx-auto space-y-4 sm:space-y-6">
             {/* Header Principal */}
             <EggDispatchHeader model={model} />
 

@@ -10,12 +10,12 @@ export default function RawMaterialTarimasModal({ open, onClose, lot }) {
     const totalTarimaGrossLbs = tarimas.reduce((acc, t) => acc + (parseFloat(t.gross_weight_lbs || 0)), 0);
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
-            <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
+            <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden">
                 {/* Header */}
-                <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/70">
-                    <div className="flex items-center gap-3">
-                        <div className="p-2.5 bg-amber-100 text-amber-800 rounded-xl">
+                <div className="p-3.5 sm:p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/70">
+                    <div className="flex items-center gap-2.5 sm:gap-3">
+                        <div className="p-2 sm:p-2.5 bg-amber-100 text-amber-800 rounded-xl shrink-0">
                             <Layers size={20} />
                         </div>
                         <div>
@@ -52,7 +52,7 @@ export default function RawMaterialTarimasModal({ open, onClose, lot }) {
                 </div>
 
                 {/* Sub-header info badges */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-4 bg-slate-50 border-b border-slate-200/80 text-xs">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3 p-3 sm:p-4 bg-slate-50 border-b border-slate-200/80 text-xs">
                     <div className="bg-white p-2.5 rounded-xl border border-slate-200">
                         <span className="text-[10px] font-bold text-slate-400 uppercase block">Cajas en Stock</span>
                         <span className="text-sm font-black text-slate-900">{lot.total_boxes} cjs</span>
@@ -83,7 +83,7 @@ export default function RawMaterialTarimasModal({ open, onClose, lot }) {
                 </div>
 
                 {/* Content: Tarimas Table */}
-                <div className="p-4 sm:p-5 overflow-y-auto flex-1">
+                <div className="p-3 sm:p-5 overflow-y-auto flex-1">
                     {tarimas.length === 0 ? (
                         <div className="py-12 text-center text-slate-400 flex flex-col items-center gap-2">
                             <Layers size={36} className="text-slate-300" />
@@ -92,7 +92,7 @@ export default function RawMaterialTarimasModal({ open, onClose, lot }) {
                         </div>
                     ) : (
                         <div className="overflow-x-auto rounded-xl border border-slate-200">
-                            <table className="w-full text-left text-xs border-collapse">
+                            <table className="w-full min-w-[620px] text-left text-xs border-collapse">
                                 <thead>
                                     <tr className="bg-slate-100 text-slate-600 font-bold uppercase text-[10px] tracking-wider border-b border-slate-200">
                                         <th className="p-3"># Tarima</th>

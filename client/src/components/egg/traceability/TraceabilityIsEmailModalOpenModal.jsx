@@ -10,8 +10,8 @@ export default function TraceabilityIsEmailModalOpenModal({ model, open = model.
     const { customers, labLogs, selectedLogIds, isEmailModalOpen, setIsEmailModalOpen, sendingEmail, emailForm, setEmailForm } = model;
     if (!open) return null;
     return (<>{isEmailModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
-                    <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto space-y-4 text-slate-900">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-2 sm:p-4">
+                    <div className="bg-white border border-slate-200 rounded-2xl p-3.5 sm:p-6 shadow-2xl max-w-2xl w-full max-h-[92vh] overflow-y-auto space-y-4 text-slate-900">
                         <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                             <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
                                 <Mail size={16} className="text-indigo-600" />
@@ -113,19 +113,19 @@ export default function TraceabilityIsEmailModalOpenModal({ model, open = model.
                                 />
                             </div>
 
-                            <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
+                            <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 pt-4 border-t border-slate-200">
                                 <button
                                     type="button"
                                     disabled={sendingEmail}
                                     onClick={() => setIsEmailModalOpen(false)}
-                                    className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all border border-slate-200"
+                                    className="w-full sm:w-auto px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all border border-slate-200"
                                 >
                                     Cancelar
                                 </button>
                                 <button
                                     type="submit"
                                     disabled={sendingEmail}
-                                    className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5"
+                                    className="w-full sm:w-auto px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1.5"
                                 >
                                     {sendingEmail ? (
                                         <>Enviando {selectedLogIds.length} Certificados...</>

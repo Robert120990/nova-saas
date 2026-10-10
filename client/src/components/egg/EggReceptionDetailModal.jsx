@@ -75,12 +75,12 @@ const EggReceptionDetailModal = ({
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
-            <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-2xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto space-y-5 text-slate-900">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-2 sm:p-4">
+            <div className="bg-white border border-slate-200 rounded-2xl p-3.5 sm:p-6 shadow-2xl max-w-4xl w-full max-h-[92vh] overflow-y-auto space-y-4 sm:space-y-5 text-slate-900">
                 {/* Modal Header */}
                 <div className="flex items-center justify-between border-b border-slate-200 pb-4">
                     <div className="flex items-center gap-3">
-                        <div className="p-2.5 bg-indigo-50 rounded-xl border border-indigo-100 text-indigo-600">
+                        <div className="p-2 sm:p-2.5 bg-indigo-50 rounded-xl border border-indigo-100 text-indigo-600 shrink-0">
                             <Boxes className="h-6 w-6" />
                         </div>
                         <div>
@@ -208,7 +208,7 @@ const EggReceptionDetailModal = ({
                             </div>
                         </div>
 
-                        <div className="flex items-center gap-2 self-start sm:self-auto">
+                        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
                             <button
                                 type="button"
                                 disabled={printingPdfId === reception.id}
@@ -282,7 +282,7 @@ const EggReceptionDetailModal = ({
 
                 {/* Tabla de Tarimas */}
                 <div className="space-y-2">
-                    <div className="flex items-center justify-between">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                         <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
                             <Boxes size={14} className="text-indigo-600" />
                             Tarimas Registradas en Báscula ({parsedTarimas.length})
@@ -290,7 +290,7 @@ const EggReceptionDetailModal = ({
                         <button
                             type="button"
                             onClick={() => handleOpenPrintTarima && handleOpenPrintTarima(parsedTarimas[0], parsedTarimas, recData)}
-                            className="px-3 py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 rounded-xl text-xs font-bold border border-sky-200 transition-colors flex items-center gap-1.5 shadow-xs"
+                            className="w-full sm:w-auto justify-center px-3 py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 rounded-xl text-xs font-bold border border-sky-200 transition-colors flex items-center gap-1.5 shadow-xs"
                         >
                             <Printer size={13} />
                             Imprimir Todas las Tarimas
@@ -298,7 +298,7 @@ const EggReceptionDetailModal = ({
                     </div>
 
                     <div className="overflow-x-auto rounded-xl border border-slate-200">
-                        <table className="w-full text-left text-xs">
+                        <table className="w-full min-w-[560px] text-left text-xs">
                             <thead className="bg-slate-50 text-slate-600 font-bold uppercase text-[10px] border-b border-slate-200">
                                 <tr>
                                     <th className="p-2.5 text-center w-12">#</th>
@@ -347,7 +347,7 @@ const EggReceptionDetailModal = ({
                 </div>
 
                 {/* Modal Footer */}
-                <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t border-slate-200">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-4 border-t border-slate-200">
                     <button
                         type="button"
                         onClick={() => handlePrintReceptionSummary && handlePrintReceptionSummary(reception)}
@@ -356,11 +356,11 @@ const EggReceptionDetailModal = ({
                         <Download size={15} />
                         Imprimir Resumen de Recepción (PDF LOG-004)
                     </button>
-                    <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto justify-end">
                         <button
                             type="button"
                             onClick={onClose}
-                            className="px-5 py-2.5 bg-white hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold border border-slate-300 transition-colors shadow-xs"
+                            className="w-full sm:w-auto px-5 py-2.5 bg-white hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold border border-slate-300 transition-colors shadow-xs text-center justify-center"
                         >
                             Cerrar
                         </button>
@@ -371,7 +371,7 @@ const EggReceptionDetailModal = ({
                                     onClose();
                                     handleEdit && handleEdit(reception);
                                 }}
-                                className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-2"
+                                className="w-full sm:w-auto justify-center px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-2"
                             >
                                 <Pencil size={14} />
                                 Editar Recepción Completa

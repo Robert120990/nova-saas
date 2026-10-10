@@ -9,7 +9,7 @@ export default function TraceabilitySolidsTab({ model }) {
 
     return (<>{activeTab === 'solids' && (
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4 h-fit text-slate-900">
+                    <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-6 shadow-sm space-y-4 h-fit text-slate-900">
                         <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
                             <Calculator size={18} className="text-teal-600" />
                             <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">Parámetros de Dilución HE+</h3>
@@ -68,7 +68,7 @@ export default function TraceabilitySolidsTab({ model }) {
                     </div>
 
                     {/* Results Panel */}
-                    <div className="lg:col-span-2 bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-5 text-slate-900">
+                    <div className="lg:col-span-2 bg-white border border-slate-200 rounded-2xl p-4 sm:p-6 shadow-sm space-y-5 text-slate-900">
                         <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                             <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
                                 <FileCheck size={16} className="text-indigo-600" />

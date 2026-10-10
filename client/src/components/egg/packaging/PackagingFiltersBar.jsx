@@ -22,23 +22,24 @@ import PackagingActiveBatchesTable from './PackagingActiveBatchesTable';
 export default function PackagingFiltersBar({ model }) {
     const { batches, loading, searchTerm, setSearchTerm, setIsNewPackagingModalOpen, setPackagingForm, setSelectedLabel, setQualityModal, canClosePackaging, canEditLots, setCloseBatchModal, handleReopenBatchPackaging, handlePrintLabel, filteredPackaging, handleEdit, handleDelete } = model;
 
-    return (<div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
-                <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
-                    <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
-                        <Boxes className="h-4 w-4 text-indigo-600" />
-                        Historial de Unidades Empacadas
-                    </h2>
-                    <div className="relative w-full md:w-72">
-                        <input
-                            type="text"
-                            placeholder="Buscar por lote, producto..."
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            className="w-full pl-8 pr-4 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-medium"
-                        />
-                        <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
-                    </div>
+    return (
+        <div className="bg-white border border-slate-200 rounded-2xl p-3.5 sm:p-6 shadow-sm space-y-4">
+            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 items-stretch sm:items-center justify-between">
+                <h2 className="text-xs sm:text-sm font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
+                    <Boxes className="h-4 w-4 text-indigo-600 shrink-0" />
+                    Historial de Unidades Empacadas
+                </h2>
+                <div className="relative w-full sm:w-72">
+                    <input
+                        type="text"
+                        placeholder="Buscar por lote, producto..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="w-full pl-8 pr-4 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-medium"
+                    />
+                    <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
                 </div>
+            </div>
 
                 {/* Stock de Producto Terminado */}
                 <PackagingStockCards batches={batches} />
@@ -66,7 +67,7 @@ export default function PackagingFiltersBar({ model }) {
                             No se han registrado envasados todavía.
                         </div>
                     ) : (
-                        <table className="w-full text-left text-xs border-collapse">
+                        <table className="w-full min-w-[840px] text-left text-xs border-collapse">
                             <thead>
                                 <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase tracking-wider text-[10px]">
                                     <th className="p-3">Código Lote / Barra</th>

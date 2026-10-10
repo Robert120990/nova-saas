@@ -13,17 +13,18 @@ import {
 export default function DashboardFiltersBar({ model }) {
     const { telemetry, selectedTank, setSelectedTank, simulatedTankTemp, setSimulatedTankTemp, simulatedPasteurizerTemp, setSimulatedPasteurizerTemp, handleInjectTankAlarm, handleInjectHaccpDeviation, handleTogglePasteurizer } = model;
 
-    return (<div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+    return (
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 sm:gap-6">
 
-                {/* 1. DIAGRAMA DE FLUJO DE PLANTA */}
-                <div className="lg:col-span-3 bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-6 flex flex-col justify-between">
-                    <div>
-                        <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wide mb-2 flex items-center gap-2">
-                            <Activity className="h-4 w-4 text-indigo-600" />
-                            Etapas del Proceso Productivo y Puntos Críticos (PCC)
-                        </h2>
-                        <div className="h-px bg-slate-100" />
-                    </div>
+            {/* 1. DIAGRAMA DE FLUJO DE PLANTA */}
+            <div className="lg:col-span-3 bg-white border border-slate-200 rounded-2xl p-3.5 sm:p-6 shadow-sm space-y-4 sm:space-y-6 flex flex-col justify-between">
+                <div>
+                    <h2 className="text-xs sm:text-sm font-bold text-slate-900 uppercase tracking-wide mb-2 flex items-center gap-2">
+                        <Activity className="h-4 w-4 text-indigo-600 shrink-0" />
+                        Etapas del Proceso Productivo y Puntos Críticos (PCC)
+                    </h2>
+                    <div className="h-px bg-slate-100" />
+                </div>
 
                     {/* Flujo Gráfico */}
                     <div className="grid grid-cols-1 md:grid-cols-5 gap-4 py-4 relative">
@@ -83,39 +84,39 @@ export default function DashboardFiltersBar({ model }) {
                     </div>
 
                     {/* Diales de Temperatura */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50 p-5 rounded-xl border border-slate-200">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4 bg-slate-50 p-3 sm:p-5 rounded-xl border border-slate-200">
                         {/* Dial Pasteurizador */}
-                        <div className="flex items-center gap-4 bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
-                            <div className={`p-3.5 rounded-xl ${
+                        <div className="flex items-center gap-3 sm:gap-4 bg-white p-3 sm:p-4 rounded-xl border border-slate-200 shadow-xs">
+                            <div className={`p-2.5 sm:p-3.5 rounded-xl shrink-0 ${
                                 telemetry?.pasteurizer?.active
                                     ? (telemetry.pasteurizer.haccpStatus === 'deviation' ? 'bg-rose-50 text-rose-600 border border-rose-200' : 'bg-emerald-50 text-emerald-600 border border-emerald-200')
                                     : 'bg-slate-100 text-slate-400'
                             }`}>
-                                <Thermometer className="h-7 w-7" />
+                                <Thermometer className="h-6 w-6 sm:h-7 sm:w-7" />
                             </div>
                             <div>
                                 <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide block">Temperatura de Pasteurización</span>
-                                <span className="text-2xl font-black text-slate-900">{telemetry?.pasteurizer?.temp || 0.0}°C</span>
-                                <span className="text-[11px] text-slate-500 block font-medium">Norma: Huevo Entero ≥ 64.0°C</span>
+                                <span className="text-xl sm:text-2xl font-black text-slate-900">{telemetry?.pasteurizer?.temp || 0.0}°C</span>
+                                <span className="text-[10px] sm:text-[11px] text-slate-500 block font-medium">Norma: Huevo Entero ≥ 64.0°C</span>
                             </div>
                         </div>
 
                         {/* Dial Flujo y Presión */}
-                        <div className="flex items-center gap-4 bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
-                            <div className="p-3.5 rounded-xl bg-indigo-50 text-indigo-600 border border-indigo-100">
-                                <Droplets className="h-7 w-7" />
+                        <div className="flex items-center gap-3 sm:gap-4 bg-white p-3 sm:p-4 rounded-xl border border-slate-200 shadow-xs">
+                            <div className="p-2.5 sm:p-3.5 rounded-xl bg-indigo-50 text-indigo-600 border border-indigo-100 shrink-0">
+                                <Droplets className="h-6 w-6 sm:h-7 sm:w-7" />
                             </div>
                             <div>
                                 <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide block">Parámetros Hidráulicos de Bombeo</span>
-                                <div className="flex items-center gap-6 mt-1">
+                                <div className="flex items-center gap-4 sm:gap-6 mt-1">
                                     <div>
                                         <span className="text-slate-500 text-[10px] font-bold uppercase block">Flujo</span>
-                                        <span className="text-base font-bold text-slate-900">{telemetry?.pasteurizer?.flow || 0} GPM</span>
+                                        <span className="text-sm sm:text-base font-bold text-slate-900">{telemetry?.pasteurizer?.flow || 0} GPM</span>
                                     </div>
                                     <div className="h-7 w-px bg-slate-200" />
                                     <div>
                                         <span className="text-slate-500 text-[10px] font-bold uppercase block">Presión</span>
-                                        <span className="text-base font-bold text-slate-900">{telemetry?.pasteurizer?.pressure || 0} PSI</span>
+                                        <span className="text-sm sm:text-base font-bold text-slate-900">{telemetry?.pasteurizer?.pressure || 0} PSI</span>
                                     </div>
                                 </div>
                             </div>
@@ -124,10 +125,10 @@ export default function DashboardFiltersBar({ model }) {
                 </div>
 
                 {/* 2. PANEL DE PRUEBAS Y CONTROL */}
-                <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-5 flex flex-col justify-between">
+                <div className="bg-white border border-slate-200 rounded-2xl p-3.5 sm:p-6 shadow-sm space-y-4 sm:space-y-5 flex flex-col justify-between">
                     <div>
-                        <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wide mb-2 flex items-center gap-2">
-                            <Settings className="h-4 w-4 text-indigo-600" />
+                        <h2 className="text-xs sm:text-sm font-bold text-slate-900 uppercase tracking-wide mb-2 flex items-center gap-2">
+                            <Settings className="h-4 w-4 text-indigo-600 shrink-0" />
                             Control de Equipos & Pruebas
                         </h2>
                         <div className="h-px bg-slate-100" />

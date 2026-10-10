@@ -481,11 +481,11 @@ const RawMaterialPlannerModal = ({ isOpen, onClose, initialDate = new Date() }) 
                         </button>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                         <button
                             type="button"
                             onClick={handleDownloadPdf}
-                            className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm"
+                            className="flex-1 sm:flex-none justify-center flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm"
                             title="Descargar Orden Formal de Abastecimiento en PDF para proveedores"
                         >
                             <FileDown className="w-3.5 h-3.5" />
@@ -495,7 +495,7 @@ const RawMaterialPlannerModal = ({ isOpen, onClose, initialDate = new Date() }) 
                         <button
                             type="button"
                             onClick={handlePrintPdf}
-                            className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 rounded-xl text-xs font-bold transition-all shadow-sm"
+                            className="flex-1 sm:flex-none justify-center flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 rounded-xl text-xs font-bold transition-all shadow-sm"
                             title="Imprimir documento oficial en PDF limpio"
                         >
                             <Printer className="w-3.5 h-3.5" />
@@ -606,11 +606,11 @@ const RawMaterialPlannerModal = ({ isOpen, onClose, initialDate = new Date() }) 
                 </div>
 
                 {/* TABS DE NAVEGACIÓN */}
-                <div className="flex border-b border-slate-200 gap-2 overflow-x-auto pb-0.5">
+                <div className="flex border-b border-slate-200 gap-2 overflow-x-auto pb-0.5 whitespace-nowrap scrollbar-none">
                     <button
                         type="button"
                         onClick={() => setActiveTab('egg')}
-                        className={`px-3.5 py-2 text-xs font-bold rounded-t-xl transition-all flex items-center gap-1.5 whitespace-nowrap ${activeTab === 'egg'
+                        className={`shrink-0 px-3.5 py-2 text-xs font-bold rounded-t-xl transition-all flex items-center gap-1.5 whitespace-nowrap ${activeTab === 'egg'
                             ? 'bg-indigo-600 text-white shadow-sm'
                             : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                             }`}
@@ -622,7 +622,7 @@ const RawMaterialPlannerModal = ({ isOpen, onClose, initialDate = new Date() }) 
                     <button
                         type="button"
                         onClick={() => setActiveTab('ingredients')}
-                        className={`px-3.5 py-2 text-xs font-bold rounded-t-xl transition-all flex items-center gap-1.5 whitespace-nowrap ${activeTab === 'ingredients'
+                        className={`shrink-0 px-3.5 py-2 text-xs font-bold rounded-t-xl transition-all flex items-center gap-1.5 whitespace-nowrap ${activeTab === 'ingredients'
                             ? 'bg-indigo-600 text-white shadow-sm'
                             : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                             }`}
@@ -634,7 +634,7 @@ const RawMaterialPlannerModal = ({ isOpen, onClose, initialDate = new Date() }) 
                     <button
                         type="button"
                         onClick={() => setActiveTab('packaging')}
-                        className={`px-3.5 py-2 text-xs font-bold rounded-t-xl transition-all flex items-center gap-1.5 whitespace-nowrap ${activeTab === 'packaging'
+                        className={`shrink-0 px-3.5 py-2 text-xs font-bold rounded-t-xl transition-all flex items-center gap-1.5 whitespace-nowrap ${activeTab === 'packaging'
                             ? 'bg-indigo-600 text-white shadow-sm'
                             : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                             }`}
@@ -646,7 +646,7 @@ const RawMaterialPlannerModal = ({ isOpen, onClose, initialDate = new Date() }) 
                     <button
                         type="button"
                         onClick={() => setActiveTab('orders')}
-                        className={`px-3.5 py-2 text-xs font-bold rounded-t-xl transition-all flex items-center gap-1.5 whitespace-nowrap ${activeTab === 'orders'
+                        className={`shrink-0 px-3.5 py-2 text-xs font-bold rounded-t-xl transition-all flex items-center gap-1.5 whitespace-nowrap ${activeTab === 'orders'
                             ? 'bg-indigo-600 text-white shadow-sm'
                             : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                             }`}
@@ -1323,7 +1323,7 @@ const RawMaterialPlannerModal = ({ isOpen, onClose, initialDate = new Date() }) 
                                             <button
                                                 type="button"
                                                 onClick={handleDownloadPdf}
-                                                className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm"
+                                                className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex-1 sm:flex-none"
                                             >
                                                 <FileDown className="w-3.5 h-3.5" />
                                                 <span>Descargar PDF</span>
@@ -1331,7 +1331,7 @@ const RawMaterialPlannerModal = ({ isOpen, onClose, initialDate = new Date() }) 
                                             <button
                                                 type="button"
                                                 onClick={handlePrintPdf}
-                                                className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 rounded-xl text-xs font-bold transition-all shadow-sm"
+                                                className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 rounded-xl text-xs font-bold transition-all shadow-sm flex-1 sm:flex-none"
                                             >
                                                 <Printer className="w-3.5 h-3.5" />
                                                 <span>Imprimir</span>
@@ -1340,65 +1340,67 @@ const RawMaterialPlannerModal = ({ isOpen, onClose, initialDate = new Date() }) 
                                     </div>
                                 </div>
 
-                                <table className="w-full text-left text-xs border-collapse">
-                                    <thead>
-                                        <tr className="bg-slate-50 text-[10px] font-bold text-slate-600 uppercase border-b border-slate-200">
-                                            <th className="p-2.5">Concepto / Material</th>
-                                            <th className="p-2.5 text-right">Consumo Mensual</th>
-                                            <th className="p-2.5 text-right">Stock Actual</th>
-                                            <th className="p-2.5 text-right">Requerimiento Neto</th>
-                                            <th className="p-2.5 text-right">Presentación Sugerida</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-100">
-                                        <tr>
-                                            <td className="p-2.5 font-bold text-slate-900">Huevo Cáscara Grado A</td>
-                                            <td className="p-2.5 text-right font-medium">
-                                                {eggBal.total_boxes_needed?.toLocaleString()} cajas
-                                            </td>
-                                            <td className="p-2.5 text-right font-medium">
-                                                {eggBal.current_stock_boxes?.toLocaleString()} cajas
-                                            </td>
-                                            <td className={`p-2.5 text-right font-black ${isDeficit ? 'text-amber-700' : 'text-emerald-700'}`}>
-                                                {eggBal.boxes_to_purchase?.toLocaleString()} cajas
-                                            </td>
-                                            <td className="p-2.5 text-right text-slate-500">
-                                                Camiones de 350-500 cajas
-                                            </td>
-                                        </tr>
-                                        <tr>
-                                            <td className="p-2.5 font-bold text-slate-900">MP liquida A</td>
-                                            <td className="p-2.5 text-right font-medium">
-                                                {ingBal.purified_water?.lbs?.toLocaleString()} Lbs
-                                            </td>
-                                            <td className="p-2.5 text-right font-medium">N/A</td>
-                                            <td className="p-2.5 text-right font-bold text-cyan-700">
-                                                {ingBal.purified_water?.bottles_5gal} garrafas
-                                            </td>
-                                            <td className="p-2.5 text-right text-slate-500">Garrafas 5 galones</td>
-                                        </tr>
-                                        <tr>
-                                            <td className="p-2.5 font-bold text-slate-900">Ácido Cítrico Grado Alimentario</td>
-                                            <td className="p-2.5 text-right font-medium">{ingBal.citric_acid?.lbs} Lbs</td>
-                                            <td className="p-2.5 text-right font-medium">N/A</td>
-                                            <td className="p-2.5 text-right font-bold text-emerald-700">
-                                                {ingBal.citric_acid?.kg} Kg
-                                            </td>
-                                            <td className="p-2.5 text-right text-slate-500">Sacos 25 Kg</td>
-                                        </tr>
-                                        <tr>
-                                            <td className="p-2.5 font-bold text-slate-900">Cubetas 30 Lb con Tapadera y Liner</td>
-                                            <td className="p-2.5 text-right font-medium">
-                                                {packBal.buckets_30lb?.toLocaleString()} sets
-                                            </td>
-                                            <td className="p-2.5 text-right font-medium">N/A</td>
-                                            <td className="p-2.5 text-right font-bold text-slate-900">
-                                                {packBal.buckets_30lb?.toLocaleString()} sets
-                                            </td>
-                                            <td className="p-2.5 text-right text-slate-500">Pallet de 250 cubetas</td>
-                                        </tr>
-                                    </tbody>
-                                </table>
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-left text-xs border-collapse min-w-[650px]">
+                                        <thead>
+                                            <tr className="bg-slate-50 text-[10px] font-bold text-slate-600 uppercase border-b border-slate-200">
+                                                <th className="p-2.5">Concepto / Material</th>
+                                                <th className="p-2.5 text-right">Consumo Mensual</th>
+                                                <th className="p-2.5 text-right">Stock Actual</th>
+                                                <th className="p-2.5 text-right">Requerimiento Neto</th>
+                                                <th className="p-2.5 text-right">Presentación Sugerida</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100">
+                                            <tr>
+                                                <td className="p-2.5 font-bold text-slate-900">Huevo Cáscara Grado A</td>
+                                                <td className="p-2.5 text-right font-medium">
+                                                    {eggBal.total_boxes_needed?.toLocaleString()} cajas
+                                                </td>
+                                                <td className="p-2.5 text-right font-medium">
+                                                    {eggBal.current_stock_boxes?.toLocaleString()} cajas
+                                                </td>
+                                                <td className={`p-2.5 text-right font-black ${isDeficit ? 'text-amber-700' : 'text-emerald-700'}`}>
+                                                    {eggBal.boxes_to_purchase?.toLocaleString()} cajas
+                                                </td>
+                                                <td className="p-2.5 text-right text-slate-500">
+                                                    Camiones de 350-500 cajas
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <td className="p-2.5 font-bold text-slate-900">MP liquida A</td>
+                                                <td className="p-2.5 text-right font-medium">
+                                                    {ingBal.purified_water?.lbs?.toLocaleString()} Lbs
+                                                </td>
+                                                <td className="p-2.5 text-right font-medium">N/A</td>
+                                                <td className="p-2.5 text-right font-bold text-cyan-700">
+                                                    {ingBal.purified_water?.bottles_5gal} garrafas
+                                                </td>
+                                                <td className="p-2.5 text-right text-slate-500">Garrafas 5 galones</td>
+                                            </tr>
+                                            <tr>
+                                                <td className="p-2.5 font-bold text-slate-900">Ácido Cítrico Grado Alimentario</td>
+                                                <td className="p-2.5 text-right font-medium">{ingBal.citric_acid?.lbs} Lbs</td>
+                                                <td className="p-2.5 text-right font-medium">N/A</td>
+                                                <td className="p-2.5 text-right font-bold text-emerald-700">
+                                                    {ingBal.citric_acid?.kg} Kg
+                                                </td>
+                                                <td className="p-2.5 text-right text-slate-500">Sacos 25 Kg</td>
+                                            </tr>
+                                            <tr>
+                                                <td className="p-2.5 font-bold text-slate-900">Cubetas 30 Lb con Tapadera y Liner</td>
+                                                <td className="p-2.5 text-right font-medium">
+                                                    {packBal.buckets_30lb?.toLocaleString()} sets
+                                                </td>
+                                                <td className="p-2.5 text-right font-medium">N/A</td>
+                                                <td className="p-2.5 text-right font-bold text-slate-900">
+                                                    {packBal.buckets_30lb?.toLocaleString()} sets
+                                                </td>
+                                                <td className="p-2.5 text-right text-slate-500">Pallet de 250 cubetas</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
 
                                 <div className="text-[11px] text-slate-500 border-t border-slate-100 pt-3">
                                     Nota: Los pedidos a proveedores deben emitirse con al menos 48 horas de anticipación a la fecha de arribo del camión para coordinar inspección sanitaria de recepción y desinfección en cámara de recepción.
@@ -1413,7 +1415,7 @@ const RawMaterialPlannerModal = ({ isOpen, onClose, initialDate = new Date() }) 
                     <button
                         type="button"
                         onClick={onClose}
-                        className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all"
+                        className="w-full sm:w-auto px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all text-center"
                     >
                         Cerrar Planificador
                     </button>

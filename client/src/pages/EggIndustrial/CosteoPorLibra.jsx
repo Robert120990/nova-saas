@@ -12,7 +12,7 @@ import {
 export default function EggCosteoPorLibra() {
  const model = useCosteoPorLibraModel();
  const { productsLookup, agreementModal, setAgreementModal, agreementHistoryModal, setAgreementHistoryModal, saveScenarioModal, setSaveScenarioModal, scenarioNameInput, setScenarioNameInput, cipModal, setCipModal, packagingModal, setPackagingModal, configModal, setConfigModal, handleSaveScenario, handleSaveAgreement, handleSelectProductForCip, handleSelectProductForPackaging, handleSaveCipItem, handleSavePackagingItem, handleSaveConfigs } = model;
- return (<div className="space-y-6 text-slate-900">
+ return (<div className="space-y-4 sm:space-y-6 text-slate-900">
             {/* Header Principal */}
             <CosteoPorLibraHeader model={model} />
 

@@ -23,7 +23,7 @@ export default function ReceptionFiltersBar({ model }) {
     const [printMenuPos, setPrintMenuPos] = useState(null);
     const { user, loading, searchTerm, setSearchTerm, setViewingReception, setVoidConfirmId, canDeleteReception, setDeleteConfirmRm, getQualityBadgeClass, printingPdfId, openPrintMenuId, setOpenPrintMenuId, handlePrintLab001, handleDownloadLab001Docx, handlePrintOriginCert, handleDownloadOriginCertDocx, handleOpenQualityModal, handleOpenPrintTarima, handleEdit, handlePrintReceptionSummary, filteredMaterials, getStatusBadge, getStatusIcon, getStatusLabel, handleQuickApprove } = model;
 
-    return (<div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
+    return (<div className="bg-white border border-slate-200 rounded-2xl p-3.5 sm:p-6 shadow-sm space-y-4">
                     {/* Search and Filters */}
                     <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
                         <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wide flex items-center gap-2">
@@ -56,7 +56,7 @@ export default function ReceptionFiltersBar({ model }) {
                                 No se encontraron registros de materia prima.
                             </div>
                         ) : (
-                            <table className="w-full text-left text-xs border-collapse">
+                            <table className="w-full min-w-[880px] text-left text-xs border-collapse">
                                 <thead>
                                     <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase tracking-wider text-[10px]">
                                         <th className="px-3 py-2.5">Fecha</th>
@@ -308,7 +308,7 @@ export default function ReceptionFiltersBar({ model }) {
 
                                                                     {/* Menú Desplegable */}
                                                                     <div 
-                                                                        className={`fixed z-50 w-60 bg-white border border-slate-200 rounded-xl shadow-2xl py-1.5 text-left divide-y divide-slate-100 animate-in fade-in-50 ${
+                                                                        className={`fixed z-50 w-60 max-w-[calc(100vw-24px)] bg-white border border-slate-200 rounded-xl shadow-2xl py-1.5 text-left divide-y divide-slate-100 animate-in fade-in-50 ${
                                                                             printMenuPos.dir === 'up' ? 'slide-in-from-bottom-2' : 'slide-in-from-top-2'
                                                                         }`}
                                                                         style={{

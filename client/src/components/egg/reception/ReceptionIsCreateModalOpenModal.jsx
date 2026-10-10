@@ -23,8 +23,8 @@ export default function ReceptionIsCreateModalOpenModal({ model, open = model.is
     const { providers, providerLotConfigs, providerLotIntel, useTarimas, setUseTarimas, globalHasCaja, showDetailedTares, setShowDetailedTares, bulkAddCount, setBulkAddCount, receptionBaseBoxes, globalStorageLocation, lastDraftSavedAt, hasRestoredDraft, tarimas, formData, setFormData, isSubmitting, isCreateModalOpen, editingId, discardDraft, handleOpenPrintTarima, addTarima, addMultipleTarimas, applyStorageLocationToAll, applyEmpaqueModeToAll, removeTarima, updateTarima, handleProviderSelect, loadProvidersOptions, handleOpenLotConfig, resetForm } = model;
     if (!open) return null;
     return (<>{isCreateModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
-                <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto space-y-6 text-slate-900">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-2 sm:p-4">
+                <div className="bg-white border border-slate-200 rounded-2xl p-3.5 sm:p-6 shadow-2xl max-w-3xl w-full max-h-[92vh] overflow-y-auto space-y-4 sm:space-y-6 text-slate-900">
                     <div className="flex items-center justify-between border-b border-slate-200 pb-4">
                         <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wide flex items-center gap-2">
                             {editingId ? <Pencil className="h-4 w-4 text-indigo-600" /> : <Plus className="h-4 w-4 text-indigo-600" />}
@@ -563,7 +563,7 @@ export default function ReceptionIsCreateModalOpenModal({ model, open = model.is
                                     </div>
 
                                     <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
-                                        <table className="w-full text-left text-xs">
+                                        <table className="w-full min-w-[680px] text-left text-xs">
                                             <thead className="bg-slate-50 text-slate-600 text-[10px] uppercase font-bold border-b border-slate-200">
                                                 <tr>
                                                     <th className="p-2 text-center w-10">#</th>
@@ -775,15 +775,15 @@ export default function ReceptionIsCreateModalOpenModal({ model, open = model.is
                                                 Imprimir Tarimas ({tarimas.length})
                                             </button>
                                         </div>
-                                        <div className="flex items-center gap-4 bg-white px-4 py-2 rounded-xl border border-slate-200 text-xs shadow-xs">
+                                        <div className="flex flex-wrap items-center gap-2 sm:gap-4 bg-white px-3 sm:px-4 py-2 rounded-xl border border-slate-200 text-xs shadow-xs">
                                             <span className="text-slate-500">Tarimas: <strong className="text-slate-800">{tarimas.length}</strong></span>
                                             <span className="text-slate-500">Total Cajas: <strong className="text-indigo-700">{formData.total_boxes}</strong></span>
                                             <span className="text-slate-500">Neto Total: <strong className="text-emerald-700">{formData.weight_lbs || '0.00'} lb</strong></span>
                                             {parseFloat(formData.total_boxes || 0) > 0 && parseFloat(formData.weight_lbs || 0) > 0 && (
-                                                <>
-                                                    <span className="text-slate-500">Prom. Caja: <strong className="text-indigo-900 font-bold">{(parseFloat(formData.weight_lbs) / parseFloat(formData.total_boxes)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} lb/cj</strong></span>
-                                                    <span className="text-slate-500">Prom. Unidad: <strong className="text-emerald-700 font-bold">{calculateUnitGramsFromBoxes(formData.weight_lbs, formData.total_boxes)} g/hvo</strong></span>
-                                                </>
+                                                 <>
+                                                     <span className="text-slate-500">Prom. Caja: <strong className="text-indigo-900 font-bold">{(parseFloat(formData.weight_lbs) / parseFloat(formData.total_boxes)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} lb/cj</strong></span>
+                                                     <span className="text-slate-500">Prom. Unidad: <strong className="text-emerald-700 font-bold">{calculateUnitGramsFromBoxes(formData.weight_lbs, formData.total_boxes)} g/hvo</strong></span>
+                                                 </>
                                             )}
 
                                         </div>
@@ -820,18 +820,18 @@ export default function ReceptionIsCreateModalOpenModal({ model, open = model.is
                             </div>
                         </div>
 
-                        <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
+                        <div className="flex flex-col sm:flex-row justify-end gap-3 pt-4 border-t border-slate-200">
                             <button
                                 type="button"
                                 onClick={resetForm}
-                                className="px-5 py-2.5 bg-white hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold transition-all border border-slate-300 shadow-xs"
+                                className="w-full sm:w-auto px-5 py-2.5 bg-white hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold transition-all border border-slate-300 shadow-xs text-center justify-center"
                             >
                                 Cancelar
                             </button>
                             <button
                                 type="submit"
                                 disabled={isSubmitting}
-                                className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-2 disabled:opacity-55"
+                                className="w-full sm:w-auto justify-center px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-2 disabled:opacity-55"
                             >
                                 {isSubmitting ? 'Guardando...' : (editingId ? 'Guardar Cambios' : 'Confirmar Ingreso')}
                             </button>

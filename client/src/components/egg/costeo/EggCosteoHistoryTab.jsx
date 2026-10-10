@@ -16,7 +16,7 @@ export default function EggCosteoHistoryTab({
 }) {
     return (
                 <div className="space-y-4">
-                    <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div className="bg-white p-4 sm:p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
                         <div>
                             <h3 className="text-sm font-bold uppercase tracking-wider text-slate-900 flex items-center gap-2">
                                 <History className="w-4 h-4 text-indigo-600" />
@@ -26,11 +26,11 @@ export default function EggCosteoHistoryTab({
                                 Analiza el rendimiento real acumulado de planta, compara escenarios guardados o audita las revisiones de acuerdos de clientes.
                             </p>
                         </div>
-                        <div className="flex flex-wrap items-center gap-1.5 bg-slate-100 p-1.5 rounded-xl border border-slate-200 text-xs">
+                        <div className="flex items-center gap-1.5 bg-slate-100 p-1.5 rounded-xl border border-slate-200 text-xs overflow-x-auto whitespace-nowrap scrollbar-none w-full md:w-auto">
                             <button
                                 type="button"
                                 onClick={() => setHistorySubTab('real_production')}
-                                className={`px-3 py-1.5 rounded-lg font-bold transition-all ${historySubTab === 'real_production'
+                                className={`shrink-0 px-3 py-1.5 rounded-lg font-bold transition-all ${historySubTab === 'real_production'
                                         ? 'bg-white text-indigo-700 shadow-sm'
                                         : 'text-slate-600 hover:text-slate-900'
                                     }`}
@@ -40,7 +40,7 @@ export default function EggCosteoHistoryTab({
                             <button
                                 type="button"
                                 onClick={() => setHistorySubTab('scenarios')}
-                                className={`px-3 py-1.5 rounded-lg font-bold transition-all ${historySubTab === 'scenarios'
+                                className={`shrink-0 px-3 py-1.5 rounded-lg font-bold transition-all ${historySubTab === 'scenarios'
                                         ? 'bg-white text-indigo-700 shadow-sm'
                                         : 'text-slate-600 hover:text-slate-900'
                                     }`}
@@ -53,7 +53,7 @@ export default function EggCosteoHistoryTab({
                                     setHistorySubTab('agreements_history');
                                     loadGlobalAgreementHistory();
                                 }}
-                                className={`px-3 py-1.5 rounded-lg font-bold transition-all ${historySubTab === 'agreements_history'
+                                className={`shrink-0 px-3 py-1.5 rounded-lg font-bold transition-all ${historySubTab === 'agreements_history'
                                         ? 'bg-white text-indigo-700 shadow-sm'
                                         : 'text-slate-600 hover:text-slate-900'
                                     }`}
@@ -96,7 +96,7 @@ export default function EggCosteoHistoryTab({
                                 </div>
                             ) : (
                                 <div className="overflow-x-auto rounded-xl border border-slate-200">
-                                    <table className="w-full text-left text-xs border-collapse">
+                                    <table className="w-full text-left text-xs border-collapse min-w-[750px]">
                                         <thead>
                                             <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px]">
                                                 <th className="py-3 px-4">Período</th>
@@ -216,7 +216,7 @@ export default function EggCosteoHistoryTab({
                                 </div>
                             ) : (
                                 <div className="overflow-x-auto rounded-xl border border-slate-200">
-                                    <table className="w-full text-left text-xs border-collapse">
+                                    <table className="w-full text-left text-xs border-collapse min-w-[750px]">
                                         <thead>
                                             <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px]">
                                                 <th className="py-3 px-4">Fecha de Ajuste</th>

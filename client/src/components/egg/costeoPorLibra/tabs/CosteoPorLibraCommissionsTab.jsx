@@ -30,11 +30,11 @@ export default function CosteoPorLibraCommissionsTab({ model }) {
                             </div>
                         </div>
 
-                        <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200">
+                        <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200 overflow-x-auto whitespace-nowrap scrollbar-none w-full sm:w-auto">
                             <button
                                 type="button"
                                 onClick={() => setCommissionsSubTab('manager')}
-                                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all ${
+                                className={`shrink-0 px-3.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all ${
                                     commissionsSubTab === 'manager'
                                         ? 'bg-white text-indigo-700 shadow-sm border border-slate-200'
                                         : 'text-slate-600 hover:text-slate-900'
@@ -46,7 +46,7 @@ export default function CosteoPorLibraCommissionsTab({ model }) {
                             <button
                                 type="button"
                                 onClick={() => setCommissionsSubTab('simulator')}
-                                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all ${
+                                className={`shrink-0 px-3.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all ${
                                     commissionsSubTab === 'simulator'
                                         ? 'bg-white text-indigo-700 shadow-sm border border-slate-200'
                                         : 'text-slate-600 hover:text-slate-900'

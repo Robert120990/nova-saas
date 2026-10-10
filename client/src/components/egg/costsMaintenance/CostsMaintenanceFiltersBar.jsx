@@ -9,10 +9,10 @@ import {
 export default function CostsMaintenanceFiltersBar({ model }) {
     const { activeTab, setActiveTab } = model;
 
-    return (<div className="bg-slate-100 p-1.5 rounded-xl border border-slate-200 flex flex-wrap gap-1.5 w-fit">
+    return (<div className="bg-slate-100 p-1 sm:p-1.5 rounded-xl border border-slate-200 flex flex-wrap gap-1 sm:gap-1.5 w-full sm:w-fit">
                 <button
                     onClick={() => setActiveTab('costs')}
-                    className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${
+                    className={`flex-1 sm:flex-initial justify-center px-3 sm:px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 sm:gap-2 ${
                         activeTab === 'costs'
                             ? 'bg-white text-indigo-700 shadow-sm border border-slate-200'
                             : 'text-slate-600 hover:text-slate-900'

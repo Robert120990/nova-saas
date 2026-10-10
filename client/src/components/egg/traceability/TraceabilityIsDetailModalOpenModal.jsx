@@ -24,10 +24,10 @@ export default function TraceabilityIsDetailModalOpenModal({ model, open = model
     const { isDetailModalOpen, setIsDetailModalOpen, detailTarget, detailData, loadingDetail, setQualityModal, handleOpenQualityLetterModal, downloadingOriginCert, handleDownloadOriginCertificate, handleGenerateCoaPdf } = model;
     if (!open) return null;
     return (<>{isDetailModalOpen && (
-                <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 md:p-6 overflow-y-auto animate-in fade-in duration-200">
+                <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 overflow-y-auto animate-in fade-in duration-200">
                     <div className="bg-slate-50 border border-slate-200 rounded-3xl w-full max-w-5xl shadow-2xl overflow-hidden flex flex-col my-auto max-h-[92vh]">
                         {/* Header */}
-                        <div className="px-6 py-4 bg-white border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0">
+                        <div className="p-3.5 sm:px-6 sm:py-4 bg-white border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0">
                             <div>
                                 <div className="flex items-center gap-2">
                                     <span className="p-1.5 bg-indigo-50 text-indigo-700 rounded-xl">
@@ -45,11 +45,11 @@ export default function TraceabilityIsDetailModalOpenModal({ model, open = model
                                 </p>
                             </div>
 
-                            <div className="flex items-center gap-2">
+                            <div className="flex flex-wrap items-center gap-1.5 w-full sm:w-auto">
                                 {(detailData?.batch || detailTarget?.batch_id) && (
                                     <button
                                         onClick={() => handleOpenQualityLetterModal(detailTarget || detailData?.batch || { batch_id: detailData?.batch?.id })}
-                                        className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-800 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs"
+                                        className="flex-1 sm:flex-none justify-center px-3 py-1.5 bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-800 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs"
                                         title="Generar Carta de Calidad del Lote (PDF, Word, Excel)"
                                     >
                                         <FileText size={14} />
@@ -59,7 +59,7 @@ export default function TraceabilityIsDetailModalOpenModal({ model, open = model
                                 {detailData?.qualityLab && (
                                     <button
                                         onClick={() => handleGenerateCoaPdf(detailData.qualityLab)}
-                                        className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs"
+                                        className="flex-1 sm:flex-none justify-center px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs"
                                         title="Descargar Certificado de Análisis Oficial"
                                     >
                                         <Download size={14} />
@@ -70,7 +70,7 @@ export default function TraceabilityIsDetailModalOpenModal({ model, open = model
                                     <button
                                         disabled={downloadingOriginCert}
                                         onClick={() => handleDownloadOriginCertificate(detailData.rawMaterial?.id || detailData.batch?.id, !detailData.rawMaterial, 'pdf')}
-                                        className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-800 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs disabled:opacity-50"
+                                        className="flex-1 sm:flex-none justify-center px-3 py-1.5 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-800 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs disabled:opacity-50"
                                         title="Descargar Certificado de Calidad de Origen de Granja (PDF)"
                                     >
                                         <FileText size={14} className="text-rose-600" />
@@ -443,10 +443,10 @@ export default function TraceabilityIsDetailModalOpenModal({ model, open = model
                         </div>
 
                         {/* Footer */}
-                        <div className="px-6 py-3 bg-white border-t border-slate-200 flex justify-end gap-3 shrink-0">
+                        <div className="p-3.5 sm:px-6 sm:py-3 bg-white border-t border-slate-200 flex justify-end shrink-0">
                             <button
                                 onClick={() => setIsDetailModalOpen(false)}
-                                className="px-5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all border border-slate-200"
+                                className="w-full sm:w-auto px-5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all border border-slate-200"
                             >
                                 Cerrar Expediente
                             </button>

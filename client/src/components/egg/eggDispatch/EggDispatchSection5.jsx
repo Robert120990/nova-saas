@@ -43,7 +43,7 @@ export default function EggDispatchSection5({ model }) {
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-3 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3">
                         <div>
                             <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">
                                 Marca
@@ -165,17 +165,17 @@ export default function EggDispatchSection5({ model }) {
                         />
                     </div>
 
-                    <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                    <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 pt-2 border-t border-slate-100">
                         <button
                             type="button"
                             onClick={() => setVehicleModalOpen(false)}
-                            className="text-xs font-semibold text-slate-600 px-4 py-2 hover:bg-slate-100 rounded-xl transition"
+                            className="w-full sm:w-auto text-center text-xs font-semibold text-slate-600 px-4 py-2 hover:bg-slate-100 rounded-xl transition"
                         >
                             Cancelar
                         </button>
                         <button
                             type="submit"
-                            className="text-xs font-bold bg-indigo-600 text-white px-5 py-2.5 rounded-xl shadow hover:bg-indigo-700 transition"
+                            className="w-full sm:w-auto justify-center text-xs font-bold bg-indigo-600 text-white px-5 py-2.5 rounded-xl shadow hover:bg-indigo-700 transition"
                         >
                             {editingVehicle ? 'Guardar Cambios' : 'Guardar Vehículo'}
                         </button>

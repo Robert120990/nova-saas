@@ -250,8 +250,8 @@ export default function DteQrDeliveryScannerModal({
         >
             <form onSubmit={handleConfirmDelivery} className="space-y-4">
                 {/* Resumen del Pedido y Cliente */}
-                <div className="bg-gradient-to-br from-indigo-50/70 to-slate-50 p-4 rounded-2xl border border-indigo-100 shadow-sm">
-                    <div className="flex items-start justify-between">
+                <div className="bg-gradient-to-br from-indigo-50/70 to-slate-50 p-3.5 sm:p-4 rounded-xl sm:rounded-2xl border border-indigo-100 shadow-sm">
+                    <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
                         <div>
                             <span className="text-[10px] font-black uppercase tracking-wider text-indigo-600 bg-indigo-100/80 px-2 py-0.5 rounded-md">
                                 {stop.product_type || 'Ovoproducto'}
@@ -264,7 +264,7 @@ export default function DteQrDeliveryScannerModal({
                                 {stop.branch_address && ` - ${stop.branch_address}`}
                             </p>
                         </div>
-                        <div className="text-right">
+                        <div className="text-left sm:text-right border-t border-indigo-100 sm:border-0 pt-2 sm:pt-0">
                             <span className="text-lg font-black text-indigo-700">
                                 {stop.quantity_lbs || 0} Lbs
                             </span>
@@ -276,8 +276,8 @@ export default function DteQrDeliveryScannerModal({
                 </div>
 
                 {/* 1. SECCIÓN: ESCÁNER QR DTE */}
-                <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-3">
-                    <div className="flex items-center justify-between">
+                <div className="bg-white p-3.5 sm:p-4 rounded-xl sm:rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                         <div className="flex items-center gap-2">
                             <QrCode className="w-5 h-5 text-indigo-600" />
                             <h5 className="text-xs font-black text-slate-800 uppercase tracking-wide">
@@ -386,7 +386,7 @@ export default function DteQrDeliveryScannerModal({
                 </div>
 
                 {/* 2. SECCIÓN: DATOS DEL RECEPTOR & TELÉFONO */}
-                <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                <div className="bg-white p-3.5 sm:p-4 rounded-xl sm:rounded-2xl border border-slate-200 shadow-sm space-y-3">
                     <div className="flex items-center gap-2">
                         <User className="w-5 h-5 text-indigo-600" />
                         <h5 className="text-xs font-black text-slate-800 uppercase tracking-wide">
@@ -503,21 +503,21 @@ export default function DteQrDeliveryScannerModal({
                 </div>
 
                 {/* Acciones */}
-                <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 pt-2 border-t border-slate-100">
                     <button
                         type="button"
                         onClick={() => {
                             stopScanner();
                             onClose();
                         }}
-                        className="text-xs font-semibold text-slate-600 hover:text-slate-800 px-4 py-2 rounded-xl transition"
+                        className="w-full sm:w-auto text-center text-xs font-semibold text-slate-600 hover:text-slate-800 px-4 py-2.5 rounded-xl transition"
                     >
                         Cancelar
                     </button>
                     <button
                         type="submit"
                         disabled={isSubmitting}
-                        className="flex items-center gap-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-xl shadow-md transition disabled:opacity-50"
+                        className="w-full sm:w-auto justify-center flex items-center gap-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-xl shadow-md transition disabled:opacity-50"
                     >
                         <CheckCircle2 className="w-4 h-4" />
                         <span>{isSubmitting ? 'Guardando entrega...' : 'Confirmar Entrega y Actualizar Sucursal'}</span>

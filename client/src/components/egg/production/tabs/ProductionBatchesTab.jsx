@@ -26,7 +26,7 @@ export default function ProductionBatchesTab({ model }) {
     const { setQualityModal, setAddTarimasModal, loading, searchTerm, setSearchTerm, activeTab, setSelectedBatchForPasteurize, setIsPasteurizeModalOpen, canEditProduction, canDeleteProduction, canManageLots, setDeleteConfirmBatch, handleOpenStagesModal, handleOpenClosePasteurization, handleReopenPasteurization, handleOpenBalanceModal, handleOpenWastesModal, handleOpenEditBatch, handleExportSummary, getBatchStatusBadge, filteredBatches, handleCreateCoproductBatch } = model;
 
     return (<>{activeTab === 'batches' && (
-                <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
+                <div className="bg-white border border-slate-200 rounded-2xl p-3.5 sm:p-6 shadow-sm space-y-4">
                     <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
                         <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
                             <ClipboardList className="h-4 w-4 text-indigo-600" />
@@ -55,7 +55,7 @@ export default function ProductionBatchesTab({ model }) {
                                 No hay lotes de producción registrados.
                             </div>
                         ) : (
-                            <table className="w-full text-left text-xs border-collapse">
+                            <table className="w-full min-w-[780px] text-left text-xs border-collapse">
                                 <thead>
                                     <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px]">
                                         <th className="px-3 py-2.5">Lote Juliano / UUID</th>
@@ -254,7 +254,7 @@ export default function ProductionBatchesTab({ model }) {
                                                                     onClick={() => { setOpenActionMenuId(null); setActionMenuPos(null); }}
                                                                 />
                                                                 <div 
-                                                                    className={`fixed z-50 bg-white border border-slate-200 rounded-xl shadow-2xl p-1.5 flex flex-col gap-1 min-w-[170px] text-left animate-in fade-in duration-100 ${
+                                                                    className={`fixed z-50 bg-white border border-slate-200 rounded-xl shadow-2xl p-1.5 flex flex-col gap-1 min-w-[170px] max-w-[calc(100vw-24px)] text-left animate-in fade-in duration-100 ${
                                                                         actionMenuPos.dir === 'up' ? 'slide-in-from-bottom-2' : 'slide-in-from-top-2'
                                                                     }`}
                                                                     style={{

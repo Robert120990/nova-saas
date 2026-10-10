@@ -13,7 +13,7 @@ export default function TraceabilityParamsTab({ model }) {
     return (<>{activeTab === 'params' && (
                 <div className="space-y-6">
                     {/* Top control card */}
-                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white border border-slate-200 rounded-2xl p-4 sm:p-6 shadow-sm">
                         <div>
                             <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
                                 <SlidersHorizontal className="h-4 w-4 text-indigo-600" />
@@ -23,7 +23,7 @@ export default function TraceabilityParamsTab({ model }) {
                         </div>
                         <button
                             onClick={handleOpenCreateParam}
-                            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm"
+                            className="w-full sm:w-auto justify-center px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm"
                         >
                             <Plus size={14} />
                             Nuevo Parámetro de Calidad
@@ -32,13 +32,13 @@ export default function TraceabilityParamsTab({ model }) {
 
                     {/* Filter Bar */}
                     <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex flex-col sm:flex-row gap-4 items-center justify-between">
-                        <div className="flex flex-wrap items-center gap-2">
-                            <span className="text-xs font-bold text-slate-500 uppercase">Forma / Producto:</span>
+                        <div className="flex items-center gap-2 overflow-x-auto whitespace-nowrap scrollbar-none max-w-full w-full sm:w-auto pb-1 sm:pb-0">
+                            <span className="text-xs font-bold text-slate-500 uppercase shrink-0">Forma / Producto:</span>
                             {(Array.isArray(availableForms) ? availableForms : []).map(formKey => (
                                 <button
                                     key={formKey}
                                     onClick={() => setParamFilterProduct(formKey)}
-                                    className={`px-3 py-1 rounded-lg text-xs font-bold capitalize transition-all ${paramFilterProduct === formKey ? 'bg-indigo-600 text-white shadow-xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                    className={`px-3 py-1 rounded-lg text-xs font-bold capitalize transition-all shrink-0 ${paramFilterProduct === formKey ? 'bg-indigo-600 text-white shadow-xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                                         }`}
                                 >
                                     {formKey}
@@ -71,7 +71,7 @@ export default function TraceabilityParamsTab({ model }) {
                             };
 
                             return (
-                                <div key={cat} className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-3">
+                                <div key={cat} className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-6 shadow-sm space-y-3">
                                     <div className="flex items-center justify-between border-b border-slate-100 pb-2">
                                         <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
                                             <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${catTitles[cat].color}`}>
@@ -82,7 +82,7 @@ export default function TraceabilityParamsTab({ model }) {
                                     </div>
 
                                     <div className="overflow-x-auto rounded-xl border border-slate-200">
-                                        <table className="w-full text-left text-xs border-collapse">
+                                        <table className="w-full text-left text-xs border-collapse min-w-[700px]">
                                             <thead>
                                                 <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px]">
                                                     <th className="p-2.5 w-12 text-center">Orden</th>

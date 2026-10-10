@@ -14,7 +14,7 @@ import Money from '../../ui/Money';
 export default function CosteoPorLibraContent({ model }) {
     const { loadingOperational, handleApplyRealPlantData, opSummary, opBreakdown } = model;
 
-    return (<div className="bg-gradient-to-br from-indigo-900 via-slate-900 to-indigo-950 rounded-2xl p-6 text-white shadow-xl border border-indigo-800/40">
+    return (<div className="bg-gradient-to-br from-indigo-900 via-slate-900 to-indigo-950 rounded-2xl p-4 sm:p-6 text-white shadow-xl border border-indigo-800/40">
                 <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-5 border-b border-white/10">
                     <div>
                         <div className="flex items-center gap-2 text-indigo-300 text-[11px] font-bold uppercase tracking-wider mb-1">
@@ -31,14 +31,14 @@ export default function CosteoPorLibraContent({ model }) {
                     </div>
                     <button
                         onClick={handleApplyRealPlantData}
-                        className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-black rounded-xl text-xs flex items-center gap-2 shadow-lg shadow-emerald-500/20 transition-all self-start lg:self-auto"
+                        className="w-full sm:w-auto justify-center px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-black rounded-xl text-xs flex items-center gap-2 shadow-lg shadow-emerald-500/20 transition-all self-start lg:self-auto"
                     >
                         <ArrowDownRight className="w-4 h-4" />
                         <span>Cargar Parámetros Reales al Simulador</span>
                     </button>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mt-5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4 mt-5">
                     {/* 1. Entradas / Recepción */}
                     <div className="bg-white/5 border border-white/10 rounded-xl p-4 backdrop-blur-sm">
                         <div className="flex items-center justify-between text-indigo-300 text-[11px] font-bold uppercase mb-1">

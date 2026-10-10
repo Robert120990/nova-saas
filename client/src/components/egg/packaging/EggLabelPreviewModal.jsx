@@ -10,8 +10,8 @@ const EggLabelPreviewModal = ({
     if (!isOpen || !label) return null;
 
     return (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-            <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-2xl max-w-md w-full space-y-5 text-slate-900">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 z-50">
+            <div className="bg-white border border-slate-200 rounded-2xl p-3.5 sm:p-6 shadow-2xl max-w-md w-full max-h-[92vh] sm:max-h-[90vh] overflow-y-auto space-y-4 sm:space-y-5 text-slate-900">
                 <div className="flex justify-between items-center">
                     <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
                         <QrCode size={16} className="text-purple-600" />
@@ -27,7 +27,7 @@ const EggLabelPreviewModal = ({
                 <div className="h-px bg-slate-100" />
 
                 {/* Printable Area Representation */}
-                <div className="bg-white text-slate-900 p-6 rounded-xl border border-slate-300 shadow-sm flex flex-col items-center text-center font-mono space-y-4 max-w-sm mx-auto">
+                <div className="bg-white text-slate-900 p-3.5 sm:p-6 rounded-xl border border-slate-300 shadow-sm flex flex-col items-center text-center font-mono space-y-4 max-w-sm mx-auto">
                     <div className="w-full flex justify-between items-center border-b border-slate-900 pb-2 text-[9px] font-bold">
                         <span>ANDELSA PLANTA INDUSTRIAL</span>
                         <span>REGISTRO SANITARIO</span>

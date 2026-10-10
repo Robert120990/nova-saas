@@ -1,10 +1,10 @@
 export default function PackagingColdChainSection({ packagingForm, setPackagingForm }) {
     return (
-        <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
+        <div className="bg-slate-50 p-3 sm:p-4 rounded-xl border border-slate-200 space-y-3">
             <h4 className="text-[11px] font-bold text-indigo-700 uppercase tracking-wide">
                 Cadena de Frío & Vida Útil
             </h4>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
                 <div>
                     <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide block mb-1.5">
                         Estado / Proceso Frío

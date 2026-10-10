@@ -21,8 +21,8 @@ export default function ProductionIsNewBatchModalOpenModal({ model, open = model
     const { scheduledProductions, selectedScheduledProd, setScannerModalOpen, rawMaterials, availableRemanentes, showAllRemanentes, setShowAllRemanentes, batchForm, setBatchForm, isSubmitting, isNewBatchModalOpen, setIsNewBatchModalOpen, canManageLots, editingBatch, setEditingBatch, handleMarkRemanenteUsed, handleReactivateRemanente, handleToggleRemanenteSelect, handleUpdateRemanenteUsage, handleDeleteRemanenteDirect, handleSelectScheduledProduction, batches, handleAddSpecificTarimaToRm, handleLoadAllAvailableTarimas, handleUpdateTarimaBoxesInRm, handleUpdateTarimaLbsInRm, handleRemoveTarimaFromRm, isCurrentSeparation, recommendedLot, recommendationReason, nonAALotSelectedForSeparation, nonAALotObj, handleApplyRecommendedLot, handleCreateBatch, handleAddSecondaryBatch, handleRemoveSecondaryBatch, handleUpdateSecondaryBatch, handleLinkSecondaryBatchToSchedule, handleProductTypeChange, handleSecondaryProductTypeChange } = model;
     if (!open) return null;
     return (<>{isNewBatchModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
-                    <div className={`bg-white border border-slate-200 rounded-2xl p-6 shadow-2xl ${batchForm.enable_secondary_batch ? 'max-w-4xl' : 'max-w-2xl'} w-full max-h-[90vh] overflow-y-auto space-y-6 text-slate-900 transition-all`}>
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-2 sm:p-4">
+                    <div className={`bg-white border border-slate-200 rounded-2xl p-3.5 sm:p-6 shadow-2xl ${batchForm.enable_secondary_batch ? 'max-w-4xl' : 'max-w-2xl'} w-full max-h-[92vh] overflow-y-auto space-y-4 sm:space-y-6 text-slate-900 transition-all`}>
                         <div>
                             <div className="flex items-center justify-between">
                                 <h2 className="text-base font-bold text-slate-900 uppercase tracking-tight flex items-center gap-2">
@@ -1066,18 +1066,18 @@ export default function ProductionIsNewBatchModalOpenModal({ model, open = model
                                 </div>
                             </div>
 
-                            <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
+                            <div className="flex flex-col sm:flex-row justify-end gap-2.5 sm:gap-3 pt-4 border-t border-slate-200">
                                 <button
                                     type="button"
                                     onClick={() => { setIsNewBatchModalOpen(false); setEditingBatch(null); }}
-                                    className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all border border-slate-200"
+                                    className="w-full sm:w-auto px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all border border-slate-200 text-center justify-center"
                                 >
                                     Cancelar
                                 </button>
                                 <button
                                     type="submit"
                                     disabled={isSubmitting}
-                                    className={`px-5 py-2 text-white rounded-xl text-xs font-bold transition-all shadow-sm ${
+                                    className={`w-full sm:w-auto justify-center px-5 py-2 text-white rounded-xl text-xs font-bold transition-all shadow-sm ${
                                         (batchForm.enable_secondary_batch || batchForm.is_coproduct)
                                             ? 'bg-teal-600 hover:bg-teal-700'
                                             : 'bg-indigo-600 hover:bg-indigo-700'

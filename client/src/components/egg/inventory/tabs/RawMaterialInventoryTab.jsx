@@ -44,70 +44,70 @@ export default function RawMaterialInventoryTab({ model }) {
     }, [lots, searchTerm, eggTypeFilter, onlyWithStock]);
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-4 sm:space-y-6">
             {/* KPI Cards */}
-            <div className="grid grid-cols-2 lg:grid-cols-5 gap-3.5">
-                <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+            <div className="grid grid-cols-2 lg:grid-cols-5 gap-2.5 sm:gap-3.5">
+                <div className="bg-white p-3 sm:p-4 rounded-2xl border border-slate-200 shadow-xs">
                     <div className="flex items-center justify-between text-slate-500 mb-1">
-                        <span className="text-[10px] font-bold uppercase tracking-wider">Lotes Activos</span>
-                        <Layers size={16} className="text-amber-600" />
+                        <span className="text-[10px] font-bold uppercase tracking-wider truncate">Lotes Activos</span>
+                        <Layers size={15} className="text-amber-600 shrink-0" />
                     </div>
-                    <span className="text-2xl font-black text-slate-900">
+                    <span className="text-xl sm:text-2xl font-black text-slate-900">
                         {summary.active_lots || 0}
                     </span>
-                    <span className="text-[11px] text-slate-400 block font-medium mt-0.5">
-                        De {summary.total_lots || 0} lotes recibidos
+                    <span className="text-[10px] sm:text-[11px] text-slate-400 block font-medium mt-0.5 truncate">
+                        De {summary.total_lots || 0} recibidos
                     </span>
                 </div>
 
-                <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+                <div className="bg-white p-3 sm:p-4 rounded-2xl border border-slate-200 shadow-xs">
                     <div className="flex items-center justify-between text-slate-500 mb-1">
-                        <span className="text-[10px] font-bold uppercase tracking-wider">Cajas en Stock</span>
-                        <Box size={16} className="text-blue-600" />
+                        <span className="text-[10px] font-bold uppercase tracking-wider truncate">Cajas en Stock</span>
+                        <Box size={15} className="text-blue-600 shrink-0" />
                     </div>
-                    <span className="text-2xl font-black text-blue-700">
+                    <span className="text-xl sm:text-2xl font-black text-blue-700">
                         {parseInt(summary.total_boxes || 0, 10).toLocaleString()}
                     </span>
-                    <span className="text-[11px] text-slate-400 block font-medium mt-0.5">
-                        Cajas físicas disponibles
+                    <span className="text-[10px] sm:text-[11px] text-slate-400 block font-medium mt-0.5 truncate">
+                        Cajas disponibles
                     </span>
                 </div>
 
-                <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+                <div className="bg-white p-3 sm:p-4 rounded-2xl border border-slate-200 shadow-xs">
                     <div className="flex items-center justify-between text-slate-500 mb-1">
-                        <span className="text-[10px] font-bold uppercase tracking-wider">Existencia en Libras</span>
-                        <Scale size={16} className="text-emerald-600" />
+                        <span className="text-[10px] font-bold uppercase tracking-wider truncate">Stock (Libras)</span>
+                        <Scale size={15} className="text-emerald-600 shrink-0" />
                     </div>
-                    <span className="text-2xl font-black text-emerald-600">
+                    <span className="text-xl sm:text-2xl font-black text-emerald-600">
                         {parseFloat(summary.total_stock_lbs || 0).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
                     </span>
-                    <span className="text-[11px] text-emerald-700 font-bold block mt-0.5">
-                        Libras Netas (Lbs)
+                    <span className="text-[10px] sm:text-[11px] text-emerald-700 font-bold block mt-0.5">
+                        Lbs Netas
                     </span>
                 </div>
 
-                <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+                <div className="bg-white p-3 sm:p-4 rounded-2xl border border-slate-200 shadow-xs">
                     <div className="flex items-center justify-between text-slate-500 mb-1">
-                        <span className="text-[10px] font-bold uppercase tracking-wider">Existencia en Kilos</span>
-                        <Scale size={16} className="text-violet-600" />
+                        <span className="text-[10px] font-bold uppercase tracking-wider truncate">Stock (Kilos)</span>
+                        <Scale size={15} className="text-violet-600 shrink-0" />
                     </div>
-                    <span className="text-2xl font-black text-violet-700">
+                    <span className="text-xl sm:text-2xl font-black text-violet-700">
                         {parseFloat(summary.total_stock_kg || 0).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
                     </span>
-                    <span className="text-[11px] text-violet-700 font-bold block mt-0.5">
-                        Kilogramos Netos (Kg)
+                    <span className="text-[10px] sm:text-[11px] text-violet-700 font-bold block mt-0.5">
+                        Kg Netos
                     </span>
                 </div>
 
-                <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs col-span-2 lg:col-span-1">
+                <div className="bg-white p-3 sm:p-4 rounded-2xl border border-slate-200 shadow-xs col-span-2 lg:col-span-1">
                     <div className="flex items-center justify-between text-slate-500 mb-1">
-                        <span className="text-[10px] font-bold uppercase tracking-wider">Tarimas en Bodega</span>
-                        <Layers size={16} className="text-amber-600" />
+                        <span className="text-[10px] font-bold uppercase tracking-wider truncate">Tarimas en Bodega</span>
+                        <Layers size={15} className="text-amber-600 shrink-0" />
                     </div>
-                    <span className="text-2xl font-black text-amber-700">
+                    <span className="text-xl sm:text-2xl font-black text-amber-700">
                         {summary.total_tarimas || 0}
                     </span>
-                    <span className="text-[11px] text-slate-400 block font-medium mt-0.5">
+                    <span className="text-[10px] sm:text-[11px] text-slate-400 block font-medium mt-0.5">
                         Tarimas físicas activas
                     </span>
                 </div>
@@ -168,7 +168,7 @@ export default function RawMaterialInventoryTab({ model }) {
                     </div>
                 ) : (
                     <div className="overflow-x-auto">
-                        <table className="w-full text-left text-xs border-collapse">
+                        <table className="w-full min-w-[760px] text-left text-xs border-collapse">
                             <thead>
                                 <tr className="border-b border-slate-200 bg-slate-50 text-slate-600 font-bold uppercase text-[10px] tracking-wider">
                                     <th className="p-3.5">Lote Proveedor / Granja</th>

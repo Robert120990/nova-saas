@@ -56,58 +56,58 @@ export default function FinishedProductTab({ model }) {
     }, [lots, searchTerm, selectedType]);
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-4 sm:space-y-6">
             {/* KPI Cards */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
+                <div className="bg-white p-3 sm:p-4 rounded-2xl border border-slate-200 shadow-xs">
                     <div className="flex items-center justify-between text-slate-500 mb-1">
-                        <span className="text-[10px] font-bold uppercase tracking-wider">Presentaciones Físicas</span>
-                        <Package size={16} className="text-blue-600" />
+                        <span className="text-[10px] font-bold uppercase tracking-wider truncate">Presentaciones</span>
+                        <Package size={15} className="text-blue-600 shrink-0" />
                     </div>
-                    <span className="text-2xl font-black text-slate-900">
+                    <span className="text-xl sm:text-2xl font-black text-slate-900">
                         {summary.total_presentations || 0}
                     </span>
-                    <span className="text-[11px] text-slate-400 block font-medium mt-0.5">
-                        Tipos de envases y pesos
+                    <span className="text-[10px] sm:text-[11px] text-slate-400 block font-medium mt-0.5 truncate">
+                        Envases y pesos
                     </span>
                 </div>
 
-                <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+                <div className="bg-white p-3 sm:p-4 rounded-2xl border border-slate-200 shadow-xs">
                     <div className="flex items-center justify-between text-slate-500 mb-1">
-                        <span className="text-[10px] font-bold uppercase tracking-wider">Stock Total Envases</span>
-                        <Box size={16} className="text-indigo-600" />
+                        <span className="text-[10px] font-bold uppercase tracking-wider truncate">Stock Envases</span>
+                        <Box size={15} className="text-indigo-600 shrink-0" />
                     </div>
-                    <span className="text-2xl font-black text-indigo-700">
+                    <span className="text-xl sm:text-2xl font-black text-indigo-700">
                         {parseInt(summary.total_units || 0, 10).toLocaleString()}
                     </span>
-                    <span className="text-[11px] text-slate-400 block font-medium mt-0.5">
-                        Unidades físicas listas para despacho
+                    <span className="text-[10px] sm:text-[11px] text-slate-400 block font-medium mt-0.5 truncate">
+                        Listas para despacho
                     </span>
                 </div>
 
-                <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+                <div className="bg-white p-3 sm:p-4 rounded-2xl border border-slate-200 shadow-xs">
                     <div className="flex items-center justify-between text-slate-500 mb-1">
-                        <span className="text-[10px] font-bold uppercase tracking-wider">Existencia en Libras</span>
-                        <Package size={16} className="text-emerald-600" />
+                        <span className="text-[10px] font-bold uppercase tracking-wider truncate">Stock (Libras)</span>
+                        <Package size={15} className="text-emerald-600 shrink-0" />
                     </div>
-                    <span className="text-2xl font-black text-emerald-600">
+                    <span className="text-xl sm:text-2xl font-black text-emerald-600">
                         {parseFloat(summary.total_stock_lbs || 0).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
                     </span>
-                    <span className="text-[11px] text-emerald-700 font-bold block mt-0.5">
-                        Libras Netas (Lbs)
+                    <span className="text-[10px] sm:text-[11px] text-emerald-700 font-bold block mt-0.5">
+                        Lbs Netas
                     </span>
                 </div>
 
-                <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+                <div className="bg-white p-3 sm:p-4 rounded-2xl border border-slate-200 shadow-xs">
                     <div className="flex items-center justify-between text-slate-500 mb-1">
-                        <span className="text-[10px] font-bold uppercase tracking-wider">Existencia en Kilos</span>
-                        <Package size={16} className="text-violet-600" />
+                        <span className="text-[10px] font-bold uppercase tracking-wider truncate">Stock (Kilos)</span>
+                        <Package size={15} className="text-violet-600 shrink-0" />
                     </div>
-                    <span className="text-2xl font-black text-violet-700">
+                    <span className="text-xl sm:text-2xl font-black text-violet-700">
                         {parseFloat(summary.total_stock_kg || 0).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
                     </span>
-                    <span className="text-[11px] text-violet-700 font-bold block mt-0.5">
-                        Kilogramos Netos (Kg)
+                    <span className="text-[10px] sm:text-[11px] text-violet-700 font-bold block mt-0.5">
+                        Kg Netos
                     </span>
                 </div>
             </div>
@@ -199,7 +199,7 @@ export default function FinishedProductTab({ model }) {
                         </div>
                     ) : (
                         <div className="overflow-x-auto">
-                            <table className="w-full text-left text-xs border-collapse">
+                            <table className="w-full min-w-[650px] text-left text-xs border-collapse">
                                 <thead>
                                     <tr className="border-b border-slate-200 bg-slate-50 text-slate-600 font-bold uppercase text-[10px] tracking-wider">
                                         <th className="p-3.5">Producto & Presentación</th>
@@ -299,7 +299,7 @@ export default function FinishedProductTab({ model }) {
                         </div>
                     ) : (
                         <div className="overflow-x-auto">
-                            <table className="w-full text-left text-xs border-collapse">
+                            <table className="w-full min-w-[700px] text-left text-xs border-collapse">
                                 <thead>
                                     <tr className="border-b border-slate-200 bg-slate-50 text-slate-600 font-bold uppercase text-[10px] tracking-wider">
                                         <th className="p-3">Lote Envasado</th>

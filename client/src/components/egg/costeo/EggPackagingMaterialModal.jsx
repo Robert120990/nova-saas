@@ -17,8 +17,8 @@ export default function EggPackagingMaterialModal({
     if (!open) return null;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-            <form onSubmit={onSave} className="bg-white rounded-2xl max-w-md w-full p-6 border border-slate-200 shadow-2xl space-y-4 text-xs">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-900/60 backdrop-blur-sm">
+            <form onSubmit={onSave} className="bg-white rounded-2xl max-w-md w-full p-3.5 sm:p-6 border border-slate-200 shadow-2xl space-y-4 text-xs max-h-[92vh] sm:max-h-[90vh] overflow-y-auto">
                 <div className="flex items-center justify-between border-b border-slate-200 pb-3">
                     <h3 className="text-base font-bold text-slate-900 uppercase">
                         {data?.id ? 'Editar Empaque' : 'Nuevo Material / Empaque'}
@@ -121,17 +121,17 @@ export default function EggPackagingMaterialModal({
                     </div>
                 </div>
 
-                <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-200">
+                <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-2.5 pt-3 border-t border-slate-200">
                     <button
                         type="button"
                         onClick={onClose}
-                        className="px-4 py-2 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl"
+                        className="w-full sm:w-auto px-4 py-2 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl text-center"
                     >
                         Cancelar
                     </button>
                     <button
                         type="submit"
-                        className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-600/20"
+                        className="w-full sm:w-auto px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-600/20 text-center"
                     >
                         Guardar Empaque
                     </button>

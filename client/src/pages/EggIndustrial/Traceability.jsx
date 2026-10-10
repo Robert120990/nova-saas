@@ -5,7 +5,7 @@ import { EggQualityFinishedProductModal } from '../../components/egg/quality';
 export default function EggTraceability() {
  const model = useTraceabilityModel();
  const { qualityModal, setQualityModal, fetchBatchesAndLab, fetchTrace360List, fetchTrace360Stats } = model;
- return (<div className="space-y-6 text-slate-900">
+ return (<div className="space-y-4 sm:space-y-6 text-slate-900">
             {/* Header */}
             <TraceabilityHeader model={model} />
 

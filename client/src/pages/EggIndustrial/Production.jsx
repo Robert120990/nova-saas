@@ -11,15 +11,15 @@ import { EggQualityFinishedProductModal } from '../../components/egg/quality';
 export default function EggProduction() {
  const model = useProductionModel();
  const { scannerModalOpen, setScannerModalOpen, tarimaSearchPickerOpen, setTarimaSearchPickerOpen, qualityModal, setQualityModal, rawMaterials, stagesModal, closePasteurizationModal, setClosePasteurizationModal, addTarimasModal, setAddTarimasModal, remanenteModal, setRemanenteModal, wastesModal, setWastesModal, handleOpenStagesModal, handleConfirmClosePasteurization, handleCreateWaste, handleDeleteWaste, handleAddSpecificTarimaToAddModal, handleRemanenteSubmit, fetchData, handleScanTarimaResult } = model;
- return (<div className="space-y-6 text-slate-900">
+ return (<div className="space-y-4 sm:space-y-6 text-slate-900">
             {/* Header */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-                <div className="flex items-center gap-4">
-                    <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-amber-600">
-                        <Flame className="h-8 w-8" />
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white border border-slate-200 rounded-2xl p-4 sm:p-6 shadow-sm">
+                <div className="flex items-center gap-3 sm:gap-4">
+                    <div className="p-2.5 sm:p-3 bg-amber-50 rounded-xl border border-amber-200 text-amber-600 shrink-0">
+                        <Flame className="h-6 w-6 sm:h-8 sm:w-8" />
                     </div>
                     <div>
-                        <h1 className="text-xl font-bold text-slate-900 uppercase tracking-tight">Sala de Producción y Pasteurización</h1>
+                        <h1 className="text-lg sm:text-xl font-bold text-slate-900 uppercase tracking-tight leading-snug">Sala de Producción y Pasteurización</h1>
                         <p className="text-xs text-slate-500 font-medium">Control de lotes, sanitización CIP, pasteurización térmica y balance de masas</p>
                     </div>
                 </div>

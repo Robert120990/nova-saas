@@ -126,7 +126,7 @@ export default function TraceabilityTraceTab({ model }) {
                             </div>
 
                             {/* Date Range Filter */}
-                            <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl">
+                            <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl w-full lg:w-auto justify-between sm:justify-start">
                                 <div className="flex items-center gap-1.5 text-slate-500 text-[11px] font-bold uppercase tracking-wider">
                                     <Calendar size={14} className="text-indigo-600 shrink-0" />
                                     <span className="hidden sm:inline">Rango:</span>
@@ -163,8 +163,8 @@ export default function TraceabilityTraceTab({ model }) {
 
                         {/* Stage Selector Tabs & Refresh */}
                         <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100">
-                            <div className="flex flex-wrap items-center gap-1.5">
-                                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mr-1 hidden sm:inline">Etapa:</span>
+                            <div className="flex items-center gap-1.5 overflow-x-auto whitespace-nowrap scrollbar-none max-w-full pb-1 sm:pb-0">
+                                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mr-1 hidden sm:inline shrink-0">Etapa:</span>
                                 {(Array.isArray([
                                     { id: 'all', label: 'Todos' },
                                     { id: 'materia_prima', label: 'Materia Prima' },
@@ -181,7 +181,7 @@ export default function TraceabilityTraceTab({ model }) {
                                     <button
                                         key={st.id}
                                         onClick={() => { setTrace360Stage(st.id); setTrace360Page(1); }}
-                                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 ${
                                             trace360Stage === st.id
                                                 ? (st.id === 'con_alertas' ? 'bg-rose-600 text-white shadow-sm' : 'bg-indigo-600 text-white shadow-sm')
                                                 : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
@@ -218,7 +218,7 @@ export default function TraceabilityTraceTab({ model }) {
                                     <p className="text-xs text-slate-400 max-w-sm">Prueba ajustando los términos de búsqueda, rango de fechas o cambiando el filtro de etapa.</p>
                                 </div>
                             ) : (
-                                <table className="w-full text-left text-xs border-collapse">
+                                <table className="w-full text-left text-xs border-collapse min-w-[850px]">
                                     <thead>
                                         <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px] tracking-wider">
                                             <th className="p-3.5 w-12 text-center">360°</th>

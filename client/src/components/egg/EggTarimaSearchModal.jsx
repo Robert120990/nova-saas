@@ -14,12 +14,12 @@ const EggTarimaSearchModal = ({
     const availableLots = rawMaterials.filter(m => !m.is_depleted && parseFloat(m.stock_lbs || 0) > 0.01);
 
     return (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
-            <div className="bg-white border border-slate-200 rounded-2xl shadow-2xl max-w-2xl w-full max-h-[85vh] overflow-y-auto p-6 space-y-4 text-slate-900">
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-2 sm:p-4 animate-in fade-in duration-150">
+            <div className="bg-white border border-slate-200 rounded-2xl shadow-2xl max-w-2xl w-full max-h-[92vh] sm:max-h-[85vh] overflow-y-auto p-3.5 sm:p-6 space-y-3.5 sm:space-y-4 text-slate-900">
                 <div className="flex items-center justify-between border-b border-slate-200 pb-3">
                     <div>
-                        <h3 className="text-sm font-bold uppercase tracking-wider text-slate-900 flex items-center gap-2">
-                            <Search className="text-indigo-600" size={16} />
+                        <h3 className="text-xs sm:text-sm font-bold uppercase tracking-wider text-slate-900 flex items-center gap-1.5 sm:gap-2">
+                            <Search className="text-indigo-600 shrink-0" size={16} />
                             Lotes y Tarimas Disponibles para Quebraje
                         </h3>
                         <p className="text-xs text-slate-500 mt-0.5">Seleccione con un clic las tarimas o lotes de materia prima que ingresarán al quebraje.</p>
@@ -27,7 +27,7 @@ const EggTarimaSearchModal = ({
                     <button
                         type="button"
                         onClick={onClose}
-                        className="text-slate-400 hover:text-slate-700 p-1"
+                        className="text-slate-400 hover:text-slate-700 p-1 shrink-0"
                     >
                         <XCircle size={20} />
                     </button>
@@ -143,7 +143,7 @@ const EggTarimaSearchModal = ({
                     <button
                         type="button"
                         onClick={onClose}
-                        className="px-4 py-2 bg-slate-800 text-white rounded-xl text-xs font-bold hover:bg-slate-900"
+                        className="w-full sm:w-auto px-4 py-2 bg-slate-800 text-white rounded-xl text-xs font-bold hover:bg-slate-900 text-center"
                     >
                         Listo / Volver al Lote
                     </button>

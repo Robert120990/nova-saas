@@ -16,10 +16,10 @@ const EggFreezerModal = ({
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 max-w-5xl w-full max-h-[90vh] overflow-y-auto text-slate-900">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-2 sm:p-4">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 max-w-5xl w-full max-h-[92vh] sm:max-h-[90vh] overflow-y-auto text-slate-900">
                 {/* Add Blast Freezer Log Form */}
-                <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-2xl h-fit space-y-5">
+                <div className="bg-white border border-slate-200 rounded-2xl p-3.5 sm:p-6 shadow-2xl h-fit space-y-4 sm:space-y-5">
                     <div className="flex items-center justify-between">
                         <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
                             <Snowflake className="h-4 w-4 text-cyan-600" />
@@ -113,7 +113,7 @@ const EggFreezerModal = ({
                 </div>
 
                 {/* Freezer active logs */}
-                <div className="lg:col-span-2 bg-white border border-slate-200 rounded-2xl p-6 shadow-2xl space-y-4">
+                <div className="lg:col-span-2 bg-white border border-slate-200 rounded-2xl p-3.5 sm:p-6 shadow-2xl space-y-4">
                     <div>
                         <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
                             <Activity className="h-4 w-4 text-cyan-600" />
@@ -127,7 +127,7 @@ const EggFreezerModal = ({
                         {freezerLogs.length === 0 ? (
                             <p className="text-xs text-slate-500 text-center py-6">No hay registros de túnel registrados.</p>
                         ) : (Array.isArray(freezerLogs) ? freezerLogs : []).map(log => (
-                            <div key={log.id} className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col md:flex-row justify-between gap-4">
+                            <div key={log.id} className="bg-slate-50 border border-slate-200 rounded-xl p-3 sm:p-4 flex flex-col md:flex-row justify-between gap-3 sm:gap-4">
                                 <div className="space-y-1.5">
                                     <div className="flex items-center gap-2">
                                         <span className="text-xs font-bold text-slate-900">{log.lot_code}</span>
@@ -139,7 +139,7 @@ const EggFreezerModal = ({
                                     </div>
                                 </div>
 
-                                <div className="flex md:flex-col justify-between items-end text-right">
+                                <div className="flex md:flex-col justify-between items-start md:items-end text-left md:text-right border-t border-slate-200/60 pt-2 md:border-0 md:pt-0">
                                     <div className="flex items-center gap-1.5">
                                         <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${getFreezerStatusBadge ? getFreezerStatusBadge(log.status) : ''}`}>
                                             {log.status === 'congelado_ok' ? 'Congelado Aprobado' : log.status}

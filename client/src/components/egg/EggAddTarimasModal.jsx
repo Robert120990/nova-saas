@@ -21,12 +21,12 @@ const EggAddTarimasModal = ({
     if (!isOpen || !addTarimasModal) return null;
 
     return (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-[60] animate-in fade-in duration-150">
-            <div className="bg-white border border-slate-200 rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6 text-slate-900 space-y-4">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 z-[60] animate-in fade-in duration-150">
+            <div className="bg-white border border-slate-200 rounded-2xl shadow-2xl max-w-2xl w-full max-h-[92vh] sm:max-h-[90vh] overflow-y-auto p-3.5 sm:p-6 text-slate-900 space-y-4">
                 <div className="flex items-center justify-between border-b border-slate-200 pb-3">
                     <div>
-                        <h3 className="text-base font-bold uppercase tracking-wider text-slate-900 flex items-center gap-2">
-                            <Plus className="text-indigo-600" size={18} />
+                        <h3 className="text-sm sm:text-base font-bold uppercase tracking-wider text-slate-900 flex items-center gap-1.5 sm:gap-2">
+                            <Plus className="text-indigo-600 shrink-0" size={18} />
                             Agregar Más Tarimas al Quebraje
                         </h3>
                         <p className="text-xs text-slate-500 mt-0.5">
@@ -36,7 +36,7 @@ const EggAddTarimasModal = ({
                     <button
                         type="button"
                         onClick={onClose}
-                        className="text-slate-400 hover:text-slate-700 p-1 rounded-lg"
+                        className="text-slate-400 hover:text-slate-700 p-1 rounded-lg shrink-0"
                     >
                         <XCircle size={20} />
                     </button>
@@ -102,13 +102,13 @@ const EggAddTarimasModal = ({
                 )}
 
                 {/* Barra de Herramientas: Escáner con Teléfono/Cámara & Digitación / Búsqueda Manual */}
-                <div className="bg-gradient-to-r from-indigo-50/80 to-slate-50 p-4 rounded-xl border border-indigo-100 space-y-3">
+                <div className="bg-gradient-to-r from-indigo-50/80 to-slate-50 p-3 sm:p-4 rounded-xl border border-indigo-100 space-y-3">
                     <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
                             <button
                                 type="button"
                                 onClick={onOpenScanner}
-                                className="px-3.5 py-2 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-sm shadow-indigo-500/20"
+                                className="w-full sm:w-auto px-3.5 py-2 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-sm shadow-indigo-500/20"
                                 title="Escanear con cámara de teléfono o lector QR"
                             >
                                 <Camera size={15} />
@@ -117,7 +117,7 @@ const EggAddTarimasModal = ({
                             <button
                                 type="button"
                                 onClick={onOpenTarimaSearchPicker}
-                                className="px-3.5 py-2 bg-white hover:bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-2xs"
+                                className="w-full sm:w-auto px-3.5 py-2 bg-white hover:bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-2xs"
                                 title="Abrir buscador visual de todos los lotes y tarimas disponibles"
                             >
                                 <Search size={14} className="text-indigo-600" />
@@ -125,7 +125,7 @@ const EggAddTarimasModal = ({
                             </button>
                         </div>
 
-                        <div className="flex items-center gap-2 text-xs bg-white px-3 py-1.5 rounded-xl border border-slate-200 shadow-2xs self-end sm:self-auto">
+                        <div className="flex items-center justify-center gap-2 text-xs bg-white px-3 py-1.5 rounded-xl border border-slate-200 shadow-2xs self-stretch sm:self-auto">
                             <span className="text-slate-500 font-medium">Cajas: <strong className="text-indigo-700">{addTarimasModal.raw_materials.reduce((s, rm) => s + (parseInt(rm.boxes_count, 10) || (rm.tarimas || []).reduce((ts, t) => ts + (parseInt(t.boxes_count, 10) || 0), 0)), 0)} cjs</strong></span>
                             <span className="text-slate-300">|</span>
                             <span className="text-slate-500 font-medium">Entrada: <strong className="text-emerald-700">{addTarimasModal.raw_materials.reduce((s, rm) => s + parseFloat(rm.quantity_lbs || 0), 0).toFixed(2)} Lbs</strong></span>
@@ -133,7 +133,7 @@ const EggAddTarimasModal = ({
                     </div>
 
                     {/* Digitar Tarima Manualmente o Abrir Selector con Lupa */}
-                    <form onSubmit={handleManualTarimaDigitize} className="flex gap-2 items-center">
+                    <form onSubmit={handleManualTarimaDigitize} className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
                         <div className="relative flex-1">
                             <button
                                 type="button"
@@ -153,7 +153,7 @@ const EggAddTarimasModal = ({
                         </div>
                         <button
                             type="submit"
-                            className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold transition-colors"
+                            className="w-full sm:w-auto px-3.5 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold transition-colors text-center justify-center flex items-center"
                         >
                             Buscar / Digitar
                         </button>
@@ -437,18 +437,18 @@ const EggAddTarimasModal = ({
                         />
                     </div>
 
-                    <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-200">
+                    <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-2.5 pt-3 border-t border-slate-200">
                         <button
                             type="button"
                             onClick={onClose}
-                            className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors"
+                            className="w-full sm:w-auto px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors text-center"
                         >
                             Cancelar
                         </button>
                         <button
                             type="submit"
                             disabled={addTarimasModal.isSubmitting}
-                            className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-colors shadow-xs"
+                            className="w-full sm:w-auto px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-colors shadow-xs text-center"
                         >
                             {addTarimasModal.isSubmitting ? 'Guardando...' : 'Adicionar Tarimas al Lote'}
                         </button>

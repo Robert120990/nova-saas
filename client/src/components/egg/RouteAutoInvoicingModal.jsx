@@ -812,10 +812,10 @@ export default function RouteAutoInvoicingModal({
             onClose={isSubmitting ? () => {} : onClose}
             title={`Facturación Automática de Ruta: ${route?.codigo_ruta || ''}`}
             maxWidth="max-w-5xl"
-            bodyClassName="p-4 md:p-6 space-y-6"
+            bodyClassName="p-3 sm:p-4 md:p-6 space-y-4 sm:space-y-6"
         >
             {/* 1. Barra Resumen de la Ruta */}
-            <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 p-4 md:p-5 rounded-2xl text-white shadow-md flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 p-3.5 sm:p-4 md:p-5 rounded-xl sm:rounded-2xl text-white shadow-md flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
                     <div className="p-3 bg-indigo-500/20 backdrop-blur-md rounded-xl border border-indigo-400/30 text-indigo-300">
                         <Truck className="w-5 h-5" />
@@ -1486,8 +1486,8 @@ export default function RouteAutoInvoicingModal({
             {/* POP-UP VIEW: SELECTOR DE LOTE DESEADO POR PRODUCTO */}
             {/* ========================================================================= */}
             {lotPickerTarget && (
-                <div className="fixed inset-0 z-[200] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-                    <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[85vh] shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-150">
+                <div className="fixed inset-0 z-[200] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4">
+                    <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[92vh] sm:max-h-[85vh] shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-150">
                         {/* Cabecera del Pop-up */}
                         <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
                             <div>
@@ -1627,8 +1627,8 @@ export default function RouteAutoInvoicingModal({
 
             {/* MODAL DE RESUMEN DE FACTURACIÓN Y RESPUESTA DE HACIENDA */}
             {showResultsModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-xs p-4 animate-in fade-in duration-200">
-                    <div className="bg-white border border-slate-200 rounded-3xl p-5 md:p-6 shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto space-y-4">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-xs p-2 sm:p-4 animate-in fade-in duration-200">
+                    <div className="bg-white border border-slate-200 rounded-3xl p-3.5 sm:p-5 md:p-6 shadow-2xl max-w-2xl w-full max-h-[92vh] sm:max-h-[90vh] overflow-y-auto space-y-4">
                         <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                             <div className="flex items-center gap-2.5">
                                 <div className="p-2 bg-emerald-100 text-emerald-700 rounded-xl">

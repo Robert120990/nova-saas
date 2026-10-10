@@ -19,7 +19,7 @@ export default function EggCosteoCatalogTab({
     return (
                 <div className="space-y-6">
                     {/* Parámetros de Caldera, Vapor & GIF */}
-                    <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                    <div className="bg-white p-4 sm:p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-3 border-b border-slate-200">
                             <div>
                                 <h3 className="text-sm font-bold uppercase tracking-wider text-slate-900 flex items-center gap-2">
@@ -32,7 +32,7 @@ export default function EggCosteoCatalogTab({
                             </div>
                             <button
                                 onClick={() => setConfigModal({ open: true, data: { ...configs } })}
-                                className="px-4 py-2 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 rounded-xl text-xs font-bold flex items-center gap-2 transition-all self-start sm:self-auto"
+                                className="w-full sm:w-auto justify-center px-4 py-2 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 rounded-xl text-xs font-bold flex items-center gap-2 transition-all self-start sm:self-auto"
                             >
                                 <Settings2 className="w-3.5 h-3.5" />
                                 <span>Editar Parámetros de Planta</span>
@@ -86,7 +86,7 @@ export default function EggCosteoCatalogTab({
                     </div>
 
                     {/* Banner de Vinculación con Compras y Facturas Ingresadas */}
-                    <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                         <div className="flex items-center gap-3.5">
                             <div className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl border border-indigo-100 shadow-inner flex-shrink-0">
                                 <ShoppingCart className="w-6 h-6" />
@@ -107,7 +107,7 @@ export default function EggCosteoCatalogTab({
                             type="button"
                             onClick={handleSyncPurchases}
                             disabled={syncingPurchases}
-                            className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-sm transition-all self-start sm:self-auto flex-shrink-0"
+                            className="w-full sm:w-auto justify-center px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-sm transition-all self-start sm:self-auto flex-shrink-0"
                         >
                             <RefreshCcw className={`w-4 h-4 ${syncingPurchases ? 'animate-spin' : ''}`} />
                             <span>{syncingPurchases ? 'Sincronizando...' : 'Sincronizar Costos con Compras'}</span>
@@ -116,7 +116,7 @@ export default function EggCosteoCatalogTab({
 
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
                         {/* Químicos CIP */}
-                        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                        <div className="bg-white p-4 sm:p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
                             <div className="flex items-center justify-between pb-3 border-b border-slate-200">
                                 <div>
                                     <h3 className="text-sm font-bold uppercase tracking-wider text-slate-900 flex items-center gap-2">
@@ -219,7 +219,7 @@ export default function EggCosteoCatalogTab({
                         </div>
 
                         {/* Empaques */}
-                        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                        <div className="bg-white p-4 sm:p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
                             <div className="flex items-center justify-between pb-3 border-b border-slate-200">
                                 <div>
                                     <h3 className="text-sm font-bold uppercase tracking-wider text-slate-900 flex items-center gap-2">

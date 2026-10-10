@@ -189,7 +189,7 @@ export default function EggDispatchActionBar({ model }) {
                                                 </div>
                                             </div>
 
-                                            <div className="text-right flex-shrink-0 ml-3">
+                                            <div className="text-left sm:text-right flex-shrink-0 sm:ml-3 pt-2 sm:pt-0 border-t border-slate-100 sm:border-0 flex sm:block justify-between items-center">
                                                 <span className="font-black text-indigo-700 block">{parseFloat(ord.quantity_lbs || 0).toLocaleString()} Lbs</span>
                                                 <span className="text-[10px] text-slate-500 block">
                                                     {getOrderTotalUnits(ord).toLocaleString()} Uds
@@ -202,18 +202,18 @@ export default function EggDispatchActionBar({ model }) {
                         </div>
                     </div>
 
-                    <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                    <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 pt-2 border-t border-slate-100">
                         <button
                             type="button"
                             onClick={() => setRouteModalOpen(false)}
-                            className="text-xs font-semibold text-slate-600 px-4 py-2 hover:bg-slate-100 rounded-xl transition"
+                            className="w-full sm:w-auto text-center text-xs font-semibold text-slate-600 px-4 py-2 hover:bg-slate-100 rounded-xl transition"
                         >
                             Cancelar
                         </button>
                         <button
                             type="submit"
                             disabled={savingRoute}
-                            className="text-xs font-bold bg-emerald-600 text-white px-5 py-2.5 rounded-xl shadow hover:bg-emerald-700 transition flex items-center gap-2 disabled:opacity-50"
+                            className="w-full sm:w-auto justify-center text-xs font-bold bg-emerald-600 text-white px-5 py-2.5 rounded-xl shadow hover:bg-emerald-700 transition flex items-center gap-2 disabled:opacity-50"
                         >
                             {savingRoute ? (
                                 <>

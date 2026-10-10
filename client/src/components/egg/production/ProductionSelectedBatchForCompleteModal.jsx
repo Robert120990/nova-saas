@@ -43,8 +43,8 @@ export default function ProductionSelectedBatchForCompleteModal({
     return (
         <>
             {selectedBatchForComplete && (
-                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-                    <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-2xl max-w-lg w-full space-y-6 text-slate-900">
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 z-50">
+                    <div className="bg-white border border-slate-200 rounded-2xl p-3.5 sm:p-6 shadow-2xl max-w-lg w-full max-h-[92vh] overflow-y-auto space-y-4 sm:space-y-6 text-slate-900">
                         <div>
                             <div className="flex items-center justify-between">
                                 <h3 className="text-base font-bold text-slate-900 uppercase tracking-tight">
@@ -184,18 +184,18 @@ export default function ProductionSelectedBatchForCompleteModal({
                                 </div>
                             )}
 
-                            <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
+                            <div className="flex flex-col sm:flex-row justify-end gap-2.5 sm:gap-3 pt-4 border-t border-slate-200">
                                 <button
                                     type="button"
                                     onClick={onClose}
-                                    className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all border border-slate-200"
+                                    className="w-full sm:w-auto px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all border border-slate-200 text-center justify-center"
                                 >
                                     Cancelar
                                 </button>
                                 <button
                                     type="submit"
                                     disabled={isSubmitting}
-                                    className={`px-5 py-2 text-white rounded-xl text-xs font-bold transition-all shadow-sm ${
+                                    className={`w-full sm:w-auto justify-center px-5 py-2 text-white rounded-xl text-xs font-bold transition-all shadow-sm ${
                                         isFinalized ? 'bg-amber-600 hover:bg-amber-700' : 'bg-teal-600 hover:bg-teal-700'
                                     }`}
                                 >

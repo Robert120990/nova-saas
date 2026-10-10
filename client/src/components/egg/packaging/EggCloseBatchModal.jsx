@@ -23,8 +23,8 @@ const EggCloseBatchModal = ({
     const hasSuperavit = packagedLbs > basisLbs + 0.01;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-150">
-            <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-2xl max-w-lg w-full space-y-4 text-slate-900">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-2 sm:p-4 animate-in fade-in duration-150">
+            <div className="bg-white border border-slate-200 rounded-2xl p-3.5 sm:p-6 shadow-2xl max-w-lg w-full max-h-[92vh] sm:max-h-[90vh] overflow-y-auto space-y-4 text-slate-900">
                 <div className="flex items-center justify-between border-b border-slate-200 pb-3">
                     <div className="flex items-center gap-2.5">
                         <div className="p-2 bg-amber-100 text-amber-700 rounded-xl">
@@ -48,7 +48,7 @@ const EggCloseBatchModal = ({
                     </button>
                 </div>
 
-                <div className={`grid ${remanentesLbs > 0 ? 'grid-cols-4' : 'grid-cols-3'} gap-2 bg-slate-50 p-3.5 rounded-xl border border-slate-200 text-center text-xs`}>
+                <div className={`grid grid-cols-2 ${remanentesLbs > 0 ? 'sm:grid-cols-4' : 'sm:grid-cols-3'} gap-2 bg-slate-50 p-2.5 sm:p-3.5 rounded-xl border border-slate-200 text-center text-xs`}>
                     <div>
                         <span className="text-[10px] font-bold text-slate-400 uppercase block">Rendimiento</span>
                         <strong className="text-teal-700 text-sm">{yieldLbs.toLocaleString()} Lbs</strong>
@@ -115,18 +115,18 @@ const EggCloseBatchModal = ({
                         />
                     </div>
 
-                    <div className="flex justify-end gap-2.5 pt-2 border-t border-slate-200">
+                    <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-2.5 pt-2 border-t border-slate-200">
                         <button
                             type="button"
                             onClick={onClose}
-                            className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors"
+                            className="w-full sm:w-auto px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors"
                         >
                             Cancelar
                         </button>
                         <button
                             type="submit"
                             disabled={isSubmitting}
-                            className="px-5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs disabled:opacity-40"
+                            className="w-full sm:w-auto px-5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs disabled:opacity-40"
                         >
                             {isSubmitting ? 'Cerrando...' : 'Confirmar Cierre de Envasado'}
                         </button>

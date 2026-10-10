@@ -20,7 +20,7 @@ export default function EggDispatchCalendarioTab({ model }) {
     return (<>{activeTab === 'calendario' && (
                 <div className="space-y-4">
                     {/* Barra de Filtros y Fechas */}
-                    <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <div className="bg-white p-3.5 sm:p-4 rounded-xl sm:rounded-2xl border border-slate-200 shadow-sm space-y-3">
                         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
                             {/* Fecha y Modos de Visualización (Día, Semana, Mes, Todos) */}
                             <div className="flex flex-wrap items-center gap-2">
@@ -170,7 +170,7 @@ export default function EggDispatchCalendarioTab({ model }) {
                         </div>
 
                         <div className="overflow-x-auto">
-                            <table className="w-full text-left border-collapse text-xs">
+                            <table className="w-full min-w-[850px] text-left border-collapse text-xs">
                                 <thead>
                                     <tr className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200 text-[11px] uppercase tracking-wider">
                                         <th className="p-3">Fecha Requerida</th>
