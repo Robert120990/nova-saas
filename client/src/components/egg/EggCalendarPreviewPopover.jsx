@@ -28,26 +28,41 @@ export const EggCalendarPreviewPopover = ({ hoverPreview }) => {
 
     const positionStyle = useMemo(() => {
         if (!rect) return { top: '100px', left: '100px' };
-        const popoverWidth = 340;
+        const screenWidth = typeof window !== 'undefined' ? window.innerWidth : 360;
+        const screenHeight = typeof window !== 'undefined' ? window.innerHeight : 640;
+        const padding = 10;
+        const popoverWidth = Math.min(340, screenWidth - (padding * 2));
         const estimatedHeight = 360;
-        const padding = 12;
+
+        if (screenWidth < 420) {
+            // En pantallas pequeñas (5" - 5.5"), anclar con margen seguro
+            const top = Math.min(Math.max(padding, rect.top), Math.max(padding, screenHeight - estimatedHeight - padding));
+            return {
+                top: `${top}px`,
+                left: `${padding}px`,
+                width: `${popoverWidth}px`,
+                maxWidth: `calc(100vw - ${padding * 2}px)`
+            };
+        }
 
         let left = rect.right + padding;
-        if (left + popoverWidth > window.innerWidth) {
+        if (left + popoverWidth > screenWidth) {
             left = rect.left - popoverWidth - padding;
         }
         if (left < padding) {
-            left = Math.max(padding, window.innerWidth - popoverWidth - padding);
+            left = Math.max(padding, screenWidth - popoverWidth - padding);
         }
 
         let top = rect.top;
-        if (top + estimatedHeight > window.innerHeight) {
-            top = Math.max(padding, window.innerHeight - estimatedHeight - padding);
+        if (top + estimatedHeight > screenHeight) {
+            top = Math.max(padding, screenHeight - estimatedHeight - padding);
         }
 
         return {
             top: `${top}px`,
-            left: `${left}px`
+            left: `${left}px`,
+            width: `${popoverWidth}px`,
+            maxWidth: `calc(100vw - ${padding * 2}px)`
         };
     }, [rect]);
 
@@ -67,7 +82,7 @@ export const EggCalendarPreviewPopover = ({ hoverPreview }) => {
         return (
             <div
                 style={positionStyle}
-                className="fixed z-[9999] pointer-events-none w-[340px] bg-white/95 backdrop-blur-md rounded-2xl border border-slate-200/90 shadow-2xl p-4 text-slate-800 space-y-3 animate-in fade-in zoom-in-95 duration-150 ring-1 ring-slate-900/5"
+                className="fixed z-[9999] pointer-events-none w-full max-w-[340px] max-h-[85dvh] overflow-y-auto bg-white/95 backdrop-blur-md rounded-2xl border border-slate-200/90 shadow-2xl p-3 sm:p-4 text-slate-800 space-y-3 animate-in fade-in zoom-in-95 duration-150 ring-1 ring-slate-900/5"
             >
                 {/* Cabecera */}
                 <div className="flex items-start justify-between gap-2 border-b border-slate-100 pb-2.5">
@@ -230,7 +245,7 @@ export const EggCalendarPreviewPopover = ({ hoverPreview }) => {
         return (
             <div
                 style={positionStyle}
-                className="fixed z-[9999] pointer-events-none w-[340px] bg-white/95 backdrop-blur-md rounded-2xl border border-amber-200/90 shadow-2xl p-4 text-slate-800 space-y-3 animate-in fade-in zoom-in-95 duration-150 ring-1 ring-amber-500/10"
+                className="fixed z-[9999] pointer-events-none w-full max-w-[340px] max-h-[85dvh] overflow-y-auto bg-white/95 backdrop-blur-md rounded-2xl border border-amber-200/90 shadow-2xl p-3 sm:p-4 text-slate-800 space-y-3 animate-in fade-in zoom-in-95 duration-150 ring-1 ring-amber-500/10"
             >
                 {/* Cabecera */}
                 <div className="flex items-start justify-between gap-2 border-b border-amber-100 pb-2.5">

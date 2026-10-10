@@ -21,27 +21,27 @@ export default function ConfigIsProductCatalogModalOpenModal({ model, open = mod
     const { systemProducts, isMappingModalOpen, mappingForm, isProductCatalogModalOpen, setIsProductCatalogModalOpen, catalogSearchQuery, setCatalogSearchQuery, catalogFilterType, setCatalogFilterType, targetCodeIndex, setTargetCodeIndex, isFetchingProducts, fetchSystemProducts, isProductMapped, getProductMappingInfo, isProductInCurrentForm, handleSelectProductCode } = model;
     if (!open) return null;
     return (<>{isProductCatalogModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-3 sm:p-4 animate-in fade-in duration-150">
-                    <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-6 shadow-2xl max-w-4xl w-full max-h-[92vh] flex flex-col text-slate-900 space-y-4">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-2 sm:p-4 animate-in fade-in duration-150">
+                    <div className="bg-white border border-slate-200 rounded-2xl p-3.5 sm:p-6 shadow-2xl max-w-4xl w-full max-h-[94dvh] sm:max-h-[92vh] flex flex-col text-slate-900 space-y-3 sm:space-y-4 my-auto">
                         {/* Header */}
-                        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3">
-                            <div className="flex items-center gap-2.5">
-                                <div className="p-2 bg-indigo-100 text-indigo-700 rounded-xl">
-                                    <Package size={22} />
+                        <div className="flex flex-wrap items-center justify-between gap-2.5 sm:gap-3 border-b border-slate-200 pb-3">
+                            <div className="flex items-center gap-2.5 min-w-0 pr-2">
+                                <div className="p-2 bg-indigo-100 text-indigo-700 rounded-xl shrink-0">
+                                    <Package size={20} className="sm:w-[22px] sm:h-[22px]" />
                                 </div>
-                                <div>
-                                    <div className="flex items-center gap-2">
-                                        <h3 className="text-sm sm:text-base font-bold uppercase tracking-wider text-slate-900">
-                                            Catálogo de Productos y Códigos del Sistema
+                                <div className="min-w-0">
+                                    <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                                        <h3 className="text-xs sm:text-base font-bold uppercase tracking-wider text-slate-900 truncate">
+                                            Catálogo de Productos
                                         </h3>
-                                        <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-full text-[10px] font-bold">
+                                        <span className="px-1.5 sm:px-2 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-full text-[9px] sm:text-[10px] font-bold">
                                             {systemProducts.length} productos
                                         </span>
                                     </div>
-                                    <p className="text-xs text-slate-500 font-medium">
+                                    <p className="text-[11px] sm:text-xs text-slate-500 font-medium truncate sm:whitespace-normal">
                                         {targetCodeIndex !== null
-                                            ? `Selecciona un código para asignarlo al renglón #${targetCodeIndex + 1}`
-                                            : 'Busca y selecciona códigos actuales (SKU / Código de Barra) para vincularlos al módulo industrial'}
+                                            ? `Asignar al renglón #${targetCodeIndex + 1}`
+                                            : 'Buscar códigos (SKU / Código de Barra) para vincular'}
                                     </p>
                                 </div>
                             </div>
@@ -318,9 +318,9 @@ export default function ConfigIsProductCatalogModalOpenModal({ model, open = mod
                         </div>
 
                         {/* Footer */}
-                        <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-200 text-xs text-slate-500">
-                            <span className="font-medium">
-                                Haz clic en cualquier código SKU o en <strong>Usar en Formulario</strong> para insertarlo instantáneamente.
+                        <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-between gap-2.5 pt-3 border-t border-slate-200 text-xs text-slate-500">
+                            <span className="font-medium text-[11px] sm:text-xs">
+                                Haz clic en SKU o en <strong>Usar en Formulario</strong> para insertarlo.
                             </span>
                             <button
                                 type="button"
@@ -328,7 +328,7 @@ export default function ConfigIsProductCatalogModalOpenModal({ model, open = mod
                                     setIsProductCatalogModalOpen(false);
                                     setTargetCodeIndex(null);
                                 }}
-                                className="px-4 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors"
+                                className="w-full sm:w-auto px-5 py-2.5 sm:py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors text-center"
                             >
                                 Cerrar
                             </button>

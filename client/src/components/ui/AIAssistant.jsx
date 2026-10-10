@@ -71,7 +71,7 @@ const AIAssistant = () => {
     ];
 
     return (
-        <div className="fixed bottom-6 right-6 z-[9999] flex flex-col items-end italic">
+        <div className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-40 flex flex-col items-end italic">
             {/* Chat Window */}
             {isOpen && (
                 <div className="mb-4 w-[350px] md:w-[400px] h-[500px] bg-white/95 backdrop-blur-xl border border-slate-200 rounded-[2.5rem] shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom-5 duration-300">

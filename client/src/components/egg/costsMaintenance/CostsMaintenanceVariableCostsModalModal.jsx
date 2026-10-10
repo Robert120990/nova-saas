@@ -10,11 +10,11 @@ export default function CostsMaintenanceVariableCostsModalModal({ model, open = 
     const { costConcepts, variableCostsModal, setVariableCostsModal, variableCosts, newVarCost, setNewVarCost, addVariableCost, deleteVariableCost } = model;
     if (!open) return null;
     return (<>{variableCostsModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
-                    <div className="bg-white rounded-2xl max-w-md w-full p-6 border border-slate-200 shadow-2xl space-y-4 text-xs">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-3 sm:p-4">
+                    <div className="bg-white rounded-2xl max-w-md w-full p-4 sm:p-6 border border-slate-200 shadow-2xl space-y-4 text-xs max-h-[92dvh] overflow-y-auto my-auto">
                         <div className="flex items-center justify-between border-b border-slate-200 pb-3">
-                            <h3 className="text-base font-bold text-slate-900 uppercase">Costos Variables por Lote</h3>
-                            <button onClick={onClose} className="text-slate-400 hover:text-slate-600 p-1 rounded-lg">
+                            <h3 className="text-sm sm:text-base font-bold text-slate-900 uppercase leading-snug">Costos Variables por Lote</h3>
+                            <button onClick={onClose} className="text-slate-400 hover:text-slate-600 p-1 rounded-lg shrink-0">
                                 <XCircle size={20} />
                             </button>
                         </div>
@@ -45,30 +45,32 @@ export default function CostsMaintenanceVariableCostsModalModal({ model, open = 
                                     </div>
                                 </div>
                             ))}
-                            <div className="flex gap-2 pt-2">
+                            <div className="flex flex-wrap sm:flex-nowrap gap-2 pt-2">
                                 <MoneyInput
                                     type="text"
                                     value={newVarCost.concept_name}
                                     onChange={(e) => setNewVarCost({ ...newVarCost, concept_name: e.target.value })}
-                                    placeholder="Concepto (ej. Flete extra, Muestreo)"
-                                    className="flex-1 px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-semibold focus:outline-none"
+                                    placeholder="Concepto (ej. Flete, Muestreo)"
+                                    className="w-full sm:flex-1 px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-semibold focus:outline-none"
                                 />
-                                <div className="w-28">
-                                    <MoneyInput
-                                        value={newVarCost.amount}
-                                        onChange={(e) => setNewVarCost({ ...newVarCost, amount: e.target.value })}
-                                        placeholder="0.00"
-                                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-semibold text-right focus:outline-none"
-                                        step="0.01"
-                                    />
+                                <div className="flex items-center gap-2 w-full sm:w-auto">
+                                    <div className="flex-1 sm:w-28">
+                                        <MoneyInput
+                                            value={newVarCost.amount}
+                                            onChange={(e) => setNewVarCost({ ...newVarCost, amount: e.target.value })}
+                                            placeholder="0.00"
+                                            className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 font-semibold text-right focus:outline-none"
+                                            step="0.01"
+                                        />
+                                    </div>
+                                    <button onClick={addVariableCost} className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shrink-0">
+                                        <Plus size={14} />
+                                    </button>
                                 </div>
-                                <button onClick={addVariableCost} className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold">
-                                    <Plus size={14} />
-                                </button>
                             </div>
                         </div>
                         <div className="flex justify-end pt-3 border-t border-slate-200">
-                            <button onClick={() => setVariableCostsModal(null)} className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold">
+                            <button onClick={() => setVariableCostsModal(null)} className="w-full py-2.5 sm:py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold text-center">
                                 Cerrar
                             </button>
                         </div>

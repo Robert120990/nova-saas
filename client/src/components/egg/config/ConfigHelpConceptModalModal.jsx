@@ -10,18 +10,18 @@ export default function ConfigHelpConceptModalModal({ model, open = model.helpCo
     const { helpConceptModal } = model;
     if (!open) return null;
     return (<>{helpConceptModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
-                    <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-2xl max-w-xl w-full mx-4 max-h-[90vh] overflow-y-auto text-slate-900 space-y-5">
-                        <div className="flex items-center justify-between border-b border-slate-200 pb-4">
-                            <div className="flex items-center gap-2.5">
-                                <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl border border-indigo-100">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-3 sm:p-4">
+                    <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-6 shadow-2xl max-w-xl w-full max-h-[92dvh] overflow-y-auto text-slate-900 space-y-4 sm:space-y-5 my-auto">
+                        <div className="flex items-center justify-between border-b border-slate-200 pb-3 sm:pb-4">
+                            <div className="flex items-center gap-2.5 min-w-0 pr-2">
+                                <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl border border-indigo-100 shrink-0">
                                     <HelpCircle size={20} />
                                 </div>
-                                <div>
-                                    <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide">
-                                        ¿Cómo se complementa este espacio?
+                                <div className="min-w-0">
+                                    <h3 className="text-xs sm:text-sm font-bold text-slate-900 uppercase tracking-wide truncate">
+                                        ¿Cómo se complementa?
                                     </h3>
-                                    <span className="text-xs text-indigo-600 font-bold">{helpConceptModal.concept_name}</span>
+                                    <span className="text-xs text-indigo-600 font-bold block truncate">{helpConceptModal.concept_name}</span>
                                 </div>
                             </div>
                             <button
@@ -66,7 +66,7 @@ export default function ConfigHelpConceptModalModal({ model, open = model.helpCo
                         <div className="flex justify-end pt-3 border-t border-slate-200">
                             <button
                                 onClick={onClose}
-                                className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs"
+                                className="w-full sm:w-auto px-5 py-2.5 sm:py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs text-center"
                             >
                                 Entendido
                             </button>

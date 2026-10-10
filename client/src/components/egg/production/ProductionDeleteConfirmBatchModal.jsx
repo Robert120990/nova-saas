@@ -7,21 +7,21 @@ export default function ProductionDeleteConfirmBatchModal({ model, open = model.
     const { deleteConfirmBatch } = model;
     if (!open) return null;
     return (<>{deleteConfirmBatch && (
-                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
-                    <div className="bg-white border border-slate-200 rounded-2xl shadow-2xl max-w-md w-full p-6 text-slate-900 space-y-4">
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 z-50 animate-in fade-in duration-150">
+                    <div className="bg-white border border-slate-200 rounded-2xl shadow-2xl max-w-md w-full p-4 sm:p-6 text-slate-900 space-y-4 max-h-[92dvh] overflow-y-auto my-auto">
                         <div className="flex items-center gap-3 text-rose-600 border-b border-slate-200 pb-3">
-                            <div className="p-2.5 bg-rose-100 rounded-xl">
+                            <div className="p-2.5 bg-rose-100 rounded-xl shrink-0">
                                 <AlertTriangle size={24} />
                             </div>
                             <div>
-                                <h3 className="text-sm font-bold uppercase tracking-wider text-slate-900">
+                                <h3 className="text-sm font-bold uppercase tracking-wider text-slate-900 leading-snug">
                                     Confirmar Eliminación de Lote
                                 </h3>
                                 <span className="text-xs text-slate-500 font-medium">Acción irreversible según nivel de usuario</span>
                             </div>
                         </div>
 
-                        <p className="text-xs text-slate-600 font-medium">
+                        <p className="text-xs text-slate-600 font-medium leading-relaxed">
                             ¿Está seguro de eliminar el lote <b>{deleteConfirmBatch.batch_code_display || deleteConfirmBatch.batch_uuid}</b> ({deleteConfirmBatch.product_type})?
                         </p>
 
@@ -31,18 +31,18 @@ export default function ProductionDeleteConfirmBatchModal({ model, open = model.
                             <div>• Eliminará los registros de mermas y remanentes asociados.</div>
                         </div>
 
-                        <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-200">
+                        <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 pt-3 border-t border-slate-200">
                             <button
                                 type="button"
                                 onClick={onClose}
-                                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors"
+                                className="w-full sm:w-auto px-4 py-2.5 sm:py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors text-center"
                             >
                                 Cancelar
                             </button>
                             <button
                                 type="button"
                                 onClick={onSave}
-                                className="px-5 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-colors shadow-xs"
+                                className="w-full sm:w-auto px-5 py-2.5 sm:py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-colors shadow-xs text-center"
                             >
                                 Sí, Eliminar Lote
                             </button>

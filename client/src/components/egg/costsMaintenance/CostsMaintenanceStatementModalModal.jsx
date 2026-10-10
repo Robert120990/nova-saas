@@ -15,26 +15,26 @@ export default function CostsMaintenanceStatementModalModal({ model, open = mode
     const { statementModal, setStatementModal, statementData, setStatementData, loadingStatement, statementTypeFilter, setStatementTypeFilter, setMovementModal, setMovementForm } = model;
     if (!open) return null;
     return (<>{statementModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 overflow-y-auto">
-                    <div className="bg-white rounded-2xl max-w-4xl w-full p-6 border border-slate-200 shadow-2xl space-y-5 text-xs my-8 max-h-[92vh] flex flex-col">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-2 sm:p-4 overflow-y-auto">
+                    <div className="bg-white rounded-2xl max-w-4xl w-full p-3.5 sm:p-6 border border-slate-200 shadow-2xl space-y-4 sm:space-y-5 text-xs my-auto max-h-[94dvh] sm:max-h-[92vh] flex flex-col">
                         {/* Cabecera del Estado de Cuenta */}
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-4 no-print">
-                            <div className="flex items-center gap-2.5">
-                                <div className="p-2 bg-indigo-50 text-indigo-700 rounded-xl border border-indigo-100">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-3 sm:pb-4 no-print">
+                            <div className="flex items-center gap-2.5 min-w-0 pr-2">
+                                <div className="p-2 bg-indigo-50 text-indigo-700 rounded-xl border border-indigo-100 shrink-0">
                                     <FileText size={20} />
                                 </div>
-                                <div>
-                                    <h3 className="text-base font-black text-slate-900 uppercase tracking-wide">
-                                        Estado de Cuenta de Envases Retornables
+                                <div className="min-w-0">
+                                    <h3 className="text-sm sm:text-base font-black text-slate-900 uppercase tracking-wide truncate">
+                                        Estado de Cuenta de Envases
                                     </h3>
-                                    <p className="text-xs text-slate-500 font-semibold mt-0.5">
+                                    <p className="text-[11px] sm:text-xs text-slate-500 font-semibold mt-0.5 truncate">
                                         {statementModal.customer_name || statementData?.customer?.customer_name}
                                         {statementData?.customer?.telefono && ` • Tel: ${statementData.customer.telefono}`}
                                         {statementData?.customer?.nrc && ` • NRC: ${statementData.customer.nrc}`}
                                     </p>
                                 </div>
                             </div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-wrap justify-end">
                                 <button
                                     onClick={() => window.print()}
                                     className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all border border-slate-200"
@@ -62,7 +62,7 @@ export default function CostsMaintenanceStatementModalModal({ model, open = mode
                                 </button>
                                 <button
                                     onClick={onClose}
-                                    className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
+                                    className="text-slate-400 hover:text-slate-600 p-1 rounded-lg shrink-0"
                                 >
                                     <XCircle size={22} />
                                 </button>
@@ -292,7 +292,7 @@ export default function CostsMaintenanceStatementModalModal({ model, open = mode
                                     setStatementModal(null);
                                     setStatementData(null);
                                 }}
-                                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all"
+                                className="w-full sm:w-auto px-5 py-2.5 sm:py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all text-center"
                             >
                                 Cerrar Estado de Cuenta
                             </button>

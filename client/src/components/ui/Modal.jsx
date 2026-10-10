@@ -6,20 +6,20 @@ const Modal = ({
     title,
     children,
     maxWidth = "max-w-2xl",
-    maxHeight = "sm:max-h-[90vh]",
-    height = "sm:h-auto",
+    maxHeight = "max-h-[94dvh] sm:max-h-[90vh]",
+    height = "h-auto sm:h-auto",
     zIndex = "z-50",
     className = "",
-    bodyClassName = "px-4 sm:px-6 py-4 sm:py-6"
+    bodyClassName = "px-3.5 sm:px-6 py-3.5 sm:py-6"
 }) => {
     if (!isOpen) return null;
 
     return (
         <div className={`fixed inset-0 ${zIndex} flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm`}>
-            <div className={`bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl w-full ${maxWidth} h-[100dvh] ${height} max-h-[100dvh] ${maxHeight} overflow-hidden animate-in slide-in-from-bottom-2 sm:zoom-in-95 duration-200 flex flex-col ${className}`}>
-                <div className="flex items-center justify-between px-4 sm:px-6 py-3.5 sm:py-4 border-b border-slate-100 shrink-0 bg-slate-50/50">
-                    <h3 className="text-base sm:text-xl font-bold text-slate-900 truncate pr-2">{title}</h3>
-                    <button onClick={onClose} className="p-2 hover:bg-slate-200/60 rounded-xl transition-colors shrink-0 text-slate-500 hover:text-slate-700">
+            <div className={`bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl w-full ${maxWidth} ${height} ${maxHeight} overflow-hidden animate-in slide-in-from-bottom-2 sm:zoom-in-95 duration-200 flex flex-col ${className}`}>
+                <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-slate-100 shrink-0 bg-slate-50/50">
+                    <h3 className="text-sm sm:text-lg md:text-xl font-bold text-slate-900 leading-snug line-clamp-2 pr-2">{title}</h3>
+                    <button onClick={onClose} className="p-1.5 sm:p-2 hover:bg-slate-200/60 rounded-xl transition-colors shrink-0 text-slate-500 hover:text-slate-700">
                         <X size={20} />
                     </button>
                 </div>

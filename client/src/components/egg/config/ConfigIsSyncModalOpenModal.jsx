@@ -14,23 +14,23 @@ export default function ConfigIsSyncModalOpenModal({ model, open = model.isSyncM
     const { MONTH_NAMES, isSyncModalOpen, setIsSyncModalOpen, syncParams, setSyncParams, syncData, isSyncing, syncPreviewLoading, fetchSyncPreview } = model;
     if (!open) return null;
     return (<>{isSyncModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
-                    <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-2xl max-w-3xl w-full mx-4 max-h-[90vh] overflow-y-auto text-slate-900 space-y-6">
-                        <div className="flex items-center justify-between border-b border-slate-200 pb-4">
-                            <div className="flex items-center gap-3">
-                                <div className="p-2.5 bg-emerald-50 text-emerald-600 rounded-xl border border-emerald-100">
-                                    <RefreshCw size={22} />
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-3 sm:p-4">
+                    <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-6 shadow-2xl max-w-3xl w-full max-h-[92dvh] overflow-y-auto text-slate-900 space-y-4 sm:space-y-6 my-auto">
+                        <div className="flex items-center justify-between border-b border-slate-200 pb-3 sm:pb-4">
+                            <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 pr-2">
+                                <div className="p-2 sm:p-2.5 bg-emerald-50 text-emerald-600 rounded-xl border border-emerald-100 shrink-0">
+                                    <RefreshCw size={20} className="sm:w-[22px] sm:h-[22px]" />
                                 </div>
-                                <div>
-                                    <h2 className="text-base font-bold text-slate-900 uppercase tracking-wide">
-                                        Cargar Costos desde Planillas y Gastos Reales
+                                <div className="min-w-0">
+                                    <h2 className="text-xs sm:text-base font-bold text-slate-900 uppercase tracking-wide truncate">
+                                        Cargar Costos de Nómina y Gastos
                                     </h2>
-                                    <p className="text-xs text-slate-500">Módulo Contable & Nómina RRHH - Empresa ANDELSA</p>
+                                    <p className="text-[11px] sm:text-xs text-slate-500 truncate">Módulo Contable & Nómina RRHH - ANDELSA</p>
                                 </div>
                             </div>
                             <button
                                 onClick={onClose}
-                                className="text-slate-400 hover:text-slate-700 p-1 rounded-lg"
+                                className="text-slate-400 hover:text-slate-700 p-1 rounded-lg shrink-0"
                             >
                                 <XCircle size={20} />
                             </button>
@@ -180,11 +180,11 @@ export default function ConfigIsSyncModalOpenModal({ model, open = model.isSyncM
                             </div>
                         ) : null}
 
-                        <div className="flex justify-end gap-3 pt-3 border-t border-slate-200">
+                        <div className="flex flex-col-reverse sm:flex-row justify-end gap-2.5 pt-3 border-t border-slate-200">
                             <button
                                 type="button"
                                 onClick={() => setIsSyncModalOpen(false)}
-                                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all border border-slate-200"
+                                className="w-full sm:w-auto px-4 py-2.5 sm:py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all border border-slate-200 text-center"
                             >
                                 Cancelar
                             </button>
@@ -192,17 +192,17 @@ export default function ConfigIsSyncModalOpenModal({ model, open = model.isSyncM
                                 type="button"
                                 onClick={onSave}
                                 disabled={isSyncing || syncPreviewLoading}
-                                className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-2 disabled:opacity-50"
+                                className="w-full sm:w-auto px-5 py-2.5 sm:py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-2 disabled:opacity-50 text-center"
                             >
                                 {isSyncing ? (
                                     <>
                                         <RefreshCw size={14} className="animate-spin" />
-                                        Sincronizando...
+                                        <span>Sincronizando...</span>
                                     </>
                                 ) : (
                                     <>
                                         <CheckCircle2 size={14} />
-                                        Aplicar y Sincronizar con Costeo de Planta
+                                        <span>Sincronizar Costeo</span>
                                     </>
                                 )}
                             </button>

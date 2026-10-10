@@ -8,15 +8,15 @@ export default function ProductionTarimaPickerModalIsOpenModal({ model, open = m
     const { tarimaPickerModal, setTarimaPickerModal, handleScanTarimaResult } = model;
     if (!open) return null;
     return (<>{tarimaPickerModal.isOpen && (
-                <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
-                    <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 max-w-lg w-full space-y-4 text-slate-900">
+                <div className="fixed inset-0 z-[110] flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
+                    <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 p-4 sm:p-6 max-w-lg w-full max-h-[92dvh] overflow-y-auto my-auto space-y-4 text-slate-900">
                         <div className="flex items-center justify-between border-b border-slate-200 pb-3">
                             <div className="flex items-center gap-2.5">
-                                <div className="p-2 bg-indigo-50 rounded-xl text-indigo-600 border border-indigo-100">
+                                <div className="p-2 bg-indigo-50 rounded-xl text-indigo-600 border border-indigo-100 shrink-0">
                                     <Layers size={20} />
                                 </div>
                                 <div>
-                                    <h3 className="text-sm font-bold uppercase tracking-wider text-slate-900">
+                                    <h3 className="text-sm font-bold uppercase tracking-wider text-slate-900 leading-snug">
                                         Seleccionar Tarima del Lote
                                     </h3>
                                     <p className="text-xs text-slate-500 font-medium">
@@ -79,7 +79,14 @@ export default function ProductionTarimaPickerModalIsOpenModal({ model, open = m
                             })}
                         </div>
 
-                        <div className="flex flex-col sm:flex-row items-center justify-between gap-2.5 pt-3 border-t border-slate-200">
+                        <div className="flex flex-col-reverse sm:flex-row items-center justify-between gap-2.5 pt-3 border-t border-slate-200">
+                            <button
+                                type="button"
+                                onClick={() => setTarimaPickerModal({ isOpen: false, lot: null, availableTarimas: [] })}
+                                className="w-full sm:w-auto px-4 py-2.5 sm:py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-xl text-xs font-bold transition-colors text-center"
+                            >
+                                Cancelar
+                            </button>
                             <button
                                 type="button"
                                 onClick={() => {
@@ -90,16 +97,9 @@ export default function ProductionTarimaPickerModalIsOpenModal({ model, open = m
                                         loadAll: true
                                     });
                                 }}
-                                className="w-full sm:w-auto px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold rounded-xl border border-indigo-200 transition-colors shadow-xs"
+                                className="w-full sm:w-auto px-3.5 py-2.5 sm:py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold rounded-xl border border-indigo-200 transition-colors shadow-xs text-center"
                             >
                                 Cargar Todas las Tarimas ({tarimaPickerModal.availableTarimas.length})
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setTarimaPickerModal({ isOpen: false, lot: null, availableTarimas: [] })}
-                                className="w-full sm:w-auto px-4 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-xl text-xs font-bold transition-colors"
-                            >
-                                Cancelar
                             </button>
                         </div>
                     </div>

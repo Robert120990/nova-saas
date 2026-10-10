@@ -551,30 +551,30 @@ export default function TarimaLabelModal({
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-xs p-3 md:p-6 overflow-y-auto animate-in fade-in duration-200">
-            <div className="bg-white border border-slate-200 rounded-3xl shadow-2xl max-w-2xl w-full flex flex-col max-h-[94vh] overflow-hidden">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-xs p-2 sm:p-4 md:p-6 overflow-y-auto animate-in fade-in duration-200">
+            <div className="bg-white border border-slate-200 rounded-3xl shadow-2xl max-w-2xl w-full flex flex-col max-h-[94dvh] overflow-hidden my-auto">
                 
                 {/* Modal Header */}
-                <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50/80">
-                    <div className="flex items-center gap-3">
-                        <div className="p-2.5 bg-indigo-600 text-white rounded-2xl shadow-sm">
-                            <Boxes size={20} />
+                <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50/80">
+                    <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 pr-2">
+                        <div className="p-2 sm:p-2.5 bg-indigo-600 text-white rounded-2xl shadow-sm shrink-0">
+                            <Boxes size={18} className="sm:w-5 sm:h-5" />
                         </div>
-                        <div>
-                            <h3 className="text-sm font-black text-slate-900 uppercase tracking-wide flex items-center gap-2">
-                                Ficha de Identificación de Tarima
-                                <span className="text-[10px] bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded-full font-bold">
-                                    Tarima #{tarimaNum} de {totalTarimasCount}
+                        <div className="min-w-0">
+                            <h3 className="text-xs sm:text-sm font-black text-slate-900 uppercase tracking-wide flex items-center gap-1.5 flex-wrap">
+                                <span>Ficha de Identificación</span>
+                                <span className="text-[9px] sm:text-[10px] bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded-full font-bold">
+                                    #{tarimaNum}/{totalTarimasCount}
                                 </span>
                             </h3>
-                            <p className="text-[11px] text-slate-500 font-medium">
+                            <p className="text-[10px] sm:text-[11px] text-slate-500 font-medium truncate sm:whitespace-normal">
                                 Etiqueta oficial de pesaje y trazabilidad de materia prima
                             </p>
                         </div>
                     </div>
                     <button
                         onClick={onClose}
-                        className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-200/50 rounded-xl transition-colors"
+                        className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-200/50 rounded-xl transition-colors shrink-0"
                         title="Cerrar"
                     >
                         <X size={18} />
@@ -582,76 +582,76 @@ export default function TarimaLabelModal({
                 </div>
 
                 {/* Toolbar Selector de Tarimas & Formato */}
-                <div className="px-6 py-3 bg-white border-b border-slate-100 flex flex-wrap items-center justify-between gap-3 text-xs">
+                <div className="px-3 sm:px-6 py-2.5 sm:py-3 bg-white border-b border-slate-100 flex flex-wrap items-center justify-between gap-2.5 text-xs">
                     {/* Navegación entre tarimas si hay más de 1 */}
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5">
                         {totalTarimasCount > 1 && (
                             <>
                                 <button
                                     type="button"
                                     disabled={currentIndex <= 0}
                                     onClick={() => setCurrentIndex(prev => Math.max(0, prev - 1))}
-                                    className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg disabled:opacity-30 transition-colors"
+                                    className="p-1 sm:p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg disabled:opacity-30 transition-colors"
                                     title="Tarima anterior"
                                 >
                                     <ChevronLeft size={16} />
                                 </button>
-                                <span className="font-bold text-slate-700 px-1">
-                                    {currentIndex + 1} / {totalTarimasCount}
+                                <span className="font-bold text-slate-700 px-1 text-[11px]">
+                                    {currentIndex + 1}/{totalTarimasCount}
                                 </span>
                                 <button
                                     type="button"
                                     disabled={currentIndex >= totalTarimasCount - 1}
                                     onClick={() => setCurrentIndex(prev => Math.min(totalTarimasCount - 1, prev + 1))}
-                                    className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg disabled:opacity-30 transition-colors"
+                                    className="p-1 sm:p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg disabled:opacity-30 transition-colors"
                                     title="Tarima siguiente"
                                 >
                                     <ChevronRight size={16} />
                                 </button>
                             </>
                         )}
-                        <span className="font-bold text-indigo-700 font-mono text-xs bg-indigo-50 px-2.5 py-1 rounded-lg border border-indigo-100">
+                        <span className="font-bold text-indigo-700 font-mono text-[11px] sm:text-xs bg-indigo-50 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-lg border border-indigo-100 truncate max-w-[140px] sm:max-w-none">
                             {uniquePalletCode}
                         </span>
                     </div>
 
                     {/* Selector de formato: 58mm predeterminado */}
-                    <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl">
+                    <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl overflow-x-auto max-w-full scrollbar-none">
                         <button
                             type="button"
                             onClick={() => setLabelFormat('58mm')}
-                            className={`px-3 py-1 text-[11px] font-bold rounded-lg transition-all ${
+                            className={`px-2.5 py-1 text-[10px] sm:text-[11px] font-bold rounded-lg transition-all shrink-0 ${
                                 labelFormat === '58mm' ? 'bg-white text-indigo-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'
                             }`}
                         >
-                            Ticket 58mm (Predeterminado)
+                            58mm (Predet.)
                         </button>
                         <button
                             type="button"
                             onClick={() => setLabelFormat('80mm')}
-                            className={`px-3 py-1 text-[11px] font-bold rounded-lg transition-all ${
+                            className={`px-2.5 py-1 text-[10px] sm:text-[11px] font-bold rounded-lg transition-all shrink-0 ${
                                 labelFormat === '80mm' ? 'bg-white text-indigo-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'
                             }`}
                         >
-                            Ticket 80mm
+                            80mm
                         </button>
                         <button
                             type="button"
                             onClick={() => setLabelFormat('4x6')}
-                            className={`px-3 py-1 text-[11px] font-bold rounded-lg transition-all ${
+                            className={`px-2.5 py-1 text-[10px] sm:text-[11px] font-bold rounded-lg transition-all shrink-0 ${
                                 labelFormat === '4x6' ? 'bg-white text-indigo-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'
                             }`}
                         >
-                            4" × 6" (Térmica)
+                            4" × 6"
                         </button>
                         <button
                             type="button"
                             onClick={() => setLabelFormat('half_letter')}
-                            className={`px-3 py-1 text-[11px] font-bold rounded-lg transition-all ${
+                            className={`px-2.5 py-1 text-[10px] sm:text-[11px] font-bold rounded-lg transition-all shrink-0 ${
                                 labelFormat === 'half_letter' ? 'bg-white text-indigo-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'
                             }`}
                         >
-                            Media Carta (Bond)
+                            Media Carta
                         </button>
                     </div>
                 </div>
@@ -921,32 +921,34 @@ export default function TarimaLabelModal({
                 </div>
 
                 {/* Modal Footer: Botones de Acción */}
-                <div className="px-6 py-4 bg-white border-t border-slate-200 flex flex-wrap items-center justify-between gap-3">
-                    <div className="text-[11px] text-slate-500 font-semibold flex items-center gap-1.5">
-                        <CheckCircle2 size={14} className="text-emerald-600" />
-                        {labelFormat === '58mm'
-                            ? 'Formato optimizado para ticket térmico de 58mm'
-                            : 'Listo para impresión directa a cualquier impresora térmica o láser'}
+                <div className="px-4 sm:px-6 py-3 sm:py-4 bg-white border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3">
+                    <div className="text-[10px] sm:text-[11px] text-slate-500 font-semibold flex items-center gap-1.5 self-start sm:self-center">
+                        <CheckCircle2 size={14} className="text-emerald-600 shrink-0" />
+                        <span>
+                            {labelFormat === '58mm'
+                                ? 'Optimizado para ticket de 58mm'
+                                : 'Listo para impresión térmica o láser'}
+                        </span>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
                         {totalTarimasCount > 1 && (
                             <button
                                 type="button"
                                 onClick={() => handlePrint(true)}
-                                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-bold transition-all flex items-center gap-2 shadow-xs border border-slate-200"
+                                className="w-full sm:w-auto px-4 py-2 sm:py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-xs border border-slate-200 text-center"
                             >
                                 <Layers size={14} className="text-indigo-600" />
-                                Imprimir Todas ({totalTarimasCount})
+                                <span>Imprimir Todas ({totalTarimasCount})</span>
                             </button>
                         )}
                         <button
                             type="button"
                             onClick={() => handlePrint(false)}
-                            className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-2 shadow-md hover:shadow-indigo-500/20"
+                            className="w-full sm:w-auto px-5 py-2 sm:py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-md hover:shadow-indigo-500/20 text-center"
                         >
                             <Printer size={15} />
-                            Imprimir Tarima #{tarimaNum}
+                            <span>Imprimir Tarima #{tarimaNum}</span>
                         </button>
                     </div>
                 </div>

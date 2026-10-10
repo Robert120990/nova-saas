@@ -12,26 +12,26 @@ export default function EggSalesCustomerDetailModal({ open, onClose, customer })
     const invoices = Array.isArray(customer.invoices) ? customer.invoices : [];
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="relative flex flex-col w-full max-w-4xl max-h-[90vh] bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="relative flex flex-col w-full max-w-4xl max-h-[94dvh] sm:max-h-[90vh] bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden my-auto">
                 {/* Cabecera */}
-                <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50/70">
-                    <div>
+                <div className="flex items-center justify-between px-3.5 sm:px-6 py-3 sm:py-4 border-b border-slate-200 bg-slate-50/70">
+                    <div className="min-w-0 pr-2">
                         <div className="flex items-center gap-2">
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-100 text-indigo-800">
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-bold bg-indigo-100 text-indigo-800 shrink-0">
                                 Cliente
                             </span>
-                            <h2 className="text-lg font-bold text-slate-800 truncate max-w-md sm:max-w-xl">
+                            <h2 className="text-sm sm:text-lg font-bold text-slate-800 truncate max-w-[200px] sm:max-w-xl">
                                 {customer.customer_name}
                             </h2>
                         </div>
-                        <p className="text-xs text-slate-500 mt-0.5">
+                        <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5 truncate">
                             NIT: {customer.customer_nit !== 'N/A' ? customer.customer_nit : 'N/A'} • NRC: {customer.customer_nrc || 'N/A'}
                         </p>
                     </div>
                     <button
                         onClick={onClose}
-                        className="rounded-lg p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 transition-colors"
+                        className="rounded-lg p-1.5 sm:p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 transition-colors shrink-0"
                         title="Cerrar modal"
                     >
                         <X className="w-5 h-5" />
@@ -39,7 +39,7 @@ export default function EggSalesCustomerDetailModal({ open, onClose, customer })
                 </div>
 
                 {/* Métricas / KPIs del cliente */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 px-6 py-4 bg-slate-50 border-b border-slate-200 text-xs">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 px-3 sm:px-6 py-3 sm:py-4 bg-slate-50 border-b border-slate-200 text-xs">
                     <div className="p-3 bg-white rounded-xl border border-slate-200/80 shadow-sm">
                         <div className="flex items-center gap-1.5 text-slate-500 font-bold uppercase text-[10px]">
                             <Package className="w-3.5 h-3.5 text-indigo-600" />
@@ -93,33 +93,33 @@ export default function EggSalesCustomerDetailModal({ open, onClose, customer })
                 </div>
 
                 {/* Sub-navegación de pestañas */}
-                <div className="flex border-b border-slate-200 px-6 bg-white gap-4 text-xs font-bold">
+                <div className="flex border-b border-slate-200 px-3 sm:px-6 bg-white gap-2 sm:gap-4 text-xs font-bold overflow-x-auto scrollbar-none">
                     <button
                         onClick={() => setSubTab('products')}
-                        className={`py-3 border-b-2 flex items-center gap-2 transition-colors ${
+                        className={`py-2.5 sm:py-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-colors shrink-0 ${
                             subTab === 'products'
                                 ? 'border-indigo-600 text-indigo-600'
                                 : 'border-transparent text-slate-500 hover:text-slate-700'
                         }`}
                     >
                         <Package className="w-4 h-4" />
-                        Productos Comprados ({products.length})
+                        <span>Productos ({products.length})</span>
                     </button>
                     <button
                         onClick={() => setSubTab('invoices')}
-                        className={`py-3 border-b-2 flex items-center gap-2 transition-colors ${
+                        className={`py-2.5 sm:py-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-colors shrink-0 ${
                             subTab === 'invoices'
                                 ? 'border-indigo-600 text-indigo-600'
                                 : 'border-transparent text-slate-500 hover:text-slate-700'
                         }`}
                     >
                         <FileText className="w-4 h-4" />
-                        Facturación y DTEs ({invoices.length})
+                        <span>Facturación ({invoices.length})</span>
                     </button>
                 </div>
 
                 {/* Contenido scrolleable */}
-                <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                <div className="flex-1 overflow-y-auto p-3.5 sm:p-6 space-y-4">
                     {subTab === 'products' ? (
                         <div className="overflow-x-auto rounded-xl border border-slate-200">
                             <table className="w-full text-xs text-left">
@@ -247,11 +247,11 @@ export default function EggSalesCustomerDetailModal({ open, onClose, customer })
                 </div>
 
                 {/* Pie de modal */}
-                <div className="flex justify-end items-center px-6 py-3 border-t border-slate-200 bg-slate-50">
+                <div className="flex justify-end items-center px-4 sm:px-6 py-3 border-t border-slate-200 bg-slate-50">
                     <button
                         type="button"
                         onClick={onClose}
-                        className="px-4 py-2 text-xs font-bold text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-100 transition-colors"
+                        className="w-full sm:w-auto px-5 py-2.5 sm:py-2 text-xs font-bold text-slate-700 bg-white border border-slate-300 rounded-xl hover:bg-slate-100 transition-colors shadow-xs text-center"
                     >
                         Cerrar
                     </button>
