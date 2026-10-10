@@ -45,9 +45,9 @@ const getQuedans = async (req, res) => {
 
         const searchWords = search ? getSearchWords(search) : [];
         searchWords.forEach(word => {
-            query += ` AND (p.nombre LIKE ? OR p.nombre_comercial LIKE ? OR p.nit LIKE ? OR p.nrc LIKE ? OR pq.num_quedan LIKE ?) `;
+            query += ` AND (p.nombre LIKE ? OR p.nombre_comercial LIKE ? OR p.nit LIKE ? OR p.nrc LIKE ? OR pq.num_quedan LIKE ? OR pq.rrs_num_cheque LIKE ?) `;
             const searchTerm = `%${word}%`;
-            params.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
+            params.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
         });
 
         const countQuery = `SELECT COUNT(*) as total FROM (${query}) as sub`;
@@ -94,12 +94,39 @@ const getQuedanById = async (req, res) => {
             return res.status(404).json({ message: 'Quedan no encontrado' });
         }
 
+        const quedanData = headers[0];
+
+        // Sincronizar número de cheque en tiempo real desde RRS si está solicitado/entregado y aún no lo tiene guardado
+        if (!quedanData.rrs_num_cheque && (quedanData.status === 'SOLICITADO' || quedanData.status === 'ENTREGADO')) {
+            try {
+                const [configs] = await pool.query(
+                    'SELECT rrs_id_empresa FROM branch_chq_config WHERE company_id = ? AND branch_id = ?',
+                    [companyId, quedanData.branch_id]
+                );
+                if (configs.length > 0 && configs[0].rrs_id_empresa) {
+                    const rrs = getRrsPool();
+                    const llave = `${configs[0].rrs_id_empresa}-${id}`;
+                    const [rrsRows] = await rrs.query(
+                        "SELECT cheque FROM emision_quedan WHERE llave = ? AND cheque != '' AND cheque IS NOT NULL",
+                        [llave]
+                    );
+                    if (rrsRows.length > 0 && rrsRows[0].cheque && rrsRows[0].cheque.trim()) {
+                        const numCheque = rrsRows[0].cheque.trim();
+                        quedanData.rrs_num_cheque = numCheque;
+                        await pool.query('UPDATE purchase_quedans SET rrs_num_cheque = ? WHERE id = ?', [numCheque, id]);
+                    }
+                }
+            } catch (err) {
+                console.warn('Aviso al consultar cheque de quedan en RRS:', err.message);
+            }
+        }
+
         const [items] = await pool.query(
             'SELECT * FROM purchase_quedan_items WHERE quedan_id = ? ORDER BY id',
             [id]
         );
 
-        res.json({ ...headers[0], items });
+        res.json({ ...quedanData, items });
     } catch (error) {
         console.error('Error al obtener detalle del quedan:', error);
         res.status(500).json({ message: 'Error al obtener detalle del quedan' });
@@ -176,6 +203,14 @@ const createQuedan = async (req, res) => {
                     (quedan_id, fecha, documento, tipo, gravadas, iva, retencion, percepcion, exentas, total)
                 VALUES ?
             `, [itemValues]);
+        }
+
+        if (provider_id && dias_credito !== undefined && dias_credito !== null) {
+            const diasNum = parseInt(dias_credito) || 0;
+            await pool.query(
+                'UPDATE providers SET dias_credito = ?, es_credito = ? WHERE id = ? AND company_id = ?',
+                [diasNum, diasNum > 0 ? 1 : 0, provider_id, companyId]
+            );
         }
 
         res.status(201).json({ message: 'Quedan registrado con éxito', id: quedanId });
@@ -280,6 +315,14 @@ const updateQuedan = async (req, res) => {
             `, [itemValues]);
         }
 
+        if (provId && dias_credito !== undefined && dias_credito !== null) {
+            const diasNum = parseInt(dias_credito) || 0;
+            await pool.query(
+                'UPDATE providers SET dias_credito = ?, es_credito = ? WHERE id = ? AND company_id = ?',
+                [diasNum, diasNum > 0 ? 1 : 0, provId, companyId]
+            );
+        }
+
         res.json({ message: 'Quedan actualizado con éxito' });
     } catch (error) {
         console.error('Error al actualizar quedan:', error);
@@ -317,7 +360,7 @@ const deleteQuedan = async (req, res) => {
 const deliverQuedan = async (req, res) => {
     try {
         const { id } = req.params;
-        const { fecha_entrega } = req.body;
+        const { fecha_entrega, rrs_num_cheque } = req.body;
         const companyId = req.company_id || req.user?.company_id;
 
         if (!fecha_entrega) {
@@ -337,10 +380,17 @@ const deliverQuedan = async (req, res) => {
             return res.status(400).json({ message: 'Solo se pueden entregar quedanes en estado SOLICITADO' });
         }
 
-        await pool.query(`
-            UPDATE purchase_quedans SET status = 'ENTREGADO', fecha_entrega = ?
-            WHERE id = ? AND company_id = ?
-        `, [fecha_entrega, id, companyId]);
+        if (rrs_num_cheque && rrs_num_cheque.trim()) {
+            await pool.query(`
+                UPDATE purchase_quedans SET status = 'ENTREGADO', fecha_entrega = ?, rrs_num_cheque = ?
+                WHERE id = ? AND company_id = ?
+            `, [fecha_entrega, rrs_num_cheque.trim(), id, companyId]);
+        } else {
+            await pool.query(`
+                UPDATE purchase_quedans SET status = 'ENTREGADO', fecha_entrega = ?
+                WHERE id = ? AND company_id = ?
+            `, [fecha_entrega, id, companyId]);
+        }
 
         res.json({ message: 'Quedan marcado como entregado con éxito' });
     } catch (error) {
@@ -509,6 +559,79 @@ const revertQuedan = async (req, res) => {
     } catch (error) {
         console.error('Error al revertir quedan:', error);
         res.status(500).json({ message: 'Error al revertir quedan: ' + error.message });
+    }
+};
+
+const getRrsNumCheque = async (req, res) => {
+    try {
+        const { ids } = req.body;
+        if (!ids || !Array.isArray(ids) || ids.length === 0) {
+            return res.json({});
+        }
+
+        const companyId = req.company_id || req.user?.company_id;
+
+        const [quedans] = await pool.query(
+            'SELECT id, branch_id, rrs_num_cheque FROM purchase_quedans WHERE id IN (?) AND company_id = ?',
+            [ids, companyId]
+        );
+
+        if (quedans.length === 0) return res.json({});
+
+        const result = {};
+        for (const q of quedans) {
+            if (q.rrs_num_cheque && q.rrs_num_cheque.trim()) {
+                result[q.id] = q.rrs_num_cheque.trim();
+            }
+        }
+
+        const branchIds = [...new Set(quedans.map(q => q.branch_id))];
+
+        const [configs] = await pool.query(
+            'SELECT branch_id, rrs_id_empresa FROM branch_chq_config WHERE company_id = ? AND branch_id IN (?)',
+            [companyId, branchIds]
+        );
+
+        const branchRrsMap = {};
+        for (const cfg of configs) {
+            branchRrsMap[cfg.branch_id] = cfg.rrs_id_empresa;
+        }
+
+        const rrs = getRrsPool();
+        const llaveToQuedanId = {};
+        const llaves = [];
+
+        for (const quedan of quedans) {
+            const rrsId = branchRrsMap[quedan.branch_id];
+            if (!rrsId) continue;
+            const llave = `${rrsId}-${quedan.id}`;
+            llaveToQuedanId[llave] = quedan.id;
+            llaves.push(llave);
+        }
+
+        if (llaves.length === 0) return res.json(result);
+
+        const [rrsRows] = await rrs.query(
+            `SELECT llave, cheque FROM emision_quedan WHERE llave IN (?) AND cheque != '' AND cheque IS NOT NULL`,
+            [llaves]
+        );
+
+        for (const row of rrsRows) {
+            const qId = llaveToQuedanId[row.llave];
+            if (qId && row.cheque && row.cheque.trim()) {
+                const numCheque = row.cheque.trim();
+                result[qId] = numCheque;
+                await pool.query(
+                    'UPDATE purchase_quedans SET rrs_num_cheque = ? WHERE id = ?',
+                    [numCheque, qId]
+                );
+            }
+        }
+
+        res.json(result);
+    } catch (error) {
+        console.error('Error al obtener números de cheque de quedanes en RRS:', error);
+        res.status(500).json({ message: 'Error al obtener números de cheque de quedanes' });
     }
 };
 
@@ -717,5 +840,6 @@ module.exports = {
     deliverQuedan,
     requestQuedan,
     revertQuedan,
+    getRrsNumCheque,
     getQuedanReportPDF
 };

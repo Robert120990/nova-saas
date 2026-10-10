@@ -387,5 +387,22 @@ const getProvidersReportPDF = async (req, res) => {
     }
 };
 
-module.exports = { getProviders, createProvider, updateProvider, deleteProvider, getProvidersReportPDF };
+const updateProviderCreditDays = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { dias_credito } = req.body;
+        const companyId = req.company_id || req.user?.company_id;
+        const diasNum = parseInt(dias_credito) || 0;
+        await pool.query(
+            'UPDATE providers SET dias_credito = ?, es_credito = ? WHERE id = ? AND company_id = ?',
+            [diasNum, diasNum > 0 ? 1 : 0, id, companyId]
+        );
+        res.json({ message: 'Días de crédito del proveedor actualizados', dias_credito: diasNum });
+    } catch (error) {
+        console.error('Error al actualizar días de crédito del proveedor:', error);
+        res.status(500).json({ message: 'Error al actualizar días de crédito: ' + error.message });
+    }
+};
+
+module.exports = { getProviders, createProvider, updateProvider, deleteProvider, getProvidersReportPDF, updateProviderCreditDays };
 

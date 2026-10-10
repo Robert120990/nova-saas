@@ -73,6 +73,18 @@ const Quedan = () => {
     const total = listData?.total || 0;
     const totalPages = listData?.totalPages || 0;
 
+    const { data: rrsNumChequeMap = {} } = useQuery({
+        queryKey: ['purchase-quedans-rrs-num', quedans.map(c => c.id)],
+        queryFn: async () => {
+            const ids = quedans.filter(c => c.status === 'SOLICITADO' || c.status === 'ENTREGADO').map(c => c.id);
+            if (ids.length === 0) return {};
+            const res = await axios.post('/api/purchases/quedans/rrs-num-cheque', { ids });
+            return res.data;
+        },
+        enabled: quedans.length > 0 && quedans.some(c => c.status === 'SOLICITADO' || c.status === 'ENTREGADO'),
+        refetchInterval: 30000,
+    });
+
     const [creditProvidersCache, setCreditProvidersCache] = useState({});
 
     const loadCreditProviders = async (search, page) => {
@@ -142,9 +154,11 @@ const Quedan = () => {
     }, [editData, user?.branch_id]);
 
     const recalcVenc = (fecha, dias) => {
-        if (!fecha || !dias) return '';
-        const d = new Date(fecha);
-        d.setDate(d.getDate() + parseInt(dias));
+        if (!fecha || dias === '' || dias === undefined || isNaN(dias)) return '';
+        const parts = String(fecha).split('T')[0].split('-');
+        if (parts.length < 3) return '';
+        const d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+        d.setDate(d.getDate() + parseInt(dias || 0, 10));
         return getTodayString(d);
     };
 
@@ -152,9 +166,24 @@ const Quedan = () => {
         const val = String(e.target.value);
         setFormProviderId(val);
         const provider = option || creditProvidersCache[parseInt(val)];
-        const dias = provider ? Number(provider.dias_credito) || 0 : 0;
+        const dias = provider ? (provider.dias_credito != null ? Number(provider.dias_credito) : 0) : 0;
         setFormProviderDias(dias);
         setFormFechaVenc(recalcVenc(formFecha, dias));
+    };
+
+    const handleDiasChange = (val) => {
+        const dias = val === '' ? '' : Math.max(0, parseInt(val, 10) || 0);
+        setFormProviderDias(dias);
+        setFormFechaVenc(recalcVenc(formFecha, dias));
+        if (formProviderId) {
+            setCreditProvidersCache(prev => ({
+                ...prev,
+                [parseInt(formProviderId)]: {
+                    ...prev[parseInt(formProviderId)],
+                    dias_credito: dias === '' ? 0 : dias
+                }
+            }));
+        }
     };
 
     const handleFechaChange = (val) => {
@@ -242,10 +271,29 @@ const Quedan = () => {
         return { gravadas: g, iva: i, retencion: r, percepcion: p, exentas: e, total: t };
     };
 
+    const autoSyncProviderDias = async (providerId, dias) => {
+        if (!providerId || dias === '' || dias === undefined || isNaN(dias)) return;
+        const diasNum = parseInt(dias, 10) || 0;
+        try {
+            await axios.patch(`/api/providers/${providerId}/credit-days`, { dias_credito: diasNum });
+            queryClient.invalidateQueries({ queryKey: ['providers'] });
+            setCreditProvidersCache(prev => ({
+                ...prev,
+                [parseInt(providerId)]: {
+                    ...(prev[parseInt(providerId)] || {}),
+                    dias_credito: diasNum
+                }
+            }));
+        } catch (err) {
+            console.warn('Error al auto-actualizar días en proveedor:', err);
+        }
+    };
+
     const createMutation = useMutation({
         mutationFn: (data) => axios.post('/api/purchases/quedans', data),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['purchase-quedans'] });
+            queryClient.invalidateQueries({ queryKey: ['providers'] });
             toast.success('Quedan registrado con éxito');
             closeForm();
         },
@@ -256,6 +304,7 @@ const Quedan = () => {
         mutationFn: (data) => axios.put(`/api/purchases/quedans/${editId}`, data),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['purchase-quedans'] });
+            queryClient.invalidateQueries({ queryKey: ['providers'] });
             toast.success('Quedan actualizado con éxito');
             closeForm();
         },
@@ -375,7 +424,7 @@ const Quedan = () => {
             branch_id: formBranchId,
             num_quedan: formNumQuedan,
             provider_id: formProviderId,
-            dias_credito: formProviderDias,
+            dias_credito: parseInt(formProviderDias) || 0,
             destino: formDestino,
             fecha: formFecha,
             fecha_vencimiento: formFechaVenc,
@@ -409,12 +458,27 @@ const Quedan = () => {
         if (ok) deleteMutation.mutate(id);
     };
 
+    const targetQuedanForDeliver = useMemo(() => {
+        return quedans.find(c => c.id === deliverId);
+    }, [quedans, deliverId]);
+
+    const numChequeForDeliver = useMemo(() => {
+        if (!deliverId) return '';
+        return rrsNumChequeMap[deliverId] || targetQuedanForDeliver?.rrs_num_cheque || '';
+    }, [deliverId, rrsNumChequeMap, targetQuedanForDeliver]);
+
     const handleDeliver = () => {
         if (!deliverFecha) { toast.error('La fecha de entrega es requerida'); return; }
-        deliverMutation.mutate({ id: deliverId, data: { fecha_entrega: deliverFecha } });
+        deliverMutation.mutate({ 
+            id: deliverId, 
+            data: { 
+                fecha_entrega: deliverFecha,
+                rrs_num_cheque: numChequeForDeliver || undefined 
+            } 
+        });
     };
 
-    const inputCls = "w-full bg-white border border-slate-200 rounded-xl text-[13px] font-medium py-3 px-4 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all";
+    const inputCls = "w-full h-11 bg-white border border-slate-200 rounded-xl text-[13px] font-medium px-4 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all";
     const labelCls = "text-[11px] font-bold text-slate-500 uppercase";
     const totals = calcTotals();
 
@@ -481,9 +545,125 @@ const Quedan = () => {
 
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                 <Table
-                    headers={['N. Quedan', 'Fecha', 'Vencimiento', 'Días', 'Proveedor', 'Destino', 'Total', 'Estado', 'Fecha Entrega', 'Acciones']}
+                    headers={['N. Quedan', 'Fecha', 'Vencimiento', 'Días', 'Proveedor', 'Destino', 'Total', 'Estado', 'N. Cheque', 'Fecha Entrega', 'Acciones']}
                     data={quedans}
                     isLoading={listLoading}
+                    renderCard={(c) => (
+                        <div className="space-y-2.5">
+                            <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0">
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase block">{formatDate(c.fecha)}</span>
+                                    <button
+                                        type="button"
+                                        onClick={() => openDetailModal(c.id)}
+                                        className="font-bold text-slate-800 text-xs uppercase leading-tight truncate hover:text-indigo-600 text-left block"
+                                        title={c.provider_nombre}
+                                    >
+                                        {c.provider_nombre}
+                                    </button>
+                                </div>
+                                <div className="text-right shrink-0">
+                                    <span className="text-sm font-black text-slate-900 block">
+                                        <Money value={c.total || 0} />
+                                    </span>
+                                    <span className="text-[10px] font-black text-indigo-600 font-mono">
+                                        #{c.num_quedan || '—'}
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100 text-[10px]">
+                                <div>
+                                    <span className="text-slate-400 block font-bold uppercase">Destino</span>
+                                    <span className={`inline-block px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest mt-0.5 ${c.destino === 'P' ? 'bg-blue-50 text-blue-600' : 'bg-emerald-50 text-emerald-600'}`}>
+                                        {c.destino === 'P' ? 'PISTA' : 'TIENDA'}
+                                    </span>
+                                </div>
+                                <div>
+                                    <span className="text-slate-400 block font-bold uppercase">Estado</span>
+                                    <span className={`inline-block px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest mt-0.5 ${c.status === 'ENTREGADO' ? 'bg-emerald-50 text-emerald-600' : c.status === 'SOLICITADO' ? 'bg-violet-50 text-violet-600' : 'bg-amber-50 text-amber-600'}`}>
+                                        {c.status}
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-2 pt-1 text-[10px]">
+                                <div>
+                                    <span className="text-slate-400 block font-bold uppercase">N. Cheque</span>
+                                    <span className="text-[11px] font-black text-indigo-600 font-mono tracking-tight">
+                                        {rrsNumChequeMap[c.id] || c.rrs_num_cheque || '—'}
+                                    </span>
+                                </div>
+                                <div>
+                                    <span className="text-slate-400 block font-bold uppercase">F. Entrega</span>
+                                    <span className={`text-[10px] font-bold ${c.fecha_entrega ? 'text-slate-600' : 'text-slate-300'}`}>
+                                        {formatDate(c.fecha_entrega)}
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div className="flex justify-end gap-1 pt-2 border-t border-slate-100">
+                                <button
+                                    type="button"
+                                    onClick={() => openDetailModal(c.id)}
+                                    className="p-1.5 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
+                                    title="Ver detalle"
+                                >
+                                    <Eye size={14} />
+                                </button>
+                                {c.status === 'PENDIENTE' && (
+                                    <>
+                                        <button
+                                            type="button"
+                                            onClick={() => openEditForm(c.id)}
+                                            className="p-1.5 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
+                                            title="Editar"
+                                        >
+                                            <Edit size={14} />
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleRequest(c.id)}
+                                            disabled={requestMutation.isPending}
+                                            className="p-1.5 text-slate-600 hover:text-violet-600 hover:bg-violet-50 rounded-lg transition-all disabled:opacity-40"
+                                            title="Solicitar a RRS"
+                                        >
+                                            <Send size={14} />
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleDelete(c.id)}
+                                            className="p-1.5 text-slate-600 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
+                                            title="Eliminar"
+                                        >
+                                            <Trash2 size={14} />
+                                        </button>
+                                    </>
+                                )}
+                                {c.status === 'SOLICITADO' && (
+                                    <>
+                                        <button
+                                            type="button"
+                                            onClick={() => openDeliverModal(c.id)}
+                                            className="p-1.5 text-slate-600 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all"
+                                            title="Entregar"
+                                        >
+                                            <Handshake size={14} />
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleRevert(c.id)}
+                                            disabled={revertMutation.isPending}
+                                            className="p-1.5 text-slate-600 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-all disabled:opacity-40"
+                                            title="Revertir"
+                                        >
+                                            <Undo2 size={14} />
+                                        </button>
+                                    </>
+                                )}
+                            </div>
+                        </div>
+                    )}
                     renderRow={(c) => (
                         <tr key={c.id} className="hover:bg-slate-50 transition-colors border-b border-slate-50 last:border-0">
                             <td className="px-5 py-1 text-[10px] font-black text-slate-700 font-mono">
@@ -520,6 +700,9 @@ const Quedan = () => {
                                 <span className={`px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest ${c.status === 'ENTREGADO' ? 'bg-emerald-50 text-emerald-600' : c.status === 'SOLICITADO' ? 'bg-violet-50 text-violet-600' : 'bg-amber-50 text-amber-600'}`}>
                                     {c.status}
                                 </span>
+                            </td>
+                            <td className="px-5 py-1 text-[10px] font-black text-indigo-600 font-mono tracking-tight">
+                                {rrsNumChequeMap[c.id] || c.rrs_num_cheque || '—'}
                             </td>
                             <td className="px-5 py-1 text-[9px] font-bold">
                                 <span className={c.fecha_entrega ? 'text-slate-600' : 'text-slate-300'}>
@@ -613,87 +796,118 @@ const Quedan = () => {
                 maxWidth="max-w-5xl"
             >
                 <div className="space-y-5">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                         <div>
-                            <label className={`${labelCls} block mb-1`}>N. Quedan</label>
+                            <div className="h-6 flex items-center mb-1">
+                                <label className={`${labelCls} block`}>N. Quedan</label>
+                            </div>
                             <input type="text" value={formNumQuedan}
                                 onChange={(e) => setFormNumQuedan(e.target.value)}
                                 placeholder="0001" className={inputCls} />
                         </div>
                         <div>
-                            <label className={`${labelCls} block mb-1`}>Sucursal</label>
+                            <div className="h-6 flex items-center mb-1">
+                                <label className={`${labelCls} block`}>Sucursal</label>
+                            </div>
                             <select value={formBranchId} onChange={(e) => setFormBranchId(e.target.value)} className={inputCls}>
                                 {branches.map(b => <option key={b.id} value={b.id}>{b.nombre.toUpperCase()}</option>)}
                             </select>
                         </div>
                         <div>
-                            <label className={`${labelCls} block mb-1`}>Destino</label>
+                            <div className="h-6 flex items-center mb-1">
+                                <label className={`${labelCls} block`}>Destino</label>
+                            </div>
                             <select value={formDestino} onChange={(e) => setFormDestino(e.target.value)} className={inputCls}>
                                 <option value="T">TIENDA</option>
                                 <option value="P">PISTA</option>
                             </select>
                         </div>
                         <div>
-                            <label className={`${labelCls} block mb-1`}>Fecha</label>
+                            <div className="h-6 flex items-center mb-1">
+                                <label className={`${labelCls} block`}>Fecha</label>
+                            </div>
                             <input type="date" value={formFecha} onChange={(e) => handleFechaChange(e.target.value)} className={inputCls} />
                         </div>
-                        <div>
-                            <label className={`${labelCls} block mb-1`}>Fecha Vencimiento</label>
-                            <input type="date" value={formFechaVenc} className={inputCls + ' bg-slate-50 text-slate-500'} readOnly />
-                        </div>
                     </div>
-                    <div>
-                        <div className="flex items-center justify-between mb-1">
-                            <label className={`${labelCls} block`}>Proveedor</label>
-                            <div className="flex items-center gap-1">
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        setEditingProvider(null);
-                                        setIsProviderModalOpen(true);
-                                    }}
-                                    className="text-indigo-600 hover:bg-indigo-50 px-1.5 py-0.5 rounded-lg transition-all flex items-center gap-1 text-[9px] font-black uppercase tracking-tight"
-                                    title="Nuevo Proveedor"
-                                >
-                                    <Plus size={11} />
-                                    <span className="hidden sm:inline">Nuevo</span>
-                                </button>
-                                <button 
-                                    type="button"
-                                    onClick={() => {
-                                        const p = creditProvidersCache[parseInt(formProviderId)];
-                                        if (!p) return;
-                                        setEditingProvider(p);
-                                        setIsProviderModalOpen(true);
-                                    }}
-                                    disabled={!formProviderId}
-                                    className="text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 px-1.5 py-0.5 rounded-lg transition-all disabled:opacity-20 flex items-center gap-1 text-[9px] font-black uppercase tracking-tight"
-                                    title="Editar Proveedor Seleccionado"
-                                >
-                                    <Edit size={11} />
-                                    <span className="hidden sm:inline">Editar</span>
-                                </button>
+                    <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-start">
+                        <div className="md:col-span-6">
+                            <div className="h-6 flex items-center justify-between mb-1">
+                                <label className={`${labelCls} block`}>Proveedor</label>
+                                <div className="flex items-center gap-1">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setEditingProvider(null);
+                                            setIsProviderModalOpen(true);
+                                        }}
+                                        className="text-indigo-600 hover:bg-indigo-50 px-1.5 py-0.5 rounded-lg transition-all flex items-center gap-1 text-[9px] font-black uppercase tracking-tight"
+                                        title="Nuevo Proveedor"
+                                    >
+                                        <Plus size={11} />
+                                        <span className="hidden sm:inline">Nuevo</span>
+                                    </button>
+                                    <button 
+                                        type="button"
+                                        onClick={() => {
+                                            const p = creditProvidersCache[parseInt(formProviderId)];
+                                            if (!p) return;
+                                            setEditingProvider(p);
+                                            setIsProviderModalOpen(true);
+                                        }}
+                                        disabled={!formProviderId}
+                                        className="text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 px-1.5 py-0.5 rounded-lg transition-all disabled:opacity-20 flex items-center gap-1 text-[9px] font-black uppercase tracking-tight"
+                                        title="Editar Proveedor Seleccionado"
+                                    >
+                                        <Edit size={11} />
+                                        <span className="hidden sm:inline">Editar</span>
+                                    </button>
+                                </div>
                             </div>
+                            <SearchableSelect
+                                loadOptions={loadCreditProviders}
+                                value={formProviderId}
+                                onChange={handleProviderChange}
+                                valueKey="id"
+                                labelKey="nombre"
+                                placeholder="BUSCAR PROVEEDOR CRÉDITO..."
+                                codeKey="nrc"
+                                codeLabel="NRC"
+                                selectedLabel={creditProvidersCache[parseInt(formProviderId)]?.nombre}
+                                dropdownWidth={420}
+                                className="!h-11 !min-h-[44px]"
+                            />
                         </div>
-                        <SearchableSelect
-                            loadOptions={loadCreditProviders}
-                            value={formProviderId}
-                            onChange={handleProviderChange}
-                            valueKey="id"
-                            labelKey="nombre"
-                            placeholder="BUSCAR PROVEEDOR CRÉDITO..."
-                            codeKey="nrc"
-                            codeLabel="NRC"
-                            selectedLabel={creditProvidersCache[parseInt(formProviderId)]?.nombre}
-                            dropdownWidth={420}
-                        />
+                        <div className="md:col-span-3">
+                            <div className="h-6 flex items-center mb-1">
+                                <label className={`${labelCls} block`}>Días Crédito</label>
+                            </div>
+                            <input
+                                type="number"
+                                min="0"
+                                max="365"
+                                value={formProviderDias}
+                                onChange={(e) => handleDiasChange(e.target.value)}
+                                onBlur={() => {
+                                    if (formProviderId && formProviderDias !== '') {
+                                        autoSyncProviderDias(formProviderId, formProviderDias);
+                                    }
+                                }}
+                                placeholder="0"
+                                className={inputCls}
+                            />
+                        </div>
+                        <div className="md:col-span-3">
+                            <div className="h-6 flex items-center mb-1">
+                                <label className={`${labelCls} block`}>Fecha Vencimiento</label>
+                            </div>
+                            <input
+                                type="date"
+                                value={formFechaVenc}
+                                className={`${inputCls} bg-slate-50 text-slate-500 cursor-not-allowed`}
+                                readOnly
+                            />
+                        </div>
                     </div>
-                    {formProviderDias > 0 && (
-                        <div className="bg-slate-50 px-4 py-2 rounded-xl border border-slate-100 inline-block">
-                            <span className="text-[10px] font-bold text-slate-500">Días de Crédito: </span>
-                            <span className="text-[13px] font-black text-indigo-600">{formProviderDias}</span>
-                        </div>
-                    )}
                     <hr className="border-slate-200" />
                     <div>
                         <div className="flex items-center justify-between mb-2">
@@ -892,6 +1106,14 @@ const Quedan = () => {
                 maxWidth="max-w-md"
             >
                 <div className="space-y-5">
+                    {numChequeForDeliver && (
+                        <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-3.5 flex items-center justify-between">
+                            <span className="text-[10px] font-black text-indigo-500 uppercase tracking-widest">No. Cheque Asignado</span>
+                            <span className="text-xs font-black font-mono text-indigo-700 bg-white px-2.5 py-1 rounded-lg border border-indigo-100 shadow-sm">
+                                #{numChequeForDeliver}
+                            </span>
+                        </div>
+                    )}
                     <div>
                         <label className={`${labelCls} block mb-1`}>Fecha de Entrega</label>
                         <input type="date" value={deliverFecha} onChange={(e) => setDeliverFecha(e.target.value)} className={inputCls} />
@@ -939,6 +1161,11 @@ const Quedan = () => {
                                     </p>
                                 </div>
                                 <div className="flex items-center gap-2">
+                                    {(rrsNumChequeMap[detailData.id] || detailData.rrs_num_cheque) && (
+                                        <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border bg-indigo-50 text-indigo-700 border-indigo-200 font-mono shadow-sm">
+                                            Cheque #{rrsNumChequeMap[detailData.id] || detailData.rrs_num_cheque}
+                                        </span>
+                                    )}
                                     <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border ${
                                         detailData.destino === 'P'
                                             ? 'bg-blue-50 text-blue-700 border-blue-200'
@@ -958,8 +1185,8 @@ const Quedan = () => {
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 pt-4">
-                                <div>
+                            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 pt-4">
+                                <div className="col-span-2 sm:col-span-1">
                                     <span className="text-[10px] font-bold text-slate-400 uppercase block">Proveedor</span>
                                     <p className="text-[12px] font-black text-slate-800 uppercase mt-0.5 truncate" title={detailData.provider_nombre}>
                                         {detailData.provider_nombre || '—'}
@@ -970,6 +1197,15 @@ const Quedan = () => {
                                             {detailData.provider_nrc && detailData.provider_nit ? ' | ' : ''}
                                             {detailData.provider_nit ? `NIT: ${detailData.provider_nit}` : ''}
                                         </p>
+                                    )}
+                                </div>
+                                <div>
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase block">No. Cheque</span>
+                                    <p className="text-[13px] font-black text-indigo-600 font-mono mt-0.5 tracking-tight">
+                                        {rrsNumChequeMap[detailData.id] || detailData.rrs_num_cheque || '—'}
+                                    </p>
+                                    {detailData.status === 'SOLICITADO' && !(rrsNumChequeMap[detailData.id] || detailData.rrs_num_cheque) && (
+                                        <span className="text-[9px] font-bold text-amber-500 italic block mt-0.5">Pendiente en RRS</span>
                                     )}
                                 </div>
                                 <div>
