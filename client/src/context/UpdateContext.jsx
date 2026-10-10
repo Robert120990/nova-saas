@@ -21,7 +21,7 @@ export const UpdateProvider = ({ children }) => {
 
     const [updateAvailable, setUpdateAvailable] = useState(false);
     const [updateInfo, setUpdateInfo] = useState({
-        version: buildVersion !== 'unknown' ? buildVersion : 'v2.8.2',
+        version: buildVersion !== 'unknown' ? buildVersion : 'v2.08.02',
         commit: buildCommit !== 'unknown' ? buildCommit : '',
         rawVersion: ''
     });
@@ -74,7 +74,7 @@ export const UpdateProvider = ({ children }) => {
 
         // El hash de commit debe tener formato corto de git (ej. 7-8 caracteres)
         const displayCommit = serverCommit.startsWith('v') ? '' : serverCommit;
-        const displayVersion = serverVersion || (displayCommit ? `v2.8.${displayCommit.slice(0, 4)}` : 'v2.8.2');
+        const displayVersion = serverVersion || (displayCommit ? `v2.08.${displayCommit.slice(0, 4)}` : 'v2.08.02');
 
         const newInfo = {
             version: displayVersion,
@@ -190,7 +190,7 @@ export const UpdateProvider = ({ children }) => {
         window.__simulateUpdate = (customVersion, customCommit) => {
             sessionStorage.clear();
             handleUpdateDetected({
-                version: customVersion || 'v2.8.2',
+                version: customVersion || 'v2.08.02',
                 commit: customCommit || '44e35d6',
                 rawVersion: customCommit || '44e35d6',
                 isSimulated: true

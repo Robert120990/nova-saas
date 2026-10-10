@@ -23,9 +23,11 @@ const commitCount = (() => {
 const semanticVersion = (() => {
   const count = parseInt(commitCount, 10);
   if (!isNaN(count) && count >= 1000) {
-    return `v2.8.${count - 999}`;
+    const patch = String(count - 999).padStart(2, '0');
+    return `v2.08.${patch}`;
   }
-  return `v2.7.${count || 0}`;
+  const patch = String(count || 0).padStart(2, '0');
+  return `v2.07.${patch}`;
 })()
 
 export default defineConfig({

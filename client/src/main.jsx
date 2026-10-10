@@ -60,7 +60,7 @@ const updateSW = registerSW({
             .catch(() => {
                 if (typeof window.__notifyAppUpdate === 'function') {
                     window.__notifyAppUpdate({
-                        version: 'v2.8',
+                        version: 'v2.08',
                         commit: 'sw_pending'
                     });
                 }
