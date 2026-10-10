@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { formatDate } from '../../../utils/dateUtils';
+import { formatDate, computeMpJulianLot } from '../../../utils/dateUtils';
 import {
     FileText,
     User,
@@ -418,6 +418,7 @@ export default function ReceptionFiltersBar({ model }) {
                                                                                     }
                                                                                     const recData = {
                                                                                         reception_id: rm.id,
+                                                                                        reception_lot: rm.reception_lot || computeMpJulianLot(rm.fecha || rm.created_at),
                                                                                         provider_name: rm.provider_name,
                                                                                         provider_lot: rm.provider_lot,
                                                                                         fecha: rm.fecha || rm.created_at,

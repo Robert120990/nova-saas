@@ -1,6 +1,7 @@
-import { formatDate } from '../../utils/dateUtils';
-import React, { useState, useEffect } from 'react';
+import { formatDate, computeMpJulianLot } from '../../utils/dateUtils';
+import React, { useState, useEffect, useRef } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import JsBarcode from 'jsbarcode';
 import {
     Printer,
     X,
@@ -15,6 +16,70 @@ import {
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { toast } from 'sonner';
+
+/**
+ * Componente dedicado para renderizar el Código de Barras Code128 en React
+ */
+const BarcodeRenderer = ({
+    value,
+    width = 1.15,
+    height = 30,
+    fontSize = 9,
+    className = ''
+}) => {
+    const svgRef = useRef(null);
+
+    useEffect(() => {
+        if (!svgRef.current || !value) return;
+        try {
+            const cleanVal = String(value).trim();
+            JsBarcode(svgRef.current, cleanVal, {
+                format: 'CODE128',
+                width: width,
+                height: height,
+                displayValue: true,
+                fontSize: fontSize,
+                font: 'monospace',
+                fontOptions: 'bold',
+                margin: 0,
+                textMargin: 2
+            });
+        } catch (e) {
+            console.warn('Error renderizando código de barras:', e);
+        }
+    }, [value, width, height, fontSize]);
+
+    if (!value) return null;
+    return <svg ref={svgRef} className={`max-w-full block mx-auto ${className}`}></svg>;
+};
+
+/**
+ * Genera el Código de Barras Code128 como string SVG vectorial para impresión
+ */
+const generateBarcodeSvg = (value, options = {}) => {
+    try {
+        if (!value) return '';
+        const cleanVal = String(value).trim();
+        const svgNode = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        JsBarcode(svgNode, cleanVal, {
+            format: 'CODE128',
+            width: options.width || 1.15,
+            height: options.height || 30,
+            displayValue: options.displayValue !== false,
+            fontSize: options.fontSize || 9,
+            font: 'monospace',
+            fontOptions: 'bold',
+            margin: 0,
+            textMargin: 2,
+            ...options
+        });
+        svgNode.setAttribute('style', 'max-width: 100%; height: auto; display: block; margin: 0 auto;');
+        return svgNode.outerHTML;
+    } catch (e) {
+        console.warn('Error generando código de barras SVG para impresión:', e);
+        return '';
+    }
+};
 
 /**
  * Genera el Código QR como un string SVG vectorial independiente para impresión
@@ -36,6 +101,36 @@ const generateQrSvg = (payloadObj, size = 68) => {
     }
 };
 
+/**
+ * Resuelve el lote interno de MP
+ */
+const resolveInternalLot = (recData, tItem) => {
+    if (tItem?.internal_lot) return tItem.internal_lot;
+    if (recData?.reception_lot) return recData.reception_lot;
+    if (recData?.internal_lot) return recData.internal_lot;
+    if (recData?.lote_interno) return recData.lote_interno;
+    if (recData?.quality_lab_report_json) {
+        try {
+            const p = typeof recData.quality_lab_report_json === 'string'
+                ? JSON.parse(recData.quality_lab_report_json)
+                : recData.quality_lab_report_json;
+            if (p?.reception_lot) return p.reception_lot;
+        } catch (e) { }
+    }
+    return computeMpJulianLot(recData?.fecha || tItem?.created_at || new Date());
+};
+
+/**
+ * Resuelve la descripción de ubicación de la tarima
+ */
+const resolveLocationText = (tItem, recData) => {
+    const rawLoc = (tItem?.storage_location || recData?.storage_location || 'abajo').toLowerCase();
+    if (rawLoc === 'arriba') return 'ARRIBA (RACK)';
+    if (rawLoc.includes('cont')) return 'CONTENEDOR';
+    if (rawLoc === 'abajo') return 'ABAJO (PISO)';
+    return String(tItem?.storage_location || recData?.storage_location || 'ABAJO (PISO)').toUpperCase();
+};
+
 export default function TarimaLabelModal({
     isOpen,
     onClose,
@@ -49,7 +144,8 @@ export default function TarimaLabelModal({
         : (tarima ? [tarima] : [{ tarima_number: 1, boxes_count: 24, gross_weight_lbs: 0, tare_weight_lbs: 60, net_weight_lbs: 0 }]);
 
     const [currentIndex, setCurrentIndex] = useState(0);
-    const [labelFormat, setLabelFormat] = useState('80mm'); // '80mm' (por defecto según requerimiento), '4x6', 'half_letter'
+    // Formato 58mm predeterminado según requerimiento
+    const [labelFormat, setLabelFormat] = useState('58mm'); // '58mm' (por defecto), '80mm', '4x6', 'half_letter'
     const unitsPerBox = 360; // Estándar industrial 360 huevos por caja (12 cartones x 30)
 
     useEffect(() => {
@@ -65,7 +161,7 @@ export default function TarimaLabelModal({
     if (!isOpen) return null;
 
     const currentTarima = tarimasList[currentIndex] || tarimasList[0];
-    const totalTarimasCount = tarimasList.length;
+    const totalTarimasCount = tarimasList.length || 1;
 
     // Resolver correlativo de la tarima
     const tarimaNum = currentTarima?.tarima_number || (currentIndex + 1);
@@ -73,8 +169,8 @@ export default function TarimaLabelModal({
     const uniquePalletCode = `TAR-${lotCode}-${String(tarimaNum).padStart(2, '0')}`;
     const receptionFolio = receptionData.reception_id ? `REC-${String(receptionData.reception_id).padStart(5, '0')}` : 'ING-NUEVO';
 
-    // Estimación de cantidad de huevo en unidades
-    const boxesCount = parseInt(currentTarima?.boxes_count) || 0;
+    // Estimación y pesaje
+    const boxesCount = parseInt(currentTarima?.boxes_count, 10) || 0;
     const totalEggsUnits = boxesCount * unitsPerBox;
 
     const grossWeight = parseFloat(currentTarima?.gross_weight_lbs || 0);
@@ -88,8 +184,19 @@ export default function TarimaLabelModal({
     const eggType = (receptionData.egg_type || 'HUEVO EN CÁSCARA').toUpperCase();
     const eggColor = receptionData.egg_color ? `COLOR: ${receptionData.egg_color.toUpperCase()}` : '';
     const eggSize = receptionData.egg_size ? `TALLA: ${receptionData.egg_size.toUpperCase()}` : '';
+    const eggColorOrSize = [
+        receptionData.egg_color ? receptionData.egg_color.toUpperCase() : null,
+        receptionData.egg_size ? receptionData.egg_size.toUpperCase() : null
+    ].filter(Boolean).join(' • ');
     const receptionDate = formatDate(receptionData.fecha || new Date());
     const operator = receptionData.operator_name || 'CONTROL DE CALIDAD';
+
+    // Datos específicos para formato 58mm
+    const currentInternalLot = resolveInternalLot(receptionData, currentTarima);
+    const currentLocationText = resolveLocationText(currentTarima, receptionData);
+    const currentAvgBoxWeight = boxesCount > 0 && netWeight > 0
+        ? `${(netWeight / boxesCount).toFixed(2)} LB/CJ`
+        : (boxesCount > 0 && grossWeight > 0 ? `${(grossWeight / boxesCount).toFixed(2)} LB/CJ` : '---');
 
     // Función para imprimir una o todas las tarimas en un iframe limpio
     const handlePrint = (printAll = false) => {
@@ -109,21 +216,34 @@ export default function TarimaLabelModal({
 
         // Estilos según el formato elegido
         let pageCss = '';
-        if (labelFormat === '4x6') {
+        if (labelFormat === '58mm') {
+            pageCss = `
+                @page { size: 58mm auto; margin: 1.5mm 1mm; }
+                .label-card { width: 50mm; max-width: 50mm; padding: 1mm 0.5mm; box-sizing: border-box; margin: 0 auto; color: #000; }
+                .tarima-wrapper { page-break-after: always; display: flex; justify-content: center; align-items: flex-start; padding: 1mm 0; }
+                .tarima-wrapper:last-child { page-break-after: auto; }
+            `;
+        } else if (labelFormat === '4x6') {
             pageCss = `
                 @page { size: 4in 6in; margin: 4mm; }
                 .label-card { width: 3.8in; min-height: 5.7in; padding: 6mm; box-sizing: border-box; }
+                .tarima-wrapper { page-break-after: always; display: flex; justify-content: center; align-items: flex-start; padding: 2mm; }
+                .tarima-wrapper:last-child { page-break-after: auto; }
             `;
         } else if (labelFormat === '80mm') {
             pageCss = `
                 @page { size: 80mm auto; margin: 2mm; }
                 .label-card { width: 74mm; padding: 3mm; box-sizing: border-box; }
+                .tarima-wrapper { page-break-after: always; display: flex; justify-content: center; align-items: flex-start; padding: 2mm; }
+                .tarima-wrapper:last-child { page-break-after: auto; }
             `;
         } else {
             // Media carta (8.5 x 5.5 in) o Letter
             pageCss = `
                 @page { size: letter portrait; margin: 10mm; }
                 .label-card { width: 100%; max-width: 7in; padding: 8mm; box-sizing: border-box; border: 2px solid #0f172a; border-radius: 8px; }
+                .tarima-wrapper { page-break-after: always; display: flex; justify-content: center; align-items: flex-start; padding: 2mm; }
+                .tarima-wrapper:last-child { page-break-after: auto; }
             `;
         }
 
@@ -137,8 +257,6 @@ export default function TarimaLabelModal({
                     * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
                     body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; color: #0f172a; background: #fff; }
                     ${pageCss}
-                    .tarima-wrapper { page-break-after: always; display: flex; justify-content: center; align-items: flex-start; padding: 2mm; }
-                    .tarima-wrapper:last-child { page-break-after: auto; }
                     .header-title { font-size: 11pt; font-weight: 900; text-align: center; text-transform: uppercase; margin: 0; color: #0f172a; letter-spacing: 0.5px; }
                     .header-sub { font-size: 7pt; font-weight: 700; text-align: center; text-transform: uppercase; color: #475569; margin-top: 1mm; margin-bottom: 2mm; letter-spacing: 1px; }
                     .correlativo-banner { background: #fff; color: #000; border: 2.5px solid #000; padding: 2.5mm 1mm; text-align: center; border-radius: 4px; margin-bottom: 2.5mm; }
@@ -152,13 +270,11 @@ export default function TarimaLabelModal({
                     .weight-grid { width: 100%; border-collapse: collapse; }
                     .weight-grid td { text-align: center; padding: 1mm; }
                     .net-highlight { font-size: 15pt; font-weight: 900; color: #047857; letter-spacing: 0.5px; }
-                    .footer-codes { display: flex; justify-content: space-between; align-items: center; border-top: 1px dashed #94a3b8; padding-top: 2.5mm; margin-top: 2mm; }
-                    .operator-seal { font-size: 7pt; color: #64748b; text-align: right; }
-                    .codes-section { border-top: 2px solid #0f172a; padding-top: 2.5mm; margin-top: 2.5mm; margin-bottom: 2mm; }
                     .qr-footer-block { display: flex; align-items: center; justify-content: space-between; gap: 4mm; border-top: 2px solid #0f172a; padding-top: 2.5mm; }
                     .qr-box { border: 2px solid #0f172a; background: #fff; padding: 2mm; border-radius: 4px; text-align: center; flex-shrink: 0; }
                     .qr-box svg { display: block; margin: 0 auto; }
                     .footer-meta { flex: 1; display: flex; flex-direction: column; justify-content: space-between; }
+                    .operator-seal { font-size: 7pt; color: #64748b; text-align: right; }
                 </style>
             </head>
             <body>
@@ -167,7 +283,7 @@ export default function TarimaLabelModal({
                     const tGross = parseFloat(tItem.gross_weight_lbs || 0).toFixed(2);
                     const tTare = parseFloat(tItem.tare_weight_lbs || 0).toFixed(2);
                     const tNet = parseFloat(tItem.net_weight_lbs || (tGross - tTare > 0 ? tGross - tTare : 0)).toFixed(2);
-                    const tBoxes = parseInt(tItem.boxes_count) || 0;
+                    const tBoxes = parseInt(tItem.boxes_count, 10) || 0;
                     const tEggs = (tBoxes * unitsPerBox).toLocaleString();
                     const tCode = `TAR-${lotCode}-${String(tNum).padStart(2, '0')}`;
                     const tPallet = parseFloat(tItem.tare_pallet_lbs || 0);
@@ -175,6 +291,103 @@ export default function TarimaLabelModal({
                     const tCaja = parseFloat(tItem.tare_caja_lbs || 0);
                     const hasBox = tItem.has_caja !== undefined ? Boolean(tItem.has_caja) : hasCaja;
 
+                    // Si es formato 58mm: FORMATO COMPACTO EXACTO CON SOLAMENTE LOS DATOS SOLICITADOS
+                    if (labelFormat === '58mm') {
+                        const internalLot = resolveInternalLot(receptionData, tItem);
+                        const locText = resolveLocationText(tItem, receptionData);
+                        const avgBoxWeight = tBoxes > 0 && parseFloat(tNet) > 0
+                            ? `${(parseFloat(tNet) / tBoxes).toFixed(2)} LB/CJ`
+                            : (tBoxes > 0 && parseFloat(tGross) > 0 ? `${(parseFloat(tGross) / tBoxes).toFixed(2)} LB/CJ` : '---');
+                        const qrPayload = {
+                            id: tCode,
+                            lot: lotCode,
+                            tarima: tNum,
+                            net_lb: parseFloat(tNet),
+                            boxes: tBoxes,
+                            date: receptionDate
+                        };
+
+                        return `
+                            <div class="tarima-wrapper">
+                                <div class="label-card" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+                                    
+                                    <!-- 1. Tarima #xx de xx -->
+                                    <div style="border: 2px solid #000; padding: 2mm 1mm; text-align: center; border-radius: 4px; margin-bottom: 2mm; background: #fff;">
+                                        <div style="font-size: 12pt; font-weight: 900; letter-spacing: 0.5px; line-height: 1.1; text-transform: uppercase; color: #000;">
+                                            TARIMA #${String(tNum).padStart(2, '0')} DE ${String(totalTarimasCount).padStart(2, '0')}
+                                        </div>
+                                    </div>
+
+                                    <!-- 2. Lote Interno -->
+                                    <div style="display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px dashed #000; padding: 1.2mm 0;">
+                                        <span style="font-size: 7pt; font-weight: 800; text-transform: uppercase; color: #000;">LOTE INTERNO:</span>
+                                        <span style="font-size: 9.5pt; font-weight: 900; font-family: monospace; color: #000;">${internalLot}</span>
+                                    </div>
+
+                                    <!-- 3. Ubicación -->
+                                    <div style="display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px dashed #000; padding: 1.2mm 0;">
+                                        <span style="font-size: 7pt; font-weight: 800; text-transform: uppercase; color: #000;">UBICACIÓN:</span>
+                                        <span style="font-size: 8.5pt; font-weight: 900; color: #000;">${locText}</span>
+                                    </div>
+
+                                    <!-- 4. Folio de Ingreso / Fecha Recepción -->
+                                    <div style="border-bottom: 1px dashed #000; padding: 1.2mm 0;">
+                                        <div style="display: flex; justify-content: space-between; align-items: baseline;">
+                                            <span style="font-size: 7pt; font-weight: 800; text-transform: uppercase; color: #000;">FOLIO INGRESO:</span>
+                                            <span style="font-size: 8.5pt; font-weight: 900; font-family: monospace; color: #000;">${receptionFolio}</span>
+                                        </div>
+                                        <div style="display: flex; justify-content: space-between; align-items: baseline; margin-top: 0.8mm;">
+                                            <span style="font-size: 7pt; font-weight: 800; text-transform: uppercase; color: #000;">FECHA RECEP.:</span>
+                                            <span style="font-size: 8.5pt; font-weight: 800; color: #000;">${receptionDate}</span>
+                                        </div>
+                                    </div>
+
+                                    <!-- 5. Proveedor -->
+                                    <div style="border-bottom: 1px dashed #000; padding: 1.2mm 0;">
+                                        <span style="font-size: 6.5pt; font-weight: 800; text-transform: uppercase; display: block; color: #000;">PROVEEDOR:</span>
+                                        <div style="font-size: 8pt; font-weight: 900; text-transform: uppercase; word-break: break-word; line-height: 1.15; color: #000;">${providerName}</div>
+                                    </div>
+
+                                    <!-- 6. Lote Proveedor / Tipo de Producto -->
+                                    <div style="border-bottom: 1px dashed #000; padding: 1.2mm 0;">
+                                        <div style="display: flex; justify-content: space-between; align-items: baseline;">
+                                            <span style="font-size: 7pt; font-weight: 800; text-transform: uppercase; color: #000;">LOTE PROV.:</span>
+                                            <span style="font-size: 9pt; font-weight: 900; font-family: monospace; color: #000;">${lotCode}</span>
+                                        </div>
+                                        <div style="display: flex; justify-content: space-between; align-items: baseline; margin-top: 0.8mm;">
+                                            <span style="font-size: 7pt; font-weight: 800; text-transform: uppercase; color: #000;">PRODUCTO:</span>
+                                            <span style="font-size: 7.5pt; font-weight: 800; text-align: right; text-transform: uppercase; color: #000;">${eggType}${eggColorOrSize ? ` (${eggColorOrSize})` : ''}</span>
+                                        </div>
+                                    </div>
+
+                                    <!-- 7. Cajas de Tarima / Peso Promedio Caja -->
+                                    <div style="border-bottom: 2px solid #000; padding: 1.2mm 0;">
+                                        <div style="display: flex; justify-content: space-between; align-items: baseline;">
+                                            <span style="font-size: 7pt; font-weight: 800; text-transform: uppercase; color: #000;">CAJAS TARIMA:</span>
+                                            <span style="font-size: 9.5pt; font-weight: 900; color: #000;">${tBoxes} CAJAS</span>
+                                        </div>
+                                        <div style="display: flex; justify-content: space-between; align-items: baseline; margin-top: 0.8mm;">
+                                            <span style="font-size: 7pt; font-weight: 800; text-transform: uppercase; color: #000;">PESO PROM. CAJA:</span>
+                                            <span style="font-size: 9.5pt; font-weight: 900; color: #000;">${avgBoxWeight}</span>
+                                        </div>
+                                    </div>
+
+                                    <!-- 8. Código de Barra y QR Legible -->
+                                    <div style="text-align: center; margin-top: 2.5mm; margin-bottom: 1.5mm;">
+                                        ${generateBarcodeSvg(tCode, { width: 1.15, height: 30, fontSize: 9 })}
+                                    </div>
+                                    <div style="text-align: center; margin-top: 1mm;">
+                                        <div style="display: inline-block; padding: 1.5mm; border: 1.5px solid #000; border-radius: 4px; background: #fff;">
+                                            ${generateQrSvg(qrPayload, 96)}
+                                        </div>
+                                    </div>
+
+                                </div>
+                            </div>
+                        `;
+                    }
+
+                    // Formatos estándar: 80mm, 4x6, media carta
                     const rawLoc = (tItem.storage_location || receptionData.storage_location || 'abajo').toLowerCase();
                     let locBg = '#eff6ff';
                     let locBorder = '#3b82f6';
@@ -200,7 +413,7 @@ export default function TarimaLabelModal({
                                 <div class="header-sub">PLANTA INDUSTRIAL DE OVOPRODUCTOS • CONTROL DE MATERIA PRIMA</div>
                                 
                                 <div class="correlativo-banner">
-                                    <div class="correlativo-title">TARIMA #${String(tNum).padStart(2, '0')} DE ${String(targetList.length).padStart(2, '0')}</div>
+                                    <div class="correlativo-title">TARIMA #${String(tNum).padStart(2, '0')} DE ${String(totalTarimasCount).padStart(2, '0')}</div>
                                     <div class="correlativo-code">${tCode}</div>
                                 </div>
 
@@ -269,7 +482,7 @@ export default function TarimaLabelModal({
                                     </table>
                                 </div>
 
-                                <!-- Código QR Agrandado (2x) y Código de Trazabilidad -->
+                                <!-- Código QR Agrandado y Código de Trazabilidad -->
                                 <div class="qr-footer-block">
                                     <div class="qr-box">
                                         ${generateQrSvg({
@@ -402,8 +615,26 @@ export default function TarimaLabelModal({
                         </span>
                     </div>
 
-                    {/* Selector de formato */}
+                    {/* Selector de formato: 58mm predeterminado */}
                     <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl">
+                        <button
+                            type="button"
+                            onClick={() => setLabelFormat('58mm')}
+                            className={`px-3 py-1 text-[11px] font-bold rounded-lg transition-all ${
+                                labelFormat === '58mm' ? 'bg-white text-indigo-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                            }`}
+                        >
+                            Ticket 58mm (Predeterminado)
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setLabelFormat('80mm')}
+                            className={`px-3 py-1 text-[11px] font-bold rounded-lg transition-all ${
+                                labelFormat === '80mm' ? 'bg-white text-indigo-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                            }`}
+                        >
+                            Ticket 80mm
+                        </button>
                         <button
                             type="button"
                             onClick={() => setLabelFormat('4x6')}
@@ -422,191 +653,280 @@ export default function TarimaLabelModal({
                         >
                             Media Carta (Bond)
                         </button>
-                        <button
-                            type="button"
-                            onClick={() => setLabelFormat('80mm')}
-                            className={`px-3 py-1 text-[11px] font-bold rounded-lg transition-all ${
-                                labelFormat === '80mm' ? 'bg-white text-indigo-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'
-                            }`}
-                        >
-                            Ticket 80mm
-                        </button>
                     </div>
                 </div>
 
                 {/* Modal Body: Vista Previa Visual de la Tarima */}
-                <div className="flex-1 overflow-y-auto p-6 bg-slate-100/60 flex justify-center items-start">
-                    <div className={`bg-white border-2 border-slate-900 rounded-2xl shadow-xl p-5 text-slate-900 transition-all ${
-                        labelFormat === '80mm' ? 'w-[320px]' : 'w-full max-w-[480px]'
-                    }`}>
-                        {/* Cabecera institucional */}
-                        <div className="text-center pb-3 border-b border-slate-200">
-                            <h4 className="text-xs font-black tracking-widest text-slate-900 uppercase">
-                                {companyName}
-                            </h4>
-                            <p className="text-[9px] font-extrabold text-slate-500 uppercase tracking-wider mt-0.5">
-                                Control de Recepción & Trazabilidad de Materia Prima
-                            </p>
-                        </div>
-
-                        {/* Banner Correlativo (Sin fondo oscuro, texto negro según requerimiento) */}
-                        <div className="my-3 border-2 border-slate-900 bg-white text-slate-900 rounded-xl p-3 text-center shadow-xs">
-                            <div className="text-lg font-black tracking-wide uppercase text-slate-900">
-                                Tarima #{String(tarimaNum).padStart(2, '0')} de {String(totalTarimasCount).padStart(2, '0')}
+                <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-100/60 flex justify-center items-start">
+                    {labelFormat === '58mm' ? (
+                        /* VISTA PREVIA FORMATO 58MM (SOLO LOS DATOS SOLICITADOS) */
+                        <div className="bg-white border-2 border-slate-900 rounded-2xl shadow-xl p-4 text-slate-900 w-[270px]">
+                            {/* 1. Tarima #xx de xx */}
+                            <div className="border-2 border-slate-900 bg-white text-slate-900 rounded-xl p-2.5 text-center shadow-xs mb-2.5">
+                                <div className="text-base font-black tracking-wide uppercase text-slate-900">
+                                    Tarima #{String(tarimaNum).padStart(2, '0')} de {String(totalTarimasCount).padStart(2, '0')}
+                                </div>
                             </div>
-                            <div className="text-xs font-bold text-slate-600 font-mono tracking-widest mt-0.5">
-                                {uniquePalletCode}
+
+                            {/* 2. Lote Interno */}
+                            <div className="flex items-center justify-between py-1.5 border-b border-dashed border-slate-300 text-xs">
+                                <span className="text-[10px] font-black uppercase tracking-wider text-slate-600">Lote Interno</span>
+                                <span className="font-mono font-black text-xs text-slate-900 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                                    {currentInternalLot}
+                                </span>
+                            </div>
+
+                            {/* 3. Ubicación */}
+                            <div className="flex items-center justify-between py-1.5 border-b border-dashed border-slate-300 text-xs">
+                                <span className="text-[10px] font-black uppercase tracking-wider text-slate-600">Ubicación</span>
+                                <span className="font-black text-xs text-slate-900">
+                                    {currentLocationText}
+                                </span>
+                            </div>
+
+                            {/* 4. Folio de Ingreso / Fecha Recepción */}
+                            <div className="py-1.5 border-b border-dashed border-slate-300 space-y-1 text-xs">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-600">Folio Ingreso</span>
+                                    <span className="font-mono font-black text-indigo-700">{receptionFolio}</span>
+                                </div>
+                                <div className="flex items-center justify-between">
+                                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-600">Fecha Recep.</span>
+                                    <span className="font-bold text-slate-800">{receptionDate}</span>
+                                </div>
+                            </div>
+
+                            {/* 5. Proveedor */}
+                            <div className="py-1.5 border-b border-dashed border-slate-300 text-xs">
+                                <span className="text-[10px] font-black uppercase tracking-wider text-slate-600 block mb-0.5">Proveedor</span>
+                                <span className="font-black text-xs text-slate-900 uppercase block truncate">{providerName}</span>
+                            </div>
+
+                            {/* 6. Lote Proveedor / Tipo de Producto */}
+                            <div className="py-1.5 border-b border-dashed border-slate-300 space-y-1 text-xs">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-600">Lote Prov.</span>
+                                    <span className="font-mono font-black text-xs text-slate-900 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                                        {lotCode}
+                                    </span>
+                                </div>
+                                <div className="flex items-center justify-between">
+                                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-600">Producto</span>
+                                    <span className="font-bold text-[11px] text-slate-800 text-right uppercase">
+                                        {eggType}{eggColorOrSize ? ` (${eggColorOrSize})` : ''}
+                                    </span>
+                                </div>
+                            </div>
+
+                            {/* 7. Cajas de Tarima / Peso Promedio Caja */}
+                            <div className="py-1.5 border-b-2 border-slate-900 space-y-1 text-xs">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-600">Cajas Tarima</span>
+                                    <span className="font-black text-xs text-slate-900">{boxesCount} Cajas</span>
+                                </div>
+                                <div className="flex items-center justify-between">
+                                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-600">Peso Prom. Caja</span>
+                                    <span className="font-black text-xs text-emerald-800">{currentAvgBoxWeight}</span>
+                                </div>
+                            </div>
+
+                            {/* 8. Código de Barra y QR Legible */}
+                            <div className="pt-2 text-center">
+                                <div className="my-1.5">
+                                    <BarcodeRenderer value={uniquePalletCode} width={1.15} height={30} fontSize={9} />
+                                </div>
+                                <div className="p-2 bg-white border-2 border-slate-900 rounded-xl inline-block mt-1">
+                                    <QRCodeSVG
+                                        value={JSON.stringify({
+                                            id: uniquePalletCode,
+                                            lot: lotCode,
+                                            tarima: tarimaNum,
+                                            net_lb: netWeight,
+                                            boxes: boxesCount,
+                                            date: receptionDate
+                                        })}
+                                        size={92}
+                                        level="M"
+                                    />
+                                </div>
                             </div>
                         </div>
+                    ) : (
+                        /* VISTA PREVIA 80mm / 4x6 / MEDIA CARTA */
+                        <div className={`bg-white border-2 border-slate-900 rounded-2xl shadow-xl p-5 text-slate-900 transition-all ${
+                            labelFormat === '80mm' ? 'w-[320px]' : 'w-full max-w-[480px]'
+                        }`}>
+                            {/* Cabecera institucional */}
+                            <div className="text-center pb-3 border-b border-slate-200">
+                                <h4 className="text-xs font-black tracking-widest text-slate-900 uppercase">
+                                    {companyName}
+                                </h4>
+                                <p className="text-[9px] font-extrabold text-slate-500 uppercase tracking-wider mt-0.5">
+                                    Control de Recepción & Trazabilidad de Materia Prima
+                                </p>
+                            </div>
 
-                        {/* Ubicación / Estiba en Almacén */}
-                        {(() => {
-                            const curLoc = (currentTarima?.storage_location || receptionData?.storage_location || 'abajo').toLowerCase();
-                            const isArriba = curLoc === 'arriba';
-                            const isCont = curLoc === 'cont' || curLoc.includes('cont');
-                            return (
-                                <div className={`mb-3 py-1.5 px-3 rounded-xl border text-center font-black text-xs uppercase tracking-wide flex items-center justify-center gap-1.5 shadow-2xs ${
-                                    isArriba
-                                        ? 'bg-amber-50 border-amber-300 text-amber-800'
-                                        : (isCont
-                                            ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
-                                            : 'bg-blue-50 border-blue-300 text-blue-800')
-                                }`}>
-                                    <span>
-                                        {isArriba
-                                            ? '⬆ Estiba / Ubicación: Arriba (Rack Superior)'
+                            {/* Banner Correlativo */}
+                            <div className="my-3 border-2 border-slate-900 bg-white text-slate-900 rounded-xl p-3 text-center shadow-xs">
+                                <div className="text-lg font-black tracking-wide uppercase text-slate-900">
+                                    Tarima #{String(tarimaNum).padStart(2, '0')} de {String(totalTarimasCount).padStart(2, '0')}
+                                </div>
+                                <div className="text-xs font-bold text-slate-600 font-mono tracking-widest mt-0.5">
+                                    {uniquePalletCode}
+                                </div>
+                            </div>
+
+                            {/* Ubicación / Estiba en Almacén */}
+                            {(() => {
+                                const curLoc = (currentTarima?.storage_location || receptionData?.storage_location || 'abajo').toLowerCase();
+                                const isArriba = curLoc === 'arriba';
+                                const isCont = curLoc === 'cont' || curLoc.includes('cont');
+                                return (
+                                    <div className={`mb-3 py-1.5 px-3 rounded-xl border text-center font-black text-xs uppercase tracking-wide flex items-center justify-center gap-1.5 shadow-2xs ${
+                                        isArriba
+                                            ? 'bg-amber-50 border-amber-300 text-amber-800'
                                             : (isCont
-                                                ? '📦 Estiba / Ubicación: Contenedor (Cap. 10)'
-                                                : '⬇ Estiba / Ubicación: Abajo (Nivel Piso)')}
-                                    </span>
-                                </div>
-                            );
-                        })()}
+                                                ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
+                                                : 'bg-blue-50 border-blue-300 text-blue-800')
+                                    }`}>
+                                        <span>
+                                            {isArriba
+                                                ? '⬆ Estiba / Ubicación: Arriba (Rack Superior)'
+                                                : (isCont
+                                                    ? '📦 Estiba / Ubicación: Contenedor (Cap. 10)'
+                                                    : '⬇ Estiba / Ubicación: Abajo (Nivel Piso)')}
+                                        </span>
+                                    </div>
+                                );
+                            })()}
 
-                        {/* Ficha técnica estructurada */}
-                        <div className="grid grid-cols-2 gap-2 text-xs border border-slate-200 rounded-xl p-3 bg-slate-50/50">
-                            <div>
-                                <span className="text-[9px] font-black uppercase tracking-wider text-slate-500 block">Folio Ingreso</span>
-                                <span className="font-black text-indigo-700 font-mono">{receptionFolio}</span>
-                            </div>
-                            <div>
-                                <span className="text-[9px] font-black uppercase tracking-wider text-slate-500 block">Fecha Recepción</span>
-                                <span className="font-bold text-slate-800 flex items-center gap-1">
-                                    <Calendar size={11} className="text-slate-400" />
-                                    {receptionDate}
-                                </span>
-                            </div>
-
-                            <div className="col-span-2 pt-1 border-t border-slate-200">
-                                <span className="text-[9px] font-black uppercase tracking-wider text-slate-500 block">Proveedor</span>
-                                <span className="font-extrabold text-slate-900 truncate block">{providerName}</span>
-                            </div>
-
-                            <div className="pt-1 border-t border-slate-200">
-                                <span className="text-[9px] font-black uppercase tracking-wider text-slate-500 block">Lote Proveedor</span>
-                                <span className="font-black font-mono text-sm text-slate-900 bg-white px-2 py-0.5 rounded border border-slate-300 inline-block">
-                                    {lotCode}
-                                </span>
-                            </div>
-                            <div className="pt-1 border-t border-slate-200">
-                                <span className="text-[9px] font-black uppercase tracking-wider text-slate-500 block">Tipo Producto</span>
-                                <span className="font-bold text-slate-800 block text-[11px] leading-tight">
-                                    {eggType}
-                                </span>
-                                {(eggColor || eggSize) && (
-                                    <span className="text-[10px] text-slate-500 block">
-                                        {[eggColor, eggSize].filter(Boolean).join(' • ')}
-                                    </span>
-                                )}
-                            </div>
-
-                            <div className="pt-1 border-t border-slate-200">
-                                <span className="text-[9px] font-black uppercase tracking-wider text-slate-500 block">Cajas en Tarima</span>
-                                <span className="font-black text-slate-900 text-sm">{boxesCount} Cajas</span>
-                            </div>
-                            <div className="pt-1 border-t border-slate-200">
-                                <span className="text-[9px] font-black uppercase tracking-wider text-slate-500 block">Unidades Aprox.</span>
-                                <span className="font-bold text-indigo-700 text-xs">{totalEggsUnits.toLocaleString()} Huevos</span>
-                            </div>
-                        </div>
-
-                        {/* Bloque Destacado de Pesaje en Báscula */}
-                        <div className="my-3 border-2 border-slate-900 rounded-xl p-3 bg-emerald-50/50">
-                            <div className="grid grid-cols-3 gap-2 text-center items-center">
+                            {/* Ficha técnica estructurada */}
+                            <div className="grid grid-cols-2 gap-2 text-xs border border-slate-200 rounded-xl p-3 bg-slate-50/50">
                                 <div>
-                                    <span className="text-[9px] font-black text-slate-500 uppercase tracking-wide block">Peso Bruto</span>
-                                    <span className="font-bold text-slate-700 text-xs">{grossWeight.toFixed(2)} lb</span>
+                                    <span className="text-[9px] font-black uppercase tracking-wider text-slate-500 block">Folio Ingreso</span>
+                                    <span className="font-black text-indigo-700 font-mono">{receptionFolio}</span>
                                 </div>
                                 <div>
-                                    <span className="text-[9px] font-black text-slate-500 uppercase tracking-wide block">Tara Tarima</span>
-                                    <span className="font-bold text-slate-500 text-xs">{tareWeight.toFixed(2)} lb</span>
-                                    {parseFloat(currentTarima?.tare_pallet_lbs || 0) > 0 && (
-                                        <span className="text-[8px] text-slate-400 block font-mono mt-0.5">
-                                            P:{parseFloat(currentTarima.tare_pallet_lbs || 0).toFixed(0)} S:{parseFloat(currentTarima.tare_separador_lbs || 0).toFixed(0)} C:{parseFloat(currentTarima.tare_caja_lbs || 0).toFixed(0)}
+                                    <span className="text-[9px] font-black uppercase tracking-wider text-slate-500 block">Fecha Recepción</span>
+                                    <span className="font-bold text-slate-800 flex items-center gap-1">
+                                        <Calendar size={11} className="text-slate-400" />
+                                        {receptionDate}
+                                    </span>
+                                </div>
+
+                                <div className="col-span-2 pt-1 border-t border-slate-200">
+                                    <span className="text-[9px] font-black uppercase tracking-wider text-slate-500 block">Proveedor</span>
+                                    <span className="font-extrabold text-slate-900 truncate block">{providerName}</span>
+                                </div>
+
+                                <div className="pt-1 border-t border-slate-200">
+                                    <span className="text-[9px] font-black uppercase tracking-wider text-slate-500 block">Lote Proveedor</span>
+                                    <span className="font-black font-mono text-sm text-slate-900 bg-white px-2 py-0.5 rounded border border-slate-300 inline-block">
+                                        {lotCode}
+                                    </span>
+                                </div>
+                                <div className="pt-1 border-t border-slate-200">
+                                    <span className="text-[9px] font-black uppercase tracking-wider text-slate-500 block">Tipo Producto</span>
+                                    <span className="font-bold text-slate-800 block text-[11px] leading-tight">
+                                        {eggType}
+                                    </span>
+                                    {(eggColor || eggSize) && (
+                                        <span className="text-[10px] text-slate-500 block">
+                                            {[eggColor, eggSize].filter(Boolean).join(' • ')}
                                         </span>
                                     )}
                                 </div>
-                                <div className="bg-white border border-emerald-300 rounded-lg py-1 px-2 shadow-xs">
-                                    <span className="text-[9px] font-black text-emerald-800 uppercase tracking-wide block">PESO NETO</span>
-                                    <span className="font-black text-emerald-700 text-base">{netWeight.toFixed(2)} LB</span>
-                                </div>
-                            </div>
-                        </div>
 
-                        {/* Modo de Empaque y Operador (Sin temp ni transporte) */}
-                        <div className="grid grid-cols-2 gap-2 text-[10px] text-slate-600 bg-slate-50 p-2.5 rounded-xl border border-slate-200 mb-3">
-                            <div className="flex items-center gap-1.5">
-                                <Package size={13} className="text-indigo-600 shrink-0" />
-                                <div>
-                                    <span className="font-bold text-slate-800">Modo:</span> {hasCaja ? 'Con Caja / Jaba' : 'A Granel'}
+                                <div className="pt-1 border-t border-slate-200">
+                                    <span className="text-[9px] font-black uppercase tracking-wider text-slate-500 block">Cajas en Tarima</span>
+                                    <span className="font-black text-slate-900 text-sm">{boxesCount} Cajas</span>
+                                </div>
+                                <div className="pt-1 border-t border-slate-200">
+                                    <span className="text-[9px] font-black uppercase tracking-wider text-slate-500 block">Unidades Aprox.</span>
+                                    <span className="font-bold text-indigo-700 text-xs">{totalEggsUnits.toLocaleString()} Huevos</span>
                                 </div>
                             </div>
-                            <div className="flex items-center gap-1.5">
-                                <User size={13} className="text-slate-400 shrink-0" />
-                                <div className="truncate">
-                                    <span className="font-bold text-slate-800">Operador:</span> {operator}
-                                </div>
-                            </div>
-                        </div>
 
-                        {/* Código QR Agrandado (2x) y Código de Trazabilidad (Sin código de barras) */}
-                        <div className="pt-3 border-t border-slate-200 flex items-center justify-between gap-3">
-                            <div className="p-2 bg-white border-2 border-slate-900 rounded-xl shrink-0 flex items-center justify-center">
-                                <QRCodeSVG
-                                    value={JSON.stringify({
-                                        id: uniquePalletCode,
-                                        lot: lotCode,
-                                        tarima: tarimaNum,
-                                        net_lb: netWeight,
-                                        boxes: boxesCount,
-                                        date: receptionDate
-                                    })}
-                                    size={96}
-                                />
-                            </div>
-                            <div className="flex-1 flex flex-col justify-between py-1">
-                                <div>
-                                    <span className="text-[9px] font-black uppercase tracking-wider text-slate-500 block mb-1">
-                                        Código Trazabilidad
-                                    </span>
-                                    <div className="font-mono text-xs font-black text-slate-900 bg-white border-2 border-slate-900 rounded-lg px-2 py-1 text-center tracking-wider break-all">
-                                        *{uniquePalletCode}*
+                            {/* Bloque Destacado de Pesaje en Báscula */}
+                            <div className="my-3 border-2 border-slate-900 rounded-xl p-3 bg-emerald-50/50">
+                                <div className="grid grid-cols-3 gap-2 text-center items-center">
+                                    <div>
+                                        <span className="text-[9px] font-black text-slate-500 uppercase tracking-wide block">Peso Bruto</span>
+                                        <span className="font-bold text-slate-700 text-xs">{grossWeight.toFixed(2)} lb</span>
+                                    </div>
+                                    <div>
+                                        <span className="text-[9px] font-black text-slate-500 uppercase tracking-wide block">Tara Tarima</span>
+                                        <span className="font-bold text-slate-500 text-xs">{tareWeight.toFixed(2)} lb</span>
+                                        {parseFloat(currentTarima?.tare_pallet_lbs || 0) > 0 && (
+                                            <span className="text-[8px] text-slate-400 block font-mono mt-0.5">
+                                                P:{parseFloat(currentTarima.tare_pallet_lbs || 0).toFixed(0)} S:{parseFloat(currentTarima.tare_separador_lbs || 0).toFixed(0)} C:{parseFloat(currentTarima.tare_caja_lbs || 0).toFixed(0)}
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div className="bg-white border border-emerald-300 rounded-lg py-1 px-2 shadow-xs">
+                                        <span className="text-[9px] font-black text-emerald-800 uppercase tracking-wide block">PESO NETO</span>
+                                        <span className="font-black text-emerald-700 text-base">{netWeight.toFixed(2)} LB</span>
                                     </div>
                                 </div>
-                                <div className="mt-2 text-[9px] font-semibold text-slate-500">
-                                    <span className="text-slate-700 font-bold">EMPAQUE: </span>
-                                    {hasCaja ? 'CON CAJA / JABA' : 'A GRANEL'}
+                            </div>
+
+                            {/* Modo de Empaque y Operador */}
+                            <div className="grid grid-cols-2 gap-2 text-[10px] text-slate-600 bg-slate-50 p-2.5 rounded-xl border border-slate-200 mb-3">
+                                <div className="flex items-center gap-1.5">
+                                    <Package size={13} className="text-indigo-600 shrink-0" />
+                                    <div>
+                                        <span className="font-bold text-slate-800">Modo:</span> {hasCaja ? 'Con Caja / Jaba' : 'A Granel'}
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                    <User size={13} className="text-slate-400 shrink-0" />
+                                    <div className="truncate">
+                                        <span className="font-bold text-slate-800">Operador:</span> {operator}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Código QR Agrandado y Código de Trazabilidad */}
+                            <div className="pt-3 border-t border-slate-200 flex items-center justify-between gap-3">
+                                <div className="p-2 bg-white border-2 border-slate-900 rounded-xl shrink-0 flex items-center justify-center">
+                                    <QRCodeSVG
+                                        value={JSON.stringify({
+                                            id: uniquePalletCode,
+                                            lot: lotCode,
+                                            tarima: tarimaNum,
+                                            net_lb: netWeight,
+                                            boxes: boxesCount,
+                                            date: receptionDate
+                                        })}
+                                        size={96}
+                                    />
+                                </div>
+                                <div className="flex-1 flex flex-col justify-between py-1">
+                                    <div>
+                                        <span className="text-[9px] font-black uppercase tracking-wider text-slate-500 block mb-1">
+                                            Código Trazabilidad
+                                        </span>
+                                        <div className="font-mono text-xs font-black text-slate-900 bg-white border-2 border-slate-900 rounded-lg px-2 py-1 text-center tracking-wider break-all">
+                                            *{uniquePalletCode}*
+                                        </div>
+                                    </div>
+                                    <div className="mt-2 text-[9px] font-semibold text-slate-500">
+                                        <span className="text-slate-700 font-bold">EMPAQUE: </span>
+                                        {hasCaja ? 'CON CAJA / JABA' : 'A GRANEL'}
+                                    </div>
                                 </div>
                             </div>
                         </div>
-                    </div>
+                    )}
                 </div>
 
                 {/* Modal Footer: Botones de Acción */}
                 <div className="px-6 py-4 bg-white border-t border-slate-200 flex flex-wrap items-center justify-between gap-3">
                     <div className="text-[11px] text-slate-500 font-semibold flex items-center gap-1.5">
                         <CheckCircle2 size={14} className="text-emerald-600" />
-                        Listo para impresión directa a cualquier impresora térmica o láser
+                        {labelFormat === '58mm'
+                            ? 'Formato optimizado para ticket térmico de 58mm'
+                            : 'Listo para impresión directa a cualquier impresora térmica o láser'}
                     </div>
 
                     <div className="flex items-center gap-2">

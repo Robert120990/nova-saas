@@ -178,6 +178,35 @@ export const formatDecimalHours = (decimalHours, options = {}) => {
     return `${m}${minSuffix}`;
 };
 
+/**
+ * Genera el Lote Juliano Oficial de Recepción de Materia Prima (MP-DDD-YY)
+ * @param {Date|string} [dateInput=new Date()]
+ * @returns {string} Lote MP
+ */
+export const computeMpJulianLot = (dateInput) => {
+    let d = dateInput;
+    if (!d) {
+        d = new Date();
+    } else if (typeof d === 'string') {
+        const parts = d.split('T')[0].split('-');
+        if (parts.length === 3) {
+            d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+        } else {
+            d = new Date(dateInput);
+        }
+    } else {
+        d = new Date(dateInput);
+    }
+    if (isNaN(d.getTime())) d = new Date();
+    const yearFull = d.getFullYear();
+    const year2Digit = String(yearFull).slice(-2);
+    const startOfYear = new Date(yearFull, 0, 1);
+    const diffMs = d.getTime() - startOfYear.getTime();
+    const dayOfYear = Math.floor(diffMs / (1000 * 60 * 60 * 24)) + 1;
+    const dayOfYearStr = String(dayOfYear).padStart(3, '0');
+    return `MP-${dayOfYearStr}-${year2Digit}`;
+};
+
 export default {
     getTodayString,
     getFirstDayOfMonth,
@@ -186,6 +215,7 @@ export default {
     formatDate,
     formatDateTime,
     formatTime,
-    formatDecimalHours
+    formatDecimalHours,
+    computeMpJulianLot
 };
 

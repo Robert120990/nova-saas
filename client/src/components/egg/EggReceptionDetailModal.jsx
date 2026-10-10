@@ -10,6 +10,7 @@ import {
     Download,
     Pencil
 } from 'lucide-react';
+import { computeMpJulianLot } from '../../utils/dateUtils';
 
 const EggReceptionDetailModal = ({
     isOpen,
@@ -46,8 +47,19 @@ const EggReceptionDetailModal = ({
         }];
     }
 
+    let labReport = {};
+    try {
+        labReport = typeof reception.quality_lab_report_json === 'string'
+            ? JSON.parse(reception.quality_lab_report_json || '{}')
+            : (reception.quality_lab_report_json || {});
+    } catch (e) {
+        labReport = {};
+    }
+    const mpLot = labReport.reception_lot;
+
     const recData = {
         reception_id: reception.id,
+        reception_lot: mpLot || reception.reception_lot || computeMpJulianLot(reception.fecha || reception.created_at),
         provider_name: reception.provider_name,
         provider_lot: reception.provider_lot,
         fecha: reception.fecha || reception.created_at,

@@ -838,6 +838,7 @@ export default function useReceptionModel() {
         const currentProvider = providers.find(p => String(p.id) === String(formData.provider_id));
         const recData = customReceptionData || {
             reception_id: editingId || null,
+            reception_lot: formData.reception_lot || (formData.fecha ? generateJulianMpLotCode(formData.fecha) : generateJulianMpLotCode(todayStr)),
             provider_name: currentProvider?.nombre || 'PROVEEDOR PENDIENTE',
             provider_lot: formData.provider_lot || 'LOTE PENDIENTE',
             fecha: formData.fecha || todayStr,
