@@ -533,6 +533,7 @@ const Products = () => {
                                 </div>
                             </div>
                             <ProductAdditionalBarcodes
+                                key={selectedProduct?.id || 'new'}
                                 barcodes={additionalBarcodes}
                                 onChange={setAdditionalBarcodes}
                                 mainBarcode={mainBarcode}
