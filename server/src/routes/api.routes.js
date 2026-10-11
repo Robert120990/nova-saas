@@ -544,6 +544,9 @@ router.post('/purchases/quedans/:id/revert', quedanController.revertQuedan);
 router.get('/purchases/:id', purchaseController.getPurchaseById);
 router.put('/purchases/:id', validate(purchaseUpdateSchema), purchaseController.updatePurchase);
 router.post('/purchases/:id/void', purchaseController.voidPurchase);
+router.post('/purchases/:id/emit-dte', purchaseController.emitPurchaseDTE);
+router.get('/purchases/:id/dte-pdf', purchaseController.getPurchaseDtePdf);
+router.get('/purchases/:id/dte-json', purchaseController.getPurchaseDteJson);
 
 // Expenses
 router.get('/expenses', expenseController.getExpenses);
@@ -554,6 +557,9 @@ router.post('/expenses/scan-dte', memoryUpload.single('file'), purchaseControlle
 router.get('/expenses/:id', expenseController.getExpenseById);
 router.put('/expenses/:id', validate(expenseUpdateSchema), expenseController.updateExpense);
 router.post('/expenses/:id/void', expenseController.voidExpense);
+router.post('/expenses/:id/emit-dte', expenseController.emitExpenseDTE);
+router.get('/expenses/:id/dte-pdf', expenseController.getExpenseDtePdf);
+router.get('/expenses/:id/dte-json', expenseController.getExpenseDteJson);
 router.get('/documents/check-duplicate', documentValidator.checkDocumentDuplicate);
 
 // Sales

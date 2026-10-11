@@ -6,6 +6,9 @@ const expenseItemSchema = z.object({
     description: optionalString,
     expense_type_id: z.coerce.number().int().positive().optional().nullable(),
     tax_type: optionalString.default('gravada'),
+    tipo_item: z.coerce.number().optional(),
+    cantidad: z.coerce.number().optional(),
+    precio_unitario: z.coerce.number().optional(),
     total: z.coerce.number().optional().default(0)
 });
 
@@ -52,6 +55,9 @@ const expenseBaseShape = {
     gravadas_importaciones: z.coerce.number().optional().default(0),
     gravadas_internaciones: z.coerce.number().optional().default(0),
     iva_importaciones: z.coerce.number().optional().default(0),
+    emitir_dte: z.boolean().optional(),
+    estado_dte: optionalString,
+    codigo_generacion: optionalString,
     items: z.array(expenseItemSchema).optional()
 };
 

@@ -10,6 +10,7 @@ const purchaseItemSchema = z.object({
     cantidad: z.coerce.number().positive({ message: 'La cantidad debe ser mayor a 0' }),
     precio_unitario: z.coerce.number().min(0, { message: 'El precio unitario no puede ser negativo' }),
     tipo_compra: optionalString,
+    tipo_item: z.coerce.number().optional(),
     total: z.coerce.number().optional().nullable(),
     fovial: z.coerce.number().optional().nullable(),
     cotrans: z.coerce.number().optional().nullable(),
@@ -48,6 +49,9 @@ const purchaseBaseShape = {
     period_month: z.coerce.number().optional(),
     documento_afectado: optionalString,
     fecha_afectada: optionalString,
+    emitir_dte: z.boolean().optional(),
+    codigo_generacion: optionalString,
+    estado_dte: optionalString,
     items: z.array(purchaseItemSchema).min(1, { message: 'Debe incluir al menos un producto en la compra' })
 };
 

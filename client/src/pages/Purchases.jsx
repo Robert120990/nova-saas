@@ -25,6 +25,8 @@ import {
     Sparkles,
     Loader2,
     QrCode,
+    Code,
+    Send,
 } from 'lucide-react';
 import { exportJsonToExcel } from '../utils/excelExport';
 import SearchableSelect from '../components/ui/SearchableSelect';
@@ -99,6 +101,7 @@ const Purchases = () => {
     const [isProviderModalOpen, setIsProviderModalOpen] = useState(false);
     const [editingProvider, setEditingProvider] = useState(null);
     const [tipoDocId, setTipoDocId] = useState(() => initialDraft?.tipoDocId || '03'); // Default CCF
+    const [emitirDte, setEmitirDte] = useState(false);
     const [condicionId, setCondicionId] = useState(() => initialDraft?.condicionId || '1'); // Default Contado
     const [numeroDoc, setNumeroDoc] = useState(() => initialDraft?.numeroDoc || '');
     const [numControl, setNumControl] = useState(() => initialDraft?.numControl || '');
@@ -637,16 +640,22 @@ const Purchases = () => {
         autoCotrans = Math.round(autoCotrans * 100) / 100;
 
         const esFactura = tipoDocId === '01';
+        const esSujetoExcluido = tipoDocId === '14';
         const ivaRate = parseFloat(taxSettings?.iva_rate || 13) / 100;
-        const iva = (selectedProvider?.exento_iva || esFactura) ? 0 : Math.round(gravada * ivaRate * 100) / 100;
+        const iva = (selectedProvider?.exento_iva || esFactura || esSujetoExcluido) ? 0 : Math.round(gravada * ivaRate * 100) / 100;
 
         // Auto Retención y Percepción
         let autoRetencion = 0;
-        const nosAgenteRetencion = currentCompany?.tipo_contribuyente === 'Grande';
-        const proveedNoGC = !selectedProvider?.es_gran_contribuyente;
-        const retencionRate = parseFloat(taxSettings?.retencion_rate || 1) / 100;
-        if (nosAgenteRetencion && proveedNoGC && gravada >= 100 && tipoDocId === '03') {
-            autoRetencion = Math.round(gravada * retencionRate * 100) / 100;
+        if (esSujetoExcluido) {
+            // Sujeto Excluido aplica retención del 10% de Impuesto sobre la Renta (ISR)
+            autoRetencion = Math.round(gravada * 0.10 * 100) / 100;
+        } else {
+            const nosAgenteRetencion = currentCompany?.tipo_contribuyente === 'Grande';
+            const proveedNoGC = !selectedProvider?.es_gran_contribuyente;
+            const retencionRate = parseFloat(taxSettings?.retencion_rate || 1) / 100;
+            if (nosAgenteRetencion && proveedNoGC && gravada >= 100 && tipoDocId === '03') {
+                autoRetencion = Math.round(gravada * retencionRate * 100) / 100;
+            }
         }
 
         let autoPercepcion = 0;
@@ -820,6 +829,7 @@ const Purchases = () => {
         setManualRetencion(''); setManualPercepcion(''); setManualNosujeta(''); setManualExenta('');
         setManualFovial(''); setManualCotrans('');
         setIsRetDirty(false); setIsPercDirty(false); setIsFovialDirty(false); setIsCotransDirty(false);
+        setEmitirDte(false);
         setQuickBarcode(''); setQuickProd(null); setQuickDesc(''); setQuickCant('1'); setQuickCosto('0');
         const today = getTodayString();
         setFecha(today);
@@ -1008,7 +1018,8 @@ const Purchases = () => {
     const handleSubmit = async () => {
         if (!branchId) return toast.error('Seleccione una sucursal');
         if (!providerId) return toast.error('Seleccione un proveedor');
-        if (!numeroDoc) return toast.error('Ingrese el número de documento o factura');
+        const isSujetoExcluido = tipoDocId === '14';
+        if (!numeroDoc && !(isSujetoExcluido && emitirDte)) return toast.error('Ingrese el número de documento o factura');
         if (tipoDocId === '06' && !docAfectado) return toast.error('Documento afectado es requerido para Notas de Crédito');
         if (selectedItems.length === 0) return toast.error('Agregue productos');
 
@@ -1038,12 +1049,15 @@ const Purchases = () => {
             finalPeriodMonth = docMonth;
         }
 
+        const docNumCalculated = (numeroDoc || '').trim().toUpperCase() || (isSujetoExcluido && emitirDte ? 'DTE-14-PENDIENTE' : '');
+
         const payload = {
-            branch_id: branchId, provider_id: providerId, fecha, numero_documento: numeroDoc,
+            branch_id: branchId, provider_id: providerId, fecha, numero_documento: docNumCalculated,
             numero_control: (numControl || '').trim().toUpperCase() || null,
             sello_recepcion: (selloRecepcion || '').trim().toUpperCase() || null,
             num_quedan: (numQuedan || '').trim().toUpperCase() || null,
             tipo_documento_id: tipoDocId, condicion_operacion_id: condicionId, observaciones,
+            emitir_dte: isSujetoExcluido && emitirDte && !isEditing,
             dias_credito: diasCredito, fecha_vencimiento: fechaVencimiento || null,
             total_nosujeta: totals.nosujeta, total_exenta: totals.exenta, total_gravada: totals.gravada,
             iva: totals.iva, retencion: totals.retencion, percepcion: totals.percepcion, 
@@ -1055,6 +1069,7 @@ const Purchases = () => {
                 codigo: it.codigo && it.codigo !== '—' ? it.codigo : null,
                 nombre: it.nombre,
                 descripcion: it.nombre,
+                tipo_item: it.tipo_item || 1,
                 cantidad: it.cantidad,
                 precio_unitario: it.precio_unitario,
                 total: it.total
@@ -1065,6 +1080,52 @@ const Purchases = () => {
             updateMutation.mutate({ id: editingId, data: payload });
         } else {
             createMutation.mutate(payload);
+        }
+    };
+
+    const handleViewPurchaseDtePdf = async (purchaseId) => {
+        try {
+            const response = await axios.get(`/api/purchases/${purchaseId}/dte-pdf`, {
+                responseType: 'blob'
+            });
+            const blob = new Blob([response.data], { type: 'application/pdf' });
+            const url = URL.createObjectURL(blob);
+            window.open(url, '_blank');
+        } catch (error) {
+            toast.error('Error al visualizar la Representación Gráfica del DTE-14');
+        }
+    };
+
+    const handleDownloadPurchaseJson = async (purchaseId, docNumero) => {
+        try {
+            const response = await axios.get(`/api/purchases/${purchaseId}/dte-json`);
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(response.data, null, 2));
+            const downloadAnchor = document.createElement('a');
+            downloadAnchor.setAttribute("href", dataStr);
+            downloadAnchor.setAttribute("download", `DTE-14-${docNumero || purchaseId}.json`);
+            document.body.appendChild(downloadAnchor);
+            downloadAnchor.click();
+            downloadAnchor.remove();
+            toast.success('JSON descargado correctamente');
+        } catch (error) {
+            toast.error('Error al descargar JSON DTE');
+        }
+    };
+
+    const handleEmitPurchaseDte = async (purchaseId) => {
+        const loadingToast = toast.loading('Transmitiendo DTE-14 a Hacienda...');
+        try {
+            const res = await axios.post(`/api/purchases/${purchaseId}/emit-dte`);
+            toast.dismiss(loadingToast);
+            if (res.data?.success || res.data?.data) {
+                toast.success(`DTE-14 emitido con éxito. Estado: ${res.data?.data?.estado || 'PROCESADO'}`);
+                queryClient.invalidateQueries({ queryKey: ['purchases'] });
+            } else {
+                toast.error(res.data?.message || 'Error al emitir DTE');
+            }
+        } catch (error) {
+            toast.dismiss(loadingToast);
+            toast.error(error.response?.data?.message || 'Error al transmitir DTE-14');
         }
     };
 
@@ -1100,6 +1161,7 @@ const Purchases = () => {
                 setProvidersCache(prev => ({ ...prev, [detail.provider_id]: { id: detail.provider_id, nombre: detail.provider_nombre } }));
             }
             setTipoDocId(detail.tipo_documento_id);
+            setEmitirDte(false);
             setCondicionId(detail.condicion_operacion_id);
             setNumeroDoc(detail.numero_documento);
             setNumControl(detail.numero_control || detail.num_control || '');
@@ -1462,20 +1524,60 @@ const Purchases = () => {
 
                                 <div className="md:col-span-2">
                                     <label className={labelCls}>Tipo Documento</label>
-                                    <select value={tipoDocId} onChange={(e) => setTipoDocId(e.target.value)} className={inputCls}>
+                                    <select 
+                                        value={tipoDocId} 
+                                        onChange={(e) => {
+                                            const val = e.target.value;
+                                            setTipoDocId(val);
+                                            setEmitirDte(val === '14');
+                                        }} 
+                                        className={inputCls}
+                                    >
                                         {tipoDocs.map(t => <option key={t.code} value={t.code}>{t.description.toUpperCase()}</option>)}
                                     </select>
                                 </div>
                                 <div className={condicionId === '2' ? 'md:col-span-1' : 'md:col-span-2'}>
-                                    <label className={labelCls}>Documento / Cód. Generación</label>
+                                    <label className={labelCls}>
+                                        {tipoDocId === '14' && emitirDte ? 'Código de Generación (MH)' : 'Documento / Cód. Generación'}
+                                    </label>
                                     <input 
                                         type="text" 
-                                        value={numeroDoc} 
+                                        value={tipoDocId === '14' && emitirDte && !isEditing ? (numeroDoc || 'GENERACIÓN AUTOMÁTICA MH') : numeroDoc} 
                                         onChange={(e) => setNumeroDoc(e.target.value.toUpperCase())} 
-                                        placeholder="NO. FACTURA O CÓDIGO GENERACIÓN DTE" 
-                                        className={`${inputCls} font-mono`} 
+                                        disabled={tipoDocId === '14' && emitirDte && !isEditing}
+                                        placeholder={tipoDocId === '14' && emitirDte ? 'GENERADO POR MH AL GUARDAR' : 'NO. FACTURA O CÓDIGO GENERACIÓN DTE'} 
+                                        className={`${inputCls} font-mono ${tipoDocId === '14' && emitirDte && !isEditing ? 'bg-teal-50/60 text-teal-800 font-bold border-teal-200 cursor-not-allowed' : ''}`} 
                                     />
                                 </div>
+
+                                {tipoDocId === '14' && !isEditing && (
+                                    <div className="md:col-span-4 p-3 bg-teal-50 border border-teal-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in slide-in-from-top-2">
+                                        <div className="flex items-center gap-2.5">
+                                            <div className="p-2 bg-teal-600 text-white rounded-lg shrink-0 shadow-xs">
+                                                <Sparkles size={16} />
+                                            </div>
+                                            <div>
+                                                <p className="text-xs font-black text-teal-900 uppercase">
+                                                    Emisión Electrónica de Sujeto Excluido (DTE-14)
+                                                </p>
+                                                <p className="text-[11px] text-teal-700 font-medium">
+                                                    Transmitir y certificar automáticamente ante el Ministerio de Hacienda al guardar esta compra.
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <label className="flex items-center gap-2 cursor-pointer shrink-0 bg-white px-3 py-1.5 rounded-lg border border-teal-200 shadow-2xs hover:bg-teal-50/50 transition-colors">
+                                            <span className="text-[11px] font-black text-teal-900 uppercase">
+                                                {emitirDte ? 'Transmitir a Hacienda' : 'Solo Guardar Local'}
+                                            </span>
+                                            <input
+                                                type="checkbox"
+                                                checked={emitirDte}
+                                                onChange={(e) => setEmitirDte(e.target.checked)}
+                                                className="w-4 h-4 rounded text-teal-600 focus:ring-teal-500 border-teal-300 cursor-pointer"
+                                            />
+                                        </label>
+                                    </div>
+                                )}
 
                                 {condicionId === '2' && (
                                     <div className="md:col-span-1">
@@ -1505,14 +1607,16 @@ const Purchases = () => {
                                 </div>
                                 <div className="md:col-span-1">
                                     <label className={labelCls}>
-                                        Número de Control (DTE) <span className="text-[8px] font-normal text-slate-400 lowercase tracking-normal">(opcional)</span>
+                                        {tipoDocId === '14' && emitirDte ? 'Número de Control (MH)' : 'Número de Control (DTE)'}{' '}
+                                        <span className="text-[8px] font-normal text-slate-400 lowercase tracking-normal">(opcional)</span>
                                     </label>
                                     <input 
                                         type="text" 
-                                        value={numControl} 
+                                        value={tipoDocId === '14' && emitirDte && !isEditing ? (numControl || 'ASIGNACIÓN AUTOMÁTICA MH') : numControl} 
                                         onChange={(e) => setNumControl(e.target.value.toUpperCase())} 
-                                        placeholder="DTE-03-M001P001-00001 (OPCIONAL)" 
-                                        className={`${inputCls} uppercase font-mono text-[11px]`} 
+                                        disabled={tipoDocId === '14' && emitirDte && !isEditing}
+                                        placeholder={tipoDocId === '14' && emitirDte ? 'ASIGNADO POR MH AL GUARDAR' : 'DTE-03-M001P001-00001 (OPCIONAL)'} 
+                                        className={`${inputCls} uppercase font-mono text-[11px] ${tipoDocId === '14' && emitirDte && !isEditing ? 'bg-teal-50/60 text-teal-800 font-bold border-teal-200 cursor-not-allowed' : ''}`} 
                                     />
                                 </div>
                                 <div className="md:col-span-2">
@@ -1521,10 +1625,11 @@ const Purchases = () => {
                                     </label>
                                     <input 
                                         type="text" 
-                                        value={selloRecepcion} 
+                                        value={tipoDocId === '14' && emitirDte && !isEditing ? (selloRecepcion || 'SELLO DE HACIENDA AL CERTIFICAR') : selloRecepcion} 
                                         onChange={(e) => setSelloRecepcion(e.target.value.toUpperCase())} 
-                                        placeholder="SELLO OFICIAL DE HACIENDA (OPCIONAL)" 
-                                        className={`${inputCls} uppercase font-mono text-[11px]`} 
+                                        disabled={tipoDocId === '14' && emitirDte && !isEditing}
+                                        placeholder={tipoDocId === '14' && emitirDte ? 'CERTIFICADO POR MH AL GUARDAR' : 'SELLO OFICIAL DE HACIENDA (OPCIONAL)'} 
+                                        className={`${inputCls} uppercase font-mono text-[11px] ${tipoDocId === '14' && emitirDte && !isEditing ? 'bg-teal-50/60 text-teal-800 font-bold border-teal-200 cursor-not-allowed' : ''}`} 
                                     />
                                 </div>
 
@@ -1837,7 +1942,9 @@ const Purchases = () => {
                                     <div>
                                         <div className="flex flex-col gap-1">
                                             <div className="flex justify-between items-center">
-                                                <span className="text-[8px] font-black text-rose-400 uppercase text-[Spanish]">Retención ({(taxSettings?.retencion_rate || 1)}%)</span>
+                                                <span className="text-[8px] font-black text-rose-400 uppercase text-[Spanish]">
+                                                    {tipoDocId === '14' ? 'Retención ISR (10%)' : `Retención (${(taxSettings?.retencion_rate || 1)}%)`}
+                                                </span>
                                                 {isRetDirty ? (
                                                     <button
                                                         type="button"
@@ -2002,6 +2109,27 @@ const Purchases = () => {
                                                 CTRL: {c.numero_control}
                                             </div>
                                         )}
+                                        {c.tipo_documento_id === '14' && (
+                                            <div className="mt-0.5">
+                                                {c.estado_dte === 'PROCESADO' ? (
+                                                    <span className="px-1.5 py-0.2 rounded text-[7.5px] font-black uppercase bg-emerald-100 text-emerald-800 border border-emerald-300">
+                                                        DTE PROCESADO
+                                                    </span>
+                                                ) : c.estado_dte === 'CONTINGENCIA' ? (
+                                                    <span className="px-1.5 py-0.2 rounded text-[7.5px] font-black uppercase bg-amber-100 text-amber-800 border border-amber-300">
+                                                        DTE CONTINGENCIA
+                                                    </span>
+                                                ) : c.estado_dte === 'RECHAZADO' ? (
+                                                    <span className="px-1.5 py-0.2 rounded text-[7.5px] font-black uppercase bg-rose-100 text-rose-800 border border-rose-300">
+                                                        DTE RECHAZADO
+                                                    </span>
+                                                ) : (
+                                                    <span className="px-1.5 py-0.2 rounded text-[7.5px] font-black uppercase bg-slate-100 text-slate-600 border border-slate-200">
+                                                        DTE PENDIENTE
+                                                    </span>
+                                                )}
+                                            </div>
+                                        )}
                                     </td>
                                     <td className="px-5 py-1.5 whitespace-nowrap">
                                         <div className="flex flex-col items-start">
@@ -2031,7 +2159,9 @@ const Purchases = () => {
                                     </td>
                                     <td className="px-5 py-1.5 font-black text-slate-900 text-[10px] whitespace-nowrap"><Money value={c.monto_total} /></td>
                                     <td className="px-5 py-1.5 whitespace-nowrap">
-                                        <span className={`px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest whitespace-nowrap ${c.status === 'COMPLETADO' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>{c.status}</span>
+                                        <span className={`px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest whitespace-nowrap ${c.status === 'COMPLETADO' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
+                                            {c.status}
+                                        </span>
                                     </td>
                                     <td className="px-5 py-1.5 text-right whitespace-nowrap">
                                         <div className="flex justify-end gap-1">
@@ -2042,6 +2172,33 @@ const Purchases = () => {
                                             >
                                                 <Eye size={14} />
                                             </button>
+                                            {c.tipo_documento_id === '14' && (
+                                                <>
+                                                    <button 
+                                                        onClick={() => handleViewPurchaseDtePdf(c.id)} 
+                                                        className="p-1.5 text-slate-600 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-all"
+                                                        title="Ver Representación Gráfica DTE-14 (PDF)"
+                                                    >
+                                                        <FilePdf size={14} />
+                                                    </button>
+                                                    <button 
+                                                        onClick={() => handleDownloadPurchaseJson(c.id, c.numero_documento)} 
+                                                        className="p-1.5 text-slate-600 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-all"
+                                                        title="Descargar JSON DTE"
+                                                    >
+                                                        <Code size={14} />
+                                                    </button>
+                                                    {c.estado_dte !== 'PROCESADO' && c.status !== 'ANULADO' && (
+                                                        <button 
+                                                            onClick={() => handleEmitPurchaseDte(c.id)} 
+                                                            className="p-1.5 text-teal-600 hover:text-teal-700 hover:bg-teal-50 rounded-lg transition-all"
+                                                            title="Transmitir DTE-14 a Hacienda"
+                                                        >
+                                                            <Send size={14} />
+                                                        </button>
+                                                    )}
+                                                </>
+                                            )}
                                             <button 
                                                 onClick={() => handleEdit(c)} 
                                                 className="p-1.5 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
@@ -2050,7 +2207,7 @@ const Purchases = () => {
                                                 <Edit size={14} />
                                             </button>
                                             <button 
-                                                onClick={() => handleDownloadPDF(c.id, c.numero_documento)}
+                                                onClick={() => handleDownloadPDF(c.id, c.numero_documento)} 
                                                 className="p-1.5 text-slate-600 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all"
                                                 title="Exportar PDF"
                                             >

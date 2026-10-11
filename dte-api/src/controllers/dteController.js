@@ -34,7 +34,7 @@ function isNetworkError(errOrMsg) {
 
 async function emit(req, res) {
     try {
-        const { venta_id, dte: dteInput, password: bodyPassword } = req.body;
+        const { venta_id, compra_id, gasto_id, dte: dteInput, password: bodyPassword } = req.body;
         
         // SECURITY: Reject tenant-level fields in the body to prevent manipulation
         if (req.body.company_id || req.body.companyId || req.body.branch_id || req.body.branchId || req.body.usuario_id || req.body.userId) {
@@ -103,10 +103,12 @@ async function emit(req, res) {
             }
 
             await pool.query(
-                'INSERT INTO dtes (venta_id, codigo_generacion, numero_control, tipo_dte, company_id, branch_id, usuario_id, status, ambiente, json_original, json_firmado, sello_recepcion, fh_procesamiento, respuesta_hacienda) ' +
-                'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                'INSERT INTO dtes (venta_id, compra_id, gasto_id, codigo_generacion, numero_control, tipo_dte, company_id, branch_id, usuario_id, status, ambiente, json_original, json_firmado, sello_recepcion, fh_procesamiento, respuesta_hacienda) ' +
+                'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
                 [
                     venta_id || null,
+                    compra_id || null,
+                    gasto_id || null,
                     codigoGeneracion,
                     numeroControl,
                     tipoDte,
@@ -132,6 +134,8 @@ async function emit(req, res) {
             return res.status(200).json({
                 success: true,
                 venta_id: venta_id || null,
+                compra_id: compra_id || null,
+                gasto_id: gasto_id || null,
                 codigoGeneracion,
                 numeroControl,
                 estadoHacienda: 'CONTINGENCIA',
@@ -288,10 +292,12 @@ async function emit(req, res) {
             }
 
             await pool.query(
-                'INSERT INTO dtes (venta_id, codigo_generacion, numero_control, tipo_dte, company_id, branch_id, usuario_id, status, ambiente, json_original, json_firmado, sello_recepcion, fh_procesamiento, respuesta_hacienda) ' +
-                'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                'INSERT INTO dtes (venta_id, compra_id, gasto_id, codigo_generacion, numero_control, tipo_dte, company_id, branch_id, usuario_id, status, ambiente, json_original, json_firmado, sello_recepcion, fh_procesamiento, respuesta_hacienda) ' +
+                'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
                 [
                     venta_id || null,
+                    compra_id || null,
+                    gasto_id || null,
                     codigoGeneracion,
                     numeroControl,
                     tipoDte,
@@ -317,6 +323,8 @@ async function emit(req, res) {
             return res.status(200).json({
                 success: true,
                 venta_id: venta_id || null,
+                compra_id: compra_id || null,
+                gasto_id: gasto_id || null,
                 codigoGeneracion,
                 numeroControl,
                 estadoHacienda: 'CONTINGENCIA',
@@ -346,10 +354,12 @@ async function emit(req, res) {
             : dte;
 
         await pool.query(
-            'INSERT INTO dtes (venta_id, codigo_generacion, numero_control, tipo_dte, company_id, branch_id, usuario_id, status, ambiente, json_original, json_firmado, sello_recepcion, fh_procesamiento, respuesta_hacienda) ' +
-            'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            'INSERT INTO dtes (venta_id, compra_id, gasto_id, codigo_generacion, numero_control, tipo_dte, company_id, branch_id, usuario_id, status, ambiente, json_original, json_firmado, sello_recepcion, fh_procesamiento, respuesta_hacienda) ' +
+            'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
             [
                 venta_id || null,
+                compra_id || null,
+                gasto_id || null,
                 codigoGeneracion,
                 numeroControl,
                 tipoDte,
@@ -369,6 +379,8 @@ async function emit(req, res) {
         res.status(200).json({
             success: dbStatus === 'ACCEPTED',
             venta_id: venta_id || null,
+            compra_id: compra_id || null,
+            gasto_id: gasto_id || null,
             codigoGeneracion,
             numeroControl,
             estadoHacienda: txResult.status || 'REJECTED',

@@ -4,6 +4,7 @@ const excelService = require('../services/excel.service');
 const notificationService = require('../services/notification.service');
 const reportPdfHelper = require('../utils/reportPdfHelper');
 const { validateDocumentDuplicate } = require('../utils/documentValidator');
+const sujetoExcluidoDteService = require('../services/sujetoExcluidoDte.service');
 
 // Mapa de peticiones en vuelo para evitar condiciones de carrera por doble clic o doble submit
 const activeExpenseSubmissions = new Map();
@@ -326,6 +327,16 @@ const createExpense = async (req, res) => {
 
         await connection.commit();
 
+        let dteEmission = null;
+        if (String(tipo_documento_id).trim() === '14' && req.body.emitir_dte) {
+            try {
+                dteEmission = await sujetoExcluidoDteService.emitExpenseDte(expenseId, companyId, usuarioId, branch_id);
+            } catch (dteErr) {
+                console.error('[Expenses] Error emitiendo DTE-14:', dteErr.message);
+                dteEmission = { success: false, error: dteErr.message };
+            }
+        }
+
         const [provRows] = await pool.query('SELECT nombre FROM providers WHERE id = ? AND company_id = ?', [provider_id, companyId]);
         const providerName = provRows.length > 0 ? provRows[0].nombre : '';
 
@@ -337,7 +348,7 @@ const createExpense = async (req, res) => {
             sucursal: req.branch_name || ''
         }).catch(() => {});
 
-        res.status(201).json({ message: 'Gasto registrado con éxito', id: expenseId });
+        res.status(201).json({ message: 'Gasto registrado con éxito', id: expenseId, dte: dteEmission });
     } catch (error) {
         await connection.rollback();
         console.error('Error al registrar gasto:', error);
@@ -826,6 +837,50 @@ const getExpenseReportPDF = async (req, res) => {
     }
 };
 
+const emitExpenseDTE = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const companyId = req.company_id || req.user?.company_id;
+        const usuarioId = req.user?.id;
+        const branchId = req.user?.branch_id;
+
+        const result = await sujetoExcluidoDteService.emitExpenseDte(id, companyId, usuarioId, branchId);
+        if (!result.success) {
+            return res.status(400).json({ message: result.error || 'Error al emitir DTE-14', result });
+        }
+        res.json({ success: true, message: 'DTE-14 emitido con éxito', data: result });
+    } catch (error) {
+        console.error('Error al emitir DTE para gasto:', error);
+        res.status(500).json({ message: error.message || 'Error al emitir DTE' });
+    }
+};
+
+const getExpenseDtePdf = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const companyId = req.company_id || req.user?.company_id;
+        const buffer = await sujetoExcluidoDteService.getExpenseDtePdfBuffer(id, companyId);
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename=DTE14-GASTO-${id}.pdf`);
+        res.send(buffer);
+    } catch (error) {
+        console.error('Error al generar PDF de DTE para gasto:', error);
+        res.status(500).json({ message: error.message || 'Error al generar PDF del DTE' });
+    }
+};
+
+const getExpenseDteJson = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const companyId = req.company_id || req.user?.company_id;
+        const data = await sujetoExcluidoDteService.getExpenseDteJson(id, companyId);
+        res.json(data);
+    } catch (error) {
+        console.error('Error al obtener JSON de DTE para gasto:', error);
+        res.status(500).json({ message: error.message || 'Error al obtener JSON del DTE' });
+    }
+};
+
 module.exports = {
     getExpenses,
     getExpenseById,
@@ -833,5 +888,8 @@ module.exports = {
     updateExpense,
     voidExpense,
     getExpenseTypes,
-    getExpenseReportPDF
+    getExpenseReportPDF,
+    emitExpenseDTE,
+    getExpenseDtePdf,
+    getExpenseDteJson
 };

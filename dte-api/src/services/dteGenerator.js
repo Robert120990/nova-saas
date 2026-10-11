@@ -216,12 +216,55 @@ function calculateTotalsCR(items) {
     });
     return {
         totalSujetoRetencion: round(totalSujeto),
-        // El CR no genera IVA propio (los documentos referenciados ya declararon
-        // su IVA); Hacienda valida totalIva = 0 (rechazo "CALCULO INCORRECTO" en
-        // ambiente de prueba si se envía otro valor).
         totalIva: 0,
         totalIVAretenido: round(totalRetenido),
         totalIVAretenidoLetras: getAmountInWords(round(totalRetenido))
+    };
+}
+
+// FSE (14): totales específicos para Factura de Sujeto Excluido
+function calculateTotalsFSE(items, payload = {}) {
+    let totalCompra = 0;
+    let totalDescu = 0;
+    items.forEach(item => {
+        totalCompra += parseFloat(item.compra) || 0;
+        totalDescu += parseFloat(item.montoDescu) || 0;
+    });
+    totalCompra = round(totalCompra);
+    const descu = round(parseFloat(payload.descuento_general || payload.descu || 0));
+    totalDescu = round(totalDescu + descu);
+    const subTotal = round(Math.max(0, totalCompra - descu));
+
+    // Retención de Renta: 10% en servicios, o especificado en payload
+    let reteRenta = 0;
+    if (payload.reteRenta !== undefined && payload.reteRenta !== null) {
+        reteRenta = round(parseFloat(payload.reteRenta));
+    } else if (payload.retencion_renta !== undefined && payload.retencion_renta !== null) {
+        reteRenta = round(parseFloat(payload.retencion_renta));
+    } else if (payload.retencion !== undefined && payload.retencion !== null && parseFloat(payload.retencion) > 0) {
+        reteRenta = round(parseFloat(payload.retencion));
+    } else {
+        // Cálculo automático: 10% si los ítems son de tipo 2 (Servicios)
+        let totalServicios = 0;
+        items.forEach(item => {
+            if (parseInt(item.tipoItem) === 2) {
+                totalServicios += parseFloat(item.compra) || 0;
+            }
+        });
+        if (totalServicios > 0) {
+            reteRenta = round(totalServicios * 0.10);
+        }
+    }
+
+    const totalPagar = round(Math.max(0, subTotal - reteRenta));
+    return {
+        totalCompra,
+        descu,
+        totalDescu,
+        subTotal,
+        reteRenta,
+        totalPagar,
+        totalLetras: getAmountInWords(totalPagar)
     };
 }
 
@@ -333,6 +376,11 @@ async function generateDTE(payload) {
         correo: branch.correo || 'emisor@example.com'
     };
 
+    // En DTE-14, Hacienda NO permite nombreComercial en el emisor
+    if (tipoDte === '14') {
+        delete emisor.nombreComercial;
+    }
+
     // Estos campos NO van en Nota de Crédito (05) ni Nota de Débito (06)
     if (tipoDte !== '05' && tipoDte !== '06') {
         emisor.codEstable = (branch.codigo_mh || String(branch.codigo || '1')).padStart(4, '0');
@@ -403,6 +451,59 @@ async function generateDTE(payload) {
         }));
         totals = calculateTotalsCR(corpoItems);
         pagos = [];
+    } else if (tipoDte === '14') {
+        const uniMedidaMap = {
+            'unidad': 59, 'unidades': 59, 'servicio': 59,
+            'kilogramo': 1, 'kilogramos': 1, 'libra': 11, 'libras': 11,
+            'onza': 12, 'onzas': 12, 'litro': 2, 'litros': 2,
+            'galon': 55, 'galones': 55, 'metro': 3, 'metros': 3
+        };
+
+        corpoItems = (items || []).map((item, index) => {
+            const cant = parseFloat(item.cantidad) || 1;
+            const precio = parseFloat(item.precioUnitario ?? item.precio_unitario ?? item.precio ?? item.total ?? 0);
+            const descu = parseFloat(item.montoDescu ?? item.monto_descuento ?? item.descuento ?? 0);
+            const compraVal = round(Math.max(0, (cant * precio) - descu));
+            const uni = typeof item.uniMedida === 'number'
+                ? item.uniMedida
+                : (typeof item.unidad_medida === 'number' ? item.unidad_medida : (uniMedidaMap[(item.unidad_medida || '').toLowerCase()] || 59));
+
+            return {
+                numItem: index + 1,
+                tipoItem: parseInt(item.tipoItem ?? item.tipo_item) || 1, // 1: Bienes, 2: Servicios
+                cantidad: round(cant),
+                codigo: item.codigo ? String(item.codigo).trim().substring(0, 25) : null,
+                uniMedida: uni,
+                descripcion: sanitizeText(item.descripcion || item.nombre || 'Compra / Servicio').substring(0, 1500),
+                precioUni: round4(precio),
+                montoDescu: round(descu),
+                compra: compraVal
+            };
+        });
+
+        totals = calculateTotalsFSE(corpoItems, payload);
+
+        const rawPagos = Array.isArray(payload.pagos) && payload.pagos.length > 0
+            ? payload.pagos
+            : [{ codigo: String(payload.condicionOperacion || 1) === '2' ? '13' : '01', montoPago: totals.totalPagar }];
+
+        pagos = rawPagos.map(p => ({
+            codigo: String(p.codigo || '01').padStart(2, '0'),
+            montoPago: round(parseFloat(p.montoPago ?? p.monto ?? totals.totalPagar)),
+            referencia: p.referencia ? String(p.referencia).substring(0, 50) : null,
+            plazo: p.plazo || null,
+            periodo: p.periodo != null ? parseFloat(p.periodo) : null
+        }));
+
+        if (pagos.length === 1) {
+            pagos[0].montoPago = totals.totalPagar;
+        } else if (pagos.length > 1) {
+            let pSum = 0;
+            for (let i = 0; i < pagos.length - 1; i++) {
+                pSum = round(pSum + pagos[i].montoPago);
+            }
+            pagos[pagos.length - 1].montoPago = round(Math.max(0, totals.totalPagar - pSum));
+        }
     } else {
         // --- Standard items mapping para todos los demás DTEs ---
         // Mapeo detallado de unidades de medida (Catálogo 014)
@@ -556,7 +657,7 @@ async function generateDTE(payload) {
         } // Fin del else (tipoDte !== '07')
 
     // 5. Resumen
-    if (tipoDte !== '07') {
+    if (tipoDte !== '07' && tipoDte !== '14') {
     const calculatedItems = items.map(item => calculateItem(item, tipoDte, ivaRate));
     
     // Para Crédito Fiscal (03) y Nota de Crédito (05) con combustible, FOVIAL (D1) y COTRANS (C8)
@@ -851,6 +952,20 @@ async function generateDTE(payload) {
                 totalLetras: totals.totalIVAretenidoLetras,
                 observaciones: 'Ninguna'
             };
+        } else if (type === '14') {
+            // FSE (14): estructura del schema v2
+            return {
+                totalCompra: totals.totalCompra,
+                descu: totals.descu,
+                totalDescu: totals.totalDescu,
+                subTotal: totals.subTotal,
+                reteRenta: totals.reteRenta,
+                totalPagar: totals.totalPagar,
+                totalLetras: totals.totalLetras,
+                condicionOperacion: parseInt(payload.condicionOperacion || 1),
+                pagos: pagos,
+                observaciones: sanitizeText(payload.observaciones || 'Ninguna').substring(0, 3000)
+            };
         }
         return base;
     };
@@ -960,7 +1075,29 @@ async function generateDTE(payload) {
         finalReceptor.nombreComercial = sanitizeText(receptor.nombreComercial) || finalReceptor.nombre;
     }
 
-    if (tipoDte !== '11' && tipoDte !== '07' && (tipoDte === '01' || tipoDte === '04' || tipoDte === '05' || tipoDte === '06')) {
+    if (tipoDte === '14') {
+        const rawDocType = (receptor.tipoDocumento || receptor.tipo_documento || '13').toUpperCase();
+        const mappedDocType = docTypeMap[rawDocType] || '13';
+        let rawNumDoc = cleanNumbers(receptor.numDocumento || receptor.numero_documento || receptor.nit || '');
+        if (mappedDocType === '13' && rawNumDoc.length > 9) {
+            rawNumDoc = rawNumDoc.slice(-9);
+        }
+        finalReceptor = {
+            tipoDocumento: mappedDocType,
+            numDocumento: rawNumDoc || '000000000',
+            nombre: sanitizeText(receptor.nombre || 'SUJETO EXCLUIDO').substring(0, 250),
+            codActividad: cleanCodActividad || null,
+            descActividad: cleanCodActividad ? sanitizeText(receptor.descActividad || receptor.actividad_economica || 'Otros').substring(0, 150) : null,
+            direccion: finalDireccion || {
+                departamento: deptCode,
+                municipio: munCode,
+                distrito: String(distritoEmisor).padStart(2, '0'),
+                complemento: 'Direccion no definida'
+            },
+            telefono: (receptor.telefono && cleanNumbers(receptor.telefono).length >= 8) ? cleanNumbers(receptor.telefono).substring(0, 30) : null,
+            correo: safeReceptorCorreo
+        };
+    } else if (tipoDte !== '11' && tipoDte !== '07' && (tipoDte === '01' || tipoDte === '04' || tipoDte === '05' || tipoDte === '06')) {
         // Consumidor Final sin documento o con documento ficticio en Factura < $200: sanitizar campos a null
         const cleanNit = cleanNumbers(receptor.nit);
         const cleanDoc = cleanNumbers(receptor.numDocumento);
@@ -993,7 +1130,7 @@ async function generateDTE(payload) {
             finalReceptor.nombreComercial = sanitizeText(receptor.nombreComercial) || null;
         }
         } 
-    } else if (tipoDte !== '11' && tipoDte !== '07') {
+    } else if (tipoDte !== '11' && tipoDte !== '07' && tipoDte !== '14') {
         finalReceptor.nit = cleanNumbers(receptor.nit || receptor.numDocumento);
         finalReceptor.nrc = sanitizeNrc(receptor.nrc);
         finalReceptor.nombreComercial = sanitizeText(receptor.nombreComercial) || null;
@@ -1009,7 +1146,7 @@ async function generateDTE(payload) {
         apendice: null
     };
 
-    if (tipoDte !== '07') {
+    if (tipoDte !== '07' && tipoDte !== '14') {
         dte.otrosDocumentos = null;
         dte.ventaTercero = null;
     }
@@ -1024,7 +1161,7 @@ async function generateDTE(payload) {
         }
     }
 
-    if (tipoDte !== '11' && tipoDte !== '07') {
+    if (tipoDte !== '11' && tipoDte !== '07' && tipoDte !== '14') {
         if (payload.documentoRelacionado && payload.documentoRelacionado.length > 0) {
             dte.documentoRelacionado = payload.documentoRelacionado.map(doc => {
                 const rawNum = String(doc.numeroDocumento || doc.doc_number || doc.numDocumento || '').trim().toUpperCase();
@@ -1039,6 +1176,13 @@ async function generateDTE(payload) {
         } else {
             dte.documentoRelacionado = null;
         }
+    }
+
+    if (tipoDte === '14') {
+        delete dte.otrosDocumentos;
+        delete dte.ventaTercero;
+        delete dte.compraTercero;
+        delete dte.documentoRelacionado;
     }
 
     if (tipoDte === '11') {

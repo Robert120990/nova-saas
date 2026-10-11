@@ -10,7 +10,7 @@ class DteService {
      * @param {Object} payload Datos originales de la terminal
      * @returns {Object} Resultado de la emisión
      */
-     async emitDTE(company, payload, ventaId = null) {
+     async emitDTE(company, payload, ventaId = null, extraContext = {}) {
         if (!company.dte_active) {
             return { success: false, skip: true };
         }
@@ -29,10 +29,17 @@ class DteService {
 
             // 2. Mapear datos al formato esperado por dte-api
             // dte-api espera: { tipoDte, receptor, items, pagos, totalLetras, taxes }
-            const receptor = await this._getReceptorData(payload.header.customer_id, payload.header.cliente_nombre || null, payload.header.customer_branch_id || null);
+            let receptor;
+            if (payload.receptor) {
+                receptor = payload.receptor;
+            } else if (payload.header.provider_id) {
+                receptor = await this._getProviderReceptorData(payload.header.provider_id, payload.header.provider_nombre || payload.header.cliente_nombre);
+            } else {
+                receptor = await this._getReceptorData(payload.header.customer_id, payload.header.cliente_nombre || null, payload.header.customer_branch_id || null);
+            }
 
             // Guardia: cliente seleccionado debe tener dirección completa (Hacienda rechaza 096)
-            if (payload.header.customer_id && payload.header.dte_type !== '11') {
+            if (payload.header.customer_id && payload.header.dte_type !== '11' && payload.header.dte_type !== '14') {
                 const totalSale = parseFloat(payload.header.total_pagar || payload.header.total || 0);
                 const isFacturaMinor = payload.header.dte_type === '01' && totalSale < 200;
 
@@ -65,7 +72,9 @@ class DteService {
             }
 
             const dteBody = {
-                venta_id: ventaId,
+                venta_id: ventaId || payload.venta_id || payload.header?.sale_id || null,
+                compra_id: extraContext.compra_id || payload.compra_id || payload.header?.compra_id || null,
+                gasto_id: extraContext.gasto_id || payload.gasto_id || payload.header?.gasto_id || null,
                 tipoDte: payload.header.dte_type,
                 receptor: receptor,
                 emisor_adicional: payload.emisor_adicional || null,
@@ -73,8 +82,12 @@ class DteService {
                 condicionOperacion: payload.header.condicion_operacion || 1, // 1: Contado, 2: Crédito
                 dias_credito: payload.dias_credito != null ? parseInt(payload.dias_credito) || 15
                             : (payload.header.dias_credito != null ? parseInt(payload.header.dias_credito) || 15 : 15),
-                retencion: parseFloat(payload.header.total_retencion ?? payload.header.iva_retenido ?? 0),
+                retencion: parseFloat(payload.header.total_retencion ?? payload.header.iva_retenido ?? payload.header.retencion ?? 0),
                 percepcion: parseFloat(payload.header.total_percepcion ?? payload.header.iva_percibido ?? 0),
+                total_compra: payload.total_compra ?? payload.header?.total_compra ?? payload.header?.monto_total ?? payload.header?.total ?? 0,
+                retencion_renta: payload.retencion_renta ?? payload.header?.retencion_renta ?? payload.header?.retencion ?? 0,
+                subtotal: payload.subtotal ?? payload.header?.subtotal ?? payload.header?.monto_sujeto ?? 0,
+                total_pagar: payload.total_pagar ?? payload.header?.total_pagar ?? payload.header?.monto_total ?? 0,
                 descuento_general: parseFloat(payload.header.descuento_general ?? payload.header.total_descuento ?? payload.descuento_general ?? 0),
                 descuGravada: payload.header.descuGravada !== undefined ? parseFloat(payload.header.descuGravada) : undefined,
                 porcentajeDescuento: (payload.header.porcentajeDescuento !== undefined && payload.header.porcentajeDescuento !== null)
@@ -94,27 +107,39 @@ class DteService {
                         ivaRetenido: doc.ivaRetenido || doc.iva_retenido || 0,
                         descripcion: doc.descripcion || `RETENCION AL DOCUMENTO ${doc.doc_number || ''}`
                     }))
-                    : (payload.items || []).map(item => {
-                        const fallbackRef = (payload.header?.dte_type === '05' && payload.linkedDocuments && payload.linkedDocuments.length === 1)
-                            ? payload.linkedDocuments[0].doc_number
-                            : null;
-                        return {
-                            descripcion: item.descripcion || item.nombre,
-                            codigo: item.codigo,
-                            cantidad: item.cantidad,
-                            precioUnitario: item.precio_unitario || item.precio,
-                            montoDescu: item.monto_descuento || item.descuento || 0,
-                            referencedDoc: (payload.header?.dte_type === '05' && fallbackRef)
-                                ? (item.referencedDoc || fallbackRef)
-                                : (item.referencedDoc || null),
-                            // Preservar tributos específicos o usar IVA por defecto
-                            tributos: payload.header.dte_type === '11' ? []
-                                : (item.tributos && Array.isArray(item.tributos) && item.tributos.length > 0
-                                    ? item.tributos 
-                                    : (item.exento ? [] : ["20"])),
-                            tipoItem: payload.header.dte_type === '11' ? 1 : (item.exento ? 2 : 1) // 1: Gravado, 2: Exento
-                        };
-                    }),
+                    : (payload.header.dte_type === '14'
+                        ? (payload.items || []).map((item, idx) => ({
+                            numItem: idx + 1,
+                            tipo_item: parseInt(item.tipo_item || (item.tipoItem === 'servicio' || item.tipo_item === 2 ? 2 : 1), 10) || 1,
+                            descripcion: item.descripcion || item.description || item.nombre || 'Compra / Servicio',
+                            cantidad: parseFloat(item.cantidad || item.quantity || 1),
+                            precio_unitario: parseFloat(item.precio_unitario || item.precio || item.unit_price || item.total || 0),
+                            descuento: parseFloat(item.descuento || item.monto_descuento || 0),
+                            compra: parseFloat(item.compra || item.total || (parseFloat(item.cantidad || 1) * parseFloat(item.precio_unitario || item.precio || item.unit_price || item.total || 0))),
+                            unidad_medida: item.unidad_medida || item.uniMedida || 59,
+                            codigo: item.codigo || null
+                        }))
+                        : (payload.items || []).map(item => {
+                            const fallbackRef = (payload.header?.dte_type === '05' && payload.linkedDocuments && payload.linkedDocuments.length === 1)
+                                ? payload.linkedDocuments[0].doc_number
+                                : null;
+                            return {
+                                descripcion: item.descripcion || item.nombre,
+                                codigo: item.codigo,
+                                cantidad: item.cantidad,
+                                precioUnitario: item.precio_unitario || item.precio,
+                                montoDescu: item.monto_descuento || item.descuento || 0,
+                                referencedDoc: (payload.header?.dte_type === '05' && fallbackRef)
+                                    ? (item.referencedDoc || fallbackRef)
+                                    : (item.referencedDoc || null),
+                                // Preservar tributos específicos o usar IVA por defecto
+                                tributos: payload.header.dte_type === '11' ? []
+                                    : (item.tributos && Array.isArray(item.tributos) && item.tributos.length > 0
+                                        ? item.tributos 
+                                        : (item.exento ? [] : ["20"])),
+                                tipoItem: payload.header.dte_type === '11' ? 1 : (item.exento ? 2 : 1) // 1: Gravado, 2: Exento
+                            };
+                        })),
                 pagos: payload.payments || [],
                 totalLetras: payload.header.total_letras || '',
                 taxes: [...(payload.header.taxes || []), ...extraTaxes],
@@ -403,6 +428,43 @@ class DteService {
             pais_code: c.pais_code || c.pais || null,
             pais_name: c.pais_name || null,
             direccion
+        };
+    }
+
+    async _getProviderReceptorData(providerId, manualName = null) {
+        if (!providerId) return { 
+            nombre: manualName || 'SUJETO EXCLUIDO', 
+            tipoDocumento: '13',
+            numDocumento: '000000000'
+        };
+        
+        const pool = require('../config/db');
+        const [rows] = await pool.query('SELECT * FROM providers WHERE id = ?', [providerId]);
+        if (rows.length === 0) return { nombre: manualName || 'SUJETO EXCLUIDO', tipoDocumento: '13', numDocumento: '000000000' };
+        
+        const p = rows[0];
+        let docType = p.tipo_documento || (p.numero_documento ? '13' : (p.nit ? '36' : '13'));
+        let docNum = p.numero_documento || p.nit || '000000000';
+        
+        let departamento = String(p.departamento || '06').padStart(2, '0');
+        let municipio = String(p.municipio || '14').padStart(2, '0');
+        let distrito = String(p.distrito || '01').padStart(2, '0');
+        let complemento = p.direccion || 'San Salvador';
+        
+        return {
+            nombre: p.nombre,
+            tipoDocumento: docType,
+            numDocumento: docNum,
+            codActividad: p.codigo_actividad || null,
+            descActividad: p.giro || null,
+            direccion: {
+                departamento,
+                municipio,
+                distrito,
+                complemento
+            },
+            telefono: p.telefono || null,
+            correo: p.correo || null
         };
     }
 

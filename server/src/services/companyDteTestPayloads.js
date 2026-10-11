@@ -188,6 +188,36 @@ async function buildTestPayload(type, company, branch) {
         };
     }
 
+    if (type === '14') {
+        return {
+            tipoDte: '14',
+            condicionOperacion: 1,
+            receptor: {
+                tipoDocumento: '13',
+                numDocumento: '012345679',
+                nombre: 'JUAN PEREZ FONTAN',
+                codActividad: null,
+                descActividad: null,
+                correo: 'pruebas@mh.gob.sv',
+                telefono: '77778888',
+                direccion: baseAddr
+            },
+            items: [{
+                tipo_item: 2,
+                descripcion: 'SERVICIO PROFESIONAL DE PRUEBA ACREDITACION DTE-14',
+                cantidad: 1,
+                precio_unitario: 100.00,
+                compra: 100.00,
+                descuento: 0
+            }],
+            total_compra: 100.00,
+            retencion_renta: 10.00,
+            subtotal: 100.00,
+            total_pagar: 90.00,
+            pagos: [{ codigo: '01', montoPago: 90.00 }]
+        };
+    }
+
     // Fallback genérico para otros tipos (Factura)
     return buildFacturaPayload(company, branch, cleanNit, baseAddr);
 }

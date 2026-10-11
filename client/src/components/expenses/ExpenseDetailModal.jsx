@@ -181,7 +181,9 @@ export default function ExpenseDetailModal({
                             </div>
                         )}
                         <div>
-                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Retención 1%</span>
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">
+                                {String(expense.tipo_documento_id).trim() === '14' ? 'Retención ISR 10%' : 'Retención 1%'}
+                            </span>
                             <span className="text-xs font-mono text-rose-600 font-semibold"><Money value={expense.retencion} /></span>
                         </div>
                         <div>

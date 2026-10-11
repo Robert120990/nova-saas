@@ -24,7 +24,10 @@ import {
     ChevronUp,
     Info,
     RotateCcw,
-    Sparkles
+    Sparkles,
+    FileText,
+    Code,
+    Send
 } from 'lucide-react';
 import { exportJsonToExcel } from '../utils/excelExport';
 import SearchableSelect from '../components/ui/SearchableSelect';
@@ -138,6 +141,15 @@ const DOCUMENT_TYPES = [
         description: 'Devolución, rebaja o descuento concedido sobre compras previas. Resta del crédito fiscal y total acumulado del período.',
         hasIVA: true,
         isCredito: true
+    },
+    {
+        code: '14',
+        name: 'FACTURA SUJETO EXCLUIDO',
+        badge: 'SUJETO EXCLUIDO (DTE-14)',
+        badgeColor: 'bg-teal-50 text-teal-800 border-teal-200 font-bold',
+        description: 'Documento emitido por la empresa adquirente a personas naturales que no son contribuyentes de IVA (Sujeto Excluido). Aplica retención del 10% de ISR.',
+        hasIVA: false,
+        isSujetoExcluido: true
     }
 ];
 
@@ -196,6 +208,12 @@ const DOC_TYPE_FIELD_CONFIG = {
         secondary: [],
         disabled: ['gravadasImportaciones', 'gravadasInternaciones', 'ivaImportaciones'],
         tip: 'Nota de Crédito (-): Digita el valor a rebajar en Compras Gravadas Locales y su IVA 13%. El sistema deducirá estos valores.'
+    },
+    '14': {
+        primary: ['totalGravada', 'manualRetencion'],
+        secondary: ['manualMontoSujeto'],
+        disabled: ['manualIVA', 'manualPercepcion', 'manualFovial', 'manualCotrans', 'manualAnticipoCuenta', 'gravadasImportaciones', 'gravadasInternaciones', 'ivaImportaciones'],
+        tip: 'Factura Sujeto Excluido (DTE-14): Registra la base en Compras Gravadas Locales. El sistema aplica retención del 10% de Impuesto sobre la Renta (ISR) que se descuenta del total a pagar.'
     }
 };
 
@@ -350,6 +368,7 @@ const Expenses = () => {
     const [isProviderModalOpen, setIsProviderModalOpen] = useState(false);
     const [editingProvider, setEditingProvider] = useState(null);
     const [tipoDocId, setTipoDocId] = useState('02'); // Default 02 Crédito Fiscal
+    const [emitirDte, setEmitirDte] = useState(false);
     const [condicionId, setCondicionId] = useState('01'); // Default Contado
     const [numeroDoc, setNumeroDoc] = useState('');
     const [numControl, setNumControl] = useState('');
@@ -579,8 +598,8 @@ const Expenses = () => {
         const ivaImp = parseFloat(ivaImportaciones) || 0;
 
         const ivaRate = parseFloat(taxSettings?.iva_rate || 13) / 100;
-        // Factura tradicional (01) o Factura de Exportación (03) no generan crédito fiscal deducible separado
-        const noDeduceIva = tipoDocId === '01' || tipoDocId === '03' || tipoDocId === '06' || tipoDocId === '07' || selectedProvider?.exento_iva;
+        // Factura tradicional (01), Factura de Exportación (03) o Sujeto Excluido (14) no generan crédito fiscal deducible separado
+        const noDeduceIva = tipoDocId === '01' || tipoDocId === '03' || tipoDocId === '06' || tipoDocId === '07' || tipoDocId === '14' || selectedProvider?.exento_iva;
         let ivaCalculated = noDeduceIva ? 0 : (gravada * ivaRate);
         ivaCalculated = Math.round(ivaCalculated * 100) / 100;
 
@@ -625,13 +644,17 @@ const Expenses = () => {
     const handleGravadaChange = (e) => {
         const val = e.target.value;
         setTotalGravada(val);
+        const num = parseFloat(val) || 0;
         if (!isIvaDirty) {
-            const num = parseFloat(val) || 0;
             if (currentDocType.hasIVA) {
                 setManualIVA(Math.round(num * 0.13 * 100) / 100);
             } else {
                 setManualIVA(0);
             }
+        }
+        if (tipoDocId === '14') {
+            setManualRetencion(Math.round(num * 0.10 * 100) / 100);
+            setManualMontoSujeto(num);
         }
     };
 
@@ -870,6 +893,7 @@ const Expenses = () => {
         setProviderId('');
         setBranchId(user?.branch_id ? String(user.branch_id) : '');
         setTipoDocId('02');
+        setEmitirDte(false);
         setCondicionId('01');
         const savedF07 = getStoredF07Classification(user?.company_id);
         setTipoOperacion(savedF07.tipoOperacion);
@@ -1025,6 +1049,7 @@ const Expenses = () => {
             }
 
             setTipoDocId(detail.tipo_documento_id || '02');
+            setEmitirDte(false);
             setCondicionId(detail.condicion_operacion_id || '01');
             setNumeroDoc((detail.numero_documento || '').toUpperCase());
             setNumControl((detail.num_control || '').toUpperCase());
@@ -1124,17 +1149,21 @@ const Expenses = () => {
             finalPeriodMonth = docMonth;
         }
 
+        const isSujetoExcluido = tipoDocId === '14';
+        const docNumCalculated = (numeroDoc || '').trim().toUpperCase() || (isSujetoExcluido && emitirDte ? 'DTE-14-PENDIENTE' : 'S/N');
+
         const payload = {
             branch_id: branchId,
             provider_id: providerId,
             fecha,
-            numero_documento: (numeroDoc || '').trim().toUpperCase() || 'S/N',
+            numero_documento: docNumCalculated,
             num_control: (numControl || '').trim().toUpperCase() || null,
             sello_recepcion: (selloRecepcion || '').trim().toUpperCase() || null,
             documento_afectado: (esNotaCredito || esNotaDebito) ? (documentoAfectado || '').trim().toUpperCase() : null,
             fecha_afectada: (esNotaCredito || esNotaDebito) ? (fechaAfectada || null) : null,
             tipo_documento_id: tipoDocId,
             condicion_operacion_id: condicionId,
+            emitir_dte: isSujetoExcluido && emitirDte && !isEditing,
             observaciones: (observaciones || '').trim().toUpperCase() || 'GASTO REGISTRADO',
             tipo_operacion: tipoOperacion,
             tipo_clasificacion: tipoClasificacion,
@@ -1201,6 +1230,52 @@ const Expenses = () => {
             PERIODO: `${e.period_month || ''}/${e.period_year || ''}`
         }));
         exportJsonToExcel(data, `Historial_Gastos_${filterMonth}_${filterYear}`, 'Gastos');
+    };
+
+    const handleViewExpenseDtePdf = async (expenseId) => {
+        try {
+            const response = await axios.get(`/api/expenses/${expenseId}/dte-pdf`, {
+                responseType: 'blob'
+            });
+            const blob = new Blob([response.data], { type: 'application/pdf' });
+            const url = URL.createObjectURL(blob);
+            window.open(url, '_blank');
+        } catch (error) {
+            toast.error('Error al visualizar la Representación Gráfica del DTE-14');
+        }
+    };
+
+    const handleDownloadExpenseJson = async (expenseId, docNumero) => {
+        try {
+            const response = await axios.get(`/api/expenses/${expenseId}/dte-json`);
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(response.data, null, 2));
+            const downloadAnchor = document.createElement('a');
+            downloadAnchor.setAttribute("href", dataStr);
+            downloadAnchor.setAttribute("download", `DTE-14-${docNumero || expenseId}.json`);
+            document.body.appendChild(downloadAnchor);
+            downloadAnchor.click();
+            downloadAnchor.remove();
+            toast.success('JSON descargado correctamente');
+        } catch (error) {
+            toast.error('Error al descargar JSON DTE');
+        }
+    };
+
+    const handleEmitExpenseDte = async (expenseId) => {
+        const loadingToast = toast.loading('Transmitiendo DTE-14 a Hacienda...');
+        try {
+            const res = await axios.post(`/api/expenses/${expenseId}/emit-dte`);
+            toast.dismiss(loadingToast);
+            if (res.data?.success || res.data?.data) {
+                toast.success(`DTE-14 emitido con éxito. Estado: ${res.data?.data?.estado || 'PROCESADO'}`);
+                queryClient.invalidateQueries(['expenses-history']);
+            } else {
+                toast.error(res.data?.message || 'Error al emitir DTE');
+            }
+        } catch (error) {
+            toast.dismiss(loadingToast);
+            toast.error(error.response?.data?.message || 'Error al transmitir DTE-14');
+        }
     };
 
     const inputCls = "w-full px-3 py-2 bg-white border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-indigo-600 focus:border-indigo-600 focus:bg-indigo-50/20 shadow-xs focus:shadow-md focus:shadow-indigo-500/10 transition-all text-[12px] font-semibold text-slate-800 uppercase";
@@ -1503,6 +1578,27 @@ const Expenses = () => {
                                                         {g.numero_documento || 'S/N'}
                                                     </span>
                                                 </div>
+                                                {g.tipo_documento_id === '14' && (
+                                                    <div className="mt-0.5">
+                                                        {g.estado_dte === 'PROCESADO' ? (
+                                                            <span className="px-1.5 py-0.2 rounded text-[8px] font-black uppercase bg-emerald-100 text-emerald-800 border border-emerald-300">
+                                                                DTE PROCESADO
+                                                            </span>
+                                                        ) : g.estado_dte === 'CONTINGENCIA' ? (
+                                                            <span className="px-1.5 py-0.2 rounded text-[8px] font-black uppercase bg-amber-100 text-amber-800 border border-amber-300">
+                                                                DTE CONTINGENCIA
+                                                            </span>
+                                                        ) : g.estado_dte === 'RECHAZADO' ? (
+                                                            <span className="px-1.5 py-0.2 rounded text-[8px] font-black uppercase bg-rose-100 text-rose-800 border border-rose-300">
+                                                                DTE RECHAZADO
+                                                            </span>
+                                                        ) : (
+                                                            <span className="px-1.5 py-0.2 rounded text-[8px] font-black uppercase bg-slate-100 text-slate-600 border border-slate-200">
+                                                                DTE PENDIENTE
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                )}
                                                 {g.num_control && (
                                                     <div className="text-[10px] text-slate-400 font-mono mt-0.5 truncate max-w-[180px]" title={g.num_control}>
                                                         Ctrl: {g.num_control}
@@ -1565,6 +1661,36 @@ const Expenses = () => {
                                                     >
                                                         <Eye size={15} />
                                                     </button>
+                                                    {g.tipo_documento_id === '14' && (
+                                                        <>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleViewExpenseDtePdf(g.id)}
+                                                                className="p-1.5 text-slate-500 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
+                                                                title="Ver Representación Gráfica DTE-14 (PDF)"
+                                                            >
+                                                                <FileText size={15} />
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleDownloadExpenseJson(g.id, g.numero_documento)}
+                                                                className="p-1.5 text-slate-500 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
+                                                                title="Descargar JSON Oficial DTE"
+                                                            >
+                                                                <Code size={15} />
+                                                            </button>
+                                                            {g.estado_dte !== 'PROCESADO' && g.status === 'ACTIVO' && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handleEmitExpenseDte(g.id)}
+                                                                    className="p-1.5 text-teal-600 hover:text-teal-700 hover:bg-teal-50 rounded-lg transition-colors"
+                                                                    title="Transmitir / Certificar DTE-14 ante Hacienda"
+                                                                >
+                                                                    <Send size={15} />
+                                                                </button>
+                                                            )}
+                                                        </>
+                                                    )}
                                                     {g.status === 'ACTIVO' && (
                                                         <>
                                                             <button
@@ -1767,14 +1893,24 @@ const Expenses = () => {
                                                 onChange={(e) => {
                                                     const val = e.target.value;
                                                     setTipoDocId(val);
-                                                    const dt = DOCUMENT_TYPES.find(d => d.code === val);
-                                                    if (!dt?.hasIVA) {
+                                                    if (val === '14') {
+                                                        setEmitirDte(true);
+                                                        const num = parseFloat(totalGravada) || 0;
+                                                        setManualRetencion(Math.round(num * 0.10 * 100) / 100);
+                                                        setManualMontoSujeto(num);
                                                         setManualIVA(0);
                                                         setIsIvaDirty(true);
                                                     } else {
-                                                        setIsIvaDirty(false);
-                                                        const num = parseFloat(totalGravada) || 0;
-                                                        setManualIVA(Math.round(num * 0.13 * 100) / 100);
+                                                        setEmitirDte(false);
+                                                        const dt = DOCUMENT_TYPES.find(d => d.code === val);
+                                                        if (!dt?.hasIVA) {
+                                                            setManualIVA(0);
+                                                            setIsIvaDirty(true);
+                                                        } else {
+                                                            setIsIvaDirty(false);
+                                                            const num = parseFloat(totalGravada) || 0;
+                                                            setManualIVA(Math.round(num * 0.13 * 100) / 100);
+                                                        }
                                                     }
                                                 }}
                                                 className={inputCls}
@@ -1813,6 +1949,36 @@ const Expenses = () => {
                                             </select>
                                         </div>
                                     </div>
+
+                                    {/* Banner de Emisión Automática para DTE-14 Sujeto Excluido */}
+                                    {tipoDocId === '14' && !isEditing && (
+                                        <div className="p-3 bg-teal-50 border border-teal-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in slide-in-from-top-2">
+                                            <div className="flex items-center gap-2.5">
+                                                <div className="p-2 bg-teal-600 text-white rounded-lg shrink-0 shadow-xs">
+                                                    <Sparkles size={16} />
+                                                </div>
+                                                <div>
+                                                    <p className="text-xs font-black text-teal-900 uppercase">
+                                                        Emisión Electrónica de Sujeto Excluido (DTE-14)
+                                                    </p>
+                                                    <p className="text-[11px] text-teal-700 font-medium">
+                                                        Transmitir y certificar automáticamente ante el Ministerio de Hacienda al guardar este comprobante.
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <label className="flex items-center gap-2 cursor-pointer shrink-0 bg-white px-3 py-1.5 rounded-lg border border-teal-200 shadow-2xs hover:bg-teal-50/50 transition-colors">
+                                                <span className="text-[11px] font-black text-teal-900 uppercase">
+                                                    {emitirDte ? 'Transmitir a Hacienda' : 'Solo Guardar Local'}
+                                                </span>
+                                                <input
+                                                    type="checkbox"
+                                                    checked={emitirDte}
+                                                    onChange={(e) => setEmitirDte(e.target.checked)}
+                                                    className="w-4 h-4 rounded text-teal-600 focus:ring-teal-500 border-teal-300 cursor-pointer"
+                                                />
+                                            </label>
+                                        </div>
+                                    )}
 
                                     {/* Alerta y Campos Obligatorios para Nota de Crédito o Débito */}
                                     {(esNotaCredito || esNotaDebito) && (
@@ -1928,28 +2094,31 @@ const Expenses = () => {
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                         <div>
                                             <label className={labelCls}>
-                                                {tipoDocId === '04' ? 'No. Póliza / Declaración' : tipoDocId === '05' ? 'No. FAUCA / Mandamiento' : 'Código de Generación'}{' '}
+                                                {tipoDocId === '14' && emitirDte ? 'Código de Generación (MH)' : tipoDocId === '04' ? 'No. Póliza / Declaración' : tipoDocId === '05' ? 'No. FAUCA / Mandamiento' : 'Código de Generación'}{' '}
                                                 <span className="text-[8px] font-normal text-slate-400 lowercase tracking-normal">(opcional)</span>
                                             </label>
                                             <input 
                                                 type="text" 
-                                                value={numeroDoc} 
+                                                value={tipoDocId === '14' && emitirDte && !isEditing ? (numeroDoc || 'GENERACIÓN AUTOMÁTICA MH') : numeroDoc} 
                                                 onChange={(e) => setNumeroDoc(e.target.value.toUpperCase())} 
-                                                placeholder={tipoDocId === '04' ? 'NO. PÓLIZA (OPCIONAL)' : tipoDocId === '05' ? 'NO. FAUCA (OPCIONAL)' : 'CÓDIGO GENERACIÓN DTE (OPCIONAL)'} 
-                                                className={`${inputCls} uppercase font-mono text-[11px]`} 
+                                                disabled={tipoDocId === '14' && emitirDte && !isEditing}
+                                                placeholder={tipoDocId === '14' && emitirDte ? 'GENERADO POR MH AL GUARDAR' : tipoDocId === '04' ? 'NO. PÓLIZA (OPCIONAL)' : tipoDocId === '05' ? 'NO. FAUCA (OPCIONAL)' : 'CÓDIGO GENERACIÓN DTE (OPCIONAL)'} 
+                                                className={`${inputCls} uppercase font-mono text-[11px] ${tipoDocId === '14' && emitirDte && !isEditing ? 'bg-teal-50/60 text-teal-800 font-bold border-teal-200 cursor-not-allowed' : ''}`} 
                                             />
                                         </div>
 
                                         <div>
                                             <label className={labelCls}>
-                                                Número de Control (DTE) <span className="text-[8px] font-normal text-slate-400 lowercase tracking-normal">(opcional)</span>
+                                                {tipoDocId === '14' && emitirDte ? 'Número de Control (MH)' : 'Número de Control (DTE)'}{' '}
+                                                <span className="text-[8px] font-normal text-slate-400 lowercase tracking-normal">(opcional)</span>
                                             </label>
                                             <input 
                                                 type="text" 
-                                                value={numControl} 
+                                                value={tipoDocId === '14' && emitirDte && !isEditing ? (numControl || 'ASIGNACIÓN AUTOMÁTICA MH') : numControl} 
                                                 onChange={(e) => setNumControl(e.target.value.toUpperCase())} 
-                                                placeholder="DTE-03-M001P001-00001 (OPCIONAL)" 
-                                                className={`${inputCls} uppercase font-mono text-[11px]`} 
+                                                disabled={tipoDocId === '14' && emitirDte && !isEditing}
+                                                placeholder={tipoDocId === '14' && emitirDte ? 'ASIGNADO POR MH AL GUARDAR' : 'DTE-03-M001P001-00001 (OPCIONAL)'} 
+                                                className={`${inputCls} uppercase font-mono text-[11px] ${tipoDocId === '14' && emitirDte && !isEditing ? 'bg-teal-50/60 text-teal-800 font-bold border-teal-200 cursor-not-allowed' : ''}`} 
                                             />
                                         </div>
                                     </div>
@@ -1962,10 +2131,11 @@ const Expenses = () => {
                                             </label>
                                             <input 
                                                 type="text" 
-                                                value={selloRecepcion} 
+                                                value={tipoDocId === '14' && emitirDte && !isEditing ? (selloRecepcion || 'SELLO DE HACIENDA AL CERTIFICAR') : selloRecepcion} 
                                                 onChange={(e) => setSelloRecepcion(e.target.value.toUpperCase())} 
-                                                placeholder="SELLO OFICIAL DE HACIENDA (OPCIONAL)" 
-                                                className={`${inputCls} uppercase font-mono text-[11px]`} 
+                                                disabled={tipoDocId === '14' && emitirDte && !isEditing}
+                                                placeholder={tipoDocId === '14' && emitirDte ? 'CERTIFICADO POR MH AL GUARDAR' : 'SELLO OFICIAL DE HACIENDA (OPCIONAL)'} 
+                                                className={`${inputCls} uppercase font-mono text-[11px] ${tipoDocId === '14' && emitirDte && !isEditing ? 'bg-teal-50/60 text-teal-800 font-bold border-teal-200 cursor-not-allowed' : ''}`} 
                                             />
                                         </div>
 
@@ -2242,7 +2412,9 @@ const Expenses = () => {
                                     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 pt-1 border-t border-slate-100">
                                         <div className="bg-slate-50/70 p-2 rounded-xl border border-slate-200/80 focus-within:border-rose-600 focus-within:bg-rose-50/20 focus-within:ring-2 focus-within:ring-rose-600/40 transition-all">
                                             <div className="flex items-center justify-between mb-1">
-                                                <label className="text-[9px] font-bold text-slate-600 uppercase tracking-tight truncate">Retención 1%</label>
+                                                <label className="text-[9px] font-bold text-slate-600 uppercase tracking-tight truncate" title={tipoDocId === '14' ? 'Retención de Impuesto sobre la Renta (10% ISR)' : 'Retención 1% de IVA'}>
+                                                    {tipoDocId === '14' ? 'Ret. Renta (10%)' : 'Retención 1%'}
+                                                </label>
                                                 <span className="text-[7px] text-slate-400 font-bold uppercase">Manual</span>
                                             </div>
                                             <div className="relative">
@@ -2461,7 +2633,7 @@ const Expenses = () => {
 
                                         {parseFloat(totals.retencion || 0) > 0 && (
                                             <div className="flex justify-between items-center text-rose-400">
-                                                <span>Retención 1%:</span>
+                                                <span>{tipoDocId === '14' ? 'Retención Renta (10%):' : 'Retención 1%:'}</span>
                                                 <span className="font-mono font-bold">
                                                     -<Money value={totals.retencion} />
                                                 </span>

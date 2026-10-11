@@ -5,6 +5,7 @@ const { getEffectiveProductId } = require('../utils/inventoryUtils');
 const notificationService = require('../services/notification.service');
 const reportPdfHelper = require('../utils/reportPdfHelper');
 const { validateDocumentDuplicate } = require('../utils/documentValidator');
+const sujetoExcluidoDteService = require('../services/sujetoExcluidoDte.service');
 const aiService = require('../services/ai.service');
 const crypto = require('crypto');
 const os = require('os');
@@ -394,6 +395,16 @@ const createPurchase = async (req, res) => {
 
         await connection.commit();
 
+        let dteEmission = null;
+        if (String(tipo_documento_id).trim() === '14' && req.body.emitir_dte) {
+            try {
+                dteEmission = await sujetoExcluidoDteService.emitPurchaseDte(purchaseId, companyId, usuarioId, branch_id);
+            } catch (dteErr) {
+                console.error('[Purchases] Error emitiendo DTE-14:', dteErr.message);
+                dteEmission = { success: false, error: dteErr.message };
+            }
+        }
+
         notificationService.notify('purchase_created', req.company_id, req.user.branch_id, {
             compra_id: purchaseId,
             proveedor_nombre: providerName,
@@ -402,7 +413,7 @@ const createPurchase = async (req, res) => {
             sucursal: req.branch_name || ''
         }).catch(() => {});
 
-        res.status(201).json({ message: 'Compra registrada con éxito', id: purchaseId });
+        res.status(201).json({ message: 'Compra registrada con éxito', id: purchaseId, dte: dteEmission });
     } catch (error) {
         await connection.rollback();
         console.error('Error al registrar compra:', error);
@@ -1543,6 +1554,50 @@ const uploadMobileScan = async (req, res) => {
     }
 };
 
+const emitPurchaseDTE = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const companyId = req.company_id || req.user?.company_id;
+        const usuarioId = req.user?.id;
+        const branchId = req.user?.branch_id;
+
+        const result = await sujetoExcluidoDteService.emitPurchaseDte(id, companyId, usuarioId, branchId);
+        if (!result.success) {
+            return res.status(400).json({ message: result.error || 'Error al emitir DTE-14', result });
+        }
+        res.json({ success: true, message: 'DTE-14 emitido con éxito', data: result });
+    } catch (error) {
+        console.error('Error al emitir DTE para compra:', error);
+        res.status(500).json({ message: error.message || 'Error al emitir DTE' });
+    }
+};
+
+const getPurchaseDtePdf = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const companyId = req.company_id || req.user?.company_id;
+        const buffer = await sujetoExcluidoDteService.getPurchaseDtePdfBuffer(id, companyId);
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename=DTE14-COMPRA-${id}.pdf`);
+        res.send(buffer);
+    } catch (error) {
+        console.error('Error al generar PDF de DTE para compra:', error);
+        res.status(500).json({ message: error.message || 'Error al generar PDF del DTE' });
+    }
+};
+
+const getPurchaseDteJson = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const companyId = req.company_id || req.user?.company_id;
+        const data = await sujetoExcluidoDteService.getPurchaseDteJson(id, companyId);
+        res.json(data);
+    } catch (error) {
+        console.error('Error al obtener JSON de DTE para compra:', error);
+        res.status(500).json({ message: error.message || 'Error al obtener JSON del DTE' });
+    }
+};
+
 module.exports = {
     getPurchases,
     getPurchaseById,
@@ -1554,5 +1609,8 @@ module.exports = {
     scanDteInvoice,
     createScanSession,
     getScanSessionStatus,
-    uploadMobileScan
+    uploadMobileScan,
+    emitPurchaseDTE,
+    getPurchaseDtePdf,
+    getPurchaseDteJson
 };

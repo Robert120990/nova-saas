@@ -398,7 +398,7 @@ const generateRTEEModern = (data) => {
             doc.fillColor('#ffffff')
                .fontSize(7.5)
                .font('Helvetica-Bold')
-               .text('DATOS DEL RECEPTOR / CLIENTE', startX + 10, receptorY + 5);
+               .text(dte.tipoDte === '14' ? 'DATOS DEL SUJETO EXCLUIDO (PROVEEDOR)' : 'DATOS DEL RECEPTOR / CLIENTE', startX + 10, receptorY + 5);
 
             // Contenido en 2 columnas de alto contraste
             let ry = receptorY + 24;
@@ -412,6 +412,7 @@ const generateRTEEModern = (data) => {
             // Documento / NIT / NRC
             let docIdentLabel = 'DOCUMENTO:';
             if (dte.tipoDte === '03' && receptor.nit) docIdentLabel = 'NIT:';
+            else if (dte.tipoDte === '14') docIdentLabel = 'DUI / NIT:';
             const docVal = receptor.nit || receptor.numDocumento || 'Consumidor Final';
 
             doc.fillColor(THEME.textMuted).fontSize(6.5).font('Helvetica-Bold').text(`${docIdentLabel} `, col1X, ry, { width: col1W, continued: true });
@@ -637,10 +638,10 @@ const generateRTEEModern = (data) => {
 
                     doc.fillColor('#ffffff').fontSize(7.5).font('Helvetica-Bold');
                     doc.text('CANT.', startX + 8, curY + 6, { width: 38, align: 'center' });
-                    doc.text('DESCRIPCIÓN DEL PRODUCTO O SERVICIO', startX + 52, curY + 6);
+                    doc.text(dte.tipoDte === '14' ? 'DESCRIPCIÓN DEL BIEN O SERVICIO' : 'DESCRIPCIÓN DEL PRODUCTO O SERVICIO', startX + 52, curY + 6);
                     doc.text('PRECIO UNIT.', startX + 345, curY + 6, { align: 'right', width: 62 });
                     doc.text('DESCUENTO', startX + 415, curY + 6, { align: 'right', width: 55 });
-                    doc.text('VENTA NETA', startX + 475, curY + 6, { align: 'right', width: 68 });
+                    doc.text(dte.tipoDte === '14' ? 'COMPRA' : 'VENTA NETA', startX + 475, curY + 6, { align: 'right', width: 68 });
                 };
 
                 renderTableHeader(tableStartY);
@@ -662,7 +663,7 @@ const generateRTEEModern = (data) => {
 
                 items.forEach((item, idx) => {
                     let displayUnitPrice = parseFloat(item.precioUnitario) || 0;
-                    let displayTotalItem = parseFloat(item.totalItem) || 0;
+                    let displayTotalItem = parseFloat(item.totalItem ?? item.compra ?? 0);
                     const displayDescuento = parseFloat(item.montoDescuento || 0);
                     const isDescItem = displayUnitPrice === 0 && displayTotalItem === 0;
 
@@ -765,50 +766,66 @@ const generateRTEEModern = (data) => {
                 }
 
                 const lines = [];
-                lines.push({ label: 'SUMA DE OPERACIONES:', val: sumaOperacionesDisplay, isBold: false });
+                if (dte.tipoDte === '14') {
+                    const totalCompra = parseFloat(venta.totalCompra ?? venta.total_compra ?? venta.subtotal_ventas ?? venta.total_gravado ?? venta.subtotal ?? 0);
+                    const reteRenta = parseFloat(venta.reteRenta ?? venta.retencion_renta ?? venta.total_retencion ?? 0);
+                    const descu = parseFloat(venta.total_descuento ?? venta.descuento_general ?? 0);
+                    const subTotal = parseFloat(venta.subtotal || (totalCompra - descu));
 
-                if (descGeneral > 0) {
-                    const descLabel = pctFormatted > 0 ? `(-) DESCUENTO GENERAL (${pctFormatted}%):` : '(-) DESCUENTO GENERAL:';
-                    lines.push({ label: descLabel, val: descGeneral, isNegative: true });
-                }
-
-                lines.push({ label: 'VENTAS GRAVADAS:', val: gravadasDisplay, isBold: false });
-
-                const totalExentas = parseFloat(venta.total_exento) || 0;
-                if (totalExentas > 0) lines.push({ label: 'VENTAS EXENTAS:', val: totalExentas });
-
-                const totalNoSujetas = parseFloat(venta.total_nosujetas) || 0;
-                if (totalNoSujetas > 0) lines.push({ label: 'VENTAS NO SUJETAS:', val: totalNoSujetas });
-
-                if (esConsumidorFinal) {
-                    lines.push({ label: 'TOTAL IVA (13%):', raw: '$ -' });
+                    lines.push({ label: 'TOTAL COMPRAS:', val: totalCompra, isBold: false });
+                    if (descu > 0) {
+                        lines.push({ label: '(-) DESCUENTO:', val: descu, isNegative: true });
+                    }
+                    lines.push({ label: 'SUBTOTAL:', val: subTotal, isBold: false });
+                    if (reteRenta > 0) {
+                        lines.push({ label: '(-) RETENCIÓN RENTA (10%):', val: reteRenta, isNegative: true });
+                    }
                 } else {
-                    lines.push({ label: 'TOTAL IVA (13%):', val: parseFloat(venta.total_iva) || 0, isBold: true });
-                }
+                    lines.push({ label: 'SUMA DE OPERACIONES:', val: sumaOperacionesDisplay, isBold: false });
 
-                const processedCodes = new Set();
-                if (venta.tributos && venta.tributos.length > 0) {
-                    venta.tributos.forEach(tri => {
-                        if (tri.codigo !== '20') {
-                            let desc = tri.descripcion || tri.codigo;
-                            if (desc.toUpperCase().includes('FEFE')) desc = 'FOVIAL';
-                            lines.push({ label: `${desc.toUpperCase()}:`, val: parseFloat(tri.valor) || 0 });
-                            processedCodes.add(tri.codigo);
-                        }
-                    });
-                }
+                    if (descGeneral > 0) {
+                        const descLabel = pctFormatted > 0 ? `(-) DESCUENTO GENERAL (${pctFormatted}%):` : '(-) DESCUENTO GENERAL:';
+                        lines.push({ label: descLabel, val: descGeneral, isNegative: true });
+                    }
 
-                if (!processedCodes.has('D1') && !processedCodes.has('C3') && !processedCodes.has('01') && fovialVenta > 0) {
-                    lines.push({ label: 'TOTAL FOVIAL ($0.20):', val: fovialVenta });
-                }
-                if (!processedCodes.has('C8') && !processedCodes.has('C1') && !processedCodes.has('02') && cotransVenta > 0) {
-                    lines.push({ label: 'TOTAL COTRAN ($0.10):', val: cotransVenta });
-                }
+                    lines.push({ label: 'VENTAS GRAVADAS:', val: gravadasDisplay, isBold: false });
 
-                const retencionIVA = parseFloat(venta.total_retencion) || 0;
-                const percepcionIVA = parseFloat(venta.total_percepcion) || 0;
-                if (retencionIVA > 0) lines.push({ label: '(-) RETENCIÓN IVA (1%):', val: retencionIVA, isNegative: true });
-                if (percepcionIVA > 0) lines.push({ label: '(+) PERCEPCIÓN IVA (1%):', val: percepcionIVA });
+                    const totalExentas = parseFloat(venta.total_exento) || 0;
+                    if (totalExentas > 0) lines.push({ label: 'VENTAS EXENTAS:', val: totalExentas });
+
+                    const totalNoSujetas = parseFloat(venta.total_nosujetas) || 0;
+                    if (totalNoSujetas > 0) lines.push({ label: 'VENTAS NO SUJETAS:', val: totalNoSujetas });
+
+                    if (esConsumidorFinal) {
+                        lines.push({ label: 'TOTAL IVA (13%):', raw: '$ -' });
+                    } else {
+                        lines.push({ label: 'TOTAL IVA (13%):', val: parseFloat(venta.total_iva) || 0, isBold: true });
+                    }
+
+                    const processedCodes = new Set();
+                    if (venta.tributos && venta.tributos.length > 0) {
+                        venta.tributos.forEach(tri => {
+                            if (tri.codigo !== '20') {
+                                let desc = tri.descripcion || tri.codigo;
+                                if (desc.toUpperCase().includes('FEFE')) desc = 'FOVIAL';
+                                lines.push({ label: `${desc.toUpperCase()}:`, val: parseFloat(tri.valor) || 0 });
+                                processedCodes.add(tri.codigo);
+                            }
+                        });
+                    }
+
+                    if (!processedCodes.has('D1') && !processedCodes.has('C3') && !processedCodes.has('01') && fovialVenta > 0) {
+                        lines.push({ label: 'TOTAL FOVIAL ($0.20):', val: fovialVenta });
+                    }
+                    if (!processedCodes.has('C8') && !processedCodes.has('C1') && !processedCodes.has('02') && cotransVenta > 0) {
+                        lines.push({ label: 'TOTAL COTRAN ($0.10):', val: cotransVenta });
+                    }
+
+                    const retencionIVA = parseFloat(venta.total_retencion) || 0;
+                    const percepcionIVA = parseFloat(venta.total_percepcion) || 0;
+                    if (retencionIVA > 0) lines.push({ label: '(-) RETENCIÓN IVA (1%):', val: retencionIVA, isNegative: true });
+                    if (percepcionIVA > 0) lines.push({ label: '(+) PERCEPCIÓN IVA (1%):', val: percepcionIVA });
+                }
 
                 const totCardX = startX + 272;
                 const totCardW = pageWidth - 272;

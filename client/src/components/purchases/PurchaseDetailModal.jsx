@@ -143,7 +143,9 @@ export default function PurchaseDetailModal({
                                             <span className="text-cyan-600">COTRANS: <Money value={detail.cotrans} /></span>
                                         )}
                                         {parseFloat(detail.retencion || 0) > 0 && (
-                                            <span className="text-rose-500">Retención: -<Money value={detail.retencion} /></span>
+                                            <span className="text-rose-500">
+                                                {String(detail.tipo_documento_id).trim() === '14' ? 'Retención ISR 10%: ' : 'Retención 1%: '}-<Money value={detail.retencion} />
+                                            </span>
                                         )}
                                         {parseFloat(detail.percepcion || 0) > 0 && (
                                             <span className="text-emerald-600">Percepción: +<Money value={detail.percepcion} /></span>
