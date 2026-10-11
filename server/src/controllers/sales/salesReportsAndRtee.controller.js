@@ -2564,7 +2564,38 @@ const getPublicDTEInfo = async (req, res) => {
         if (dte.length === 0) {
             return res.status(404).json({ encontrado: false, message: 'DTE no encontrado' });
         }
-        res.json({ encontrado: true, ...dte[0] });
+
+        // Consultar si tiene evento de invalidación en dte_invalidations
+        const [invRows] = await pool.query(
+            'SELECT id, motivo, descripcion, estado, respuesta_hacienda, created_at FROM dte_invalidations WHERE codigo_generacion_dte = ? ORDER BY (estado = "ACCEPTED") DESC, created_at DESC LIMIT 1',
+            [codigo]
+        );
+
+        let invalidacion = null;
+        if (invRows.length > 0) {
+            const inv = invRows[0];
+            const resp = typeof inv.respuesta_hacienda === 'string' ? JSON.parse(inv.respuesta_hacienda) : (inv.respuesta_hacienda || {});
+            invalidacion = {
+                codigo_generacion_inval: resp.codigoGeneracion || null,
+                sello_recepcion: resp.selloRecibido || null,
+                fh_procesamiento: resp.fhProcesamiento || null,
+                motivo: inv.motivo,
+                descripcion: inv.descripcion,
+                estado: inv.estado,
+                created_at: inv.created_at
+            };
+        }
+
+        const isInvalidated = dte[0].status === 'INVALIDADO' || Boolean(invalidacion);
+
+        res.json({ 
+            encontrado: true, 
+            ...dte[0],
+            status: isInvalidated ? 'INVALIDADO' : dte[0].status,
+            is_invalidado: isInvalidated,
+            tiene_invalidacion: Boolean(invRows.length > 0),
+            invalidacion
+        });
     } catch (error) {
         console.error('[GetPublicDTEInfo] Error:', error);
         res.status(500).json({ message: 'Error al obtener información del DTE' });
@@ -2588,6 +2619,72 @@ const getPublicDTEJson = async (req, res) => {
     } catch (error) {
         console.error('[GetPublicDTEJson] Error:', error);
         res.status(500).json({ message: 'Error al obtener JSON del DTE' });
+    }
+};
+
+const getPublicInvalidationPDF = async (req, res) => {
+    const { codigo } = req.params;
+    try {
+        const [invRows] = await pool.query(
+            'SELECT * FROM dte_invalidations WHERE codigo_generacion_dte = ? ORDER BY (estado = "ACCEPTED") DESC, created_at DESC LIMIT 1',
+            [codigo]
+        );
+        if (invRows.length === 0 || !invRows[0].json_enviado) {
+            return res.status(404).json({ message: 'Documento de invalidación no encontrado para este DTE' });
+        }
+
+        const inv = invRows[0];
+        const invalidationJson = typeof inv.json_enviado === 'string' ? JSON.parse(inv.json_enviado) : inv.json_enviado;
+
+        const resp = typeof inv.respuesta_hacienda === 'string' ? JSON.parse(inv.respuesta_hacienda) : (inv.respuesta_hacienda || {});
+        if (resp && resp.selloRecibido && invalidationJson.identificacion && !invalidationJson.identificacion.selloRecibido) {
+            invalidationJson.identificacion.selloRecibido = resp.selloRecibido;
+            invalidationJson.identificacion.fhProcesamiento = resp.fhProcesamiento;
+        }
+
+        const pdfBuffer = await pdfService.generateInvalidationPDF(invalidationJson);
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename=INVALIDACION-${codigo}.pdf`);
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        res.send(pdfBuffer);
+    } catch (error) {
+        console.error('[GetPublicInvalidationPDF] Error:', error);
+        res.status(500).json({ message: 'Error al generar PDF de invalidación', error: error.message });
+    }
+};
+
+const getPublicInvalidationJson = async (req, res) => {
+    const { codigo } = req.params;
+    try {
+        const [invRows] = await pool.query(
+            'SELECT * FROM dte_invalidations WHERE codigo_generacion_dte = ? ORDER BY (estado = "ACCEPTED") DESC, created_at DESC LIMIT 1',
+            [codigo]
+        );
+        if (invRows.length === 0 || (!invRows[0].json_enviado && !invRows[0].json_firmado)) {
+            return res.status(404).json({ message: 'JSON de invalidación no encontrado para este DTE' });
+        }
+
+        const inv = invRows[0];
+        const jsonEnviado = inv.json_enviado 
+            ? (typeof inv.json_enviado === 'string' ? JSON.parse(inv.json_enviado) : inv.json_enviado) 
+            : null;
+        const respHacienda = inv.respuesta_hacienda 
+            ? (typeof inv.respuesta_hacienda === 'string' ? JSON.parse(inv.respuesta_hacienda) : inv.respuesta_hacienda) 
+            : null;
+
+        const payload = {
+            evento: jsonEnviado,
+            jwtFirmado: inv.json_firmado || null,
+            respuestaHacienda: respHacienda
+        };
+
+        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('Content-Disposition', `attachment; filename=INVALIDACION-${codigo}.json`);
+        res.json(payload);
+    } catch (error) {
+        console.error('[GetPublicInvalidationJson] Error:', error);
+        res.status(500).json({ message: 'Error al obtener JSON de invalidación', error: error.message });
     }
 };
 
@@ -2735,28 +2832,90 @@ const sendPublicDTEEmail = async (req, res) => {
         const smtp = await mailerService.getSMTPSettings(venta.branch_id, venta.company_id);
         const transporter = mailerService.createTransporter(smtp);
 
+        const isDteVoided = reportData.isVoided || venta.dte_status === 'INVALIDADO';
+
+        const attachments = [
+            { filename: `${isDteVoided ? 'ANULADO-' : ''}DTE-${venta.numero_control}.pdf`, content: pdfBuffer },
+            { filename: `DTE-${venta.numero_control}.json`, content: JSON.stringify(dteJson, null, 2) }
+        ];
+
+        const [invRows] = await pool.query(
+            'SELECT * FROM dte_invalidations WHERE codigo_generacion_dte = ? ORDER BY (estado = "ACCEPTED") DESC, created_at DESC LIMIT 1',
+            [codigo]
+        );
+
+        if (invRows.length > 0 && invRows[0].json_enviado) {
+            const inv = invRows[0];
+            const invJson = typeof inv.json_enviado === 'string' ? JSON.parse(inv.json_enviado) : inv.json_enviado;
+            const resp = typeof inv.respuesta_hacienda === 'string' ? JSON.parse(inv.respuesta_hacienda) : (inv.respuesta_hacienda || {});
+            
+            try {
+                const invPdfBuffer = await pdfService.generateInvalidationPDF(invJson);
+                attachments.push({
+                    filename: `INVALIDACION-${codigo}.pdf`,
+                    content: invPdfBuffer,
+                    contentType: 'application/pdf'
+                });
+            } catch (pdfErr) {
+                console.error('[SendPublicDTEEmail] Error generando PDF invalidación:', pdfErr.message);
+            }
+
+            attachments.push({
+                filename: `INVALIDACION-${codigo}.json`,
+                content: Buffer.from(JSON.stringify({
+                    evento: invJson,
+                    jwtFirmado: inv.json_firmado || null,
+                    respuestaHacienda: resp
+                }, null, 2), 'utf8'),
+                contentType: 'application/json'
+            });
+        }
+
+        const emailSubject = isDteVoided 
+            ? `DOCUMENTO ANULADO: ${tipoNombre} Electrónica - ${venta.company_name}`
+            : `${tipoNombre} Electrónica - ${venta.company_name}`;
+
+        const emailHtml = isDteVoided ? `
+            <div style="font-family: sans-serif; padding: 20px; border: 1px solid #fee2e2; border-radius: 12px; max-width: 600px; margin: auto; background-color: #fef2f2;">
+                <h2 style="color: #dc2626; text-align: center;">Notificación de Documento Invalidado / Anulado</h2>
+                <p>Estimado(a) <b>${dteJson.receptor?.nombre || 'cliente'}</b>,</p>
+                <p>Le informamos que el documento <b>${tipoNombre}</b> con número de control <b>${venta.numero_control}</b> ha sido <b>INVALIDADO (ANULADO)</b> ante el Ministerio de Hacienda.</p>
+                <div style="background: #ffffff; padding: 15px; border-radius: 8px; margin: 20px 0; border: 1px solid #fee2e2; text-align: center;">
+                    <span style="font-size: 10px; color: #dc2626; font-weight: bold; text-transform: uppercase;">Estado Tributario</span>
+                    <div style="font-size: 20px; font-weight: 800; color: #991b1b;">DOCUMENTO INVALIDADO</div>
+                    <div style="font-size: 12px; color: #64748b; margin-top: 4px;">Monto de la operación: $${parseFloat(venta.total_pagar).toFixed(2)}</div>
+                </div>
+                <p style="font-size: 13px; color: #475569;">Se adjuntan los siguientes archivos oficiales para su respaldo contable y tributario:</p>
+                <ul style="font-size: 12px; color: #475569;">
+                    <li><b>Representación Gráfica (PDF)</b> con marca de anulación</li>
+                    <li><b>Datos del Documento (JSON)</b></li>
+                    <li><b>Acta de Invalidación (PDF)</b> certificada por Hacienda</li>
+                    <li><b>Evento de Invalidación (JSON)</b> con sello de recepción</li>
+                </ul>
+                <hr style="border: 0; border-top: 1px solid #fecaca; margin: 20px 0;">
+                <p style="font-size: 11px; color: #94a3b8; text-align: center;">Este es un mensaje automático de ${venta.company_name}.</p>
+            </div>
+        ` : `
+            <div style="font-family: sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 12px; max-width: 600px; margin: auto;">
+                <h2 style="color: #4f46e5; text-align: center;">Su documento electrónico está listo</h2>
+                <p>Estimado(a) <b>${dteJson.receptor?.nombre || 'cliente'}</b>,</p>
+                <p>Adjunto encontrará su <b>${tipoNombre}</b> electrónica con número de control <b>${venta.numero_control}</b>.</p>
+                <div style="background: #f8fafc; padding: 15px; border-radius: 8px; margin: 20px 0; border: 1px solid #e2e8f0; text-align: center;">
+                    <span style="font-size: 10px; color: #64748b; font-weight: bold; text-transform: uppercase;">Total a Pagar</span>
+                    <div style="font-size: 24px; font-weight: 800; color: #1e293b;">$${parseFloat(venta.total_pagar).toFixed(2)}</div>
+                </div>
+                <p style="font-size: 13px; color: #666;">Se incluyen dos archivos: la representación gráfica (PDF) y el archivo de datos (JSON) para su registro legal.</p>
+                <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
+                <p style="font-size: 11px; color: #94a3b8; text-align: center;">Este es un mensaje automático de ${venta.company_name}.</p>
+            </div>
+        `;
+
         await transporter.sendMail({
             from: `"${smtp.from_name}" <${smtp.from_email}>`,
             to: email,
-            subject: `${tipoNombre} Electrónica - ${venta.company_name}`,
-            html: `
-                <div style="font-family: sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 12px; max-width: 600px; margin: auto;">
-                    <h2 style="color: #4f46e5; text-align: center;">Su documento electrónico está listo</h2>
-                    <p>Estimado(a) <b>${dteJson.receptor?.nombre || 'cliente'}</b>,</p>
-                    <p>Adjunto encontrará su <b>${tipoNombre}</b> electrónica con número de control <b>${venta.numero_control}</b>.</p>
-                    <div style="background: #f8fafc; padding: 15px; border-radius: 8px; margin: 20px 0; border: 1px solid #e2e8f0; text-align: center;">
-                        <span style="font-size: 10px; color: #64748b; font-weight: bold; text-transform: uppercase;">Total a Pagar</span>
-                        <div style="font-size: 24px; font-weight: 800; color: #1e293b;">$${parseFloat(venta.total_pagar).toFixed(2)}</div>
-                    </div>
-                    <p style="font-size: 13px; color: #666;">Se incluyen dos archivos: la representación gráfica (PDF) y el archivo de datos (JSON) para su registro legal.</p>
-                    <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
-                    <p style="font-size: 11px; color: #94a3b8; text-align: center;">Este es un mensaje automático de ${venta.company_name}.</p>
-                </div>
-            `,
-            attachments: [
-                { filename: `DTE-${venta.numero_control}.pdf`, content: pdfBuffer },
-                { filename: `DTE-${venta.numero_control}.json`, content: JSON.stringify(dteJson, null, 2) }
-            ]
+            subject: emailSubject,
+            html: emailHtml,
+            attachments
         });
 
         res.json({ success: true, message: 'Correo enviado correctamente' });
@@ -2787,5 +2946,7 @@ module.exports = {
     getPublicRTEE,
     getPublicDTEInfo,
     getPublicDTEJson,
+    getPublicInvalidationPDF,
+    getPublicInvalidationJson,
     sendPublicDTEEmail
 };

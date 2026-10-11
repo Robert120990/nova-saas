@@ -286,6 +286,8 @@ router.get('/settings/public', settingsController.getPublicSettings);
 router.get('/public/dte/:codigo/pdf', salesController.getPublicRTEE);
 router.get('/public/dte/:codigo/info', salesController.getPublicDTEInfo);
 router.get('/public/dte/:codigo/json', salesController.getPublicDTEJson);
+router.get('/public/dte/:codigo/invalidation/pdf', salesController.getPublicInvalidationPDF);
+router.get('/public/dte/:codigo/invalidation/json', salesController.getPublicInvalidationJson);
 router.post('/public/dte/:codigo/send-email', salesController.sendPublicDTEEmail);
 router.post('/internal/dte/notify-accepted', salesController.notifyDTEAccepted);
 
