@@ -61,13 +61,41 @@ const getDTEByCodigoGeneracion = async (req, res) => {
 const resendDTEEmail = async (req, res) => {
     const { id } = req.params;
     try {
-        const result = await mailerService.sendDTEEmail(id, req.company_id);
-        if (result.success) {
-            res.json({ success: true, message: 'Correo enviado correctamente' });
-        } else if (result.skip) {
+        const [sales] = await pool.query(
+            `SELECT s.id, s.estado, s.codigo_generacion, d.status AS dte_status
+             FROM sales_headers s
+             LEFT JOIN dtes d ON s.codigo_generacion = d.codigo_generacion
+             WHERE s.id = ? AND s.company_id = ?`,
+            [id, req.company_id]
+        );
+
+        if (sales.length === 0) {
+            return res.status(404).json({ success: false, message: 'Venta no encontrada' });
+        }
+
+        const sale = sales[0];
+        const isInvalidated = String(sale.dte_status || '').toUpperCase() === 'INVALIDADO' ||
+                              String(sale.estado || '').toLowerCase() === 'invalidado' ||
+                              String(sale.estado || '').toLowerCase() === 'anulada' ||
+                              String(sale.estado || '').toLowerCase() === 'anulado';
+
+        let result;
+        if (isInvalidated) {
+            console.log(`[ResendDTEEmail] Venta ID ${id} está invalidada/anulada. Reenviando notificación de invalidación.`);
+            result = await mailerService.sendInvalidatedDTEEmail(id, req.company_id);
+        } else {
+            result = await mailerService.sendDTEEmail(id, req.company_id);
+        }
+
+        if (result && result.success) {
+            res.json({ 
+                success: true, 
+                message: isInvalidated ? 'Correo de invalidación reenviado correctamente' : 'Correo enviado correctamente' 
+            });
+        } else if (result && result.skip) {
             res.json({ success: false, message: 'El cliente no tiene un correo electrónico registrado.' });
         } else {
-            res.status(500).json({ success: false, message: 'Error al enviar correo', error: result.error });
+            res.status(500).json({ success: false, message: 'Error al enviar correo', error: result?.error });
         }
     } catch (error) {
         console.error('[ResendDTEEmail] Error:', error);

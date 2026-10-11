@@ -299,14 +299,10 @@ const SalesHistory = () => {
     };
 
     const handleResendEmail = async (sale) => {
-        if (!sale.customer_email) {
-            return toast.error('El cliente no tiene un correo electrónico registrado');
-        }
-
         try {
             const { data } = await axios.post(`/api/sales/resend-email/${sale.id}`);
             if (data.success) {
-                toast.success('Correo enviado correctamente');
+                toast.success(data.message || 'Correo enviado correctamente');
             } else {
                 toast.warning(data.message || 'El cliente no tiene un correo electrónico registrado');
             }
@@ -1145,15 +1141,23 @@ const SalesHistory = () => {
                                                         <span className="text-[11.5px] font-semibold">Respuesta MH</span>
                                                     </button>
 
-                                                    {sale.dte_status === 'ACCEPTED' && (
+                                                    {(sale.dte_status === 'ACCEPTED' || sale.dte_status === 'INVALIDADO' || sale.estado === 'invalidado' || sale.estado === 'anulada' || sale.estado === 'anulado') && (
                                                         <button 
                                                             onClick={() => { handleResendEmail(sale); setMenuState(null); }} 
                                                             className="flex items-center gap-2 w-full px-2 py-1 text-left hover:bg-slate-50 rounded-lg transition-all text-slate-600 hover:text-slate-900 group"
                                                         >
-                                                            <div className="p-1 bg-blue-50 text-blue-600 rounded-md group-hover:scale-105 transition-transform shrink-0">
+                                                            <div className={`p-1 rounded-md group-hover:scale-105 transition-transform shrink-0 ${
+                                                                (sale.dte_status === 'INVALIDADO' || sale.estado === 'invalidado' || sale.estado === 'anulada' || sale.estado === 'anulado')
+                                                                    ? 'bg-rose-50 text-rose-600'
+                                                                    : 'bg-blue-50 text-blue-600'
+                                                            }`}>
                                                                 <Send size={12} />
                                                             </div>
-                                                            <span className="text-[11.5px] font-semibold">Reenviar Correo</span>
+                                                            <span className="text-[11.5px] font-semibold">
+                                                                {(sale.dte_status === 'INVALIDADO' || sale.estado === 'invalidado' || sale.estado === 'anulada' || sale.estado === 'anulado')
+                                                                    ? 'Reenviar Invalidación'
+                                                                    : 'Reenviar Correo'}
+                                                            </span>
                                                         </button>
                                                     )}
 

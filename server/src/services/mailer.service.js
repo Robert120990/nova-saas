@@ -978,9 +978,20 @@ module.exports = {
             const tipoNombre = dteNames[venta.tipo_documento] || venta.tipo_documento_name || 'Documento Tributario';
 
             if (!dteJson) throw new Error('El DTE no tiene JSON original para envío');
-            if (!dteJson.receptor.correo) {
-                console.log(`[Mailer] El cliente no tiene correo. Se omite notificación de invalidación.`);
-                return;
+            if (!dteJson.receptor || !dteJson.receptor.correo) {
+                if (!dteJson.receptor) dteJson.receptor = {};
+                const [customerRows] = await pool.query(
+                    'SELECT correo FROM customers WHERE id = ? AND company_id = ?',
+                    [venta.customer_id, venta.company_id]
+                );
+                if (customerRows.length > 0 && customerRows[0].correo) {
+                    dteJson.receptor.correo = customerRows[0].correo;
+                    console.log(`[Mailer] Venta ID ${saleId}: Correo recuperado de la tabla customers: ${dteJson.receptor.correo}`);
+                } else {
+                    console.log(`[Mailer] Venta ID ${saleId}: El cliente no tiene correo configurado. Se omite notificación de invalidación.`);
+                    await pool.query('UPDATE sales_headers SET dte_email_sent = 0, dte_email_error = "Cliente sin correo" WHERE id = ?', [saleId]);
+                    return { success: false, skip: true };
+                }
             }
 
             // 2. Preparar datos para RTEE con Marca de Agua
@@ -1073,7 +1084,7 @@ module.exports = {
 
             // 3. Obtener datos del evento de invalidación
             const [invRows] = await pool.query(
-                'SELECT * FROM dte_invalidations WHERE codigo_generacion_dte = ? AND estado = "ACCEPTED" ORDER BY created_at DESC LIMIT 1',
+                'SELECT * FROM dte_invalidations WHERE codigo_generacion_dte = ? ORDER BY (estado = "ACCEPTED") DESC, created_at DESC LIMIT 1',
                 [venta.codigo_generacion]
             );
             let invalidationPdfBuffer = null;
@@ -1143,10 +1154,14 @@ module.exports = {
                 attachments
             });
 
+            await pool.query('UPDATE sales_headers SET dte_email_sent = 1, dte_email_error = NULL WHERE id = ?', [saleId]);
             console.log(`[Mailer] Notificación de invalidación enviada con éxito para Venta ID: ${saleId}`);
+            return { success: true };
 
         } catch (error) {
             console.error(`[Mailer] Error enviando notificación de invalidación ID ${saleId}:`, error.message);
+            await pool.query('UPDATE sales_headers SET dte_email_sent = 0, dte_email_error = ? WHERE id = ?', [error.message, saleId]);
+            return { success: false, error: error.message };
         }
     },
 
