@@ -348,6 +348,13 @@ const VatBookLiquidation = () => {
                                 <span className="text-[10px] bg-indigo-50 text-indigo-700 font-semibold px-2 py-0.5 rounded-full">
                                     {data?.meta?.isPersonaNatural ? 'Persona Natural' : 'Persona Jurídica'}
                                 </span>
+                                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                                    data?.meta?.aplica_pago_cuenta
+                                        ? 'bg-purple-50 text-purple-700'
+                                        : 'bg-amber-50 text-amber-800'
+                                }`}>
+                                    {data?.meta?.aplica_pago_cuenta ? 'Pago a Cuenta: Aplica' : 'Pago a Cuenta: Exento Art. 151 CT'}
+                                </span>
                             </div>
                             <button
                                 onClick={handleResetParams}
@@ -393,13 +400,13 @@ const VatBookLiquidation = () => {
                                     step="0.01"
                                     min="0"
                                     max="10"
-                                    value={overrideFuelRate !== '' ? overrideFuelRate : (data?.meta?.fuelRate ?? (data?.meta?.isPersonaNatural ? '0.00' : '0.75'))}
+                                    value={overrideFuelRate !== '' ? overrideFuelRate : (data?.meta?.fuelRate ?? '0.00')}
                                     onChange={(e) => setOverrideFuelRate(e.target.value)}
                                     className={inputCls}
-                                    placeholder={data?.meta?.isPersonaNatural ? '0.00' : '0.75'}
+                                    placeholder={String(data?.meta?.defaultFuelRate ?? '0.00')}
                                 />
                                 <span className="text-[10px] text-slate-400 mt-1 block">
-                                    Legal: {data?.meta?.isPersonaNatural ? '0.00% (PN Exenta)' : '0.75% (PJ Especial)'}
+                                    Legal: {!data?.meta?.aplica_pago_cuenta ? '0.00% (Exenta Art. 151 CT)' : (data?.meta?.isPersonaNatural ? '0.00% (PN Exenta)' : '0.75% (PJ Especial)')}
                                 </span>
                             </div>
 
@@ -413,9 +420,11 @@ const VatBookLiquidation = () => {
                                     value={overrideGeneralRate !== '' ? overrideGeneralRate : (data?.meta?.generalRate ?? '1.75')}
                                     onChange={(e) => setOverrideGeneralRate(e.target.value)}
                                     className={inputCls}
-                                    placeholder="1.75"
+                                    placeholder={String(data?.meta?.defaultGeneralRate ?? '1.75')}
                                 />
-                                <span className="text-[10px] text-slate-400 mt-1 block">Legal: 1.75% (Art. 151 CT)</span>
+                                <span className="text-[10px] text-slate-400 mt-1 block">
+                                    Legal: {!data?.meta?.aplica_pago_cuenta ? '0.00% (Exenta Art. 151 inc. 2 CT)' : '1.75% (Art. 151 CT)'}
+                                </span>
                             </div>
 
                             {data?.pago_cuenta?.totales?.anticipo_cuenta_liquidaciones > 0 && (
@@ -506,7 +515,16 @@ const VatBookLiquidation = () => {
                         {/* 4. Pago a Cuenta */}
                         <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden group hover:border-purple-200 transition-all">
                             <div className="flex items-center justify-between text-purple-600 mb-2">
-                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Pago a Cuenta (Renta)</span>
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Pago a Cuenta (Renta)</span>
+                                    <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded ${
+                                        data.meta?.aplica_pago_cuenta
+                                            ? 'bg-purple-100 text-purple-700'
+                                            : 'bg-amber-100 text-amber-800'
+                                    }`}>
+                                        {data.meta?.aplica_pago_cuenta ? 'Obligado 1.75%' : 'Exento Art. 151 CT'}
+                                    </span>
+                                </div>
                                 <div className="p-1.5 bg-purple-50 rounded-lg">
                                     <Coins size={16} />
                                 </div>
@@ -515,8 +533,16 @@ const VatBookLiquidation = () => {
                                 <Money value={data.pago_cuenta.totales.pago_cuenta_a_pagar} />
                             </div>
                             <div className="mt-2 text-[11px] text-slate-500 flex items-center justify-between border-t border-slate-100 pt-2">
-                                <span>Comb: <Money value={data.pago_cuenta.combustibles.cuota_calculada} /></span>
-                                <span>Otros: <Money value={data.pago_cuenta.otros.cuota_calculada} /></span>
+                                {data.meta?.aplica_pago_cuenta ? (
+                                    <>
+                                        <span>Comb: <Money value={data.pago_cuenta.combustibles.cuota_calculada} /></span>
+                                        <span>Otros: <Money value={data.pago_cuenta.otros.cuota_calculada} /></span>
+                                    </>
+                                ) : (
+                                    <span className="text-amber-700 font-semibold italic text-[10px]">
+                                        No Sujeto (Servicios Profesionales PN)
+                                    </span>
+                                )}
                             </div>
                         </div>
 
@@ -539,22 +565,39 @@ const VatBookLiquidation = () => {
                     </div>
 
                     {/* Banner Informativo Legal Art. 151 */}
-                    <div className="bg-amber-50/70 border border-amber-200/80 rounded-2xl p-3.5 flex items-start gap-3 text-amber-900 text-xs">
-                        <Info size={18} className="text-amber-600 mt-0.5 shrink-0" />
-                        <div className="space-y-1">
-                            <div className="font-bold text-amber-950 flex items-center gap-2">
-                                <span>Régimen Especial de Pago a Cuenta de Combustibles (Art. 151 Código Tributario)</span>
-                                <span className="bg-amber-100 text-amber-800 text-[10px] px-2 py-0.2 rounded-full font-bold">
-                                    {data.meta.isPersonaNatural ? 'Persona Natural: 0.00% Exenta' : 'Persona Jurídica: 0.75%'}
-                                </span>
+                    {!data.meta?.aplica_pago_cuenta ? (
+                        <div className="bg-amber-50/80 border border-amber-200 rounded-2xl p-4 flex items-start gap-3 text-amber-900 text-xs">
+                            <Info size={18} className="text-amber-600 mt-0.5 shrink-0" />
+                            <div className="space-y-1">
+                                <div className="font-bold text-amber-950 flex items-center gap-2">
+                                    <span>Exención de Pago a Cuenta de Renta (Art. 151 inc. 2 Código Tributario)</span>
+                                    <span className="bg-amber-200/80 text-amber-900 text-[10px] px-2 py-0.5 rounded-full font-bold">
+                                        Persona Natural - Servicios Profesionales (0.00%)
+                                    </span>
+                                </div>
+                                <p className="text-amber-800 leading-relaxed text-[11px]">
+                                    Esta empresa está configurada como persona natural prestadora de servicios profesionales o técnicos no organizada en forma de empresa mercantil. Por tanto, <strong>no está obligada a enterar el anticipo a cuenta mensual</strong> del Impuesto sobre la Renta. Sus ingresos tributan anualmente mediante la declaración del F-11 acreditando las retenciones practicadas (Art. 156 CT).
+                                </p>
                             </div>
-                            <p className="text-amber-800 leading-relaxed text-[11px]">
-                                Para personas jurídicas comercializadoras de gasolina y diésel, la tasa mensual de anticipo es del <strong>0.75%</strong> sobre los ingresos brutos de combustibles.
-                                En caso de personas naturales titulares de empresas mercantiles, la venta de gasolina y diésel se encuentra <strong>exenta</strong> del anticipo mensual (0.00%).
-                                Los demás productos (lubricantes, aditivos, tienda, repuestos o servicios) aplican la tasa general del <strong>1.75%</strong>.
-                            </p>
                         </div>
-                    </div>
+                    ) : (
+                        <div className="bg-amber-50/70 border border-amber-200/80 rounded-2xl p-3.5 flex items-start gap-3 text-amber-900 text-xs">
+                            <Info size={18} className="text-amber-600 mt-0.5 shrink-0" />
+                            <div className="space-y-1">
+                                <div className="font-bold text-amber-950 flex items-center gap-2">
+                                    <span>Régimen Especial de Pago a Cuenta de Combustibles (Art. 151 Código Tributario)</span>
+                                    <span className="bg-amber-100 text-amber-800 text-[10px] px-2 py-0.2 rounded-full font-bold">
+                                        {data.meta?.isPersonaNatural ? 'Persona Natural: 0.00% Exenta' : 'Persona Jurídica: 0.75%'}
+                                    </span>
+                                </div>
+                                <p className="text-amber-800 leading-relaxed text-[11px]">
+                                    Para personas jurídicas comercializadoras de gasolina y diésel, la tasa mensual de anticipo es del <strong>0.75%</strong> sobre los ingresos brutos de combustibles.
+                                    En caso de personas naturales titulares de empresas mercantiles, la venta de gasolina y diésel se encuentra <strong>exenta</strong> del anticipo mensual (0.00%).
+                                    Los demás productos (lubricantes, aditivos, tienda, repuestos o servicios) aplican la tasa general del <strong>1.75%</strong>.
+                                </p>
+                            </div>
+                        </div>
+                    )}
 
                     {/* Navegación por Pestañas */}
                     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
@@ -562,8 +605,8 @@ const VatBookLiquidation = () => {
                             {[
                                 { id: 'resumen', label: 'Resumen Consolidado F-07', icon: Receipt },
                                 { id: 'debito', label: 'Detalle Débito Fiscal (Ventas)', icon: TrendingUp },
-                                { id: 'credito', label: 'Detalle Crédito Fiscal (Compras)', icon: TrendingDown },
-                                { id: 'pago_cuenta', label: 'Cálculo Pago a Cuenta (Art. 151 CT)', icon: Fuel }
+                                { id: 'credito', label: `Detalle Crédito Fiscal (${data.meta?.compras_afectan_libro_compras ? 'Compras + Gastos' : 'Solo Gastos'})`, icon: TrendingDown },
+                                { id: 'pago_cuenta', label: `Cálculo Pago a Cuenta (${data.meta?.aplica_pago_cuenta ? '1.75%' : 'Exento PN'})`, icon: Fuel }
                             ].map((tab) => {
                                 const Icon = tab.icon;
                                 const isActive = activeTab === tab.id;
@@ -1017,12 +1060,16 @@ const VatBookLiquidation = () => {
                                                     <div>
                                                         <h4 className="font-bold text-slate-900 text-sm">Otros Productos y Servicios</h4>
                                                         <span className="text-[10px] text-slate-500 uppercase font-semibold">
-                                                            Lubricantes, Tienda, Aditivos, Pista
+                                                            {data.pago_cuenta.otros.nota}
                                                         </span>
                                                     </div>
                                                 </div>
-                                                <span className="bg-indigo-100 text-indigo-900 font-black text-xs px-2.5 py-1 rounded-lg">
-                                                    {data.pago_cuenta.otros.tasa.toFixed(2)}%
+                                                <span className={`font-black text-xs px-2.5 py-1 rounded-lg ${
+                                                    !data.meta?.aplica_pago_cuenta
+                                                        ? 'bg-amber-100 text-amber-900'
+                                                        : 'bg-indigo-100 text-indigo-900'
+                                                }`}>
+                                                    {data.pago_cuenta.otros.tasa.toFixed(2)}%{(!data.meta?.aplica_pago_cuenta) ? ' (Exento)' : ''}
                                                 </span>
                                             </div>
 

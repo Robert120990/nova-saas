@@ -41,7 +41,7 @@ REGLAS DE MULTI-TENENCIA:
 - created_at
 
 ### tax_configurations (Configuración de impuestos por empresa)
-- company_id PK, iva_rate, fovial_rate, cotrans_rate, retencion_rate, percepcion_rate
+- company_id PK, iva_rate, fovial_rate, cotrans_rate, retencion_rate, percepcion_rate, compras_afectan_libro_compras, aplica_pago_cuenta
 - created_at, updated_at
 
 ---

@@ -393,15 +393,18 @@ const getVatBookPurchasesPDF = async (req, res) => {
         `;
 
         /* =========================================================================
-         * [TEMPORAL - LIBRO DE COMPRAS IVA]
-         * De momento, las compras NO afectan el Libro de IVA de Compras; únicamente los
-         * Gastos Operativos (expense_headers) afectarán este libro tributario.
-         * Para reactivar la afectación de compras en el Libro de IVA posteriormente:
-         * 1) Descomenta la línea: const [pRows] = await pool.query(purchaseQuery, pParams);
-         * 2) Elimina o comenta: const pRows = [];
+         * [LIBRO DE COMPRAS IVA]
+         * Configuración por empresa: si compras_afectan_libro_compras está activo en
+         * tax_configurations, tanto compras (purchase_headers) como gastos (expense_headers)
+         * afectan el libro. Si está inactivo, solo los gastos afectan el libro.
          * ========================================================================= */
-        // const [pRows] = await pool.query(purchaseQuery, pParams);
-        const pRows = [];
+        const [taxConfigRows] = await pool.query(
+            'SELECT compras_afectan_libro_compras FROM tax_configurations WHERE company_id = ?',
+            [companyId]
+        );
+        const comprasAfectanLibro = Boolean(taxConfigRows[0]?.compras_afectan_libro_compras);
+
+        const pRows = comprasAfectanLibro ? (await pool.query(purchaseQuery, pParams))[0] : [];
         const [eRows] = await pool.query(expenseQuery, eParams);
 
         const rows = [...pRows, ...eRows].sort((a, b) => {
@@ -1681,9 +1684,28 @@ const getVatBookAnexosIVAExcel = async (req, res) => {
  */
 const calculateVatLiquidation = async (companyId, year, month, branch_id, options = {}) => {
     const company = await reportPdfHelper.getCompanyInfo(companyId);
-    const isPersonaNatural = String(company?.tipo_persona) === '2';
-    const defaultFuelRate = isPersonaNatural ? 0.00 : 0.75;
-    const defaultGeneralRate = 1.75;
+    // En catálogo MH cat_029: '1' es Persona Natural, '2' es Persona Jurídica
+    const isPersonaNatural = String(company?.tipo_persona) === '1';
+
+    // Configuración tributaria de la empresa
+    const [taxConfigRows] = await pool.query(
+        'SELECT compras_afectan_libro_compras, aplica_pago_cuenta FROM tax_configurations WHERE company_id = ?',
+        [companyId]
+    );
+    const taxConfig = taxConfigRows[0] || {};
+    const comprasAfectanLibro = Boolean(taxConfig.compras_afectan_libro_compras);
+
+    // Determinar si aplica Pago a Cuenta (Art. 151 Código Tributario):
+    // 1. Si está configurado explícitamente en tax_configurations
+    // 2. Si no tiene configuración: personas naturales dedicadas a servicios profesionales/personales
+    //    (ej. código 62010 Programación Informática) no están obligadas a pago a cuenta (Art. 151 inc. 2 CT).
+    const isServicios = ['62010', '62020', '69100', '69200', '71100', '71200', '86201'].includes(company?.codigo_actividad);
+    const aplicaPagoCuenta = (taxConfig.aplica_pago_cuenta !== undefined && taxConfig.aplica_pago_cuenta !== null)
+        ? Boolean(taxConfig.aplica_pago_cuenta)
+        : !(isPersonaNatural && isServicios);
+
+    const defaultFuelRate = (!aplicaPagoCuenta || isPersonaNatural) ? 0.00 : 0.75;
+    const defaultGeneralRate = !aplicaPagoCuenta ? 0.00 : 1.75;
 
     const fuelRate = (options.fuel_rate !== undefined && options.fuel_rate !== null && options.fuel_rate !== '')
         ? Math.max(0, parseFloat(options.fuel_rate))
@@ -1794,34 +1816,27 @@ const calculateVatLiquidation = async (companyId, year, month, branch_id, option
         purchasesParams.push(branch_id);
     }
 
-    /* =========================================================================
-     * [TEMPORAL - LIQUIDACIÓN DE IVA F-07]
-     * De momento, las compras NO afectan el Crédito Fiscal de IVA; únicamente los
-     * Gastos Operativos (expense_headers) afectarán la liquidación tributaria.
-     * Para reactivar la afectación de compras en la liquidación de IVA posteriormente:
-     * 1) Descomenta la ejecución de la consulta `[purchasesByTypeRows] = await pool.query(...)` a continuación.
-     * 2) Elimina o comenta: const purchasesByTypeRows = [];
-     * ========================================================================= */
-    /*
-    const [purchasesByTypeRows] = await pool.query(`
-        SELECT 
-            ph.tipo_documento_id,
-            cat.description as tipo_doc_nombre,
-            COUNT(*) as count,
-            COALESCE(SUM(ph.total_gravada), 0) as total_gravada,
-            COALESCE(SUM(ph.total_exenta), 0) as total_exenta,
-            COALESCE(SUM(ph.total_nosujeta + COALESCE(ph.fovial, 0) + COALESCE(ph.cotrans, 0)), 0) as total_nosujeta,
-            COALESCE(SUM(ph.iva), 0) as total_iva,
-            COALESCE(SUM(ph.retencion), 0) as total_retencion,
-            COALESCE(SUM(ph.percepcion), 0) as total_percepcion,
-            COALESCE(SUM(ph.monto_total), 0) as total_monto
-        FROM purchase_headers ph
-        LEFT JOIN cat_002_tipo_dte cat ON ph.tipo_documento_id COLLATE utf8mb4_unicode_ci = cat.code
-        WHERE ${purchasesWhere.join(' AND ')}
-        GROUP BY ph.tipo_documento_id, cat.description
-    `, purchasesParams);
-    */
-    const purchasesByTypeRows = [];
+    let purchasesByTypeRows = [];
+    if (comprasAfectanLibro) {
+        const [pRows] = await pool.query(`
+            SELECT 
+                ph.tipo_documento_id,
+                cat.description as tipo_doc_nombre,
+                COUNT(*) as count,
+                COALESCE(SUM(ph.total_gravada), 0) as total_gravada,
+                COALESCE(SUM(ph.total_exenta), 0) as total_exenta,
+                COALESCE(SUM(ph.total_nosujeta + COALESCE(ph.fovial, 0) + COALESCE(ph.cotrans, 0)), 0) as total_nosujeta,
+                COALESCE(SUM(ph.iva), 0) as total_iva,
+                COALESCE(SUM(ph.retencion), 0) as total_retencion,
+                COALESCE(SUM(ph.percepcion), 0) as total_percepcion,
+                COALESCE(SUM(ph.monto_total), 0) as total_monto
+            FROM purchase_headers ph
+            LEFT JOIN cat_002_tipo_dte cat ON ph.tipo_documento_id COLLATE utf8mb4_unicode_ci = cat.code
+            WHERE ${purchasesWhere.join(' AND ')}
+            GROUP BY ph.tipo_documento_id, cat.description
+        `, purchasesParams);
+        purchasesByTypeRows = pRows;
+    }
 
     let expensesWhere = [
         'eh.company_id = ?',
@@ -1939,6 +1954,15 @@ const calculateVatLiquidation = async (companyId, year, month, branch_id, option
             ncPurchases.retencion += item.retencion;
             ncPurchases.percepcion += item.percepcion;
             ncPurchases.total += item.total;
+        } else if (t === '14') {
+            sujetosExcluidos.count += item.count;
+            sujetosExcluidos.gravado += item.gravado;
+            sujetosExcluidos.exento += item.exento;
+            sujetosExcluidos.nosujeta += item.nosujeta;
+            sujetosExcluidos.iva += item.iva;
+            sujetosExcluidos.retencion += item.retencion;
+            sujetosExcluidos.percepcion += item.percepcion;
+            sujetosExcluidos.total += item.total;
         } else {
             otrosPurchases.count += item.count;
             otrosPurchases.gravado += item.gravado;
@@ -2050,7 +2074,10 @@ const calculateVatLiquidation = async (companyId, year, month, branch_id, option
     let pagoCuentaPagar = 0;
     let remanentePagoCuenta = 0;
 
-    if (subtotalPagoCuenta >= totalAcreditacionesRenta) {
+    if (!aplicaPagoCuenta) {
+        pagoCuentaPagar = 0;
+        remanentePagoCuenta = 0;
+    } else if (subtotalPagoCuenta >= totalAcreditacionesRenta) {
         pagoCuentaPagar = Math.round((subtotalPagoCuenta - totalAcreditacionesRenta) * 100) / 100;
         remanentePagoCuenta = 0;
     } else {
@@ -2070,12 +2097,14 @@ const calculateVatLiquidation = async (companyId, year, month, branch_id, option
             branch_id,
             branchName,
             isPersonaNatural,
+            aplica_pago_cuenta: aplicaPagoCuenta,
             fuelRate,
             generalRate,
             defaultFuelRate,
             defaultGeneralRate,
             remanenteAnterior,
-            retencionesRentaSufridas
+            retencionesRentaSufridas,
+            compras_afectan_libro_compras: comprasAfectanLibro
         },
         debito_fiscal: {
             ccf: ccfSales,
@@ -2130,14 +2159,18 @@ const calculateVatLiquidation = async (companyId, year, month, branch_id, option
                 ingreso_bruto_neto: ingresoBrutoCombustible,
                 tasa: fuelRate,
                 cuota_calculada: pagoCuentaCombustible,
-                nota: isPersonaNatural ? 'Persona Natural (Exenta 0.00% según Art. 151 inc. 3 CT)' : 'Persona Jurídica (Tasa especial 0.75% Art. 151 CT)'
+                nota: !aplicaPagoCuenta
+                    ? 'Exenta / No Sujeta (Art. 151 inc. 2 CT - Servicios Profesionales PN)'
+                    : (isPersonaNatural ? 'Persona Natural (Exenta 0.00% según Art. 151 inc. 3 CT)' : 'Persona Jurídica (Tasa especial 0.75% Art. 151 CT)')
             },
             otros: {
                 rubro: 'Otros Productos y Servicios (General)',
                 ingreso_bruto_neto: ingresoBrutoOtros,
                 tasa: generalRate,
                 cuota_calculada: pagoCuentaOtros,
-                nota: 'Tasa general aplicable (1.75% Art. 151 CT)'
+                nota: !aplicaPagoCuenta
+                    ? 'No Sujeta / Exenta de Pago a Cuenta (Persona Natural que presta servicios profesionales o técnicos - Art. 151 inc. 2 Código Tributario)'
+                    : 'Tasa general aplicable (1.75% Art. 151 CT)'
             },
             totales: {
                 total_ingresos_brutos: totalIngresosBrutos,
@@ -2148,7 +2181,8 @@ const calculateVatLiquidation = async (companyId, year, month, branch_id, option
                 liquidaciones_count: liquidacionesCount,
                 total_acreditaciones_renta: totalAcreditacionesRenta,
                 pago_cuenta_a_pagar: pagoCuentaPagar,
-                remanente_pago_cuenta: remanentePagoCuenta
+                remanente_pago_cuenta: remanentePagoCuenta,
+                aplica_pago_cuenta: aplicaPagoCuenta
             }
         },
         resumen_f07: {
@@ -2457,7 +2491,7 @@ const getVatLiquidationExcel = async (req, res) => {
             { Concepto: '', Base: '', IVA: '', Total: '' },
             { Concepto: '--- 4. PAGO A CUENTA (ART. 151 CT) ---', Base: '', IVA: '', Total: '' },
             { Concepto: `Combustibles (${data.pago_cuenta.combustibles.tasa.toFixed(2)}%) - ${data.pago_cuenta.combustibles.nota}`, Base: data.pago_cuenta.combustibles.ingreso_bruto_neto.toFixed(2), IVA: '', Total: data.pago_cuenta.combustibles.cuota_calculada.toFixed(2) },
-            { Concepto: `Otros Rubros / General (${data.pago_cuenta.otros.tasa.toFixed(2)}%)`, Base: data.pago_cuenta.otros.ingreso_bruto_neto.toFixed(2), IVA: '', Total: data.pago_cuenta.otros.cuota_calculada.toFixed(2) },
+            { Concepto: `Otros Rubros / General (${data.pago_cuenta.otros.tasa.toFixed(2)}%)` + (!data.meta?.aplica_pago_cuenta ? ' - Exento (Art. 151 inc. 2 CT)' : ''), Base: data.pago_cuenta.otros.ingreso_bruto_neto.toFixed(2), IVA: '', Total: data.pago_cuenta.otros.cuota_calculada.toFixed(2) },
             { Concepto: 'Subtotal Pago a Cuenta Determinado', Base: data.pago_cuenta.totales.total_ingresos_brutos.toFixed(2), IVA: '', Total: data.pago_cuenta.totales.subtotal_pago_cuenta.toFixed(2) },
             { Concepto: '(-) Retenciones Renta Sufridas (Manual)', Base: '', IVA: '', Total: (-data.pago_cuenta.totales.retenciones_renta_sufridas).toFixed(2) },
             { Concepto: `(-) Anticipo a Cuenta en Liquidaciones (${data.pago_cuenta.totales.liquidaciones_count || 0} comp.)`, Base: data.pago_cuenta.totales.monto_sujeto_liquidaciones.toFixed(2), IVA: '', Total: (-data.pago_cuenta.totales.anticipo_cuenta_liquidaciones).toFixed(2) },

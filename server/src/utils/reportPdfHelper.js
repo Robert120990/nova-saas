@@ -16,7 +16,7 @@ async function getCompanyInfo(companyId) {
     }
     try {
         const [rows] = await pool.query(
-            'SELECT id, razon_social, nombre_comercial, nit, nrc, direccion FROM companies WHERE id = ?',
+            'SELECT id, razon_social, nombre_comercial, nit, nrc, direccion, tipo_persona, codigo_actividad, actividad_economica FROM companies WHERE id = ?',
             [companyId]
         );
         return rows[0] || {
@@ -24,7 +24,10 @@ async function getCompanyInfo(companyId) {
             nombre_comercial: 'EMPRESA',
             nit: '0000-000000-000-0',
             nrc: '000000-0',
-            direccion: ''
+            direccion: '',
+            tipo_persona: '2',
+            codigo_actividad: null,
+            actividad_economica: null
         };
     } catch (e) {
         console.error('[reportPdfHelper getCompanyInfo error]:', e);
@@ -33,7 +36,10 @@ async function getCompanyInfo(companyId) {
             nombre_comercial: 'EMPRESA',
             nit: '0000-000000-000-0',
             nrc: '000000-0',
-            direccion: ''
+            direccion: '',
+            tipo_persona: '2',
+            codigo_actividad: null,
+            actividad_economica: null
         };
     }
 }
@@ -46,7 +52,7 @@ async function getCompanyByName(name) {
     try {
         const cleanName = String(name).trim();
         const [rows] = await pool.query(
-            'SELECT id, razon_social, nombre_comercial, nit, nrc, direccion FROM companies WHERE razon_social = ? OR nombre_comercial = ? OR razon_social LIKE ? LIMIT 1',
+            'SELECT id, razon_social, nombre_comercial, nit, nrc, direccion, tipo_persona, codigo_actividad, actividad_economica FROM companies WHERE razon_social = ? OR nombre_comercial = ? OR razon_social LIKE ? LIMIT 1',
             [cleanName, cleanName, `%${cleanName}%`]
         );
         return rows[0] || null;
