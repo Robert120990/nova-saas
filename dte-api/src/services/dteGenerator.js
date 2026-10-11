@@ -506,10 +506,9 @@ async function generateDTE(payload) {
         } else if (tipoDte === '03' || tipoDte === '05' || tipoDte === '06') {
             itemFinalTributos = itemTributos;
         } else if (tipoDte === '01') {
-            // En Factura (01), el IVA (20) se reporta en ivaItem, NUNCA en el array de tributos del cuerpoDocumento.
-            // Si hay tributos especiales (FOVIAL D1, COTRANS C8, etc.), se conservan. Si solo era IVA (20), DEBE ser null.
-            const nonIvaTributos = (itemTributos || []).filter(t => t !== '20');
-            itemFinalTributos = nonIvaTributos.length > 0 ? nonIvaTributos : null;
+            // En Factura (01), los precios al consumidor final ya incluyen todos los tributos (IVA, FOVIAL, COTRANS).
+            // cuerpoDocumento.tributos DEBE ser null porque resumen.tributos no lleva desglose de impuestos en Factura.
+            itemFinalTributos = null;
         } else {
             itemFinalTributos = (item.tipoItem === 1 || !item.tipoItem) ? null : itemTributos;
         }
