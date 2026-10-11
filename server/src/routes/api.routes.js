@@ -186,6 +186,7 @@ const {
 
 // Import Controllers
 const companyController = require('../controllers/company.controller');
+const companyDteTestController = require('../controllers/companyDteTest.controller');
 const branchController = require('../controllers/branch.controller');
 const posController = require('../controllers/pos.controller');
 const sellerController = require('../controllers/seller.controller');
@@ -340,6 +341,8 @@ router.get('/companies', checkPermission(['manage_companies', 'manage_user_acces
 router.post('/companies', checkPermission('manage_companies'), upload.fields([{ name: 'logo', maxCount: 1 }, { name: 'certificate', maxCount: 1 }, { name: 'certificate_crt', maxCount: 1 }]), validate(companyCreateSchema), companyController.createCompany);
 router.put('/companies/:id', checkPermission('manage_companies'), upload.fields([{ name: 'logo', maxCount: 1 }, { name: 'certificate', maxCount: 1 }, { name: 'certificate_crt', maxCount: 1 }]), validate(companyUpdateSchema), companyController.updateCompany);
 router.delete('/companies/:id', checkPermission('manage_companies'), companyController.deleteCompany);
+router.get('/companies/:id/dte-tests/summary', checkPermission('manage_companies'), companyDteTestController.getTestSummary);
+router.post('/companies/:id/dte-tests/emit-single', checkPermission('manage_companies'), companyDteTestController.emitSingleTest);
 
 router.get('/users', checkPermission('manage_users'), userController.getUsers);
 router.post('/users', checkPermission('manage_users'), validate(userCreateSchema), userController.createUser);

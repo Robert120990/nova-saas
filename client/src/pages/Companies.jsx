@@ -4,10 +4,11 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import Table from '../components/ui/Table';
 import Modal from '../components/ui/Modal';
-import { Plus, Edit, Trash2, Building2, Layers } from 'lucide-react';
+import { Plus, Edit, Trash2, Building2, Layers, FlaskConical } from 'lucide-react';
 import { toast } from 'sonner';
 import { useConfirm } from '../context/ConfirmContext';
 import SearchableSelect from '../components/ui/SearchableSelect';
+import { CompanyDteTestModal } from '../components/companies';
 
 const Companies = () => {
     const navigate = useNavigate();
@@ -15,6 +16,8 @@ const Companies = () => {
     const confirm = useConfirm();
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedCompany, setSelectedCompany] = useState(null);
+    const [isTestModalOpen, setIsTestModalOpen] = useState(false);
+    const [testingCompany, setTestingCompany] = useState(null);
     const [selectedDept, setSelectedDept] = useState('');
     const [selectedMun, setSelectedMun] = useState('');
     const [selectedDistrito, setSelectedDistrito] = useState('');
@@ -241,6 +244,13 @@ const Companies = () => {
                                 </div>
                             </td>
                             <td className="px-6 py-4 flex gap-1">
+                                <button 
+                                    onClick={() => { setTestingCompany(company); setIsTestModalOpen(true); }}
+                                    title="Pruebas de Acreditación Hacienda (DTE)"
+                                    className="p-2 text-slate-600 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+                                >
+                                    <FlaskConical size={18}/>
+                                </button>
                                 <button 
                                     onClick={() => navigate(`/configuracion/modulos-empresa?company_id=${company.id}`)} 
                                     title="Configurar módulos de esta empresa"
@@ -506,6 +516,12 @@ const Companies = () => {
                     </div>
                 </form>
             </Modal>
+
+            <CompanyDteTestModal 
+                isOpen={isTestModalOpen}
+                onClose={() => setIsTestModalOpen(false)}
+                company={testingCompany}
+            />
         </div>
     );
 };

@@ -291,8 +291,8 @@ async function generateDTE(payload) {
         identificacion.motivoContin = activeContingency.motivo || 'Contingencia';
     }
 
-    // NC (05): fusion requerida por schema v4
-    if (tipoDte === '05') {
+    // NC (05) y ND (06): fusion requerida por schema v4
+    if (tipoDte === '05' || tipoDte === '06') {
         identificacion.fusion = null;
     }
 
@@ -333,8 +333,8 @@ async function generateDTE(payload) {
         correo: branch.correo || 'emisor@example.com'
     };
 
-    // Estos campos NO van en Nota de Crédito (05)
-    if (tipoDte !== '05') {
+    // Estos campos NO van en Nota de Crédito (05) ni Nota de Débito (06)
+    if (tipoDte !== '05' && tipoDte !== '06') {
         emisor.codEstable = (branch.codigo_mh || String(branch.codigo || '1')).padStart(4, '0');
         emisor.codPuntoVenta = String(codPuntoVentaMH || '0001').padStart(4, '0');
     }
@@ -479,8 +479,8 @@ async function generateDTE(payload) {
             : null;
 
         let itemNumeroDoc = item.referencedDoc ? String(item.referencedDoc).trim().toUpperCase() : null;
-        if (tipoDte === '05') {
-            // En Nota de Crédito, el número de documento de cada ítem DEBE coincidir con documentoRelacionado
+        if (tipoDte === '05' || tipoDte === '06') {
+            // En Nota de Crédito y Débito, el número de documento de cada ítem DEBE coincidir con documentoRelacionado
             if (relatedDocs.length === 1 || !itemNumeroDoc) {
                 itemNumeroDoc = firstRelatedNum;
             }
@@ -503,16 +503,21 @@ async function generateDTE(payload) {
             itemFinalTributos = (itemTributos && itemTributos.length > 0 && !itemTributos.includes('20'))
                 ? itemTributos
                 : ['C3'];
-        } else if (tipoDte === '03' || tipoDte === '05') {
+        } else if (tipoDte === '03' || tipoDte === '05' || tipoDte === '06') {
             itemFinalTributos = itemTributos;
+        } else if (tipoDte === '01') {
+            // En Factura (01), el IVA (20) se reporta en ivaItem, NUNCA en el array de tributos del cuerpoDocumento.
+            // Si hay tributos especiales (FOVIAL D1, COTRANS C8, etc.), se conservan. Si solo era IVA (20), DEBE ser null.
+            const nonIvaTributos = (itemTributos || []).filter(t => t !== '20');
+            itemFinalTributos = nonIvaTributos.length > 0 ? nonIvaTributos : null;
         } else {
-            itemFinalTributos = item.tipoItem === 1 ? null : itemTributos;
+            itemFinalTributos = (item.tipoItem === 1 || !item.tipoItem) ? null : itemTributos;
         }
 
         const baseItem = {
             numItem: index + 1,
             tipoItem: item.tipoItem || 1, // 1: Gravada
-            numeroDocumento: itemNumeroDoc || (tipoDte === '05' ? firstRelatedNum : null),
+            numeroDocumento: itemNumeroDoc || (tipoDte === '05' || tipoDte === '06' ? firstRelatedNum : null),
             cantidad: round4(item.cantidad),
             codigo: item.codigo || `P-${index + 1}`,
             codTributo: item.codTributo || null,
@@ -531,12 +536,12 @@ async function generateDTE(payload) {
             delete baseItem.ventaNoSuj;
             delete baseItem.ventaExenta;
             baseItem.noGravado = 0;
-        } else if (tipoDte !== '05' && tipoDte !== '04') {
+        } else if (tipoDte !== '05' && tipoDte !== '06' && tipoDte !== '04') {
             baseItem.psv = 0;
             baseItem.noGravado = 0;
         }
 
-        if (tipoDte === '05') {
+        if (tipoDte === '05' || tipoDte === '06') {
             baseItem.noGravado = 0;
             baseItem.ivaPerci = 0;
             baseItem.totalIva = 0;
@@ -564,7 +569,7 @@ async function generateDTE(payload) {
         if (t && t.codigo) taxMap[t.codigo] = t;
     });
     const itemFuelTax = { D1: 0, C8: 0 };
-    if (tipoDte === '03' || tipoDte === '05') {
+    if (tipoDte === '03' || tipoDte === '05' || tipoDte === '06') {
         calculatedItems.forEach(it => {
             (it.tributos || []).forEach(t => {
                 if (t && typeof t === 'object') {
@@ -577,9 +582,9 @@ async function generateDTE(payload) {
     }
     resumenTaxes = (payload.taxes || [])
         .filter(t => t && t.codigo && t.codigo !== '20')
-        .filter(t => (tipoDte === '03' || tipoDte === '05') || (t.codigo !== 'D1' && t.codigo !== 'C8'));
+        .filter(t => (tipoDte === '03' || tipoDte === '05' || tipoDte === '06') || (t.codigo !== 'D1' && t.codigo !== 'C8'));
     // Fallback por ítem (cubre retransmisiones que no envían taxes de cabecera)
-    if (tipoDte === '03' || tipoDte === '05') {
+    if (tipoDte === '03' || tipoDte === '05' || tipoDte === '06') {
         if (!taxMap['D1'] && itemFuelTax.D1 > 0) {
             resumenTaxes.push({ codigo: 'D1', descripcion: 'FEFE (FOVIAL)', valor: round(itemFuelTax.D1) });
         }
@@ -750,7 +755,7 @@ async function generateDTE(payload) {
             }
             base.saldoFavor = 0;
             base.numPagoElectronico = null;
-        } else if (type === '05') {
+        } else if (type === '05' || type === '06') {
             base.totalIva = 0; // Hacienda valida totalIva = 0 cuando el IVA se desglosa en tributos (consistente con CCF)
             base.ivaPerci = 0;
             base.ivaRete = 0;
@@ -956,7 +961,7 @@ async function generateDTE(payload) {
         finalReceptor.nombreComercial = sanitizeText(receptor.nombreComercial) || finalReceptor.nombre;
     }
 
-    if (tipoDte !== '11' && tipoDte !== '07' && (tipoDte === '01' || tipoDte === '04' || tipoDte === '05')) {
+    if (tipoDte !== '11' && tipoDte !== '07' && (tipoDte === '01' || tipoDte === '04' || tipoDte === '05' || tipoDte === '06')) {
         // Consumidor Final sin documento o con documento ficticio en Factura < $200: sanitizar campos a null
         const cleanNit = cleanNumbers(receptor.nit);
         const cleanDoc = cleanNumbers(receptor.numDocumento);
@@ -985,7 +990,7 @@ async function generateDTE(payload) {
         }
         finalReceptor.numDocumento = rawNumDoc;
         finalReceptor.nrc = sanitizeNrc(receptor.nrc);
-        if (tipoDte === '05') {
+        if (tipoDte === '05' || tipoDte === '06') {
             finalReceptor.nombreComercial = sanitizeText(receptor.nombreComercial) || null;
         }
         } 
@@ -1014,9 +1019,9 @@ async function generateDTE(payload) {
         dte.compraTercero = null;
     }
 
-    if (tipoDte === '05') {
+    if (tipoDte === '05' || tipoDte === '06') {
         if (!payload.documentoRelacionado || payload.documentoRelacionado.length === 0) {
-            throw new Error('La Nota de Crédito requiere al menos un documento relacionado (Factura o Crédito Fiscal previo)');
+            throw new Error(`La ${tipoDte === '05' ? 'Nota de Crédito' : 'Nota de Débito'} requiere al menos un documento relacionado (Factura o Crédito Fiscal previo)`);
         }
     }
 
@@ -1054,7 +1059,7 @@ async function generateDTE(payload) {
     }
     */
 
-    if (tipoDte === '05' || tipoDte === '04') {
+    if (tipoDte === '05' || tipoDte === '06' || tipoDte === '04') {
         delete dte.otrosDocumentos;
     }
 

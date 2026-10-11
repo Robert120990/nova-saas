@@ -50,9 +50,9 @@ async function generateERET(originalCodigoGeneracion, itemsToReturn, companyId) 
     );
     const posCodigo = posRows.length > 0 ? posRows[0].codigo : null;
 
-    const localNow = new Date(new Date().toLocaleString("en-US", {timeZone: "America/El_Salvador"}));
-    const fecEmi = localNow.toISOString().split('T')[0];
-    const horEmi = localNow.toTimeString().split(' ')[0];
+    const now = new Date();
+    const fecEmi = now.toLocaleDateString('en-CA', { timeZone: 'America/El_Salvador' });
+    const horEmi = now.toLocaleTimeString('en-GB', { timeZone: 'America/El_Salvador' }).substring(0, 8);
     const codigoGeneracion = uuidv4().toUpperCase();
 
     let selectedItems;
@@ -267,7 +267,7 @@ async function emitERET(payload, companyId, user) {
         const response = await axios.post(receptionUrl, {
             ambiente: eretJson.identificacion.ambiente,
             idEnvio: Math.floor(Date.now() / 1000),
-            version: 2,
+            version: 1,
             tipoDte: '18',
             documento: jwsString,
             codigoGeneracion: codigoGeneracion

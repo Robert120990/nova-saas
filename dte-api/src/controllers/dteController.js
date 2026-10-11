@@ -157,8 +157,9 @@ async function emit(req, res) {
 
             // Autenticación con Hacienda si aún no tenemos token
             if (!auth || !auth.success) {
-                console.log(`[HaciendaAuth] Authentication request for company ${company[0].nit}...`);
-                auth = await transmissionService.authenticate(company[0].api_user, company[0].api_password, ambiente);
+                const apiUser = company[0].api_user || (company[0].nit || '').replace(/\D/g, '');
+                console.log(`[HaciendaAuth] Authentication request for company ${company[0].nit} (user: ${apiUser})...`);
+                auth = await transmissionService.authenticate(apiUser, company[0].api_password, ambiente);
                 if (!auth.success) {
                     if (isNetworkError(auth.message)) {
                         isConnectivityFailure = true;
