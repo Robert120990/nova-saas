@@ -372,3 +372,18 @@ input[type="number"] {
   color: #ffffff !important;
 }
 
+/* Soporte de scroll táctil fluido y contención de overscroll para POS móviles y WebViews */
+.overflow-y-auto,
+.overflow-x-auto,
+.touch-scroll-container {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+}
+
+/* Área de seguridad inferior para terminales con barra de navegación en pantalla */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+

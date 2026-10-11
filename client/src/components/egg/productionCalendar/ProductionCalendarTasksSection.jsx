@@ -88,7 +88,7 @@ export default function ProductionCalendarTasksSection({
             </div>
 
             {/* Lista de tareas añadidas */}
-            <div className="space-y-2 max-h-60 sm:max-h-52 overflow-y-auto pr-0.5">
+            <div className="space-y-2 max-h-none sm:max-h-52 overflow-visible sm:overflow-y-auto pr-0.5">
                 {(!formData.tasks || formData.tasks.length === 0) ? (
                     <p className="text-xs text-slate-400 italic py-2 text-center">
                         No se han asignado roles ni tareas de preparación aún.
@@ -124,12 +124,12 @@ export default function ProductionCalendarTasksSection({
                                     )}
                                 </button>
                                 <div className="flex-1 min-w-0 space-y-1">
-                                    <div className="flex flex-wrap items-center gap-1.5">
-                                        <span className="px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 font-bold text-[10px] shrink-0 border border-indigo-100">
+                                    <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-1.5">
+                                        <span className="self-start px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 font-bold text-[10px] shrink-0 border border-indigo-100">
                                             {task.factory_role}
                                         </span>
                                         {task.user_name && (
-                                            <span className="font-bold text-slate-800 text-[11px] truncate max-w-[140px] sm:max-w-[200px]">
+                                            <span className="font-bold text-slate-800 text-[11px] sm:truncate sm:max-w-[200px]">
                                                 {task.user_name}
                                             </span>
                                         )}
