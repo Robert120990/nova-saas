@@ -222,6 +222,8 @@ const discountRulesController = require('../controllers/discountRules.controller
 const promotionController = require('../controllers/promotion.controller');
 const accountingController = require('../controllers/accounting.controller');
 const accountingGenerationController = require('../controllers/accounting.generation.controller');
+const accountingCloseoutsController = require('../controllers/accounting.closeouts.controller');
+const accountingBankController = require('../controllers/accounting/accountingBank.controller');
 const accountingCorrelativosController = require('../controllers/accounting.correlativos.controller');
 const accountingReportsController = require('../controllers/accounting.reports.controller');
 const officeConnectionController = require('../controllers/officeConnection.controller');
@@ -280,6 +282,7 @@ const energySystemController = require('../controllers/energySystem.controller')
 // Notification Routes
 const notificationRoutes = require('./notification.routes');
 const whatsappRoutes = require('./whatsapp.routes');
+const restaurantRoutes = require('./restaurant.routes');
 
 // Public routes
 router.get('/settings/public', settingsController.getPublicSettings);
@@ -778,6 +781,19 @@ router.post('/accounting/generation/preview', accountingGenerationController.pre
 router.post('/accounting/generation/generate', accountingGenerationController.generate);
 router.get('/accounting/generation/entity-accounts', accountingGenerationController.listEntityAccounts);
 router.post('/accounting/generation/entity-accounts', accountingGenerationController.saveEntityAccounts);
+
+// Accounting Closeouts Generation (partidas automaticas de cierres de turno)
+router.post('/accounting/generation/closeouts/preview', checkPermission('manage_accounting_contabilizar_turnos'), accountingCloseoutsController.preview);
+router.post('/accounting/generation/closeouts/save-costs', checkPermission('manage_accounting_contabilizar_turnos'), accountingCloseoutsController.saveCosts);
+router.post('/accounting/generation/closeouts/generate', checkPermission('manage_accounting_contabilizar_turnos'), accountingCloseoutsController.generate);
+router.get('/accounting/generation/closeouts/costs-report', checkPermission('manage_accounting_contabilizar_turnos'), accountingCloseoutsController.costsReport);
+
+// Accounting Bank & Checks Generation (partidas de cheques y movimientos bancarios)
+router.get('/accounting/generation/bank/cheques', checkPermission('manage_accounting_contabilizar_bancos'), accountingBankController.getCheques);
+router.get('/accounting/generation/bank/movements', checkPermission('manage_accounting_contabilizar_bancos'), accountingBankController.getMovements);
+router.post('/accounting/generation/bank/preview-entry', checkPermission('manage_accounting_contabilizar_bancos'), accountingBankController.previewEntry);
+router.post('/accounting/generation/bank/generate-entry', checkPermission('manage_accounting_contabilizar_bancos'), accountingBankController.generateEntry);
+router.post('/accounting/generation/bank/generate-batch', checkPermission('manage_accounting_contabilizar_bancos'), accountingBankController.generateBatch);
 
 // Accounting Correlativos (numeracion de partidas)
 router.get('/accounting/correlativos', accountingCorrelativosController.getCorrelativos);
@@ -1364,5 +1380,8 @@ router.use('/notifications', notificationRoutes);
 
 // WhatsApp
 router.use('/whatsapp', whatsappRoutes);
+
+// Restaurant Module (Comandas, KDS, Mesas)
+router.use('/restaurant', restaurantRoutes);
 
 module.exports = router;

@@ -25,9 +25,11 @@ const tenantMiddleware = async (req, res, next) => {
     }
 
     req.company_id = companyId;
+    req.companyId = companyId;
     req.branch_id = req.headers['x-branch-id'] 
         ? parseInt(req.headers['x-branch-id']) 
         : (req.query.branch_id ? parseInt(req.query.branch_id) : (req.user?.branch_id || req.branch_id || null));
+    req.branchId = req.branch_id;
     next();
 };
 

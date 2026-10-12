@@ -58,6 +58,11 @@ const LibroMayor = lazyWithRetry(() => import('./pages/AccountingReports/LibroMa
 const BalanceComprobacion = lazyWithRetry(() => import('./pages/AccountingReports/BalanceComprobacion'));
 const EstadoResultados = lazyWithRetry(() => import('./pages/AccountingReports/EstadoResultados'));
 const BalanceGeneral = lazyWithRetry(() => import('./pages/AccountingReports/BalanceGeneral'));
+
+// Restaurant Module (Aislado)
+const RestaurantOrderTerminal = lazyWithRetry(() => import('./modules/restaurant/pages/RestaurantOrderTerminal'));
+const RestaurantKds = lazyWithRetry(() => import('./modules/restaurant/pages/RestaurantKds'));
+const RestaurantConfig = lazyWithRetry(() => import('./modules/restaurant/pages/RestaurantConfig'));
 const AnexoBalance = lazyWithRetry(() => import('./pages/AccountingReports/AnexoBalance'));
 const BalanceComparativo = lazyWithRetry(() => import('./pages/AccountingReports/BalanceComparativo'));
 const CambiosPatrimonio = lazyWithRetry(() => import('./pages/AccountingReports/CambiosPatrimonio'));
@@ -408,6 +413,8 @@ function App() {
                         <Route path="/contabilidad/partidas" element={<AccountingEntries />} />
                         <Route path="/contabilidad/contabilizar" element={<AccountingGenerate kinds={['ventas', 'compras']} />} />
                         <Route path="/contabilidad/contabilizar/cxc-cxp" element={<AccountingGenerate kinds={['cxc', 'cxp']} />} />
+                        <Route path="/contabilidad/contabilizar/turnos" element={<AccountingGenerate kinds={['turnos']} />} />
+                        <Route path="/contabilidad/contabilizar/bancos" element={<AccountingGenerate kinds={['bancos']} />} />
                         <Route path="/contabilidad/correlativos" element={<AccountingCorrelativos />} />
                         <Route path="/contabilidad/cierre" element={<YearClosing />} />
                         <Route path="/contabilidad/apertura" element={<YearOpening />} />
@@ -450,6 +457,11 @@ function App() {
 
                         {/* Sistema Energético -> Redirigido a pestaña en Dashboard */}
                         <Route path="/sistema-energetico" element={<Navigate to="/dashboard?tab=energy" replace />} />
+
+                        {/* Módulo Restaurante y Comandas (Aislado, sin inclusión en menú) */}
+                        <Route path="/restaurant/comandas" element={<RestaurantOrderTerminal />} />
+                        <Route path="/restaurant/kds" element={<RestaurantKds />} />
+                        <Route path="/restaurant/config" element={<RestaurantConfig />} />
                         
                         <Route path="/" element={<Navigate to="/dashboard" replace />} />
                     </Route>

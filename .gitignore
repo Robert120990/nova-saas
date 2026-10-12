@@ -15,6 +15,7 @@ server/node_modules/
 server/.env*
 server/npm-debug.log*
 server/logs/
+server/uploads/
 server/.env.tmp
 
 # DTE API

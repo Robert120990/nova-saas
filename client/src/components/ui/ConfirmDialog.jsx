@@ -36,15 +36,24 @@ const ConfirmDialog = ({
     isOpen,
     title = '¿Confirmar acción?',
     message,
-    confirmLabel = 'Confirmar',
-    cancelLabel = 'Cancelar',
+    content,
+    confirmLabel,
+    confirmText,
+    cancelLabel,
+    cancelText,
     variant = 'danger',
     onConfirm,
     onCancel,
+    onClose,
 }) => {
     const confirmRef = useRef(null);
     const config = VARIANTS[variant] || VARIANTS.danger;
     const Icon = config.icon;
+
+    const handleCancel = onCancel || onClose || (() => {});
+    const displayMessage = message || content;
+    const finalConfirmLabel = confirmLabel || confirmText || 'Confirmar';
+    const finalCancelLabel = cancelLabel || cancelText || 'Cancelar';
 
     useEffect(() => {
         if (!isOpen) return;
@@ -56,8 +65,8 @@ const ConfirmDialog = ({
 
         // Close on Escape key
         const handleKeyDown = (e) => {
-            if (e.key === 'Escape') onCancel();
-            if (e.key === 'Enter') onConfirm();
+            if (e.key === 'Escape') handleCancel();
+            if (e.key === 'Enter') onConfirm?.();
         };
         document.addEventListener('keydown', handleKeyDown);
 
@@ -65,7 +74,7 @@ const ConfirmDialog = ({
             clearTimeout(timer);
             document.removeEventListener('keydown', handleKeyDown);
         };
-    }, [isOpen, onConfirm, onCancel]);
+    }, [isOpen, onConfirm, handleCancel]);
 
     if (!isOpen) return null;
 
@@ -73,7 +82,7 @@ const ConfirmDialog = ({
         <div
             className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
             style={{ backgroundColor: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)' }}
-            onClick={onCancel}
+            onClick={handleCancel}
         >
             <div
                 className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden"
@@ -93,8 +102,8 @@ const ConfirmDialog = ({
                         </div>
                         <div className="pt-1">
                             <h3 className="text-lg font-bold text-slate-900 leading-tight">{title}</h3>
-                            {message && (
-                                <p className="mt-1.5 text-sm text-slate-500 leading-relaxed">{message}</p>
+                            {displayMessage && (
+                                <p className="mt-1.5 text-sm text-slate-500 leading-relaxed">{displayMessage}</p>
                             )}
                         </div>
                     </div>
@@ -105,17 +114,19 @@ const ConfirmDialog = ({
                     {/* Actions */}
                     <div className="flex items-center justify-end gap-3">
                         <button
-                            onClick={onCancel}
+                            type="button"
+                            onClick={handleCancel}
                             className="px-5 py-2.5 text-sm font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-slate-300"
                         >
-                            {cancelLabel}
+                            {finalCancelLabel}
                         </button>
                         <button
+                            type="button"
                             ref={confirmRef}
                             onClick={onConfirm}
                             className={`px-5 py-2.5 text-sm font-semibold rounded-xl transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-offset-1 shadow-lg ${config.confirmBtn} ${config.confirmText}`}
                         >
-                            {confirmLabel}
+                            {finalConfirmLabel}
                         </button>
                     </div>
                 </div>

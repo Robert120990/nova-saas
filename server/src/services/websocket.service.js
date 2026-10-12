@@ -28,7 +28,7 @@ function initWebSocket(server, appVersion = 'unknown') {
             if (url.pathname === '/ws/fusion-agent') {
                 return await fusionAgent.handleUpgrade(request, socket, head);
             }
-            if (!['/ws/egg-industrial', '/ws/inventory', '/ws/notifications'].includes(url.pathname)) return socket.destroy();
+            if (!['/ws/egg-industrial', '/ws/inventory', '/ws/notifications', '/ws/restaurant'].includes(url.pathname)) return socket.destroy();
             const protocols = String(request.headers['sec-websocket-protocol'] || '').split(',').map(p => p.trim());
             const token = protocols.find(p => p.startsWith('auth.'))?.slice(5);
             if (!token || !protocols.includes('sipe')) throw new Error('Sesión requerida.');

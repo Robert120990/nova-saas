@@ -2,7 +2,7 @@ const pool = require('../config/db');
 
 const getProducts = async (req, res) => {
     try {
-        const { search, page = 1, limit = 15, branch_id, pos_id, category_id, status } = req.query;
+        const { search, page = 1, limit = 15, branch_id, pos_id, category_id, category_ids, status } = req.query;
         const offset = (page - 1) * limit;
 
         let query = `
@@ -54,7 +54,15 @@ const getProducts = async (req, res) => {
             params.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
         }
 
-        if (category_id) {
+        if (category_ids) {
+            const catIdArray = Array.isArray(category_ids)
+                ? category_ids.map(Number).filter(Boolean)
+                : String(category_ids).split(',').map(s => Number(s.trim())).filter(Boolean);
+            if (catIdArray.length > 0) {
+                query += ` AND p.category_id IN (?)`;
+                params.push(catIdArray);
+            }
+        } else if (category_id) {
             query += ` AND p.category_id = ?`;
             params.push(category_id);
         }

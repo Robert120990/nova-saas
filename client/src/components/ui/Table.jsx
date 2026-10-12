@@ -1,7 +1,17 @@
 
-const Table = ({ headers = [], data = [], renderRow, renderCard, isLoading }) => {
+const Table = ({
+    headers = [],
+    data = [],
+    renderRow,
+    renderCard,
+    isLoading,
+    className = '',
+    tableClassName = '',
+    noHorizontalScroll = false,
+    compact = false,
+}) => {
     return (
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+        <div className={`bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden ${className}`}>
             {/* Vista en tarjeta para móvil (si se provee renderCard) */}
             {renderCard && (
                 <div className="md:hidden divide-y divide-slate-100">
@@ -29,18 +39,26 @@ const Table = ({ headers = [], data = [], renderRow, renderCard, isLoading }) =>
             )}
 
             {/* Vista en Tabla (Escritorio o fallback móvil si no hay renderCard) */}
-            <div className={`overflow-x-auto ${renderCard ? 'hidden md:block' : 'block'}`}>
-                <table className="w-full text-left border-collapse">
+            <div className={`${noHorizontalScroll ? 'overflow-x-hidden' : 'overflow-x-auto'} ${renderCard ? 'hidden md:block' : 'block'}`}>
+                <table className={`w-full text-left border-collapse ${tableClassName}`}>
                     <thead className="bg-slate-50 border-b border-slate-100">
                         <tr>
-                            {headers.map((h, i) => (
-                                <th key={i} className="px-4 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                                    {h}
-                                </th>
-                            ))}
+                            {headers.map((h, i) => {
+                                const isObj = typeof h === 'object' && h !== null;
+                                const label = isObj ? h.label : h;
+                                const customCls = isObj ? (h.className || '') : '';
+                                return (
+                                    <th
+                                        key={i}
+                                        className={`${compact ? 'py-1.5' : 'py-2'} text-[10px] font-bold text-slate-500 uppercase tracking-wider ${customCls || (compact ? 'px-2.5' : 'px-4')}`}
+                                    >
+                                        {label}
+                                    </th>
+                                );
+                            })}
                         </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-50">
+                    <tbody className={compact ? 'divide-y divide-slate-100' : 'divide-y divide-slate-50'}>
                         {isLoading ? (
                             <tr>
                                 <td colSpan={headers.length} className="px-4 py-6 text-center">

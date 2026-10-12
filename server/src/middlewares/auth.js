@@ -14,7 +14,9 @@ const verifyToken = (req, res, next) => {
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
         req.user = decoded;
         req.company_id = req.headers['x-company-id'] ? parseInt(req.headers['x-company-id']) : (decoded.company_id || null);
+        req.companyId = req.company_id;
         req.branch_id = req.headers['x-branch-id'] ? parseInt(req.headers['x-branch-id']) : (decoded.branch_id || null);
+        req.branchId = req.branch_id;
         next();
     } catch (error) {
         console.error('Token verification FAILED:', error.message);
