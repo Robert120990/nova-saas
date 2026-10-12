@@ -990,7 +990,8 @@ const getSalesByPOS = async (req, res) => {
                 d.numero_control,
                 d.codigo_generacion
             FROM sales_headers h
-            LEFT JOIN points_of_sale p ON h.pos_id = p.id
+            LEFT JOIN pos_shifts ps ON h.shift_id = ps.id
+            LEFT JOIN points_of_sale p ON COALESCE(ps.pos_id, h.pos_id) = p.id
             LEFT JOIN customers c ON h.customer_id = c.id
             LEFT JOIN sellers s ON h.seller_id = s.id
             LEFT JOIN dtes d ON h.id = d.venta_id
@@ -1009,7 +1010,7 @@ const getSalesByPOS = async (req, res) => {
         }
         if (pos_ids) {
             const ids = pos_ids.split(',').map(s => parseInt(s, 10)).filter(n => Number.isInteger(n) && n > 0);
-            if (ids.length > 0) sql += ` AND h.pos_id IN (${ids.join(',')})`;
+            if (ids.length > 0) sql += ` AND COALESCE(ps.pos_id, h.pos_id) IN (${ids.join(',')})`;
         }
 
         sql += ' ORDER BY p.nombre, h.fecha_emision, h.id';
@@ -1056,7 +1057,8 @@ const exportSalesByPOSPDF = async (req, res) => {
                 d.numero_control,
                 d.codigo_generacion
             FROM sales_headers h
-            LEFT JOIN points_of_sale p ON h.pos_id = p.id
+            LEFT JOIN pos_shifts ps ON h.shift_id = ps.id
+            LEFT JOIN points_of_sale p ON COALESCE(ps.pos_id, h.pos_id) = p.id
             LEFT JOIN customers c ON h.customer_id = c.id
             LEFT JOIN sellers s ON h.seller_id = s.id
             LEFT JOIN dtes d ON h.id = d.venta_id
@@ -1068,7 +1070,7 @@ const exportSalesByPOSPDF = async (req, res) => {
         if (branch_id && branch_id !== 'all') { sql += ' AND h.branch_id = ?'; params.push(branch_id); }
         if (pos_ids) {
             const ids = pos_ids.split(',').map(s => parseInt(s, 10)).filter(n => Number.isInteger(n) && n > 0);
-            if (ids.length > 0) sql += ` AND h.pos_id IN (${ids.join(',')})`;
+            if (ids.length > 0) sql += ` AND COALESCE(ps.pos_id, h.pos_id) IN (${ids.join(',')})`;
         }
         sql += ' ORDER BY p.nombre, h.fecha_emision, h.id';
 

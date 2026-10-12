@@ -1084,7 +1084,7 @@ const changeSalesShift = async (req, res) => {
         }
 
         const [shiftRows] = await pool.query(
-            'SELECT id, company_id, branch_id, status, shift_number FROM pos_shifts WHERE id = ? AND company_id = ?',
+            'SELECT id, company_id, branch_id, pos_id, status, shift_number FROM pos_shifts WHERE id = ? AND company_id = ?',
             [shift_id, req.company_id]
         );
         if (shiftRows.length === 0) {
@@ -1125,8 +1125,8 @@ const changeSalesShift = async (req, res) => {
         }
 
         await pool.query(
-            'UPDATE sales_headers SET shift_id = ? WHERE id IN (?) AND company_id = ?',
-            [shift_id, ids, req.company_id]
+            'UPDATE sales_headers SET shift_id = ?, pos_id = COALESCE(?, pos_id) WHERE id IN (?) AND company_id = ?',
+            [shift_id, targetShift.pos_id, ids, req.company_id]
         );
 
         res.json({ success: true, message: `${sales.length} venta(s) cambiada(s) de turno correctamente`, updated: sales.length });
