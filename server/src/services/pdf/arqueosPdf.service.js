@@ -1,148 +1,10 @@
 const reportPdfHelper = require('../../utils/reportPdfHelper');
 const { resolveCompanyInfo } = require('./pdfUtils');
-
-/**
- * Agrupa y consolida partidas de detalle por concepto normalizado para rangos multituron.
- */
-function groupDetailItems(items, labelSuffix = '') {
-    if (!items || items.length === 0) return [];
-    const map = new Map();
-    items.forEach(it => {
-        let desc = (it.descripcion || it.description || 'SIN DESCRIPCION').trim();
-        desc = desc.replace(/^#\d+\s+/, '').trim().toUpperCase();
-        const amt = parseFloat(it.monto !== undefined ? it.monto : it.amount) || 0;
-        if (!map.has(desc)) {
-            map.set(desc, { descripcion: desc, count: 1, monto: amt });
-        } else {
-            const entry = map.get(desc);
-            entry.count += 1;
-            entry.monto += amt;
-        }
-    });
-
-    return Array.from(map.values())
-        .sort((a, b) => b.monto - a.monto)
-        .map(entry => ({
-            descripcion: entry.count > 1 && labelSuffix ? `${entry.descripcion} (${entry.count} ${labelSuffix})` : entry.descripcion,
-            monto: entry.monto
-        }));
-}
-
-function getTableHeight(count) {
-    return 14 + 3 + (count === 0 ? 10 : count * 9) + 13;
-}
-
-/**
- * Helper para renderizar una tabla de detalle (Ingresos, Gastos, Tarjetas, Remesas, Puntos).
- */
-function renderDetailTable(doc, title, items, startX, startY, width, colDef, totalLabel, totalVal) {
-    const headerHeight = 14;
-    doc.rect(startX, startY, width, headerHeight).fill('#f1f5f9');
-    doc.fontSize(7).font('Helvetica-Bold').fillColor('#0f172a');
-    doc.text(title.toUpperCase(), startX + 4, startY + 3.5, { width: width - 8 });
-
-    doc.strokeColor('#cbd5e1').lineWidth(0.5).moveTo(startX, startY + headerHeight).lineTo(startX + width, startY + headerHeight).stroke();
-
-    let curY = startY + headerHeight + 3;
-    const descWidth = width - colDef.amountWidth - 8;
-
-    if (!items || items.length === 0) {
-        doc.fontSize(6).font('Helvetica-Oblique').fillColor('#94a3b8');
-        doc.text('Sin movimientos registrados', startX + 4, curY, { width: width - 8 });
-        curY += 10;
-    } else {
-        doc.fontSize(6).font('Helvetica').fillColor('#0f172a');
-        items.forEach(item => {
-            if (curY > 700) return; // Salvaguarda estricta contra desbordes
-            const desc = item.descripcion || item.description || '---';
-            const amount = parseFloat(item.monto !== undefined ? item.monto : item.amount) || 0;
-            doc.text(desc, startX + 4, curY, { width: descWidth, lineBreak: false, ellipsis: true });
-            doc.text(reportPdfHelper.fmt(amount), startX + descWidth + 4, curY, { align: 'right', width: colDef.amountWidth, lineBreak: false });
-            curY += 9;
-        });
-    }
-
-    doc.strokeColor('#cbd5e1').lineWidth(0.5).moveTo(startX, curY).lineTo(startX + width, curY).stroke();
-    curY += 2;
-    doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#0f172a');
-    doc.text(totalLabel.toUpperCase(), startX + 4, curY, { width: descWidth, lineBreak: false, ellipsis: true });
-    doc.text(reportPdfHelper.fmt(totalVal), startX + descWidth + 4, curY, { align: 'right', width: colDef.amountWidth });
-    curY += 11;
-
-    return curY;
-}
-
-/**
- * Renderiza la caja de "RESUMEN DE OPERACIONES" con la estructura idéntica al formato contable.
- */
-function renderOperationsSummary(doc, totales, startX, startY, contentWidth) {
-    const halfWidth = contentWidth / 2;
-    const rowHeight = 14;
-    const midX = startX + halfWidth;
-
-    doc.rect(startX, startY, contentWidth, 16).fill('#f1f5f9');
-    doc.strokeColor('#94a3b8').lineWidth(0.75).rect(startX, startY, contentWidth, 16).stroke();
-    doc.fontSize(8).font('Helvetica-Bold').fillColor('#0f172a');
-    doc.text('RESUMEN DE OPERACIONES', startX, startY + 4, { align: 'center', width: contentWidth });
-
-    const tableStartY = startY + 16;
-    const labelW = halfWidth - 75;
-    const valW = 68;
-
-    const leftRows = [
-        { label: 'TOTAL VENTA', val: totales.ventas, bold: false },
-        { label: 'TOTAL INGRESOS', val: totales.ingresos, bold: false },
-        { label: 'VENTAS + INGRESOS', val: (totales.ventas || 0) + (totales.ingresos || 0), bold: true },
-        { label: 'TOTAL CONTADO', val: totales.contado, bold: true },
-        { label: 'FONDO INICIAL', val: totales.fondo, bold: false }
-    ];
-
-    const rightRows = [
-        { label: 'TOTAL TARJETAS', val: totales.tarjetas, bold: false },
-        { label: 'TOTAL GASTOS', val: totales.gastos, bold: false },
-        { label: 'TOTAL RETIRADO (PUNTOS)', val: totales.puntos, bold: false },
-        { label: 'TOTAL REMESADO', val: totales.remesas, bold: false },
-        { label: 'SALDO FINAL (ESPERADO)', val: totales.esperado, bold: true }
-    ];
-
-    let rowY = tableStartY;
-    for (let i = 0; i < 5; i++) {
-        if (i % 2 === 1) doc.rect(startX, rowY, contentWidth, rowHeight).fill('#f8fafc');
-        doc.strokeColor('#e2e8f0').lineWidth(0.5).moveTo(startX, rowY).lineTo(startX + contentWidth, rowY).stroke();
-
-        const l = leftRows[i];
-        doc.fontSize(6.8).font(l.bold ? 'Helvetica-Bold' : 'Helvetica').fillColor('#1e293b');
-        doc.text(l.label, startX + 6, rowY + 3.5, { width: labelW });
-        doc.text(reportPdfHelper.fmt(l.val), startX + labelW + 4, rowY + 3.5, { align: 'right', width: valW });
-
-        const r = rightRows[i];
-        doc.fontSize(6.8).font(r.bold ? 'Helvetica-Bold' : 'Helvetica').fillColor('#1e293b');
-        doc.text(r.label, midX + 6, rowY + 3.5, { width: labelW });
-        doc.text(reportPdfHelper.fmt(r.val), midX + labelW + 4, rowY + 3.5, { align: 'right', width: valW });
-
-        rowY += rowHeight;
-    }
-
-    doc.rect(startX, rowY, contentWidth, 18).fill('#f1f5f9');
-    doc.strokeColor('#cbd5e1').lineWidth(0.75).moveTo(startX, rowY).lineTo(startX + contentWidth, rowY).stroke();
-
-    const diff = totales.diferencia || 0;
-    const statusLabel = Math.abs(diff) < 0.01 ? 'CAJA CUADRADA' : (diff > 0 ? 'SOBRANTE DE CAJA' : 'FALTANTE DE CAJA');
-    const statusColor = Math.abs(diff) < 0.01 ? '#047857' : (diff > 0 ? '#1d4ed8' : '#be123c');
-
-    doc.fontSize(7.5).font('Helvetica-Bold').fillColor(statusColor);
-    doc.text(`ESTADO: ${statusLabel}`, startX + 6, rowY + 5, { width: labelW + 20 });
-    doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#0f172a');
-    doc.text('DIFERENCIA', midX + 6, rowY + 5, { width: labelW });
-    doc.fillColor(statusColor).text(reportPdfHelper.fmt(diff), midX + labelW + 4, rowY + 5, { align: 'right', width: valW });
-
-    rowY += 18;
-    const totalBoxHeight = rowY - startY;
-    doc.strokeColor('#94a3b8').lineWidth(0.75).rect(startX, startY, contentWidth, totalBoxHeight).stroke();
-    doc.strokeColor('#cbd5e1').lineWidth(0.5).moveTo(midX, tableStartY).lineTo(midX, rowY).stroke();
-
-    return rowY + 12;
-}
+const {
+    groupDetailItems,
+    renderPairDetailTables,
+    renderOperationsSummary
+} = require('./arqueosPdfHelpers');
 
 /**
  * Generador unificado de Reporte de Arqueos / Corte de Tienda en PDF.
@@ -152,6 +14,7 @@ const generateArqueosReportPDF = async (data) => {
     const { doc, getBuffer } = reportPdfHelper.createPdfDocument('portrait');
 
     const isSingleShift = Array.isArray(data.data) && data.data.length === 1;
+    const isDetailed = Boolean(data.detailed);
     const single = isSingleShift ? data.data[0] : null;
 
     const periodText = isSingleShift
@@ -260,7 +123,6 @@ const generateArqueosReportPDF = async (data) => {
         doc.strokeColor('#0f172a').lineWidth(0.75).moveTo(startX, curY).lineTo(startX + contentWidth, curY).stroke();
         curY += 8;
 
-        // Salto limpio hacia la sección de consolidación de detalles
         if (curY > 360) {
             doc.addPage();
             drawHeader();
@@ -268,36 +130,61 @@ const generateArqueosReportPDF = async (data) => {
         }
     }
 
-    // 3. Preparación de Listas de Detalle (Consolidadas si son múltiples turnos)
+    // 3. Preparación de Listas de Detalle (Consolidadas o Detalladas según toggle)
     const rawIngresos = data.ingresos_detalle || [];
     const rawGastos = data.gastos_detalle || [];
     const rawTarjetas = data.tarjetas_detalle || [];
     const rawRemesas = data.remesas_detalle || [];
     const rawPuntos = data.puntos_detalle || [];
 
-    const ingresosList = isSingleShift
-        ? rawIngresos.map(i => ({ descripcion: `${i.descripcion || 'Ingreso adicional'}${i.metodo && i.metodo !== '01' ? ` (${i.metodo})` : ''}`, monto: i.monto }))
+    const shouldDetail = isDetailed || isSingleShift;
+
+    const ingresosList = shouldDetail
+        ? rawIngresos.map(i => {
+            let label = i.descripcion || 'Ingreso adicional';
+            if (i.metodo && i.metodo !== '01') label += ` (${i.metodo})`;
+            if (!isSingleShift && i.vendedor && i.vendedor !== '---') label += ` (${i.vendedor})`;
+            return { descripcion: label.trim(), monto: i.monto };
+        })
         : groupDetailItems(rawIngresos, 'MOVS.');
 
-    const gastosList = isSingleShift
-        ? rawGastos.map(g => ({ descripcion: g.descripcion || 'Gasto operativo', monto: g.monto }))
+    const gastosList = shouldDetail
+        ? rawGastos.map(g => {
+            let label = g.descripcion || 'Gasto operativo';
+            if (!isSingleShift && g.vendedor && g.vendedor !== '---') label += ` (${g.vendedor})`;
+            return { descripcion: label.trim(), monto: g.monto };
+        })
         : groupDetailItems(rawGastos, 'COMPRAS');
 
-    const tarjetasList = isSingleShift
+    const tarjetasList = shouldDetail
         ? rawTarjetas.map(t => {
             let label = t.descripcion || 'Tarjeta';
             if (t.tarjeta && t.tarjeta !== '---') label += ` (${t.tarjeta})`;
             if (t.autorizacion && t.autorizacion !== '---') label += ` Aut: #${t.autorizacion}`;
-            return { descripcion: label, monto: t.monto };
+            if (!isSingleShift && t.vendedor && t.vendedor !== '---') label += ` (${t.vendedor})`;
+            return { descripcion: label.trim(), monto: t.monto };
         })
         : groupDetailItems(rawTarjetas, 'VOUCHERS');
 
-    const remesasList = isSingleShift
-        ? rawRemesas.map(r => ({ descripcion: r.numero && r.numero !== '---' ? `${r.numero} ${r.descripcion || 'Remesa'}` : (r.descripcion || 'Remesa'), monto: r.monto }))
+    const remesasList = shouldDetail
+        ? rawRemesas.map(r => {
+            const numStr = r.numero && r.numero !== '---' ? `${r.numero} ` : '';
+            const descStr = r.descripcion || 'Remesa';
+            const vendStr = r.vendedor && r.vendedor !== '---' ? ` (${r.vendedor})` : '';
+            const turnoStr = (!isSingleShift && r.turno && r.turno !== '---') ? ` [T#${r.turno}]` : '';
+            return {
+                descripcion: `${numStr}${descStr}${vendStr}${turnoStr}`.trim(),
+                monto: r.monto
+            };
+        })
         : groupDetailItems(rawRemesas, 'REMESAS');
 
-    const puntosList = isSingleShift
-        ? rawPuntos.map(p => ({ descripcion: p.descripcion || 'Canje de puntos', monto: p.monto }))
+    const puntosList = shouldDetail
+        ? rawPuntos.map(p => {
+            let label = p.descripcion || 'Canje de puntos';
+            if (!isSingleShift && p.vendedor && p.vendedor !== '---') label += ` (${p.vendedor})`;
+            return { descripcion: label.trim(), monto: p.monto };
+        })
         : groupDetailItems(rawPuntos, 'CANJES');
 
     const totalIngresos = (data.totales?.ingresos !== undefined) ? data.totales.ingresos : ingresosList.reduce((s, i) => s + (parseFloat(i.monto) || 0), 0);
@@ -307,41 +194,40 @@ const generateArqueosReportPDF = async (data) => {
     const totalPuntos = (data.totales?.puntos !== undefined) ? data.totales.puntos : puntosList.reduce((s, p) => s + (parseFloat(p.monto) || 0), 0);
 
     const colW = (contentWidth - 16) / 2;
-    const leftColX = startX;
-    const rightColX = startX + colW + 16;
-    const amountColDef = { amountWidth: 65 };
 
     // Fila 1 de Detalle: INGRESOS & GASTOS
-    const rowHeight1 = Math.max(getTableHeight(ingresosList.length), getTableHeight(gastosList.length));
-    if (curY + rowHeight1 > 700) {
-        doc.addPage();
-        drawHeader();
-        curY = doc.y + 6;
-    }
-    const endY1 = renderDetailTable(doc, 'Detalle de Otros Ingresos', ingresosList, leftColX, curY, colW, amountColDef, 'Total Ingresos', totalIngresos);
-    const endY2 = renderDetailTable(doc, 'Detalle de Gastos (Caja Chica)', gastosList, rightColX, curY, colW, amountColDef, 'Total Gastos', totalGastos);
-    curY = Math.max(endY1, endY2) + 6;
+    curY = renderPairDetailTables(
+        doc,
+        { title: 'Detalle de Otros Ingresos', items: ingresosList, totalLabel: 'Total Ingresos', totalVal: totalIngresos },
+        { title: 'Detalle de Gastos (Caja Chica)', items: gastosList, totalLabel: 'Total Gastos', totalVal: totalGastos },
+        drawHeader,
+        curY,
+        startX,
+        colW
+    );
 
     // Fila 2 de Detalle: TARJETAS & REMESAS
-    const rowHeight2 = Math.max(getTableHeight(tarjetasList.length), getTableHeight(remesasList.length));
-    if (curY + rowHeight2 > 700) {
-        doc.addPage();
-        drawHeader();
-        curY = doc.y + 6;
-    }
-    const endY3 = renderDetailTable(doc, 'Detalle de Tarjetas (Vouchers)', tarjetasList, leftColX, curY, colW, amountColDef, 'Total Tarjetas', totalTarjetas);
-    const endY4 = renderDetailTable(doc, 'Detalle de Remesas', remesasList, rightColX, curY, colW, amountColDef, 'Total Remesas', totalRemesas);
-    curY = Math.max(endY3, endY4) + 6;
+    curY = renderPairDetailTables(
+        doc,
+        { title: 'Detalle de Tarjetas (Vouchers)', items: tarjetasList, totalLabel: 'Total Tarjetas', totalVal: totalTarjetas },
+        { title: 'Detalle de Remesas', items: remesasList, totalLabel: 'Total Remesas', totalVal: totalRemesas },
+        drawHeader,
+        curY,
+        startX,
+        colW
+    );
 
     // Fila 3: Puntos Canjeados (si existen)
     if (puntosList.length > 0) {
-        const rowHeight3 = getTableHeight(puntosList.length);
-        if (curY + rowHeight3 > 700) {
-            doc.addPage();
-            drawHeader();
-            curY = doc.y + 6;
-        }
-        curY = renderDetailTable(doc, 'Detalle de Puntos Canjeados', puntosList, leftColX, curY, colW, amountColDef, 'Total Puntos', totalPuntos) + 6;
+        curY = renderPairDetailTables(
+            doc,
+            { title: 'Detalle de Puntos Canjeados', items: puntosList, totalLabel: 'Total Puntos', totalVal: totalPuntos },
+            null,
+            drawHeader,
+            curY,
+            startX,
+            colW
+        );
     }
 
     // 4. RESUMEN DE OPERACIONES (Cuadro principal)

@@ -4,16 +4,18 @@ import axios from 'axios';
 import {
     GitBranch,
     Calendar,
-    Monitor
+    Monitor,
+    ListFilter
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
 import ReportLayout from '../components/ui/ReportLayout';
+import { getTodayString } from '../utils/dateUtils';
+import { unwrapList } from '../utils/apiUtils';
 
 const ArqueosReport = () => {
     const { user } = useAuth();
-
-    const today = new Date().toISOString().split('T')[0];
+    const today = getTodayString();
 
     const [filters, setFilters] = useState({
         start_date: today,
@@ -22,6 +24,7 @@ const ArqueosReport = () => {
     });
 
     const [selectedPosIds, setSelectedPosIds] = useState([]);
+    const [isDetailed, setIsDetailed] = useState(false);
 
     const [isGenerating, setIsGenerating] = useState(false);
     const [pdfUrl, setPdfUrl] = useState(null);
@@ -29,17 +32,17 @@ const ArqueosReport = () => {
     // Queries
     const { data: branches = [] } = useQuery({
         queryKey: ['branches'],
-        queryFn: async () => (await axios.get('/api/branches')).data
+        queryFn: async () => unwrapList((await axios.get('/api/branches')).data)
     });
 
     const { data: posList = [] } = useQuery({
         queryKey: ['pos', filters.branch_id, 'activo'],
-        queryFn: async () => (await axios.get('/api/pos', {
+        queryFn: async () => unwrapList((await axios.get('/api/pos', {
             params: {
                 branch_id: filters.branch_id !== 'all' ? filters.branch_id : undefined,
                 status: 'activo'
             }
-        })).data,
+        })).data),
     });
 
     const handleFilterChange = (e) => {
@@ -66,7 +69,8 @@ const ArqueosReport = () => {
                 start_date: filters.start_date,
                 end_date: filters.end_date,
                 branch_id: filters.branch_id,
-                pos_ids: selectedPosIds.length ? selectedPosIds.join(',') : undefined
+                pos_ids: selectedPosIds.length ? selectedPosIds.join(',') : undefined,
+                detailed: isDetailed ? 'true' : 'false'
             };
 
             const response = await axios.get('/api/shifts/reports/arqueos/pdf', {
@@ -79,7 +83,7 @@ const ArqueosReport = () => {
             const blob = new Blob([response.data], { type: 'application/pdf' });
             const url = URL.createObjectURL(blob);
             setPdfUrl(url);
-            toast.success('Reporte generado correctamente');
+            toast.success(isDetailed ? 'Reporte detallado generado correctamente' : 'Reporte generado correctamente');
         } catch (error) {
             console.error('Error generating report:', error);
             toast.error('Error al generar el reporte de arqueos');
@@ -92,7 +96,8 @@ const ArqueosReport = () => {
         if (!pdfUrl) return;
         const link = document.createElement('a');
         link.href = pdfUrl;
-        link.setAttribute('download', `Reporte_Arqueos_${filters.start_date}_al_${filters.end_date}.pdf`);
+        const suffix = isDetailed ? '_Detallado' : '';
+        link.setAttribute('download', `Reporte_Arqueos_${filters.start_date}_al_${filters.end_date}${suffix}.pdf`);
         document.body.appendChild(link);
         link.click();
         link.remove();
@@ -105,6 +110,7 @@ const ArqueosReport = () => {
                 end_date: filters.end_date,
                 branch_id: filters.branch_id,
                 pos_ids: selectedPosIds.length ? selectedPosIds.join(',') : undefined,
+                detailed: isDetailed ? 'true' : 'false',
                 format: 'excel'
             };
             const response = await axios.get('/api/shifts/reports/arqueos/pdf', {
@@ -117,7 +123,8 @@ const ArqueosReport = () => {
             const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = url;
-            link.setAttribute('download', `Reporte_Arqueos_${filters.start_date}_al_${filters.end_date}.xlsx`);
+            const suffix = isDetailed ? '_Detallado' : '';
+            link.setAttribute('download', `Reporte_Arqueos_${filters.start_date}_al_${filters.end_date}${suffix}.xlsx`);
             document.body.appendChild(link);
             link.click();
             link.remove();
@@ -141,6 +148,39 @@ const ArqueosReport = () => {
             onExportExcel={handleExportExcel}
             canGenerate={Boolean(filters.start_date && filters.end_date)}
         >
+            {/* Detailed Movements Toggle */}
+            <div className="p-3 bg-slate-50 border border-slate-200/80 rounded-2xl space-y-1.5 transition-all">
+                <div className="flex items-center justify-between">
+                    <label
+                        className="text-xs font-black text-slate-800 flex items-center gap-1.5 cursor-pointer select-none"
+                        onClick={() => setIsDetailed(!isDetailed)}
+                    >
+                        <ListFilter size={13} className={isDetailed ? "text-indigo-600" : "text-slate-400"} />
+                        Detallar Movimientos
+                    </label>
+                    <button
+                        type="button"
+                        role="switch"
+                        aria-checked={isDetailed}
+                        onClick={() => setIsDetailed(!isDetailed)}
+                        className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                            isDetailed ? 'bg-indigo-600' : 'bg-slate-300'
+                        }`}
+                    >
+                        <span
+                            className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
+                                isDetailed ? 'translate-x-4' : 'translate-x-0'
+                            }`}
+                        />
+                    </button>
+                </div>
+                <p className="text-[10px] text-slate-500 leading-tight">
+                    {isDetailed 
+                        ? 'Muestra cada voucher, remesa, ingreso y gasto de forma individual.' 
+                        : 'Consolida partidas agrupadas (ej. 4 Remesas, 3 Vouchers).'}
+                </p>
+            </div>
+
             {/* Branch Selection */}
             <div className="space-y-2">
                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">

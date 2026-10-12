@@ -823,7 +823,7 @@ const getShiftsHistory = async (req, res) => {
 
 const exportArqueosPDF = async (req, res) => {
     try {
-        const { start_date, end_date, branch_id, pos_ids, shift_id } = req.query;
+        const { start_date, end_date, branch_id, pos_ids, shift_id, detailed } = req.query;
         const companyId = req.company_id || req.user?.company_id;
 
         if (!companyId) return res.status(401).json({ message: 'No autorizado' });
@@ -1122,6 +1122,7 @@ const exportArqueosPDF = async (req, res) => {
             branch_name: branchName,
             start_date: start_date || (rows[0] ? rows[0].start_time : null),
             end_date: end_date || (rows[rows.length - 1] ? rows[rows.length - 1].start_time : null),
+            detailed: detailed === 'true' || detailed === '1',
             data: mappedRows,
             ingresos_detalle: mappedIncomes,
             gastos_detalle: mappedExpenses,
