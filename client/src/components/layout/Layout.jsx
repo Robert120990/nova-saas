@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, Suspense } from 'react';
+import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import { useLocation, Outlet } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import Navbar from './Navbar';
@@ -21,15 +21,19 @@ const Layout = () => {
     const { user } = useAuth();
     const [paletteOpen, setPaletteOpen] = useState(false);
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+    const mainRef = useRef(null);
 
     const openPalette = useCallback(() => setPaletteOpen(true), []);
     const closePalette = useCallback(() => setPaletteOpen(false), []);
     const toggleMobileMenu = useCallback(() => setMobileMenuOpen(prev => !prev), []);
     const closeMobileMenu = useCallback(() => setMobileMenuOpen(false), []);
 
-    // Auto-cerrar menú móvil cuando cambia la ruta
+    // Auto-cerrar menú móvil cuando cambia la ruta y resetear scroll
     useEffect(() => {
         setMobileMenuOpen(false);
+        if (mainRef.current) {
+            mainRef.current.scrollTop = 0;
+        }
     }, [location.pathname]);
 
     useEffect(() => {
@@ -45,16 +49,21 @@ const Layout = () => {
     }, []);
 
     return (
-        <div className="flex h-screen bg-slate-50 overflow-hidden text-slate-900" style={{ height: '100dvh' }}>
+        <div className="flex app-layout-viewport bg-slate-50 overflow-hidden text-slate-900">
             <Sidebar 
                 onOpenSearch={openPalette} 
                 isMobileOpen={mobileMenuOpen} 
                 onCloseMobile={closeMobileMenu} 
             />
-            <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+            <div className="flex-1 flex flex-col min-w-0 min-h-0 h-full overflow-hidden">
                 <Navbar onToggleMobileMenu={toggleMobileMenu} />
-                <main className="flex-1 overflow-y-auto p-3 sm:p-6 md:p-8">
-                    <div className="max-w-7xl mx-auto" key={`${user?.id}:${user?.company_id}:${user?.branch_id}:${location.pathname}`}>
+                <main 
+                    ref={mainRef}
+                    id="main-scroll-container"
+                    className="flex-1 min-h-0 min-w-0 overflow-y-auto p-3 sm:p-6 md:p-8 touch-pan-y"
+                    style={{ WebkitOverflowScrolling: 'touch' }}
+                >
+                    <div className="max-w-7xl mx-auto min-h-0" key={`${user?.id}:${user?.company_id}:${user?.branch_id}:${location.pathname}`}>
                         <ErrorBoundary showDetails>
                             <Suspense fallback={<PageLoader />}>
                                 <Outlet />

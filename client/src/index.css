@@ -10,6 +10,10 @@
 
 html, body {
   height: 100%;
+  margin: 0;
+  padding: 0;
+  -webkit-text-size-adjust: 100%;
+  touch-action: pan-y;
 }
 
 body {
@@ -21,6 +25,7 @@ body {
 #root {
   width: 100%;
   height: 100%;
+  min-height: 100%;
 }
 
 /* Hide spin buttons for input type number across browsers */
@@ -372,12 +377,67 @@ input[type="number"] {
   color: #ffffff !important;
 }
 
-/* Soporte de scroll táctil fluido y contención de overscroll para POS móviles y WebViews */
-.overflow-y-auto,
-.overflow-x-auto,
+/* ==========================================================================
+   Compatibilidad de Scroll Táctil Móvil (Chrome Android 101+, Android 11, WebViews)
+   ========================================================================== */
+
+/* Altura de layout con soporte para dvh y fallback seguro a 100vh / 100% en Chrome < 108 */
+.app-layout-viewport {
+  height: 100%;
+  height: 100vh;
+}
+@supports (height: 100dvh) {
+  .app-layout-viewport {
+    height: 100dvh;
+  }
+}
+
+/* Soporte de scroll táctil fluido para contenedores verticales */
+.overflow-y-auto {
+  -webkit-overflow-scrolling: touch !important;
+  touch-action: pan-y !important;
+  min-height: 0 !important;
+  overscroll-behavior-y: auto !important;
+}
+
+/* Contenedores horizontales (tablas): permitir deslizamiento vertical hacia el contenedor padre */
+.overflow-x-auto {
+  -webkit-overflow-scrolling: touch !important;
+  touch-action: pan-x pan-y !important;
+  min-width: 0 !important;
+  overscroll-behavior-x: auto !important;
+  overscroll-behavior-y: auto !important;
+}
+
 .touch-scroll-container {
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch !important;
+  touch-action: pan-y !important;
+  min-height: 0 !important;
+  overscroll-behavior: auto !important;
+}
+
+/* Promover el contenedor de scroll principal a capa acelerada por hardware */
+#main-scroll-container {
+  will-change: scroll-position;
+  transform: translateZ(0);
+}
+
+/* Fallback universal de unidades dvh para navegadores antiguos (Chrome 101 / Android 11) */
+.max-h-\[92dvh\] {
+  max-height: 92vh;
+  max-height: 92dvh;
+}
+.max-h-\[94dvh\] {
+  max-height: 94vh;
+  max-height: 94dvh;
+}
+.max-h-\[85dvh\] {
+  max-height: 85vh;
+  max-height: 85dvh;
+}
+.h-\[100dvh\] {
+  height: 100vh;
+  height: 100dvh;
 }
 
 /* Área de seguridad inferior para terminales con barra de navegación en pantalla */
@@ -386,4 +446,5 @@ input[type="number"] {
     padding-bottom: env(safe-area-inset-bottom);
   }
 }
+
 

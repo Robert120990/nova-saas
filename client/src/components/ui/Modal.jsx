@@ -26,7 +26,7 @@ const Modal = ({
                         <X size={20} />
                     </button>
                 </div>
-                <div className={`${bodyClassName} overflow-y-auto overflow-x-hidden flex-1 overscroll-contain touch-pan-y`}>
+                <div className={`${bodyClassName} overflow-y-auto overflow-x-hidden flex-1 min-h-0 touch-pan-y`}>
                     {children}
                 </div>
             </div>

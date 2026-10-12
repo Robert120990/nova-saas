@@ -13,7 +13,7 @@ export default function EggSalesCustomerDetailModal({ open, onClose, customer })
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="relative flex flex-col w-full max-w-4xl max-h-[94dvh] sm:max-h-[90vh] bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden my-auto">
+            <div className="relative flex flex-col w-full max-w-4xl max-h-[94vh] max-h-[94dvh] sm:max-h-[90vh] bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden my-auto">
                 {/* Cabecera */}
                 <div className="flex items-center justify-between px-3.5 sm:px-6 py-3 sm:py-4 border-b border-slate-200 bg-slate-50/70">
                     <div className="min-w-0 pr-2">
@@ -119,7 +119,7 @@ export default function EggSalesCustomerDetailModal({ open, onClose, customer })
                 </div>
 
                 {/* Contenido scrolleable */}
-                <div className="flex-1 overflow-y-auto p-3.5 sm:p-6 space-y-4">
+                <div className="flex-1 min-h-0 overflow-y-auto p-3.5 sm:p-6 space-y-4 touch-pan-y">
                     {subTab === 'products' ? (
                         <div className="overflow-x-auto rounded-xl border border-slate-200">
                             <table className="w-full text-xs text-left">
