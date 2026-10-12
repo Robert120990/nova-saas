@@ -145,7 +145,7 @@ const drawPdfSummaryBox = (doc, x, y, totals, title = 'RESUMEN') => {
  */
 const drawCuadroResumenCompras = (doc, startX, totalWidth, totals, onNewPage = null) => {
     try {
-        const boxWidth = 520;
+        const boxWidth = 540;
         const boxX = startX + Math.round((totalWidth - boxWidth) / 2);
         let y = doc.y + 10;
 
@@ -167,20 +167,22 @@ const drawCuadroResumenCompras = (doc, startX, totalWidth, totals, onNewPage = n
 
         // 2. Encabezados de Matriz
         const colW = {
-            concepto: 120,
-            exentas: 100,
-            gravadas: 100,
-            reb_dev: 100,
-            total: 100
+            concepto: 95,
+            exentas: 89,
+            no_sujetas: 89,
+            gravadas: 89,
+            reb_dev: 89,
+            total: 89
         };
 
         const headerH = 15;
         doc.rect(boxX, y, boxWidth, headerH).fill('#f1f5f9');
-        doc.fillColor('#0f172a').fontSize(6.5).font('Helvetica-Bold');
+        doc.fillColor('#0f172a').fontSize(6).font('Helvetica-Bold');
 
         let curX = boxX;
         doc.text('', curX + 4, y + 4, { width: colW.concepto - 8 }); curX += colW.concepto;
         doc.text('COMPRAS EXENTAS', curX, y + 4, { width: colW.exentas - 4, align: 'right' }); curX += colW.exentas;
+        doc.text('COMPRAS NO SUJETAS', curX, y + 4, { width: colW.no_sujetas - 4, align: 'right' }); curX += colW.no_sujetas;
         doc.text('COMPRAS GRAVADAS', curX, y + 4, { width: colW.gravadas - 4, align: 'right' }); curX += colW.gravadas;
         doc.text('REB. Y DEV. S/COMPRAS', curX, y + 4, { width: colW.reb_dev - 4, align: 'right' }); curX += colW.reb_dev;
         doc.text('TOTAL', curX, y + 4, { width: colW.total - 4, align: 'right' });
@@ -189,7 +191,7 @@ const drawCuadroResumenCompras = (doc, startX, totalWidth, totals, onNewPage = n
         y += headerH;
 
         const startMatrixY = y;
-        const drawMatrixRow = (label, exentas, gravadas, reb_dev, total, isBold = false, bg = null) => {
+        const drawMatrixRow = (label, exentas, no_sujetas, gravadas, reb_dev, total, isBold = false, bg = null) => {
             const rowH = 13.5;
             if (bg) {
                 doc.rect(boxX, y, boxWidth, rowH).fill(bg);
@@ -198,6 +200,7 @@ const drawCuadroResumenCompras = (doc, startX, totalWidth, totals, onNewPage = n
             let rx = boxX;
             doc.text(label, rx + 6, y + 3.5, { width: colW.concepto - 8 }); rx += colW.concepto;
             doc.text(exentas !== null && exentas !== undefined ? reportPdfHelper.fmt(exentas) : '', rx, y + 3.5, { width: colW.exentas - 4, align: 'right' }); rx += colW.exentas;
+            doc.text(no_sujetas !== null && no_sujetas !== undefined ? reportPdfHelper.fmt(no_sujetas) : '', rx, y + 3.5, { width: colW.no_sujetas - 4, align: 'right' }); rx += colW.no_sujetas;
             doc.text(reportPdfHelper.fmt(gravadas), rx, y + 3.5, { width: colW.gravadas - 4, align: 'right' }); rx += colW.gravadas;
             doc.text(reportPdfHelper.fmt(reb_dev), rx, y + 3.5, { width: colW.reb_dev - 4, align: 'right' }); rx += colW.reb_dev;
             doc.text(reportPdfHelper.fmt(total), rx, y + 3.5, { width: colW.total - 4, align: 'right' });
@@ -207,30 +210,34 @@ const drawCuadroResumenCompras = (doc, startX, totalWidth, totals, onNewPage = n
         };
 
         const locGravNet = (totals.locales_grav_bruto || 0) - (totals.locales_nc || 0);
-        const locExeNet = totals.locales_exe_bruto || 0;
-        const locTotal = totals.locales_grav_bruto || 0;
+        const locExeNet = (totals.locales_exe_bruto || 0) - (totals.locales_exe_nc || 0);
+        const locNsNet = (totals.locales_ns_bruto || 0) - (totals.locales_ns_nc || 0);
+        const locTotal = Number((locExeNet + locNsNet + locGravNet).toFixed(2));
 
         const impGravNet = (totals.import_grav_bruto || 0) - (totals.import_nc || 0);
-        const impExeNet = totals.import_exe_bruto || 0;
-        const impTotal = totals.import_grav_bruto || 0;
+        const impExeNet = (totals.import_exe_bruto || 0) - (totals.import_exe_nc || 0);
+        const impNsNet = (totals.import_ns_bruto || 0) - (totals.import_ns_nc || 0);
+        const impTotal = Number((impExeNet + impNsNet + impGravNet).toFixed(2));
 
         const intGravNet = (totals.intern_grav_bruto || 0) - (totals.intern_nc || 0);
-        const intExeNet = totals.intern_exe_bruto || 0;
-        const intTotal = totals.intern_grav_bruto || 0;
+        const intExeNet = (totals.intern_exe_bruto || 0) - (totals.intern_exe_nc || 0);
+        const intNsNet = (totals.intern_ns_bruto || 0) - (totals.intern_ns_nc || 0);
+        const intTotal = Number((intExeNet + intNsNet + intGravNet).toFixed(2));
 
         const ivaNet = totals.iva || 0;
-        const ivaTotal = (totals.iva_bruto || (ivaNet + (totals.iva_nc || 0)));
 
-        drawMatrixRow('LOCALES', locExeNet, locGravNet, totals.locales_nc || 0, locTotal, false, '#ffffff');
-        drawMatrixRow('IMPORTACIONES', impExeNet, impGravNet, totals.import_nc || 0, impTotal, false, '#f8fafc');
-        drawMatrixRow('INTERNACIONES', intExeNet, intGravNet, totals.intern_nc || 0, intTotal, false, '#ffffff');
-        drawMatrixRow('CREDITO FISCAL', null, ivaNet, totals.iva_nc || 0, ivaTotal, true, '#f1f5f9');
+        drawMatrixRow('LOCALES', locExeNet, locNsNet, locGravNet, totals.locales_nc || 0, locTotal, false, '#ffffff');
+        drawMatrixRow('IMPORTACIONES', impExeNet, impNsNet, impGravNet, totals.import_nc || 0, impTotal, false, '#f8fafc');
+        drawMatrixRow('INTERNACIONES', intExeNet, intNsNet, intGravNet, totals.intern_nc || 0, intTotal, false, '#ffffff');
+        drawMatrixRow('CREDITO FISCAL', null, null, ivaNet, totals.iva_nc || 0, ivaNet, true, '#f1f5f9');
         const matrixBottomY = y;
 
         // Líneas verticales divisoras de la matriz
         let vx = boxX + colW.concepto;
         doc.moveTo(vx, startMatrixY).lineTo(vx, matrixBottomY).lineWidth(0.25).strokeColor('#e2e8f0').stroke();
         vx += colW.exentas;
+        doc.moveTo(vx, startMatrixY).lineTo(vx, matrixBottomY).lineWidth(0.25).strokeColor('#e2e8f0').stroke();
+        vx += colW.no_sujetas;
         doc.moveTo(vx, startMatrixY).lineTo(vx, matrixBottomY).lineWidth(0.25).strokeColor('#e2e8f0').stroke();
         vx += colW.gravadas;
         doc.moveTo(vx, startMatrixY).lineTo(vx, matrixBottomY).lineWidth(0.25).strokeColor('#e2e8f0').stroke();
@@ -239,12 +246,12 @@ const drawCuadroResumenCompras = (doc, startX, totalWidth, totals, onNewPage = n
 
         // 3. Sub-tabla de complementos fiscales
         const subColW = {
-            totalLabel: 70,
-            anticipo: 90,
-            percibido: 90,
-            retenido: 90,
-            ret_terceros: 90,
-            excluidos: 90
+            totalLabel: 60,
+            anticipo: 96,
+            percibido: 96,
+            retenido: 96,
+            ret_terceros: 96,
+            excluidos: 96
         };
 
         const subHeaderY = y;
@@ -589,9 +596,9 @@ const getVatBookPurchasesPDF = async (req, res) => {
         let t = {
             grav: 0, exe: 0, iva: 0, no_sujeta: 0, ret: 0, anticipo_cuenta: 0, total: 0,
             nc_total: 0, nc_grav: 0, nc_iva: 0, nc_no_sujeta: 0, bruto_total: 0,
-            locales_grav_bruto: 0, locales_exe_bruto: 0, locales_nc: 0,
-            import_grav_bruto: 0, import_exe_bruto: 0, import_nc: 0,
-            intern_grav_bruto: 0, intern_exe_bruto: 0, intern_nc: 0,
+            locales_grav_bruto: 0, locales_exe_bruto: 0, locales_ns_bruto: 0, locales_nc: 0, locales_ns_nc: 0, locales_exe_nc: 0,
+            import_grav_bruto: 0, import_exe_bruto: 0, import_ns_bruto: 0, import_nc: 0, import_ns_nc: 0, import_exe_nc: 0,
+            intern_grav_bruto: 0, intern_exe_bruto: 0, intern_ns_bruto: 0, intern_nc: 0, intern_ns_nc: 0, intern_exe_nc: 0,
             iva_bruto: 0, iva_nc: 0,
             iva_percibido: 0, iva_retenido: 0, ret_terceros: 0, compras_excluidos: 0
         };
@@ -676,10 +683,16 @@ const getVatBookPurchasesPDF = async (req, res) => {
                 t.nc_total += to; t.nc_grav += g; t.nc_iva += i; t.nc_no_sujeta += ns;
                 if (esImport) {
                     t.import_nc += g;
+                    t.import_ns_nc += ns;
+                    t.import_exe_nc += e;
                 } else if (esIntern) {
                     t.intern_nc += g;
+                    t.intern_ns_nc += ns;
+                    t.intern_exe_nc += e;
                 } else {
                     t.locales_nc += g;
+                    t.locales_ns_nc += ns;
+                    t.locales_exe_nc += e;
                 }
                 t.iva_nc += i;
             } else {
@@ -688,12 +701,15 @@ const getVatBookPurchasesPDF = async (req, res) => {
                 if (esImport) {
                     t.import_grav_bruto += g;
                     t.import_exe_bruto += e;
+                    t.import_ns_bruto += ns;
                 } else if (esIntern) {
                     t.intern_grav_bruto += g;
                     t.intern_exe_bruto += e;
+                    t.intern_ns_bruto += ns;
                 } else {
                     t.locales_grav_bruto += g;
                     t.locales_exe_bruto += e;
+                    t.locales_ns_bruto += ns;
                 }
                 t.iva_bruto += i;
                 if (esExcluido) {
