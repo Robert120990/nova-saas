@@ -368,11 +368,13 @@ const createPurchase = async (req, res) => {
             }
 
             // Registrar en movimientos de inventario general (usamos el ID efectivo)
+            const timeStr = new Date().toTimeString().slice(0, 8);
+            const movementDate = fecha ? `${String(fecha).slice(0, 10)} ${timeStr}` : new Date();
             await connection.query(`
                 INSERT INTO inventory_movements 
-                (company_id, branch_id, product_id, tipo_movimiento, cantidad, costo, documento_id, tipo_documento)
-                VALUES (?, ?, ?, ?, ?, ?, ?, 'COMPRA')
-            `, [companyId, branch_id, effectiveProductId, movTipo, qty, price, purchaseId]);
+                (company_id, branch_id, product_id, tipo_movimiento, cantidad, costo, documento_id, tipo_documento, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'COMPRA', ?)
+            `, [companyId, branch_id, effectiveProductId, movTipo, qty, price, purchaseId, movementDate]);
 
             // ACTUALIZACIÓN DE COSTO Y PROVEEDOR: Si es un ingreso (no es nota de crédito), actualizar costo y proveedor en el producto.
             // Si solo se está usando descripción (sin product_id), no aplica.
@@ -679,11 +681,13 @@ const updatePurchase = async (req, res) => {
 
             const effectiveProductId = await getEffectiveProductId(connection, productId);
             const movBranch = newEffects[productId] !== undefined ? branch_id : oldBranchId;
+            const timeStr = new Date().toTimeString().slice(0, 8);
+            const movementDate = fecha ? `${String(fecha).slice(0, 10)} ${timeStr}` : new Date();
             await connection.query(`
                 INSERT INTO inventory_movements 
-                (company_id, branch_id, product_id, tipo_movimiento, cantidad, costo, documento_id, tipo_documento)
-                VALUES (?, ?, ?, ?, ?, ?, ?, 'EDICION_COMPRA')
-            `, [companyId, movBranch, effectiveProductId, delta > 0 ? 'ENTRADA' : 'SALIDA', Math.abs(delta), newPrices[productId] || 0, id]);
+                (company_id, branch_id, product_id, tipo_movimiento, cantidad, costo, documento_id, tipo_documento, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'EDICION_COMPRA', ?)
+            `, [companyId, movBranch, effectiveProductId, delta > 0 ? 'ENTRADA' : 'SALIDA', Math.abs(delta), newPrices[productId] || 0, id, movementDate]);
         }
 
         await connection.commit();
@@ -749,7 +753,7 @@ const voidPurchase = async (req, res) => {
             // Registrar movimiento de reversión (usamos el ID efectivo)
             await connection.query(`
                 INSERT INTO inventory_movements 
-                (company_id, branch_id, product_id, tipo_movimiento, cantidad, documento_id, tipo_documento, fecha)
+                (company_id, branch_id, product_id, tipo_movimiento, cantidad, documento_id, tipo_documento, created_at)
                 VALUES (?, ?, ?, ?, ?, ?, 'ANULACION_COMPRA', ?)
             `, [companyId, branch_id, effectiveProductId, revMovTipo, qty, id, new Date()]);
         }
