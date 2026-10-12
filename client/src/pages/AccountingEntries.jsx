@@ -70,12 +70,8 @@ const AccountingEntries = () => {
         mutationFn: (id) => axios.put(`/api/accounting/entries/${id}/void`, {}, { headers }),
         onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['entries'] }); toast.success('Partida anulada'); },
         onError: (err) => {
-            if (err?.response?.status === 404) {
-                toast.error('La partida seleccionada ya no existe o fue eliminada');
-                queryClient.invalidateQueries({ queryKey: ['entries'] });
-            } else {
-                toast.error(err?.response?.data?.message || 'Error al anular partida');
-            }
+            toast.error(err?.response?.status === 404 ? 'La partida seleccionada ya no existe o fue eliminada' : (err?.response?.data?.message || 'Error al anular partida'));
+            if (err?.response?.status === 404) queryClient.invalidateQueries({ queryKey: ['entries'] });
         },
     });
 
@@ -85,9 +81,7 @@ const AccountingEntries = () => {
         onError: (err) => {
             if (err?.response?.status === 404) {
                 toast.error('La partida ya no existe o fue eliminada en el servidor');
-                setIsModalOpen(false);
-                setEditingEntry(null);
-                resetForm();
+                setIsModalOpen(false); setEditingEntry(null); resetForm();
                 queryClient.invalidateQueries({ queryKey: ['entries'] });
             } else {
                 toast.error(err?.response?.data?.message || 'Error al actualizar partida');
@@ -228,8 +222,19 @@ const AccountingEntries = () => {
         document.getElementById('quick-desc')?.focus();
     };
 
+    const tableHeaders = [
+        { label: 'Número', className: 'w-28 px-3' },
+        { label: 'Fecha', className: 'w-24 px-2' },
+        { label: 'Tipo', className: 'w-32 px-2' },
+        { label: 'Descripción', className: 'px-2' },
+        { label: 'Débito', className: 'w-28 px-2 text-right' },
+        { label: 'Crédito', className: 'w-28 px-2 text-right' },
+        { label: 'Estado', className: 'w-24 px-2 text-center' },
+        { label: '', className: 'w-20 px-2 text-right' },
+    ];
+
     return (
-        <div className="max-w-6xl mx-auto p-4 md:p-8 space-y-6 animate-in fade-in pb-20">
+        <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-4 animate-in fade-in pb-20">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
                     <h1 className="text-2xl md:text-3xl font-black text-slate-900 flex items-center gap-3"><FileText size={28} className="text-indigo-600 shrink-0" />Partidas Contables</h1>
@@ -245,21 +250,78 @@ const AccountingEntries = () => {
                 <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar por número, descripción o tipo..." className="pl-9 pr-4 py-2.5 bg-white border border-slate-200 rounded-2xl text-sm font-bold w-full md:w-80 outline-none" />
             </div>
 
-            <Table headers={['Número', 'Fecha', 'Tipo', 'Descripción', 'Débito', 'Crédito', 'Estado']} data={filteredEntries} isLoading={isLoading}
+            <Table
+                headers={tableHeaders}
+                data={filteredEntries}
+                isLoading={isLoading}
+                compact
+                noHorizontalScroll
+                tableClassName="table-fixed w-full"
+                renderCard={(e) => (
+                    <div className="flex flex-col gap-1.5 text-xs">
+                        <div className="flex items-center justify-between">
+                            <span className="font-mono font-bold text-slate-900">{e.number}</span>
+                            <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${e.status === 'posted' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : e.status === 'voided' ? 'bg-rose-50 text-rose-600 border border-rose-100' : 'bg-amber-50 text-amber-600 border border-amber-100'}`}>
+                                {e.status === 'posted' ? 'Contabilizado' : e.status === 'voided' ? 'Anulado' : 'Borrador'}
+                            </span>
+                        </div>
+                        <div className="flex items-center justify-between text-[11px] text-slate-500">
+                            <span>{formatDate(e.date)}</span>
+                            <span className="font-medium text-slate-700">{e.entry_type_name}</span>
+                        </div>
+                        {e.description && (
+                            <p className="text-slate-600 text-[11px] line-clamp-2" title={e.description}>{e.description}</p>
+                        )}
+                        <div className="flex items-center justify-between pt-1 border-t border-slate-100 font-mono text-[11px]">
+                            <span className="text-emerald-600 font-bold">Débito: <Money value={e.total_debit} /></span>
+                            <span className="text-rose-600 font-bold">Crédito: <Money value={e.total_credit} /></span>
+                        </div>
+                        <div className="flex items-center justify-end gap-2 pt-1 border-t border-slate-100">
+                            <button onClick={() => handleView(e)} className="p-1 text-slate-500 hover:text-indigo-600 text-[11px] flex items-center gap-1 font-semibold"><Eye size={13} /> Ver</button>
+                            <button onClick={() => handleEdit(e)} className="p-1 text-slate-500 hover:text-amber-600 text-[11px] flex items-center gap-1 font-semibold"><Edit size={13} /> Editar</button>
+                            {e.status === 'posted' && (
+                                <button
+                                    onClick={async () => {
+                                        const ok = await confirm({ title: 'Anular Partida', message: '¿Anular esta partida contable?', confirmLabel: 'Anular' });
+                                        if (ok) voidMutation.mutate(e.id);
+                                    }}
+                                    className="p-1 text-slate-500 hover:text-rose-600 text-[11px] flex items-center gap-1 font-semibold"
+                                >
+                                    <Ban size={13} /> Anular
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                )}
                 renderRow={(e) => (
-                    <tr key={e.id} className="border-b border-slate-50 hover:bg-slate-50/50">
-                        <td className="px-6 py-1.5 font-mono font-bold text-xs">{e.number}</td>
-                        <td className="px-6 py-1.5 text-xs">{formatDate(e.date)}</td>
-                        <td className="px-6 py-1.5 text-xs">{e.entry_type_name}</td>
-                        <td className="px-6 py-1.5 text-xs text-slate-600 max-w-xs truncate">{e.description}</td>
-                        <td className="px-6 py-1.5 font-bold text-xs text-emerald-600"><Money value={e.total_debit} /></td>
-                        <td className="px-6 py-1.5 font-bold text-xs text-rose-600"><Money value={e.total_credit} /></td>
-                        <td className="px-6 py-1.5"><span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${e.status === 'posted' ? 'bg-emerald-50 text-emerald-600' : e.status === 'voided' ? 'bg-rose-50 text-rose-600' : 'bg-amber-50 text-amber-600'}`}>{e.status === 'posted' ? 'Contabilizado' : e.status === 'voided' ? 'Anulado' : 'Borrador'}</span></td>
-                        <td className="px-6 py-1.5">
-                            <div className="flex gap-2">
-                                <button aria-label="Ver partida" onClick={() => handleView(e)} className="p-1.5 text-slate-600 hover:text-indigo-600"><Eye size={14} /></button>
-                                <button aria-label="Editar partida" onClick={() => handleEdit(e)} className="p-1.5 text-slate-600 hover:text-amber-600"><Edit size={14} /></button>
-                                {e.status === 'posted' && <button onClick={async () => { const ok = await confirm({ title: 'Anular Partida', message: '¿Anular esta partida contable?', confirmLabel: 'Anular' }); if (ok) voidMutation.mutate(e.id); }} className="p-1.5 text-slate-600 hover:text-rose-600"><Ban size={14} /></button>}
+                    <tr key={e.id} className="hover:bg-indigo-50/30 transition-colors">
+                        <td className="px-3 py-1 font-mono font-bold text-[11px] text-slate-900 truncate" title={e.number}>{e.number}</td>
+                        <td className="px-2 py-1 text-[11px] text-slate-600 whitespace-nowrap">{formatDate(e.date)}</td>
+                        <td className="px-2 py-1 text-[11px] font-semibold text-slate-700 truncate" title={e.entry_type_name}>{e.entry_type_name}</td>
+                        <td className="px-2 py-1 text-[11px] text-slate-600 truncate" title={e.description}>{e.description}</td>
+                        <td className="px-2 py-1 font-bold text-[11px] text-emerald-600 font-mono text-right whitespace-nowrap"><Money value={e.total_debit} /></td>
+                        <td className="px-2 py-1 font-bold text-[11px] text-rose-600 font-mono text-right whitespace-nowrap"><Money value={e.total_credit} /></td>
+                        <td className="px-2 py-1 text-center whitespace-nowrap">
+                            <span className={`inline-block px-2 py-0.5 rounded-full text-[9px] font-bold ${e.status === 'posted' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : e.status === 'voided' ? 'bg-rose-50 text-rose-600 border border-rose-100' : 'bg-amber-50 text-amber-600 border border-amber-100'}`}>
+                                {e.status === 'posted' ? 'Contabilizado' : e.status === 'voided' ? 'Anulado' : 'Borrador'}
+                            </span>
+                        </td>
+                        <td className="px-2 py-1 text-right whitespace-nowrap">
+                            <div className="flex items-center justify-end gap-0.5">
+                                <button aria-label="Ver partida" onClick={() => handleView(e)} className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors" title="Ver partida"><Eye size={13} /></button>
+                                <button aria-label="Editar partida" onClick={() => handleEdit(e)} className="p-1 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded transition-colors" title="Editar partida"><Edit size={13} /></button>
+                                {e.status === 'posted' && (
+                                    <button
+                                        onClick={async () => {
+                                            const ok = await confirm({ title: 'Anular Partida', message: '¿Anular esta partida contable?', confirmLabel: 'Anular' });
+                                            if (ok) voidMutation.mutate(e.id);
+                                        }}
+                                        className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors"
+                                        title="Anular partida"
+                                    >
+                                        <Ban size={13} />
+                                    </button>
+                                )}
                             </div>
                         </td>
                     </tr>

@@ -14,3 +14,17 @@ export { default as AccountingFiscalActionBar } from './AccountingFiscalActionBa
 export { default as useFiscalOperation } from './useFiscalOperation';
 export { default as useAccountingCorrelativos } from './useAccountingCorrelativos';
 export { default as AccountingCorrelativosConflict } from './AccountingCorrelativosConflict';
+export { default as AccountingCloseoutsTab } from './tabs/AccountingCloseoutsTab';
+export { default as CloseoutCostsModal } from './modals/CloseoutCostsModal';
+export { default as CloseoutCostsReportModal } from './modals/CloseoutCostsReportModal';
+export { default as CloseoutsEntriesTable } from './CloseoutsEntriesTable';
+export { default as DefaultAccountRow } from './DefaultAccountRow';
+export { default as DefaultAccountCustomForm } from './DefaultAccountCustomForm';
+export { default as DefaultAccountsBranchBar } from './DefaultAccountsBranchBar';
+export { default as DefaultAccountsFilterBar } from './DefaultAccountsFilterBar';
+export { default as AuxiliaresSection } from './AccountingAuxiliaresSection';
+export { default as AccountingBankTab } from './tabs/AccountingBankTab';
+export { default as BankFilterBar } from './BankFilterBar';
+export { default as BankChecksTable } from './BankChecksTable';
+export { default as BankMovementsTable } from './BankMovementsTable';
+export { default as BankEntryModal } from './modals/BankEntryModal';

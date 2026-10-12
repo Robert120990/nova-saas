@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import axios from 'axios';
-import { Save, Search, Users2 } from 'lucide-react';
+import { Save, Search, Users2, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import AccountSelect from './AccountSelect';
 import { unwrapList } from '../../utils/apiUtils';
@@ -21,13 +21,14 @@ const AuxiliaresSection = ({ accounts }) => {
     useDirtyTracker('accounting-auxiliares', Object.values(editsByType).some(changes => Object.keys(changes).length > 0));
 
     useEffect(() => {
-        const t = setTimeout(() => setDebounced(search), 400);
+        const t = setTimeout(() => setDebounced(search), 300);
         return () => clearTimeout(t);
     }, [search]);
 
     const { data: entities = [], isFetching } = useQuery({
         queryKey: ['entity-accounts', entityType, debounced],
         queryFn: async () => unwrapList(await axios.get(`/api/accounting/generation/entity-accounts?type=${entityType}&search=${encodeURIComponent(debounced)}`)),
+        placeholderData: keepPreviousData,
     });
 
     const saveMutation = useMutation({
@@ -75,10 +76,20 @@ const AuxiliaresSection = ({ accounts }) => {
                     placeholder="Buscar por nombre o NRC..."
                     className={inputCls}
                 />
-                <Search size={15} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                {isFetching ? (
+                    <Loader2 size={16} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-indigo-500 animate-spin pointer-events-none" />
+                ) : (
+                    <Search size={15} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                )}
             </div>
 
-            <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
+            <div className={`space-y-2 min-h-[160px] max-h-[420px] overflow-y-auto pr-1 transition-opacity duration-150 ${isFetching ? 'opacity-60' : 'opacity-100'}`}>
+                {entities.length === 0 && isFetching && (
+                    <div className="flex items-center justify-center py-12 text-slate-400 gap-2">
+                        <Loader2 size={18} className="animate-spin text-indigo-500" />
+                        <span className="text-xs font-semibold">Buscando registros...</span>
+                    </div>
+                )}
                 {entities.length === 0 && !isFetching && (
                     <p className="text-[11px] text-slate-500 bg-slate-50 border border-dashed border-slate-200 rounded-xl px-4 py-6 text-center">
                         Sin resultados para esta búsqueda.

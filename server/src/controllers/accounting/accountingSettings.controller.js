@@ -2,7 +2,21 @@ const pool = require('../../config/db');
 
 const getSettings = async (req, res) => {
     try {
-        const [rows] = await pool.query('SELECT setting_key, setting_value FROM accounting_settings WHERE company_id = ?', [req.company_id]);
+        const branchId = req.query.branch_id !== undefined ? (parseInt(req.query.branch_id, 10) || 0) : null;
+        let query = 'SELECT setting_key, setting_value, branch_id FROM accounting_settings WHERE company_id = ?';
+        const params = [req.company_id];
+
+        if (branchId !== null) {
+            if (req.query.fallback === 'true' && branchId > 0) {
+                query += ' AND branch_id IN (0, ?) ORDER BY branch_id ASC';
+                params.push(branchId);
+            } else {
+                query += ' AND branch_id = ?';
+                params.push(branchId);
+            }
+        }
+
+        const [rows] = await pool.query(query, params);
         const settings = {};
         rows.forEach(r => { settings[r.setting_key] = r.setting_value; });
         res.json(settings);
@@ -12,6 +26,7 @@ const getSettings = async (req, res) => {
 const saveSettings = async (req, res) => {
     const conn = await pool.getConnection();
     try {
+        const branchId = req.body.branch_id !== undefined ? (parseInt(req.body.branch_id, 10) || 0) : (parseInt(req.query.branch_id, 10) || 0);
         const { settings, remove, expected_settings } = req.body;
         const keys = [...new Set([...Object.keys(settings || {}), ...(Array.isArray(remove) ? remove : [])])];
         if (keys.some(key => /^PARTIDA_(VENTAS|COMPRAS|CXC|CXP|CIERRE|APERTURA)_/i.test(key))) {
@@ -24,8 +39,8 @@ const saveSettings = async (req, res) => {
                 throw new Error('Debe indicar la versión previa de cada ajuste que desea modificar');
             }
             const [previous] = keys.length ? await conn.query(
-                'SELECT setting_key, setting_value FROM accounting_settings WHERE company_id = ? AND setting_key IN (?) FOR UPDATE',
-                [req.company_id, keys]
+                'SELECT setting_key, setting_value FROM accounting_settings WHERE company_id = ? AND branch_id = ? AND setting_key IN (?) FOR UPDATE',
+                [req.company_id, branchId, keys]
             ) : [[]];
             const values = Object.fromEntries(previous.map(row => [row.setting_key, row.setting_value]));
             const normalized = value => value === undefined || value === null ? null : String(value);
@@ -41,15 +56,15 @@ const saveSettings = async (req, res) => {
         for (const [key, value] of Object.entries(settings || {})) {
             if (value !== null && value !== undefined) {
                 await conn.query(
-                    'INSERT INTO accounting_settings (company_id, setting_key, setting_value) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE setting_value = ?',
-                    [req.company_id, key, String(value), String(value)]
+                    'INSERT INTO accounting_settings (company_id, branch_id, setting_key, setting_value) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE setting_value = ?',
+                    [req.company_id, branchId, key, String(value), String(value)]
                 );
             }
         }
         if (Array.isArray(remove) && remove.length > 0) {
             for (const key of remove) {
                 if (typeof key === 'string' && key.trim() !== '') {
-                    await conn.query('DELETE FROM accounting_settings WHERE company_id = ? AND setting_key = ?', [req.company_id, key]);
+                    await conn.query('DELETE FROM accounting_settings WHERE company_id = ? AND branch_id = ? AND setting_key = ?', [req.company_id, branchId, key]);
                 }
             }
         }
@@ -60,6 +75,5 @@ const saveSettings = async (req, res) => {
         res.status(e.statusCode || 400).json({ message: e.message, ...(e.conflicts ? { conflicts: e.conflicts } : {}) });
     } finally { conn.release(); }
 };
-
 
 module.exports = { getSettings, saveSettings };

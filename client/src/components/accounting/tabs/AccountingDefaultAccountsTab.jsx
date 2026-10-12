@@ -1,114 +1,300 @@
-import { Save, Plus, Trash2 } from 'lucide-react';
-import { toast } from 'sonner';
-import AccountSelect from '../AccountSelect';
-import AuxiliaresSection from '../AccountingAuxiliaresSection';
+import { useState, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import axios from 'axios';
+import { Save, Plus, X } from 'lucide-react';
+import DefaultAccountRow from '../DefaultAccountRow';
+import DefaultAccountCustomForm from '../DefaultAccountCustomForm';
+import DefaultAccountsBranchBar from '../DefaultAccountsBranchBar';
+import DefaultAccountsFilterBar from '../DefaultAccountsFilterBar';
+import { ACCOUNT_CATEGORIES, KNOWN_ACCOUNTS, getAccountMetadata, findKnownAccountByPosName } from '../defaultAccountsConfig';
+import { unwrapList } from '../../../utils/apiUtils';
+import { useAuth } from '../../../context/AuthContext';
 
-const normalizeKey = (val) => val.toUpperCase().replace(/[^A-Z0-9_]/g, '').slice(0, 50);
+const AccountingDefaultAccountsTab = ({
+    defaultAccounts = [],
+    setDefaultAccounts,
+    accounts = [],
+    saveDefaultAccounts,
+    saveDefaultsMutation,
+    branches = [],
+    selectedBranchId = 0,
+    onBranchChange,
+    onCopyFromBranch,
+}) => {
+    const { user } = useAuth();
+    const companyId = user?.company_id;
+    const headers = { 'x-company-id': companyId };
 
-const AccountingDefaultAccountsTab = ({ defaultAccounts, setDefaultAccounts, updateRow, removeRow, accounts, addRow, saveDefaultAccounts, saveDefaultsMutation }) => (
-                        <fieldset disabled={saveDefaultsMutation.isPending} className="bg-white rounded-2xl border shadow-sm p-6 space-y-5">
-                            <div>
-                                <span className="text-[10px] font-black uppercase text-slate-400 block mb-1">Cuentas por Defecto</span>
-                                <p className="text-[11px] text-slate-500">
-                                    Define cuentas del catálogo bajo una clave personalizada. La clave solo acepta <b>mayúsculas, números y guion bajo</b>.
-                                    Usa las claves sugeridas de <b>Contabilizar</b> para agregarlas con un clic.
-                                </p>
-                            </div>
+    const { data: posTypes = [] } = useQuery({
+        queryKey: ['gas-station-pos-types', companyId],
+        queryFn: async ({ signal }) => unwrapList(await axios.get('/api/gas-station/pos-types', { headers, signal })),
+        enabled: !!companyId,
+    });
 
-                            <div className="border border-indigo-100 bg-indigo-50/40 rounded-xl p-4 space-y-3">
-                                <span className="text-[10px] font-black uppercase text-indigo-400 block">Claves Sugeridas — Contabilizar <span className="normal-case font-medium text-slate-400">(clic para agregar)</span></span>
-                                {[
-                                    { grupo: 'Partida de Ventas', keys: ['CUENTA_CAJA', 'CUENTA_BANCOS', 'CUENTA_CLIENTES_CXC', 'CUENTA_VENTAS_GRAVADAS', 'CUENTA_VENTAS_EXENTAS', 'CUENTA_VENTAS_NOSUJETAS', 'CUENTA_IVA_DEBITO', 'CUENTA_IVA_PERCIBIDO', 'CUENTA_FOVIAL_POR_PAGAR', 'CUENTA_COTRANS_POR_PAGAR'] },
-                                    { grupo: 'Partida de Compras', keys: ['CUENTA_COMPRAS_GRAVADAS', 'CUENTA_COMPRAS_EXENTAS', 'CUENTA_IVA_CREDITO', 'CUENTA_PROVEEDORES_CXP', 'CUENTA_IVA_RETENIDO'] },
-                                ].map(g => (
-                                    <div key={g.grupo} className="space-y-1.5">
-                                        <span className="block text-[9px] font-black uppercase text-slate-400">{g.grupo}</span>
-                                        <div className="flex flex-wrap gap-1.5">
-                                            {g.keys.map(key => {
-                                                const added = defaultAccounts.some(r => r.key === key);
-                                                return (
-                                                    <button
-                                                        key={key}
-                                                        type="button"
-                                                        onClick={() => {
-                                                            if (added) { toast.info(`${key} ya está agregada`); return; }
-                                                            setDefaultAccounts(rows => [...rows, { key, account_id: '' }]);
-                                                        }}
-                                                        title={added ? 'Ya agregada' : `Agregar ${key}`}
-                                                        className={`px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold border transition-all ${
-                                                            added
-                                                                ? 'bg-emerald-50 border-emerald-200 text-emerald-600 cursor-default'
-                                                                : 'bg-white border-slate-200 text-slate-600 hover:border-indigo-400 hover:text-indigo-600 hover:bg-indigo-50'
-                                                        }`}
-                                                    >
-                                                        {added ? '✓ ' : '+ '}{key}
-                                                    </button>
-                                                );
-                                            })}
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
+    // Iniciar por defecto en Cierres de Turno para evitar scroll masivo inicial
+    const [selectedCategory, setSelectedCategory] = useState('turnos');
+    const [searchQuery, setSearchQuery] = useState('');
+    const [statusFilter, setStatusFilter] = useState('all'); // 'all' | 'configured' | 'pending'
+    const [isAddingCustom, setIsAddingCustom] = useState(false);
 
-                            {defaultAccounts.length === 0 && (
-                                <p className="text-[11px] text-slate-500 bg-slate-50 border border-dashed border-slate-200 rounded-xl px-4 py-6 text-center">
-                                    Aún no hay cuentas por defecto configuradas. Presiona "Agregar" para crear la primera.
-                                </p>
-                            )}
+    // Mapa de cuentas ya configuradas por clave
+    const configuredMap = useMemo(() => {
+        const map = new Map();
+        (defaultAccounts || []).forEach(row => {
+            if (row?.key) map.set(row.key.trim().toUpperCase(), row.account_id);
+        });
+        return map;
+    }, [defaultAccounts]);
 
-                            <div className="space-y-4">
-                                {defaultAccounts.map((row, index) => (
-                                    <div key={index} className="grid grid-cols-1 md:grid-cols-[1fr_1.6fr_auto] gap-3 md:items-end bg-slate-50/50 border border-slate-100 rounded-xl p-3">
-                                        <div className="space-y-1">
-                                            <label className="text-[10px] font-black uppercase text-slate-400 block">Clave</label>
-                                            <input
-                                                value={row.key}
-                                                onChange={e => updateRow(index, { key: normalizeKey(e.target.value) })}
-                                                placeholder="CUENTA_IVA"
-                                                maxLength={50}
-                                                className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-mono font-bold uppercase tracking-wider outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all"
-                                            />
-                                        </div>
-                                        <div className="space-y-1">
-                                            <label className="text-[10px] font-black uppercase text-slate-400 block">Cuenta</label>
-                                            <AccountSelect
-                                                value={row.account_id}
-                                                onChange={v => updateRow(index, { account_id: v })}
-                                                accounts={accounts}
-                                                placeholder="Buscar cuenta..."
-                                            />
-                                        </div>
-                                        <button
-                                            type="button"
-                                            onClick={() => removeRow(index)}
-                                            title="Eliminar"
-                                            className="flex md:flex-none items-center justify-center gap-2 text-rose-500 hover:text-rose-700 hover:bg-rose-50 border border-rose-200 md:border-0 rounded-xl px-4 py-3 transition-colors"
-                                        >
-                                            <Trash2 size={16} />
-                                            <span className="md:hidden text-[10px] font-black uppercase">Eliminar</span>
-                                        </button>
-                                    </div>
-                                ))}
-                            </div>
+    // Combinar cuentas conocidas sugeridas + personalizadas en una lista unificada
+    const unifiedList = useMemo(() => {
+        const list = [];
+        const seenKeys = new Set();
 
-                            <button
-                                type="button"
-                                onClick={addRow}
-                                className="w-full border-2 border-dashed border-indigo-200 hover:border-indigo-400 hover:bg-indigo-50/50 text-indigo-600 py-3.5 rounded-2xl font-black uppercase text-xs flex items-center justify-center gap-2 transition-all"
-                            >
-                                <Plus size={16} /> Agregar Cuenta por Defecto
-                            </button>
+        // 1. Cuentas conocidas sugeridas
+        KNOWN_ACCOUNTS.forEach(meta => {
+            const keyUpper = meta.key.toUpperCase();
+            let matchedKey = keyUpper;
+            let currentAccountId = configuredMap.get(keyUpper) || '';
 
-                            <button
-                                onClick={saveDefaultAccounts}
-                                disabled={saveDefaultsMutation.isPending}
-                                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-4 rounded-2xl font-black uppercase text-sm flex items-center justify-center gap-2 disabled:opacity-50"
-                            >
-                                <Save size={18} /> {saveDefaultsMutation.isPending ? 'Guardando...' : 'Guardar Cuentas por Defecto'}
-                            </button>
+            const variants = [keyUpper, ...(meta.aliases || []).map(a => a.toUpperCase())];
+            for (const v of variants) {
+                if (!currentAccountId && configuredMap.has(v)) {
+                    matchedKey = v;
+                    currentAccountId = configuredMap.get(v) || '';
+                }
+                seenKeys.add(v);
+                seenKeys.add(v.replace(/_/g, ''));
+            }
 
-                            <AuxiliaresSection accounts={accounts} />
-                        </fieldset>
-                    
-);
+            list.push({
+                key: matchedKey,
+                label: meta.label,
+                category: meta.category,
+                group: meta.group,
+                description: meta.description,
+                account_id: currentAccountId,
+                isConfigured: Boolean(currentAccountId),
+                isKnown: true
+            });
+        });
+
+        // 1.b. Tipos de POS registrados en gas_station_pos_types (excluyendo los ya conocidos)
+        (Array.isArray(posTypes) ? posTypes : []).forEach(pos => {
+            if (!pos?.nombre) return;
+            const name = pos.nombre.trim();
+            const matchedKnown = findKnownAccountByPosName(name);
+            if (matchedKnown) return; // Ya está representada por una cuenta conocida sin duplicar
+
+            const keyUnderscored = 'CUENTA_TARJETAS_' + name.toUpperCase().replace(/[^A-Z0-9]+/g, '_');
+            const keyClean = 'CUENTA_TARJETAS_' + name.toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+            if (seenKeys.has(keyUnderscored) || seenKeys.has(keyClean) || seenKeys.has(keyClean.replace(/_/g, ''))) return;
+            seenKeys.add(keyUnderscored);
+            seenKeys.add(keyClean);
+
+            let matchedKey = keyUnderscored;
+            let currentAccountId = configuredMap.get(keyUnderscored) || configuredMap.get(keyClean) || '';
+
+            list.push({
+                key: matchedKey,
+                label: `POS / Tarjeta: ${name}`,
+                category: 'tarjetas',
+                group: 'Terminales POS Registrados',
+                description: `Cobros y liquidaciones bajo "${name}" en cierres de turno.`,
+                account_id: currentAccountId,
+                isConfigured: Boolean(currentAccountId),
+                isKnown: true
+            });
+        });
+
+        // 2. Cuentas personalizadas o dinámicas no estándar
+        (defaultAccounts || []).forEach(row => {
+            const keyUpper = (row.key || '').trim().toUpperCase();
+            if (!keyUpper || seenKeys.has(keyUpper) || seenKeys.has(keyUpper.replace(/_/g, ''))) return;
+            seenKeys.add(keyUpper);
+
+            const meta = getAccountMetadata(keyUpper);
+            list.push({
+                key: keyUpper,
+                label: meta.label,
+                category: meta.category || 'custom',
+                group: meta.group || 'Personalizadas',
+                description: meta.description,
+                account_id: row.account_id || '',
+                isConfigured: Boolean(row.account_id),
+                isKnown: false
+            });
+        });
+
+        return list;
+    }, [configuredMap, defaultAccounts, posTypes]);
+
+    // Contadores de progreso por categoría
+    const categoryStats = useMemo(() => {
+        const stats = { all: { total: unifiedList.length, configured: 0 } };
+        ACCOUNT_CATEGORIES.forEach(c => { stats[c.id] = { total: 0, configured: 0 }; });
+
+        unifiedList.forEach(item => {
+            if (item.isConfigured) stats.all.configured++;
+            if (stats[item.category]) {
+                stats[item.category].total++;
+                if (item.isConfigured) stats[item.category].configured++;
+            }
+        });
+
+        return stats;
+    }, [unifiedList]);
+
+    // Filtrar elementos según categoría, búsqueda y estado
+    const filteredItems = useMemo(() => {
+        const query = searchQuery.trim().toLowerCase();
+        return unifiedList.filter(item => {
+            if (selectedCategory !== 'all' && item.category !== selectedCategory) return false;
+            if (statusFilter === 'configured' && !item.isConfigured) return false;
+            if (statusFilter === 'pending' && item.isConfigured) return false;
+
+            if (query) {
+                const matchLabel = item.label.toLowerCase().includes(query);
+                const matchKey = item.key.toLowerCase().includes(query);
+                const matchDesc = item.description?.toLowerCase().includes(query);
+                const accountObj = accounts.find(a => String(a.id) === String(item.account_id));
+                const matchAccount = accountObj ? (accountObj.code + ' ' + accountObj.name).toLowerCase().includes(query) : false;
+                if (!matchLabel && !matchKey && !matchDesc && !matchAccount) return false;
+            }
+
+            return true;
+        });
+    }, [unifiedList, selectedCategory, statusFilter, searchQuery, accounts]);
+
+    // Manejador para actualizar o asignar cuenta
+    const handleSetAccount = (key, accountId) => {
+        const keyUpper = key.trim().toUpperCase();
+        setDefaultAccounts(prev => {
+            const exists = prev.some(r => r.key.trim().toUpperCase() === keyUpper);
+            if (exists) {
+                if (!accountId) {
+                    return prev.filter(r => r.key.trim().toUpperCase() !== keyUpper);
+                }
+                return prev.map(r => r.key.trim().toUpperCase() === keyUpper ? { ...r, account_id: String(accountId) } : r);
+            }
+            if (!accountId) return prev;
+            return [...prev, { key: keyUpper, account_id: String(accountId) }];
+        });
+    };
+
+    // Manejador para eliminar cuenta personalizada
+    const handleRemoveCustomKey = (key) => {
+        const keyUpper = key.trim().toUpperCase();
+        setDefaultAccounts(prev => prev.filter(r => r.key.trim().toUpperCase() !== keyUpper));
+    };
+
+    // Manejador para registrar clave personalizada
+    const handleAddCustomKey = (cleanKey, accountId) => {
+        setDefaultAccounts(prev => [...prev, { key: cleanKey, account_id: String(accountId) }]);
+        setSelectedCategory('custom');
+    };
+
+    return (
+        <fieldset disabled={saveDefaultsMutation.isPending} className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-4 sm:p-6 space-y-4 min-w-0 w-full">
+            {/* Barra de Selección de Sucursal y Acciones */}
+            <DefaultAccountsBranchBar
+                branches={branches}
+                selectedBranchId={selectedBranchId}
+                onBranchChange={onBranchChange}
+                onCopyFromBranch={onCopyFromBranch}
+                isSaving={saveDefaultsMutation.isPending}
+            />
+
+            {/* Cabecera Informativa con ÚNICO Botón Guardar */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+                <div className="min-w-0">
+                    <h2 className="text-sm sm:text-base font-black text-slate-800 tracking-tight flex items-center gap-2">
+                        Cuentas Contables Predeterminadas
+                    </h2>
+                    <p className="text-[11px] text-slate-500 font-medium mt-0.5">
+                        Asigna las cuentas del catálogo a cada operación del sistema para generar partidas automáticas sin errores.
+                    </p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                    <button
+                        type="button"
+                        onClick={() => setIsAddingCustom(!isAddingCustom)}
+                        className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all border shadow-xs cursor-pointer ${
+                            isAddingCustom
+                                ? 'bg-slate-100 text-slate-700 border-slate-300'
+                                : 'bg-white hover:bg-slate-50 text-indigo-600 border-indigo-200 hover:border-indigo-300'
+                        }`}
+                    >
+                        {isAddingCustom ? <X size={14} /> : <Plus size={14} />}
+                        <span>{isAddingCustom ? 'Cancelar' : 'Nueva Clave'}</span>
+                    </button>
+                    {/* Botón único y principal de Guardar para Cuentas por Defecto */}
+                    <button
+                        type="button"
+                        onClick={saveDefaultAccounts}
+                        disabled={saveDefaultsMutation.isPending}
+                        className="inline-flex items-center gap-2 px-5 py-2 rounded-xl text-xs font-black uppercase tracking-wider text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 transition-all shadow-md shadow-indigo-100 active:scale-95 cursor-pointer"
+                    >
+                        <Save size={15} />
+                        <span>{saveDefaultsMutation.isPending ? 'Guardando...' : 'Guardar Cambios'}</span>
+                    </button>
+                </div>
+            </div>
+
+            {/* Formulario Modular para Registro de Clave Personalizada */}
+            <DefaultAccountCustomForm
+                isOpen={isAddingCustom}
+                onClose={() => setIsAddingCustom(false)}
+                accounts={accounts}
+                onAdd={handleAddCustomKey}
+                configuredKeys={configuredMap}
+            />
+
+            {/* Barra de Categorías, Filtros y Búsqueda */}
+            <DefaultAccountsFilterBar
+                selectedCategory={selectedCategory}
+                onSelectCategory={setSelectedCategory}
+                categoryStats={categoryStats}
+                searchQuery={searchQuery}
+                onSearchChange={setSearchQuery}
+                statusFilter={statusFilter}
+                onStatusFilterChange={setStatusFilter}
+            />
+
+            {/* Listado Modular Compacto de Cuentas */}
+            <div className="space-y-2 min-w-0">
+                {filteredItems.map(item => (
+                    <DefaultAccountRow
+                        key={item.key}
+                        item={item}
+                        accounts={accounts}
+                        onSetAccount={handleSetAccount}
+                        onRemoveCustomKey={handleRemoveCustomKey}
+                    />
+                ))}
+
+                {filteredItems.length === 0 && (
+                    <div className="text-center py-8 px-4 bg-slate-50 border border-dashed border-slate-200 rounded-xl space-y-1">
+                        <p className="text-xs font-bold text-slate-600">No se encontraron cuentas con los filtros actuales.</p>
+                        <p className="text-[11px] text-slate-400 font-medium">Intenta limpiar la búsqueda o cambiar de pestaña.</p>
+                    </div>
+                )}
+            </div>
+
+            {/* Pie con Resumen Informativo (Sin botón duplicado) */}
+            <div className="border-t border-slate-100 pt-3 flex items-center justify-between text-xs text-slate-500 font-medium">
+                <span>
+                    <span className="font-bold text-slate-800">{categoryStats[selectedCategory]?.configured ?? categoryStats.all.configured}</span> de{' '}
+                    <span className="font-bold text-slate-800">{categoryStats[selectedCategory]?.total ?? categoryStats.all.total}</span> en esta sección •{' '}
+                    <span className="font-bold text-indigo-600">{categoryStats.all.configured}</span>/{categoryStats.all.total} totales
+                </span>
+                <span className="text-[11px] text-slate-400 hidden sm:inline">
+                    Recuerda pulsar "Guardar Cambios" al finalizar
+                </span>
+            </div>
+        </fieldset>
+    );
+};
+
 export default AccountingDefaultAccountsTab;
