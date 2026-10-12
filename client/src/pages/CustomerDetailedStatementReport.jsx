@@ -25,6 +25,7 @@ const CustomerDetailedStatementReport = () => {
     const [startDate, setStartDate] = useState(firstDayOfMonth);
     const [endDate, setEndDate] = useState(today);
     const [isGenerating, setIsGenerating] = useState(false);
+    const [includePayments, setIncludePayments] = useState(true);
     const [pdfUrl, setPdfUrl] = useState(null);
 
     // Queries
@@ -66,7 +67,8 @@ const CustomerDetailedStatementReport = () => {
                     customer_id: selectedCustomer,
                     branch_id: selectedBranch,
                     start_date: startDate || undefined,
-                    end_date: endDate || undefined
+                    end_date: endDate || undefined,
+                    include_payments: includePayments ? '1' : '0'
                 },
                 responseType: 'blob'
             });
@@ -116,6 +118,7 @@ const CustomerDetailedStatementReport = () => {
                 branch_id: selectedBranch,
                 start_date: startDate || undefined,
                 end_date: endDate || undefined,
+                include_payments: includePayments ? '1' : '0',
                 format: 'excel' 
             };
 
@@ -223,6 +226,27 @@ const CustomerDetailedStatementReport = () => {
                     value={endDate}
                     onChange={(e) => setEndDate(e.target.value)}
                 />
+            </div>
+
+            {/* Toggle Consultar Abonos / Solo Consumos */}
+            <div className="p-3 bg-slate-50 border border-slate-200/80 rounded-xl flex items-center justify-between gap-3 shadow-xs">
+                <div className="space-y-0.5">
+                    <span className="block text-[11px] font-black text-slate-700 uppercase tracking-wider">
+                        {includePayments ? 'Consultar Abonos' : 'Solo Consumos'}
+                    </span>
+                    <span className="block text-[10px] font-medium text-slate-500">
+                        {includePayments ? 'Incluye facturas, créditos y recibos de abono' : 'Muestra únicamente consumos y facturas a crédito'}
+                    </span>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                    <input 
+                        type="checkbox" 
+                        checked={includePayments} 
+                        onChange={(e) => setIncludePayments(e.target.checked)} 
+                        className="sr-only peer" 
+                    />
+                    <div className="relative w-9 h-5 bg-slate-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-indigo-500/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:bg-indigo-600 after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all"></div>
+                </label>
             </div>
 
             {/* Accesos Rápidos de Fecha */}

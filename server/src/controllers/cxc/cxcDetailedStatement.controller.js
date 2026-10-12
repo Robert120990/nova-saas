@@ -30,10 +30,11 @@ const getCreditosAfectanCxcConfig = async (companyId, branchId) => {
  * Only includes movements within the specified date range (no initial balance).
  */
 const exportDetailedStatementPDF = async (req, res) => {
-    const { customer_id, branch_id, start_date, end_date, startDate, endDate, format } = req.query;
+    const { customer_id, branch_id, start_date, end_date, startDate, endDate, format, include_payments, solo_consumos } = req.query;
     const fromDate = (start_date || startDate || '').trim() || null;
     const toDate = (end_date || endDate || '').trim() || null;
     const company_id = req.company_id;
+    const shouldIncludePayments = solo_consumos !== '1' && solo_consumos !== 'true' && include_payments !== '0' && include_payments !== 'false';
 
     if (!customer_id || !branch_id) {
         return res.status(400).json({ message: 'Cliente y Sucursal son obligatorios' });
@@ -62,13 +63,7 @@ const exportDetailedStatementPDF = async (req, res) => {
                 h.fecha_emision as fecha,
                 COALESCE(${dteLatestColSql('h', 'numero_control')}, CAST(h.id AS CHAR)) as documento,
                 CASE h.tipo_documento 
-                    WHEN '01' THEN 'FAC'
-                    WHEN '03' THEN 'CCF'
-                    WHEN '04' THEN 'NR'
-                    WHEN '05' THEN 'NC'
-                    WHEN '06' THEN 'ND'
-                    WHEN '11' THEN 'FEX'
-                    WHEN '14' THEN 'FSE'
+                    WHEN '01' THEN 'FAC' WHEN '03' THEN 'CCF' WHEN '04' THEN 'NR' WHEN '05' THEN 'NC' WHEN '06' THEN 'ND' WHEN '11' THEN 'FEX' WHEN '14' THEN 'FSE'
                     ELSE COALESCE(cat.description, h.tipo_documento)
                 END as tipo,
                 i.descripcion as producto,
@@ -86,14 +81,8 @@ const exportDetailedStatementPDF = async (req, res) => {
         `;
         const salesParams = [company_id, branch_id, customer_id];
 
-        if (fromDate) {
-            salesSql += ' AND h.fecha_emision >= ?';
-            salesParams.push(fromDate);
-        }
-        if (toDate) {
-            salesSql += ' AND h.fecha_emision <= ?';
-            salesParams.push(toDate);
-        }
+        if (fromDate) { salesSql += ' AND h.fecha_emision >= ?'; salesParams.push(fromDate); }
+        if (toDate) { salesSql += ' AND h.fecha_emision <= ?'; salesParams.push(toDate); }
 
         const [salesRows] = await pool.query(salesSql, salesParams);
 
@@ -116,63 +105,115 @@ const exportDetailedStatementPDF = async (req, res) => {
             `;
             const gasParams = [company_id, branch_id, customer_id];
 
-            if (desdeFecha) {
-                gasSql += ' AND c.fecha_turno >= ?';
-                gasParams.push(desdeFecha);
-            }
-            if (fromDate) {
-                gasSql += ' AND c.fecha_turno >= ?';
-                gasParams.push(fromDate);
-            }
-            if (toDate) {
-                gasSql += ' AND c.fecha_turno <= ?';
-                gasParams.push(toDate);
-            }
+            if (desdeFecha) { gasSql += ' AND c.fecha_turno >= ?'; gasParams.push(desdeFecha); }
+            if (fromDate) { gasSql += ' AND c.fecha_turno >= ?'; gasParams.push(fromDate); }
+            if (toDate) { gasSql += ' AND c.fecha_turno <= ?'; gasParams.push(toDate); }
 
             const [gRows] = await pool.query(gasSql, gasParams);
             gasRows = gRows;
         }
 
         // 3. Customer Payments (Abonos)
-        let paymentsSql = `
-            SELECT 
-                p.fecha_pago as fecha,
-                COALESCE(NULLIF(p.referencia, ''), CONCAT('REC-', p.id)) as documento,
-                'RECIBO' as tipo,
-                CONCAT('ABONO A CUENTA', CASE WHEN p.metodo_pago THEN CONCAT(' (', p.metodo_pago, ')') ELSE '' END) as producto,
-                '—' as placas,
-                '—' as odometro,
-                0 as valor,
-                CAST(p.monto AS DECIMAL(12,2)) as abono
-            FROM customer_payments p
-            WHERE p.company_id = ? AND p.branch_id = ? AND p.customer_id = ?
-              AND (
-                  p.gas_credito_id IS NULL OR (
-                      ? = 1 AND EXISTS (
-                          SELECT 1 FROM gas_station_closeout_creditos gcc2
-                          JOIN gas_station_closeouts c2 ON gcc2.closeout_id = c2.id
-                          WHERE gcc2.id = p.gas_credito_id
-                          ${desdeFecha ? 'AND c2.fecha_turno >= ?' : ''}
+        let paymentRows = [];
+        if (shouldIncludePayments) {
+            let paymentsSql = `
+                SELECT 
+                    p.id,
+                    p.sale_id,
+                    p.gas_credito_id,
+                    p.fecha_pago as fecha,
+                    COALESCE(NULLIF(p.referencia, ''), CONCAT('REC-', p.id)) as documento,
+                    'RECIBO' as tipo,
+                    p.metodo_pago,
+                    '—' as placas,
+                    '—' as odometro,
+                    CAST(p.monto AS DECIMAL(12,2)) as abono
+                FROM customer_payments p
+                WHERE p.company_id = ? AND p.branch_id = ? AND p.customer_id = ?
+                  AND (
+                      p.gas_credito_id IS NULL OR (
+                          ? = 1 AND EXISTS (
+                              SELECT 1 FROM gas_station_closeout_creditos gcc2
+                              JOIN gas_station_closeouts c2 ON gcc2.closeout_id = c2.id
+                              WHERE gcc2.id = p.gas_credito_id
+                              ${desdeFecha ? 'AND c2.fecha_turno >= ?' : ''}
+                          )
                       )
                   )
-              )
-        `;
-        const paymentParams = [
-            company_id, branch_id, customer_id,
-            gasActive ? 1 : 0,
-            ...(gasActive && desdeFecha ? [desdeFecha] : [])
-        ];
+            `;
+            const paymentParams = [
+                company_id, branch_id, customer_id,
+                gasActive ? 1 : 0,
+                ...(gasActive && desdeFecha ? [desdeFecha] : [])
+            ];
 
-        if (fromDate) {
-            paymentsSql += ' AND p.fecha_pago >= ?';
-            paymentParams.push(fromDate);
-        }
-        if (toDate) {
-            paymentsSql += ' AND p.fecha_pago <= ?';
-            paymentParams.push(toDate);
-        }
+            if (fromDate) { paymentsSql += ' AND p.fecha_pago >= ?'; paymentParams.push(fromDate); }
+            if (toDate) { paymentsSql += ' AND p.fecha_pago <= ?'; paymentParams.push(toDate); }
 
-        const [paymentRows] = await pool.query(paymentsSql, paymentParams);
+            const [rawPaymentRows] = await pool.query(paymentsSql, paymentParams);
+
+            // Batch resolve saldo_anterior for abonos
+            const saleIds = Array.from(new Set(rawPaymentRows.map(p => p.sale_id).filter(Boolean)));
+            const gasCreditoIds = Array.from(new Set(rawPaymentRows.map(p => p.gas_credito_id).filter(Boolean)));
+
+            const salesMap = new Map();
+            if (saleIds.length > 0) {
+                const [sList] = await pool.query('SELECT id, total_pagar FROM sales_headers WHERE id IN (?)', [saleIds]);
+                sList.forEach(s => salesMap.set(s.id, s));
+            }
+
+            const gasMap = new Map();
+            if (gasCreditoIds.length > 0) {
+                const [gList] = await pool.query('SELECT id, monto FROM gas_station_closeout_creditos WHERE id IN (?)', [gasCreditoIds]);
+                gList.forEach(g => gasMap.set(g.id, g));
+            }
+
+            let allPriorPayments = [];
+            if (saleIds.length > 0 || gasCreditoIds.length > 0) {
+                const conds = [];
+                const priorParams = [];
+                if (saleIds.length > 0) { conds.push('sale_id IN (?)'); priorParams.push(saleIds); }
+                if (gasCreditoIds.length > 0) { conds.push('gas_credito_id IN (?)'); priorParams.push(gasCreditoIds); }
+                const [pRows] = await pool.query(
+                    `SELECT id, sale_id, gas_credito_id, monto, fecha_pago FROM customer_payments WHERE ${conds.join(' OR ')} ORDER BY fecha_pago ASC, id ASC`,
+                    priorParams
+                );
+                allPriorPayments = pRows;
+            }
+
+            paymentRows = rawPaymentRows.map(p => {
+                const abonoMonto = parseFloat(p.abono) || 0;
+                let saldoAnterior = abonoMonto;
+
+                const calcPrior = (key, id, total) => {
+                    const pDate = new Date(p.fecha).getTime();
+                    const prior = allPriorPayments.filter(p2 =>
+                        p2[key] === id &&
+                        (new Date(p2.fecha_pago).getTime() < pDate || (new Date(p2.fecha_pago).getTime() === pDate && p2.id < p.id))
+                    ).reduce((sum, p2) => sum + (parseFloat(p2.monto) || 0), 0);
+                    return Math.max(abonoMonto, Math.round((total - prior) * 100) / 100);
+                };
+
+                if (p.sale_id) {
+                    saldoAnterior = calcPrior('sale_id', p.sale_id, parseFloat(salesMap.get(p.sale_id)?.total_pagar) || 0);
+                } else if (p.gas_credito_id) {
+                    saldoAnterior = calcPrior('gas_credito_id', p.gas_credito_id, parseFloat(gasMap.get(p.gas_credito_id)?.monto) || 0);
+                }
+
+                const metodo = p.metodo_pago ? ` (${p.metodo_pago})` : '';
+                return {
+                    fecha: p.fecha,
+                    documento: p.documento,
+                    tipo: p.tipo,
+                    producto: `ABONO A CUENTA${metodo}`,
+                    placas: p.placas,
+                    odometro: p.odometro,
+                    valor: saldoAnterior,
+                    abono: abonoMonto,
+                    acumulado: Math.round((saldoAnterior - abonoMonto) * 100) / 100
+                };
+            });
+        }
 
         // 4. Combine and sort
         const combined = [...salesRows, ...gasRows, ...paymentRows].sort((a, b) => {
@@ -189,7 +230,7 @@ const exportDetailedStatementPDF = async (req, res) => {
         const movements = combined.map(item => {
             const valor = parseFloat(item.valor) || 0;
             const abono = parseFloat(item.abono) || 0;
-            const acumulado = valor - abono;
+            const acumulado = item.acumulado !== undefined ? item.acumulado : (valor - abono);
             totalValor += valor;
             totalAbono += abono;
             return {
@@ -207,7 +248,10 @@ const exportDetailedStatementPDF = async (req, res) => {
             const cleanCustName = (customer.nombre || 'Cliente').replace(/[^a-zA-Z0-9_-]/g, '_');
             const buffer = await excelService.createExcelBuffer({
                 title: `ESTADO DE CUENTA DETALLADO - ${(customer.nombre || '').toUpperCase()}`,
-                subtitle: (fromDate && toDate) ? `PERÍODO DEL ${fromDate} AL ${toDate}` : undefined,
+                subtitle: [
+                    (fromDate && toDate) ? `PERÍODO DEL ${fromDate} AL ${toDate}` : '',
+                    !shouldIncludePayments ? '(SOLO CONSUMOS)' : ''
+                ].filter(Boolean).join(' - ') || undefined,
                 sheets: [{
                     name: 'Estado de Cuenta Detallado',
                     columns: [
@@ -262,7 +306,8 @@ const exportDetailedStatementPDF = async (req, res) => {
             startDate: fromDate,
             endDate: toDate,
             movements,
-            totalAcumulado
+            totalAcumulado,
+            onlyConsumptions: !shouldIncludePayments
         };
 
         const pdfBuffer = await generateDetailedStatementPDF(pdfData);
