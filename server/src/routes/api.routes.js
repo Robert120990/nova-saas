@@ -579,6 +579,8 @@ router.get('/sales/reports/daily/pdf', salesController.exportDailySalesPDF);
 router.get('/sales/reports/by-customer/pdf', salesController.exportSalesByCustomerPDF);
 router.get('/sales/reports/pos', salesController.getSalesByPOS);
 router.get('/sales/reports/pos/pdf', salesController.exportSalesByPOSPDF);
+router.get('/sales/reports/tienda-shifts', checkPermission('view_sales_tienda_shift_report'), salesController.getStoreSalesByShift);
+router.get('/sales/reports/tienda-shifts/pdf', checkPermission('view_sales_tienda_shift_report'), salesController.exportStoreSalesByShiftPDF);
 router.get('/sales/reports/detalle/pdf', salesController.exportSalesDetailPDF);
 router.get('/sales/reports/discounts', checkPermission('view_sales_discounts_report'), salesController.getSalesDiscountsData);
 router.get('/sales/reports/discounts/pdf', checkPermission('view_sales_discounts_report'), salesController.exportSalesDiscountsReport);

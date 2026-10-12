@@ -8,5 +8,6 @@ module.exports = {
     ...require('./salesDte.controller'),
     ...require('./salesContingencyAndRetorno.controller'),
     ...require('./salesReportsAndRtee.controller'),
-    ...require('./salesIntegrityAudit.controller')
+    ...require('./salesIntegrityAudit.controller'),
+    ...require('./salesTiendaShiftReport.controller')
 };

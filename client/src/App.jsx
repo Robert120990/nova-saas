@@ -97,6 +97,7 @@ const ProviderBalancesReport = lazyWithRetry(() => import('./pages/ProviderBalan
 const FuelPrices = lazyWithRetry(() => import('./pages/FuelPrices'));
 const SalesByCategoryReport = lazyWithRetry(() => import('./pages/SalesByCategoryReport'));
 const SalesByPOSReport = lazyWithRetry(() => import('./pages/SalesByPOSReport'));
+const StoreSalesByShiftReport = lazyWithRetry(() => import('./pages/StoreSalesByShiftReport'));
 const SalesDetailReport = lazyWithRetry(() => import('./pages/SalesDetailReport'));
 const ArqueosReport = lazyWithRetry(() => import('./pages/ArqueosReport'));
 const StoreProfitabilityReport = lazyWithRetry(() => import('./pages/StoreProfitabilityReport'));
@@ -314,6 +315,7 @@ function App() {
                         <Route path="/ventas/reportes/cliente" element={<SalesByCustomerReport />} />
                         <Route path="/ventas/reportes/categoria" element={<SalesByCategoryReport />} />
                         <Route path="/ventas/reportes/pos" element={<SalesByPOSReport />} />
+                        <Route path="/ventas/reportes/tienda-turno" element={<StoreSalesByShiftReport />} />
                         <Route path="/ventas/reportes/detalle-facturacion" element={<SalesDetailReport />} />
                         <Route path="/ventas/reportes/arqueos" element={<ArqueosReport />} />
                         <Route path="/ventas/reportes/rentabilidad-tienda" element={<StoreProfitabilityReport />} />

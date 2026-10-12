@@ -77,10 +77,12 @@ import {
     Fingerprint,
     Zap,
     Sun,
+    Store,
     BatteryCharging,
 } from 'lucide-react';
 
 const iconMap = {
+    Store,
     Zap,
     Sun,
     BatteryCharging,
