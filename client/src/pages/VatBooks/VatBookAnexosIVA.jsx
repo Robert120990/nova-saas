@@ -138,7 +138,7 @@ const EstadoBadge = ({ estado }) => {
         <div className="max-w-[1400px] mx-auto p-4 md:p-6 space-y-4 animate-in fade-in duration-700">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
                 <div>
-                    <h1 className="text-2xl md:text-3xl font-black text-slate-900 tracking-tight">Anexos de IVA</h1>
+                    <h1 className="text-2xl md:text-3xl font-black text-slate-900 tracking-tight">Anexo de IVA Ventas</h1>
                     <p className="text-slate-500 font-medium mt-1 uppercase text-[10px] tracking-widest">
                         Consulta de ventas DTE por rango de fechas y tipo de documento
                     </p>

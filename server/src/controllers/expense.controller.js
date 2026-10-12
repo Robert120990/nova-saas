@@ -283,11 +283,12 @@ const createExpense = async (req, res) => {
         }
 
         const cleanNumeroDoc = (numero_documento || '').trim().toUpperCase() || 'S/N';
+        const cleanCodigoGen = (req.body.codigo_generacion || req.body.codigoGeneracion || '').trim().toUpperCase() || null;
         const anticipoCuenta = parseFloat(req.body.anticipo_cuenta) || 0;
         const montoSujeto = parseFloat(req.body.monto_sujeto) || 0;
         const [headerResult] = await connection.query(`
             INSERT INTO expense_headers 
-            (company_id, branch_id, usuario_id, provider_id, fecha, numero_documento, 
+            (company_id, branch_id, usuario_id, provider_id, fecha, numero_documento, codigo_generacion,
              tipo_documento_id, condicion_operacion_id, observaciones,
              total_nosujeta, total_exenta, total_gravada, 
              iva, retencion, percepcion, fovial, cotrans, anticipo_cuenta, monto_sujeto, monto_total,
@@ -295,9 +296,9 @@ const createExpense = async (req, res) => {
              documento_afectado, fecha_afectada, num_control, sello_recepcion,
              tipo_operacion, tipo_clasificacion, tipo_sector, tipo_costo,
              gravadas_importaciones, gravadas_internaciones, iva_importaciones)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `, [
-            companyId, branch_id, usuarioId, provider_id, fecha || new Date(), cleanNumeroDoc,
+            companyId, branch_id, usuarioId, provider_id, fecha || new Date(), cleanNumeroDoc, cleanCodigoGen,
             tipo_documento_id, condicion_operacion_id, observaciones,
             total_nosujeta || 0, total_exenta || 0, total_gravada || 0,
             iva || 0, retencion || 0, percepcion || 0, fovial || 0, cotrans || 0, anticipoCuenta, montoSujeto, monto_total || 0,
@@ -442,11 +443,12 @@ const updateExpense = async (req, res) => {
         }
 
         const cleanNumeroDoc = (numero_documento || '').trim().toUpperCase() || 'S/N';
+        const cleanCodigoGen = (req.body.codigo_generacion || req.body.codigoGeneracion || '').trim().toUpperCase() || null;
         const anticipoCuenta = parseFloat(req.body.anticipo_cuenta) || 0;
         const montoSujeto = parseFloat(req.body.monto_sujeto) || 0;
         await connection.query(`
             UPDATE expense_headers SET 
-                branch_id = ?, provider_id = ?, fecha = ?, numero_documento = ?,
+                branch_id = ?, provider_id = ?, fecha = ?, numero_documento = ?, codigo_generacion = ?,
                 tipo_documento_id = ?, condicion_operacion_id = ?, observaciones = ?,
                 total_nosujeta = ?, total_exenta = ?, total_gravada = ?,
                 iva = ?, retencion = ?, percepcion = ?, fovial = ?, cotrans = ?, anticipo_cuenta = ?, monto_sujeto = ?, monto_total = ?,
@@ -456,7 +458,7 @@ const updateExpense = async (req, res) => {
                 gravadas_importaciones = ?, gravadas_internaciones = ?, iva_importaciones = ?
             WHERE id = ? AND company_id = ?
         `, [
-            branch_id, provider_id, fecha, cleanNumeroDoc,
+            branch_id, provider_id, fecha, cleanNumeroDoc, cleanCodigoGen,
             tipo_documento_id, condicion_operacion_id, observaciones,
             total_nosujeta || 0, total_exenta || 0, total_gravada || 0,
             iva || 0, retencion || 0, percepcion || 0, fovial || 0, cotrans || 0, anticipoCuenta, montoSujeto, monto_total || 0,

@@ -56,6 +56,22 @@ input[type="number"] {
   background: rgba(99, 102, 241, 0.4);
 }
 
+/* Custom Scrollbar for Tables */
+.table-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.table-scrollbar::-webkit-scrollbar-track {
+  background: #f8fafc;
+}
+.table-scrollbar::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+.table-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
 @keyframes shake {
   0%, 100% { transform: rotate(0deg); }
   20% { transform: rotate(14deg); }

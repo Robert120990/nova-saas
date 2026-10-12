@@ -9,6 +9,8 @@ const Table = ({
     tableClassName = '',
     noHorizontalScroll = false,
     compact = false,
+    maxHeight,
+    containerClassName = '',
 }) => {
     return (
         <div className={`bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden ${className}`}>
@@ -39,9 +41,12 @@ const Table = ({
             )}
 
             {/* Vista en Tabla (Escritorio o fallback móvil si no hay renderCard) */}
-            <div className={`${noHorizontalScroll ? 'overflow-x-hidden' : 'overflow-x-auto'} ${renderCard ? 'hidden md:block' : 'block'}`}>
+            <div 
+                className={`${noHorizontalScroll ? 'overflow-x-hidden' : 'overflow-x-auto'} ${maxHeight ? 'overflow-y-auto' : ''} ${renderCard ? 'hidden md:block' : 'block'} ${containerClassName}`}
+                style={maxHeight ? { maxHeight } : undefined}
+            >
                 <table className={`w-full text-left border-collapse ${tableClassName}`}>
-                    <thead className="bg-slate-50 border-b border-slate-100">
+                    <thead className={`bg-slate-50 border-b border-slate-100 ${maxHeight ? 'sticky top-0 z-10 shadow-xs' : ''}`}>
                         <tr>
                             {headers.map((h, i) => {
                                 const isObj = typeof h === 'object' && h !== null;

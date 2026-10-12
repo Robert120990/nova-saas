@@ -216,6 +216,7 @@ const dashboardController = require('../controllers/dashboard.controller');
 const shiftController = require('../controllers/shift.controller');
 const comboController = require('../controllers/combo.controller');
 const vatBooksController = require('../controllers/vatBooks.controller');
+const vatDeclarationsController = require('../controllers/vatDeclarations.controller');
 const customerDiscountController = require('../controllers/customerDiscount.controller');
 const customerBranchController = require('../controllers/customerBranch.controller');
 const discountRulesController = require('../controllers/discountRules.controller');
@@ -745,6 +746,27 @@ router.get('/vat-books/anexos-iva-excel', vatBooksController.getVatBookAnexosIVA
 router.get('/vat-books/liquidation', checkPermission('view_vat_liquidation'), vatBooksController.getVatLiquidationData);
 router.get('/vat-books/liquidation/pdf', checkPermission('view_vat_liquidation'), vatBooksController.getVatLiquidationPDF);
 router.get('/vat-books/liquidation/excel', checkPermission('view_vat_liquidation'), vatBooksController.getVatLiquidationExcel);
+
+// VAT Declarations (Anexos F-07)
+router.get('/vat-books/declarations/anticipo-cuenta', checkPermission('view_iva_declaraciones'), vatDeclarationsController.getAnticipoCuenta);
+router.get('/vat-books/declarations/anticipo-cuenta/pdf', checkPermission('view_iva_declaraciones'), vatDeclarationsController.getAnticipoCuentaPdf);
+router.get('/vat-books/declarations/anticipo-cuenta/excel', checkPermission('view_iva_declaraciones'), vatDeclarationsController.getAnticipoCuentaExcel);
+
+router.get('/vat-books/declarations/retenciones-emitidas', checkPermission('view_iva_declaraciones'), vatDeclarationsController.getRetencionesEmitidas);
+router.get('/vat-books/declarations/retenciones-emitidas/pdf', checkPermission('view_iva_declaraciones'), vatDeclarationsController.getRetencionesEmitidasPdf);
+router.get('/vat-books/declarations/retenciones-emitidas/excel', checkPermission('view_iva_declaraciones'), vatDeclarationsController.getRetencionesEmitidasExcel);
+
+router.get('/vat-books/declarations/retenciones-recibidas', checkPermission('view_iva_declaraciones'), vatDeclarationsController.getRetencionesRecibidas);
+router.get('/vat-books/declarations/retenciones-recibidas/pdf', checkPermission('view_iva_declaraciones'), vatDeclarationsController.getRetencionesRecibidasPdf);
+router.get('/vat-books/declarations/retenciones-recibidas/excel', checkPermission('view_iva_declaraciones'), vatDeclarationsController.getRetencionesRecibidasExcel);
+
+router.get('/vat-books/declarations/percepciones', checkPermission('view_iva_declaraciones'), vatDeclarationsController.getPercepciones);
+router.get('/vat-books/declarations/percepciones/pdf', checkPermission('view_iva_declaraciones'), vatDeclarationsController.getPercepcionesPdf);
+router.get('/vat-books/declarations/percepciones/excel', checkPermission('view_iva_declaraciones'), vatDeclarationsController.getPercepcionesExcel);
+
+router.get('/vat-books/declarations/compras', checkPermission('view_iva_declaraciones'), vatDeclarationsController.getCompras);
+router.get('/vat-books/declarations/compras/pdf', checkPermission('view_iva_declaraciones'), vatDeclarationsController.getComprasPdf);
+router.get('/vat-books/declarations/compras/excel', checkPermission('view_iva_declaraciones'), vatDeclarationsController.getComprasExcel);
 
 // Accounting Module
 router.get('/accounting/account-types', accountingController.getAccountTypes);

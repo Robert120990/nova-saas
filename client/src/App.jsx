@@ -180,6 +180,7 @@ const VatBookSalesTaxpayers = lazyWithRetry(() => import('./pages/VatBooks/VatBo
 const VatBookSalesConsumers = lazyWithRetry(() => import('./pages/VatBooks/VatBookSalesConsumers'));
 const VatBookAnexosIVA = lazyWithRetry(() => import('./pages/VatBooks/VatBookAnexosIVA'));
 const VatBookLiquidation = lazyWithRetry(() => import('./pages/VatBooks/VatBookLiquidation'));
+const VatBookDeclarations = lazyWithRetry(() => import('./pages/VatBooks/VatBookDeclarations'));
 
 // Egg Industrial Processing Pages
 const EggDashboard = lazyWithRetry(() => import('./pages/EggIndustrial/Dashboard'));
@@ -293,6 +294,7 @@ function App() {
                         <Route path="/iva/ventas-fac" element={<VatBookSalesConsumers />} />
                         <Route path="/iva/anexos-iva" element={<VatBookAnexosIVA />} />
                         <Route path="/iva/liquidacion" element={<VatBookLiquidation />} />
+                        <Route path="/iva/declaraciones" element={<VatBookDeclarations />} />
                         
 
                         <Route path="/compras" element={<Purchases />} />
