@@ -27,7 +27,7 @@ async function resolveOfficeEmpresa(officePool, companyId) {
     return matched || officeEmpresas[0] || null;
 }
 
-async function queryBankCheques(companyId, { startDate, endDate, month, year, status = 'all', anulado = 0 }) {
+async function queryBankCheques(companyId, { startDate, endDate, month, year, status = 'unposted', anulado = 0 }) {
     if (month && year && (!startDate || !endDate)) {
         const m = parseInt(month, 10);
         const y = parseInt(year, 10);
@@ -108,7 +108,7 @@ async function queryBankCheques(companyId, { startDate, endDate, month, year, st
         const localEntry = entryByChq.get(chqKey.toLowerCase());
         const officePartida = r.num_partida && String(r.num_partida).trim() !== '' ? String(r.num_partida).trim() : null;
         const corr = localEntry?.number || officePartida || '';
-        const isPosted = Boolean(localEntry || officePartida || r.es_contabilizado === 1 || r.es_contabilizado === 'S' || r.es_contabilizado === true);
+        const isPosted = Boolean(localEntry);
 
         const bancoDesc = (r.banco_nombre || '').trim();
         const ctaNum = (r.cuenta_numero || '').trim();
@@ -136,15 +136,15 @@ async function queryBankCheques(companyId, { startDate, endDate, month, year, st
     });
 
     if (status === 'unposted') {
-        mapped = mapped.filter(r => !r.es_contabilizado && !r.corr);
+        mapped = mapped.filter(r => !r.es_contabilizado);
     } else if (status === 'posted') {
-        mapped = mapped.filter(r => r.es_contabilizado || Boolean(r.corr));
+        mapped = mapped.filter(r => r.es_contabilizado);
     }
 
     return mapped;
 }
 
-async function queryBankMovements(companyId, { startDate, endDate, month, year, status = 'all' }) {
+async function queryBankMovements(companyId, { startDate, endDate, month, year, status = 'unposted' }) {
     if (month && year && (!startDate || !endDate)) {
         const m = parseInt(month, 10);
         const y = parseInt(year, 10);
@@ -229,7 +229,7 @@ async function queryBankMovements(companyId, { startDate, endDate, month, year, 
         const localEntry = entryByDoc.get(docKey.toLowerCase());
         const officePartida = r.num_partida && String(r.num_partida).trim() !== '' ? String(r.num_partida).trim() : null;
         const corr = localEntry?.number || officePartida || '';
-        const isPosted = Boolean(localEntry || officePartida || r.es_contabilizado === 1 || r.es_contabilizado === 'S' || r.es_contabilizado === true);
+        const isPosted = Boolean(localEntry);
 
         const bancoDesc = (r.banco_nombre || '').trim();
         const ctaNum = (r.cuenta_numero || '').trim();
@@ -262,9 +262,9 @@ async function queryBankMovements(companyId, { startDate, endDate, month, year, 
     });
 
     if (status === 'unposted') {
-        mapped = mapped.filter(r => !r.es_contabilizado && !r.corr);
+        mapped = mapped.filter(r => !r.es_contabilizado);
     } else if (status === 'posted') {
-        mapped = mapped.filter(r => r.es_contabilizado || Boolean(r.corr));
+        mapped = mapped.filter(r => r.es_contabilizado);
     }
 
     return mapped;

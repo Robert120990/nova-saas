@@ -1,5 +1,14 @@
 export const round2 = (n) => Math.round((parseFloat(n) || 0) * 100) / 100;
 
+export const ENTRY_TYPE_LABELS = {
+    CXP: 'CXP - Pago / Proveedor',
+    INGRESO: 'INGRESO - Remesa / Abono',
+    GASTO: 'GASTO - Nota de Cargo',
+    DIARIO: 'DIARIO - Comprobante de Diario'
+};
+
+export const getEntryTypeLabel = (code) => ENTRY_TYPE_LABELS[code] || code || 'DIARIO';
+
 export function calculateClientTaxBreakdown(totalPaid, shouldDetailIva, mode) {
     const total = round2(totalPaid);
     if (!shouldDetailIva || total <= 0) {

@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
-import { Landmark, CheckSquare } from 'lucide-react';
+import { Landmark, CheckSquare, BookmarkCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../../../context/AuthContext';
 import { unwrapList } from '../../../utils/apiUtils';
@@ -9,6 +9,7 @@ import BankFilterBar from '../BankFilterBar';
 import BankChecksTable from '../BankChecksTable';
 import BankMovementsTable from '../BankMovementsTable';
 import BankEntryModal from '../modals/BankEntryModal';
+import BankCorrelativosReservationTab from './BankCorrelativosReservationTab';
 
 const AccountingBankTab = () => {
     const { user } = useAuth();
@@ -22,7 +23,7 @@ const AccountingBankTab = () => {
     const [month, setMonth] = useState(currentMonth);
     const [year, setYear] = useState(currentYear);
     const [queryPeriod, setQueryPeriod] = useState({ month: currentMonth, year: currentYear });
-    const [statusFilter, setStatusFilter] = useState('all');
+    const [statusFilter, setStatusFilter] = useState('unposted');
     const [searchTerm, setSearchTerm] = useState('');
     const [activeMainTab, setActiveMainTab] = useState('cheques');
     const [activeSubTab, setActiveSubTab] = useState('emitidos');
@@ -82,9 +83,9 @@ const AccountingBankTab = () => {
     const filteredCheques = useMemo(() => {
         let list = Array.isArray(cheques) ? cheques : [];
         if (statusFilter === 'unposted') {
-            list = list.filter(c => !c.es_contabilizado && !c.corr);
+            list = list.filter(c => !c.es_contabilizado);
         } else if (statusFilter === 'posted') {
-            list = list.filter(c => c.es_contabilizado || Boolean(c.corr));
+            list = list.filter(c => Boolean(c.es_contabilizado));
         }
         const q = (searchTerm || '').trim().toLowerCase();
         if (!q) return list;
@@ -100,9 +101,9 @@ const AccountingBankTab = () => {
     const filteredMovements = useMemo(() => {
         let list = Array.isArray(movements) ? movements : [];
         if (statusFilter === 'unposted') {
-            list = list.filter(m => !m.es_contabilizado && !m.corr);
+            list = list.filter(m => !m.es_contabilizado);
         } else if (statusFilter === 'posted') {
-            list = list.filter(m => m.es_contabilizado || Boolean(m.corr));
+            list = list.filter(m => Boolean(m.es_contabilizado));
         }
         const q = (searchTerm || '').trim().toLowerCase();
         if (!q) return list;
@@ -147,6 +148,7 @@ const AccountingBankTab = () => {
     });
 
     const handleOpenPreview = (item) => {
+        if (previewMutation.isPending) return;
         previewMutation.mutate({
             type: activeMainTab === 'cheques' ? 'cheque' : 'movimiento',
             id: item.id
@@ -228,6 +230,18 @@ const AccountingBankTab = () => {
                         <Landmark size={16} />
                         Movimientos Bancarios ({movements.length})
                     </button>
+                    <button
+                        type="button"
+                        onClick={() => { setActiveMainTab('reserva_correlativos'); setSelectedIds(new Set()); }}
+                        className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${
+                            activeMainTab === 'reserva_correlativos'
+                                ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20'
+                                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        }`}
+                    >
+                        <BookmarkCheck size={16} />
+                        Reserva de Correlativos
+                    </button>
                 </div>
 
                 <div className="text-[11px] font-semibold text-slate-400 hidden sm:block">
@@ -235,44 +249,52 @@ const AccountingBankTab = () => {
                 </div>
             </div>
 
-            {/* Filter Bar */}
-            <BankFilterBar
-                month={month}
-                setMonth={setMonth}
-                year={year}
-                setYear={setYear}
-                statusFilter={statusFilter}
-                setStatusFilter={setStatusFilter}
-                searchTerm={searchTerm}
-                setSearchTerm={setSearchTerm}
-                onQuery={handleQuery}
-                isLoading={isCurrentLoading}
-                selectedCount={selectedIds.size}
-                onBatchPost={handleBatchPost}
-                isBatchPosting={batchMutation.isPending}
-            />
-
-            {/* Main Content Table */}
-            {activeMainTab === 'cheques' ? (
-                <BankChecksTable
-                    items={filteredCheques}
-                    selectedIds={selectedIds}
-                    onToggleSelect={handleToggleSelect}
-                    onToggleSelectAll={handleToggleSelectAll}
-                    onOpenPreview={handleOpenPreview}
-                    activeSubTab={activeSubTab}
-                    setActiveSubTab={setActiveSubTab}
-                    isLoading={loadingCheques || previewMutation.isPending}
-                />
+            {activeMainTab === 'reserva_correlativos' ? (
+                <BankCorrelativosReservationTab />
             ) : (
-                <BankMovementsTable
-                    items={filteredMovements}
-                    selectedIds={selectedIds}
-                    onToggleSelect={handleToggleSelect}
-                    onToggleSelectAll={handleToggleSelectAll}
-                    onOpenPreview={handleOpenPreview}
-                    isLoading={loadingMovements || previewMutation.isPending}
-                />
+                <>
+                    {/* Filter Bar */}
+                    <BankFilterBar
+                        month={month}
+                        setMonth={setMonth}
+                        year={year}
+                        setYear={setYear}
+                        statusFilter={statusFilter}
+                        setStatusFilter={setStatusFilter}
+                        searchTerm={searchTerm}
+                        setSearchTerm={setSearchTerm}
+                        onQuery={handleQuery}
+                        isLoading={isCurrentLoading}
+                        selectedCount={selectedIds.size}
+                        onBatchPost={handleBatchPost}
+                        isBatchPosting={batchMutation.isPending}
+                    />
+
+                    {/* Main Content Table */}
+                    {activeMainTab === 'cheques' ? (
+                        <BankChecksTable
+                            items={filteredCheques}
+                            selectedIds={selectedIds}
+                            onToggleSelect={handleToggleSelect}
+                            onToggleSelectAll={handleToggleSelectAll}
+                            onOpenPreview={handleOpenPreview}
+                            activeSubTab={activeSubTab}
+                            setActiveSubTab={setActiveSubTab}
+                            isLoading={loadingCheques}
+                            previewingId={previewMutation.isPending ? previewMutation.variables?.id : null}
+                        />
+                    ) : (
+                        <BankMovementsTable
+                            items={filteredMovements}
+                            selectedIds={selectedIds}
+                            onToggleSelect={handleToggleSelect}
+                            onToggleSelectAll={handleToggleSelectAll}
+                            onOpenPreview={handleOpenPreview}
+                            isLoading={loadingMovements}
+                            previewingId={previewMutation.isPending ? previewMutation.variables?.id : null}
+                        />
+                    )}
+                </>
             )}
 
             {/* Modal for Preview & Editing Journal Entry */}

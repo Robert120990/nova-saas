@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import Money from '../ui/Money';
 import { formatDate } from '../../utils/dateUtils';
-import { FileEdit } from 'lucide-react';
+import { FileEdit, Loader2 } from 'lucide-react';
 
 const BankChecksTable = ({
     items = [],
@@ -11,7 +11,8 @@ const BankChecksTable = ({
     onOpenPreview,
     activeSubTab = 'emitidos',
     setActiveSubTab,
-    isLoading = false
+    isLoading = false,
+    previewingId = null
 }) => {
     const isAnulado = activeSubTab === 'anulados';
 
@@ -22,7 +23,7 @@ const BankChecksTable = ({
     [items, isAnulado]);
 
     const selectableItems = useMemo(() =>
-        filteredItems.filter(item => !item.es_contabilizado),
+        filteredItems.filter(item => !item.es_contabilizado && Boolean(item.corr)),
     [filteredItems]);
 
     const allSelected = selectableItems.length > 0 && selectableItems.every(i => selectedIds.has(i.id));
@@ -56,6 +57,12 @@ const BankChecksTable = ({
                     </button>
                 </div>
                 <div className="text-[11px] font-semibold text-slate-400 pb-1 flex items-center gap-3">
+                    {previewingId && (
+                        <span className="inline-flex items-center gap-1.5 text-indigo-600 font-bold bg-indigo-50 px-2 py-0.5 rounded-full animate-pulse">
+                            <Loader2 size={12} className="animate-spin" />
+                            Preparando partida...
+                        </span>
+                    )}
                     <span>{filteredItems.length} {isAnulado ? 'anulados' : 'emitidos'}</span>
                     {selectedIds.size > 0 && (
                         <span className="text-indigo-600 font-bold">({selectedIds.size} seleccionados)</span>
@@ -105,19 +112,31 @@ const BankChecksTable = ({
                         ) : (
                             filteredItems.map((row) => {
                                 const isSelected = selectedIds.has(row.id);
+                                const isPreviewing = previewingId === row.id;
                                 return (
                                     <tr
                                         key={row.id}
-                                        onDoubleClick={() => onOpenPreview(row)}
+                                        onDoubleClick={() => !previewingId && onOpenPreview(row)}
                                         className={`transition-colors cursor-pointer select-none leading-tight ${
-                                            isSelected ? 'bg-indigo-50/70' : 'hover:bg-slate-50/80'
+                                            isSelected
+                                                ? 'bg-indigo-50/70'
+                                                : isPreviewing
+                                                    ? 'bg-indigo-100/60 ring-1 ring-inset ring-indigo-400 cursor-wait'
+                                                    : 'hover:bg-slate-50/80'
                                         }`}
                                     >
                                         <td className="py-1 px-1.5 text-center" onClick={(e) => e.stopPropagation()}>
                                             <input
                                                 type="checkbox"
                                                 checked={isSelected}
-                                                disabled={row.es_contabilizado}
+                                                disabled={row.es_contabilizado || !row.corr || Boolean(previewingId)}
+                                                title={
+                                                    row.es_contabilizado
+                                                        ? 'Ya contabilizado'
+                                                        : !row.corr
+                                                            ? 'Sin correlativo asignado. Debe reservarlo en Reserva de Correlativos.'
+                                                            : 'Seleccionar para contabilizar'
+                                                }
                                                 onChange={() => onToggleSelect(row.id)}
                                                 className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer disabled:opacity-30"
                                             />
@@ -159,11 +178,16 @@ const BankChecksTable = ({
                                         <td className="py-1 px-1 text-center" onClick={(e) => e.stopPropagation()}>
                                             <button
                                                 type="button"
+                                                disabled={Boolean(previewingId)}
                                                 onClick={() => onOpenPreview(row)}
-                                                className="p-0.5 rounded text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer"
-                                                title="Ver / Editar partida"
+                                                className={`p-0.5 rounded transition-colors cursor-pointer ${
+                                                    isPreviewing
+                                                        ? 'text-indigo-600 bg-indigo-100 cursor-wait'
+                                                        : 'text-slate-400 hover:text-indigo-600 hover:bg-indigo-50'
+                                                }`}
+                                                title={isPreviewing ? 'Cargando partida...' : 'Ver / Editar partida'}
                                             >
-                                                <FileEdit size={13} />
+                                                {isPreviewing ? <Loader2 size={13} className="animate-spin" /> : <FileEdit size={13} />}
                                             </button>
                                         </td>
                                     </tr>

@@ -1,11 +1,11 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { X } from 'lucide-react';
+import { X, AlertTriangle, Lock } from 'lucide-react';
 import Money from '../../ui/Money';
 import { formatDate } from '../../../utils/dateUtils';
 import { toast } from 'sonner';
 import BankEntryLinesTable from './BankEntryLinesTable';
 import BankEntryTaxBar from './BankEntryTaxBar';
-import { round2, buildRecalculatedLines } from './bankEntryTax.helper';
+import { round2, buildRecalculatedLines, getEntryTypeLabel } from './bankEntryTax.helper';
 
 const BankEntryModal = ({
     open,
@@ -15,9 +15,6 @@ const BankEntryModal = ({
     onSave,
     isSaving = false
 }) => {
-    const [date, setDate] = useState('');
-    const [description, setDescription] = useState('');
-    const [entryTypeCode, setEntryTypeCode] = useState('DIARIO');
     const [detallarIva, setDetallarIva] = useState(true);
     const [taxDetailMode, setTaxDetailMode] = useState('none');
     const [lines, setLines] = useState([]);
@@ -37,10 +34,7 @@ const BankEntryModal = ({
 
     useEffect(() => {
         if (previewData) {
-            setDate(previewData.fecha || '');
             const defaultDesc = (previewData.description || '').toUpperCase();
-            setDescription(defaultDesc);
-            setEntryTypeCode(previewData.entry_type_code || 'DIARIO');
             const defaultDetallar = previewData.detallar_iva !== undefined
                 ? Boolean(previewData.detallar_iva)
                 : (previewData.type === 'cheque' && !previewData.is_remesa);
@@ -70,10 +64,10 @@ const BankEntryModal = ({
             currentLines: prev,
             detallarIva: checked,
             taxDetailMode: nextMode,
-            description,
+            description: previewData?.description,
             accountsMap
         }));
-    }, [previewData, taxDetailMode, description, accountsMap]);
+    }, [previewData, taxDetailMode, accountsMap]);
 
     const handleTaxModeChange = useCallback((mode) => {
         setTaxDetailMode(mode);
@@ -82,10 +76,10 @@ const BankEntryModal = ({
             currentLines: prev,
             detallarIva,
             taxDetailMode: mode,
-            description,
+            description: previewData?.description,
             accountsMap
         }));
-    }, [previewData, detallarIva, description, accountsMap]);
+    }, [previewData, detallarIva, accountsMap]);
 
     const selectedNewAccount = useMemo(() =>
         accountsMap.get(String(newLine.account_id)),
@@ -164,20 +158,23 @@ const BankEntryModal = ({
                 credit: round2(crd)
             }
         ]);
-        setNewLine({ account_id: '', description: description || '', debit: 0, credit: 0 });
+        setNewLine({ account_id: '', description: (previewData?.description || '').toUpperCase(), debit: 0, credit: 0 });
     };
 
     const handleSubmit = (e) => {
         e.preventDefault();
+        if (!previewData.correlativo_reservado) {
+            return toast.error('No se puede generar la partida: Este documento no tiene un correlativo contable reservado.');
+        }
         if (!totals.isBalanced) return toast.error(`La partida no está cuadrada. Diferencia: $${totals.diff.toFixed(2)}`);
         if (unassignedCount > 0) return toast.error('Hay líneas sin cuenta contable asignada');
 
         onSave({
             type: previewData.type,
             id: previewData.id,
-            date,
-            description,
-            entry_type_code: entryTypeCode,
+            date: previewData.fecha,
+            description: (previewData.description || '').toUpperCase(),
+            entry_type_code: previewData.entry_type_code || 'DIARIO',
             lines: lines.map(l => ({
                 account_id: Number(l.account_id),
                 description: l.description,
@@ -203,6 +200,15 @@ const BankEntryModal = ({
                             <span className="text-xs font-mono font-bold text-slate-600">
                                 #{previewData.documento_numero}
                             </span>
+                            {previewData.correlativo_reservado ? (
+                                <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 font-mono">
+                                    Corr: #{previewData.correlativo_reservado}
+                                </span>
+                            ) : (
+                                <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-rose-100 text-rose-700">
+                                    Sin Correlativo Reservado
+                                </span>
+                            )}
                             {previewData.already_generated && (
                                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-100 text-amber-800">
                                     Contabilizado {previewData.existing_entry?.number ? `(#${previewData.existing_entry.number})` : ''}
@@ -252,38 +258,47 @@ const BankEntryModal = ({
 
                 {/* Form Body */}
                 <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-5 space-y-3.5">
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                        <div>
-                            <label className="text-[11px] font-bold text-slate-500 uppercase block mb-1">Fecha de Partida</label>
+                    {!previewData.correlativo_reservado && (
+                        <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-xl flex items-center gap-2.5 text-xs text-rose-800">
+                            <AlertTriangle size={16} className="text-rose-600 shrink-0" />
+                            <div>
+                                <span className="font-bold block">No se puede generar la partida: Falta correlativo contable</span>
+                                <span className="text-[11px] text-rose-700">Debe asignar o reservar el correlativo en la pestaña &quot;Reserva de Correlativos&quot; antes de contabilizar.</span>
+                            </div>
+                        </div>
+                    )}
+                    {/* Cabecera de Partida (Solo Lectura) */}
+                    <div className="flex flex-col sm:flex-row gap-3">
+                        <div className="w-full sm:w-36 shrink-0">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase flex items-center gap-1 mb-1">
+                                <Lock size={10} className="text-slate-400" /> Fecha de Partida
+                            </label>
                             <input
-                                type="date"
-                                required
-                                value={date}
-                                onChange={(e) => setDate(e.target.value)}
-                                className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                                type="text" readOnly disabled tabIndex={-1}
+                                value={formatDate(previewData.fecha)}
+                                className="w-full px-3 py-1.5 bg-slate-100/80 border border-slate-200 rounded-xl text-xs font-semibold text-slate-600 cursor-not-allowed select-none font-mono outline-none text-center sm:text-left"
                             />
                         </div>
-                        <div>
-                            <label className="text-[11px] font-bold text-slate-500 uppercase block mb-1">Tipo de Partida</label>
-                            <select
-                                value={entryTypeCode}
-                                onChange={(e) => setEntryTypeCode(e.target.value)}
-                                className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                            >
-                                <option value="CXP">CXP - Pago / Proveedor</option>
-                                <option value="INGRESO">INGRESO - Remesa / Abono</option>
-                                <option value="GASTO">GASTO - Nota de Cargo</option>
-                                <option value="DIARIO">DIARIO - Comprobante de Diario</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label className="text-[11px] font-bold text-slate-500 uppercase block mb-1">Concepto General</label>
+                        <div className="w-full sm:w-52 shrink-0">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase flex items-center gap-1 mb-1">
+                                <Lock size={10} className="text-slate-400" /> Tipo de Partida
+                            </label>
                             <input
-                                type="text"
-                                required
-                                value={description}
-                                onChange={(e) => setDescription(e.target.value.toUpperCase())}
-                                className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 uppercase"
+                                type="text" readOnly disabled tabIndex={-1}
+                                value={getEntryTypeLabel(previewData.entry_type_code)}
+                                className="w-full px-3 py-1.5 bg-slate-100/80 border border-slate-200 rounded-xl text-xs font-semibold text-slate-600 cursor-not-allowed select-none outline-none truncate"
+                                title={getEntryTypeLabel(previewData.entry_type_code)}
+                            />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase flex items-center gap-1 mb-1">
+                                <Lock size={10} className="text-slate-400" /> Concepto General
+                            </label>
+                            <input
+                                type="text" readOnly disabled tabIndex={-1}
+                                value={previewData.description || ''}
+                                className="w-full px-3 py-1.5 bg-slate-100/80 border border-slate-200 rounded-xl text-xs font-semibold text-slate-600 cursor-not-allowed select-none uppercase truncate outline-none"
+                                title={previewData.description || ''}
                             />
                         </div>
                     </div>
@@ -316,6 +331,7 @@ const BankEntryModal = ({
                         onClose={onClose}
                         isSaving={isSaving}
                         isAlreadyGenerated={Boolean(previewData.already_generated)}
+                        hasReservedCorrelative={Boolean(previewData.correlativo_reservado)}
                     />
                 </form>
             </div>

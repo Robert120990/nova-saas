@@ -21,7 +21,8 @@ const BankEntryLinesTable = ({
     unassignedCount = 0,
     onClose,
     isSaving = false,
-    isAlreadyGenerated = false
+    isAlreadyGenerated = false,
+    hasReservedCorrelative = true
 }) => {
     return (
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
@@ -220,7 +221,8 @@ const BankEntryLinesTable = ({
                     </button>
                     <button
                         type="submit"
-                        disabled={!totals.isBalanced || unassignedCount > 0 || isSaving}
+                        disabled={!totals.isBalanced || unassignedCount > 0 || isSaving || !hasReservedCorrelative}
+                        title={!hasReservedCorrelative ? 'Sin correlativo asignado. Debe reservarlo en Reserva de Correlativos.' : undefined}
                         className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-4 py-1.5 rounded-lg font-black uppercase text-xs transition-all flex items-center justify-center gap-1.5 shadow-sm active:scale-95"
                     >
                         {isSaving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}

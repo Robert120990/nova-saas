@@ -1,43 +1,23 @@
 const pool = require('../../config/db');
 const { getOfficeConfig, getOfficePool } = require('../officeDb.service');
-const { resolveOfficeEmpresa } = require('./accountingBankQuery.service');
-const { reserveEntryNumber } = require('../../controllers/accounting.correlativos.controller');
 const { validateEntryLines } = require('./accountingEntryIntegrity.service');
 const {
     findIvaCreditoAccount,
     findRetencionAccount,
     findPercepcionAccount,
+    findCajaGeneralAccount,
+    findCounterpartAccount,
+    getEntryTypeIdByCode,
     calculateTaxBreakdown,
     fetchOfficeBankDoc,
     round2
 } = require('./accountingBankTax.helper');
-
-async function getEntryTypeIdByCode(code) {
-    const [[row]] = await pool.query('SELECT id FROM entry_types WHERE code = ?', [code]);
-    return row ? row.id : 1;
-}
-
-async function findCounterpartAccount(companyId, searchTerms = []) {
-    for (const term of searchTerms) {
-        const clean = (term || '').replace(/[,.-].*$/, '').trim();
-        if (clean.length < 3) continue;
-        const [rows] = await pool.query(
-            'SELECT id, code, name FROM chart_of_accounts WHERE company_id = ? AND allows_entries = 1 AND active = 1 AND name LIKE ? LIMIT 1',
-            [companyId, `%${clean.slice(0, 20)}%`]
-        );
-        if (rows[0]) return rows[0];
-    }
-    return null;
-}
 
 async function buildBankEntryPreview(companyId, { type, id, detallar_iva, tax_detail_mode }) {
     const config = await getOfficeConfig(companyId);
     if (!config.host || !config.database) throw new Error('Conexión a oficina no configurada');
 
     const officePool = getOfficePool(config);
-    const empresa = await resolveOfficeEmpresa(officePool, companyId);
-    if (!empresa) throw new Error('Empresa no encontrada en base de datos de oficina');
-
     const doc = await fetchOfficeBankDoc(officePool, type, id);
     if (!doc) throw new Error('Registro no encontrado en base de datos de oficina');
 
@@ -81,11 +61,7 @@ async function buildBankEntryPreview(companyId, { type, id, detallar_iva, tax_de
         defaultTypeCode = isRemesa ? 'INGRESO' : 'GASTO';
 
         if (isRemesa) {
-            const [[cajaAcc]] = await pool.query(
-                "SELECT id, code, name FROM chart_of_accounts WHERE company_id = ? AND code = '110101' AND allows_entries = 1",
-                [companyId]
-            );
-            counterpartAccount = cajaAcc || await findCounterpartAccount(companyId, [concepto]);
+            counterpartAccount = await findCajaGeneralAccount(companyId) || await findCounterpartAccount(companyId, [concepto]);
         } else {
             counterpartAccount = await findCounterpartAccount(companyId, [concepto]);
         }
@@ -95,9 +71,15 @@ async function buildBankEntryPreview(companyId, { type, id, detallar_iva, tax_de
     const shouldDetailIva = isRemesa ? false : (detallar_iva !== undefined ? Boolean(detallar_iva) : defaultDetallarIva);
     const taxMode = isRemesa ? 'none' : (tax_detail_mode || 'none');
 
-    const ivaAccount = shouldDetailIva ? await findIvaCreditoAccount(companyId) : null;
-    const retAccount = taxMode === 'retencion' ? await findRetencionAccount(companyId) : null;
-    const perAccount = taxMode === 'percepcion' ? await findPercepcionAccount(companyId) : null;
+    const [allIvaAcc, allRetAcc, allPerAcc] = await Promise.all([
+        findIvaCreditoAccount(companyId),
+        findRetencionAccount(companyId),
+        findPercepcionAccount(companyId)
+    ]);
+
+    const ivaAccount = shouldDetailIva ? allIvaAcc : null;
+    const retAccount = taxMode === 'retencion' ? allRetAcc : null;
+    const perAccount = taxMode === 'percepcion' ? allPerAcc : null;
 
     const breakdown = calculateTaxBreakdown({ monto, detallarIva: shouldDetailIva, taxDetailMode: taxMode });
 
@@ -177,6 +159,8 @@ async function buildBankEntryPreview(companyId, { type, id, detallar_iva, tax_de
         [companyId, `%${docKey}%`]
     );
 
+    const reservedCorr = (doc.num_partida ? String(doc.num_partida).trim() : '');
+
     return {
         type,
         id,
@@ -193,13 +177,15 @@ async function buildBankEntryPreview(companyId, { type, id, detallar_iva, tax_de
         tax_detail_mode: taxMode,
         is_remesa: Boolean(isRemesa),
         tax_accounts: {
-            iva: ivaAccount || await findIvaCreditoAccount(companyId),
-            retencion: retAccount || await findRetencionAccount(companyId),
-            percepcion: perAccount || await findPercepcionAccount(companyId),
+            iva: allIvaAcc,
+            retencion: allRetAcc,
+            percepcion: allPerAcc,
             counterpart: counterpartAccount,
             bank: bankAccount
         },
-        already_generated: Boolean(existing || doc.num_partida),
+        correlativo_reservado: reservedCorr || null,
+        has_reserved_correlative: Boolean(reservedCorr),
+        already_generated: Boolean(existing),
         existing_entry: existing ? { id: existing.id, number: existing.number, date: existing.date, description: existing.description } : null
     };
 }
@@ -210,6 +196,19 @@ async function generateBankEntry(companyId, userId, { type, id, date, descriptio
     const unassigned = lines.find(l => !l.account_id);
     if (unassigned) throw new Error('Todas las líneas deben tener cuenta contable asignada');
 
+    const config = await getOfficeConfig(companyId);
+    if (!config.host || !config.database) throw new Error('Conexión a oficina no configurada');
+    const officePool = getOfficePool(config);
+
+    const doc = await fetchOfficeBankDoc(officePool, type, id);
+    if (!doc) throw new Error('Registro no encontrado en base de datos de oficina');
+
+    const reservedCorr = (doc.num_partida ? String(doc.num_partida).trim() : '');
+    if (!reservedCorr) {
+        throw new Error(`No se puede generar la partida porque el ${type === 'cheque' ? 'cheque' : 'movimiento bancario'} no tiene un correlativo contable reservado. Asigne o reserve el correlativo en la pestaña "Reserva de Correlativos" antes de contabilizar.`);
+    }
+
+    const entryNumber = reservedCorr;
     const conn = await pool.getConnection();
     try {
         await conn.beginTransaction();
@@ -217,24 +216,33 @@ async function generateBankEntry(companyId, userId, { type, id, date, descriptio
         const entryTypeId = await getEntryTypeIdByCode(entry_type_code);
         const { totalDebit, totalCredit } = await validateEntryLines(conn, companyId, lines);
 
-        const entryNumber = await reserveEntryNumber(conn, companyId, entryTypeId, date);
+        const docKey = type === 'cheque' ? `CHEQUE #${doc.cheque}` : `DOC #${doc.referencia}`;
+        const [[existing]] = await conn.query(
+            "SELECT id, number FROM accounting_entries WHERE company_id = ? AND description LIKE ? AND status <> 'voided' LIMIT 1",
+            [companyId, `%${docKey}%`]
+        );
 
-        const [r] = await conn.query('INSERT INTO accounting_entries SET ?', [{
-            company_id: companyId,
-            branch_id: null,
-            entry_type_id: entryTypeId,
-            number: entryNumber,
-            date,
-            description: description || `PARTIDA DE ${type.toUpperCase()} #${id}`,
-            total_debit: totalDebit,
-            total_credit: totalCredit,
-            status: 'posted',
-            created_by: userId
-        }]);
+        let entryId = existing?.id;
+        if (existing) {
+            await conn.query('UPDATE accounting_entries SET ? WHERE id = ?', [{
+                entry_type_id: entryTypeId, number: entryNumber, date,
+                description: description || `PARTIDA DE ${type.toUpperCase()} #${id}`,
+                total_debit: totalDebit, total_credit: totalCredit, status: 'posted'
+            }, existing.id]);
+            await conn.query('DELETE FROM accounting_entry_lines WHERE entry_id = ?', [existing.id]);
+        } else {
+            const [r] = await conn.query('INSERT INTO accounting_entries SET ?', [{
+                company_id: companyId, branch_id: null, entry_type_id: entryTypeId,
+                number: entryNumber, date,
+                description: description || `PARTIDA DE ${type.toUpperCase()} #${id}`,
+                total_debit: totalDebit, total_credit: totalCredit, status: 'posted', created_by: userId
+            }]);
+            entryId = r.insertId;
+        }
 
         for (const line of lines) {
             await conn.query('INSERT INTO accounting_entry_lines SET ?', [{
-                entry_id: r.insertId,
+                entry_id: entryId,
                 account_id: Number(line.account_id),
                 description: line.description || '',
                 debit: round2(line.debit || 0),
@@ -245,22 +253,16 @@ async function generateBankEntry(companyId, userId, { type, id, date, descriptio
         await conn.commit();
 
         try {
-            const config = await getOfficeConfig(companyId);
-            if (config.host && config.database) {
-                const officePool = getOfficePool(config);
-                if (type === 'cheque') {
-                    const [t] = await officePool.query("SHOW TABLES LIKE 'cheques'");
-                    if (t.length > 0) {
-                        await officePool.query('UPDATE cheques SET num_partida = ?, es_contabilizado = 1 WHERE id = ?', [entryNumber, id]);
-                    } else {
-                        await officePool.query("UPDATE vouchers SET num_partida = ?, es_contabilizado = 'S' WHERE id = ? OR llave = ?", [entryNumber, id, id]);
-                    }
-                } else {
-                    const [cols] = await officePool.query("DESCRIBE movimientos_bancarios");
-                    const isInt = cols.find(c => c.Field === 'es_contabilizado')?.Type?.startsWith('tinyint');
-                    const flag = isInt ? 1 : 'S';
-                    await officePool.query('UPDATE movimientos_bancarios SET num_partida = ?, es_contabilizado = ? WHERE id = ?', [entryNumber, flag, id]);
-                }
+            if (type === 'cheque') {
+                const [t] = await officePool.query("SHOW TABLES LIKE 'cheques'");
+                const sql = t.length > 0
+                    ? 'UPDATE cheques SET num_partida = ?, es_contabilizado = 1 WHERE id = ?'
+                    : "UPDATE vouchers SET num_partida = ?, es_contabilizado = 'S' WHERE id = ? OR llave = ?";
+                await officePool.query(sql, t.length > 0 ? [entryNumber, id] : [entryNumber, id, id]);
+            } else {
+                const [cols] = await officePool.query("DESCRIBE movimientos_bancarios");
+                const flag = cols.some(c => c.Field === 'es_contabilizado' && c.Type?.startsWith('tinyint')) ? 1 : 'S';
+                await officePool.query('UPDATE movimientos_bancarios SET num_partida = ?, es_contabilizado = ? WHERE id = ?', [entryNumber, flag, id]);
             }
         } catch (syncErr) {
             console.warn('Advertencia al sincronizar estado con base de oficina:', syncErr.message);
@@ -268,7 +270,7 @@ async function generateBankEntry(companyId, userId, { type, id, date, descriptio
 
         return {
             success: true,
-            id: r.insertId,
+            id: entryId,
             number: entryNumber,
             message: `Partida #${entryNumber} generada exitosamente`
         };
@@ -292,6 +294,12 @@ async function generateBankBatch(companyId, userId, { type, ids }) {
             const preview = await buildBankEntryPreview(companyId, { type, id });
             if (preview.already_generated) {
                 results.push({ id, status: 'skipped', reason: 'Ya fue contabilizado previamente' });
+                skippedCount++;
+                continue;
+            }
+
+            if (!preview.correlativo_reservado) {
+                results.push({ id, status: 'skipped', reason: 'Sin correlativo contable reservado. Debe reservarlo en Reserva de Correlativos.' });
                 skippedCount++;
                 continue;
             }

@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import Money from '../ui/Money';
 import { formatDate } from '../../utils/dateUtils';
-import { FileEdit } from 'lucide-react';
+import { FileEdit, Loader2 } from 'lucide-react';
 
 const BankMovementsTable = ({
     items = [],
@@ -9,12 +9,13 @@ const BankMovementsTable = ({
     onToggleSelect,
     onToggleSelectAll,
     onOpenPreview,
-    isLoading = false
+    isLoading = false,
+    previewingId = null
 }) => {
     const safeItems = useMemo(() => (Array.isArray(items) ? items : []), [items]);
 
     const selectableItems = useMemo(() =>
-        safeItems.filter(item => !item.es_contabilizado),
+        safeItems.filter(item => !item.es_contabilizado && Boolean(item.corr)),
     [safeItems]);
 
     const allSelected = selectableItems.length > 0 && selectableItems.every(i => selectedIds.has(i.id));
@@ -37,7 +38,15 @@ const BankMovementsTable = ({
         <div className="bg-white rounded-xl border border-slate-200/90 shadow-sm overflow-hidden flex flex-col">
             {/* Top Info Bar */}
             <div className="flex items-center justify-between px-3 py-2 border-b border-slate-100 bg-slate-50/70 text-[11px] font-semibold text-slate-500">
-                <span>Total de Movimientos: <strong className="text-slate-700">{safeItems.length}</strong></span>
+                <div className="flex items-center gap-3">
+                    <span>Total de Movimientos: <strong className="text-slate-700">{safeItems.length}</strong></span>
+                    {previewingId && (
+                        <span className="inline-flex items-center gap-1.5 text-indigo-600 font-bold bg-indigo-50 px-2 py-0.5 rounded-full animate-pulse">
+                            <Loader2 size={12} className="animate-spin" />
+                            Preparando partida...
+                        </span>
+                    )}
+                </div>
                 {selectedIds.size > 0 && (
                     <span className="text-indigo-600 font-bold bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100">
                         {selectedIds.size} seleccionados
@@ -86,19 +95,31 @@ const BankMovementsTable = ({
                         ) : (
                             safeItems.map((row) => {
                                 const isSelected = selectedIds.has(row.id);
+                                const isPreviewing = previewingId === row.id;
                                 return (
                                     <tr
                                         key={row.id}
-                                        onDoubleClick={() => onOpenPreview(row)}
+                                        onDoubleClick={() => !previewingId && onOpenPreview(row)}
                                         className={`transition-colors cursor-pointer select-none leading-tight ${
-                                            isSelected ? 'bg-indigo-50/70' : 'hover:bg-slate-50/80'
+                                            isSelected
+                                                ? 'bg-indigo-50/70'
+                                                : isPreviewing
+                                                    ? 'bg-indigo-100/60 ring-1 ring-inset ring-indigo-400 cursor-wait'
+                                                    : 'hover:bg-slate-50/80'
                                         }`}
                                     >
                                         <td className="py-1 px-1.5 text-center" onClick={(e) => e.stopPropagation()}>
                                             <input
                                                 type="checkbox"
                                                 checked={isSelected}
-                                                disabled={row.es_contabilizado}
+                                                disabled={row.es_contabilizado || !row.corr || Boolean(previewingId)}
+                                                title={
+                                                    row.es_contabilizado
+                                                        ? 'Ya contabilizado'
+                                                        : !row.corr
+                                                            ? 'Sin correlativo asignado. Debe reservarlo en Reserva de Correlativos.'
+                                                            : 'Seleccionar para contabilizar'
+                                                }
                                                 onChange={() => onToggleSelect(row.id)}
                                                 className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer disabled:opacity-30"
                                             />
@@ -135,11 +156,16 @@ const BankMovementsTable = ({
                                         <td className="py-1 px-1 text-center" onClick={(e) => e.stopPropagation()}>
                                             <button
                                                 type="button"
+                                                disabled={Boolean(previewingId)}
                                                 onClick={() => onOpenPreview(row)}
-                                                className="p-0.5 rounded text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer"
-                                                title="Ver / Editar partida"
+                                                className={`p-0.5 rounded transition-colors cursor-pointer ${
+                                                    isPreviewing
+                                                        ? 'text-indigo-600 bg-indigo-100 cursor-wait'
+                                                        : 'text-slate-400 hover:text-indigo-600 hover:bg-indigo-50'
+                                                }`}
+                                                title={isPreviewing ? 'Cargando partida...' : 'Ver / Editar partida'}
                                             >
-                                                <FileEdit size={13} />
+                                                {isPreviewing ? <Loader2 size={13} className="animate-spin" /> : <FileEdit size={13} />}
                                             </button>
                                         </td>
                                     </tr>

@@ -79,11 +79,11 @@ const BankFilterBar = ({
                         <select
                             value={statusFilter}
                             onChange={(e) => setStatusFilter(e.target.value)}
-                            className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                            className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all cursor-pointer"
                         >
-                            <option value="all">Todos los registros</option>
                             <option value="unposted">Pendientes de Contabilizar</option>
                             <option value="posted">Ya Contabilizados</option>
+                            <option value="all">Todos los registros</option>
                         </select>
                     </div>
 

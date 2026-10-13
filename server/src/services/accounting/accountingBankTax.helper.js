@@ -89,10 +89,18 @@ function calculateTaxBreakdown({ monto, detallarIva = true, taxDetailMode = 'non
     return { subtotal, iva, retPer, totalPaid, taxDetailMode };
 }
 
+const officeSchemaCache = new Map();
+
 async function fetchOfficeBankDoc(officePool, type, id) {
     if (type === 'cheque') {
-        const [tables] = await officePool.query("SHOW TABLES LIKE 'cheques'");
-        if (tables.length > 0) {
+        let hasChequesTable = officeSchemaCache.get('has_cheques_table');
+        if (hasChequesTable === undefined) {
+            const [tables] = await officePool.query("SHOW TABLES LIKE 'cheques'");
+            hasChequesTable = tables.length > 0;
+            officeSchemaCache.set('has_cheques_table', hasChequesTable);
+        }
+
+        if (hasChequesTable) {
             const [rows] = await officePool.query(`
                 SELECT c.*, cb.numero AS cuenta_numero, cb.nombre AS cuenta_nombre, cb.cod_cta AS cuenta_cod_cta, b.descripcion AS banco_nombre
                 FROM cheques c
@@ -112,8 +120,13 @@ async function fetchOfficeBankDoc(officePool, type, id) {
         return rows[0] || null;
     }
 
-    const [cols] = await officePool.query("DESCRIBE movimientos_bancarios");
-    const hasEmpresaId = cols.some(c => c.Field === 'empresa_id');
+    let hasEmpresaId = officeSchemaCache.get('mov_has_empresa_id');
+    if (hasEmpresaId === undefined) {
+        const [cols] = await officePool.query("DESCRIBE movimientos_bancarios");
+        hasEmpresaId = cols.some(c => c.Field === 'empresa_id');
+        officeSchemaCache.set('mov_has_empresa_id', hasEmpresaId);
+    }
+
     if (hasEmpresaId) {
         const [rows] = await officePool.query(`
             SELECT m.*, m.documento AS referencia, tr.codigo AS tipo_remesa_codigo, tr.descripcion AS tipo_remesa_desc,
@@ -138,10 +151,51 @@ async function fetchOfficeBankDoc(officePool, type, id) {
     return rows[0] || null;
 }
 
+async function findCajaGeneralAccount(companyId) {
+    const [settings] = await pool.query(
+        "SELECT setting_value FROM accounting_settings WHERE company_id = ? AND setting_key IN ('CUENTA_CAJA', 'CUENTA_CHEQUES') ORDER BY (setting_key = 'CUENTA_CAJA') DESC LIMIT 1",
+        [companyId]
+    );
+    if (settings[0]?.setting_value) {
+        const val = settings[0].setting_value;
+        const [[acc]] = await pool.query(
+            "SELECT id, code, name FROM chart_of_accounts WHERE company_id = ? AND (id = ? OR code = ?) AND allows_entries = 1",
+            [companyId, val, val]
+        );
+        if (acc) return acc;
+    }
+    const [rows] = await pool.query(
+        "SELECT id, code, name FROM chart_of_accounts WHERE company_id = ? AND allows_entries = 1 AND active = 1 AND (code = '110101' OR name LIKE '%CAJA GENERAL%') ORDER BY (code = '110101') DESC LIMIT 1",
+        [companyId]
+    );
+    return rows[0] || null;
+}
+
+async function findCounterpartAccount(companyId, searchTerms = []) {
+    for (const term of searchTerms) {
+        const clean = (term || '').replace(/[,.-].*$/, '').trim();
+        if (clean.length < 3) continue;
+        const [rows] = await pool.query(
+            'SELECT id, code, name FROM chart_of_accounts WHERE company_id = ? AND allows_entries = 1 AND active = 1 AND name LIKE ? LIMIT 1',
+            [companyId, `%${clean.slice(0, 20)}%`]
+        );
+        if (rows[0]) return rows[0];
+    }
+    return await findCajaGeneralAccount(companyId);
+}
+
+async function getEntryTypeIdByCode(code) {
+    const [[row]] = await pool.query('SELECT id FROM entry_types WHERE code = ?', [code]);
+    return row ? row.id : 1;
+}
+
 module.exports = {
     findIvaCreditoAccount,
     findRetencionAccount,
     findPercepcionAccount,
+    findCajaGeneralAccount,
+    findCounterpartAccount,
+    getEntryTypeIdByCode,
     calculateTaxBreakdown,
     fetchOfficeBankDoc,
     round2
