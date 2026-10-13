@@ -52,6 +52,7 @@ const AccountingCorrelativos = lazyWithRetry(() => import('./pages/AccountingCor
 const YearClosing = lazyWithRetry(() => import('./pages/YearClosing'));
 const YearOpening = lazyWithRetry(() => import('./pages/YearOpening'));
 const AccountingSettings = lazyWithRetry(() => import('./pages/AccountingSettings'));
+const AccountingAudit = lazyWithRetry(() => import('./pages/AccountingAudit'));
 const LibroDiario = lazyWithRetry(() => import('./pages/AccountingReports/LibroDiario'));
 const LibroDiarioMayor = lazyWithRetry(() => import('./pages/AccountingReports/LibroDiarioMayor'));
 const LibroMayor = lazyWithRetry(() => import('./pages/AccountingReports/LibroMayor'));
@@ -424,6 +425,7 @@ function App() {
                         <Route path="/contabilidad/cierre" element={<YearClosing />} />
                         <Route path="/contabilidad/apertura" element={<YearOpening />} />
                         <Route path="/contabilidad/ajustes" element={<AccountingSettings />} />
+                        <Route path="/contabilidad/auditoria" element={<AccountingAudit />} />
                         <Route path="/contabilidad/reportes/libro-diario" element={<LibroDiario />} />
                         <Route path="/contabilidad/reportes/libro-diario-mayor" element={<LibroDiarioMayor />} />
                         <Route path="/contabilidad/reportes/libro-mayor" element={<LibroMayor />} />

@@ -227,6 +227,7 @@ const accountingCloseoutsController = require('../controllers/accounting.closeou
 const accountingBankController = require('../controllers/accounting/accountingBank.controller');
 const accountingCorrelativosController = require('../controllers/accounting.correlativos.controller');
 const accountingReportsController = require('../controllers/accounting.reports.controller');
+const accountingAuditController = require('../controllers/accounting/accountingAudit.controller');
 const officeConnectionController = require('../controllers/officeConnection.controller');
 const cxcController = require('../controllers/cxc.controller');
 const expenseController = require('../controllers/expense.controller');
@@ -846,6 +847,15 @@ router.get('/accounting/reports/flujo-efectivo', accountingReportsController.get
 router.get('/accounting/reports/balance-comparativo', accountingReportsController.getBalanceComparativo);
 router.get('/accounting/reports/cedula-auditoria', accountingReportsController.getCedulaAuditoria);
 router.get('/accounting/reports/retenciones', accountingReportsController.getRetenciones);
+
+// Accounting Audit & Quality Control (Auditoría Contable Integral)
+router.get('/accounting/audit/overview', checkPermission('manage_accounting_audit'), accountingAuditController.getAuditOverview);
+router.get('/accounting/audit/catalog', checkPermission('manage_accounting_audit'), accountingAuditController.auditCatalog);
+router.get('/accounting/audit/entries', checkPermission('manage_accounting_audit'), accountingAuditController.auditEntries);
+router.get('/accounting/audit/entries/:id', checkPermission('manage_accounting_audit'), accountingAuditController.getEntryDetail);
+router.post('/accounting/audit/ai-diagnosis', checkPermission('manage_accounting_audit'), accountingAuditController.runAIDiagnosis);
+router.post('/accounting/audit/quick-fix', checkPermission('manage_accounting_audit'), accountingAuditController.quickFixAccount);
+router.get('/accounting/audit/export-excel', checkPermission('manage_accounting_audit'), accountingAuditController.exportAuditExcel);
 
 // AI Assistant
 router.use('/ai', aiRoutes);
