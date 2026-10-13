@@ -145,12 +145,19 @@ async function getPercepcionesData({ companyId, branchId, year, month, search, l
             codGen = numCtrl;
         }
 
+        const isDocPlaceholder = !numDoc || ['S/N', 'SN', 'SIN NUMERO', 'S-N'].includes(numDoc.toUpperCase());
+        const isCtrlPlaceholder = !numCtrl || ['S/N', 'SN', 'SIN NUMERO', 'S-N'].includes(numCtrl.toUpperCase());
+
+        if (isDocPlaceholder && !isCtrlPlaceholder && !isUuid(numCtrl)) {
+            numDoc = numCtrl;
+        }
+
         return {
             corr: (offset || 0) + idx + 1,
             id: r.id,
             origen: r.origen,
             fecha: r.fecha,
-            numero_documento: numDoc,
+            numero_documento: numDoc || 'S/N',
             codigo_generacion: codGen,
             numero_control: numCtrl,
             tipo_documento_id: cleanStr(r.tipo_documento_id),

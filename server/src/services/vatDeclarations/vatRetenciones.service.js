@@ -61,7 +61,12 @@ async function getRetencionesEmitidasData({ companyId, branchId, year, month, se
                 'compra' AS origen,
                 ph.id, ph.fecha,
                 CASE 
-                    WHEN ph.tipo_documento_id = '07' THEN ph.numero_documento
+                    WHEN ph.tipo_documento_id = '07' THEN 
+                        CASE 
+                            WHEN ph.numero_documento IS NOT NULL AND TRIM(ph.numero_documento) NOT IN ('S/N', 'SN', 'SIN NUMERO', 'S-N', '') THEN ph.numero_documento
+                            WHEN ph.numero_control IS NOT NULL AND TRIM(ph.numero_control) NOT IN ('S/N', 'SN', 'SIN NUMERO', 'S-N', '') THEN ph.numero_control
+                            ELSE 'S/N'
+                        END
                     WHEN ph.numero_control IS NOT NULL AND ph.numero_control != ph.numero_documento THEN ph.numero_control
                     ELSE '---'
                 END AS doc_retencion,
@@ -92,7 +97,12 @@ async function getRetencionesEmitidasData({ companyId, branchId, year, month, se
             eh.id,
             eh.fecha,
             CASE 
-                WHEN eh.tipo_documento_id = '07' THEN eh.numero_documento
+                WHEN eh.tipo_documento_id = '07' THEN 
+                    CASE 
+                        WHEN eh.numero_documento IS NOT NULL AND TRIM(eh.numero_documento) NOT IN ('S/N', 'SN', 'SIN NUMERO', 'S-N', '') THEN eh.numero_documento
+                        WHEN eh.num_control IS NOT NULL AND TRIM(eh.num_control) NOT IN ('S/N', 'SN', 'SIN NUMERO', 'S-N', '') THEN eh.num_control
+                        ELSE 'S/N'
+                    END
                 WHEN eh.num_control IS NOT NULL AND eh.num_control != eh.numero_documento THEN eh.num_control
                 ELSE '---'
             END AS doc_retencion,

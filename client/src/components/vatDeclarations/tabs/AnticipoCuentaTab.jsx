@@ -23,45 +23,59 @@ const AnticipoCuentaTab = ({
         { label: 'Anticipo 2%', className: 'text-right w-28 whitespace-nowrap' }
     ];
 
-    const renderRow = (item, index) => (
-        <tr key={item.id || index} className="hover:bg-slate-50/80 transition-colors border-b border-slate-100 text-[11px]">
-            <td className="py-1.5 px-2.5 text-center font-semibold text-slate-400 whitespace-nowrap">{item.corr || index + 1}</td>
-            <td className="py-1.5 px-2.5 text-center text-slate-600 font-medium whitespace-nowrap">{formatDate(item.fecha)}</td>
-            <td className="py-1.5 px-2.5 font-semibold text-slate-800 whitespace-nowrap">
-                <div className="truncate max-w-xs" title={item.proveedor_nombre}>{item.proveedor_nombre}</div>
-            </td>
-            <td className="py-1.5 px-2.5 text-center text-slate-600 font-mono text-[11px] whitespace-nowrap">{item.proveedor_nit || '---'}</td>
-            <td className="py-1.5 px-2.5 text-center text-slate-600 font-mono text-[11px] whitespace-nowrap">{item.proveedor_nrc || '---'}</td>
-            <td className="py-1.5 px-2.5 text-slate-700 font-medium font-mono text-[11px] whitespace-nowrap">{item.numero_documento || '---'}</td>
-            <td className="py-1.5 px-2.5 text-slate-500 font-mono text-[10px] truncate max-w-xs whitespace-nowrap" title={item.codigo_generacion}>
-                {item.codigo_generacion || '---'}
-            </td>
-            <td className="py-1.5 px-2.5 text-slate-600 font-medium whitespace-nowrap">{item.branch_name || 'Central'}</td>
-            <td className="py-1.5 px-2.5 text-right font-medium text-slate-700 whitespace-nowrap">
-                <Money value={item.monto_sujeto} />
-            </td>
-            <td className="py-1.5 px-2.5 text-right font-bold text-indigo-600 whitespace-nowrap">
-                <Money value={item.anticipo_cuenta} />
-            </td>
-        </tr>
-    );
+    const isPlaceholder = (val) => !val || ['S/N', 'SN', 'SIN NUMERO', 'S-N', '---'].includes(String(val).trim().toUpperCase());
 
-    const renderCard = (item, index) => (
-        <div className="space-y-2">
-            <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-400">#{item.corr || index + 1}</span>
-                <span className="text-xs font-medium text-slate-500">{formatDate(item.fecha)}</span>
+    const renderRow = (item, index) => {
+        const docDisplay = isPlaceholder(item.numero_documento) && !isPlaceholder(item.num_control)
+            ? item.num_control
+            : (item.numero_documento || '---');
+
+        return (
+            <tr key={item.id || index} className="hover:bg-slate-50/80 transition-colors border-b border-slate-100 text-[11px]">
+                <td className="py-1.5 px-2.5 text-center font-semibold text-slate-400 whitespace-nowrap">{item.corr || index + 1}</td>
+                <td className="py-1.5 px-2.5 text-center text-slate-600 font-medium whitespace-nowrap">{formatDate(item.fecha)}</td>
+                <td className="py-1.5 px-2.5 font-semibold text-slate-800 whitespace-nowrap">
+                    <div className="truncate max-w-xs" title={item.proveedor_nombre}>{item.proveedor_nombre}</div>
+                </td>
+                <td className="py-1.5 px-2.5 text-center text-slate-600 font-mono text-[11px] whitespace-nowrap">{item.proveedor_nit || '---'}</td>
+                <td className="py-1.5 px-2.5 text-center text-slate-600 font-mono text-[11px] whitespace-nowrap">{item.proveedor_nrc || '---'}</td>
+                <td className="py-1.5 px-2.5 text-slate-700 font-medium font-mono text-[11px] whitespace-nowrap">{docDisplay}</td>
+                <td className="py-1.5 px-2.5 text-slate-500 font-mono text-[10px] truncate max-w-xs whitespace-nowrap" title={item.codigo_generacion}>
+                    {item.codigo_generacion || '---'}
+                </td>
+                <td className="py-1.5 px-2.5 text-slate-600 font-medium whitespace-nowrap">{item.branch_name || 'Central'}</td>
+                <td className="py-1.5 px-2.5 text-right font-medium text-slate-700 whitespace-nowrap">
+                    <Money value={item.monto_sujeto} />
+                </td>
+                <td className="py-1.5 px-2.5 text-right font-bold text-indigo-600 whitespace-nowrap">
+                    <Money value={item.anticipo_cuenta} />
+                </td>
+            </tr>
+        );
+    };
+
+    const renderCard = (item, index) => {
+        const docDisplay = isPlaceholder(item.numero_documento) && !isPlaceholder(item.num_control)
+            ? item.num_control
+            : (item.numero_documento || '---');
+
+        return (
+            <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-400">#{item.corr || index + 1}</span>
+                    <span className="text-xs font-medium text-slate-500">{formatDate(item.fecha)}</span>
+                </div>
+                <div className="font-semibold text-slate-800 text-sm">{item.proveedor_nombre}</div>
+                <div className="text-xs text-slate-500 font-mono truncate" title={item.codigo_generacion}>
+                    Doc: {docDisplay} | Cód. Gen: {item.codigo_generacion || '---'}
+                </div>
+                <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
+                    <span className="text-xs text-slate-500">Monto Sujeto: <Money value={item.monto_sujeto} /></span>
+                    <span className="text-sm font-bold text-indigo-600">Anticipo: <Money value={item.anticipo_cuenta} /></span>
+                </div>
             </div>
-            <div className="font-semibold text-slate-800 text-sm">{item.proveedor_nombre}</div>
-            <div className="text-xs text-slate-500 font-mono truncate" title={item.codigo_generacion}>
-                Doc: {item.numero_documento} | Cód. Gen: {item.codigo_generacion || '---'}
-            </div>
-            <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
-                <span className="text-xs text-slate-500">Monto Sujeto: <Money value={item.monto_sujeto} /></span>
-                <span className="text-sm font-bold text-indigo-600">Anticipo: <Money value={item.anticipo_cuenta} /></span>
-            </div>
-        </div>
-    );
+        );
+    };
 
     return (
         <div className="space-y-4">

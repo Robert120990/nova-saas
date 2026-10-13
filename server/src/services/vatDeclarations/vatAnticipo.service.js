@@ -99,11 +99,18 @@ const isUuid = (val) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-
             codGen = numCtrl;
         }
 
+        const isDocPlaceholder = !numDoc || ['S/N', 'SN', 'SIN NUMERO', 'S-N'].includes(numDoc.toUpperCase());
+        const isCtrlPlaceholder = !numCtrl || ['S/N', 'SN', 'SIN NUMERO', 'S-N'].includes(numCtrl.toUpperCase());
+
+        if (isDocPlaceholder && !isCtrlPlaceholder && !isUuid(numCtrl)) {
+            numDoc = numCtrl;
+        }
+
         return {
             corr: (offset || 0) + idx + 1,
             id: r.id,
             fecha: r.fecha,
-            numero_documento: numDoc,
+            numero_documento: numDoc || 'S/N',
             codigo_generacion: codGen,
             num_control: numCtrl,
             tipo_documento_id: cleanStr(r.tipo_documento_id),

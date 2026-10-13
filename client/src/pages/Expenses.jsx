@@ -1575,7 +1575,9 @@ const Expenses = () => {
                                                         {docTypeInfo.code} {docTypeInfo.badge}
                                                     </span>
                                                     <span className="text-xs font-black text-slate-900">
-                                                        {g.numero_documento || 'S/N'}
+                                                        {(!g.numero_documento || ['S/N', 'SN', 'SIN NUMERO', 'S-N'].includes(String(g.numero_documento).toUpperCase())) && g.num_control && !['S/N', 'SN', 'SIN NUMERO', 'S-N'].includes(String(g.num_control).toUpperCase())
+                                                            ? g.num_control
+                                                            : (g.numero_documento || 'S/N')}
                                                     </span>
                                                 </div>
                                                 {g.tipo_documento_id === '14' && (
