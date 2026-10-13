@@ -23,8 +23,6 @@ export default function RestaurantFinalizeModal({
     user,
     onSuccess
 }) {
-    if (!isOpen || !order) return null;
-
     // Regla obligatoria: Selección DTE (01 Factura, 03 Crédito Fiscal, none Sin DTE)
     const [dteType, setDteType] = useState('01');
     const [selectedCustomer, setSelectedCustomer] = useState(null);
@@ -33,11 +31,12 @@ export default function RestaurantFinalizeModal({
     const [paymentReference, setPaymentReference] = useState('');
     const [splitCashAmount, setSplitCashAmount] = useState('');
     const [splitSecondMethod, setSplitSecondMethod] = useState('02');
-    const [tipAmount, setTipAmount] = useState(Number(order.tip_amount || 0));
+    const [tipAmount, setTipAmount] = useState(Number(order?.tip_amount || 0));
     const [cashGiven, setCashGiven] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     useEffect(() => {
+        if (!order) return;
         setTipAmount(Number(order.tip_amount || 0));
         setDteType('01');
         setSelectedCustomer(null);
@@ -53,7 +52,7 @@ export default function RestaurantFinalizeModal({
     const { data: rawCustomers = [] } = useQuery({
         queryKey: ['customers-list-restaurant'],
         queryFn: async () => unwrapList(await axios.get('/api/customers')),
-        enabled: dteType === '03'
+        enabled: Boolean(isOpen && order && dteType === '03')
     });
 
     const customers = useMemo(() => {
@@ -68,6 +67,7 @@ export default function RestaurantFinalizeModal({
     }, [rawCustomers, customerSearch]);
 
     const { netSubtotal, discount, total } = useMemo(() => {
+        if (!order) return { netSubtotal: 0, discount: 0, total: 0 };
         return calculateOrderFinalTotals(order, tipAmount);
     }, [order, tipAmount]);
 
@@ -156,6 +156,8 @@ export default function RestaurantFinalizeModal({
             setIsSubmitting(false);
         }
     };
+
+    if (!isOpen || !order) return null;
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">

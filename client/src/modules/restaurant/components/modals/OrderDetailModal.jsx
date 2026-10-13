@@ -1,4 +1,4 @@
-import { Printer, X, ShieldCheck, Clock, User, Utensils } from 'lucide-react';
+import { Printer, X, ShieldCheck, Clock, User } from 'lucide-react';
 import Money from '../../../../components/ui/Money';
 import { formatDateTime } from '../../../../utils/dateUtils';
 
