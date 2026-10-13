@@ -407,14 +407,38 @@ exports.revertirEntregado = async (req, res) => {
         let rrsMessage = '';
         try {
             const rrsPool = getRrsPool();
-            const llave = `${rrsIdEmpresa}-${delivery.id}`;
+            const llave = `${rrsIdEmpresa}-G${delivery.id}`;
+            const legacyLlave = `${rrsIdEmpresa}-${delivery.id}`;
+            // Obtener cuenta de pista para no borrar por error remesas de tienda si coincidieran con legacy
+            const [settingsRows] = await pool.query(
+                `SELECT setting_value FROM gas_station_settings 
+                 WHERE company_id = ? AND (branch_id = ? OR (branch_id IS NULL AND ? IS NULL))
+                 AND setting_key = 'cuenta_bancaria_pista'`,
+                [companyId, delivery.branch_id || null, delivery.branch_id || null]
+            );
+            const last4 = (settingsRows[0]?.setting_value || '').replace(/\s/g, '').slice(-4);
+            let cuentaNumero = null;
+            if (last4.length === 4) {
+                const [cuentas] = await rrsPool.query(
+                    `SELECT numero FROM cuentas_bancarias WHERE numero LIKE ?`,
+                    [`%${last4}`]
+                );
+                if (cuentas.length > 0) {
+                    cuentaNumero = cuentas[0].numero;
+                }
+            }
+
             const [delMain] = await rrsPool.query(
-                `DELETE FROM movimientos_bancarios WHERE llave = ?`,
-                [llave]
+                cuentaNumero
+                    ? `DELETE FROM movimientos_bancarios WHERE llave = ? OR (llave = ? AND numero_cuenta = ?)`
+                    : `DELETE FROM movimientos_bancarios WHERE llave = ?`,
+                cuentaNumero ? [llave, legacyLlave, cuentaNumero] : [llave]
             );
             const [delExtras] = await rrsPool.query(
-                `DELETE FROM movimientos_bancarios WHERE llave LIKE ?`,
-                [`${rrsIdEmpresa}-${delivery.id}-E%`]
+                cuentaNumero
+                    ? `DELETE FROM movimientos_bancarios WHERE llave LIKE ? OR (llave LIKE ? AND numero_cuenta = ?)`
+                    : `DELETE FROM movimientos_bancarios WHERE llave LIKE ?`,
+                cuentaNumero ? [`${rrsIdEmpresa}-G${delivery.id}-E%`, `${legacyLlave}-E%`, cuentaNumero] : [`${rrsIdEmpresa}-G${delivery.id}-E%`]
             );
             rrsDeleted = (delMain.affectedRows || 0) + (delExtras.affectedRows || 0);
             rrsMessage = rrsDeleted > 0 
@@ -509,7 +533,8 @@ const syncGasDeliveryToRrs = async (deliveryId, companyId) => {
     }
 
     const cuenta = cuentas[0];
-    const llave = `${rrsIdEmpresa}-${delivery.id}`;
+    const llave = `${rrsIdEmpresa}-G${delivery.id}`;
+    const legacyLlave = `${rrsIdEmpresa}-${delivery.id}`;
     const documento = (delivery.referencia || '').trim() || String(delivery.id).padStart(7, '0');
     const d = new Date(delivery.fecha);
     const fechaStr = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
@@ -517,8 +542,8 @@ const syncGasDeliveryToRrs = async (deliveryId, companyId) => {
     const concepto = `${delivery.branch_name || 'Sucursal'} - ${fechaStr} ${hora}`;
 
     await rrsPool.query(
-        `DELETE FROM movimientos_bancarios WHERE llave = ?`,
-        [llave]
+        `DELETE FROM movimientos_bancarios WHERE llave = ? OR (llave = ? AND numero_cuenta = ?)`,
+        [llave, legacyLlave, cuenta.numero]
     );
 
     if (montoTotal > 0) {
@@ -544,15 +569,15 @@ const syncGasDeliveryToRrs = async (deliveryId, companyId) => {
     }
 
     await rrsPool.query(
-        `DELETE FROM movimientos_bancarios WHERE llave LIKE ?`,
-        [`${rrsIdEmpresa}-${delivery.id}-E%`]
+        `DELETE FROM movimientos_bancarios WHERE llave LIKE ? OR (llave LIKE ? AND numero_cuenta = ?)`,
+        [`${rrsIdEmpresa}-G${delivery.id}-E%`, `${legacyLlave}-E%`, cuenta.numero]
     );
 
     for (const extra of remesasExtra) {
         const montoExtra = parseFloat(extra.monto) || 0;
         if (montoExtra <= 0) continue;
 
-        const llaveExtra = `${rrsIdEmpresa}-${delivery.id}-E${extra.id}`;
+        const llaveExtra = `${rrsIdEmpresa}-G${delivery.id}-E${extra.id}`;
         const conceptoExtra = String(extra.descripcion || 'Otras remesas').trim().toUpperCase().slice(0, 120);
 
         await rrsPool.query(
@@ -887,3 +912,6 @@ exports.getDeliveryPdf = async (req, res) => {
         res.status(500).json({ message: 'Error al generar PDF de entrega' });
     }
 };
+
+exports.syncGasDeliveryToRrs = syncGasDeliveryToRrs;
+

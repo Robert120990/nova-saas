@@ -422,7 +422,8 @@ const syncSalesDeliveryToRrs = async (deliveryId, companyId) => {
     }
 
     const cuenta = cuentas[0];
-    const llave = `${rrsIdEmpresa}-${delivery.id}`;
+    const llave = `${rrsIdEmpresa}-S${delivery.id}`;
+    const legacyLlave = `${rrsIdEmpresa}-${delivery.id}`;
     const documento = (delivery.referencia || '').trim() || String(delivery.id).padStart(7, '0');
     const d = new Date(delivery.fecha);
     const fechaStr = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
@@ -430,8 +431,8 @@ const syncSalesDeliveryToRrs = async (deliveryId, companyId) => {
     const concepto = `${delivery.branch_name || 'Sucursal'} - ${fechaStr} ${hora}`;
 
     await rrsPool.query(
-        `DELETE FROM movimientos_bancarios WHERE llave = ?`,
-        [llave]
+        `DELETE FROM movimientos_bancarios WHERE llave = ? OR (llave = ? AND numero_cuenta = ?)`,
+        [llave, legacyLlave, cuenta.numero]
     );
 
     await rrsPool.query(
@@ -567,16 +568,29 @@ exports.revertirEntregado = async (req, res) => {
         let rrsMessage = '';
         try {
             const rrsPool = getRrsPool();
-            const llave = `${rrsIdEmpresa}-${delivery.id}`;
+            const llave = `${rrsIdEmpresa}-S${delivery.id}`;
+            const legacyLlave = `${rrsIdEmpresa}-${delivery.id}`;
+
+            const cuentaBancaria = await getSalesSetting(companyId, delivery.branch_id || null, 'cuenta_bancaria_tienda');
+            const last4 = (cuentaBancaria || '').replace(/\s/g, '').slice(-4);
+            let cuentaNumero = null;
+            if (last4.length === 4) {
+                const [cuentas] = await rrsPool.query(
+                    `SELECT numero FROM cuentas_bancarias WHERE numero LIKE ?`,
+                    [`%${last4}`]
+                );
+                if (cuentas.length > 0) {
+                    cuentaNumero = cuentas[0].numero;
+                }
+            }
+
             const [delMain] = await rrsPool.query(
-                `DELETE FROM movimientos_bancarios WHERE llave = ?`,
-                [llave]
+                cuentaNumero 
+                    ? `DELETE FROM movimientos_bancarios WHERE llave = ? OR (llave = ? AND numero_cuenta = ?)`
+                    : `DELETE FROM movimientos_bancarios WHERE llave = ?`,
+                cuentaNumero ? [llave, legacyLlave, cuentaNumero] : [llave]
             );
-            const [delExtras] = await rrsPool.query(
-                `DELETE FROM movimientos_bancarios WHERE llave LIKE ?`,
-                [`${rrsIdEmpresa}-${delivery.id}-E%`]
-            );
-            rrsDeleted = (delMain.affectedRows || 0) + (delExtras.affectedRows || 0);
+            rrsDeleted = delMain.affectedRows || 0;
             rrsMessage = rrsDeleted > 0 
                 ? `Se eliminaron ${rrsDeleted} movimiento(s) de RRS.` 
                 : 'No se encontraron movimientos previos en RRS.';
@@ -829,3 +843,6 @@ exports.getDeliveryPdf = async (req, res) => {
         res.status(500).json({ message: 'Error al generar PDF de entrega' });
     }
 };
+
+exports.syncSalesDeliveryToRrs = syncSalesDeliveryToRrs;
+
