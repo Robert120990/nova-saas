@@ -1,8 +1,17 @@
 import { useState, useMemo } from 'react';
-import { Search, AlertCircle, AlertTriangle, Info, Eye, CheckCircle2, Calendar } from 'lucide-react';
+import { Search, AlertCircle, AlertTriangle, Info, Eye, CheckCircle2, Calendar, Edit, Wrench } from 'lucide-react';
 import { formatDate } from '../../../../utils/dateUtils';
 
-export const EntriesAuditTab = ({ entriesData, isLoading, onViewEntry, startDate, endDate, onDateChange }) => {
+export const EntriesAuditTab = ({
+    entriesData,
+    isLoading,
+    onViewEntry,
+    onEditEntry,
+    onFixEntry,
+    startDate,
+    endDate,
+    onDateChange
+}) => {
     const [searchTerm, setSearchTerm] = useState('');
     const [severityFilter, setSeverityFilter] = useState('all');
 
@@ -170,12 +179,33 @@ export const EntriesAuditTab = ({ entriesData, isLoading, onViewEntry, startDate
                                             </td>
                                             <td className="py-3 px-4 text-center whitespace-nowrap">
                                                 {item.entryId ? (
-                                                    <button
-                                                        onClick={() => onViewEntry(item.entryId)}
-                                                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-indigo-50 text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-300 hover:bg-indigo-100 border border-indigo-200 dark:border-indigo-800 transition-colors"
-                                                    >
-                                                        <Eye className="w-3.5 h-3.5" /> Inspeccionar
-                                                    </button>
+                                                    <div className="inline-flex items-center gap-1.5 justify-center">
+                                                        <button
+                                                            onClick={() => onViewEntry(item.entryId)}
+                                                            title="Inspeccionar detalle y partida doble"
+                                                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-indigo-50 text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-300 hover:bg-indigo-100 border border-indigo-200 dark:border-indigo-800 transition-colors"
+                                                        >
+                                                            <Eye className="w-3.5 h-3.5" /> Inspeccionar
+                                                        </button>
+                                                        {onFixEntry && (item.category?.includes('Desincronización') || item.fixType === 'recalculate_entry') && (
+                                                            <button
+                                                                onClick={() => onFixEntry(item.entryId, 'sync_totals')}
+                                                                title="Sincronizar cabecera con la suma real de las líneas"
+                                                                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300 hover:bg-amber-100 border border-amber-200 dark:border-amber-800 transition-colors"
+                                                            >
+                                                                <Wrench className="w-3.5 h-3.5" /> Corregir
+                                                            </button>
+                                                        )}
+                                                        {onEditEntry && (
+                                                            <button
+                                                                onClick={() => onEditEntry(item.entryId)}
+                                                                title="Editar partidas, cuentas y movimientos"
+                                                                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold bg-slate-50 text-slate-700 dark:bg-slate-800 dark:text-slate-200 hover:bg-slate-100 border border-slate-200 dark:border-slate-700 transition-colors"
+                                                            >
+                                                                <Edit className="w-3.5 h-3.5" /> Editar
+                                                            </button>
+                                                        )}
+                                                    </div>
                                                 ) : (
                                                     <span className="text-slate-400 text-[11px]">-</span>
                                                 )}

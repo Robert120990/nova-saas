@@ -11,9 +11,16 @@ import {
     AuditEntryDetailModal,
     FixAccountModal
 } from '../components/accounting/audit';
+import { AccountingEntryModal } from '../components/accounting';
+import { useAuth } from '../context/AuthContext';
+import { unwrapList } from '../utils/apiUtils';
 import { getFirstDayOfMonth, getTodayString } from '../utils/dateUtils';
 
 const AccountingAudit = () => {
+    const { user } = useAuth();
+    const companyId = user?.company_id;
+    const companyHeaders = companyId ? { 'x-company-id': String(companyId) } : {};
+
     const queryClient = useQueryClient();
     const [activeTab, setActiveTab] = useState('smart'); // 'smart' | 'catalog' | 'entries'
     const [exporting, setExporting] = useState(false);
@@ -27,46 +34,59 @@ const AccountingAudit = () => {
     // Modals state
     const [selectedEntryId, setSelectedEntryId] = useState(null);
     const [accountToFix, setAccountToFix] = useState(null);
+    const [entryToEdit, setEntryToEdit] = useState(null);
+    const [isSavingEntry, setIsSavingEntry] = useState(false);
+
+    // Entry Types & Accounts for edit modal
+    const { data: entryTypes = [] } = useQuery({
+        queryKey: ['entryTypes', companyId],
+        queryFn: async () => unwrapList(await axios.get('/api/accounting/entry-types', { headers: companyHeaders })),
+        enabled: Boolean(companyId)
+    });
+
+    const { data: accounts = [] } = useQuery({
+        queryKey: ['accounts', companyId],
+        queryFn: async () => unwrapList(await axios.get('/api/accounting/accounts', { headers: companyHeaders })),
+        enabled: Boolean(companyId)
+    });
 
     // 1. Overview Query
     const { data: overviewData, refetch: refetchOverview } = useQuery({
-        queryKey: ['accounting-audit-overview'],
-        queryFn: async () => {
-            const res = await axios.get('/api/accounting/audit/overview');
-            return res.data?.data;
-        }
+        queryKey: ['accounting-audit-overview', companyId],
+        queryFn: async () => (await axios.get('/api/accounting/audit/overview', { headers: companyHeaders })).data?.data
     });
 
     // 2. Catalog Audit Query
     const { data: catalogData, isLoading: isLoadingCatalog, refetch: refetchCatalog } = useQuery({
-        queryKey: ['accounting-audit-catalog'],
-        queryFn: async () => {
-            const res = await axios.get('/api/accounting/audit/catalog');
-            return res.data?.data;
-        }
+        queryKey: ['accounting-audit-catalog', companyId],
+        queryFn: async () => (await axios.get('/api/accounting/audit/catalog', { headers: companyHeaders })).data?.data
     });
 
     // 3. Entries Audit Query
     const { data: entriesData, isLoading: isLoadingEntries, refetch: refetchEntries } = useQuery({
-        queryKey: ['accounting-audit-entries', dates.startDate, dates.endDate],
+        queryKey: ['accounting-audit-entries', dates.startDate, dates.endDate, companyId],
         queryFn: async () => {
             const params = {};
             if (dates.startDate) params.startDate = dates.startDate;
             if (dates.endDate) params.endDate = dates.endDate;
-            const res = await axios.get('/api/accounting/audit/entries', { params });
-            return res.data?.data;
+            return (await axios.get('/api/accounting/audit/entries', { params, headers: companyHeaders })).data?.data;
         }
     });
 
-    // 4. AI Diagnosis Query & Mutation
-    const { data: initialDiagnosis, isLoading: isLoadingDiagnosis, mutate: runAIDiagnosis } = useMutation({
+    // 4. AI Diagnosis Mutation
+    const { data: initialDiagnosis, isPending: isDiagnosing, mutate: runAIDiagnosis } = useMutation({
         mutationFn: async () => {
-            const res = await axios.post('/api/accounting/audit/ai-diagnosis');
-            return res.data?.data;
+            const toastId = toast.loading('Generando dictamen y razonamiento con IA...', { id: 'ai-audit-loading' });
+            try {
+                const res = await axios.post('/api/accounting/audit/ai-diagnosis', {}, { headers: companyHeaders });
+                return res.data?.data;
+            } finally {
+                toast.dismiss(toastId);
+            }
         },
         onSuccess: (data) => {
             toast.success('Dictamen y análisis de auditoría generados con éxito');
-            queryClient.setQueryData(['accounting-audit-diagnosis'], data);
+            queryClient.setQueryData(['accounting-audit-diagnosis', companyId], data);
         },
         onError: (err) => {
             toast.error(err.response?.data?.message || 'Error al generar el diagnóstico de auditoría');
@@ -74,26 +94,18 @@ const AccountingAudit = () => {
     });
 
     // Cache or fetched diagnosis
-    const cachedDiagnosis = queryClient.getQueryData(['accounting-audit-diagnosis']) || initialDiagnosis;
+    const cachedDiagnosis = queryClient.getQueryData(['accounting-audit-diagnosis', companyId]) || initialDiagnosis;
 
-    const handleDateChange = (field, val) => {
-        setDates(prev => ({ ...prev, [field]: val }));
-    };
-
+    const handleDateChange = (field, val) => setDates(prev => ({ ...prev, [field]: val }));
     const handleRefreshAll = () => {
-        refetchOverview();
-        refetchCatalog();
-        refetchEntries();
+        refetchOverview(); refetchCatalog(); refetchEntries();
         toast.info('Actualizando datos de auditoría contable...');
     };
 
     const handleExportExcel = async () => {
         try {
             setExporting(true);
-            const res = await axios.get('/api/accounting/audit/export-excel', {
-                responseType: 'blob',
-                params: dates
-            });
+            const res = await axios.get('/api/accounting/audit/export-excel', { responseType: 'blob', params: dates, headers: companyHeaders });
             const url = window.URL.createObjectURL(new Blob([res.data]));
             const link = document.createElement('a');
             link.href = url;
@@ -107,6 +119,52 @@ const AccountingAudit = () => {
             toast.error('Error al exportar informe a Excel');
         } finally {
             setExporting(false);
+        }
+    };
+
+    const handleEditEntry = async (entryId) => {
+        try {
+            const toastId = toast.loading('Cargando partida para edición...');
+            const res = await axios.get(`/api/accounting/entries/${entryId}`, { headers: companyHeaders });
+            toast.dismiss(toastId);
+            setEntryToEdit(res.data);
+        } catch (err) {
+            toast.error(err.response?.data?.message || 'Error al cargar partida para edición');
+        }
+    };
+
+    const handleSaveEditedEntry = async (formData) => {
+        if (!entryToEdit?.id) return;
+        setIsSavingEntry(true);
+        const toastId = toast.loading('Guardando cambios en la partida...');
+        try {
+            await axios.put(`/api/accounting/entries/${entryToEdit.id}`, {
+                description: formData.description,
+                expected_version: entryToEdit.version,
+                lines: formData.lines
+            }, { headers: companyHeaders });
+            toast.success('Partida contable actualizada con éxito', { id: toastId });
+            setEntryToEdit(null);
+            refetchEntries();
+            refetchOverview();
+            queryClient.invalidateQueries({ queryKey: ['audit-entry-detail'] });
+        } catch (err) {
+            toast.error(err.response?.data?.message || 'Error al actualizar partida', { id: toastId });
+        } finally {
+            setIsSavingEntry(false);
+        }
+    };
+
+    const handleFixEntry = async (entryId, action = 'sync_totals') => {
+        const toastId = toast.loading('Aplicando corrección a la partida...');
+        try {
+            const res = await axios.post('/api/accounting/audit/quick-fix-entry', { entryId, action }, { headers: companyHeaders });
+            toast.success(res.data?.message || 'Partida corregida con éxito', { id: toastId });
+            refetchEntries();
+            refetchOverview();
+            queryClient.invalidateQueries({ queryKey: ['audit-entry-detail'] });
+        } catch (err) {
+            toast.error(err.response?.data?.message || 'Error al corregir partida', { id: toastId });
         }
     };
 
@@ -215,7 +273,7 @@ const AccountingAudit = () => {
                             opinionLevel: health.opinionLevel,
                             summary: 'Haga clic en "Ejecutar Dictamen IA" para iniciar el análisis contable exhaustivo con inteligencia artificial.'
                         }}
-                        isDiagnosing={isLoadingDiagnosis}
+                        isDiagnosing={isDiagnosing}
                         onRunDiagnosis={() => runAIDiagnosis()}
                     />
                 )}
@@ -233,6 +291,8 @@ const AccountingAudit = () => {
                         entriesData={entriesData}
                         isLoading={isLoadingEntries}
                         onViewEntry={(id) => setSelectedEntryId(id)}
+                        onEditEntry={handleEditEntry}
+                        onFixEntry={handleFixEntry}
                         startDate={dates.startDate}
                         endDate={dates.endDate}
                         onDateChange={handleDateChange}
@@ -245,16 +305,35 @@ const AccountingAudit = () => {
                 open={Boolean(selectedEntryId)}
                 entryId={selectedEntryId}
                 onClose={() => setSelectedEntryId(null)}
+                onEditEntry={(id) => {
+                    setSelectedEntryId(null);
+                    handleEditEntry(id);
+                }}
+                onFixEntry={handleFixEntry}
             />
 
             <FixAccountModal
                 open={Boolean(accountToFix)}
                 account={accountToFix}
+                accounts={accounts}
                 onClose={() => setAccountToFix(null)}
                 onFixed={() => {
                     refetchCatalog();
                     refetchOverview();
                 }}
+            />
+
+            <AccountingEntryModal
+                open={Boolean(entryToEdit)}
+                onClose={() => {
+                    if (isSavingEntry) return;
+                    setEntryToEdit(null);
+                }}
+                onSubmit={handleSaveEditedEntry}
+                editingEntry={entryToEdit}
+                entryTypes={entryTypes}
+                accounts={accounts}
+                isSaving={isSavingEntry}
             />
         </div>
     );

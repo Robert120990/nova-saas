@@ -309,23 +309,26 @@ async function auditAccountingEntries(companyId, filters = {}) {
  * Obtener detalle completo de una partida para auditoría en modal
  */
 async function getEntryAuditDetail(companyId, entryId) {
+    const whereSql = companyId ? 'WHERE e.company_id = ? AND (e.id = ? OR e.number = ?)' : 'WHERE (e.id = ? OR e.number = ?)';
+    const params = companyId ? [companyId, entryId, entryId] : [entryId, entryId];
+
     const [entries] = await pool.query(`
         SELECT 
             e.id, e.company_id, e.branch_id, e.entry_type_id, e.number, e.date,
             e.description, e.status, e.total_debit, e.total_credit, e.created_at,
             b.nombre as branch_name, t.name as entry_type_name,
-            u.name as creator_name
+            COALESCE(u.nombre, u.username) as creator_name
         FROM accounting_entries e
         LEFT JOIN branches b ON e.branch_id = b.id
         LEFT JOIN entry_types t ON e.entry_type_id = t.id
         LEFT JOIN users u ON e.created_by = u.id
-        WHERE e.company_id = ? AND e.id = ?
-    `, [companyId, entryId]);
+        ${whereSql}
+        LIMIT 1
+    `, params);
 
     if (!entries.length) return null;
 
     const entry = entries[0];
-
     const [lines] = await pool.query(`
         SELECT 
             l.id, l.account_id, l.description, l.debit, l.credit,
@@ -337,7 +340,7 @@ async function getEntryAuditDetail(companyId, entryId) {
         LEFT JOIN account_types t ON a.account_type_id = t.id
         WHERE l.entry_id = ?
         ORDER BY l.id ASC
-    `, [entryId]);
+    `, [entry.id]);
 
     return {
         ...entry,

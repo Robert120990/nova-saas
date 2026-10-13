@@ -51,13 +51,71 @@ export const SmartDiagnosisTab = ({ diagnosis, isDiagnosing, onRunDiagnosis }) =
                     <button
                         onClick={onRunDiagnosis}
                         disabled={isDiagnosing}
-                        className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-white text-indigo-900 hover:bg-indigo-50 font-bold text-xs sm:text-sm shadow-md hover:shadow-lg transition-all active:scale-[0.98] disabled:opacity-60 shrink-0"
+                        className={`inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl font-bold text-xs sm:text-sm shadow-md transition-all active:scale-[0.98] shrink-0 ${
+                            isDiagnosing
+                                ? 'bg-white/90 text-indigo-900 cursor-not-allowed opacity-90 shadow-inner'
+                                : 'bg-white text-indigo-900 hover:bg-indigo-50 hover:shadow-lg'
+                        }`}
                     >
-                        <RefreshCw className={`w-4 h-4 ${isDiagnosing ? 'animate-spin' : ''}`} />
-                        {isDiagnosing ? 'Auditando y Analizando...' : 'Ejecutar Dictamen IA'}
+                        <RefreshCw className={`w-4 h-4 ${isDiagnosing ? 'animate-spin text-indigo-600' : ''}`} />
+                        {isDiagnosing ? 'Auditando con IA en curso...' : 'Ejecutar Dictamen IA'}
                     </button>
                 </div>
             </div>
+
+            {/* AI Active Processing Banner */}
+            {isDiagnosing && (
+                <div className="bg-white dark:bg-slate-900 border-2 border-indigo-500/30 rounded-2xl p-5 sm:p-6 shadow-xl relative overflow-hidden animate-in fade-in duration-300">
+                    <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-indigo-500 via-purple-500 to-indigo-500 animate-pulse" />
+                    
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                        <div className="flex items-center gap-4">
+                            <div className="relative flex items-center justify-center">
+                                <div className="w-12 h-12 rounded-2xl bg-indigo-100 dark:bg-indigo-950/60 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
+                                    <Sparkles className="w-6 h-6 animate-pulse" />
+                                </div>
+                                <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5">
+                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+                                    <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-indigo-500"></span>
+                                </span>
+                            </div>
+                            <div>
+                                <div className="flex items-center gap-2">
+                                    <h3 className="text-sm sm:text-base font-bold text-slate-800 dark:text-white">
+                                        Auditoría y Razonamiento Contable en Proceso...
+                                    </h3>
+                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 animate-pulse">
+                                        Analizando
+                                    </span>
+                                </div>
+                                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                                    Examinando integridad de partida doble, consistencia de catálogo de cuentas y cumplimiento bajo NIIF para PYMES y Arts. 139-142 del Código Tributario SV. Esto tomará sólo unos segundos.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Progress Steps Indicators */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 mt-4 pt-4 border-t border-slate-100 dark:border-slate-800 text-[11px]">
+                        <div className="flex items-center gap-2 p-2 rounded-xl bg-slate-50 dark:bg-slate-800/50">
+                            <div className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+                            <span className="text-slate-600 dark:text-slate-300 font-medium">1. Verificación de catálogo</span>
+                        </div>
+                        <div className="flex items-center gap-2 p-2 rounded-xl bg-slate-50 dark:bg-slate-800/50">
+                            <div className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+                            <span className="text-slate-600 dark:text-slate-300 font-medium">2. Cuadre de partida doble</span>
+                        </div>
+                        <div className="flex items-center gap-2 p-2 rounded-xl bg-slate-50 dark:bg-slate-800/50">
+                            <div className="w-2 h-2 rounded-full bg-amber-500 shrink-0 animate-ping" />
+                            <span className="text-slate-600 dark:text-slate-300 font-medium">3. Detección de anomalías</span>
+                        </div>
+                        <div className="flex items-center gap-2 p-2 rounded-xl bg-slate-50 dark:bg-slate-800/50">
+                            <div className="w-2 h-2 rounded-full bg-indigo-500 shrink-0 animate-pulse" />
+                            <span className="text-slate-600 dark:text-slate-300 font-medium">4. Emisión de dictamen técnico</span>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Opinion & Executive Summary Section */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

@@ -855,6 +855,7 @@ router.get('/accounting/audit/entries', checkPermission('manage_accounting_audit
 router.get('/accounting/audit/entries/:id', checkPermission('manage_accounting_audit'), accountingAuditController.getEntryDetail);
 router.post('/accounting/audit/ai-diagnosis', checkPermission('manage_accounting_audit'), accountingAuditController.runAIDiagnosis);
 router.post('/accounting/audit/quick-fix', checkPermission('manage_accounting_audit'), accountingAuditController.quickFixAccount);
+router.post('/accounting/audit/quick-fix-entry', checkPermission('manage_accounting_audit'), accountingAuditController.quickFixEntry);
 router.get('/accounting/audit/export-excel', checkPermission('manage_accounting_audit'), accountingAuditController.exportAuditExcel);
 
 // AI Assistant

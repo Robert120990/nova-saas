@@ -43,13 +43,23 @@ async function auditChartOfAccounts(companyId) {
         const name = String(acc.name || '').trim();
         const firstDigit = code.charAt(0);
 
+        const base = {
+            accountId: acc.id,
+            code: acc.code,
+            name: acc.name,
+            parent_id: acc.parent_id,
+            allows_entries: acc.allows_entries,
+            active: acc.active,
+            account_type_id: acc.account_type_id,
+            entries_count: acc.entries_count,
+            children_count: acc.children_count
+        };
+
         // 1. Códigos duplicados
         if (codeCounts.get(code) > 1) {
             anomalies.push({
+                ...base,
                 id: `dup-${acc.id}`,
-                accountId: acc.id,
-                code: acc.code,
-                name: acc.name,
                 severity: 'error',
                 category: 'Duplicidad de Código',
                 description: `El código contable ${code} se encuentra repetido en ${codeCounts.get(code)} cuentas del catálogo.`,
@@ -63,10 +73,8 @@ async function auditChartOfAccounts(companyId) {
         const isSuspicious = suspiciousWords.some(w => name.toLowerCase().includes(w)) || name.length < 3;
         if (isSuspicious) {
             anomalies.push({
+                ...base,
                 id: `name-${acc.id}`,
-                accountId: acc.id,
-                code: acc.code,
-                name: acc.name,
                 severity: 'warning',
                 category: 'Descripción Sospechosa',
                 description: `La cuenta tiene un nombre ambiguo o temporal: "${name}".`,
@@ -78,10 +86,8 @@ async function auditChartOfAccounts(companyId) {
         // 3. Padre huérfano
         if (acc.parent_id && !accountMap.has(acc.parent_id)) {
             anomalies.push({
+                ...base,
                 id: `orphan-${acc.id}`,
-                accountId: acc.id,
-                code: acc.code,
-                name: acc.name,
                 severity: 'error',
                 category: 'Jerarquía Rota (Padre Inexistente)',
                 description: `La cuenta tiene asignado el parent_id ${acc.parent_id} pero no existe en el catálogo.`,
@@ -96,10 +102,8 @@ async function auditChartOfAccounts(companyId) {
             const parentCode = String(parent.code || '').trim();
             if (!code.startsWith(parentCode)) {
                 anomalies.push({
+                    ...base,
                     id: `prefix-${acc.id}`,
-                    accountId: acc.id,
-                    code: acc.code,
-                    name: acc.name,
                     severity: 'warning',
                     category: 'Prefijo Jerárquico Desalineado',
                     description: `El código (${code}) no inicia con el código de su cuenta padre "${parent.name}" (${parentCode}).`,
@@ -112,10 +116,8 @@ async function auditChartOfAccounts(companyId) {
         // 5. Cuenta padre con movimientos directos permitidos (Mayor que recibe partidas)
         if (acc.children_count > 0 && acc.allows_entries) {
             anomalies.push({
+                ...base,
                 id: `parent-entries-${acc.id}`,
-                accountId: acc.id,
-                code: acc.code,
-                name: acc.name,
                 severity: 'error',
                 category: 'Cuenta de Mayor con Asientos Permitidos',
                 description: `La cuenta agrupa ${acc.children_count} subcuentas pero tiene "permite asientos directos" activo.`,
@@ -128,10 +130,8 @@ async function auditChartOfAccounts(companyId) {
         // 6. Cuenta de detalle bloqueada sin hijos
         if (acc.children_count === 0 && !acc.allows_entries && acc.active) {
             anomalies.push({
+                ...base,
                 id: `leaf-blocked-${acc.id}`,
-                accountId: acc.id,
-                code: acc.code,
-                name: acc.name,
                 severity: 'info',
                 category: 'Cuenta Terminal Bloqueada',
                 description: 'La cuenta no tiene subcuentas hijas y tiene deshabilitado recibir asientos contables.',
@@ -145,16 +145,13 @@ async function auditChartOfAccounts(companyId) {
         // 1=Activo (debe), 2=Pasivo (haber), 3=Patrimonio (haber), 4=Ingresos (haber), 5=Costos (debe), 6=Gastos (debe)
         const expectedNature = ['1', '5', '6'].includes(firstDigit) ? 'debit' : (['2', '3', '4'].includes(firstDigit) ? 'credit' : null);
         if (expectedNature && acc.type_nature && acc.type_nature !== expectedNature) {
-            // Excepción técnica contable: Cuentas complementarias de activo (depreciación acumulada, estimación cuentas incobrables)
             const isContraAsset = firstDigit === '1' && (name.toLowerCase().includes('depreciaci') || name.toLowerCase().includes('estimaci') || name.toLowerCase().includes('acumulada') || name.toLowerCase().includes('amortizaci'));
             const isContraEquity = firstDigit === '3' && (name.toLowerCase().includes('pérdida') || name.toLowerCase().includes('perdida') || name.toLowerCase().includes('déficit'));
 
             if (!isContraAsset && !isContraEquity) {
                 anomalies.push({
+                    ...base,
                     id: `nature-${acc.id}`,
-                    accountId: acc.id,
-                    code: acc.code,
-                    name: acc.name,
                     severity: 'warning',
                     category: 'Naturaleza Inconsistente',
                     description: `La cuenta pertenece al rubro ${acc.type_name || firstDigit} pero tiene naturaleza ${acc.type_nature === 'debit' ? 'Deudora' : 'Acreedora'} (esperado: ${expectedNature === 'debit' ? 'Deudora' : 'Acreedora'}).`,
@@ -167,10 +164,8 @@ async function auditChartOfAccounts(companyId) {
         // 8. Cuenta inactiva con movimientos registrados
         if (!acc.active && acc.entries_count > 0) {
             anomalies.push({
+                ...base,
                 id: `inactive-entries-${acc.id}`,
-                accountId: acc.id,
-                code: acc.code,
-                name: acc.name,
                 severity: 'info',
                 category: 'Cuenta Inactiva con Historial',
                 description: `La cuenta está desactivada pero posee ${acc.entries_count} movimientos históricos.`,
