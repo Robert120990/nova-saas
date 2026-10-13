@@ -5,18 +5,20 @@ import { formatDate } from '../../../utils/dateUtils';
 import { toast } from 'sonner';
 import BankEntryLinesTable from './BankEntryLinesTable';
 import BankEntryTaxBar from './BankEntryTaxBar';
-import { round2, buildRecalculatedLines, getEntryTypeLabel } from './bankEntryTax.helper';
+import { round2, buildRecalculatedLines } from './bankEntryTax.helper';
 
 const BankEntryModal = ({
     open,
     onClose,
     previewData,
     accounts = [],
+    entryTypes = [],
     onSave,
     isSaving = false
 }) => {
     const [detallarIva, setDetallarIva] = useState(true);
     const [taxDetailMode, setTaxDetailMode] = useState('none');
+    const [entryTypeId, setEntryTypeId] = useState('');
     const [lines, setLines] = useState([]);
     const [newLine, setNewLine] = useState({ account_id: '', description: '', debit: 0, credit: 0 });
 
@@ -40,6 +42,11 @@ const BankEntryModal = ({
                 : (previewData.type === 'cheque' && !previewData.is_remesa);
             setDetallarIva(defaultDetallar);
             setTaxDetailMode(previewData.tax_detail_mode || 'none');
+            const availableTypes = Array.isArray(entryTypes) && entryTypes.length > 0 ? entryTypes : (previewData.entry_types || []);
+            const initialType = previewData.entry_type_id
+                ? availableTypes.find(t => t.id === previewData.entry_type_id)
+                : (previewData.entry_type_code ? availableTypes.find(t => t.code === previewData.entry_type_code) : null);
+            setEntryTypeId(initialType ? String(initialType.id) : (previewData.entry_type_id ? String(previewData.entry_type_id) : ''));
             setLines((previewData.lines || []).map((l, idx) => {
                 const acc = accountsMap.get(String(l.account_id));
                 return {
@@ -53,7 +60,7 @@ const BankEntryModal = ({
             }));
             setNewLine({ account_id: '', description: defaultDesc, debit: 0, credit: 0 });
         }
-    }, [previewData, accountsMap]);
+    }, [previewData, accountsMap, entryTypes]);
 
     const handleToggleIva = useCallback((checked) => {
         setDetallarIva(checked);
@@ -87,13 +94,8 @@ const BankEntryModal = ({
 
     const totals = useMemo(() => {
         let debit = 0, credit = 0;
-        lines.forEach(l => {
-            debit += parseFloat(l.debit) || 0;
-            credit += parseFloat(l.credit) || 0;
-        });
-        const roundedDeb = round2(debit);
-        const roundedCrd = round2(credit);
-        const diff = round2(Math.abs(roundedDeb - roundedCrd));
+        lines.forEach(l => { debit += parseFloat(l.debit) || 0; credit += parseFloat(l.credit) || 0; });
+        const roundedDeb = round2(debit), roundedCrd = round2(credit), diff = round2(Math.abs(roundedDeb - roundedCrd));
         return { debit: roundedDeb, credit: roundedCrd, diff, isBalanced: diff === 0 && roundedDeb > 0 };
     }, [lines]);
 
@@ -101,63 +103,36 @@ const BankEntryModal = ({
 
     const handleAccountChange = (idx, accountId) => {
         const acc = accountsMap.get(String(accountId));
-        setLines(prev => {
-            const next = [...prev];
-            next[idx] = { ...next[idx], account_id: accountId ? String(accountId) : '', account_name: acc?.name || '' };
-            return next;
-        });
+        setLines(prev => prev.map((l, i) => i === idx ? { ...l, account_id: accountId ? String(accountId) : '', account_name: acc?.name || '' } : l));
     };
 
     const handleFieldChange = (idx, field, value) => {
-        setLines(prev => {
-            const next = [...prev];
-            next[idx] = { ...next[idx], [field]: value };
-            return next;
-        });
+        setLines(prev => prev.map((l, i) => i === idx ? { ...l, [field]: value } : l));
     };
 
     const handleDebitChange = (idx, val) => {
-        setLines(prev => {
-            const next = [...prev];
-            next[idx] = { ...next[idx], debit: round2(parseFloat(val) || 0), credit: 0 };
-            return next;
-        });
+        setLines(prev => prev.map((l, i) => i === idx ? { ...l, debit: round2(parseFloat(val) || 0), credit: 0 } : l));
     };
 
     const handleCreditChange = (idx, val) => {
-        setLines(prev => {
-            const next = [...prev];
-            next[idx] = { ...next[idx], credit: round2(parseFloat(val) || 0), debit: 0 };
-            return next;
-        });
+        setLines(prev => prev.map((l, i) => i === idx ? { ...l, credit: round2(parseFloat(val) || 0), debit: 0 } : l));
     };
 
     const handleRemoveLine = (index) => {
-        if (lines.length <= 2) {
-            toast.error('Una partida contable debe tener al menos 2 líneas');
-            return;
-        }
+        if (lines.length <= 2) return toast.error('Una partida contable debe tener al menos 2 líneas');
         setLines(prev => prev.filter((_, i) => i !== index));
     };
 
     const handleQuickAdd = () => {
         if (!newLine.account_id) return toast.error('Selecciona una cuenta contable');
         if (!newLine.description?.trim()) return toast.error('Ingresa un concepto');
-        const deb = parseFloat(newLine.debit) || 0;
-        const crd = parseFloat(newLine.credit) || 0;
+        const deb = parseFloat(newLine.debit) || 0, crd = parseFloat(newLine.credit) || 0;
         if (deb <= 0 && crd <= 0) return toast.error('Ingresa un valor en Cargo o Abono');
         const acc = accountsMap.get(String(newLine.account_id));
-        setLines(prev => [
-            ...prev,
-            {
-                id: Date.now(),
-                account_id: String(newLine.account_id),
-                account_name: acc?.name || '',
-                description: newLine.description.toUpperCase(),
-                debit: round2(deb),
-                credit: round2(crd)
-            }
-        ]);
+        setLines(prev => [...prev, {
+            id: Date.now(), account_id: String(newLine.account_id), account_name: acc?.name || '',
+            description: newLine.description.toUpperCase(), debit: round2(deb), credit: round2(crd)
+        }]);
         setNewLine({ account_id: '', description: (previewData?.description || '').toUpperCase(), debit: 0, credit: 0 });
     };
 
@@ -169,12 +144,16 @@ const BankEntryModal = ({
         if (!totals.isBalanced) return toast.error(`La partida no está cuadrada. Diferencia: $${totals.diff.toFixed(2)}`);
         if (unassignedCount > 0) return toast.error('Hay líneas sin cuenta contable asignada');
 
+        const availableTypes = Array.isArray(entryTypes) && entryTypes.length > 0 ? entryTypes : (previewData.entry_types || []);
+        const selectedType = availableTypes.find(t => String(t.id) === String(entryTypeId));
+
         onSave({
             type: previewData.type,
             id: previewData.id,
             date: previewData.fecha,
             description: (previewData.description || '').toUpperCase(),
-            entry_type_code: previewData.entry_type_code || 'DIARIO',
+            entry_type_id: selectedType ? Number(selectedType.id) : (previewData.entry_type_id || undefined),
+            entry_type_code: selectedType?.code || previewData.entry_type_code || 'DIARIO',
             lines: lines.map(l => ({
                 account_id: Number(l.account_id),
                 description: l.description,
@@ -279,16 +258,19 @@ const BankEntryModal = ({
                                 className="w-full px-3 py-1.5 bg-slate-100/80 border border-slate-200 rounded-xl text-xs font-semibold text-slate-600 cursor-not-allowed select-none font-mono outline-none text-center sm:text-left"
                             />
                         </div>
-                        <div className="w-full sm:w-52 shrink-0">
+                        <div className="w-full sm:w-56 shrink-0">
                             <label className="text-[10px] font-bold text-slate-400 uppercase flex items-center gap-1 mb-1">
-                                <Lock size={10} className="text-slate-400" /> Tipo de Partida
+                                Tipo de Partida
                             </label>
-                            <input
-                                type="text" readOnly disabled tabIndex={-1}
-                                value={getEntryTypeLabel(previewData.entry_type_code)}
-                                className="w-full px-3 py-1.5 bg-slate-100/80 border border-slate-200 rounded-xl text-xs font-semibold text-slate-600 cursor-not-allowed select-none outline-none truncate"
-                                title={getEntryTypeLabel(previewData.entry_type_code)}
-                            />
+                            <select
+                                value={entryTypeId}
+                                onChange={e => setEntryTypeId(e.target.value)}
+                                className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400"
+                            >
+                                {(Array.isArray(entryTypes) && entryTypes.length > 0 ? entryTypes : (previewData.entry_types || [])).map(t => (
+                                    <option key={t.id} value={t.id}>{t.name} ({t.code})</option>
+                                ))}
+                            </select>
                         </div>
                         <div className="flex-1 min-w-0">
                             <label className="text-[10px] font-bold text-slate-400 uppercase flex items-center gap-1 mb-1">

@@ -72,7 +72,7 @@ const previewEntry = async (req, res) => {
 
 const generateEntry = async (req, res) => {
     try {
-        const { type, id, date, description, entry_type_code, lines } = req.body;
+        const { type, id, date, description, entry_type_id, entry_type_code, lines } = req.body;
         if (!type || id === undefined || !date || !Array.isArray(lines)) {
             return res.status(400).json({ message: 'Parámetros incompletos para generar partida' });
         }
@@ -81,6 +81,7 @@ const generateEntry = async (req, res) => {
             id,
             date,
             description,
+            entry_type_id,
             entry_type_code,
             lines
         });

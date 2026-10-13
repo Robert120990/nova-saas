@@ -37,7 +37,7 @@ const preview = async (req, res) => {
         );
         if (marker && marker.setting_value) {
             const [[entry]] = await pool.query(
-                "SELECT id, number, description, date, status FROM accounting_entries WHERE id = ? AND company_id = ? AND status <> 'voided'",
+                "SELECT id, number, description, date, status, entry_type_id FROM accounting_entries WHERE id = ? AND company_id = ? AND status <> 'voided'",
                 [marker.setting_value, req.company_id]
             );
             if (entry) existing = entry;
@@ -45,7 +45,7 @@ const preview = async (req, res) => {
 
         if (!existing) {
             const [[entry]] = await pool.query(
-                "SELECT id, number, description, date, status FROM accounting_entries WHERE company_id = ? AND branch_id = ? AND date = ? AND status <> 'voided' AND (description LIKE '%CIERRE DE TURNO%' OR description LIKE '%CIERRE%') ORDER BY id DESC LIMIT 1",
+                "SELECT id, number, description, date, status, entry_type_id FROM accounting_entries WHERE company_id = ? AND branch_id = ? AND date = ? AND status <> 'voided' AND (description LIKE '%CIERRE DE TURNO%' OR description LIKE '%CIERRE%') ORDER BY id DESC LIMIT 1",
                 [req.company_id, Number(branch_id), date]
             );
             if (entry) {
@@ -59,14 +59,28 @@ const preview = async (req, res) => {
             }
         }
 
+        const [entryTypes] = await pool.query('SELECT id, code, name FROM entry_types ORDER BY id ASC');
+        let defaultEntryType = null;
+        if (existing && existing.entry_type_id) {
+            defaultEntryType = entryTypes.find(t => t.id === existing.entry_type_id);
+        }
+        if (!defaultEntryType) {
+            defaultEntryType = entryTypes.find(t => t.code === 'DIARIO') || entryTypes[0];
+        }
+
         res.json({
             ...data,
+            entry_types: entryTypes,
+            default_entry_type_id: defaultEntryType ? defaultEntryType.id : 1,
+            default_entry_type_code: defaultEntryType ? defaultEntryType.code : 'DIARIO',
+            default_entry_type_name: defaultEntryType ? defaultEntryType.name : 'Partida Diaria',
             already_generated: !!existing,
             existing_entry: existing ? {
                 id: existing.id,
                 number: existing.number,
                 description: existing.description,
-                date: existing.date
+                date: existing.date,
+                entry_type_id: existing.entry_type_id
             } : null
         });
     } catch (e) {
@@ -124,7 +138,7 @@ const saveCosts = async (req, res) => {
 const generate = async (req, res) => {
     const conn = await pool.getConnection();
     try {
-        const { branch_id, date, lines, description } = req.body;
+        const { branch_id, date, lines, description, entry_type_id, entry_type_code } = req.body;
         if (!branch_id) return res.status(400).json({ message: 'Sucursal requerida' });
         if (!validDate(date)) return res.status(400).json({ message: 'Fecha inválida' });
         if (!Array.isArray(lines) || lines.length === 0) return res.status(400).json({ message: 'Debe tener al menos una línea' });
@@ -139,9 +153,26 @@ const generate = async (req, res) => {
 
         const dedupKey = `PARTIDA_CIERRE_${branch_id}_${date}`;
 
-        // Get DIARIO entry type
-        let entryTypeId = await getEntryTypeIdByCode('DIARIO');
-        if (!entryTypeId) entryTypeId = 1; // Fallback to 1
+        let entryTypeId = null;
+        let resolvedTypeCode = 'DIARIO';
+        if (entry_type_id) {
+            const [[et]] = await conn.query('SELECT id, code FROM entry_types WHERE id = ?', [Number(entry_type_id)]);
+            if (et) {
+                entryTypeId = et.id;
+                resolvedTypeCode = et.code;
+            }
+        } else if (entry_type_code) {
+            const [[et]] = await conn.query('SELECT id, code FROM entry_types WHERE code = ?', [entry_type_code]);
+            if (et) {
+                entryTypeId = et.id;
+                resolvedTypeCode = et.code;
+            }
+        }
+        if (!entryTypeId) {
+            const [[et]] = await conn.query('SELECT id, code FROM entry_types WHERE code = ?', ['DIARIO']);
+            entryTypeId = et ? et.id : 1;
+            resolvedTypeCode = et ? et.code : 'DIARIO';
+        }
 
         await conn.beginTransaction();
         try {
@@ -227,14 +258,14 @@ const generate = async (req, res) => {
 
             notificationService.notify('accounting_entry_created', req.company_id, Number(branch_id), {
                 partida_id: r.insertId,
-                tipo_partida: 'DIARIO',
+                tipo_partida: resolvedTypeCode,
                 descripcion: description || defaultDesc,
                 total_debe: totalDebit,
                 total_haber: totalCredit,
                 fecha: date
             }).catch(() => {});
 
-            res.status(201).json({ id: r.insertId, number: entryNumber, message: 'Partida generada exitosamente' });
+            res.status(201).json({ id: r.insertId, number: entryNumber, entry_type_id: entryTypeId, entry_type_code: resolvedTypeCode, message: 'Partida generada exitosamente' });
         } catch (e) {
             await conn.rollback();
             throw e;

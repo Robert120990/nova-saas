@@ -1,10 +1,13 @@
 export const round2 = (n) => Math.round((parseFloat(n) || 0) * 100) / 100;
 
 export const ENTRY_TYPE_LABELS = {
-    CXP: 'CXP - Pago / Proveedor',
-    INGRESO: 'INGRESO - Remesa / Abono',
-    GASTO: 'GASTO - Nota de Cargo',
-    DIARIO: 'DIARIO - Comprobante de Diario'
+    GASTO: 'Partida de Gasto',
+    INGRESO: 'Partida de Ingreso',
+    CXP: 'Partida de Pagos',
+    DIARIO: 'Partida Diaria',
+    VENTAS: 'Partida de Ventas',
+    COMPRAS: 'Partida de Compras',
+    CXC: 'Partida de Cobranzas'
 };
 
 export const getEntryTypeLabel = (code) => ENTRY_TYPE_LABELS[code] || code || 'DIARIO';

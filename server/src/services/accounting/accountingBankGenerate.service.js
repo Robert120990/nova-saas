@@ -46,7 +46,7 @@ async function buildBankEntryPreview(companyId, { type, id, detallar_iva, tax_de
     const lines = [];
 
     if (type === 'cheque') {
-        defaultTypeCode = 'CXP';
+        defaultTypeCode = 'GASTO';
         const chqNum = String(doc.cheque || '').trim();
         const beneficiario = (doc.a_nombre || doc.beneficiario || '').trim();
         defaultDesc = `CUENTA #${doc.cuenta_numero} CHEQUE #${chqNum} - ${beneficiario}`.trim();
@@ -160,6 +160,12 @@ async function buildBankEntryPreview(companyId, { type, id, detallar_iva, tax_de
     );
 
     const reservedCorr = (doc.num_partida ? String(doc.num_partida).trim() : '');
+    const [entryTypes] = await pool.query('SELECT id, code, name FROM entry_types ORDER BY id ASC');
+    let matchedType = entryTypes.find(t => t.code === defaultTypeCode)
+        || (defaultTypeCode === 'GASTO' ? entryTypes.find(t => t.code === 'CXP') : null)
+        || entryTypes.find(t => t.code === 'DIARIO') || entryTypes[0];
+    const defaultEntryTypeId = matchedType ? matchedType.id : 1;
+    const defaultEntryTypeName = matchedType ? matchedType.name : 'Partida Diaria';
 
     return {
         type,
@@ -170,7 +176,10 @@ async function buildBankEntryPreview(companyId, { type, id, detallar_iva, tax_de
         beneficiario: doc.a_nombre || doc.beneficiario || '',
         concepto: doc.concepto || '',
         monto,
-        entry_type_code: defaultTypeCode,
+        entry_type_id: defaultEntryTypeId,
+        entry_type_code: matchedType ? matchedType.code : defaultTypeCode,
+        entry_type_name: defaultEntryTypeName,
+        entry_types: entryTypes,
         description: defaultDesc,
         lines,
         detallar_iva: shouldDetailIva,
@@ -190,7 +199,7 @@ async function buildBankEntryPreview(companyId, { type, id, detallar_iva, tax_de
     };
 }
 
-async function generateBankEntry(companyId, userId, { type, id, date, description, entry_type_code = 'DIARIO', lines }) {
+async function generateBankEntry(companyId, userId, { type, id, date, description, entry_type_id, entry_type_code = 'DIARIO', lines }) {
     if (!Array.isArray(lines) || lines.length === 0) throw new Error('Debe contener al menos una línea');
 
     const unassigned = lines.find(l => !l.account_id);
@@ -213,7 +222,19 @@ async function generateBankEntry(companyId, userId, { type, id, date, descriptio
     try {
         await conn.beginTransaction();
 
-        const entryTypeId = await getEntryTypeIdByCode(entry_type_code);
+        let entryTypeId = null;
+        if (entry_type_id) {
+            const [[et]] = await conn.query('SELECT id, code FROM entry_types WHERE id = ?', [Number(entry_type_id)]);
+            if (et) entryTypeId = et.id;
+        } else if (entry_type_code) {
+            const [[et]] = await conn.query('SELECT id, code FROM entry_types WHERE code = ?', [entry_type_code]);
+            if (et) entryTypeId = et.id;
+        }
+        if (!entryTypeId) {
+            const fallbackCode = type === 'cheque' ? 'GASTO' : 'DIARIO';
+            const [[et]] = await conn.query('SELECT id, code FROM entry_types WHERE code = ?', [fallbackCode]);
+            entryTypeId = et ? et.id : (fallbackCode === 'GASTO' ? 3 : 1);
+        }
         const { totalDebit, totalCredit } = await validateEntryLines(conn, companyId, lines);
 
         const docKey = type === 'cheque' ? `CHEQUE #${doc.cheque}` : `DOC #${doc.referencia}`;
@@ -242,11 +263,8 @@ async function generateBankEntry(companyId, userId, { type, id, date, descriptio
 
         for (const line of lines) {
             await conn.query('INSERT INTO accounting_entry_lines SET ?', [{
-                entry_id: entryId,
-                account_id: Number(line.account_id),
-                description: line.description || '',
-                debit: round2(line.debit || 0),
-                credit: round2(line.credit || 0)
+                entry_id: entryId, account_id: Number(line.account_id),
+                description: line.description || '', debit: round2(line.debit || 0), credit: round2(line.credit || 0)
             }]);
         }
 
@@ -268,12 +286,7 @@ async function generateBankEntry(companyId, userId, { type, id, date, descriptio
             console.warn('Advertencia al sincronizar estado con base de oficina:', syncErr.message);
         }
 
-        return {
-            success: true,
-            id: entryId,
-            number: entryNumber,
-            message: `Partida #${entryNumber} generada exitosamente`
-        };
+        return { success: true, id: entryId, number: entryNumber, message: `Partida #${entryNumber} generada exitosamente` };
     } catch (err) {
         await conn.rollback();
         throw err;
@@ -286,8 +299,7 @@ async function generateBankBatch(companyId, userId, { type, ids }) {
     if (!Array.isArray(ids) || ids.length === 0) throw new Error('Selecciona al menos un registro para contabilizar');
 
     const results = [];
-    let generatedCount = 0;
-    let skippedCount = 0;
+    let generatedCount = 0, skippedCount = 0;
 
     for (const id of ids) {
         try {
@@ -297,29 +309,21 @@ async function generateBankBatch(companyId, userId, { type, ids }) {
                 skippedCount++;
                 continue;
             }
-
             if (!preview.correlativo_reservado) {
                 results.push({ id, status: 'skipped', reason: 'Sin correlativo contable reservado. Debe reservarlo en Reserva de Correlativos.' });
                 skippedCount++;
                 continue;
             }
-
             const unassigned = preview.lines.find(l => !l.account_id);
             if (unassigned) {
                 results.push({ id, status: 'skipped', reason: 'Falta cuenta contable de contrapartida. Abre con doble clic para editar.' });
                 skippedCount++;
                 continue;
             }
-
             const genRes = await generateBankEntry(companyId, userId, {
-                type,
-                id,
-                date: preview.fecha,
-                description: preview.description,
-                entry_type_code: preview.entry_type_code,
-                lines: preview.lines
+                type, id, date: preview.fecha, description: preview.description,
+                entry_type_id: preview.entry_type_id, entry_type_code: preview.entry_type_code, lines: preview.lines
             });
-
             results.push({ id, status: 'success', number: genRes.number });
             generatedCount++;
         } catch (itemErr) {
@@ -328,12 +332,7 @@ async function generateBankBatch(companyId, userId, { type, ids }) {
         }
     }
 
-    return {
-        success: true,
-        generated_count: generatedCount,
-        skipped_count: skippedCount,
-        results
-    };
+    return { success: true, generated_count: generatedCount, skipped_count: skippedCount, results };
 }
 
 module.exports = {

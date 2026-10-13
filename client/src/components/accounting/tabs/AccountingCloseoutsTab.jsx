@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
-import { CalendarDays, Wand2, Fuel, AlertTriangle, Store, FileText, Info } from 'lucide-react';
+import { CalendarDays, Wand2, Fuel, AlertTriangle, Store, FileText, Info, Tag } from 'lucide-react';
 import { toast } from 'sonner';
 import CloseoutsEntriesTable from '../CloseoutsEntriesTable';
 import CloseoutCostsModal from '../modals/CloseoutCostsModal';
@@ -20,19 +20,21 @@ const AccountingCloseoutsTab = ({ onBusyChange }) => {
 
     const [branchId, setBranchId] = useState('');
     const [date, setDate] = useState(getTodayString);
+    const [entryTypeId, setEntryTypeId] = useState('');
     const [previewData, setPreviewData] = useState(null);
     const [lines, setLines] = useState([]);
     const [costsModalOpen, setCostsModalOpen] = useState(false);
-    const [costsReportModal, setCostsReportModal] = useState({
-        isOpen: false,
-        pdfUrl: null,
-        isLoading: false,
-        error: null
-    });
+    const [costsReportModal, setCostsReportModal] = useState({ isOpen: false, pdfUrl: null, isLoading: false, error: null });
 
     const { data: branches = [] } = useQuery({
         queryKey: ['branches', companyId],
         queryFn: async ({ signal }) => unwrapList(await axios.get('/api/branches', { headers, signal })),
+        enabled: !!companyId,
+    });
+
+    const { data: entryTypes = [] } = useQuery({
+        queryKey: ['entry-types'],
+        queryFn: async ({ signal }) => unwrapList(await axios.get('/api/accounting/entry-types', { headers, signal })),
         enabled: !!companyId,
     });
 
@@ -42,6 +44,13 @@ const AccountingCloseoutsTab = ({ onBusyChange }) => {
             if (defaultBranch) setBranchId(String(defaultBranch.id));
         }
     }, [branches, branchId, user]);
+
+    useEffect(() => {
+        if (!entryTypeId && entryTypes.length > 0) {
+            const defaultType = entryTypes.find(t => t.code === 'DIARIO') || entryTypes[0];
+            if (defaultType) setEntryTypeId(String(defaultType.id));
+        }
+    }, [entryTypes, entryTypeId]);
 
     const { data: accounts = [] } = useQuery({
         queryKey: ['accounts', companyId],
@@ -71,31 +80,24 @@ const AccountingCloseoutsTab = ({ onBusyChange }) => {
             }
             setPreviewData(data);
             setLines(unwrapList(data.lines).map(l => ({ ...l })));
+            if (data.default_entry_type_id) setEntryTypeId(String(data.default_entry_type_id));
             if (data.already_generated) {
                 toast.warning(`Ya existe una partida generada para esta fecha${data.existing_entry?.number ? ` (#${data.existing_entry.number})` : ''}.`);
             } else {
                 toast.success(`Cierres encontrados (${data.closeouts_count} turnos). Borrador generado.`);
             }
         },
-        onError: (err) => {
-            toast.error(err?.response?.data?.message || 'Error al calcular borrador de cierres');
-        }
+        onError: (err) => toast.error(err?.response?.data?.message || 'Error al calcular borrador de cierres')
     });
 
     const saveCostsMutation = useMutation({
-        mutationFn: (fuels) => axios.post('/api/accounting/generation/closeouts/save-costs', {
-            branch_id: branchId,
-            date,
-            fuels
-        }, { headers }),
+        mutationFn: (fuels) => axios.post('/api/accounting/generation/closeouts/save-costs', { branch_id: branchId, date, fuels }, { headers }),
         onSuccess: () => {
             toast.success('Costos de combustible guardados');
             setCostsModalOpen(false);
             previewMutation.mutate({ branch_id: branchId, date });
         },
-        onError: (err) => {
-            toast.error(err?.response?.data?.message || 'Error al guardar costos');
-        }
+        onError: (err) => toast.error(err?.response?.data?.message || 'Error al guardar costos')
     });
 
     const generateMutation = useMutation({
@@ -107,29 +109,20 @@ const AccountingCloseoutsTab = ({ onBusyChange }) => {
             setPreviewData(prev => prev ? { ...prev, already_generated: true, existing_entry: { id: data.id, number: data.number } } : prev);
         },
         onError: (err) => {
-            const msg = err?.response?.data?.message || 'Error al asentar partida';
-            toast.error(msg);
-            if (err?.response?.status === 409) {
-                setPreviewData(prev => prev ? { ...prev, already_generated: true } : prev);
-            }
+            toast.error(err?.response?.data?.message || 'Error al asentar partida');
+            if (err?.response?.status === 409) setPreviewData(prev => prev ? { ...prev, already_generated: true } : prev);
         }
     });
 
     const totals = useMemo(() => {
-        let cargo = 0;
-        let abono = 0;
-        lines.forEach(l => {
-            cargo += parseFloat(l.debit) || 0;
-            abono += parseFloat(l.credit) || 0;
-        });
-        cargo = round2(cargo);
-        abono = round2(abono);
+        let cargo = 0, abono = 0;
+        lines.forEach(l => { cargo += parseFloat(l.debit) || 0; abono += parseFloat(l.credit) || 0; });
+        cargo = round2(cargo); abono = round2(abono);
         const diff = round2(cargo - abono);
         return { cargo, abono, diff, balanced: cargo === abono && cargo > 0 };
     }, [lines]);
 
     const unassignedCount = useMemo(() => lines.filter(l => !l.account_id).length, [lines]);
-
     const busy = previewMutation.isPending || saveCostsMutation.isPending || generateMutation.isPending;
     useEffect(() => { if (onBusyChange) onBusyChange(busy); }, [busy, onBusyChange]);
 
@@ -139,10 +132,7 @@ const AccountingCloseoutsTab = ({ onBusyChange }) => {
             const updated = { ...r, ...patch };
             if (patch.account_id) {
                 const acc = accountsMap.get(String(patch.account_id));
-                if (acc) {
-                    updated.account_code = acc.code;
-                    updated.account_name = acc.name;
-                }
+                if (acc) { updated.account_code = acc.code; updated.account_name = acc.name; }
             }
             return updated;
         }));
@@ -164,10 +154,7 @@ const AccountingCloseoutsTab = ({ onBusyChange }) => {
     };
 
     const handleOpenCostsReport = async () => {
-        if (!branchId || !date) {
-            toast.error('Selecciona sucursal y fecha para generar el comprobante');
-            return;
-        }
+        if (!branchId || !date) return toast.error('Selecciona sucursal y fecha para generar el comprobante');
         setCostsReportModal({ isOpen: true, pdfUrl: null, isLoading: true, error: null });
         try {
             const res = await axios.get('/api/accounting/generation/closeouts/costs-report', {
@@ -178,20 +165,13 @@ const AccountingCloseoutsTab = ({ onBusyChange }) => {
             const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
             setCostsReportModal(prev => ({ ...prev, pdfUrl: url, isLoading: false }));
         } catch (err) {
-            console.error('Error al generar comprobante de costos:', err);
-            setCostsReportModal(prev => ({
-                ...prev,
-                isLoading: false,
-                error: err?.response?.data?.message || 'Error al generar el comprobante de costos en PDF'
-            }));
+            setCostsReportModal(prev => ({ ...prev, isLoading: false, error: err?.response?.data?.message || 'Error al generar comprobante' }));
             toast.error(err?.response?.data?.message || 'Error al generar el comprobante de costos');
         }
     };
 
     const handleCloseCostsReport = () => {
-        if (costsReportModal.pdfUrl) {
-            window.URL.revokeObjectURL(costsReportModal.pdfUrl);
-        }
+        if (costsReportModal.pdfUrl) window.URL.revokeObjectURL(costsReportModal.pdfUrl);
         setCostsReportModal({ isOpen: false, pdfUrl: null, isLoading: false, error: null });
     };
 
@@ -199,10 +179,10 @@ const AccountingCloseoutsTab = ({ onBusyChange }) => {
 
     return (
         <fieldset disabled={busy} className="space-y-3 min-w-0">
-            {/* Top Filter Bar (Compact) */}
+            {/* Top Filter Bar */}
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-3">
                 <div className="flex flex-col md:flex-row md:items-end gap-2.5">
-                    <div className="flex-1 min-w-[200px]">
+                    <div className="flex-1 min-w-[180px]">
                         <label className="text-[10px] font-black uppercase text-slate-400 block mb-1 flex items-center gap-1">
                             <Store size={11} className="text-indigo-600" /> Sucursal
                         </label>
@@ -218,16 +198,30 @@ const AccountingCloseoutsTab = ({ onBusyChange }) => {
                         </select>
                     </div>
 
-                    <div className="w-full md:w-40">
+                    <div className="w-full md:w-36">
                         <label className="text-[10px] font-black uppercase text-slate-400 block mb-1 flex items-center gap-1">
                             <CalendarDays size={11} className="text-indigo-600" /> Fecha del Turno
                         </label>
                         <input
-                            type="date"
-                            value={date}
+                            type="date" value={date}
                             onChange={e => { setDate(e.target.value); setPreviewData(null); setLines([]); }}
                             className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400"
                         />
+                    </div>
+
+                    <div className="w-full md:w-48">
+                        <label className="text-[10px] font-black uppercase text-slate-400 block mb-1 flex items-center gap-1">
+                            <Tag size={11} className="text-indigo-600" /> Tipo de Partida
+                        </label>
+                        <select
+                            value={entryTypeId}
+                            onChange={e => setEntryTypeId(e.target.value)}
+                            className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400"
+                        >
+                            {(Array.isArray(entryTypes) ? entryTypes : []).map(t => (
+                                <option key={t.id} value={t.id}>{t.name} ({t.code})</option>
+                            ))}
+                        </select>
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
@@ -239,22 +233,18 @@ const AccountingCloseoutsTab = ({ onBusyChange }) => {
                         >
                             <Wand2 size={13} /> {previewMutation.isPending ? 'Calculando...' : 'Calcular Borrador'}
                         </button>
-
                         {previewData && (
                             <button
-                                type="button"
-                                onClick={() => setCostsModalOpen(true)}
+                                type="button" onClick={() => setCostsModalOpen(true)}
                                 className="w-full sm:w-auto bg-slate-100 hover:bg-slate-200 text-slate-700 px-3.5 py-1.5 rounded-lg font-bold transition-all text-xs flex items-center justify-center gap-1.5 border border-slate-200 cursor-pointer active:scale-95"
                                 title="Ajustar costos unitarios de combustibles"
                             >
                                 <Fuel size={13} className="text-amber-500" /> Ajustar Costos
                             </button>
                         )}
-
                         {previewData && (
                             <button
-                                type="button"
-                                onClick={handleOpenCostsReport}
+                                type="button" onClick={handleOpenCostsReport}
                                 className="w-full sm:w-auto bg-white hover:bg-indigo-50 text-indigo-700 hover:text-indigo-800 px-3.5 py-1.5 rounded-lg font-bold transition-all text-xs flex items-center justify-center gap-1.5 border border-indigo-200 shadow-xs cursor-pointer active:scale-95"
                                 title="Ver comprobante de costos de combustibles y lubricantes"
                             >
@@ -271,8 +261,7 @@ const AccountingCloseoutsTab = ({ onBusyChange }) => {
                     <AlertTriangle size={15} className="text-amber-500 shrink-0" />
                     <span>
                         Ya existe una partida de cierre de turno generada para esta sucursal y fecha
-                        {previewData.existing_entry?.number ? <b> (Partida #{previewData.existing_entry.number})</b> : ''}.
-                        Si deseas regenerarla, anúlala primero en Partidas Contables.
+                        {previewData.existing_entry?.number ? <b> (Partida #{previewData.existing_entry.number})</b> : ''}. Si deseas regenerarla, anúlala primero en Partidas Contables.
                     </span>
                 </div>
             )}
@@ -310,11 +299,7 @@ const AccountingCloseoutsTab = ({ onBusyChange }) => {
                             toast.error(`Ya existe una partida de cierre generada para esta fecha${previewData.existing_entry?.number ? ` (#${previewData.existing_entry.number})` : ''}.`);
                             return;
                         }
-                        generateMutation.mutate({
-                            branch_id: branchId,
-                            date,
-                            lines
-                        });
+                        generateMutation.mutate({ branch_id: branchId, date, entry_type_id: entryTypeId ? Number(entryTypeId) : undefined, lines });
                     }}
                     onClear={() => { setPreviewData(null); setLines([]); }}
                 />
@@ -322,8 +307,7 @@ const AccountingCloseoutsTab = ({ onBusyChange }) => {
 
             {/* Modal for Fuel Unit Costs */}
             <CloseoutCostsModal
-                open={costsModalOpen}
-                onClose={() => setCostsModalOpen(false)}
+                open={costsModalOpen} onClose={() => setCostsModalOpen(false)}
                 fuels={previewData?.fuels_for_cost || []}
                 onSave={(fuels) => saveCostsMutation.mutate(fuels)}
                 isSaving={saveCostsMutation.isPending}
@@ -331,8 +315,7 @@ const AccountingCloseoutsTab = ({ onBusyChange }) => {
 
             {/* Modal para Visualizar Comprobante de Costos */}
             <CloseoutCostsReportModal
-                open={costsReportModal.isOpen}
-                onClose={handleCloseCostsReport}
+                open={costsReportModal.isOpen} onClose={handleCloseCostsReport}
                 title="Comprobante de Costos de Venta"
                 pdfUrl={costsReportModal.pdfUrl}
                 isLoading={costsReportModal.isLoading}

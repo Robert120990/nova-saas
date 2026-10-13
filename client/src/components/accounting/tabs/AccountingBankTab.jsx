@@ -40,6 +40,13 @@ const AccountingBankTab = () => {
         enabled: !!companyId,
     });
 
+    // 1b. Fetch Entry Types
+    const { data: entryTypes = [] } = useQuery({
+        queryKey: ['entry-types'],
+        queryFn: async ({ signal }) => unwrapList(await axios.get('/api/accounting/entry-types', { headers, signal })),
+        enabled: !!companyId,
+    });
+
     // 2. Fetch Cheques
     const { data: cheques = [], isLoading: loadingCheques, refetch: refetchCheques } = useQuery({
         queryKey: ['bank-cheques', companyId, queryPeriod.year, queryPeriod.month, statusFilter],
@@ -303,6 +310,7 @@ const AccountingBankTab = () => {
                 onClose={() => { setModalOpen(false); setPreviewData(null); }}
                 previewData={previewData}
                 accounts={accounts}
+                entryTypes={entryTypes}
                 onSave={(payload) => saveEntryMutation.mutate(payload)}
                 isSaving={saveEntryMutation.isPending}
             />
