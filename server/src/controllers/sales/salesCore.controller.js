@@ -432,7 +432,7 @@ const createSale = async (req, res) => {
             for (const pay of payments) {
                 await connection.query('INSERT INTO sales_payments SET ?', [{
                     sale_id: saleId,
-                    metodo_pago: pay.codigo || '01',
+                    metodo_pago: pay.codigo || pay.metodo_pago || '01',
                     monto: pay.monto,
                     referencia: pay.referencia || null
                 }]);

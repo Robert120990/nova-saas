@@ -68,6 +68,11 @@ async function generateDTEPDF(dteData, stream) {
     doc.text('IVA (13%):', 400, y);
     doc.text((isConsumidorFinal ? 0 : (resumen.totalIva || 0)).toFixed(2), 480, y, { align: 'right' });
     y += 15;
+    if (resumen.totalNoGravado > 0) {
+        doc.text('PROPINA / NO GRAVADO:', 380, y);
+        doc.text(`$${resumen.totalNoGravado.toFixed(2)}`, 480, y, { align: 'right' });
+        y += 15;
+    }
     doc.fontSize(12).text('TOTAL A PAGAR:', 380, y, { bold: true });
     doc.text(`USD $${resumen.totalPagar.toFixed(2)}`, 480, y, { align: 'right', bold: true });
 

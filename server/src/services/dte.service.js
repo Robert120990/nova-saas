@@ -132,6 +132,7 @@ class DteService {
                                 referencedDoc: (payload.header?.dte_type === '05' && fallbackRef)
                                     ? (item.referencedDoc || fallbackRef)
                                     : (item.referencedDoc || null),
+                                noGravado: parseFloat(item.noGravado || item.no_gravado || 0) || 0,
                                 // Preservar tributos específicos o usar IVA por defecto
                                 tributos: payload.header.dte_type === '11' ? []
                                     : (item.tributos && Array.isArray(item.tributos) && item.tributos.length > 0
@@ -140,6 +141,7 @@ class DteService {
                                 tipoItem: payload.header.dte_type === '11' ? 1 : (item.exento ? 2 : 1) // 1: Gravado, 2: Exento
                             };
                         })),
+                totalNoGravado: parseFloat(payload.header?.totalNoGravado || payload.header?.total_no_gravado || payload.header?.tip_amount || payload.header?.propina || payload.totalNoGravado || payload.propina || 0) || 0,
                 pagos: payload.payments || [],
                 totalLetras: payload.header.total_letras || '',
                 taxes: [...(payload.header.taxes || []), ...extraTaxes],

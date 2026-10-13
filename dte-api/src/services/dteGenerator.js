@@ -428,6 +428,7 @@ async function generateDTE(payload) {
     let totals;
     let pagos;
     let resumenTaxes = [];
+    let computedTotalNoGravado = 0;
 
     if (tipoDte === '07') {
         const currentPeriod = fecEmi.substring(0, 7);
@@ -531,7 +532,17 @@ async function generateDTE(payload) {
         'yardas': 18
     };
 
+    const globalNoGravado = round(parseFloat(payload.totalNoGravado ?? payload.propina ?? payload.tip ?? payload.tip_amount ?? payload.header?.totalNoGravado ?? payload.header?.propina ?? payload.header?.tip_amount ?? 0) || 0);
+    const hasItemLevelNoGravado = Array.isArray(items) && items.some(it => parseFloat(it.noGravado ?? it.no_gravado ?? 0) > 0);
+
     corpoItems = items.map((item, index) => {
+        let itemNoGravado = 0;
+        if (hasItemLevelNoGravado) {
+            itemNoGravado = round(parseFloat(item.noGravado ?? item.no_gravado ?? 0) || 0);
+        } else if (index === 0 && globalNoGravado > 0) {
+            itemNoGravado = globalNoGravado;
+        }
+
         const calcItem = calculateItem(item, tipoDte, ivaRate);
         
         // Detectar galones para combustible automáticamente si la descripción lo sugiere
@@ -635,14 +646,14 @@ async function generateDTE(payload) {
             // FEX v3 exige tipoItem, numeroDocumento y codTributo. VentaNoSuj y VentaExenta no van en el schema
             delete baseItem.ventaNoSuj;
             delete baseItem.ventaExenta;
-            baseItem.noGravado = 0;
+            baseItem.noGravado = itemNoGravado;
         } else if (tipoDte !== '05' && tipoDte !== '06' && tipoDte !== '04') {
             baseItem.psv = 0;
-            baseItem.noGravado = 0;
+            baseItem.noGravado = itemNoGravado;
         }
 
         if (tipoDte === '05' || tipoDte === '06') {
-            baseItem.noGravado = 0;
+            baseItem.noGravado = itemNoGravado;
             baseItem.ivaPerci = 0;
             baseItem.totalIva = 0;
             baseItem.ivaRete = 0;
@@ -654,6 +665,8 @@ async function generateDTE(payload) {
 
         return baseItem;
     });
+
+    computedTotalNoGravado = (corpoItems || []).reduce((acc, it) => round(acc + (it.noGravado || 0)), 0);
         } // Fin del else (tipoDte !== '07')
 
     // 5. Resumen
@@ -738,7 +751,7 @@ async function generateDTE(payload) {
         const periodo = isCredit ? (rawPeriodo && !isNaN(rawPeriodo) && rawPeriodo > 0 ? rawPeriodo : dias) : null;
         const referencia = (p.referencia && String(p.referencia).trim() !== '') ? String(p.referencia).trim() : null;
         return {
-            codigo: p.codigo,
+            codigo: String(p.codigo || p.metodo_pago || '01').padStart(2, '0'),
             montoPago: round(p.monto || p.montoPago || totals.totalPagar),
             referencia: referencia,
             plazo: plazo,
@@ -790,22 +803,22 @@ async function generateDTE(payload) {
             })(),
             subTotal: round(totals.subtotal || totals.subTotal || 0),
             montoTotalOperacion: round(totals.totalPagar),
-            totalNoGravado: 0,
-            totalPagar: round(totals.totalPagar),
-            totalLetras: getAmountInWords(totals.totalPagar),
+            totalNoGravado: computedTotalNoGravado,
+            totalPagar: round(totals.totalPagar + computedTotalNoGravado),
+            totalLetras: getAmountInWords(round(totals.totalPagar + computedTotalNoGravado)),
             saldoFavor: 0,
             condicionOperacion: (type === '04' || type === '11') ? null : parseInt(payload.condicionOperacion || 1),
             pagos: (() => {
                 if (type === '11') return null;
-                // CORRECCIÓN: Asegurar que el el pago sume exactamente el totalPagar
+                const totalConNoGravado = round(totals.totalPagar + computedTotalNoGravado);
                 if (pagos.length === 1) {
-                    pagos[0].montoPago = totals.totalPagar;
+                    pagos[0].montoPago = totalConNoGravado;
                 } else if (pagos.length > 1) {
                     let currentSum = 0;
                     for (let i = 0; i < pagos.length - 1; i++) {
                         currentSum = round(currentSum + pagos[i].montoPago);
                     }
-                    pagos[pagos.length - 1].montoPago = round(totals.totalPagar - currentSum);
+                    pagos[pagos.length - 1].montoPago = round(totalConNoGravado - currentSum);
                 }
                 return pagos;
             })(),
@@ -816,19 +829,17 @@ async function generateDTE(payload) {
             base.totalIva = totals.montoPorIVA;
             const ret = round(payload.retencion ?? payload.header?.total_retencion ?? payload.header?.iva_retenido ?? 0);
             base.ivaRete = ret;
-            if (ret > 0) {
-                const adjustedTotal = round(totals.totalPagar - ret);
-                base.totalPagar = adjustedTotal;
-                base.totalLetras = getAmountInWords(adjustedTotal);
-                if (base.pagos && base.pagos.length === 1) {
-                    base.pagos[0].montoPago = adjustedTotal;
-                } else if (base.pagos && base.pagos.length > 1) {
-                    let pSum = 0;
-                    for (let i = 0; i < base.pagos.length - 1; i++) {
-                        pSum = round(pSum + base.pagos[i].montoPago);
-                    }
-                    base.pagos[base.pagos.length - 1].montoPago = round(adjustedTotal - pSum);
+            const adjustedTotal = round(totals.totalPagar + computedTotalNoGravado - ret);
+            base.totalPagar = adjustedTotal;
+            base.totalLetras = getAmountInWords(adjustedTotal);
+            if (base.pagos && base.pagos.length === 1) {
+                base.pagos[0].montoPago = adjustedTotal;
+            } else if (base.pagos && base.pagos.length > 1) {
+                let pSum = 0;
+                for (let i = 0; i < base.pagos.length - 1; i++) {
+                    pSum = round(pSum + base.pagos[i].montoPago);
                 }
+                base.pagos[base.pagos.length - 1].montoPago = round(adjustedTotal - pSum);
             }
             base.saldoFavor = 0;
             base.numPagoElectronico = null;
@@ -837,21 +848,19 @@ async function generateDTE(payload) {
             const perc = round(payload.percepcion ?? payload.header?.total_percepcion ?? payload.header?.iva_percibido ?? 0);
             base.ivaPerci = perc;
             base.ivaRete = ret;
-            if (ret > 0 || perc > 0) {
-                const adjustedTotal = round(totals.totalPagar - ret + perc);
-                base.totalPagar = adjustedTotal;
-                // montoTotalOperacion conserva el valor bruto (subTotal + IVA),
-                // porque Hacienda valida: montoTotalOperacion = subTotal + totalIva
-                base.totalLetras = getAmountInWords(adjustedTotal);
-                if (base.pagos && base.pagos.length === 1) {
-                    base.pagos[0].montoPago = adjustedTotal;
-                } else if (base.pagos && base.pagos.length > 1) {
-                    let pSum = 0;
-                    for (let i = 0; i < base.pagos.length - 1; i++) {
-                        pSum = round(pSum + base.pagos[i].montoPago);
-                    }
-                    base.pagos[base.pagos.length - 1].montoPago = round(adjustedTotal - pSum);
+            const adjustedTotal = round(totals.totalPagar + computedTotalNoGravado - ret + perc);
+            base.totalPagar = adjustedTotal;
+            // montoTotalOperacion conserva el valor bruto (subTotal + IVA),
+            // porque Hacienda valida: montoTotalOperacion = subTotal + totalIva
+            base.totalLetras = getAmountInWords(adjustedTotal);
+            if (base.pagos && base.pagos.length === 1) {
+                base.pagos[0].montoPago = adjustedTotal;
+            } else if (base.pagos && base.pagos.length > 1) {
+                let pSum = 0;
+                for (let i = 0; i < base.pagos.length - 1; i++) {
+                    pSum = round(pSum + base.pagos[i].montoPago);
                 }
+                base.pagos[base.pagos.length - 1].montoPago = round(adjustedTotal - pSum);
             }
             base.saldoFavor = 0;
             base.numPagoElectronico = null;
@@ -860,7 +869,9 @@ async function generateDTE(payload) {
             base.ivaPerci = 0;
             base.ivaRete = 0;
             base.codigoRetencionMH = null;
-            base.totalPagar = round(totals.totalPagar);
+            base.totalNoGravado = computedTotalNoGravado;
+            base.totalPagar = round(totals.totalPagar + computedTotalNoGravado);
+            base.totalLetras = getAmountInWords(base.totalPagar);
             base.tributos = (base.tributos && base.tributos.length > 0) ? base.tributos : null;
             delete base.descuNoSuj;
             delete base.descuExenta;
