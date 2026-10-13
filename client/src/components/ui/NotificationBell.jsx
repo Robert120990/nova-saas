@@ -2,7 +2,7 @@ import { createAuthenticatedSocket } from '../../utils/webSocketUtils';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
-import { Bell, BellRing, ChevronRight } from 'lucide-react';
+import { Bell, BellRing, ChevronRight, CheckCheck } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useAuth } from '../../context/AuthContext';
@@ -35,7 +35,21 @@ const NotificationBell = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['notifications-unread-count'] });
       queryClient.invalidateQueries({ queryKey: ['notifications-recent'] });
+      queryClient.invalidateQueries({ queryKey: ['notifications-mine'] });
     },
+  });
+
+  const markAllReadMutation = useMutation({
+    mutationFn: () => axios.put('/api/notifications/mine/read-all'),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['notifications-unread-count'] });
+      queryClient.invalidateQueries({ queryKey: ['notifications-recent'] });
+      queryClient.invalidateQueries({ queryKey: ['notifications-mine'] });
+      toast.success('Todas las notificaciones marcadas como leídas');
+    },
+    onError: () => {
+      toast.error('Error al marcar notificaciones como leídas');
+    }
   });
 
   const unreadCount = unreadData?.count || 0;
@@ -135,14 +149,32 @@ const NotificationBell = () => {
 
       {isOpen && (
         <div className="fixed left-2 right-2 top-16 sm:absolute sm:left-auto sm:right-0 sm:top-full sm:mt-2 sm:w-[380px] sm:max-w-[380px] bg-white rounded-2xl shadow-2xl border border-slate-200 z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
-            <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">
-              Notificaciones
-            </span>
-            {unreadCount > 0 && (
-              <span className="text-[11px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">
-                {unreadCount} sin leer
+          <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-100 gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-widest truncate">
+                Notificaciones
               </span>
+              {unreadCount > 0 && (
+                <span className="text-[11px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full whitespace-nowrap">
+                  {unreadCount} sin leer
+                </span>
+              )}
+            </div>
+            {unreadCount > 0 && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  markAllReadMutation.mutate();
+                }}
+                disabled={markAllReadMutation.isPending}
+                className="flex items-center gap-1.5 text-[11px] font-bold text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50/80 px-2 py-1 rounded-lg transition-all active:scale-95 disabled:opacity-50 shrink-0"
+                title="Marcar todas como leídas"
+              >
+                <CheckCheck size={14} className="shrink-0 text-indigo-600" />
+                <span className="hidden sm:inline">Marcar todas como leídas</span>
+                <span className="sm:hidden">Marcar leídas</span>
+              </button>
             )}
           </div>
 
