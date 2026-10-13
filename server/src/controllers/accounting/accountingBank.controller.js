@@ -106,10 +106,51 @@ const generateBatch = async (req, res) => {
     }
 };
 
+const { queryReservationMovements, saveReservationCorrelativos } = require('../../services/accounting/accountingBankReservation.service');
+
+const getReservation = async (req, res) => {
+    try {
+        const { month, year, type } = req.query;
+        if (!month || !year) {
+            return res.status(400).json({ message: 'Mes y año son requeridos' });
+        }
+        const data = await queryReservationMovements(req.company_id, {
+            month,
+            year,
+            type: type || 'ingresos'
+        });
+        res.json(data);
+    } catch (e) {
+        console.error('Error in getReservation:', e);
+        res.status(500).json({ message: e.message });
+    }
+};
+
+const saveReservation = async (req, res) => {
+    try {
+        const { month, year, type, items } = req.body;
+        if (!Array.isArray(items)) {
+            return res.status(400).json({ message: 'Lista de ítems requerida' });
+        }
+        const data = await saveReservationCorrelativos(req.company_id, {
+            month,
+            year,
+            type: type || 'ingresos',
+            items
+        });
+        res.json(data);
+    } catch (e) {
+        console.error('Error in saveReservation:', e);
+        res.status(500).json({ message: e.message });
+    }
+};
+
 module.exports = {
     getCheques,
     getMovements,
     previewEntry,
     generateEntry,
-    generateBatch
+    generateBatch,
+    getReservation,
+    saveReservation
 };

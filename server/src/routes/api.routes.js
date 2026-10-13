@@ -818,6 +818,8 @@ router.get('/accounting/generation/bank/movements', checkPermission('manage_acco
 router.post('/accounting/generation/bank/preview-entry', checkPermission('manage_accounting_contabilizar_bancos'), accountingBankController.previewEntry);
 router.post('/accounting/generation/bank/generate-entry', checkPermission('manage_accounting_contabilizar_bancos'), accountingBankController.generateEntry);
 router.post('/accounting/generation/bank/generate-batch', checkPermission('manage_accounting_contabilizar_bancos'), accountingBankController.generateBatch);
+router.get('/accounting/generation/bank/reservation/movements', checkPermission('manage_accounting_contabilizar_bancos'), accountingBankController.getReservation);
+router.post('/accounting/generation/bank/reservation/save', checkPermission('manage_accounting_contabilizar_bancos'), accountingBankController.saveReservation);
 
 // Accounting Correlativos (numeracion de partidas)
 router.get('/accounting/correlativos', accountingCorrelativosController.getCorrelativos);
