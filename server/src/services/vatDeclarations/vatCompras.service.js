@@ -59,6 +59,10 @@ async function getComprasData({ companyId, branchId, year, month, search, limit,
                 0.00 AS anticipo_cuenta, ph.monto_total,
                 p.nombre AS provider_nombre, p.nit AS provider_nit, p.nrc AS provider_nrc,
                 b.nombre AS branch_name, cat.description AS tipo_doc_nombre,
+                '1' AS tipo_operacion,
+                '1' AS tipo_clasificacion,
+                '2' AS tipo_sector,
+                '5' AS tipo_costo,
                 'compra' AS source_type
             FROM purchase_headers ph
             LEFT JOIN providers p ON ph.provider_id = p.id
@@ -81,6 +85,10 @@ async function getComprasData({ companyId, branchId, year, month, search, limit,
             COALESCE(eh.anticipo_cuenta, 0) AS anticipo_cuenta, eh.monto_total,
             p.nombre AS provider_nombre, p.nit AS provider_nit, p.nrc AS provider_nrc,
             b.nombre AS branch_name, cat.description AS tipo_doc_nombre,
+            eh.tipo_operacion,
+            eh.tipo_clasificacion,
+            eh.tipo_sector,
+            eh.tipo_costo,
             'gasto' AS source_type
         FROM expense_headers eh
         LEFT JOIN providers p ON eh.provider_id = p.id
@@ -207,6 +215,10 @@ async function getComprasData({ companyId, branchId, year, month, search, limit,
             percepcion: per,
             anticipo_cuenta: ac,
             monto_total: valTotal,
+            tipo_operacion: r.tipo_operacion || '1',
+            tipo_clasificacion: r.tipo_clasificacion || (r.source_type === 'gasto' ? '2' : '1'),
+            tipo_sector: r.tipo_sector || '2',
+            tipo_costo: r.tipo_costo || '5',
             source_type: r.source_type
         };
     });

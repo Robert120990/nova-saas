@@ -289,6 +289,21 @@ function fitText(doc, text, maxWidth) {
     return '';
 }
 
+/**
+ * Extrae únicamente el código/valor tributario F-07 (ej. 1 de '1 - GRAVADA').
+ */
+function extractF07Code(val, defaultVal = '') {
+    if (val === null || val === undefined || String(val).trim() === '') {
+        val = defaultVal;
+    }
+    if (val === null || val === undefined || String(val).trim() === '') return '';
+    const str = String(val).trim();
+    const parts = str.split(/\s*-\s*/);
+    const code = (parts.length > 1 && parts[0].trim()) ? parts[0].trim() : str;
+    const parsed = parseInt(code, 10);
+    return isNaN(parsed) ? code : parsed;
+}
+
 module.exports = {
     getCompanyInfo,
     getCompanyByName,
@@ -301,6 +316,7 @@ module.exports = {
     renderClosingFooter,
     renderPageNumbers,
     createPdfDocument,
-    buildPDF
+    buildPDF,
+    extractF07Code
 };
 

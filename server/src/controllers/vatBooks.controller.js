@@ -356,6 +356,10 @@ const getVatBookPurchasesPDF = async (req, res) => {
                 p.nit AS provider_nit,
                 p.nrc AS provider_nrc,
                 cat.description AS tipo_doc_nombre,
+                '1' AS tipo_operacion,
+                '1' AS tipo_clasificacion,
+                '2' AS tipo_sector,
+                '5' AS tipo_costo,
                 'compra' AS source_type
             FROM purchase_headers ph
             LEFT JOIN providers p ON ph.provider_id = p.id
@@ -392,6 +396,10 @@ const getVatBookPurchasesPDF = async (req, res) => {
                 p.nit AS provider_nit,
                 p.nrc AS provider_nrc,
                 NULL AS tipo_doc_nombre,
+                eh.tipo_operacion,
+                eh.tipo_clasificacion,
+                eh.tipo_sector,
+                eh.tipo_costo,
                 'gasto' AS source_type
             FROM expense_headers eh
             LEFT JOIN providers p ON eh.provider_id = p.id
@@ -514,7 +522,11 @@ const getVatBookPurchasesPDF = async (req, res) => {
                     'Ret/Per': Number((re).toFixed(2)),
                     'Anticipo Cta.': Number((ac).toFixed(2)),
                     Total: Number((sign * to).toFixed(2)),
-                    Origen: r.source_type === 'gasto' ? 'Gasto' : 'Compra'
+                    Origen: r.source_type === 'gasto' ? 'Gasto' : 'Compra',
+                    Operación: reportPdfHelper.extractF07Code(r.tipo_operacion, '1'),
+                    Clasificación: reportPdfHelper.extractF07Code(r.tipo_clasificacion, r.source_type === 'gasto' ? '2' : '1'),
+                    Sector: reportPdfHelper.extractF07Code(r.tipo_sector, '2'),
+                    'Tipo Costo': reportPdfHelper.extractF07Code(r.tipo_costo, '5')
                 };
             });
             const buffer = await excelService.createExcelBuffer({
@@ -533,7 +545,11 @@ const getVatBookPurchasesPDF = async (req, res) => {
                     { header: 'Ret/Per', key: 'Ret/Per', width: 14 },
                     { header: 'Anticipo Cta.', key: 'Anticipo Cta.', width: 14 },
                     { header: 'Total', key: 'Total', width: 14 },
-                    { header: 'Origen', key: 'Origen', width: 12 }
+                    { header: 'Origen', key: 'Origen', width: 12 },
+                    { header: 'Operación', key: 'Operación', width: 14 },
+                    { header: 'Clasificación', key: 'Clasificación', width: 14 },
+                    { header: 'Sector', key: 'Sector', width: 14 },
+                    { header: 'Tipo Costo', key: 'Tipo Costo', width: 14 }
                 ], data: excelData }]
             });
             return excelService.sendExcelResponse(res, buffer, `Libro_Compras_${month}_${year}.xlsx`);

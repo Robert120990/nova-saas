@@ -226,7 +226,11 @@ async function generateDeclarationsExcel(type, items, summary, meta) {
             { header: 'Crédito Fiscal IVA ($)', key: 'iva', width: 18 },
             { header: 'Retención / Percepción ($)', key: 'ret_per', width: 18 },
             { header: 'Anticipo Cuenta 2% ($)', key: 'anticipo', width: 18 },
-            { header: 'Total Compras ($)', key: 'total', width: 18 }
+            { header: 'Total Compras ($)', key: 'total', width: 18 },
+            { header: 'Operación', key: 'tipo_operacion', width: 14 },
+            { header: 'Clasificación', key: 'tipo_clasificacion', width: 14 },
+            { header: 'Sector', key: 'tipo_sector', width: 14 },
+            { header: 'Tipo Costo', key: 'tipo_costo', width: 14 }
         ];
         rows = items.map(item => ({
             corr: item.corr,
@@ -244,7 +248,11 @@ async function generateDeclarationsExcel(type, items, summary, meta) {
             iva: num(item.iva),
             ret_per: num(item.retencion) + num(item.percepcion),
             anticipo: num(item.anticipo_cuenta),
-            total: num(item.monto_total)
+            total: num(item.monto_total),
+            tipo_operacion: reportPdfHelper.extractF07Code(item.tipo_operacion, '1'),
+            tipo_clasificacion: reportPdfHelper.extractF07Code(item.tipo_clasificacion, item.source_type === 'gasto' ? '2' : '1'),
+            tipo_sector: reportPdfHelper.extractF07Code(item.tipo_sector, '2'),
+            tipo_costo: reportPdfHelper.extractF07Code(item.tipo_costo, '5')
         }));
         rows.push({
             corr: '',
@@ -262,7 +270,11 @@ async function generateDeclarationsExcel(type, items, summary, meta) {
             iva: num(summary.total_iva),
             ret_per: num(summary.total_retencion) + num(summary.total_percepcion),
             anticipo: num(summary.total_anticipo),
-            total: num(summary.total_compras)
+            total: num(summary.total_compras),
+            tipo_operacion: '',
+            tipo_clasificacion: '',
+            tipo_sector: '',
+            tipo_costo: ''
         });
     }
 
