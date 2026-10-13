@@ -1,4 +1,5 @@
-import { ArrowLeft, Wallet } from 'lucide-react';
+import { ArrowLeft, Wallet, ClipboardList } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 export default function RestaurantTerminalHeader({
     activeTab,
@@ -10,6 +11,7 @@ export default function RestaurantTerminalHeader({
     onViewTables,
     onOpenShiftSummary
 }) {
+    const navigate = useNavigate();
     return (
         <div className="flex items-center justify-between bg-white p-3.5 rounded-3xl border border-slate-200 shadow-2xs">
             <div className="flex items-center gap-2.5">
@@ -50,6 +52,16 @@ export default function RestaurantTerminalHeader({
             </div>
 
             <div className="flex items-center gap-2">
+                <button
+                    type="button"
+                    onClick={() => navigate('/restaurant/consultas')}
+                    className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 text-xs font-bold flex items-center gap-1.5 transition-colors shadow-2xs"
+                    title="Consultar historial de comandas"
+                >
+                    <ClipboardList size={14} className="text-slate-600" />
+                    <span className="hidden sm:inline">Historial</span>
+                </button>
+
                 <button
                     type="button"
                     onClick={onOpenShiftSummary}

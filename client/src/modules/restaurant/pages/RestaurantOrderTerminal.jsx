@@ -5,13 +5,12 @@ import { toast } from 'sonner';
 import { useAuth } from '../../../context/AuthContext';
 import { unwrapList } from '../../../utils/apiUtils';
 import useRestaurantSocket from '../hooks/useRestaurantSocket';
-import ConfirmDialog from '../../../components/ui/ConfirmDialog';
 import Money from '../../../components/ui/Money';
 import {
     RestaurantTableGrid, RestaurantProductCatalog, RestaurantCartSheet,
     RestaurantTerminalHeader, RestaurantItemModifierModal, TableTransferModal,
     ItemCancelModal, SplitBillModal, RestaurantPreAccountModal, TakeoutOrderModal,
-    OrderDiscountModal, WaiterShiftSummaryModal
+    OrderDiscountModal, WaiterShiftSummaryModal, RestaurantFinalizeModal
 } from '../components';
 
 export default function RestaurantOrderTerminal() {
@@ -39,7 +38,7 @@ export default function RestaurantOrderTerminal() {
     const [shiftSummaryOpen, setShiftSummaryOpen] = useState(false);
     const [takeoutModalOpen, setTakeoutModalOpen] = useState(false);
     const [takeoutType, setTakeoutType] = useState('para_llevar');
-    const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
+    const [finalizeModalOpen, setFinalizeModalOpen] = useState(false);
 
     // WebSocket en tiempo real
     const refreshAll = useCallback(() => {
@@ -173,23 +172,6 @@ export default function RestaurantOrderTerminal() {
         onError: (err) => toast.error(err.response?.data?.message || 'Error al marchar comanda')
     });
 
-    const closeOrderMutation = useMutation({
-        mutationFn: async () => axios.put(`/api/restaurant/orders/${currentOrder?.id}/close`, { status: 'facturada' }),
-        onSuccess: () => {
-            toast.success('Comanda cerrada');
-            const remaining = tableOrders.filter(o => o.id !== currentOrder?.id);
-            if (remaining.length > 0) {
-                setSelectedOrderId(remaining[0].id);
-            } else {
-                setSelectedTable(null);
-                setSelectedOrderId(null);
-                setActiveTab('tables');
-            }
-            refreshAll();
-        },
-        onError: (err) => toast.error(err.response?.data?.message || 'Error al cerrar comanda')
-    });
-
     return (
         <div className="space-y-4 max-w-6xl mx-auto pb-8">
             <RestaurantTerminalHeader
@@ -259,7 +241,7 @@ export default function RestaurantOrderTerminal() {
                             onOpenTransfer={() => setTransferModalOpen(true)}
                             onOpenSplitBill={() => setSplitModalOpen(true)}
                             onOpenDiscount={(item) => { setItemToDiscount(item); setDiscountModalOpen(true); }}
-                            onCloseOrder={() => setCloseConfirmOpen(true)}
+                            onCloseOrder={() => setFinalizeModalOpen(true)}
                             isSubmitting={sendOrderMutation.isPending}
                         />
                     </div>
@@ -326,19 +308,23 @@ export default function RestaurantOrderTerminal() {
                 onConfirm={handleConfirmTakeout}
             />
 
-            <ConfirmDialog
-                isOpen={closeConfirmOpen}
-                title="Cerrar Comanda y Liberar Mesa"
-                message="¿Estás seguro de que deseas cerrar esta comanda? Si la mesa tiene otras sub-cuentas activas, permanecerá ocupada hasta liquidarlas todas."
-                confirmLabel="Sí, cerrar comanda"
-                cancelLabel="Cancelar"
-                variant="warning"
-                onConfirm={() => {
-                    setCloseConfirmOpen(false);
-                    closeOrderMutation.mutate();
+            <RestaurantFinalizeModal
+                isOpen={finalizeModalOpen}
+                onClose={() => setFinalizeModalOpen(false)}
+                order={currentOrder}
+                branchId={branchId}
+                user={user}
+                onSuccess={() => {
+                    const remaining = tableOrders.filter(o => o.id !== currentOrder?.id);
+                    if (remaining.length > 0) {
+                        setSelectedOrderId(remaining[0].id);
+                    } else {
+                        setSelectedTable(null);
+                        setSelectedOrderId(null);
+                        setActiveTab('tables');
+                    }
+                    refreshAll();
                 }}
-                onCancel={() => setCloseConfirmOpen(false)}
-                onClose={() => setCloseConfirmOpen(false)}
             />
         </div>
     );

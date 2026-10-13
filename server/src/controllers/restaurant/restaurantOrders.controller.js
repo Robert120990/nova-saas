@@ -5,42 +5,32 @@ async function getOrders(req, res) {
     try {
         const companyId = req.company_id || req.companyId;
         const branchId = req.query.branch_id || req.branch_id || req.branchId || req.user?.branch_id || null;
-        const { status, table_id, order_type } = req.query;
+        const { status, table_id, order_type, start_date, end_date, search, waiter_id } = req.query;
 
         let query = `
             SELECT ro.*, rt.table_number, ra.name as area_name, u.nombre as waiter_name,
+                   sh.dte_type, sh.codigo_generacion, sh.numero_control, sh.sello_recepcion, sh.fh_procesamiento,
                    (SELECT COUNT(*) FROM restaurant_order_items WHERE order_id = ro.id AND status != 'cancelado') as total_items
             FROM restaurant_orders ro
             LEFT JOIN restaurant_tables rt ON ro.table_id = rt.id
             LEFT JOIN restaurant_areas ra ON rt.area_id = ra.id
             LEFT JOIN users u ON ro.waiter_id = u.id
+            LEFT JOIN sales_headers sh ON ro.sale_id = sh.id
             WHERE ro.company_id = ?
         `;
         const params = [companyId];
-
-        if (branchId) {
-            query += " AND (ro.branch_id = ? OR ro.branch_id IS NULL)";
-            params.push(branchId);
+        if (branchId) { query += " AND (ro.branch_id = ? OR ro.branch_id IS NULL)"; params.push(branchId); }
+        if (status && status !== 'all') { query += " AND ro.status = ?"; params.push(status); }
+        else if (!status) { query += " AND ro.status IN ('abierta', 'en_cocina', 'lista')"; }
+        if (table_id) { query += " AND ro.table_id = ?"; params.push(table_id); }
+        if (order_type) { query += " AND ro.order_type = ?"; params.push(order_type); }
+        if (waiter_id) { query += " AND ro.waiter_id = ?"; params.push(waiter_id); }
+        if (start_date && end_date) { query += " AND DATE(ro.opened_at) BETWEEN ? AND ?"; params.push(start_date, end_date); }
+        if (search && search.trim()) {
+            query += " AND (ro.id = ? OR ro.customer_name LIKE ? OR rt.table_number LIKE ? OR sh.numero_control LIKE ?)";
+            params.push(search.trim(), `%${search.trim()}%`, `%${search.trim()}%`, `%${search.trim()}%`);
         }
-
-        if (status) {
-            query += " AND ro.status = ?";
-            params.push(status);
-        } else {
-            query += " AND ro.status IN ('abierta', 'en_cocina', 'lista')";
-        }
-
-        if (table_id) {
-            query += " AND ro.table_id = ?";
-            params.push(table_id);
-        }
-
-        if (order_type) {
-            query += " AND ro.order_type = ?";
-            params.push(order_type);
-        }
-
-        query += " ORDER BY ro.opened_at DESC";
+        query += " ORDER BY ro.opened_at DESC LIMIT 300";
 
         const [rows] = await pool.query(query, params);
         if (rows.length > 0) {
@@ -300,8 +290,7 @@ async function closeOrder(req, res) {
         await conn.beginTransaction();
         const { id } = req.params;
         const companyId = req.company_id || req.companyId;
-        const { status = 'facturada' } = req.body; // 'facturada' o 'cancelada'
-
+        const { status = 'facturada', sale_id, tip_amount, total_with_tip } = req.body;
         const [orders] = await conn.query("SELECT * FROM restaurant_orders WHERE id = ? AND company_id = ?", [id, companyId]);
         if (orders.length === 0) {
             await conn.rollback();
@@ -309,7 +298,14 @@ async function closeOrder(req, res) {
         }
 
         const order = orders[0];
-        await conn.query("UPDATE restaurant_orders SET status = ?, closed_at = NOW() WHERE id = ?", [status, id]);
+        let updateSql = "UPDATE restaurant_orders SET status = ?, closed_at = NOW()";
+        const updateParams = [status];
+        if (sale_id !== undefined) { updateSql += ", sale_id = ?"; updateParams.push(sale_id); }
+        if (tip_amount !== undefined) { updateSql += ", tip_amount = ?"; updateParams.push(tip_amount); }
+        if (total_with_tip !== undefined) { updateSql += ", total_with_tip = ?"; updateParams.push(total_with_tip); }
+        updateSql += " WHERE id = ?";
+        updateParams.push(id);
+        await conn.query(updateSql, updateParams);
 
         if (order.table_id) {
             const [otherActive] = await conn.query(

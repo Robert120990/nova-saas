@@ -16,3 +16,6 @@ export { default as RestaurantPreAccountModal } from './modals/RestaurantPreAcco
 export { default as TakeoutOrderModal } from './modals/TakeoutOrderModal';
 export { default as OrderDiscountModal } from './modals/OrderDiscountModal';
 export { default as WaiterShiftSummaryModal } from './modals/WaiterShiftSummaryModal';
+export { default as RestaurantFinalizeModal } from './modals/RestaurantFinalizeModal';
+export { default as OrderDetailModal } from './modals/OrderDetailModal';
+export * from './history';

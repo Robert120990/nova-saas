@@ -61,6 +61,7 @@ const BalanceGeneral = lazyWithRetry(() => import('./pages/AccountingReports/Bal
 
 // Restaurant Module (Aislado)
 const RestaurantOrderTerminal = lazyWithRetry(() => import('./modules/restaurant/pages/RestaurantOrderTerminal'));
+const RestaurantOrdersHistory = lazyWithRetry(() => import('./modules/restaurant/pages/RestaurantOrdersHistory'));
 const RestaurantKds = lazyWithRetry(() => import('./modules/restaurant/pages/RestaurantKds'));
 const RestaurantConfig = lazyWithRetry(() => import('./modules/restaurant/pages/RestaurantConfig'));
 const AnexoBalance = lazyWithRetry(() => import('./pages/AccountingReports/AnexoBalance'));
@@ -464,6 +465,8 @@ function App() {
 
                         {/* Módulo Restaurante y Comandas (Aislado, sin inclusión en menú) */}
                         <Route path="/restaurant/comandas" element={<RestaurantOrderTerminal />} />
+                        <Route path="/restaurant/consultas" element={<RestaurantOrdersHistory />} />
+                        <Route path="/restaurant/historial" element={<RestaurantOrdersHistory />} />
                         <Route path="/restaurant/kds" element={<RestaurantKds />} />
                         <Route path="/restaurant/config" element={<RestaurantConfig />} />
                         
