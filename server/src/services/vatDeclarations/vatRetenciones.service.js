@@ -28,6 +28,7 @@ async function getRetencionesEmitidasData({ companyId, branchId, year, month, se
         'eh.period_year = ?',
         'eh.period_month = ?',
         'eh.retencion > 0',
+        '(eh.tipo_documento_id IS NULL OR eh.tipo_documento_id != "06")',
         '(eh.status IS NULL OR eh.status != "ANULADO")'
     ];
     let eParams = [companyId, year, month];
@@ -112,7 +113,19 @@ async function getRetencionesEmitidasData({ companyId, branchId, year, month, se
             END AS doc_origen,
             eh.codigo_generacion,
             eh.tipo_documento_id,
-            cat.description AS tipo_doc_origen_nombre,
+            CASE eh.tipo_documento_id
+                WHEN '01' THEN 'Factura'
+                WHEN '02' THEN 'Crédito Fiscal'
+                WHEN '03' THEN 'Factura de Exportación'
+                WHEN '04' THEN 'Importación'
+                WHEN '05' THEN 'Internación'
+                WHEN '06' THEN 'Comprobante de Retención'
+                WHEN '07' THEN 'Doc. Contable de Liquidación'
+                WHEN '08' THEN 'Nota de Débito'
+                WHEN '09' THEN 'Nota de Crédito'
+                WHEN '14' THEN 'Factura Sujeto Excluido'
+                ELSE COALESCE(cat.description, 'Gasto')
+            END AS tipo_doc_origen_nombre,
             eh.total_gravada AS monto_sujeto,
             eh.retencion AS monto_retencion,
             eh.iva,
@@ -239,6 +252,7 @@ async function getRetencionesEmitidasData({ companyId, branchId, year, month, se
  * Anexo Retenciones de IVA 1% Recibidas / Sufridas en Ventas (Art. 162 CT)
  */
 async function getRetencionesRecibidasData({ companyId, branchId, year, month, search, limit, offset }) {
+    // 1. Retenciones en Ventas (cuando el cliente retuvo directamente en la factura/DTE)
     let whereClauses = [
         'sh.company_id = ?',
         'YEAR(sh.fecha_emision) = ?',
@@ -262,32 +276,13 @@ async function getRetencionesRecibidasData({ companyId, branchId, year, month, s
 
     const whereSql = whereClauses.join(' AND ');
 
-    const [totRows] = await pool.query(`
+    const [salesRows] = await pool.query(`
         SELECT 
-            COUNT(*) AS total_records,
-            COALESCE(SUM(sh.total_gravado), 0) AS total_monto_sujeto,
-            COALESCE(SUM(sh.total_iva), 0) AS total_iva,
-            COALESCE(SUM(sh.iva_retenido), 0) AS total_retencion,
-            COALESCE(SUM(sh.total_pagar), 0) AS total_monto
-        FROM sales_headers sh
-        LEFT JOIN customers c ON sh.customer_id = c.id
-        WHERE ${whereSql}
-    `, params);
-
-    const summary = {
-        total_records: parseInt(totRows[0]?.total_records, 10) || 0,
-        total_monto_sujeto: Math.round(n(totRows[0]?.total_monto_sujeto) * 100) / 100,
-        total_iva: Math.round(n(totRows[0]?.total_iva) * 100) / 100,
-        total_retencion: Math.round(n(totRows[0]?.total_retencion) * 100) / 100,
-        total_monto: Math.round(n(totRows[0]?.total_monto) * 100) / 100
-    };
-
-    let dataQuery = `
-        SELECT 
+            'venta' AS origen,
             sh.id,
             sh.fecha_emision AS fecha,
-            sh.numero_control,
-            sh.codigo_generacion,
+            COALESCE(sh.numero_control, '---') AS numero_control,
+            COALESCE(sh.codigo_generacion, '---') AS codigo_generacion,
             sh.tipo_documento,
             cat.description AS tipo_doc_nombre,
             sh.total_gravado AS monto_sujeto,
@@ -304,26 +299,93 @@ async function getRetencionesRecibidasData({ companyId, branchId, year, month, s
         LEFT JOIN branches b ON sh.branch_id = b.id
         LEFT JOIN cat_002_tipo_dte cat ON sh.tipo_documento COLLATE utf8mb4_unicode_ci = cat.code
         WHERE ${whereSql}
-        ORDER BY sh.fecha_emision ASC, sh.id ASC
-    `;
+    `, params);
 
-    const queryParams = [...params];
-    if (limit !== undefined && offset !== undefined) {
-        dataQuery += ' LIMIT ? OFFSET ?';
-        queryParams.push(parseInt(limit, 10), parseInt(offset, 10));
+    // 2. Comprobantes de Retención emitidos por clientes e ingresados en Gastos (tipo_documento_id = '06')
+    let eWhere = [
+        'eh.company_id = ?',
+        'eh.period_year = ?',
+        'eh.period_month = ?',
+        'eh.tipo_documento_id = "06"',
+        '(eh.retencion > 0 OR eh.monto_sujeto > 0)',
+        '(eh.status IS NULL OR eh.status != "ANULADO")'
+    ];
+    let eParams = [companyId, year, month];
+
+    if (branchId && branchId !== 'all') {
+        eWhere.push('eh.branch_id = ?');
+        eParams.push(branchId);
     }
 
-    const [rows] = await pool.query(dataQuery, queryParams);
+    if (search && search.trim()) {
+        const s = `%${search.trim()}%`;
+        eWhere.push('(p.nombre LIKE ? OR eh.numero_documento LIKE ? OR eh.num_control LIKE ? OR eh.codigo_generacion LIKE ? OR p.nit LIKE ? OR p.nrc LIKE ?)');
+        eParams.push(s, s, s, s, s, s);
+    }
 
-    const items = rows.map((r, idx) => ({
+    const [expenseRows] = await pool.query(`
+        SELECT 
+            'gasto' AS origen,
+            eh.id,
+            eh.fecha,
+            COALESCE(eh.num_control, eh.numero_documento, '---') AS numero_control,
+            COALESCE(eh.codigo_generacion, '---') AS codigo_generacion,
+            '06' AS tipo_documento,
+            'Comprobante de Retención' AS tipo_doc_nombre,
+            COALESCE(eh.monto_sujeto, eh.total_gravada, 0) AS monto_sujeto,
+            COALESCE(eh.iva, 0) AS total_iva,
+            eh.retencion AS monto_retencion,
+            COALESCE(eh.monto_total, eh.retencion) AS total_pagar,
+            COALESCE(eh.status, 'ACTIVO') AS estado,
+            p.nombre AS cliente_nombre,
+            p.nit AS cliente_nit,
+            p.nrc AS cliente_nrc,
+            b.nombre AS branch_name
+        FROM expense_headers eh
+        LEFT JOIN providers p ON eh.provider_id = p.id
+        LEFT JOIN branches b ON eh.branch_id = b.id
+        WHERE ${eWhere.join(' AND ')}
+    `, eParams);
+
+    const allRecords = [...salesRows, ...expenseRows].sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+
+    let totalMontoSujeto = 0;
+    let totalIva = 0;
+    let totalRetencion = 0;
+    let totalMonto = 0;
+
+    allRecords.forEach(r => {
+        totalMontoSujeto += n(r.monto_sujeto);
+        totalIva += n(r.total_iva);
+        totalRetencion += n(r.monto_retencion);
+        totalMonto += n(r.total_pagar);
+    });
+
+    const summary = {
+        total_records: allRecords.length,
+        total_monto_sujeto: Math.round(totalMontoSujeto * 100) / 100,
+        total_iva: Math.round(totalIva * 100) / 100,
+        total_retencion: Math.round(totalRetencion * 100) / 100,
+        total_monto: Math.round(totalMonto * 100) / 100
+    };
+
+    let paged = allRecords;
+    if (limit !== undefined && offset !== undefined) {
+        const start = parseInt(offset, 10);
+        const end = start + parseInt(limit, 10);
+        paged = allRecords.slice(start, end);
+    }
+
+    const items = paged.map((r, idx) => ({
         corr: (offset || 0) + idx + 1,
         id: r.id,
+        origen: r.origen,
         fecha: r.fecha,
         numero_control: cleanStr(r.numero_control),
         codigo_generacion: cleanStr(r.codigo_generacion),
         tipo_documento: cleanStr(r.tipo_documento),
-        tipo_doc_nombre: cleanStr(r.tipo_doc_nombre || 'Crédito Fiscal'),
-        cliente_nombre: cleanStr(r.cliente_nombre || 'CLIENTE CONTRIBUYENTE').toUpperCase(),
+        tipo_doc_nombre: cleanStr(r.tipo_doc_nombre || 'Comprobante de Retención'),
+        cliente_nombre: cleanStr(r.cliente_nombre || 'AGENTE DE RETENCIÓN').toUpperCase(),
         cliente_nit: cleanStr(r.cliente_nit),
         cliente_nrc: cleanStr(r.cliente_nrc),
         branch_name: cleanStr(r.branch_name || 'CENTRAL'),
@@ -331,7 +393,7 @@ async function getRetencionesRecibidasData({ companyId, branchId, year, month, s
         total_iva: n(r.total_iva),
         monto_retencion: n(r.monto_retencion),
         total_pagar: n(r.total_pagar),
-        estado: cleanStr(r.estado || 'emitido')
+        estado: cleanStr(r.estado || 'ACTIVO')
     }));
 
     return { items, summary };

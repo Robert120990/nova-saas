@@ -85,7 +85,19 @@ async function getPercepcionesData({ companyId, branchId, year, month, search, l
             eh.codigo_generacion,
             eh.num_control AS numero_control,
             eh.tipo_documento_id,
-            cat.description AS tipo_doc_nombre,
+            CASE eh.tipo_documento_id
+                WHEN '01' THEN 'Factura'
+                WHEN '02' THEN 'Crédito Fiscal'
+                WHEN '03' THEN 'Factura de Exportación'
+                WHEN '04' THEN 'Importación'
+                WHEN '05' THEN 'Internación'
+                WHEN '06' THEN 'Comprobante de Retención'
+                WHEN '07' THEN 'Doc. Contable de Liquidación'
+                WHEN '08' THEN 'Nota de Débito'
+                WHEN '09' THEN 'Nota de Crédito'
+                WHEN '14' THEN 'Factura Sujeto Excluido'
+                ELSE COALESCE(cat.description, 'Gasto')
+            END AS tipo_doc_nombre,
             eh.total_gravada AS monto_sujeto,
             eh.iva,
             eh.percepcion AS monto_percepcion,

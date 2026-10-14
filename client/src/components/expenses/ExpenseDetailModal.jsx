@@ -38,6 +38,19 @@ const DEFAULT_F07_COSTO = [
     { code: '0', label: '0 - ANTES FEB 2024' }
 ];
 
+const F07_DOCUMENT_CONFIG = {
+    '01': { name: 'Factura', badge: 'Consumidor Final', color: 'bg-slate-100 text-slate-700 border-slate-200' },
+    '02': { name: 'Crédito Fiscal', badge: 'CCF Deducible', color: 'bg-indigo-50 text-indigo-700 border-indigo-200 font-bold' },
+    '03': { name: 'Factura de Exportación', badge: 'Exportación', color: 'bg-sky-50 text-sky-700 border-sky-200' },
+    '04': { name: 'Importaciones', badge: 'Aduana / Póliza', color: 'bg-purple-50 text-purple-700 border-purple-200' },
+    '05': { name: 'Internaciones', badge: 'FAUCA / C.A.', color: 'bg-cyan-50 text-cyan-700 border-cyan-200' },
+    '06': { name: 'Comprobante de Retención', badge: 'Retención IVA', color: 'bg-amber-50 text-amber-700 border-amber-200' },
+    '07': { name: 'Doc. Contable de Liquidación', badge: 'Liquidación', color: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+    '08': { name: 'Nota de Débito', badge: 'Incremento (+)', color: 'bg-blue-50 text-blue-700 border-blue-200' },
+    '09': { name: 'Nota de Crédito', badge: 'Rebaja / NC (-)', color: 'bg-rose-50 text-rose-700 border-rose-200 font-bold' },
+    '14': { name: 'Factura Sujeto Excluido', badge: 'Sujeto Excluido (DTE-14)', color: 'bg-teal-50 text-teal-800 border-teal-200 font-bold' }
+};
+
 export default function ExpenseDetailModal({
     isOpen,
     onClose,
@@ -48,6 +61,12 @@ export default function ExpenseDetailModal({
     f07Costo = DEFAULT_F07_COSTO
 }) {
     if (!isOpen || !expense) return null;
+
+    const docCfg = F07_DOCUMENT_CONFIG[expense.tipo_documento_id] || {
+        name: expense.tipo_documento_nombre || 'Gasto',
+        badge: expense.tipo_documento_id || 'Doc',
+        color: 'bg-slate-100 text-slate-700 border-slate-200'
+    };
 
     return (
         <Modal
@@ -65,7 +84,14 @@ export default function ExpenseDetailModal({
                     </div>
                     <div>
                         <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Tipo Documento</span>
-                        <span className="text-xs font-black text-slate-800">{expense.tipo_documento_id} - {expense.tipo_documento_nombre || 'Gasto'}</span>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase border ${docCfg.color}`}>
+                                {expense.tipo_documento_id} {docCfg.badge}
+                            </span>
+                            <span className="text-xs font-black text-slate-800 truncate" title={docCfg.name}>
+                                {docCfg.name}
+                            </span>
+                        </div>
                     </div>
                     <div>
                         <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">No. Documento</span>

@@ -84,8 +84,19 @@ const getProviderStatement = async (req, res) => {
         const [expenses] = await pool.query(`
             SELECT 
                 e.id as doc_id,
-                e.fecha as fecha,
-                cat.description as tipo,
+                CASE e.tipo_documento_id
+                    WHEN '01' THEN 'Factura'
+                    WHEN '02' THEN 'Crédito Fiscal'
+                    WHEN '03' THEN 'Factura de Exportación'
+                    WHEN '04' THEN 'Importación'
+                    WHEN '05' THEN 'Internación'
+                    WHEN '06' THEN 'Comprobante de Retención'
+                    WHEN '07' THEN 'Doc. Contable de Liquidación'
+                    WHEN '08' THEN 'Nota de Débito'
+                    WHEN '09' THEN 'Nota de Crédito'
+                    WHEN '14' THEN 'Factura Sujeto Excluido'
+                    ELSE COALESCE(cat.description, 'Gasto')
+                END as tipo,
                 e.numero_documento as numero,
                 e.monto_total as cargo,
                 0 as abono,
@@ -177,7 +188,19 @@ const getPendingDocuments = async (req, res) => {
                 NULL as purchase_id,
                 e.id as expense_id,
                 e.fecha as fecha,
-                cat.description as tipo,
+                CASE e.tipo_documento_id
+                    WHEN '01' THEN 'Factura'
+                    WHEN '02' THEN 'Crédito Fiscal'
+                    WHEN '03' THEN 'Factura de Exportación'
+                    WHEN '04' THEN 'Importación'
+                    WHEN '05' THEN 'Internación'
+                    WHEN '06' THEN 'Comprobante de Retención'
+                    WHEN '07' THEN 'Doc. Contable de Liquidación'
+                    WHEN '08' THEN 'Nota de Débito'
+                    WHEN '09' THEN 'Nota de Crédito'
+                    WHEN '14' THEN 'Factura Sujeto Excluido'
+                    ELSE COALESCE(cat.description, 'Gasto')
+                END as tipo,
                 e.numero_documento as documento,
                 e.monto_total as total_original,
                 COALESCE((SELECT SUM(monto) FROM provider_payments WHERE expense_id = e.id), 0) as total_abonado,
@@ -368,7 +391,21 @@ const getPaymentById = async (req, res) => {
                 prov.nombre as proveedor_nombre,
                 prov.correo as proveedor_correo,
                 b.nombre as sucursal_nombre,
-                COALESCE(cat_p.description, cat_e.description) as documento_tipo,
+                COALESCE(cat_p.description, 
+                    CASE e.tipo_documento_id
+                        WHEN '01' THEN 'Factura'
+                        WHEN '02' THEN 'Crédito Fiscal'
+                        WHEN '03' THEN 'Factura de Exportación'
+                        WHEN '04' THEN 'Importación'
+                        WHEN '05' THEN 'Internación'
+                        WHEN '06' THEN 'Comprobante de Retención'
+                        WHEN '07' THEN 'Doc. Contable de Liquidación'
+                        WHEN '08' THEN 'Nota de Débito'
+                        WHEN '09' THEN 'Nota de Crédito'
+                        WHEN '14' THEN 'Factura Sujeto Excluido'
+                        ELSE cat_e.description
+                    END, 'Gasto'
+                ) as documento_tipo,
                 COALESCE(h.numero_documento, e.numero_documento) as documento_aplicado,
                 COALESCE(h.fecha, e.fecha) as fecha_documento,
                 COALESCE(h.monto_total, e.monto_total) as total_documento
@@ -692,7 +729,19 @@ const exportProviderAgingPDF = async (req, res) => {
 
             SELECT 
                 NULL as purchase_id, e.id as expense_id, e.fecha as fecha,
-                cat.description as tipo,
+                CASE e.tipo_documento_id
+                    WHEN '01' THEN 'Factura'
+                    WHEN '02' THEN 'Crédito Fiscal'
+                    WHEN '03' THEN 'Factura de Exportación'
+                    WHEN '04' THEN 'Importación'
+                    WHEN '05' THEN 'Internación'
+                    WHEN '06' THEN 'Comprobante de Retención'
+                    WHEN '07' THEN 'Doc. Contable de Liquidación'
+                    WHEN '08' THEN 'Nota de Débito'
+                    WHEN '09' THEN 'Nota de Crédito'
+                    WHEN '14' THEN 'Factura Sujeto Excluido'
+                    ELSE COALESCE(cat.description, 'Gasto')
+                END as tipo,
                 e.numero_documento as documento,
                 (e.monto_total - COALESCE((SELECT SUM(monto) FROM provider_payments WHERE expense_id = e.id), 0)) as saldo_pendiente,
                 DATEDIFF(NOW(), e.fecha) as dias_antiguedad
@@ -826,7 +875,19 @@ const sendProviderAgingEmail = async (req, res) => {
 
             SELECT 
                 NULL as purchase_id, e.id as expense_id, e.fecha as fecha,
-                cat.description as tipo,
+                CASE e.tipo_documento_id
+                    WHEN '01' THEN 'Factura'
+                    WHEN '02' THEN 'Crédito Fiscal'
+                    WHEN '03' THEN 'Factura de Exportación'
+                    WHEN '04' THEN 'Importación'
+                    WHEN '05' THEN 'Internación'
+                    WHEN '06' THEN 'Comprobante de Retención'
+                    WHEN '07' THEN 'Doc. Contable de Liquidación'
+                    WHEN '08' THEN 'Nota de Débito'
+                    WHEN '09' THEN 'Nota de Crédito'
+                    WHEN '14' THEN 'Factura Sujeto Excluido'
+                    ELSE COALESCE(cat.description, 'Gasto')
+                END as tipo,
                 e.numero_documento as documento,
                 (e.monto_total - COALESCE((SELECT SUM(monto) FROM provider_payments WHERE expense_id = e.id), 0)) as saldo_pendiente,
                 DATEDIFF(NOW(), e.fecha) as dias_antiguedad
@@ -1092,7 +1153,19 @@ const exportProviderPendingDocumentsDetailedPDF = async (req, res) => {
                     'GASTO' as origen,
                     e.fecha as fecha,
                     DATEDIFF(?, e.fecha) as dias,
-                    CAST(COALESCE(cat.description, e.tipo_documento_id) AS CHAR) COLLATE utf8mb4_unicode_ci as tipo,
+                    CAST(CASE e.tipo_documento_id
+                        WHEN '01' THEN 'Factura'
+                        WHEN '02' THEN 'Crédito Fiscal'
+                        WHEN '03' THEN 'Factura de Exportación'
+                        WHEN '04' THEN 'Importación'
+                        WHEN '05' THEN 'Internación'
+                        WHEN '06' THEN 'Comprobante de Retención'
+                        WHEN '07' THEN 'Doc. Contable de Liquidación'
+                        WHEN '08' THEN 'Nota de Débito'
+                        WHEN '09' THEN 'Nota de Crédito'
+                        WHEN '14' THEN 'Factura Sujeto Excluido'
+                        ELSE COALESCE(cat.description, e.tipo_documento_id)
+                    END AS CHAR) COLLATE utf8mb4_unicode_ci as tipo,
                     CAST(e.numero_documento AS CHAR) COLLATE utf8mb4_unicode_ci as documento,
                     e.monto_total as monto,
                     (e.monto_total - COALESCE((

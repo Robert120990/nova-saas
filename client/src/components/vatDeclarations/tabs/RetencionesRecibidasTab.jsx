@@ -16,8 +16,8 @@ const RetencionesRecibidasTab = ({
         { label: 'Agente de Retención (Cliente)', className: 'w-60' },
         { label: 'NIT', className: 'text-center w-36 whitespace-nowrap' },
         { label: 'NRC', className: 'text-center w-24 whitespace-nowrap' },
-        { label: 'Tipo Doc', className: 'text-center w-20 whitespace-nowrap' },
-        { label: 'No. Control DTE', className: 'w-44 whitespace-nowrap' },
+        { label: 'Tipo Doc', className: 'text-center w-24 whitespace-nowrap' },
+        { label: 'No. Doc / Control', className: 'w-44 whitespace-nowrap' },
         { label: 'Código Generación', className: 'w-44 whitespace-nowrap' },
         { label: 'Sucursal', className: 'w-32 whitespace-nowrap' },
         { label: 'Venta Gravada', className: 'text-right w-28 whitespace-nowrap' },
@@ -36,8 +36,12 @@ const RetencionesRecibidasTab = ({
             <td className="py-1.5 px-2.5 text-center text-slate-600 font-mono text-[11px] whitespace-nowrap">{item.cliente_nit || '---'}</td>
             <td className="py-1.5 px-2.5 text-center text-slate-600 font-mono text-[11px] whitespace-nowrap">{item.cliente_nrc || '---'}</td>
             <td className="py-1.5 px-2.5 text-center whitespace-nowrap">
-                <span className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200/60 uppercase whitespace-nowrap">
-                    {item.tipo_documento || '03'}
+                <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold uppercase whitespace-nowrap ${
+                    item.tipo_documento === '06'
+                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/60'
+                        : 'bg-indigo-50 text-indigo-700 border border-indigo-200/60'
+                }`}>
+                    {item.tipo_documento === '06' ? 'Retención (06)' : item.tipo_documento || '03'}
                 </span>
             </td>
             <td className="py-1.5 px-2.5 text-indigo-700 font-semibold font-mono text-[11px] truncate max-w-xs whitespace-nowrap" title={item.numero_control}>

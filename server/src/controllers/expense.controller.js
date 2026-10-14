@@ -25,7 +25,7 @@ const getExpenses = async (req, res) => {
                    p.nit AS provider_nit,
                    br.nombre AS branch_nombre,
                    u.nombre AS usuario_nombre,
-                   COALESCE(cat_dte.description, CASE eh.tipo_documento_id
+                   CASE eh.tipo_documento_id
                        WHEN '01' THEN 'Factura'
                        WHEN '02' THEN 'Crédito Fiscal'
                        WHEN '03' THEN 'Factura de Exportación'
@@ -35,7 +35,8 @@ const getExpenses = async (req, res) => {
                        WHEN '07' THEN 'Doc. Contable de Liquidación'
                        WHEN '08' THEN 'Nota de Débito'
                        WHEN '09' THEN 'Nota de Crédito'
-                       ELSE 'Gasto' END) AS tipo_documento_nombre,
+                       WHEN '14' THEN 'Factura Sujeto Excluido'
+                       ELSE COALESCE(cat_dte.description, 'Gasto') END AS tipo_documento_nombre,
                    cat_cond.description AS condicion_operacion_nombre
             FROM expense_headers eh
             LEFT JOIN providers p ON eh.provider_id = p.id
@@ -159,7 +160,7 @@ const getExpenseById = async (req, res) => {
                    p.es_gran_contribuyente AS provider_es_gran_contribuyente,
                    br.nombre AS branch_nombre,
                    u.nombre AS usuario_nombre,
-                   COALESCE(cat.description, CASE eh.tipo_documento_id
+                   CASE eh.tipo_documento_id
                        WHEN '01' THEN 'Factura'
                        WHEN '02' THEN 'Crédito Fiscal'
                        WHEN '03' THEN 'Factura de Exportación'
@@ -169,7 +170,8 @@ const getExpenseById = async (req, res) => {
                        WHEN '07' THEN 'Doc. Contable de Liquidación'
                        WHEN '08' THEN 'Nota de Débito'
                        WHEN '09' THEN 'Nota de Crédito'
-                       ELSE 'Gasto' END) AS tipo_documento_nombre,
+                       WHEN '14' THEN 'Factura Sujeto Excluido'
+                       ELSE COALESCE(cat.description, 'Gasto') END AS tipo_documento_nombre,
                    cat_cond.description AS condicion_operacion_nombre
             FROM expense_headers eh
             LEFT JOIN providers p ON eh.provider_id = p.id
@@ -563,7 +565,7 @@ const getExpenseReportPDF = async (req, res) => {
             SELECT eh.*, 
                    p.nombre AS provider_nombre, 
                    br.nombre AS branch_nombre,
-                   COALESCE(cat_dte.description, CASE eh.tipo_documento_id
+                   CASE eh.tipo_documento_id
                        WHEN '01' THEN 'Factura'
                        WHEN '02' THEN 'Crédito Fiscal'
                        WHEN '03' THEN 'Factura de Exportación'
@@ -573,7 +575,8 @@ const getExpenseReportPDF = async (req, res) => {
                        WHEN '07' THEN 'Doc. Contable de Liquidación'
                        WHEN '08' THEN 'Nota de Débito'
                        WHEN '09' THEN 'Nota de Crédito'
-                       ELSE 'Gasto' END) AS tipo_doc_nombre,
+                       WHEN '14' THEN 'Factura Sujeto Excluido'
+                       ELSE COALESCE(cat_dte.description, 'Gasto') END AS tipo_doc_nombre,
                    cat_cond.description AS condicion_nombre
             FROM expense_headers eh
             LEFT JOIN providers p ON eh.provider_id = p.id

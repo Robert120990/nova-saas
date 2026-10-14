@@ -186,10 +186,10 @@ const DOC_TYPE_FIELD_CONFIG = {
         tip: 'Internaciones (Centroamérica / FAUCA): Digita el valor en Gravadas Internaciones y el IVA Crédito Fiscal correspondiente.'
     },
     '06': {
-        primary: ['manualRetencion'],
-        secondary: [],
-        disabled: ['totalGravada', 'totalExenta', 'totalNosujeta', 'manualIVA', 'gravadasImportaciones', 'gravadasInternaciones', 'ivaImportaciones'],
-        tip: 'Comprobante de Retención: Registra únicamente el monto retenido en el campo Retención 1%.'
+        primary: ['manualRetencion', 'manualPercepcion'],
+        secondary: ['manualMontoSujeto'],
+        disabled: ['totalGravada', 'totalExenta', 'totalNosujeta', 'manualIVA', 'gravadasImportaciones', 'gravadasInternaciones', 'ivaImportaciones', 'manualFovial', 'manualCotrans', 'manualAnticipoCuenta'],
+        tip: 'Comprobante de Retención / Percepción: Registra el monto en Retención 1% o Percepción 1% según corresponda.'
     },
     '07': {
         primary: ['totalGravada', 'manualMontoSujeto', 'manualAnticipoCuenta'],
@@ -618,6 +618,8 @@ const Expenses = () => {
         let finalTotal = 0;
         if (esNotaCredito) {
             finalTotal = -(subtotalNeto + currentIva);
+        } else if (tipoDocId === '06') {
+            finalTotal = currentRet > 0 ? currentRet : currentPerc;
         } else {
             finalTotal = subtotalNeto + currentIva + ivaImp - currentRet + currentPerc + currentFov + currentCot;
         }
@@ -1087,7 +1089,15 @@ const Expenses = () => {
             setManualFovial(parseFloat(detail.fovial || 0));
             setManualCotrans(parseFloat(detail.cotrans || 0));
             setManualAnticipoCuenta(parseFloat(detail.anticipo_cuenta || 0));
-            setManualMontoSujeto(parseFloat(detail.monto_sujeto || 0));
+            const rawMontoSujeto = parseFloat(detail.monto_sujeto || 0);
+            if (rawMontoSujeto > 0) {
+                setManualMontoSujeto(rawMontoSujeto);
+            } else if (detail.tipo_documento_id === '06') {
+                const retOrPerc = parseFloat(detail.retencion || 0) || parseFloat(detail.percepcion || 0);
+                setManualMontoSujeto(retOrPerc > 0 ? Math.round(retOrPerc / 0.01 * 100) / 100 : 0);
+            } else {
+                setManualMontoSujeto(0);
+            }
             setIsIvaDirty(true);
 
             setIsFormOpen(true);
@@ -2427,7 +2437,14 @@ const Expenses = () => {
                                                     min="0"
                                                     value={manualRetencion}
                                                     onChange={(e) => {
-                                                        setManualRetencion(e.target.value);
+                                                        const val = e.target.value;
+                                                        setManualRetencion(val);
+                                                        if (tipoDocId === '06') {
+                                                            const num = parseFloat(val) || 0;
+                                                            if (num > 0 && (!manualMontoSujeto || parseFloat(manualMontoSujeto) === 0)) {
+                                                                setManualMontoSujeto(Math.round(num / 0.01 * 100) / 100);
+                                                            }
+                                                        }
                                                     }}
                                                     onFocus={handleFocusSelect}
                                                     placeholder="0.00"
@@ -2449,7 +2466,14 @@ const Expenses = () => {
                                                     min="0"
                                                     value={manualPercepcion}
                                                     onChange={(e) => {
-                                                        setManualPercepcion(e.target.value);
+                                                        const val = e.target.value;
+                                                        setManualPercepcion(val);
+                                                        if (tipoDocId === '06') {
+                                                            const num = parseFloat(val) || 0;
+                                                            if (num > 0 && (!manualMontoSujeto || parseFloat(manualMontoSujeto) === 0)) {
+                                                                setManualMontoSujeto(Math.round(num / 0.01 * 100) / 100);
+                                                            }
+                                                        }
                                                     }}
                                                     onFocus={handleFocusSelect}
                                                     placeholder="0.00"
