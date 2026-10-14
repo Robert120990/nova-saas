@@ -145,7 +145,7 @@ function renderSignatures(doc, signatures, company, orientation = 'portrait') {
     const pageHeight = orientation === 'landscape' ? 612 : 792;
     const pageWidth = orientation === 'landscape' ? 792 : 612;
     const marginBottom = 35;
-    const sigBlockHeight = 60;
+    const sigBlockHeight = 75;
     const bottomTargetY = pageHeight - marginBottom - sigBlockHeight;
 
     if (doc.y > bottomTargetY - 10) {
@@ -160,6 +160,7 @@ function renderSignatures(doc, signatures, company, orientation = 'portrait') {
     const contentWidth = pageWidth - 60;
     const colWidth = contentWidth / 3;
     const lineWidth = Math.min(150, colWidth - 20);
+    const textAreaWidth = colWidth - 10;
 
     const sigs = [
         {
@@ -179,21 +180,31 @@ function renderSignatures(doc, signatures, company, orientation = 'portrait') {
     const oldBottom = doc.page.margins.bottom;
     doc.page.margins.bottom = 0;
 
+    // Pre-calculate max height of names so all titles remain aligned horizontally
+    doc.fontSize(7.5).font('Helvetica-Bold');
+    let maxNameHeight = 0;
+    sigs.forEach(s => {
+        const h = doc.heightOfString(s.name, { width: textAreaWidth, align: 'center' });
+        if (h > maxNameHeight) maxNameHeight = h;
+    });
+    maxNameHeight = Math.max(maxNameHeight, 11);
+
+    const titleStartY = currentY + 16 + maxNameHeight + 3;
+
     sigs.forEach((s, i) => {
-        const centerX = 30 + (i * colWidth) + (colWidth / 2);
+        const colStartX = 30 + (i * colWidth);
+        const centerX = colStartX + (colWidth / 2);
         const lineStartX = centerX - (lineWidth / 2);
         const lineEndX = centerX + (lineWidth / 2);
 
-        doc.strokeColor('#64748b').lineWidth(0.5).moveTo(lineStartX, currentY + 15).lineTo(lineEndX, currentY + 15).stroke();
-        doc.fontSize(8).font('Helvetica-Bold').fillColor('#0f172a').text(s.name, centerX - (lineWidth / 2), currentY + 19, {
+        doc.strokeColor('#64748b').lineWidth(0.5).moveTo(lineStartX, currentY + 12).lineTo(lineEndX, currentY + 12).stroke();
+        doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#0f172a').text(s.name, colStartX + 5, currentY + 16, {
             align: 'center',
-            width: lineWidth,
-            lineBreak: false
+            width: textAreaWidth
         });
-        doc.fontSize(7.5).font('Helvetica').fillColor('#475569').text(s.title, centerX - (lineWidth / 2), currentY + 30, {
+        doc.fontSize(7).font('Helvetica').fillColor('#475569').text(s.title, colStartX + 5, titleStartY, {
             align: 'center',
-            width: lineWidth,
-            lineBreak: false
+            width: textAreaWidth
         });
     });
 

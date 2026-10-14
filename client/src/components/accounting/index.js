@@ -31,3 +31,4 @@ export { default as BankMovementsTable } from './BankMovementsTable';
 export { default as BankEntryModal } from './modals/BankEntryModal';
 export { default as BankCorrelativosReservationTab } from './tabs/BankCorrelativosReservationTab';
 export { default as BankCorrelativosReservationTable } from './tabs/BankCorrelativosReservationTable';
+export { default as AccountingEntriesTable } from './AccountingEntriesTable';

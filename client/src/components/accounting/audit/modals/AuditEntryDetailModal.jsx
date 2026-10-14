@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { createPortal } from 'react-dom';
 import axios from 'axios';
 import { X, Scale, Building2, Calendar, Edit, Wrench } from 'lucide-react';
 import Money from '../../../ui/Money';
@@ -31,7 +32,7 @@ export const AuditEntryDetailModal = ({ open, onClose, entryId, onEditEntry, onF
     const isUnbalanced = headerDiff > 0.009 || linesDiff > 0.009;
     const isDesynced = syncDiff > 0.01;
 
-    return (
+    const modalContent = (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
                 {/* Modal Header */}
@@ -222,6 +223,18 @@ export const AuditEntryDetailModal = ({ open, onClose, entryId, onEditEntry, onF
                 {/* Footer */}
                 <div className="px-5 py-3 border-t border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2 bg-slate-50 dark:bg-slate-800/40">
                     <div className="flex items-center gap-2">
+                        {isUnbalanced && linesDiff <= 0.05 && onFixEntry && entry && (
+                            <button
+                                onClick={async () => {
+                                    await onFixEntry(entry.id, 'auto_balance');
+                                    onClose();
+                                }}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white shadow-sm transition-colors"
+                            >
+                                <Wrench className="w-3.5 h-3.5" />
+                                Cuadrar Partida (${linesDiff.toFixed(2)})
+                            </button>
+                        )}
                         {isDesynced && onFixEntry && entry && (
                             <button
                                 onClick={async () => {
@@ -253,4 +266,6 @@ export const AuditEntryDetailModal = ({ open, onClose, entryId, onEditEntry, onF
             </div>
         </div>
     );
+
+    return typeof document !== 'undefined' ? createPortal(modalContent, document.body) : modalContent;
 };

@@ -12,3 +12,4 @@ export { default as FlujoEfectivo } from './FlujoEfectivo';
 export { default as BalanceComparativo } from './BalanceComparativo';
 export { default as CedulaAuditoria } from './CedulaAuditoria';
 export { default as Retenciones } from './Retenciones';
+export { default as ImpresionPartidas } from './ImpresionPartidas';

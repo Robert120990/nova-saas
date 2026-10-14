@@ -98,12 +98,28 @@ const SearchableSelect = ({
         return opt.nombre || opt.descripcion || opt.description || opt.name || opt.label || 'Sin nombre';
     };
 
-    const selectedOption = (value !== undefined && value !== null && value !== '') 
+    const extractRawValue = (val) => {
+        if (val === undefined || val === null) return '';
+        if (typeof val === 'object') {
+            if (val.target && val.target.value !== undefined) return val.target.value;
+            if (val.value !== undefined) return val.value;
+            if (valueKey && val[valueKey] !== undefined) return val[valueKey];
+            if (val.id !== undefined) return val.id;
+            if (val.code !== undefined) return val.code;
+        }
+        return val;
+    };
+
+    const rawValue = extractRawValue(value);
+
+    const selectedOption = (rawValue !== undefined && rawValue !== null && rawValue !== '') 
         ? effectiveOptions.find(opt => {
             if (!opt) return false;
-            if (opt[valueKey] !== undefined && String(opt[valueKey]) === String(value)) return true;
-            if (opt.id !== undefined && String(opt.id) === String(value)) return true;
-            if (opt.codigo !== undefined && String(opt.codigo) === String(value)) return true;
+            const strVal = String(rawValue);
+            if (opt[valueKey] !== undefined && String(opt[valueKey]) === strVal) return true;
+            if (opt.id !== undefined && String(opt.id) === strVal) return true;
+            if (opt.codigo !== undefined && String(opt.codigo) === strVal) return true;
+            if (opt.code !== undefined && String(opt.code) === strVal) return true;
             return false;
         }) || null
         : null;
@@ -342,7 +358,17 @@ const SearchableSelect = ({
 
     const handleSelect = (option) => {
         if (!option) return;
-        onChange({ target: { name, value: option[valueKey] } }, option);
+        const optVal = option[valueKey];
+        if (typeof onChange === 'function') {
+            const syntheticEvent = {
+                target: { name, value: optVal },
+                currentTarget: { name, value: optVal },
+                value: optVal,
+                toString: () => String(optVal ?? ''),
+                valueOf: () => optVal
+            };
+            onChange(syntheticEvent, option);
+        }
         setIsOpen(false);
         setSearch('');
         if (onSelect) {
@@ -359,8 +385,8 @@ const SearchableSelect = ({
     };
 
     const isSelected = (opt) => {
-        if (!opt || value === undefined || value === null || value === '') return false;
-        return String(value) === String(opt[valueKey]);
+        if (!opt || rawValue === undefined || rawValue === null || rawValue === '') return false;
+        return String(rawValue) === String(opt[valueKey]);
     };
 
     const pos = panelPos || computePanelPos();
@@ -471,12 +497,21 @@ const SearchableSelect = ({
                     )}
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
-                    {isClearable && value !== undefined && value !== null && value !== '' && !disabled && (
+                    {isClearable && rawValue !== undefined && rawValue !== null && rawValue !== '' && !disabled && (
                         <span
                             role="button"
                             onClick={(e) => {
                                 e.stopPropagation();
-                                onChange({ target: { name, value: '' } }, null);
+                                const syntheticClear = {
+                                    target: { name, value: '' },
+                                    currentTarget: { name, value: '' },
+                                    value: '',
+                                    toString: () => '',
+                                    valueOf: () => ''
+                                };
+                                if (typeof onChange === 'function') {
+                                    onChange(syntheticClear, null);
+                                }
                             }}
                             className="p-0.5 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
                             title="Limpiar selección"
@@ -493,7 +528,7 @@ const SearchableSelect = ({
 
             {typeof document !== 'undefined' && dropdownPanel && createPortal(dropdownPanel, document.body)}
 
-            <input type="hidden" name={name} value={value || ''} />
+            <input type="hidden" name={name} value={rawValue || ''} />
         </div>
     );
 };

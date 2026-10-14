@@ -1,12 +1,18 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
 import { Calendar, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import ReportLayout from '../../components/ui/ReportLayout';
 import SearchableSelect from '../../components/ui/SearchableSelect';
+import { unwrapList } from '../../utils/apiUtils';
+import { useAuth } from '../../context/AuthContext';
 
 const AuxiliarOperaciones = () => {
+    const { user } = useAuth();
+    const companyId = user?.company_id;
+    const headers = useMemo(() => (companyId ? { 'x-company-id': String(companyId) } : {}), [companyId]);
+
     const today = new Date().toISOString().split('T')[0];
     const firstDayOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
 
@@ -22,13 +28,20 @@ const AuxiliarOperaciones = () => {
 
     useEffect(() => () => pdfUrl && URL.revokeObjectURL(pdfUrl), [pdfUrl]);
 
-    const { data: accounts = [] } = useQuery({
-        queryKey: ['accounts'],
-        queryFn: async () => (await axios.get('/api/accounting/accounts')).data,
+    const { data: rawAccounts = [] } = useQuery({
+        queryKey: ['accounts', companyId],
+        queryFn: async () => unwrapList(await axios.get('/api/accounting/accounts', { headers })),
     });
 
+    const accounts = Array.isArray(rawAccounts) ? rawAccounts : [];
+
     const handleFilterChange = (name, value) => {
-        setFilters(prev => ({ ...prev, [name]: value }));
+        const cleanValue = (value && typeof value === 'object' && value.target)
+            ? value.target.value
+            : (value && typeof value === 'object' && 'value' in value)
+                ? value.value
+                : value;
+        setFilters(prev => ({ ...prev, [name]: cleanValue ?? '' }));
     };
 
     const handleGenerateReport = async () => {
@@ -42,12 +55,13 @@ const AuxiliarOperaciones = () => {
             const params = {
                 start_date: filters.start_date,
                 end_date: filters.end_date,
-                account_from: filters.account_from || undefined,
-                account_to: filters.account_to || undefined
+                account_from: filters.account_from ? String(filters.account_from).trim() : undefined,
+                account_to: filters.account_to ? String(filters.account_to).trim() : undefined
             };
 
             const response = await axios.get('/api/accounting/reports/auxiliar-operaciones', {
                 params,
+                headers,
                 responseType: 'blob'
             });
 
@@ -80,12 +94,13 @@ const AuxiliarOperaciones = () => {
             const params = {
                 start_date: filters.start_date,
                 end_date: filters.end_date,
-                account_from: filters.account_from || undefined,
-                account_to: filters.account_to || undefined,
+                account_from: filters.account_from ? String(filters.account_from).trim() : undefined,
+                account_to: filters.account_to ? String(filters.account_to).trim() : undefined,
                 format: 'excel'
             };
             const response = await axios.get('/api/accounting/reports/auxiliar-operaciones', {
                 params,
+                headers,
                 responseType: 'blob'
             });
             const blob = new Blob([response.data], { 
@@ -106,10 +121,15 @@ const AuxiliarOperaciones = () => {
         }
     };
 
-    const accountOptions = [
-        { id: '', nombre: '-- Todas las Cuentas --' },
-        ...accounts.map(a => ({ id: a.code, nombre: `${a.code} - ${a.name}` }))
-    ];
+    const accountOptions = useMemo(() => [
+        { id: '', code: '', nombre: '-- Todas las Cuentas --', display: '-- Todas las Cuentas --' },
+        ...accounts.map(a => ({
+            id: a.code,
+            code: a.code,
+            nombre: a.name,
+            display: `${a.code} - ${a.name}`
+        }))
+    ], [accounts]);
 
     return (
         <ReportLayout
@@ -159,10 +179,14 @@ const AuxiliarOperaciones = () => {
                 <SearchableSelect
                     valueKey="id"
                     labelKey="nombre"
+                    codeKey="code"
+                    displayKey="display"
+                    searchKeys={['code', 'nombre', 'display']}
                     options={accountOptions}
                     value={filters.account_from}
-                    onChange={(val) => handleFilterChange('account_from', val)}
+                    onChange={(e) => handleFilterChange('account_from', e?.target?.value ?? e)}
                     placeholder="Todas las cuentas iniciales..."
+                    isClearable
                 />
             </div>
 
@@ -174,10 +198,14 @@ const AuxiliarOperaciones = () => {
                 <SearchableSelect
                     valueKey="id"
                     labelKey="nombre"
+                    codeKey="code"
+                    displayKey="display"
+                    searchKeys={['code', 'nombre', 'display']}
                     options={accountOptions}
                     value={filters.account_to}
-                    onChange={(val) => handleFilterChange('account_to', val)}
+                    onChange={(e) => handleFilterChange('account_to', e?.target?.value ?? e)}
                     placeholder="Todas las cuentas finales..."
+                    isClearable
                 />
             </div>
         </ReportLayout>

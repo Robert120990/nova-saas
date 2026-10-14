@@ -9,12 +9,10 @@ import Money from '../../ui/Money';
 import BankCorrelativosReservationTable from './BankCorrelativosReservationTable';
 
 const MONTHS = [
-    { value: 1, label: '01 - ENERO' }, { value: 2, label: '02 - FEBRERO' },
-    { value: 3, label: '03 - MARZO' }, { value: 4, label: '04 - ABRIL' },
-    { value: 5, label: '05 - MAYO' }, { value: 6, label: '06 - JUNIO' },
-    { value: 7, label: '07 - JULIO' }, { value: 8, label: '08 - AGOSTO' },
-    { value: 9, label: '09 - SEPTIEMBRE' }, { value: 10, label: '10 - OCTUBRE' },
-    { value: 11, label: '11 - NOVIEMBRE' }, { value: 12, label: '12 - DICIEMBRE' },
+    { value: 1, label: '01 - ENERO' }, { value: 2, label: '02 - FEBRERO' }, { value: 3, label: '03 - MARZO' },
+    { value: 4, label: '04 - ABRIL' }, { value: 5, label: '05 - MAYO' }, { value: 6, label: '06 - JUNIO' },
+    { value: 7, label: '07 - JULIO' }, { value: 8, label: '08 - AGOSTO' }, { value: 9, label: '09 - SEPTIEMBRE' },
+    { value: 10, label: '10 - OCTUBRE' }, { value: 11, label: '11 - NOVIEMBRE' }, { value: 12, label: '12 - DICIEMBRE' },
 ];
 
 const SUB_TABS = [
@@ -34,7 +32,6 @@ const BankCorrelativosReservationTab = () => {
     const [year, setYear] = useState(now.getFullYear());
     const [activeSubTab, setActiveSubTab] = useState('ingresos');
     const [searchTerm, setSearchTerm] = useState('');
-
     const [localNums, setLocalNums] = useState({});
     const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
@@ -91,6 +88,11 @@ const BankCorrelativosReservationTab = () => {
         refetch();
     };
 
+    const handleUpdateManualNum = (llave, value) => {
+        setLocalNums(prev => ({ ...prev, [llave]: value }));
+        setHasUnsavedChanges(true);
+    };
+
     const handleGenerarCorrelativo = () => {
         if (items.length === 0) {
             toast.warning('No hay movimientos disponibles para numerar');
@@ -102,17 +104,27 @@ const BankCorrelativosReservationTab = () => {
             return;
         }
 
+        const yy = String(year).slice(-2);
         const mm = String(month).padStart(2, '0');
+        const prefixYYMM = `${yy}${mm}`;
+        const prefixMM = `${mm}`;
         const nextMap = { ...localNums };
 
         // Determine highest existing sequence number for this month
         let maxSeq = 0;
+        let useYYMM = true;
+
         items.forEach(it => {
             const val = String(it.num || '').trim();
             if (val) {
-                if (val.startsWith(mm) && val.length > 2) {
+                if (val.startsWith(prefixYYMM) && val.length > 4) {
+                    const parsed = parseInt(val.slice(4), 10);
+                    if (!isNaN(parsed) && parsed > maxSeq) maxSeq = parsed;
+                    useYYMM = true;
+                } else if (val.startsWith(prefixMM) && val.length > 2) {
                     const parsed = parseInt(val.slice(2), 10);
                     if (!isNaN(parsed) && parsed > maxSeq) maxSeq = parsed;
+                    useYYMM = false;
                 } else {
                     const parsed = parseInt(val, 10);
                     if (!isNaN(parsed) && parsed > maxSeq) maxSeq = parsed;
@@ -121,18 +133,19 @@ const BankCorrelativosReservationTab = () => {
         });
 
         let assignedCount = 0;
+        const prefix = useYYMM ? prefixYYMM : prefixMM;
         items.forEach(item => {
             if (!item.num || String(item.num).trim() === '') {
                 maxSeq += 1;
                 const seq = String(maxSeq).padStart(4, '0');
-                nextMap[item.llave] = `${mm}${seq}`;
+                nextMap[item.llave] = `${prefix}${seq}`;
                 assignedCount++;
             }
         });
 
         setLocalNums(nextMap);
         setHasUnsavedChanges(true);
-        toast.info(`Se asignaron ${assignedCount} correlativo(s) pendiente(s) (${mm}${String(maxSeq - assignedCount + 1).padStart(4, '0')} - ${mm}${String(maxSeq).padStart(4, '0')})`);
+        toast.info(`Se asignaron ${assignedCount} correlativo(s) pendiente(s) (${prefix}${String(maxSeq - assignedCount + 1).padStart(4, '0')} - ${prefix}${String(maxSeq).padStart(4, '0')})`);
     };
 
     const handleGuardar = () => {
@@ -141,14 +154,26 @@ const BankCorrelativosReservationTab = () => {
             return;
         }
 
+        const changedKeys = new Set(Object.keys(localNums));
+        if (changedKeys.size === 0) {
+            toast.info('No hay cambios pendientes de guardar');
+            return;
+        }
+
         const payloadItems = items
-            .filter(it => it.num && String(it.num).trim() !== '')
+            .filter(it => changedKeys.has(it.llave) && it.num && String(it.num).trim() !== '')
             .map(it => ({
                 id: it.id,
                 llave: it.llave,
                 num: it.num,
+                referencia: it.referencia,
                 origen: it.origen
             }));
+
+        if (payloadItems.length === 0) {
+            toast.info('No hay correlativos válidos para guardar');
+            return;
+        }
 
         saveMutation.mutate({
             month,
@@ -285,10 +310,7 @@ const BankCorrelativosReservationTab = () => {
 
             {/* Subtitle & Counters */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-1">
-                <span className="text-xs font-black uppercase tracking-wider text-slate-700">
-                    {currentSubTabInfo.subtitle}
-                </span>
-
+                <span className="text-xs font-black uppercase tracking-wider text-slate-700">{currentSubTabInfo.subtitle}</span>
                 <div className="flex items-center gap-3 text-[11px] font-bold text-slate-500">
                     <span>Total: <strong className="text-slate-800">{items.length}</strong> movs</span>
                     <span>•</span>
@@ -296,19 +318,13 @@ const BankCorrelativosReservationTab = () => {
                     <span>•</span>
                     <span>Monto: <strong className="text-slate-900"><Money value={totalMonto} /></strong></span>
                     {allAssigned && items.length > 0 && !hasUnsavedChanges && (
-                        <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-full font-black text-[10px]">
-                            ✓ 100% Asignados
-                        </span>
+                        <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-full font-black text-[10px]">✓ 100% Asignados</span>
                     )}
                     {pendingItems.length > 0 && items.length > 0 && (
-                        <span className="px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full font-black text-[10px]">
-                            {pendingItems.length} pendientes
-                        </span>
+                        <span className="px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full font-black text-[10px]">{pendingItems.length} pendientes</span>
                     )}
                     {hasUnsavedChanges && (
-                        <span className="px-2 py-0.5 bg-indigo-100 text-indigo-800 rounded-full font-black text-[10px] animate-pulse">
-                            Cambios pendientes de guardar
-                        </span>
+                        <span className="px-2 py-0.5 bg-indigo-100 text-indigo-800 rounded-full font-black text-[10px] animate-pulse">Cambios pendientes de guardar</span>
                     )}
                 </div>
             </div>
@@ -318,6 +334,7 @@ const BankCorrelativosReservationTab = () => {
                 isLoading={isLoading}
                 filteredItems={filteredItems}
                 localNums={localNums}
+                onUpdateNum={handleUpdateManualNum}
             />
         </div>
     );

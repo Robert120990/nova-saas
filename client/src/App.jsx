@@ -73,6 +73,7 @@ const AuxiliarOperaciones = lazyWithRetry(() => import('./pages/AccountingReport
 const ListadoPartidas = lazyWithRetry(() => import('./pages/AccountingReports/ListadoPartidas'));
 const CedulaAuditoria = lazyWithRetry(() => import('./pages/AccountingReports/CedulaAuditoria'));
 const Retenciones = lazyWithRetry(() => import('./pages/AccountingReports/Retenciones'));
+const ImpresionPartidas = lazyWithRetry(() => import('./pages/AccountingReports/ImpresionPartidas'));
 const DailySalesReport = lazyWithRetry(() => import('./pages/DailySalesReport'));
 const SalesByCustomerReport = lazyWithRetry(() => import('./pages/SalesByCustomerReport'));
 const Contingency = lazyWithRetry(() => import('./pages/Contingency'));
@@ -440,6 +441,7 @@ function App() {
                         <Route path="/contabilidad/reportes/listado-partidas" element={<ListadoPartidas />} />
                         <Route path="/contabilidad/reportes/cedula-auditoria" element={<CedulaAuditoria />} />
                         <Route path="/contabilidad/reportes/retenciones" element={<Retenciones />} />
+                        <Route path="/contabilidad/reportes/impresion-partidas" element={<ImpresionPartidas />} />
 
                         {/* Huevo Industrial / Ovoproductos (ANDELSA) */}
                         <Route path="/industrial/planta" element={<EggDashboard />} />

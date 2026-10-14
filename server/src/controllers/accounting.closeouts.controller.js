@@ -68,6 +68,12 @@ const preview = async (req, res) => {
             defaultEntryType = entryTypes.find(t => t.code === 'DIARIO') || entryTypes[0];
         }
 
+        const [[reserva]] = await pool.query(
+            "SELECT setting_value FROM accounting_settings WHERE company_id = ? AND setting_key = ?",
+            [req.company_id, `RESERVA_CORRELATIVO_CIERRE_${branch_id}_${date}`]
+        );
+        const reservedEntryNumber = reserva?.setting_value || null;
+
         res.json({
             ...data,
             entry_types: entryTypes,
@@ -75,6 +81,7 @@ const preview = async (req, res) => {
             default_entry_type_code: defaultEntryType ? defaultEntryType.code : 'DIARIO',
             default_entry_type_name: defaultEntryType ? defaultEntryType.name : 'Partida Diaria',
             already_generated: !!existing,
+            reserved_entry_number: reservedEntryNumber,
             existing_entry: existing ? {
                 id: existing.id,
                 number: existing.number,
@@ -220,7 +227,14 @@ const generate = async (req, res) => {
                 throw conflict;
             }
 
-            const entryNumber = await reserveEntryNumber(conn, req.company_id, entryTypeId, date);
+            const [[reserva]] = await conn.query(
+                "SELECT setting_value FROM accounting_settings WHERE company_id = ? AND setting_key = ? FOR UPDATE",
+                [req.company_id, `RESERVA_CORRELATIVO_CIERRE_${branch_id}_${date}`]
+            );
+            let entryNumber = (reserva?.setting_value || '').trim();
+            if (!entryNumber) {
+                entryNumber = await reserveEntryNumber(conn, req.company_id, entryTypeId, date);
+            }
 
             const [[branch]] = await conn.query('SELECT nombre FROM branches WHERE id = ?', [branch_id]);
             const branchName = branch ? branch.nombre.toUpperCase() : '';

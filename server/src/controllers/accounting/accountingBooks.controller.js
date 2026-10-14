@@ -844,19 +844,19 @@ const getAuxiliarOperaciones = async (req, res) => {
 
             const startX = 30;
             const contentWidth = 732;
-            const colW = { fecha: 65, tipo: 95, desc: 302, cargo: 90, abono: 90, saldo: 90 };
+            const colW = { fecha: 55, tipo: 135, desc: 272, cargo: 90, abono: 90, saldo: 90 };
 
             const drawTableHeader = (yPos) => {
                 doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#0f172a');
                 doc.rect(startX, yPos, contentWidth, 13).fill('#f1f5f9');
                 doc.fillColor('#0f172a');
                 let x = startX + 4;
-                doc.text('FECHA', x, yPos + 3); x += colW.fecha;
-                doc.text('TIPO / PARTIDA', x, yPos + 3); x += colW.tipo;
-                doc.text('CONCEPTO', x, yPos + 3); x += colW.desc;
-                doc.text('CARGO', x, yPos + 3, { align: 'right', width: colW.cargo - 6 }); x += colW.cargo;
-                doc.text('ABONO', x, yPos + 3, { align: 'right', width: colW.abono - 6 }); x += colW.abono;
-                doc.text('SALDO', x, yPos + 3, { align: 'right', width: colW.saldo - 6 });
+                doc.text('FECHA', x, yPos + 3, { width: colW.fecha, lineBreak: false }); x += colW.fecha;
+                doc.text('TIPO / PARTIDA', x, yPos + 3, { width: colW.tipo, lineBreak: false }); x += colW.tipo;
+                doc.text('CONCEPTO', x, yPos + 3, { width: colW.desc, lineBreak: false }); x += colW.desc;
+                doc.text('CARGO', x, yPos + 3, { align: 'right', width: colW.cargo - 6, lineBreak: false }); x += colW.cargo;
+                doc.text('ABONO', x, yPos + 3, { align: 'right', width: colW.abono - 6, lineBreak: false }); x += colW.abono;
+                doc.text('SALDO', x, yPos + 3, { align: 'right', width: colW.saldo - 6, lineBreak: false });
                 return yPos + 16;
             };
 
@@ -868,7 +868,7 @@ const getAuxiliarOperaciones = async (req, res) => {
                 y += 30;
             } else {
                 for (const a of accounts) {
-                    if (y > 510) {
+                    if (y > 505) {
                         doc.addPage();
                         renderHeader(doc, company, 'Auxiliar de Operaciones', periodText, 'landscape');
                         y = drawTableHeader(doc.y + 4);
@@ -877,37 +877,48 @@ const getAuxiliarOperaciones = async (req, res) => {
                     // Account Banner
                     doc.rect(startX, y, contentWidth, 14).fill('#e2e8f0');
                     doc.fontSize(8).font('Helvetica-Bold').fillColor('#0f172a');
-                    doc.text(`CUENTA: ${a.code} - ${a.name}`, startX + 4, y + 3);
-                    doc.text(`SALDO INICIAL: ${fmt(a.initialBalance)}`, startX + contentWidth - 170, y + 3, { align: 'right', width: 165 });
-                    y += 16;
+                    doc.text(`CUENTA: ${a.code} - ${a.name}`, startX + 4, y + 3, { width: contentWidth - 180, lineBreak: false });
+                    doc.text(`SALDO INICIAL: ${fmt(a.initialBalance)}`, startX + contentWidth - 170, y + 3, { align: 'right', width: 165, lineBreak: false });
+                    y += 17;
 
                     for (const m of a.movimientos) {
-                        if (y > 530) {
+                        const cleanConcepto = (m.concepto || '').trim();
+                        doc.fontSize(7.5).font('Helvetica');
+                        const tipoH = doc.heightOfString(m.tipoPartida, { width: colW.tipo - 4 });
+                        const descH = doc.heightOfString(cleanConcepto, { width: colW.desc - 6 });
+                        const rowH = Math.max(11, Math.max(tipoH, descH));
+
+                        if (y + rowH > 525) {
                             doc.addPage();
                             renderHeader(doc, company, 'Auxiliar de Operaciones', periodText, 'landscape');
                             y = drawTableHeader(doc.y + 4);
                         }
                         doc.fontSize(7.5).font('Helvetica').fillColor('#1e293b');
                         let lx = startX + 4;
-                        doc.text(m.fecha, lx, y, { width: colW.fecha }); lx += colW.fecha;
+                        doc.text(m.fecha, lx, y, { width: colW.fecha, lineBreak: false }); lx += colW.fecha;
                         doc.text(m.tipoPartida, lx, y, { width: colW.tipo - 4 }); lx += colW.tipo;
-                        doc.text((m.concepto || '').substring(0, 54), lx, y, { width: colW.desc - 6 }); lx += colW.desc;
-                        doc.text(fmt(m.cargo), lx, y, { align: 'right', width: colW.cargo - 6 }); lx += colW.cargo;
-                        doc.text(fmt(m.abono), lx, y, { align: 'right', width: colW.abono - 6 }); lx += colW.abono;
-                        doc.text(fmt(m.saldo), lx, y, { align: 'right', width: colW.saldo - 6 });
-                        y += 11;
+                        doc.text(cleanConcepto, lx, y, { width: colW.desc - 6 }); lx += colW.desc;
+                        doc.text(fmt(m.cargo), lx, y, { align: 'right', width: colW.cargo - 6, lineBreak: false }); lx += colW.cargo;
+                        doc.text(fmt(m.abono), lx, y, { align: 'right', width: colW.abono - 6, lineBreak: false }); lx += colW.abono;
+                        doc.text(fmt(m.saldo), lx, y, { align: 'right', width: colW.saldo - 6, lineBreak: false });
+                        y += rowH + 2;
                     }
 
                     // Subtotal of account
+                    if (y > 510) {
+                        doc.addPage();
+                        renderHeader(doc, company, 'Auxiliar de Operaciones', periodText, 'landscape');
+                        y = drawTableHeader(doc.y + 4);
+                    }
                     doc.strokeColor('#cbd5e1').lineWidth(0.5).moveTo(startX + colW.fecha + colW.tipo + colW.desc, y).lineTo(startX + contentWidth, y).stroke();
-                    y += 2;
+                    y += 3;
                     doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#0f172a');
-                    doc.text(`TOTALES CUENTA ${a.code}:`, startX + 4, y);
+                    doc.text(`TOTALES CUENTA ${a.code}:`, startX + 4, y, { lineBreak: false });
                     let sx = startX + colW.fecha + colW.tipo + colW.desc;
-                    doc.text(fmt(a.totalCargos), sx, y, { align: 'right', width: colW.cargo - 6 }); sx += colW.cargo;
-                    doc.text(fmt(a.totalAbonos), sx, y, { align: 'right', width: colW.abono - 6 }); sx += colW.abono;
-                    doc.text(fmt(a.saldoFinal), sx, y, { align: 'right', width: colW.saldo - 6 });
-                    y += 14;
+                    doc.text(fmt(a.totalCargos), sx, y, { align: 'right', width: colW.cargo - 6, lineBreak: false }); sx += colW.cargo;
+                    doc.text(fmt(a.totalAbonos), sx, y, { align: 'right', width: colW.abono - 6, lineBreak: false }); sx += colW.abono;
+                    doc.text(fmt(a.saldoFinal), sx, y, { align: 'right', width: colW.saldo - 6, lineBreak: false });
+                    y += 15;
                 }
 
                 // Grand Totals

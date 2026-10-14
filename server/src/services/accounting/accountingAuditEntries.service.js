@@ -50,21 +50,30 @@ async function auditAccountingEntries(companyId, filters = {}) {
     const overview = overviewRows[0] || {};
     const anomalies = [];
 
-    // 2. Partidas Descuadradas (Diferencia entre total_debit y total_credit en cabecera)
-    const [unbalancedHeader] = await pool.query(`
+    // 2. Partidas Descuadradas (Diferencia de Partida Doble en líneas o en cabecera)
+    const [unbalancedEntries] = await pool.query(`
         SELECT 
             e.id, e.number, e.date, e.description, e.status, e.total_debit, e.total_credit,
             b.nombre as branch_name, t.name as entry_type_name,
-            ROUND(ABS(e.total_debit - e.total_credit), 2) as diff
+            COALESCE(SUM(l.debit), 0) as lines_debit,
+            COALESCE(SUM(l.credit), 0) as lines_credit,
+            ROUND(ABS(COALESCE(SUM(l.debit), 0) - COALESCE(SUM(l.credit), 0)), 2) as lines_diff,
+            ROUND(ABS(e.total_debit - e.total_credit), 2) as header_diff
         FROM accounting_entries e
+        LEFT JOIN accounting_entry_lines l ON e.id = l.entry_id
         LEFT JOIN branches b ON e.branch_id = b.id
         LEFT JOIN entry_types t ON e.entry_type_id = t.id
-        WHERE ${whereClause} AND ROUND(ABS(e.total_debit - e.total_credit), 2) > 0.00
-        ORDER BY diff DESC, e.date DESC
+        WHERE ${whereClause} AND e.status != 'voided'
+        GROUP BY e.id, e.number, e.date, e.description, e.status, e.total_debit, e.total_credit, b.nombre, t.name
+        HAVING lines_diff > 0.00 OR header_diff > 0.00
+        ORDER BY GREATEST(lines_diff, header_diff) DESC, e.date DESC
         LIMIT 100
     `, baseParams);
 
-    unbalancedHeader.forEach(entry => {
+    const processedEntryIds = new Set();
+    unbalancedEntries.forEach(entry => {
+        processedEntryIds.add(entry.id);
+        const maxDiff = Math.max(Number(entry.lines_diff), Number(entry.header_diff));
         anomalies.push({
             id: `unbalanced-${entry.id}`,
             entryId: entry.id,
@@ -74,8 +83,8 @@ async function auditAccountingEntries(companyId, filters = {}) {
             entryTypeName: entry.entry_type_name,
             status: entry.status,
             severity: 'error',
-            category: 'Partida Descuadrada',
-            description: `La partida #${entry.number} presenta un descuadre de $${Number(entry.diff).toFixed(2)} (Debe: $${Number(entry.total_debit).toFixed(2)}, Haber: $${Number(entry.total_credit).toFixed(2)}).`,
+            category: 'Descuadre en Partida Doble',
+            description: `La partida #${entry.number} presenta un descuadre de $${maxDiff.toFixed(2)} (Líneas Debe: $${Number(entry.lines_debit).toFixed(2)}, Líneas Haber: $${Number(entry.lines_credit).toFixed(2)}).`,
             recommendation: 'Revisar las líneas de la partida y rebalancear debe y haber para cumplir la partida doble.',
             fixType: 'edit_entry'
         });
@@ -94,14 +103,15 @@ async function auditAccountingEntries(companyId, filters = {}) {
         LEFT JOIN accounting_entry_lines l ON e.id = l.entry_id
         LEFT JOIN branches b ON e.branch_id = b.id
         LEFT JOIN entry_types t ON e.entry_type_id = t.id
-        WHERE ${whereClause}
+        WHERE ${whereClause} AND e.status != 'voided'
         GROUP BY e.id, e.number, e.date, e.status, e.total_debit, e.total_credit, b.nombre, t.name
-        HAVING debit_diff > 0.01 OR credit_diff > 0.01
+        HAVING debit_diff > 0.00 OR credit_diff > 0.00
         ORDER BY (debit_diff + credit_diff) DESC
         LIMIT 100
     `, baseParams);
 
     lineSumMismatch.forEach(entry => {
+        if (processedEntryIds.has(entry.id)) return;
         anomalies.push({
             id: `line-mismatch-${entry.id}`,
             entryId: entry.id,

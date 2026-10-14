@@ -432,10 +432,9 @@ input[type="number"] {
   overscroll-behavior: auto !important;
 }
 
-/* Promover el contenedor de scroll principal a capa acelerada por hardware */
+/* Promover el contenedor de scroll principal a capa de scroll optimizada (sin transform para no atrapar elementos con position: fixed) */
 #main-scroll-container {
   will-change: scroll-position;
-  transform: translateZ(0);
 }
 
 /* Fallback universal de unidades dvh para navegadores antiguos (Chrome 101 / Android 11) */

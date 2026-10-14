@@ -24,6 +24,8 @@ async function getCompanySettings(companyId, branchId = 0) {
     );
     const map = {};
     rows.forEach(r => { map[r.setting_key] = r.setting_value ? parseInt(r.setting_value, 10) : null; });
+    if (map.CUENTA_TARJETAS_PRISS && !map.CUENTA_TARJETAS_PRIS) map.CUENTA_TARJETAS_PRIS = map.CUENTA_TARJETAS_PRISS;
+    if (map.CUENTA_TARJETAS_PRIS && !map.CUENTA_TARJETAS_PRISS) map.CUENTA_TARJETAS_PRISS = map.CUENTA_TARJETAS_PRIS;
     return map;
 }
 
@@ -51,7 +53,7 @@ async function buildCloseoutsPreview(companyId, branchId, date) {
     // Fallback resolution for CUENTA_IVA_CREDITO if not set in accounting_settings
     if (!settings.CUENTA_IVA_CREDITO) {
         const [[ivaAcc]] = await pool.query(
-            "SELECT id FROM chart_of_accounts WHERE company_id = ? AND (code = '110206' OR code LIKE '110206%' OR name LIKE '%IVA CREDITO FISCAL%' OR name LIKE '%IVA CRÉDITO FISCAL%') AND allows_entries = 1 LIMIT 1",
+            "SELECT id FROM chart_of_accounts WHERE company_id = ? AND (code LIKE '110206%' OR name LIKE '%IVA CREDITO FISCAL%' OR name LIKE '%IVA CRÉDITO FISCAL%') AND allows_entries = 1 LIMIT 1",
             [companyId]
         );
         if (ivaAcc) settings.CUENTA_IVA_CREDITO = ivaAcc.id;
@@ -59,10 +61,7 @@ async function buildCloseoutsPreview(companyId, branchId, date) {
 
     // Smart branch-specific accounts override (matches branch accounts in chart_of_accounts)
     if (branch?.nombre) {
-        const [branchAccs] = await pool.query(
-            "SELECT id, code, name FROM chart_of_accounts WHERE company_id = ? AND active = 1 AND allows_entries = 1 AND (code LIKE '5101%' OR code LIKE '1104%' OR code LIKE '4101%')",
-            [companyId]
-        );
+        const [branchAccs] = await pool.query("SELECT id, code, name FROM chart_of_accounts WHERE company_id = ? AND active = 1 AND allows_entries = 1 AND (code LIKE '5101%' OR code LIKE '1104%' OR code LIKE '4101%')", [companyId]);
         const tokens = branch.nombre.toUpperCase().replace(/PUMA|ENERGY|GAS|ESTACION|DE|DEL|LA|EL|LOS|LAS/gi, ' ').trim().split(/\s+/).filter(t => t.length >= 3);
         const findAcc = (pfx, kws) => branchAccs.find(a => (!pfx || a.code.startsWith(pfx)) && tokens.some(t => a.name.toUpperCase().includes(t)) && (!kws || kws.some(k => a.name.toUpperCase().includes(k))))?.id;
         settings.CUENTA_COSTO_MERCADERIA = findAcc('5101', ['COMBUSTIBLE', 'VENTA', 'MERCADERIA']) || settings.CUENTA_COSTO_MERCADERIA;
@@ -83,16 +82,8 @@ async function buildCloseoutsPreview(companyId, branchId, date) {
         [closeoutIds]
     );
 
-    const [trupputDespachos] = await pool.query(
-        `SELECT id, producto_codigo, producto_descripcion, galones, precio, monto
-         FROM gas_station_closeout_trupput_despachos WHERE closeout_id IN (?)`,
-        [closeoutIds]
-    );
-
-    const [savedCosts] = await pool.query(
-        `SELECT product_id, costo_unitario FROM gas_station_closeout_costs WHERE company_id = ? AND branch_id = ? AND date = ?`,
-        [companyId, branchId, date]
-    );
+    const [trupputDespachos] = await pool.query('SELECT id, producto_codigo, producto_descripcion, galones, precio, monto FROM gas_station_closeout_trupput_despachos WHERE closeout_id IN (?)', [closeoutIds]);
+    const [savedCosts] = await pool.query('SELECT product_id, costo_unitario FROM gas_station_closeout_costs WHERE company_id = ? AND branch_id = ? AND date = ?', [companyId, branchId, date]);
     const savedCostMap = new Map();
     savedCosts.forEach(sc => savedCostMap.set(sc.product_id, parseFloat(sc.costo_unitario) || 0));
 
@@ -256,7 +247,7 @@ async function buildCloseoutsPreview(companyId, branchId, date) {
             for (const [re, keys] of [
                 [/CREDOMATIC|BAC/, ['CUENTA_TARJETAS_CREDOMATIC', 'CUENTA_TARJETAS_BAC', 'CUENTA_TARJETAS_POS_BAC']],
                 [/VERSATEC/, ['CUENTA_TARJETAS_VERSATEC', 'CUENTA_TARJETAS_VERSATEC_FLEET']],
-                [/PRIS/, ['CUENTA_TARJETAS_PRIS', 'CUENTA_TARJETAS_PUMA_PRIS']],
+                [/PRIS/, ['CUENTA_TARJETAS_PRISS', 'CUENTA_TARJETAS_PRIS', 'CUENTA_TARJETAS_PUMA_PRIS']],
                 [/FLOTA/, ['CUENTA_TARJETAS_FLOTA', 'CUENTA_TARJETAS_PUMA_FLOTA']],
                 [/DAVIVIENDA|SERFINSA/, ['CUENTA_TARJETAS_DAVIVIENDA', 'CUENTA_TARJETAS_SERFINSA', 'CUENTA_TARJETAS_POS_DAVIVIENDA']],
                 [/PROMERICA/, ['CUENTA_TARJETAS_PROMERICA', 'CUENTA_TARJETAS_POS_PROMERICA']],
@@ -267,7 +258,13 @@ async function buildCloseoutsPreview(companyId, branchId, date) {
                 [/TRANSFERENCIA/, ['CUENTA_TARJETAS_TRANSFERENCIA_BANCARIA', 'CUENTA_TARJETAS_TRANSFERENCIA']],
                 [/NECTAR/, ['CUENTA_TARJETAS_NECTAR']]
             ]) {
-                if (re.test(name)) { for (const k of keys) { if (settings[k]) { accId = settings[k]; break; } } }
+                if (re.test(name)) {
+                    for (const k of keys) { if (settings[k]) { accId = settings[k]; break; } }
+                    if (!accId) {
+                        const mk = Object.keys(settings).find(k => k.startsWith('CUENTA_TARJETAS_') && re.test(k) && settings[k]);
+                        if (mk) accId = settings[mk];
+                    }
+                }
                 if (accId) break;
             }
         }

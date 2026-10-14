@@ -3,6 +3,7 @@ const { auditChartOfAccounts } = require('../../services/accounting/accountingAu
 const { auditAccountingEntries, getEntryAuditDetail } = require('../../services/accounting/accountingAuditEntries.service');
 const { calculateHealthScore, performAIAuditDiagnosis } = require('../../services/accounting/accountingAuditAI.service');
 const { createExcelBuffer, sendExcelResponse } = require('../../services/excel.service');
+const { quickFixAccountingEntry } = require('../../services/accounting/accountingEntryIntegrity.service');
 
 const getTenantCompanyId = (req) => {
     return req.company_id || req.companyId || req.user?.company_id || (req.headers['x-company-id'] ? parseInt(req.headers['x-company-id'], 10) : null);
@@ -228,49 +229,10 @@ async function quickFixEntry(req, res) {
     try {
         const companyId = getTenantCompanyId(req);
         const { entryId, action } = req.body;
+        if (!entryId) return res.status(400).json({ success: false, message: 'ID de partida no especificado' });
 
-        if (!entryId) {
-            return res.status(400).json({ success: false, message: 'ID de partida no especificado' });
-        }
-
-        let query = 'SELECT id, number, company_id, total_debit, total_credit, status FROM accounting_entries WHERE id = ?';
-        const params = [entryId];
-        if (companyId) {
-            query += ' AND company_id = ?';
-            params.push(companyId);
-        }
-
-        const [entries] = await pool.query(query, params);
-        if (!entries.length) {
-            return res.status(404).json({ success: false, message: 'Partida no encontrada' });
-        }
-
-        const entry = entries[0];
-        const [sumRows] = await pool.query(`
-            SELECT 
-                COALESCE(SUM(debit), 0) as lines_debit,
-                COALESCE(SUM(credit), 0) as lines_credit
-            FROM accounting_entry_lines
-            WHERE entry_id = ?
-        `, [entry.id]);
-
-        const sumData = sumRows[0] || { lines_debit: 0, lines_credit: 0 };
-        const linesDebit = Number(sumData.lines_debit);
-        const linesCredit = Number(sumData.lines_credit);
-
-        if (action === 'sync_totals' || !action) {
-            await pool.query(
-                'UPDATE accounting_entries SET total_debit = ?, total_credit = ? WHERE id = ?',
-                [linesDebit, linesCredit, entry.id]
-            );
-
-            return res.json({
-                success: true,
-                message: `Partida #${entry.number} sincronizada correctamente con sus líneas (Debe: $${linesDebit.toFixed(2)}, Haber: $${linesCredit.toFixed(2)})`
-            });
-        }
-
-        res.status(400).json({ success: false, message: 'Acción no soportada' });
+        const result = await quickFixAccountingEntry(pool, companyId, entryId, action);
+        res.json({ success: true, ...result });
     } catch (error) {
         console.error('Error in quickFixEntry:', error);
         res.status(500).json({ success: false, message: error.message || 'Error al corregir partida contable' });

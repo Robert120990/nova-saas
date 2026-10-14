@@ -187,10 +187,10 @@ export const EntriesAuditTab = ({
                                                         >
                                                             <Eye className="w-3.5 h-3.5" /> Inspeccionar
                                                         </button>
-                                                        {onFixEntry && (item.category?.includes('Desincronización') || item.fixType === 'recalculate_entry') && (
+                                                        {onFixEntry && (item.category?.includes('Desincronización') || item.category?.includes('Descuadre') || item.fixType === 'recalculate_entry') && (
                                                             <button
-                                                                onClick={() => onFixEntry(item.entryId, 'sync_totals')}
-                                                                title="Sincronizar cabecera con la suma real de las líneas"
+                                                                onClick={() => onFixEntry(item.entryId, item.category?.includes('Descuadre') ? 'auto_balance' : 'sync_totals')}
+                                                                title={item.category?.includes('Descuadre') ? "Ajustar y balancear automáticamente diferencia de centavos" : "Sincronizar cabecera con la suma real de las líneas"}
                                                                 className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300 hover:bg-amber-100 border border-amber-200 dark:border-amber-800 transition-colors"
                                                             >
                                                                 <Wrench className="w-3.5 h-3.5" /> Corregir

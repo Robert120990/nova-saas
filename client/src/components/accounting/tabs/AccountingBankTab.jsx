@@ -208,6 +208,10 @@ const AccountingBankTab = () => {
 
     const isCurrentLoading = activeMainTab === 'cheques' ? loadingCheques : loadingMovements;
 
+    const filterSuffix = statusFilter === 'unposted'
+        ? ' pendientes'
+        : (statusFilter === 'posted' ? ' contabilizados' : '');
+
     return (
         <div className="space-y-4">
             {/* Main Tabs Navigation */}
@@ -223,7 +227,7 @@ const AccountingBankTab = () => {
                         }`}
                     >
                         <CheckSquare size={16} />
-                        Cheques ({cheques.length})
+                        Cheques ({cheques.length}{filterSuffix})
                     </button>
                     <button
                         type="button"
@@ -235,7 +239,7 @@ const AccountingBankTab = () => {
                         }`}
                     >
                         <Landmark size={16} />
-                        Movimientos Bancarios ({movements.length})
+                        Movimientos Bancarios ({movements.length}{filterSuffix})
                     </button>
                     <button
                         type="button"

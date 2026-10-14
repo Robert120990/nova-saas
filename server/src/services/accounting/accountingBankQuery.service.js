@@ -97,6 +97,13 @@ async function queryBankCheques(companyId, { startDate, endDate, month, year, st
         if (match && match[1]) entryByChq.set(String(match[1]).trim().toLowerCase(), e);
     });
 
+    const [reservedSettings] = await pool.query(
+        "SELECT setting_key, setting_value FROM accounting_settings WHERE company_id = ? AND setting_key LIKE 'RESERVA_CORRELATIVO_%'",
+        [companyId]
+    );
+    const reservedMap = new Map();
+    reservedSettings.forEach(s => reservedMap.set(s.setting_key, (s.setting_value || '').trim()));
+
     let mapped = rows.map(r => {
         const rawDate = r.fecha instanceof Date
             ? r.fecha.toISOString().slice(0, 10)
@@ -107,7 +114,11 @@ async function queryBankCheques(companyId, { startDate, endDate, month, year, st
         const chqKey = String(r.cheque || '').trim();
         const localEntry = entryByChq.get(chqKey.toLowerCase());
         const officePartida = r.num_partida && String(r.num_partida).trim() !== '' ? String(r.num_partida).trim() : null;
-        const corr = localEntry?.number || officePartida || '';
+        const reservedNumber = reservedMap.get(`RESERVA_CORRELATIVO_CHQ_${chqKey.toLowerCase()}`)
+            || reservedMap.get(`RESERVA_CORRELATIVO_${chqKey}`)
+            || reservedMap.get(`RESERVA_CORRELATIVO_${r.id}`)
+            || null;
+        const corr = localEntry?.number || reservedNumber || officePartida || '';
         const isPosted = Boolean(localEntry);
 
         const bancoDesc = (r.banco_nombre || '').trim();
@@ -218,6 +229,13 @@ async function queryBankMovements(companyId, { startDate, endDate, month, year, 
         if (match && match[1]) entryByDoc.set(String(match[1]).trim().toLowerCase(), e);
     });
 
+    const [reservedSettingsMb] = await pool.query(
+        "SELECT setting_key, setting_value FROM accounting_settings WHERE company_id = ? AND setting_key LIKE 'RESERVA_CORRELATIVO_%'",
+        [companyId]
+    );
+    const reservedMapMb = new Map();
+    reservedSettingsMb.forEach(s => reservedMapMb.set(s.setting_key, (s.setting_value || '').trim()));
+
     let mapped = rows.map(r => {
         const rawDate = r.fecha instanceof Date
             ? r.fecha.toISOString().slice(0, 10)
@@ -228,7 +246,11 @@ async function queryBankMovements(companyId, { startDate, endDate, month, year, 
         const docKey = String(r.referencia || '').trim();
         const localEntry = entryByDoc.get(docKey.toLowerCase());
         const officePartida = r.num_partida && String(r.num_partida).trim() !== '' ? String(r.num_partida).trim() : null;
-        const corr = localEntry?.number || officePartida || '';
+        const reservedNumber = reservedMapMb.get(`RESERVA_CORRELATIVO_DOC_${docKey.toLowerCase()}`)
+            || reservedMapMb.get(`RESERVA_CORRELATIVO_${docKey}`)
+            || reservedMapMb.get(`RESERVA_CORRELATIVO_${r.id}`)
+            || null;
+        const corr = localEntry?.number || reservedNumber || officePartida || '';
         const isPosted = Boolean(localEntry);
 
         const bancoDesc = (r.banco_nombre || '').trim();

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import axios from 'axios';
 import { toast } from 'sonner';
 import { X, Wrench, CheckCircle2, AlertCircle, Unlink, Save, Trash2, Edit3, Sliders } from 'lucide-react';
@@ -110,7 +111,7 @@ export const FixAccountModal = ({ open, onClose, account, accounts = [], onFixed
         a => String(a.id) !== String(accountId)
     );
 
-    return (
+    const modalContent = (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl w-full max-w-xl overflow-hidden flex flex-col max-h-[92vh]">
                 {/* Modal Header */}
@@ -328,5 +329,7 @@ export const FixAccountModal = ({ open, onClose, account, accounts = [], onFixed
             </div>
         </div>
     );
+
+    return typeof document !== 'undefined' ? createPortal(modalContent, document.body) : modalContent;
 };
 

@@ -1,15 +1,18 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
-import {
-    Calendar,
-    Search
-} from 'lucide-react';
+import { Calendar, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import ReportLayout from '../../components/ui/ReportLayout';
 import SearchableSelect from '../../components/ui/SearchableSelect';
+import { unwrapList } from '../../utils/apiUtils';
+import { useAuth } from '../../context/AuthContext';
 
 const CedulaAuditoria = () => {
+    const { user } = useAuth();
+    const companyId = user?.company_id;
+    const headers = useMemo(() => (companyId ? { 'x-company-id': String(companyId) } : {}), [companyId]);
+
     const today = new Date().toISOString().split('T')[0];
     const firstDayOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
 
@@ -24,13 +27,20 @@ const CedulaAuditoria = () => {
 
     useEffect(() => () => pdfUrl && URL.revokeObjectURL(pdfUrl), [pdfUrl]);
 
-    const { data: accounts = [] } = useQuery({
-        queryKey: ['accounts'],
-        queryFn: async () => (await axios.get('/api/accounting/accounts')).data,
+    const { data: rawAccounts = [] } = useQuery({
+        queryKey: ['accounts', companyId],
+        queryFn: async () => unwrapList(await axios.get('/api/accounting/accounts', { headers })),
     });
 
+    const accounts = Array.isArray(rawAccounts) ? rawAccounts : [];
+
     const handleFilterChange = (name, value) => {
-        setFilters(prev => ({ ...prev, [name]: value }));
+        const cleanValue = (value && typeof value === 'object' && value.target)
+            ? value.target.value
+            : (value && typeof value === 'object' && 'value' in value)
+                ? value.value
+                : value;
+        setFilters(prev => ({ ...prev, [name]: cleanValue ?? '' }));
     };
 
     const handleGenerateReport = async () => {
@@ -53,6 +63,7 @@ const CedulaAuditoria = () => {
 
             const response = await axios.get('/api/accounting/reports/cedula-auditoria', {
                 params,
+                headers,
                 responseType: 'blob'
             });
 
@@ -91,6 +102,7 @@ const CedulaAuditoria = () => {
 
             const response = await axios.get('/api/accounting/reports/cedula-auditoria', {
                 params,
+                headers,
                 responseType: 'blob'
             });
 
@@ -111,6 +123,13 @@ const CedulaAuditoria = () => {
             toast.error('Error al exportar a Excel');
         }
     };
+
+    const accountOptions = useMemo(() => accounts.map(a => ({
+        id: a.id,
+        code: a.code,
+        nombre: a.name,
+        display: `${a.code} - ${a.name}`
+    })), [accounts]);
 
     return (
         <ReportLayout
@@ -160,10 +179,14 @@ const CedulaAuditoria = () => {
                 <SearchableSelect
                     valueKey="id"
                     labelKey="nombre"
-                    options={accounts.map(a => ({ id: a.id, nombre: `${a.code} - ${a.name}` }))}
+                    codeKey="code"
+                    displayKey="display"
+                    searchKeys={['code', 'nombre', 'display']}
+                    options={accountOptions}
                     value={filters.account_id}
-                    onChange={(val) => handleFilterChange('account_id', val)}
+                    onChange={(e) => handleFilterChange('account_id', e?.target?.value ?? e)}
                     placeholder="Seleccionar cuenta..."
+                    isClearable
                 />
             </div>
         </ReportLayout>

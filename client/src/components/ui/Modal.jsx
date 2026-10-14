@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 
 const Modal = ({
@@ -14,7 +15,7 @@ const Modal = ({
 }) => {
     if (!isOpen) return null;
 
-    return (
+    const modalContent = (
         <div className={`fixed inset-0 ${zIndex} flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm`}>
             <div 
                 style={{ maxHeight: '92vh' }}
@@ -32,6 +33,8 @@ const Modal = ({
             </div>
         </div>
     );
+
+    return typeof document !== 'undefined' ? createPortal(modalContent, document.body) : modalContent;
 };
 
 export default Modal;

@@ -9,8 +9,10 @@
 
 const accountingBooks = require('./accounting/accountingBooks.controller');
 const accountingFinancial = require('./accounting/accountingFinancial.controller');
+const accountingEntriesPrint = require('./accounting/accountingEntriesPrint.controller');
 
 module.exports = {
     ...accountingBooks,
-    ...accountingFinancial
+    ...accountingFinancial,
+    ...accountingEntriesPrint
 };

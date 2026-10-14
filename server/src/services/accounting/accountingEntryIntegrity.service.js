@@ -40,4 +40,57 @@ async function validateEntryLines(conn, companyId, lines) {
     return { totalDebit: debitCents / 100, totalCredit: creditCents / 100 };
 }
 
-module.exports = { entryVersion, validateEntryLines };
+async function quickFixAccountingEntry(pool, companyId, entryId, action = 'sync_totals') {
+    let query = 'SELECT id, number, company_id, total_debit, total_credit, status FROM accounting_entries WHERE id = ?';
+    const params = [entryId];
+    if (companyId) {
+        query += ' AND company_id = ?';
+        params.push(companyId);
+    }
+    const [entries] = await pool.query(query, params);
+    if (!entries.length) throw new Error('Partida no encontrada');
+
+    const entry = entries[0];
+    const [sumRows] = await pool.query(
+        'SELECT COALESCE(SUM(debit), 0) as lines_debit, COALESCE(SUM(credit), 0) as lines_credit FROM accounting_entry_lines WHERE entry_id = ?',
+        [entry.id]
+    );
+    const linesDebit = Number(sumRows[0]?.lines_debit || 0);
+    const linesCredit = Number(sumRows[0]?.lines_credit || 0);
+
+    if (action === 'auto_balance') {
+        const diff = Math.round((linesDebit - linesCredit) * 100) / 100;
+        if (Math.abs(diff) > 0.05) {
+            throw new Error(`El descuadre ($${Math.abs(diff).toFixed(2)}) supera el límite para ajuste automático (máx $0.05). Edite la partida manualmente.`);
+        }
+        if (diff !== 0) {
+            const [entryLines] = await pool.query('SELECT id, debit, credit FROM accounting_entry_lines WHERE entry_id = ? ORDER BY debit DESC', [entry.id]);
+            if (diff < 0) {
+                const debitLine = entryLines.find(l => Number(l.debit) > 0);
+                if (debitLine) {
+                    const newDebit = Math.round((Number(debitLine.debit) + Math.abs(diff)) * 100) / 100;
+                    await pool.query('UPDATE accounting_entry_lines SET debit = ? WHERE id = ?', [newDebit, debitLine.id]);
+                }
+            } else {
+                const creditLine = entryLines.find(l => Number(l.credit) > 0);
+                if (creditLine) {
+                    const newCredit = Math.round((Number(creditLine.credit) + diff) * 100) / 100;
+                    await pool.query('UPDATE accounting_entry_lines SET credit = ? WHERE id = ?', [newCredit, creditLine.id]);
+                }
+            }
+        }
+        const [finalSum] = await pool.query('SELECT COALESCE(SUM(debit), 0) as d, COALESCE(SUM(credit), 0) as c FROM accounting_entry_lines WHERE entry_id = ?', [entry.id]);
+        const targetTotal = Number(finalSum[0]?.c || linesCredit);
+        await pool.query('UPDATE accounting_entries SET total_debit = ?, total_credit = ? WHERE id = ?', [targetTotal, targetTotal, entry.id]);
+        return { message: `Partida #${entry.number} balanceada exitosamente (Total: $${targetTotal.toFixed(2)})` };
+    }
+
+    if (action === 'sync_totals' || !action) {
+        await pool.query('UPDATE accounting_entries SET total_debit = ?, total_credit = ? WHERE id = ?', [linesDebit, linesCredit, entry.id]);
+        return { message: `Partida #${entry.number} sincronizada correctamente con sus líneas (Debe: $${linesDebit.toFixed(2)}, Haber: $${linesCredit.toFixed(2)})` };
+    }
+
+    throw new Error('Acción no soportada');
+}
+
+module.exports = { entryVersion, validateEntryLines, quickFixAccountingEntry };

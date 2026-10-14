@@ -792,6 +792,7 @@ router.get('/accounting/entries/:id', accountingController.getEntry);
 router.post('/accounting/entries', validate(entrySchema), accountingController.createEntry);
 router.put('/accounting/entries/:id', validate(entryUpdateSchema), accountingController.updateEntry);
 router.put('/accounting/entries/:id/void', accountingController.voidEntry);
+router.get('/accounting/entries/:id/print', accountingReportsController.getImpresionPartidas);
 router.get('/accounting/trial-balance', accountingController.getTrialBalance);
 router.post('/accounting/closing', accountingController.performClosing);
 router.post('/accounting/opening', accountingController.performOpening);
@@ -847,6 +848,7 @@ router.get('/accounting/reports/flujo-efectivo', accountingReportsController.get
 router.get('/accounting/reports/balance-comparativo', accountingReportsController.getBalanceComparativo);
 router.get('/accounting/reports/cedula-auditoria', accountingReportsController.getCedulaAuditoria);
 router.get('/accounting/reports/retenciones', accountingReportsController.getRetenciones);
+router.get('/accounting/reports/impresion-partidas', accountingReportsController.getImpresionPartidas);
 
 // Accounting Audit & Quality Control (Auditoría Contable Integral)
 router.get('/accounting/audit/overview', checkPermission('manage_accounting_audit'), accountingAuditController.getAuditOverview);

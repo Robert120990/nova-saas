@@ -1,11 +1,11 @@
-import { CheckCircle2, XCircle } from 'lucide-react';
+import { CheckCircle2, XCircle, Printer, Layers } from 'lucide-react';
 import Modal from '../ui/Modal';
 import Money from '../ui/Money';
 import { formatDate } from '../../utils/dateUtils';
 
 const round2 = (num) => Math.round((parseFloat(num) || 0) * 100) / 100;
 
-const AccountingEntryViewModal = ({ open, onClose, entry }) => {
+const AccountingEntryViewModal = ({ open, onClose, entry, onPrint }) => {
     if (!open) return null;
 
     const lines = Array.isArray(entry?.lines) ? entry.lines : [];
@@ -112,17 +112,39 @@ const AccountingEntryViewModal = ({ open, onClose, entry }) => {
                             </table>
                         </div>
 
-                        <div className="px-4 py-2.5 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
+                        <div className="px-4 py-2.5 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2">
                             <span className="text-xs text-slate-500 font-medium">
                                 Total de líneas: <b>{lines.length}</b>
                             </span>
-                            <button
-                                type="button"
-                                onClick={onClose}
-                                className="px-4 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-xs font-bold uppercase transition-colors"
-                            >
-                                Cerrar
-                            </button>
+                            <div className="flex items-center gap-2">
+                                {onPrint && (
+                                    <>
+                                        <button
+                                            type="button"
+                                            onClick={() => onPrint(entry, 'normal')}
+                                            className="px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 rounded-lg text-xs font-bold uppercase transition-colors flex items-center gap-1.5 shadow-sm"
+                                            title="Imprimir partida detallada tal como fue registrada"
+                                        >
+                                            <Printer size={13} className="text-slate-500" /> Imprimir Normal
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => onPrint(entry, 'mayorizada')}
+                                            className="px-3 py-1.5 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 text-indigo-700 rounded-lg text-xs font-bold uppercase transition-colors flex items-center gap-1.5 shadow-sm"
+                                            title="Imprimir partida agrupada y resumida por cuentas de mayor a 4 dígitos"
+                                        >
+                                            <Layers size={13} className="text-indigo-600" /> Imprimir Mayorizada
+                                        </button>
+                                    </>
+                                )}
+                                <button
+                                    type="button"
+                                    onClick={onClose}
+                                    className="px-4 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-xs font-bold uppercase transition-colors"
+                                >
+                                    Cerrar
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>

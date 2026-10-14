@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
-import { CalendarDays, Wand2, Fuel, AlertTriangle, Store, FileText, Info, Tag } from 'lucide-react';
+import { CalendarDays, Wand2, Fuel, AlertTriangle, Store, FileText, Info, Tag, BookmarkCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import CloseoutsEntriesTable from '../CloseoutsEntriesTable';
 import CloseoutCostsModal from '../modals/CloseoutCostsModal';
@@ -262,6 +262,15 @@ const AccountingCloseoutsTab = ({ onBusyChange }) => {
                     <span>
                         Ya existe una partida de cierre de turno generada para esta sucursal y fecha
                         {previewData.existing_entry?.number ? <b> (Partida #{previewData.existing_entry.number})</b> : ''}. Si deseas regenerarla, anúlala primero en Partidas Contables.
+                    </span>
+                </div>
+            )}
+
+            {previewData?.reserved_entry_number && !previewData?.already_generated && (
+                <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 text-xs text-emerald-800">
+                    <BookmarkCheck size={15} className="text-emerald-600 shrink-0" />
+                    <span>
+                        Correlativo contable reservado para este cierre: <b>#{previewData.reserved_entry_number}</b>. Se asignará automáticamente al asentar la partida.
                     </span>
                 </div>
             )}

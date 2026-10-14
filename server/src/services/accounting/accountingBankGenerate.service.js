@@ -159,7 +159,26 @@ async function buildBankEntryPreview(companyId, { type, id, detallar_iva, tax_de
         [companyId, `%${docKey}%`]
     );
 
-    const reservedCorr = (doc.num_partida ? String(doc.num_partida).trim() : '');
+    let reservedCorr = (existing?.number ? String(existing.number).trim() : '')
+        || (doc.num_partida ? String(doc.num_partida).trim() : '');
+
+    if (!reservedCorr) {
+        const docRef = type === 'cheque' ? String(doc.cheque || '').trim() : String(doc.referencia || '').trim();
+        const [settings] = await pool.query(
+            `SELECT setting_value FROM accounting_settings 
+             WHERE company_id = ? AND setting_key IN (?, ?, ?, ?) LIMIT 1`,
+            [
+                companyId,
+                `RESERVA_CORRELATIVO_${doc.llave}`,
+                `RESERVA_CORRELATIVO_${doc.id}`,
+                `RESERVA_CORRELATIVO_${type === 'cheque' ? 'CHQ' : 'DOC'}_${docRef.toLowerCase()}`,
+                `RESERVA_CORRELATIVO_${docRef}`
+            ]
+        );
+        if (settings.length > 0 && settings[0].setting_value) {
+            reservedCorr = String(settings[0].setting_value).trim();
+        }
+    }
     const [entryTypes] = await pool.query('SELECT id, code, name FROM entry_types ORDER BY id ASC');
     let matchedType = entryTypes.find(t => t.code === defaultTypeCode)
         || (defaultTypeCode === 'GASTO' ? entryTypes.find(t => t.code === 'CXP') : null)
@@ -212,7 +231,33 @@ async function generateBankEntry(companyId, userId, { type, id, date, descriptio
     const doc = await fetchOfficeBankDoc(officePool, type, id);
     if (!doc) throw new Error('Registro no encontrado en base de datos de oficina');
 
-    const reservedCorr = (doc.num_partida ? String(doc.num_partida).trim() : '');
+    const docKey = type === 'cheque' ? `CHEQUE #${doc.cheque}` : `DOC #${doc.referencia}`;
+    const [[existingEntry]] = await pool.query(
+        "SELECT id, number FROM accounting_entries WHERE company_id = ? AND description LIKE ? AND status <> 'voided' LIMIT 1",
+        [companyId, `%${docKey}%`]
+    );
+
+    let reservedCorr = (existingEntry?.number ? String(existingEntry.number).trim() : '')
+        || (doc.num_partida ? String(doc.num_partida).trim() : '');
+
+    if (!reservedCorr) {
+        const docRef = type === 'cheque' ? String(doc.cheque || '').trim() : String(doc.referencia || '').trim();
+        const [settings] = await pool.query(
+            `SELECT setting_value FROM accounting_settings 
+             WHERE company_id = ? AND setting_key IN (?, ?, ?, ?) LIMIT 1`,
+            [
+                companyId,
+                `RESERVA_CORRELATIVO_${doc.llave}`,
+                `RESERVA_CORRELATIVO_${doc.id}`,
+                `RESERVA_CORRELATIVO_${type === 'cheque' ? 'CHQ' : 'DOC'}_${docRef.toLowerCase()}`,
+                `RESERVA_CORRELATIVO_${docRef}`
+            ]
+        );
+        if (settings.length > 0 && settings[0].setting_value) {
+            reservedCorr = String(settings[0].setting_value).trim();
+        }
+    }
+
     if (!reservedCorr) {
         throw new Error(`No se puede generar la partida porque el ${type === 'cheque' ? 'cheque' : 'movimiento bancario'} no tiene un correlativo contable reservado. Asigne o reserve el correlativo en la pestaña "Reserva de Correlativos" antes de contabilizar.`);
     }
