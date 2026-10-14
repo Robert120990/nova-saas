@@ -32,21 +32,32 @@ async function getOrCreateSession({ channel, externalChatId, companyId, branchId
         return session;
     }
 
-    const [insertResult] = await pool.query(
-        `INSERT INTO ai_agent_sessions (channel, external_chat_id, company_id, branch_id, user_id, active_agent_code)
-         VALUES (?, ?, ?, ?, ?, 'supervisor')`,
-        [channel, String(externalChatId), companyId, branchId, userId]
-    );
+    try {
+        const [insertResult] = await pool.query(
+            `INSERT INTO ai_agent_sessions (channel, external_chat_id, company_id, branch_id, user_id, active_agent_code)
+             VALUES (?, ?, ?, ?, ?, 'supervisor')`,
+            [channel, String(externalChatId), companyId, branchId, userId]
+        );
 
-    return {
-        id: insertResult.insertId,
-        channel,
-        external_chat_id: String(externalChatId),
-        company_id: companyId,
-        branch_id: branchId,
-        user_id: userId,
-        active_agent_code: 'supervisor'
-    };
+        return {
+            id: insertResult.insertId,
+            channel,
+            external_chat_id: String(externalChatId),
+            company_id: companyId,
+            branch_id: branchId,
+            user_id: userId,
+            active_agent_code: 'supervisor'
+        };
+    } catch (err) {
+        if (err.code === 'ER_DUP_ENTRY') {
+            const [retry] = await pool.query(
+                'SELECT * FROM ai_agent_sessions WHERE channel = ? AND external_chat_id = ?',
+                [channel, String(externalChatId)]
+            );
+            if (retry.length > 0) return retry[0];
+        }
+        throw err;
+    }
 }
 
 async function getSessionHistory(sessionId, limit = 8) {

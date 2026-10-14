@@ -196,6 +196,10 @@ async function handleMessage(chatId, text, from) {
     // Comandos
     if (trimmed.startsWith('/start')) return handleStart(chatId, from, trimmed);
     if (trimmed.startsWith('/ayuda') || trimmed.startsWith('/help')) return handleHelp(chatId);
+    if (trimmed.startsWith('/agentes')) {
+        const { handleAgentTelegramCommand } = require('./telegramAgentBridge.service');
+        return handleAgentTelegramCommand(chatId, trimmed);
+    }
     if (trimmed.startsWith('/cambiar')) return handleCambiar(chatId);
     if (trimmed.startsWith('/alertas')) {
         const arg = trimmed.replace(/^\/alertas\s*/i, '');

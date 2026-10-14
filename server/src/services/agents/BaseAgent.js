@@ -14,6 +14,20 @@ class BaseAgent {
     }
 
     /**
+     * Register a tool definition in this agent.
+     * @param {Object} tool
+     */
+    registerTool(tool) {
+        if (!this.tools) this.tools = [];
+        const def = tool?.definition || {
+            name: tool?.name,
+            description: tool?.description,
+            parameters: tool?.parameters
+        };
+        this.tools.push(def);
+    }
+
+    /**
      * Get the specialized system prompt for this agent.
      * Subclasses must override this method.
      * @param {Object} _context { companyId, branchId, user, session }
