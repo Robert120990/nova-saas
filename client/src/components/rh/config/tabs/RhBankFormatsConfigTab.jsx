@@ -1,23 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
-import { Save, Building2, Landmark, CheckCircle2, RotateCcw, Info, Check } from 'lucide-react';
+import { Save, Building2, Landmark, CheckCircle2, RotateCcw, Info } from 'lucide-react';
 import { toast } from 'sonner';
-
-const BANK_OPTIONS = [
-    {
-        id: 'promerica',
-        name: 'Banco Promerica',
-        subtitle: 'Formato estándar delimitado por tabulación (Cuenta, Monto, Nombre)',
-        badge: 'bg-emerald-50 text-emerald-700 border-emerald-200'
-    },
-    {
-        id: 'atlantida',
-        name: 'Banco Atlántida',
-        subtitle: 'Formato posicional de 78 caracteres (Monto: 18, Nombre: 40, Cuenta: 16, Espacios: 4)',
-        badge: 'bg-sky-50 text-sky-700 border-sky-200'
-    }
-];
 
 const RhBankFormatsConfigTab = () => {
     const queryClient = useQueryClient();

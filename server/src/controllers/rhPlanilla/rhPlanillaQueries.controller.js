@@ -7,7 +7,50 @@ const getPlanillas = async (req, res) => {
         const { search, page = 1, limit = 15, anio, mes, quincena, branch_ids, departamento_ids } = req.query;
         const offset = (page - 1) * limit;
 
-        let query = `
+        const baseFrom = `
+            FROM ${TABLE} p
+            JOIN rh_empleados e ON p.empleado_id = e.id
+            LEFT JOIN rh_cargos c ON COALESCE(p.cargo_id, e.cargo_id) = c.id
+            LEFT JOIN rh_departamentos d ON COALESCE(p.departamento_personal_id, e.departamento_personal_id) = d.id
+            WHERE p.company_id = ?
+        `;
+        let whereExtra = '';
+        let params = [req.company_id];
+
+        if (anio) {
+            whereExtra += ` AND p.periodo_anio = ?`;
+            params.push(parseInt(anio));
+        }
+        if (mes) {
+            whereExtra += ` AND p.periodo_mes = ?`;
+            params.push(parseInt(mes));
+        }
+        if (quincena) {
+            whereExtra += ` AND p.quincena = ?`;
+            params.push(quincena);
+        }
+        if (search) {
+            whereExtra += ` AND (e.codigo LIKE ? OR e.nombres LIKE ? OR e.apellidos LIKE ?)`;
+            const s = `%${search}%`;
+            params.push(s, s, s);
+        }
+
+        const branchList = parseIdList(branch_ids);
+        if (branchList.length > 0) {
+            whereExtra += ` AND COALESCE(p.branch_id, e.branch_id) IN (?)`;
+            params.push(branchList);
+        }
+        const deptoList = parseIdList(departamento_ids);
+        if (deptoList.length > 0) {
+            whereExtra += ` AND COALESCE(p.departamento_personal_id, e.departamento_personal_id) IN (?)`;
+            params.push(deptoList);
+        }
+
+        const countQuery = `SELECT COUNT(*) as total ${baseFrom} ${whereExtra}`;
+        const [countResult] = await pool.query(countQuery, params);
+        const total = countResult[0]?.total || 0;
+
+        const selectQuery = `
             SELECT p.*, 
                    e.codigo as empleado_codigo,
                    e.nombres as empleado_nombres,
@@ -19,52 +62,16 @@ const getPlanillas = async (req, res) => {
                    COALESCE(p.cargo_id, e.cargo_id) as cargo_id,
                    c.descripcion as cargo_nombre,
                    d.descripcion as departamento_nombre
-            FROM ${TABLE} p
-            JOIN rh_empleados e ON p.empleado_id = e.id
-            LEFT JOIN rh_cargos c ON COALESCE(p.cargo_id, e.cargo_id) = c.id
-            LEFT JOIN rh_departamentos d ON COALESCE(p.departamento_personal_id, e.departamento_personal_id) = d.id
-            WHERE p.company_id = ?
+            ${baseFrom} ${whereExtra}
+            ORDER BY p.periodo_anio DESC, p.periodo_mes DESC, p.quincena, e.codigo ASC
+            LIMIT ? OFFSET ?
         `;
-        let params = [req.company_id];
+        const selectParams = [...params, parseInt(limit), parseInt(offset)];
 
-        if (anio) {
-            query += ` AND p.periodo_anio = ?`;
-            params.push(parseInt(anio));
-        }
-        if (mes) {
-            query += ` AND p.periodo_mes = ?`;
-            params.push(parseInt(mes));
-        }
-        if (quincena) {
-            query += ` AND p.quincena = ?`;
-            params.push(quincena);
-        }
-        if (search) {
-            query += ` AND (e.codigo LIKE ? OR e.nombres LIKE ? OR e.apellidos LIKE ?)`;
-            const s = `%${search}%`;
-            params.push(s, s, s);
-        }
-
-        const branchList = parseIdList(branch_ids);
-        if (branchList.length > 0) {
-            query += ` AND COALESCE(p.branch_id, e.branch_id) IN (?)`;
-            params.push(branchList);
-        }
-        const deptoList = parseIdList(departamento_ids);
-        if (deptoList.length > 0) {
-            query += ` AND COALESCE(p.departamento_personal_id, e.departamento_personal_id) IN (?)`;
-            params.push(deptoList);
-        }
-
-        const [countResult] = await pool.query(`SELECT COUNT(*) as total FROM (${query}) as sub`, params);
-        const total = countResult[0].total;
-
-        query += ` ORDER BY p.periodo_anio DESC, p.periodo_mes DESC, p.quincena, e.codigo ASC LIMIT ? OFFSET ?`;
-        params.push(parseInt(limit), parseInt(offset));
-
-        const [rows] = await pool.query(query, params);
+        const [rows] = await pool.query(selectQuery, selectParams);
         res.json({ data: rows, total, page: parseInt(page), totalPages: Math.ceil(total / limit) });
     } catch (error) {
+        console.error('[getPlanillas] Error:', error);
         res.status(500).json({ message: error.message });
     }
 };

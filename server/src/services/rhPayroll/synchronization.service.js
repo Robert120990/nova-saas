@@ -368,14 +368,19 @@ const sincronizarPlanilla = async (req, res, pool) => {
                                 hasChanges = true;
                             }
                         } else {
-                            // Si el empleado ya no tiene este descuento programado activo y la cuenta es de tipo descuento programado
+                            // Cuentas manuales quincenales (como anticipos) NUNCA se resetean a cero si no hay descuento programado
                             const descC = (d.descripcion || '').toLowerCase();
+                            const isAnticipoAccount = d.codigo === '06' || descC.includes('anticipo');
+                            if (isAnticipoAccount) {
+                                continue;
+                            }
+
+                            // Si el empleado ya no tiene este descuento programado activo y la cuenta es de tipo descuento programado
                             const isProgrammedAccount = (d.cuenta_id && programmedCuentaIds.has(d.cuenta_id)) ||
                                 descC.includes('prestamo') ||
                                 descC.includes('procuraduria') ||
                                 descC.includes('fondo social') ||
-                                descC.includes('fsv') ||
-                                descC.includes('anticipo');
+                                descC.includes('fsv');
 
                             if (isProgrammedAccount && parseFloat(d.valor_ingresado || 0) !== 0) {
                                 await pool.query(

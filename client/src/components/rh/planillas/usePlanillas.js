@@ -808,8 +808,9 @@ export default function usePlanillas() {
             } else {
                 toast.success('Archivo CSV descargado con éxito');
             }
-        } catch { 
-            toast.error('Error al descargar el archivo bancario'); 
+        } catch (error) { 
+            console.error('[handleDownloadCSV] Error:', error);
+            toast.error(error?.response?.data?.message || 'Error al descargar el archivo bancario'); 
         }
     };
 
