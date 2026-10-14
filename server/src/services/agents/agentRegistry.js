@@ -52,11 +52,19 @@ class AgentRegistry {
 
     /**
      * Checks if a user has permission to interact with a specific agent.
-     * SuperAdmin has access to all agents.
+     * Supports:
+     * - Telegram bindings with granular allowed_agents
+     * - SuperAdmin global access
+     * - RBAC permissions array for web users
      */
     hasPermission(agentCode, user) {
         if (!user) return true; // Default fallback for Telegram bindings without user_id
         if (user.role === 'SuperAdmin') return true;
+
+        // Si el usuario viene de Telegram con allowed_agents configurados específicamente en su binding
+        if (Array.isArray(user.allowed_agents)) {
+            return user.allowed_agents.includes(agentCode);
+        }
 
         const agent = this.getAgent(agentCode);
         if (!agent || !agent.requiredPermission) return true;

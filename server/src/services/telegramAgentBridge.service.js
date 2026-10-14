@@ -1,3 +1,4 @@
+const pool = require('../config/db');
 const telegramService = require('./telegram.service');
 const supervisorAgent = require('./agents/SupervisorAgent');
 const agentRegistry = require('./agents/agentRegistry');
@@ -74,11 +75,37 @@ async function handleAgentTelegramMessage(chatId, text, from, state) {
             userId: null
         });
 
-        // 3. Ejecutar a través del Supervisor
+        // 3. Cargar permisos y configuración de allowed_agents del binding
+        let allowedAgents = ['accounting', 'dte', 'sales', 'inventory', 'gas', 'operations', 'tech'];
+        let bindingName = from?.first_name || from?.username || 'Usuario Telegram';
+        let canApprove = false;
+
+        try {
+            const [bindings] = await pool.query(
+                'SELECT * FROM telegram_chat_bindings WHERE chat_id = ?',
+                [chatId]
+            );
+            if (bindings.length > 0) {
+                const b = bindings[0];
+                if (b.nombre) bindingName = b.nombre;
+                canApprove = Boolean(b.can_approve_entries);
+                if (b.allowed_agents) {
+                    const parsed = typeof b.allowed_agents === 'string'
+                        ? JSON.parse(b.allowed_agents)
+                        : b.allowed_agents;
+                    if (Array.isArray(parsed)) allowedAgents = parsed;
+                }
+            }
+        } catch (err) {
+            console.error('[TelegramAgentBridge] Error consultando binding:', err.message);
+        }
+
         const user = {
             id: null,
-            nombre: from?.first_name || from?.username || 'Usuario Telegram',
-            role: 'Admin' // Contexto administrativo por defecto para Telegram vinculado
+            nombre: bindingName,
+            role: 'Admin',
+            allowed_agents: allowedAgents,
+            can_approve_entries: canApprove
         };
 
         const result = await supervisorAgent.handleUserMessage({
