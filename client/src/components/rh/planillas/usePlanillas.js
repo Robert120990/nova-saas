@@ -683,10 +683,32 @@ export default function usePlanillas() {
             if (departamentoIds && departamentoIds.length > 0) {
                 params.departamento_ids = Array.isArray(departamentoIds) ? departamentoIds.join(',') : departamentoIds;
             }
-            const res = await axios.get('/api/rh/planillas', { params });
+
+            // Consultar datos de planillas y configuración de formatos bancarios
+            const [res, bankConfigRes] = await Promise.all([
+                axios.get('/api/rh/planillas', { params }),
+                axios.get('/api/rh/config/banco-formatos').catch(() => ({ data: {} }))
+            ]);
+
             const rows = unwrapList(res);
             if (!rows.length) return toast.error('Sin datos para los filtros seleccionados');
-            
+
+            // Mapas de configuración bancaria (por sucursal y por departamento)
+            const sucBankMap = new Map();
+            const depBankMap = new Map();
+            (bankConfigRes.data?.configs || []).forEach(c => {
+                if (c.sucursal_id && !c.departamento_id) sucBankMap.set(Number(c.sucursal_id), c.formato_banco);
+                if (c.departamento_id && !c.sucursal_id) depBankMap.set(Number(c.departamento_id), c.formato_banco);
+            });
+
+            const getEmpBankFormat = (r) => {
+                const bId = r.branch_id ? Number(r.branch_id) : null;
+                const dId = r.departamento_personal_id ? Number(r.departamento_personal_id) : null;
+                if (dId && depBankMap.has(dId)) return depBankMap.get(dId);
+                if (bId && sucBankMap.has(bId)) return sucBankMap.get(bId);
+                return 'promerica';
+            };
+
             // Ordenar: empleados con cuenta bancaria al inicio, sin cuenta al final
             const sortedRows = [...rows].sort((a, b) => {
                 const cuentaA = String(a.cuenta_planillera || '').trim();
@@ -698,25 +720,44 @@ export default function usePlanillas() {
                 return 0;
             });
 
-            // CSV: separado por comas para Excel | TXT: separado por tabs para banco
-            const makeRow = (r, sep) => {
+            // Formato Promerica: tabuladores (Cuenta \t Monto \t Nombre)
+            const makePromericaRow = (r) => {
                 const nombre = `${r.empleado_nombres || ''} ${r.empleado_apellidos || ''}`.trim();
                 const cuenta = r.cuenta_planillera || '';
                 const monto = parseFloat(r.monto_recibir || 0).toFixed(2);
-                return `${cuenta}${sep}${monto}${sep}${nombre}`;
+                return `${cuenta}\t${monto}\t${nombre}`;
             };
 
-            // CSV: sep=, fuerza a Excel (locale español) a usar coma como separador
-            // BOM (\uFEFF) garantiza que ñ, tildes, etc. se muestren correctamente
-            // ="cuenta" obliga a Excel a mostrar el número completo sin notación científica (1E+13)
+            // Formato Banco Atlántida: 78 caracteres exactos por fila
+            // Monto (18 ceros izq en centavos sin punto) + Nombre cliente (40 der espacios) + Cuenta (16 der espacios) + Espacios (4)
+            const makeAtlantidaRow = (r) => {
+                const cents = Math.round(parseFloat(r.monto_recibir || 0) * 100);
+                const montoStr = String(cents).padStart(18, '0');
+
+                const rawName = `${r.empleado_nombres || ''} ${r.empleado_apellidos || ''}`.trim();
+                const cleanName = rawName.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
+                const nombreStr = cleanName.slice(0, 40).padEnd(40, ' ');
+
+                const rawCuenta = String(r.cuenta_planillera || '').trim().replace(/[^0-9A-Za-z]/g, '');
+                const cuentaStr = rawCuenta.slice(0, 16).padEnd(16, ' ');
+
+                const espaciosStr = '    ';
+                return `${montoStr}${nombreStr}${cuentaStr}${espaciosStr}`;
+            };
+
+            // CSV general para Excel
             const csvRows = sortedRows.map(r => {
                 const nombre = `${r.empleado_nombres || ''} ${r.empleado_apellidos || ''}`.trim();
                 const cuenta = r.cuenta_planillera || '';
                 const monto = parseFloat(r.monto_recibir || 0).toFixed(2);
-                return `="${cuenta}",${monto},${nombre}`;
+                const banco = getEmpBankFormat(r) === 'atlantida' ? 'BANCO ATLANTIDA' : 'BANCO PROMERICA';
+                return `="${cuenta}",${monto},"${nombre}",${banco}`;
             });
-            const contentCsv = '\uFEFF' + 'sep=,\n' + csvRows.join('\n');
-            const contentTxt = sortedRows.map(r => makeRow(r, '\t')).join('\n');
+            const contentCsv = '\uFEFF' + 'sep=,\n' + 'Cuenta,Monto,Empleado,Banco\n' + csvRows.join('\n');
+
+            // Separar registros según su banco configurado
+            const atlantidaRows = sortedRows.filter(r => getEmpBankFormat(r) === 'atlantida');
+            const promericaRows = sortedRows.filter(r => getEmpBankFormat(r) === 'promerica');
 
             const baseName = `PLANILLAS_${anio}${String(mes).padStart(2, '0')}_${quincena}`;
 
@@ -732,24 +773,38 @@ export default function usePlanillas() {
                 setTimeout(() => window.URL.revokeObjectURL(url), 1000);
             };
 
+            let downloadDelay = 0;
+
             if (formatoBancario === 'csv' || formatoBancario === 'ambos') {
                 triggerDownload(contentCsv, `${baseName}.csv`, 'text/csv;charset=utf-8');
+                downloadDelay += 250;
             }
 
             if (formatoBancario === 'txt' || formatoBancario === 'ambos') {
-                if (formatoBancario === 'ambos') {
+                if (atlantidaRows.length > 0 && promericaRows.length > 0) {
                     setTimeout(() => {
-                        triggerDownload(contentTxt, `${baseName}.txt`, 'text/plain;charset=utf-8');
-                    }, 250);
+                        const contentAtlantida = atlantidaRows.map(makeAtlantidaRow).join('\r\n');
+                        triggerDownload(contentAtlantida, `${baseName}_ATLANTIDA.txt`, 'text/plain;charset=utf-8');
+                    }, downloadDelay);
+                    downloadDelay += 250;
+                    setTimeout(() => {
+                        const contentPromerica = promericaRows.map(makePromericaRow).join('\r\n');
+                        triggerDownload(contentPromerica, `${baseName}_PROMERICA.txt`, 'text/plain;charset=utf-8');
+                    }, downloadDelay);
+                    toast.success(`Descargados: TXT Atlántida (${atlantidaRows.length} emp.) y TXT Promerica (${promericaRows.length} emp.)`);
+                } else if (atlantidaRows.length > 0) {
+                    setTimeout(() => {
+                        const contentAtlantida = atlantidaRows.map(makeAtlantidaRow).join('\r\n');
+                        triggerDownload(contentAtlantida, `${baseName}_ATLANTIDA.txt`, 'text/plain;charset=utf-8');
+                    }, downloadDelay);
+                    toast.success(`Archivo TXT Banco Atlántida (78 car.) descargado (${atlantidaRows.length} empleados)`);
                 } else {
-                    triggerDownload(contentTxt, `${baseName}.txt`, 'text/plain;charset=utf-8');
+                    setTimeout(() => {
+                        const contentPromerica = promericaRows.map(makePromericaRow).join('\r\n');
+                        triggerDownload(contentPromerica, `${baseName}_PROMERICA.txt`, 'text/plain;charset=utf-8');
+                    }, downloadDelay);
+                    toast.success(`Archivo TXT Banco Promerica descargado (${promericaRows.length} empleados)`);
                 }
-            }
-
-            if (formatoBancario === 'ambos') {
-                toast.success('Archivos CSV y TXT descargados con éxito');
-            } else if (formatoBancario === 'txt') {
-                toast.success('Archivo TXT descargado con éxito');
             } else {
                 toast.success('Archivo CSV descargado con éxito');
             }

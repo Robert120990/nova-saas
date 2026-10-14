@@ -396,7 +396,7 @@ const PlanillaExportModal = ({ isOpen, onClose, periodo, onConfirm }) => {
                                     <div className="mt-2.5">
                                         <span className="text-xs font-bold text-slate-900">Solo TXT (.txt)</span>
                                         <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
-                                            Texto plano para plataformas bancarias.
+                                            Genera archivo para Banco Promerica o Banco Atlántida (78 car.) según configuración.
                                         </p>
                                     </div>
                                 </button>
@@ -435,7 +435,7 @@ const PlanillaExportModal = ({ isOpen, onClose, periodo, onConfirm }) => {
                             {/* Nota de ordenamiento bancario */}
                             <div className="flex items-center gap-2 p-2.5 rounded-xl bg-sky-50/70 border border-sky-200/60 text-sky-800 text-[11px] leading-tight">
                                 <Info size={14} className="shrink-0 text-sky-600" />
-                                <span>Los empleados con cuenta bancaria se ordenan al inicio; los que no poseen cuenta se ubican al final para agilizar la dispersión.</span>
+                                <span>Los empleados se procesan según la configuración de sucursal/departamento (Promerica o Atlántida 78 car.), priorizando cuentas válidas al inicio.</span>
                             </div>
                         </div>
                     )}

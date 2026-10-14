@@ -285,6 +285,7 @@ const energySystemController = require('../controllers/energySystem.controller')
 const notificationRoutes = require('./notification.routes');
 const whatsappRoutes = require('./whatsapp.routes');
 const restaurantRoutes = require('./restaurant.routes');
+const agentTaskRoutes = require('./agentTask.routes');
 
 // Public routes
 router.get('/settings/public', settingsController.getPublicSettings);
@@ -1220,6 +1221,8 @@ router.delete('/rh/cuentas-planillas/:id', rhCuentaPlanillaController.deleteCuen
 // RRHH - Configuracion (Responsable y Sello)
 router.get('/rh/config', rhConfigController.getConfig);
 router.put('/rh/config', upload.fields([{ name: 'firma', maxCount: 1 }, { name: 'sello', maxCount: 1 }]), rhConfigController.updateConfig);
+router.get('/rh/config/banco-formatos', rhConfigController.getBancoFormatosConfig);
+router.put('/rh/config/banco-formatos', rhConfigController.updateBancoFormatosConfig);
 
 // RRHH - Empleados
 router.get('/rh/empleados', rhEmpleadoController.getEmpleados);
@@ -1424,5 +1427,8 @@ router.use('/whatsapp', whatsappRoutes);
 
 // Restaurant Module (Comandas, KDS, Mesas)
 router.use('/restaurant', restaurantRoutes);
+
+// AI Agent Background Tasks
+router.use('/agent-tasks', agentTaskRoutes);
 
 module.exports = router;

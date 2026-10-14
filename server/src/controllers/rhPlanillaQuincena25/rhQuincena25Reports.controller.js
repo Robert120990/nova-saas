@@ -142,7 +142,7 @@ const exportBanco = async (req, res) => {
         if (!año) return res.status(400).json({ message: 'año requerido' });
 
         let query = `
-            SELECT pq.*, e.codigo, e.nombres, e.apellidos, e.cuenta_planillera
+            SELECT pq.*, e.codigo, e.nombres, e.apellidos, e.cuenta_planillera, e.branch_id, e.departamento_personal_id
             FROM ${TABLE} pq
             JOIN rh_empleados e ON pq.empleado_id = e.id
             WHERE pq.company_id = ? AND pq.periodo_anio = ? AND pq.monto_recibir > 0
@@ -165,6 +165,44 @@ const exportBanco = async (req, res) => {
             return res.status(404).json({ message: 'Sin registros con monto a cobrar para exportar' });
         }
 
+        const [bankConfigs] = await pool.query(
+            `SELECT sucursal_id, departamento_id, formato_banco FROM rh_banco_formatos_config WHERE company_id = ?`,
+            [req.company_id]
+        );
+        const sucBankMap = new Map();
+        const depBankMap = new Map();
+        bankConfigs.forEach(c => {
+            if (c.sucursal_id && !c.departamento_id) sucBankMap.set(Number(c.sucursal_id), c.formato_banco);
+            if (c.departamento_id && !c.sucursal_id) depBankMap.set(Number(c.departamento_id), c.formato_banco);
+        });
+
+        const getEmpBankFormat = (r) => {
+            const bId = r.branch_id ? Number(r.branch_id) : null;
+            const dId = r.departamento_personal_id ? Number(r.departamento_personal_id) : null;
+            if (dId && depBankMap.has(dId)) return depBankMap.get(dId);
+            if (bId && sucBankMap.has(bId)) return sucBankMap.get(bId);
+            return 'promerica';
+        };
+
+        const makePromericaRow = (r) => {
+            const nombre = `${r.nombres || ''} ${r.apellidos || ''}`.trim();
+            const cuenta = r.cuenta_planillera || '';
+            const monto = parseFloat(r.monto_recibir || 0).toFixed(2);
+            return `${cuenta}\t${monto}\t${nombre}`;
+        };
+
+        const makeAtlantidaRow = (r) => {
+            const cents = Math.round(parseFloat(r.monto_recibir || 0) * 100);
+            const montoStr = String(cents).padStart(18, '0');
+            const rawName = `${r.nombres || ''} ${r.apellidos || ''}`.trim();
+            const cleanName = rawName.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
+            const nombreStr = cleanName.slice(0, 40).padEnd(40, ' ');
+            const rawCuenta = String(r.cuenta_planillera || '').trim().replace(/[^0-9A-Za-z]/g, '');
+            const cuentaStr = rawCuenta.slice(0, 16).padEnd(16, ' ');
+            const espaciosStr = '    ';
+            return `${montoStr}${nombreStr}${cuentaStr}${espaciosStr}`;
+        };
+
         // Ordenar defensivamente en memoria: empleados con cuenta primero, sin cuenta al final
         const sortedRows = [...rows].sort((a, b) => {
             const cuentaA = String(a.cuenta_planillera || '').trim();
@@ -181,16 +219,14 @@ const exportBanco = async (req, res) => {
             const nombre = `${r.nombres || ''} ${r.apellidos || ''}`.trim();
             const cuenta = r.cuenta_planillera || '';
             const monto = parseFloat(r.monto_recibir || 0).toFixed(2);
-            return `="${cuenta}",${monto},"${nombre}"`;
+            const banco = getEmpBankFormat(r) === 'atlantida' ? 'BANCO ATLANTIDA' : 'BANCO PROMERICA';
+            return `="${cuenta}",${monto},"${nombre}",${banco}`;
         });
-        const contentCsv = '\uFEFF' + 'sep=,\n' + csvRows.join('\n');
+        const contentCsv = '\uFEFF' + 'sep=,\n' + 'Cuenta,Monto,Empleado,Banco\n' + csvRows.join('\n');
 
-        // TXT bancario (Tabs)
+        // TXT bancario según formato de cada empleado
         const contentTxt = sortedRows.map(r => {
-            const nombre = `${r.nombres || ''} ${r.apellidos || ''}`.trim();
-            const cuenta = r.cuenta_planillera || '';
-            const monto = parseFloat(r.monto_recibir || 0).toFixed(2);
-            return `${cuenta}\t${monto}\t${nombre}`;
+            return getEmpBankFormat(r) === 'atlantida' ? makeAtlantidaRow(r) : makePromericaRow(r);
         }).join('\r\n');
 
         res.json({
