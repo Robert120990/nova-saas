@@ -1,35 +1,44 @@
 const pool = require('../config/db');
 const telegramService = require('../services/telegram.service');
 const telegramDailyBriefingService = require('../services/telegramDailyBriefing.service');
+const telegramInviteService = require('../services/telegramInvite.service');
 
 /**
- * Configuración de Telegram y ventas sospechosas (panel de Notificaciones)
+ * Configuración de Telegram, vinculaciones y permisos multi-agente
  */
 
 const getStatus = async (req, res) => {
     try {
+        const isSuperAdmin = req.user?.role === 'SuperAdmin';
         const [bindings] = await pool.query(
             `SELECT b.id, b.chat_id, b.company_id, b.branch_id, b.nombre, b.username, b.receive_alerts,
+                    COALESCE(b.receive_reopen_requests, 1) as receive_reopen_requests,
+                    b.allowed_agents,
+                    COALESCE(b.can_approve_entries, 0) as can_approve_entries,
+                    COALESCE(b.receive_inventory_alerts, 1) as receive_inventory_alerts,
+                    COALESCE(b.receive_dte_alerts, 1) as receive_dte_alerts,
                     COALESCE(c.razon_social, 'Todas las Empresas') as company_nombre,
                     COALESCE(br.nombre, 'Todas las sucursales (Global)') as branch_nombre
              FROM telegram_chat_bindings b
              LEFT JOIN companies c ON c.id = b.company_id
              LEFT JOIN branches br ON br.id = b.branch_id
-             WHERE b.company_id = ? OR b.branch_id IS NULL
+             ${isSuperAdmin ? '' : 'WHERE b.company_id = ? OR b.branch_id IS NULL'}
              ORDER BY b.created_at DESC`,
-            [req.company_id]
+            isSuperAdmin ? [] : [req.company_id]
         );
         const token = await telegramService.getBotToken();
         const botInfo = await telegramService.getMe();
-        const [settingsRows] = await pool.query('SELECT daily_briefing_active FROM telegram_settings WHERE id = 1');
+        const [settingsRows] = await pool.query('SELECT daily_briefing_active, reopen_requests_active FROM telegram_settings WHERE id = 1');
         const dailyBriefingActive = settingsRows.length > 0 ? (settingsRows[0].daily_briefing_active !== 0) : true;
+        const reopenRequestsActive = settingsRows.length > 0 ? (settingsRows[0].reopen_requests_active !== 0) : true;
 
         res.json({
             configured: !!token,
             maskedToken: token ? `${token.slice(0, 6)}...${token.slice(-4)}` : '',
             botInfo,
             bindings,
-            dailyBriefingActive
+            dailyBriefingActive,
+            reopenRequestsActive
         });
     } catch (error) {
         console.error('Error getTelegramStatus:', error);
@@ -67,16 +76,43 @@ const saveBotToken = async (req, res) => {
 const updateBinding = async (req, res) => {
     try {
         const { id } = req.params;
-        const { receive_alerts, branch_id } = req.body;
+        const {
+            receive_alerts, receive_reopen_requests, branch_id, company_id,
+            allowed_agents, can_approve_entries, receive_inventory_alerts, receive_dte_alerts
+        } = req.body;
         const updates = [];
         const params = [];
         if (receive_alerts !== undefined) {
             updates.push('receive_alerts = ?');
             params.push(receive_alerts ? 1 : 0);
         }
+        if (receive_reopen_requests !== undefined) {
+            updates.push('receive_reopen_requests = ?');
+            params.push(receive_reopen_requests ? 1 : 0);
+        }
         if (branch_id !== undefined) {
             updates.push('branch_id = ?');
             params.push(branch_id === 'all' || branch_id === null || branch_id === '' ? null : parseInt(branch_id, 10));
+        }
+        if (company_id !== undefined) {
+            updates.push('company_id = ?');
+            params.push(parseInt(company_id, 10));
+        }
+        if (allowed_agents !== undefined) {
+            updates.push('allowed_agents = ?');
+            params.push(JSON.stringify(allowed_agents));
+        }
+        if (can_approve_entries !== undefined) {
+            updates.push('can_approve_entries = ?');
+            params.push(can_approve_entries ? 1 : 0);
+        }
+        if (receive_inventory_alerts !== undefined) {
+            updates.push('receive_inventory_alerts = ?');
+            params.push(receive_inventory_alerts ? 1 : 0);
+        }
+        if (receive_dte_alerts !== undefined) {
+            updates.push('receive_dte_alerts = ?');
+            params.push(receive_dte_alerts ? 1 : 0);
         }
         if (updates.length === 0) return res.json({ message: 'Sin cambios' });
         params.push(id);
@@ -91,6 +127,57 @@ const updateBinding = async (req, res) => {
     } catch (error) {
         console.error('Error updateBinding:', error);
         res.status(500).json({ message: 'Error al actualizar la vinculación' });
+    }
+};
+
+const deleteBinding = async (req, res) => {
+    try {
+        const { id } = req.params;
+        await pool.query('DELETE FROM telegram_chat_bindings WHERE id = ?', [id]);
+        res.json({ success: true, message: 'Vinculación eliminada exitosamente' });
+    } catch (error) {
+        console.error('Error deleteBinding:', error);
+        res.status(500).json({ message: 'Error al eliminar vinculación' });
+    }
+};
+
+const createInviteToken = async (req, res) => {
+    try {
+        const { branch_id, assigned_name, permissions, expires_in_hours } = req.body;
+        const companyId = req.body.company_id || req.company_id;
+        const result = await telegramInviteService.createInviteToken({
+            companyId,
+            branchId: branch_id,
+            assignedName: assigned_name,
+            permissions,
+            createdBy: req.user?.id,
+            expiresInHours: expires_in_hours || 48
+        });
+
+        const botInfo = await telegramService.getMe();
+        const botUsername = botInfo?.username || 'Sipeweb_bot';
+        const deepLink = `https://t.me/${botUsername}?start=bind_${result.token}`;
+
+        res.json({
+            success: true,
+            token: result.token,
+            deepLink,
+            expiresAt: result.expiresAt
+        });
+    } catch (error) {
+        console.error('Error createInviteToken:', error);
+        res.status(500).json({ message: 'Error al generar enlace de invitación' });
+    }
+};
+
+const getPendingInvites = async (req, res) => {
+    try {
+        const isSuperAdmin = req.user?.role === 'SuperAdmin';
+        const rows = await telegramInviteService.listPendingInvites(req.company_id, isSuperAdmin);
+        res.json(rows);
+    } catch (error) {
+        console.error('Error getPendingInvites:', error);
+        res.status(500).json({ message: 'Error al obtener invitaciones' });
     }
 };
 
@@ -215,13 +302,33 @@ const testDailyBriefing = async (req, res) => {
     }
 };
 
+const updateReopenRequestsSetting = async (req, res) => {
+    try {
+        const { active } = req.body;
+        const val = active ? 1 : 0;
+        await pool.query(`
+            INSERT INTO telegram_settings (id, reopen_requests_active)
+            VALUES (1, ?)
+            ON DUPLICATE KEY UPDATE reopen_requests_active = VALUES(reopen_requests_active)
+        `, [val]);
+        res.json({ success: true, message: `Solicitud de apertura de turnos vía Telegram ${val ? 'activada' : 'desactivada'}` });
+    } catch (error) {
+        console.error('Error updateReopenRequestsSetting:', error);
+        res.status(500).json({ message: 'Error al actualizar configuración de reapertura' });
+    }
+};
+
 module.exports = {
     getStatus,
     saveBotToken,
     updateBinding,
+    deleteBinding,
+    createInviteToken,
+    getPendingInvites,
     testConnection,
     getSuspiciousSettings,
     saveSuspiciousSettings,
     updateDailyBriefingSetting,
-    testDailyBriefing
+    testDailyBriefing,
+    updateReopenRequestsSetting
 };

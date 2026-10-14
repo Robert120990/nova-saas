@@ -17,9 +17,13 @@ router.delete('/rules/:id', notificationController.deleteRule);
 router.get('/telegram/status', telegramController.getStatus);
 router.post('/telegram/token', telegramController.saveBotToken);
 router.put('/telegram/bindings/:id', telegramController.updateBinding);
+router.delete('/telegram/bindings/:id', telegramController.deleteBinding);
+router.post('/telegram/invite-tokens', telegramController.createInviteToken);
+router.get('/telegram/invite-tokens', telegramController.getPendingInvites);
 router.post('/telegram/test', telegramController.testConnection);
 router.put('/telegram/daily-briefing', telegramController.updateDailyBriefingSetting);
 router.post('/telegram/daily-briefing/test', telegramController.testDailyBriefing);
+router.put('/telegram/reopen-requests', telegramController.updateReopenRequestsSetting);
 router.get('/sale-suspicious-settings', telegramController.getSuspiciousSettings);
 router.put('/sale-suspicious-settings', telegramController.saveSuspiciousSettings);
 

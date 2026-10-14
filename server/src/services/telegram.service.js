@@ -1,12 +1,11 @@
 const pool = require('../config/db');
-const { runAssistant } = require('./ai.assistant');
 
 /**
  * Telegram Bot Service — long polling
  *
  * Un solo bot para todo el sistema (token en TELEGRAM_BOT_TOKEN).
- * Flujo: /start → elige empresa → elige sucursal → chat libre con Novas AI.
- * Comandos: /ayuda, /cambiar, /alertas on|off
+ * Flujo: /start → elige empresa → elige sucursal → chat multi-agente con Novas AI.
+ * Comandos: /ayuda, /cambiar, /alertas on|off, /agentes
  */
 
 let memoryBotToken = process.env.TELEGRAM_BOT_TOKEN || null;
@@ -120,18 +119,20 @@ async function getMe(force = false) {
 // ============ Flujo por chat ============
 
 async function listCompanies(chatId) {
-    const [companies] = await pool.query(
-        'SELECT id, razon_social FROM companies ORDER BY razon_social'
-    );
-    if (companies.length === 0) {
-        return sendMessage(chatId, '⚠️ No hay empresas registradas en el sistema todavía.');
-    }
+    const [companies] = await pool.query('SELECT id, razon_social FROM companies ORDER BY razon_social');
+    if (companies.length === 0) return sendMessage(chatId, '⚠️ No hay empresas registradas en el sistema todavía.');
     chatStates.set(chatId, { step: 'awaiting_company', companies });
+    const buttons = companies.map(c => [{ text: `🏢 ${c.razon_social}`, callback_data: `bind_co:${c.id}` }]);
     const list = companies.map((c, i) => `${i + 1}. ${c.razon_social}`).join('\n');
-    return sendMessage(chatId, `👋 ¡Hola! Bienvenido al bot de Novas.\n\nPara conectarte, dime a qué empresa perteneces (envía el número):\n\n${list}\n\nEn cualquier momento: /ayuda`);
+    return sendMessage(chatId, `👋 ¡Hola! Bienvenido al bot de Novas.\n\nSelecciona tu empresa con los botones o envía su número:\n\n${list}\n\nEn cualquier momento: /ayuda`, {
+        reply_markup: { inline_keyboard: buttons }
+    });
 }
 
-async function handleStart(chatId, from) {
+async function handleStart(chatId, from, text = '') {
+    const { handleStartInvite } = require('./telegramInvite.service');
+    const inviteDone = await handleStartInvite(chatId, from, text, { sendMessage, chatStates });
+    if (inviteDone) return;
     const [rows] = await pool.query('SELECT * FROM telegram_chat_bindings WHERE chat_id = ?', [chatId]);
     if (rows.length > 0) {
         chatStates.set(chatId, { step: 'ready', companyId: rows[0].company_id, branchId: rows[0].branch_id });
@@ -139,25 +140,32 @@ async function handleStart(chatId, from) {
             ? await pool.query('SELECT nombre FROM branches WHERE id = ?', [rows[0].branch_id])
             : [[{ nombre: 'Todas las sucursales (Acceso Global)' }]];
         const branchName = branch[0]?.nombre || 'Todas las sucursales (Acceso Global)';
+        const [company] = await pool.query('SELECT razon_social FROM companies WHERE id = ?', [rows[0].company_id]);
+        const companyName = company[0]?.razon_social || '';
         return sendMessage(chatId,
-            `✅ Ya estás conectado a **${branchName}** (${company[0]?.razon_social || ''}).\n\n` +
+            `✅ Ya estás conectado a **${branchName}** (${companyName}).\n\n` +
             `Puedes preguntarme cosas como:\n- "dime las ventas de ayer"\n- "nivel de tanques"\n- "clientes con saldo"\n\n` +
-            `Comandos:\n/ayuda · /cambiar · /alertas on|off`);
+            `Comandos:\n/agentes · /contador · /fiscal · /ventas · /ayuda`);
     }
     return listCompanies(chatId);
 }
 
 async function handleHelp(chatId) {
     return sendMessage(chatId,
-        `🤖 *Novas AI Bot*\n\n` +
-        `*Preguntas libres:*\n"dime las ventas de ayer", "nivel de tanques", "clientes que me deben", "ventas por producto este mes"...\n\n` +
-        `*Comandos:*\n` +
-        `/start — ver mi conexión actual\n` +
-        `/cambiar — cambiar empresa/sucursal\n` +
-        `/alertas on — recibir alertas aquí\n` +
-        `/alertas off — dejar de recibir alertas\n` +
-        `/ayuda — este mensaje\n\n` +
-        `Solo respondo consultas de lectura sobre tu empresa y sucursal.`);
+        `🤖 *Novas AI — Red Multi-Agente*\n\n` +
+        `*Agentes especializados:*\n` +
+        `• /agentes — Ver todos los agentes disponibles\n` +
+        `• /contador — Agente Contador CPA (generar partidas de ventas/compras o ajustes)\n` +
+        `• /fiscal — Agente Fiscal & DTE (normativa MH, contingencias, rechazos)\n` +
+        `• /ventas — Agente Comercial (ventas, ticket promedio, clientes)\n` +
+        `• /tanques — Agente de Combustibles (niveles de tanques y cierres)\n` +
+        `• /inventario — Agente de Inventario & Kardex\n\n` +
+        `*Comandos del sistema:*\n` +
+        `/start — Ver conexión actual\n` +
+        `/cambiar — Cambiar empresa o sucursal\n` +
+        `/alertas on|off — Activar o silenciar alertas\n` +
+        `/ayuda — Este mensaje\n\n` +
+        `_También puedes escribir consultas libres y el Supervisor las delegará automáticamente._`);
 }
 
 async function handleCambiar(chatId) {
@@ -168,31 +176,16 @@ async function handleAlertas(chatId, arg) {
     const on = /^on|1|si|activar|recibir$/i.test((arg || '').trim());
     const off = /^off|0|no|desactivar|quitar$/i.test((arg || '').trim());
     const [rows] = await pool.query('SELECT id FROM telegram_chat_bindings WHERE chat_id = ?', [chatId]);
-    if (rows.length === 0) {
-        return sendMessage(chatId, 'Primero conéctate con /start para poder recibir alertas.');
-    }
-    let value;
-    if (on) value = 1;
-    else if (off) value = 0;
-    else return sendMessage(chatId, 'Uso: /alertas on  o  /alertas off');
+    if (rows.length === 0) return sendMessage(chatId, 'Primero conéctate con /start para poder recibir alertas.');
+    if (!on && !off) return sendMessage(chatId, 'Uso: /alertas on  o  /alertas off');
+    const value = on ? 1 : 0;
     await pool.query('UPDATE telegram_chat_bindings SET receive_alerts = ? WHERE id = ?', [value, rows[0].id]);
     return sendMessage(chatId, value ? '🔔 Recibirás las alertas de tu sucursal aquí.' : '🔕 Alertas desactivadas.');
 }
 
-async function handleAIQuestion(chatId, text, state) {
-    await apiCall('sendChatAction', { chat_id: chatId, action: 'typing' }).catch(() => { });
-    try {
-        const reply = await runAssistant({
-            messages: [{ role: 'user', content: text }],
-            companyId: state.companyId,
-            branchId: state.branchId
-        });
-        const content = typeof reply === 'string' ? reply : (reply?.content || '');
-        return sendMessage(chatId, content || '⚠️ No obtuve una respuesta. Intenta reformular tu pregunta.');
-    } catch (error) {
-        console.error('[Telegram AI] Error:', error.message);
-        return sendMessage(chatId, `⚠️ Error procesando tu consulta: ${error.message}`);
-    }
+async function handleAIQuestion(chatId, text, state, from = {}) {
+    const { handleAgentTelegramMessage } = require('./telegramAgentBridge.service');
+    return handleAgentTelegramMessage(chatId, text, from, state);
 }
 
 async function handleMessage(chatId, text, from) {
@@ -201,7 +194,7 @@ async function handleMessage(chatId, text, from) {
     const firstName = from?.first_name || from?.username || '';
 
     // Comandos
-    if (trimmed.startsWith('/start')) return handleStart(chatId, from);
+    if (trimmed.startsWith('/start')) return handleStart(chatId, from, trimmed);
     if (trimmed.startsWith('/ayuda') || trimmed.startsWith('/help')) return handleHelp(chatId);
     if (trimmed.startsWith('/cambiar')) return handleCambiar(chatId);
     if (trimmed.startsWith('/alertas')) {
@@ -259,13 +252,13 @@ async function handleMessage(chatId, text, from) {
 
     // Chat libre: si ya está vinculado (estado en memoria o en BD)
     if (state?.step === 'ready') {
-        return handleAIQuestion(chatId, trimmed, state);
+        return handleAIQuestion(chatId, trimmed, state, from);
     }
 
     const [rows] = await pool.query('SELECT * FROM telegram_chat_bindings WHERE chat_id = ?', [chatId]);
     if (rows.length > 0) {
         chatStates.set(chatId, { step: 'ready', companyId: rows[0].company_id, branchId: rows[0].branch_id });
-        return handleAIQuestion(chatId, trimmed, chatStates.get(chatId));
+        return handleAIQuestion(chatId, trimmed, chatStates.get(chatId), from);
     }
 
     return listCompanies(chatId);
@@ -289,8 +282,8 @@ async function pollOnce() {
         for (const upd of updates || []) {
             lastUpdateId = Math.max(lastUpdateId, upd.update_id);
             if (upd.callback_query) {
-                const { handleTelegramCallback } = require('./gasCloseoutReopenTelegram.service');
-                handleTelegramCallback(upd.callback_query).catch(err =>
+                const { routeTelegramCallback } = require('./telegramInvite.service');
+                routeTelegramCallback(upd.callback_query, { apiCall, sendMessage, chatStates }).catch(err =>
                     console.error('[Telegram] Error en callback_query:', err.message)
                 );
             } else if (upd.message && upd.message.text) {
@@ -350,4 +343,3 @@ module.exports = {
     getBotToken,
     setBotToken
 };
-
