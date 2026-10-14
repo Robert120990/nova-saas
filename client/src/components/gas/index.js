@@ -20,4 +20,5 @@ export { default as GasFusionAgentModal } from './GasFusionAgentModal';
 export { default as GasFusionAgentFiles } from './GasFusionAgentFiles';
 export { default as GasCloseoutPrintMenu } from './GasCloseoutPrintMenu';
 export { default as GasCloseoutSuccessModal } from './GasCloseoutSuccessModal';
+export { default as GasReopenRequestModal } from './GasReopenRequestModal';
 export * from './orders';

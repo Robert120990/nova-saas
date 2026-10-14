@@ -4,12 +4,12 @@ import axios from 'axios';
 import Table from '../components/ui/Table';
 import Modal from '../components/ui/Modal';
 import Pagination from '../components/ui/Pagination';
-import { History, Eye, Lock, Unlock, Search, Pencil, Trash2, Loader2, AlertTriangle, Database, CheckCircle, XCircle, LockOpen, Calendar, Hash, FileEdit, PlusCircle } from 'lucide-react';
+import { History, Eye, Lock, Unlock, Search, Pencil, Trash2, Loader2, AlertTriangle, Database, CheckCircle, XCircle, LockOpen, Calendar, Hash, FileEdit, PlusCircle, Send } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { downloadCloseoutPdf } from '../utils/closeoutPdf';
-import { GasCloseoutPrintMenu } from '../components/gas';
+import { GasCloseoutPrintMenu, GasReopenRequestModal } from '../components/gas';
 import Money from '../components/ui/Money';
 
 const GasReadingHistory = () => {
@@ -22,6 +22,7 @@ const GasReadingHistory = () => {
     const [deleteConfirm, setDeleteConfirm] = useState(null);
     const [rrsModal, setRrsModal] = useState(null);
     const [reopenConfirm, setReopenConfirm] = useState(null);
+    const [reopenRequestModal, setReopenRequestModal] = useState(null);
     const [fechaTurnoModal, setFechaTurnoModal] = useState(null);
     const [editFecha, setEditFecha] = useState('');
     const [editNumeroTurno, setEditNumeroTurno] = useState('');
@@ -39,7 +40,8 @@ const GasReadingHistory = () => {
 
     const { data: response = { data: [], total: 0, totalPages: 0 }, isLoading } = useQuery({
         queryKey: ['gas-closeouts', debouncedSearch, page, user?.branch_id],
-        queryFn: async () => (await axios.get('/api/gas-station/closeouts', { params: { search: debouncedSearch, page, branch_id: user?.branch_id } })).data
+        queryFn: async () => (await axios.get('/api/gas-station/closeouts', { params: { search: debouncedSearch, page, branch_id: user?.branch_id } })).data,
+        refetchInterval: 4000
     });
 
     const deleteMutation = useMutation({
@@ -725,11 +727,18 @@ const GasReadingHistory = () => {
                                                 <button
                                                     onClick={() => setReopenConfirm(c)}
                                                     className="p-1 text-slate-600 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
-                                                    title="Reabrir cierre con permiso especial"
+                                                    title="Reabrir cierre directamente (permiso especial)"
                                                 >
                                                     <LockOpen size={15} />
                                                 </button>
                                             )}
+                                            <button
+                                                onClick={() => setReopenRequestModal(c)}
+                                                className="p-1 text-amber-600 hover:text-amber-700 hover:bg-amber-50 rounded-lg transition-colors"
+                                                title="Solicitar apertura de turno por Telegram"
+                                            >
+                                                <Send size={14} />
+                                            </button>
                                             <button
                                                 onClick={() => handleView(c)}
                                                 className="p-1 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
@@ -1019,6 +1028,14 @@ const GasReadingHistory = () => {
                     </table>
                 </div>
             </Modal>
+
+            {/* Modal para solicitar apertura de turno vía Telegram */}
+            <GasReopenRequestModal
+                open={!!reopenRequestModal}
+                closeout={reopenRequestModal}
+                onClose={() => setReopenRequestModal(null)}
+                onSuccess={() => queryClient.invalidateQueries({ queryKey: ['gas-closeouts'] })}
+            />
 
         </div>
     );

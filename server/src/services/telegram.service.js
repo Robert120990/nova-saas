@@ -135,10 +135,12 @@ async function handleStart(chatId, from) {
     const [rows] = await pool.query('SELECT * FROM telegram_chat_bindings WHERE chat_id = ?', [chatId]);
     if (rows.length > 0) {
         chatStates.set(chatId, { step: 'ready', companyId: rows[0].company_id, branchId: rows[0].branch_id });
-        const [company] = await pool.query('SELECT razon_social FROM companies WHERE id = ?', [rows[0].company_id]);
-        const [branch] = await pool.query('SELECT nombre FROM branches WHERE id = ?', [rows[0].branch_id]);
+        const [branch] = rows[0].branch_id
+            ? await pool.query('SELECT nombre FROM branches WHERE id = ?', [rows[0].branch_id])
+            : [[{ nombre: 'Todas las sucursales (Acceso Global)' }]];
+        const branchName = branch[0]?.nombre || 'Todas las sucursales (Acceso Global)';
         return sendMessage(chatId,
-            `✅ Ya estás conectado a **${branch[0]?.nombre || rows[0].branch_id}** (${company[0]?.razon_social || ''}).\n\n` +
+            `✅ Ya estás conectado a **${branchName}** (${company[0]?.razon_social || ''}).\n\n` +
             `Puedes preguntarme cosas como:\n- "dime las ventas de ayer"\n- "nivel de tanques"\n- "clientes con saldo"\n\n` +
             `Comandos:\n/ayuda · /cambiar · /alertas on|off`);
     }
@@ -246,6 +248,15 @@ async function handleMessage(chatId, text, from) {
             `También recibirás alertas de tu sucursal aquí. (/alertas off para desactivarlas)`);
     }
 
+    // Interceptar aprobaciones o rechazos de reapertura de turnos por texto
+    try {
+        const { handleTelegramTextApproval } = require('./gasCloseoutReopenTelegram.service');
+        const handled = await handleTelegramTextApproval(chatId, trimmed, from, state);
+        if (handled) return;
+    } catch (err) {
+        console.error('[Telegram] Error en text approval:', err.message);
+    }
+
     // Chat libre: si ya está vinculado (estado en memoria o en BD)
     if (state?.step === 'ready') {
         return handleAIQuestion(chatId, trimmed, state);
@@ -272,16 +283,21 @@ async function pollOnce() {
         const updates = await apiCall('getUpdates', {
             offset: lastUpdateId + 1,
             timeout: LONG_POLL_TIMEOUT,
-            allowed_updates: ['message']
+            allowed_updates: ['message', 'callback_query']
         }, (LONG_POLL_TIMEOUT + 10) * 1000);
 
         for (const upd of updates || []) {
             lastUpdateId = Math.max(lastUpdateId, upd.update_id);
-            const msg = upd.message;
-            if (!msg || !msg.text) continue;
-            handleMessage(msg.chat.id, msg.text, msg.from || {}).catch(err =>
-                console.error('[Telegram] Error manejando mensaje:', err.message)
-            );
+            if (upd.callback_query) {
+                const { handleTelegramCallback } = require('./gasCloseoutReopenTelegram.service');
+                handleTelegramCallback(upd.callback_query).catch(err =>
+                    console.error('[Telegram] Error en callback_query:', err.message)
+                );
+            } else if (upd.message && upd.message.text) {
+                handleMessage(upd.message.chat.id, upd.message.text, upd.message.from || {}).catch(err =>
+                    console.error('[Telegram] Error manejando mensaje:', err.message)
+                );
+            }
         }
     } catch (error) {
         if (!/Timeout/i.test(error.message)) {
@@ -326,6 +342,7 @@ async function setBotToken(newToken) {
 
 module.exports = {
     sendMessage,
+    apiCall,
     getMe,
     startBot,
     pollOnce,

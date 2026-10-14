@@ -932,6 +932,8 @@ router.patch('/gas-station/closeouts/:closeoutId/tank-readings/batch', validate(
 router.patch('/gas-station/closeouts/:closeoutId/tank-readings/:id', validate(singleTankReadingUpdateSchema), gasCloseoutController.updateTankReading);
 router.post('/gas-station/closeouts/:id/close', gasCloseoutController.closeCloseout);
 router.post('/gas-station/closeouts/:id/reopen', checkPermission('manage_gas_closeout_reopen'), gasCloseoutController.reopenCloseout);
+router.post('/gas-station/closeouts/:id/request-reopen', gasCloseoutController.requestReopen);
+router.get('/gas-station/closeouts/:id/reopen-status', gasCloseoutController.getReopenStatus);
 router.patch('/gas-station/closeouts/:id/fecha-turno', validate(closeoutFechaTurnoSchema), gasCloseoutController.updateCloseoutFechaTurno);
 router.delete('/gas-station/closeouts/:id', gasCloseoutController.deleteCloseout);
 router.put('/gas-station/closeouts/:id/despachadores', gasCloseoutController.updateCloseoutDespachadores);
