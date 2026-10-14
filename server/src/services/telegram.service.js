@@ -19,6 +19,28 @@ let botInfoCache = null;
 let pollIntervalId = null;
 const chatStates = new Map(); // chat_id -> { step, companyId, branchId, companies, branches, ... }
 
+let isBotActive = true;
+let lastActiveCheck = 0;
+
+async function checkIsActive() {
+    if (process.env.NODE_ENV !== 'production' && process.env.TELEGRAM_DEV_POLLING === 'true') {
+        return true;
+    }
+    const now = Date.now();
+    if (now - lastActiveCheck < 10000) return isBotActive;
+    lastActiveCheck = now;
+    try {
+        const [rows] = await pool.query('SELECT is_active, bot_token FROM telegram_settings ORDER BY id DESC LIMIT 1');
+        if (rows.length > 0) {
+            isBotActive = rows[0].is_active === 1;
+            if (rows[0].bot_token) memoryBotToken = rows[0].bot_token;
+        }
+    } catch {
+        // Table might not exist yet
+    }
+    return isBotActive;
+}
+
 async function getBotToken() {
     if (memoryBotToken) return memoryBotToken;
     try {
@@ -241,6 +263,8 @@ async function handleMessage(chatId, text, from) {
 // ============ Long polling ============
 
 async function pollOnce() {
+    const active = await checkIsActive();
+    if (!active) return;
     const token = await getBotToken();
     if (!token || botRunning) return;
     botRunning = true;
@@ -269,10 +293,19 @@ async function pollOnce() {
 }
 
 async function startBot() {
+    // Si no estamos en producción y no se forzó el polling local, desactivar para no colisionar con el servidor VPS
+    if (process.env.NODE_ENV !== 'production' && process.env.TELEGRAM_DEV_POLLING !== 'true') {
+        console.log('[Telegram] Polling desactivado en entorno local para evitar colisión con el servidor VPS (usar TELEGRAM_DEV_POLLING=true en .env si se desea probar en local).');
+        return;
+    }
     const token = await getBotToken();
     if (!token) {
         console.warn('[Telegram] TELEGRAM_BOT_TOKEN no configurado — bot desactivado.');
         return;
+    }
+    const active = await checkIsActive();
+    if (!active) {
+        console.log('[Telegram] Bot en espera: is_active = 0 en telegram_settings.');
     }
     console.log('[Telegram] Bot iniciado (long polling).');
     await getMe(true);
