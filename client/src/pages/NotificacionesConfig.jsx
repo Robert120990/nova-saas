@@ -71,6 +71,15 @@ const NotificacionesConfig = () => {
     onError: (err) => toast.error(err.response?.data?.message || 'Error al actualizar'),
   });
 
+  const updateBindingBranchMutation = useMutation({
+    mutationFn: ({ id, branch_id }) => axios.put(`/api/notifications/telegram/bindings/${id}`, { branch_id }),
+    onSuccess: () => {
+      queryClient.invalidateQueries(['telegram-status']);
+      toast.success('Sucursal vinculada actualizada');
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Error al actualizar sucursal'),
+  });
+
   const [tokenInput, setTokenInput] = useState('');
   const [showTokenInput, setShowTokenInput] = useState(false);
 
@@ -89,6 +98,21 @@ const NotificacionesConfig = () => {
     mutationFn: () => axios.post('/api/notifications/telegram/test', {}),
     onSuccess: () => toast.success('Mensaje de prueba enviado. Revisa tu Telegram.'),
     onError: (err) => toast.error(err.response?.data?.message || 'Error al enviar prueba'),
+  });
+
+  const toggleDailyBriefingMutation = useMutation({
+    mutationFn: (active) => axios.put('/api/notifications/telegram/daily-briefing', { active }),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries(['telegram-status']);
+      toast.success(res.data?.message || 'Configuración actualizada');
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Error al actualizar configuración'),
+  });
+
+  const testDailyBriefingMutation = useMutation({
+    mutationFn: () => axios.post('/api/notifications/telegram/daily-briefing/test'),
+    onSuccess: (res) => toast.success(res.data?.message || 'Reporte matutino de prueba enviado a Telegram'),
+    onError: (err) => toast.error(err.response?.data?.message || 'Error al enviar reporte de prueba'),
   });
 
   const { data: suspiciousSettings } = useQuery({
@@ -309,7 +333,23 @@ const NotificacionesConfig = () => {
                           {b.username && <span className="text-slate-400"> @{b.username}</span>}
                           <span className="block text-[9px] text-slate-400 font-mono">chat {b.chat_id}</span>
                         </td>
-                        <td className="px-2 py-1.5 text-slate-600">{b.branch_nombre}</td>
+                        <td className="px-2 py-1.5">
+                          <select
+                            value={b.branch_id || 'all'}
+                            onChange={(e) => updateBindingBranchMutation.mutate({ id: b.id, branch_id: e.target.value })}
+                            className={`px-2 py-1 border rounded-lg text-[11px] font-bold outline-none cursor-pointer transition-colors ${
+                              !b.branch_id
+                                ? 'bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100'
+                                : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                            }`}
+                            title="Selecciona la sucursal de vinculación del chat o acceso global a todas"
+                          >
+                            <option value="all">🌐 Todas las sucursales (Acceso Global)</option>
+                            {branches.map(br => (
+                              <option key={br.id} value={br.id}>{br.nombre}</option>
+                            ))}
+                          </select>
+                        </td>
                         <td className="px-2 py-1.5 text-right">
                           <button
                             onClick={() => toggleAlertasMutation.mutate({ id: b.id, receive_alerts: !b.receive_alerts })}
@@ -324,6 +364,46 @@ const NotificacionesConfig = () => {
                   </tbody>
                 </table>
               </div>
+
+              {/* Reporte Matutino Diario */}
+              <div className="mt-3 pt-3 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-gradient-to-r from-amber-50/50 to-orange-50/30 p-3.5 rounded-xl border border-amber-200/60">
+                <div className="space-y-0.5">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs font-bold text-slate-800">🌅 Reporte Matutino Diario (7:00 AM)</span>
+                    <span className="text-[9px] font-bold px-2 py-0.5 rounded-full text-indigo-700 bg-indigo-100">
+                      🌐 Global (Todas las Empresas)
+                    </span>
+                    <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${telegramStatus?.dailyBriefingActive ? 'text-emerald-700 bg-emerald-100' : 'text-slate-500 bg-slate-200'}`}>
+                      {telegramStatus?.dailyBriefingActive ? 'Activo' : 'Desactivado'}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 leading-relaxed">
+                    Ajuste global: no depende de la sucursal seleccionada a la izquierda. Al estar activo, envía a las 7:00 AM el resumen de todas las empresas del grupo (Diesel, Regular, Súper, Ion Diesel, subtotal pista, tienda y consolidado general) a los chats con alertas activas.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                  <button
+                    type="button"
+                    onClick={() => testDailyBriefingMutation.mutate()}
+                    disabled={!telegramStatus?.configured || testDailyBriefingMutation.isPending}
+                    className="flex items-center gap-1.5 text-[11px] font-bold text-indigo-700 hover:text-indigo-800 bg-white hover:bg-indigo-50 border border-indigo-200 px-3 py-1.5 rounded-lg shadow-sm transition-colors disabled:opacity-40"
+                    title="Enviar reporte de prueba con datos del día anterior a Telegram"
+                  >
+                    <Send size={12} />
+                    {testDailyBriefingMutation.isPending ? 'Enviando...' : 'Probar Reporte'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => toggleDailyBriefingMutation.mutate(!telegramStatus?.dailyBriefingActive)}
+                    disabled={toggleDailyBriefingMutation.isPending}
+                    className={`relative w-10 h-5 rounded-full transition-colors ${telegramStatus?.dailyBriefingActive ? 'bg-emerald-500' : 'bg-slate-300'}`}
+                    title={telegramStatus?.dailyBriefingActive ? 'Desactivar reporte matutino' : 'Activar reporte matutino'}
+                  >
+                    <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-all ${telegramStatus?.dailyBriefingActive ? 'left-[22px]' : 'left-0.5'}`} />
+                  </button>
+                </div>
+              </div>
+
               <div className="flex justify-end">
                 <button
                   onClick={() => testTelegramMutation.mutate()}

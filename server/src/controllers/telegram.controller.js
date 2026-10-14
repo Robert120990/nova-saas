@@ -1,5 +1,6 @@
 const pool = require('../config/db');
 const telegramService = require('../services/telegram.service');
+const telegramDailyBriefingService = require('../services/telegramDailyBriefing.service');
 
 /**
  * Configuración de Telegram y ventas sospechosas (panel de Notificaciones)
@@ -9,21 +10,26 @@ const getStatus = async (req, res) => {
     try {
         const [bindings] = await pool.query(
             `SELECT b.id, b.chat_id, b.company_id, b.branch_id, b.nombre, b.username, b.receive_alerts,
-                    c.razon_social as company_nombre, br.nombre as branch_nombre
+                    COALESCE(c.razon_social, 'Todas las Empresas') as company_nombre,
+                    COALESCE(br.nombre, 'Todas las sucursales (Global)') as branch_nombre
              FROM telegram_chat_bindings b
-             JOIN companies c ON c.id = b.company_id
-             JOIN branches br ON br.id = b.branch_id
-             WHERE b.company_id = ?
+             LEFT JOIN companies c ON c.id = b.company_id
+             LEFT JOIN branches br ON br.id = b.branch_id
+             WHERE b.company_id = ? OR b.branch_id IS NULL
              ORDER BY b.created_at DESC`,
             [req.company_id]
         );
         const token = await telegramService.getBotToken();
         const botInfo = await telegramService.getMe();
+        const [settingsRows] = await pool.query('SELECT daily_briefing_active FROM telegram_settings WHERE id = 1');
+        const dailyBriefingActive = settingsRows.length > 0 ? (settingsRows[0].daily_briefing_active !== 0) : true;
+
         res.json({
             configured: !!token,
             maskedToken: token ? `${token.slice(0, 6)}...${token.slice(-4)}` : '',
             botInfo,
-            bindings
+            bindings,
+            dailyBriefingActive
         });
     } catch (error) {
         console.error('Error getTelegramStatus:', error);
@@ -61,17 +67,27 @@ const saveBotToken = async (req, res) => {
 const updateBinding = async (req, res) => {
     try {
         const { id } = req.params;
-        const { receive_alerts } = req.body;
+        const { receive_alerts, branch_id } = req.body;
+        const updates = [];
+        const params = [];
+        if (receive_alerts !== undefined) {
+            updates.push('receive_alerts = ?');
+            params.push(receive_alerts ? 1 : 0);
+        }
+        if (branch_id !== undefined) {
+            updates.push('branch_id = ?');
+            params.push(branch_id === 'all' || branch_id === null || branch_id === '' ? null : parseInt(branch_id, 10));
+        }
+        if (updates.length === 0) return res.json({ message: 'Sin cambios' });
+        params.push(id);
         const [result] = await pool.query(
-            `UPDATE telegram_chat_bindings
-             SET receive_alerts = ?
-             WHERE id = ? AND company_id = ?`,
-            [receive_alerts ? 1 : 0, id, req.company_id]
+            `UPDATE telegram_chat_bindings SET ${updates.join(', ')} WHERE id = ?`,
+            params
         );
         if (result.affectedRows === 0) {
             return res.status(404).json({ message: 'Vinculación no encontrada' });
         }
-        res.json({ message: 'Preferencia de alertas actualizada' });
+        res.json({ message: 'Vinculación actualizada' });
     } catch (error) {
         console.error('Error updateBinding:', error);
         res.status(500).json({ message: 'Error al actualizar la vinculación' });
@@ -169,11 +185,43 @@ const saveSuspiciousSettings = async (req, res) => {
     }
 };
 
+const updateDailyBriefingSetting = async (req, res) => {
+    try {
+        const { active } = req.body;
+        const val = active ? 1 : 0;
+        await pool.query(`
+            INSERT INTO telegram_settings (id, daily_briefing_active)
+            VALUES (1, ?)
+            ON DUPLICATE KEY UPDATE daily_briefing_active = VALUES(daily_briefing_active)
+        `, [val]);
+        res.json({ success: true, message: `Reporte diario matutino ${val ? 'activado' : 'desactivado'}` });
+    } catch (error) {
+        console.error('Error updateDailyBriefingSetting:', error);
+        res.status(500).json({ message: 'Error al actualizar configuración del reporte diario' });
+    }
+};
+
+const testDailyBriefing = async (req, res) => {
+    try {
+        const result = await telegramDailyBriefingService.sendAllDailyBriefings({ manual: true });
+        if (result.success) {
+            res.json({ success: true, message: result.message || 'Reporte de prueba enviado exitosamente a Telegram' });
+        } else {
+            res.status(400).json({ success: false, message: result.message || 'No se pudo enviar el reporte' });
+        }
+    } catch (error) {
+        console.error('Error testDailyBriefing:', error);
+        res.status(500).json({ message: `Error al enviar reporte de prueba: ${error.message}` });
+    }
+};
+
 module.exports = {
     getStatus,
     saveBotToken,
     updateBinding,
     testConnection,
     getSuspiciousSettings,
-    saveSuspiciousSettings
+    saveSuspiciousSettings,
+    updateDailyBriefingSetting,
+    testDailyBriefing
 };

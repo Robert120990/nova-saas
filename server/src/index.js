@@ -178,6 +178,7 @@ const http = require('http');
 const { initWebSocket, setAppVersion } = require('./services/websocket.service');
 const { startWorker } = require('./services/notificationWorker');
 const { startBot: startTelegramBot } = require('./services/telegram.service');
+const { startDailyBriefingCron } = require('./services/telegramDailyBriefing.service');
 const { startSuspiciousSalesDetector } = require('./services/suspiciousSalesDetector');
 const { startRrsAutoSyncCron } = require('./services/rrsVentasTiendaAutoSync.service');
 const { startEnergyAutoSyncCron } = require('./services/energySystem.service');
@@ -229,6 +230,7 @@ startWorker();
 server.listen(PORT, () => {
     console.log(`Servidor SaaS corriendo en puerto ${PORT}`);
     startTelegramBot();
+    startDailyBriefingCron();
     startSuspiciousSalesDetector();
     startRrsAutoSyncCron();
     startEnergyAutoSyncCron();

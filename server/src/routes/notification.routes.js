@@ -18,6 +18,8 @@ router.get('/telegram/status', telegramController.getStatus);
 router.post('/telegram/token', telegramController.saveBotToken);
 router.put('/telegram/bindings/:id', telegramController.updateBinding);
 router.post('/telegram/test', telegramController.testConnection);
+router.put('/telegram/daily-briefing', telegramController.updateDailyBriefingSetting);
+router.post('/telegram/daily-briefing/test', telegramController.testDailyBriefing);
 router.get('/sale-suspicious-settings', telegramController.getSuspiciousSettings);
 router.put('/sale-suspicious-settings', telegramController.saveSuspiciousSettings);
 
