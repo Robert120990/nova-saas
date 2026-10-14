@@ -39,7 +39,17 @@ function calculateItem(item, tipoDte = '01', ivaRate = 13) {
 
     let netPrice, netDiscount, ventaGravada, iva;
 
-    if (tipoDte === '01') {
+    const isExento = Boolean(item.exento || item.tipoItem === 2);
+    const isNoSujeto = Boolean(item.no_sujeto || item.tipoItem === 3);
+
+    if (isExento || isNoSujeto) {
+        // En ítems o ventas exentas / no sujetas, el precio recibido ya es el valor neto exento
+        // (no incluye IVA ni gravámenes de combustible que ya fueron neteados en el terminal).
+        netPrice = priceInput;
+        netDiscount = discountInput;
+        ventaGravada = round(Math.max(0, (netPrice * quantity) - netDiscount));
+        iva = 0;
+    } else if (tipoDte === '01') {
         // MODO FACTURA: Valores Inclusive
         netPrice = priceInput;
         netDiscount = discountInput;
@@ -67,19 +77,22 @@ function calculateItem(item, tipoDte = '01', ivaRate = 13) {
         iva = isGravado ? round(baseConIVA - ventaGravada) : 0;
     }
 
-    const isExento = Boolean(item.exento || item.tipoItem === 2);
-    const isNoSujeto = Boolean(item.no_sujeto || item.tipoItem === 3);
+    const ventaExentaFinal = isExento ? ventaGravada : 0;
+    const ventaNoSujFinal = isNoSujeto ? ventaGravada : 0;
+    const ventaGravadaFinal = (!isExento && !isNoSujeto) ? ventaGravada : 0;
 
     return {
         ...item,
         precioUnitarioOriginal: priceInput,
         precioUnitario: netPrice,
         montoDescu: netDiscount,
-        ventaNoSuj: isNoSujeto ? ventaGravada : 0,
-        ventaExenta: isExento ? ventaGravada : 0,
-        ventaGravada: (!isExento && !isNoSujeto) ? ventaGravada : 0,
+        ventaNoSuj: ventaNoSujFinal,
+        ventaExenta: ventaExentaFinal,
+        ventaGravada: ventaGravadaFinal,
         ivaItem: iva,
-        totalItemInclusive: tipoDte === '01' ? ventaGravada : round(ventaGravada + iva + fovial + cotrans)
+        totalItemInclusive: tipoDte === '01' 
+            ? round(ventaGravadaFinal + ventaExentaFinal + ventaNoSujFinal + fovial + cotrans) 
+            : round(ventaGravadaFinal + ventaExentaFinal + ventaNoSujFinal + iva + fovial + cotrans)
     };
 }
 

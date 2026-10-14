@@ -582,7 +582,7 @@ const SalesHistory = () => {
                         ${branchAddr ? `<div class="center" style="font-size: 8px;">${branchAddr}</div>` : ''}
                         <div class="center" style="font-size: 9px;">${companyNit ? `NIT: ${companyNit}` : ''} ${companyNrc ? `| NRC: ${companyNrc}` : ''}</div>
                         <div class="dashed"></div>
-                        <div class="flex-between"><span>TIPO DTE:</span><span>${detail.tipo_documento_name || 'FACTURA'}</span></div>
+                        <div class="flex-between"><span>TIPO DTE:</span><span>${detail.tipo_documento_name || (detail.tipo_documento === '03' ? 'Crédito Fiscal' : detail.tipo_documento === '01' ? 'Factura' : detail.tipo_documento === '04' ? 'Nota de Remisión' : detail.tipo_documento === '05' ? 'Nota de Crédito' : detail.tipo_documento === '07' ? 'C. Retención' : detail.tipo_documento === '11' ? 'Factura de Exportación' : 'FACTURA')}</span></div>
                         <div class="flex-between"><span>N° CONTROL:</span><span style="font-size: 9px;">${detail.numero_control || '---'}</span></div>
                         <div class="flex-between"><span>CÓDIGO GENERACIÓN:</span><span style="font-size: 7px;">${detail.codigo_generacion || '---'}</span></div>
                         ${detail.sello_recepcion ? `<div class="flex-between"><span>SELLO:</span><span style="font-size: 7px;">${detail.sello_recepcion}</span></div>` : ''}

@@ -810,6 +810,16 @@ const getSaleById = async (req, res) => {
             comp.razon_social as company_razon_social, comp.nombre_comercial as company_nombre_comercial,
             comp.nit as company_nit, comp.nrc as company_nrc,
             b.direccion as branch_address,
+            CASE h.tipo_documento 
+                WHEN '01' THEN 'Factura'
+                WHEN '03' THEN 'Crédito Fiscal'
+                WHEN '04' THEN 'Nota de Remisión'
+                WHEN '05' THEN 'Nota de Crédito'
+                WHEN '07' THEN 'C. Retención'
+                WHEN '11' THEN 'Factura de Exportación'
+                WHEN '14' THEN 'Factura Sujeto Excluido'
+                ELSE h.tipo_documento 
+            END as tipo_documento_name,
             COALESCE(d_c.status, d_v.status) as dte_status, COALESCE(d_c.respuesta_hacienda, d_v.respuesta_hacienda) as respuesta_hacienda, COALESCE(d_c.respuesta_hacienda, d_v.respuesta_hacienda) as dte_error, COALESCE(d_c.json_original, d_v.json_original) as json_original, COALESCE(d_c.json_firmado, d_v.json_firmado) as json_firmado, COALESCE(d_c.sello_recepcion, d_v.sello_recepcion) as sello_recepcion, COALESCE(d_c.fh_procesamiento, d_v.fh_procesamiento) as fh_procesamiento
             FROM sales_headers h
             LEFT JOIN customers c ON h.customer_id = c.id
