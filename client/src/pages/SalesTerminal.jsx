@@ -1924,9 +1924,48 @@ const SalesTerminal = () => {
                 venta_exenta: 0,
                 tributos: []
             })) : cart.map((item, idx) => {
-                const itemFovial = item.tipo_combustible > 0 ? Math.round(item.cantidad * parseFloat(taxSettings?.fovial_rate || 0.20) * 100) / 100 : 0;
-                const itemCotrans = item.tipo_combustible > 0 ? Math.round(item.cantidad * parseFloat(taxSettings?.cotrans_rate || 0.10) * 100) / 100 : 0;
+                const isCustomerExento = Boolean(
+                    selectedCustomerData?.exento_iva === 1 ||
+                    selectedCustomerData?.exento_iva === true ||
+                    selectedCustomerData?.condicion_fiscal === 'exento IVA'
+                );
+                const appliesFovial = selectedCustomerData ? (selectedCustomerData.aplica_fovial !== 0 && selectedCustomerData.aplica_fovial !== false) : true;
+                const appliesCotrans = selectedCustomerData ? (selectedCustomerData.aplica_cotrans !== 0 && selectedCustomerData.aplica_cotrans !== false) : true;
+                const ivaRate = parseFloat(taxSettings?.iva_rate || 13) / 100;
+                const isItemExento = Boolean(item.exento || isCustomerExento);
+
+                const itemFovial = (item.tipo_combustible > 0 && appliesFovial) ? Math.round(item.cantidad * parseFloat(taxSettings?.fovial_rate || 0.20) * 100) / 100 : 0;
+                const itemCotrans = (item.tipo_combustible > 0 && appliesCotrans) ? Math.round(item.cantidad * parseFloat(taxSettings?.cotrans_rate || 0.10) * 100) / 100 : 0;
                 const subtotal = (item.precio * item.cantidad) - item.descuento;
+
+                let itemVentaGravada = 0;
+                let itemVentaExenta = 0;
+                let itemPrecioUnitario = item.precio;
+
+                if (tipoDte === '11') {
+                    itemVentaGravada = subtotal / (1 + ivaRate);
+                    itemVentaExenta = 0;
+                } else if (isItemExento) {
+                    itemVentaGravada = 0;
+                    if (item.tipo_combustible > 0) {
+                        const baseSinFuel = Math.max(0, subtotal - itemFovial - itemCotrans);
+                        itemVentaExenta = Math.round((baseSinFuel / (1 + ivaRate)) * 100) / 100;
+                        const unitFuelTaxes = item.cantidad > 0 ? (itemFovial + itemCotrans) / item.cantidad : 0;
+                        itemPrecioUnitario = Math.round(((item.precio - unitFuelTaxes) / (1 + ivaRate)) * 1000000) / 1000000;
+                    } else {
+                        itemVentaExenta = Math.round((subtotal / (1 + ivaRate)) * 100) / 100;
+                        itemPrecioUnitario = Math.round((item.precio / (1 + ivaRate)) * 1000000) / 1000000;
+                    }
+                } else if (!item.no_sujeto) {
+                    itemVentaGravada = subtotal - itemFovial - itemCotrans;
+                    itemVentaExenta = 0;
+                }
+
+                const fuelTributos = [];
+                if (item.tipo_combustible > 0 && tipoDte !== '04') {
+                    if (appliesFovial && itemFovial > 0) fuelTributos.push({ codigo: "D1", descripcion: "FOVIAL", valor: itemFovial });
+                    if (appliesCotrans && itemCotrans > 0) fuelTributos.push({ codigo: "C8", descripcion: "COTRANS", valor: itemCotrans });
+                }
                 
                 return {
                     num_item: idx + 1,
@@ -1934,14 +1973,12 @@ const SalesTerminal = () => {
                     codigo: item.codigo || null,
                     descripcion: item.nombre,
                     cantidad: item.cantidad,
-                    precio_unitario: item.precio,
+                    precio_unitario: itemPrecioUnitario,
                     monto_descuento: item.descuento,
-                    venta_gravada: (tipoDte === '11') ? (subtotal / (1 + parseFloat(taxSettings?.iva_rate || 13) / 100)) : (!item.exento && !item.no_sujeto ? (subtotal - itemFovial - itemCotrans) : 0),
-                    venta_exenta: (tipoDte === '11') ? 0 : (item.exento ? subtotal : 0),
-                    tributos: (item.tipo_combustible > 0 && tipoDte !== '04') ? [
-                        { codigo: "D1", descripcion: "FOVIAL", valor: itemFovial },
-                        { codigo: "C8", descripcion: "COTRANS", valor: itemCotrans }
-                    ] : [],
+                    venta_gravada: itemVentaGravada,
+                    venta_exenta: itemVentaExenta,
+                    tributos: fuelTributos,
+                    exento: isItemExento,
                     referencedDoc: (tipoDte === '05' && linkedDocs.length > 0) ? linkedDocs[0].doc_number : (item.referencedDoc || null)
                 };
             }),
@@ -1971,6 +2008,15 @@ const SalesTerminal = () => {
         let cotrans = 0;
         let totalItemDiscounts = 0;
 
+        const isCustomerExento = Boolean(
+            selectedCustomerData?.exento_iva === 1 ||
+            selectedCustomerData?.exento_iva === true ||
+            selectedCustomerData?.condicion_fiscal === 'exento IVA'
+        );
+        const appliesFovial = selectedCustomerData ? (selectedCustomerData.aplica_fovial !== 0 && selectedCustomerData.aplica_fovial !== false) : true;
+        const appliesCotrans = selectedCustomerData ? (selectedCustomerData.aplica_cotrans !== 0 && selectedCustomerData.aplica_cotrans !== false) : true;
+        const ivaRate = parseFloat(taxSettings?.iva_rate || 13) / 100;
+
         cart.forEach(item => {
             const price = parseFloat(item.precio) || 0;
             const qty = parseFloat(item.cantidad) || 0;
@@ -1978,17 +2024,30 @@ const SalesTerminal = () => {
             totalItemDiscounts += disc;
             const subtotal = (price * qty) - disc;
 
-            if (item.exento) exento += subtotal;
-            else if (item.no_sujeto) noSujeto += subtotal;
-            else if (tipoDte === '11') {
-                const ivaRate = parseFloat(taxSettings?.iva_rate || 13) / 100;
+            const isItemExento = Boolean(item.exento || isCustomerExento);
+
+            if (item.no_sujeto) {
+                noSujeto += subtotal;
+            } else if (isItemExento) {
+                if (item.tipo_combustible > 0 && tipoDte !== '04') {
+                    const itemFovial = appliesFovial ? Math.round(qty * parseFloat(taxSettings?.fovial_rate || 0.20) * 100) / 100 : 0;
+                    const itemCotrans = appliesCotrans ? Math.round(qty * parseFloat(taxSettings?.cotrans_rate || 0.10) * 100) / 100 : 0;
+                    fovial += itemFovial;
+                    cotrans += itemCotrans;
+                    const fuelBaseConIva = Math.max(0, subtotal - itemFovial - itemCotrans);
+                    const fuelBaseSinIva = Math.round((fuelBaseConIva / (1 + ivaRate)) * 100) / 100;
+                    exento += fuelBaseSinIva;
+                } else {
+                    const netSubtotal = Math.round((subtotal / (1 + ivaRate)) * 100) / 100;
+                    exento += netSubtotal;
+                }
+            } else if (tipoDte === '11') {
                 gravadoBruto += subtotal / (1 + ivaRate);
-            }
-            else {
+            } else {
                 // FOVIAL/COTRANS only for non-Remission notes
                 if (item.tipo_combustible > 0 && tipoDte !== '04') {
-                    const itemFovial = Math.round(qty * parseFloat(taxSettings?.fovial_rate || 0.20) * 100) / 100;
-                    const itemCotrans = Math.round(qty * parseFloat(taxSettings?.cotrans_rate || 0.10) * 100) / 100;
+                    const itemFovial = appliesFovial ? Math.round(qty * parseFloat(taxSettings?.fovial_rate || 0.20) * 100) / 100 : 0;
+                    const itemCotrans = appliesCotrans ? Math.round(qty * parseFloat(taxSettings?.cotrans_rate || 0.10) * 100) / 100 : 0;
                     fovial += itemFovial;
                     cotrans += itemCotrans;
                     gravadoBruto += (subtotal - itemFovial - itemCotrans);
@@ -1998,7 +2057,6 @@ const SalesTerminal = () => {
             }
         });
 
-        const ivaRate = parseFloat(taxSettings?.iva_rate || 13) / 100;
         // Aplicar descuento general exclusivamente a operaciones gravadas (sin tocar combustibles ni exentos/no sujetos)
         const safeGeneralDiscount = Math.min(generalDiscount, Math.max(0, gravadoBruto));
 

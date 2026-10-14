@@ -46,8 +46,8 @@ async function generateDTEPDF(dteData, stream) {
         doc.text(item.cantidad.toString(), 50, y);
         doc.text(item.descripcion, 100, y, { width: 240 });
         doc.text((item.precioUni ?? item.precioUnitario).toFixed(4), 350, y, { width: 50, align: 'right' });
-        doc.text(item.ivaItem.toFixed(2), 410, y, { width: 50, align: 'right' });
-        doc.text((item.ventaGravada || item.ventaExenta || item.ventaNoSuj).toFixed(2), 480, y, { width: 50, align: 'right' });
+        doc.text((item.ivaItem != null ? item.ivaItem : 0).toFixed(2), 410, y, { width: 50, align: 'right' });
+        doc.text(((item.ventaGravada ?? 0) || (item.ventaExenta ?? 0) || (item.ventaNoSuj ?? 0) || 0).toFixed(2), 480, y, { width: 50, align: 'right' });
         y += 20;
     });
 
@@ -56,12 +56,17 @@ async function generateDTEPDF(dteData, stream) {
 
     // Totals
     doc.text('SUBTOTAL:', 400, y);
-    doc.text(resumen.subTotal.toFixed(2), 480, y, { align: 'right' });
+    doc.text((resumen.subTotal ?? resumen.subTotalVentas ?? 0).toFixed(2), 480, y, { align: 'right' });
     y += 15;
     if (resumen.totalDescu > 0) {
         doc.fillColor('#b91c1c').text('(-) DESCUENTO:', 400, y);
         doc.text(`-$${resumen.totalDescu.toFixed(2)}`, 480, y, { align: 'right' });
         doc.fillColor('#000000');
+        y += 15;
+    }
+    if ((resumen.totalExenta || 0) > 0) {
+        doc.text('VENTAS EXENTAS:', 400, y);
+        doc.text(resumen.totalExenta.toFixed(2), 480, y, { align: 'right' });
         y += 15;
     }
     const isConsumidorFinal = identificacion.tipoDte === '01' || identificacion.tipoDte === 1;

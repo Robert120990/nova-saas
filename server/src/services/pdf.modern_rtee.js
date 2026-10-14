@@ -683,7 +683,14 @@ const generateRTEEModern = (data) => {
                         item.cantidad.toString() : 
                         Number(item.cantidad).toFixed(4).replace(/0+$/, '').replace(/\.$/, '');
 
-                    if (esConsumidorFinal && tieneImpuestosCombustible && isFuelItem(item)) {
+                    const isItemExempt = Boolean(
+                        item.exento ||
+                        item.tipoItem === 2 ||
+                        (parseFloat(item.ventaExenta) > 0) ||
+                        (parseFloat(venta.total_exento) > 0 && (parseFloat(venta.total_gravado) || 0) === 0)
+                    );
+
+                    if (!isItemExempt && esConsumidorFinal && tieneImpuestosCombustible && isFuelItem(item)) {
                         const cant = parseFloat(item.cantidad) || 0;
                         const fovialItem = Math.round(cant * 0.20 * 100) / 100;
                         const cotransItem = Math.round(cant * 0.10 * 100) / 100;
@@ -737,7 +744,9 @@ const generateRTEEModern = (data) => {
                 // 5. RESUMEN FINANCIERO Y CÓDIGO QR
                 // ==========================================
                 let gravadasDisplay = parseFloat(venta.total_gravado) || 0;
-                let sumaOperacionesDisplay = parseFloat(venta.subtotal_ventas) || gravadasDisplay;
+                const totalExentasNum = parseFloat(venta.total_exento) || 0;
+                const totalNoSujNum = parseFloat(venta.total_nosujetas) || 0;
+                let sumaOperacionesDisplay = parseFloat(venta.subtotal_ventas) || Math.round((gravadasDisplay + totalExentasNum + totalNoSujNum) * 100) / 100;
                 const descGeneral = parseFloat(venta.descuento_general) || (
                     parseFloat(venta.total_descuento) > 0 && !items.some(i => (parseFloat(i.montoDescuento) || 0) > 0)
                         ? parseFloat(venta.total_descuento)
@@ -755,13 +764,11 @@ const generateRTEEModern = (data) => {
 
                 if (esConsumidorFinal && tieneImpuestosCombustible) {
                     const totalPagarNum = parseFloat(venta.total_pagar) || 0;
-                    const totalExentoNum = parseFloat(venta.total_exento) || 0;
-                    const totalNoSujNum = parseFloat(venta.total_nosujetas) || 0;
-                    gravadasDisplay = Math.max(0, Math.round((totalPagarNum - fovialVenta - cotransVenta - totalExentoNum - totalNoSujNum) * 100) / 100);
+                    gravadasDisplay = Math.max(0, Math.round((totalPagarNum - fovialVenta - cotransVenta - totalExentasNum - totalNoSujNum) * 100) / 100);
                     const descNum = descGeneral > 0 ? descGeneral : (parseFloat(venta.total_descuento) || 0);
-                    sumaOperacionesDisplay = Math.round((gravadasDisplay + descNum) * 100) / 100;
+                    sumaOperacionesDisplay = Math.round((gravadasDisplay + totalExentasNum + totalNoSujNum + descNum) * 100) / 100;
                 } else if (descGeneral > 0) {
-                    sumaOperacionesDisplay = parseFloat(venta.subtotal_ventas) || Math.round((gravadasDisplay + (parseFloat(venta.total_exento) || 0) + (parseFloat(venta.total_nosujetas) || 0)) * 100) / 100;
+                    sumaOperacionesDisplay = parseFloat(venta.subtotal_ventas) || Math.round((gravadasDisplay + totalExentasNum + totalNoSujNum) * 100) / 100;
                     gravadasDisplay = Math.max(0, Math.round((gravadasDisplay - descGeneral) * 100) / 100);
                 }
 

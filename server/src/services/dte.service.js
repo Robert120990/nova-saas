@@ -123,6 +123,17 @@ class DteService {
                             const fallbackRef = (payload.header?.dte_type === '05' && payload.linkedDocuments && payload.linkedDocuments.length === 1)
                                 ? payload.linkedDocuments[0].doc_number
                                 : null;
+                            const isItemExento = Boolean(
+                                item.exento ||
+                                item.tipoItem === 2 ||
+                                item.tipo_item === 2 ||
+                                payload.customer?.exento_iva === 1 ||
+                                payload.customer?.exento_iva === true ||
+                                payload.customer?.condicion_fiscal === 'exento IVA'
+                            );
+                            const cleanTributos = (item.tributos && Array.isArray(item.tributos))
+                                ? item.tributos.filter(t => (typeof t === 'object' ? t.codigo : String(t)) !== '20')
+                                : [];
                             return {
                                 descripcion: item.descripcion || item.nombre,
                                 codigo: item.codigo,
@@ -133,12 +144,12 @@ class DteService {
                                     ? (item.referencedDoc || fallbackRef)
                                     : (item.referencedDoc || null),
                                 noGravado: parseFloat(item.noGravado || item.no_gravado || 0) || 0,
-                                // Preservar tributos específicos o usar IVA por defecto
+                                exento: isItemExento,
                                 tributos: payload.header.dte_type === '11' ? []
-                                    : (item.tributos && Array.isArray(item.tributos) && item.tributos.length > 0
-                                        ? item.tributos 
-                                        : (item.exento ? [] : ["20"])),
-                                tipoItem: payload.header.dte_type === '11' ? 1 : (item.exento ? 2 : 1) // 1: Gravado, 2: Exento
+                                    : (isItemExento
+                                        ? cleanTributos
+                                        : (item.tributos && Array.isArray(item.tributos) && item.tributos.length > 0 ? item.tributos : ["20"])),
+                                tipoItem: payload.header.dte_type === '11' ? 1 : (isItemExento ? 2 : 1) // 1: Gravado, 2: Exento
                             };
                         })),
                 totalNoGravado: parseFloat(payload.header?.totalNoGravado || payload.header?.total_no_gravado || payload.header?.tip_amount || payload.header?.propina || payload.totalNoGravado || payload.propina || 0) || 0,

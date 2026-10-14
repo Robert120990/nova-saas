@@ -616,7 +616,7 @@ async function generateDTE(payload) {
                 ? itemTributos
                 : ['C3'];
         } else if (tipoDte === '03' || tipoDte === '05' || tipoDte === '06') {
-            itemFinalTributos = itemTributos;
+            itemFinalTributos = (itemTributos && itemTributos.length > 0) ? itemTributos : null;
         } else if (tipoDte === '01') {
             // En Factura (01), los precios al consumidor final ya incluyen todos los tributos (IVA, FOVIAL, COTRANS).
             // cuerpoDocumento.tributos DEBE ser null porque resumen.tributos no lleva desglose de impuestos en Factura.
@@ -864,6 +864,7 @@ async function generateDTE(payload) {
             }
             base.saldoFavor = 0;
             base.numPagoElectronico = null;
+            base.tributos = (base.tributos && base.tributos.length > 0) ? base.tributos : null;
         } else if (type === '05' || type === '06') {
             base.totalIva = 0; // Hacienda valida totalIva = 0 cuando el IVA se desglosa en tributos (consistente con CCF)
             base.ivaPerci = 0;

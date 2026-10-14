@@ -481,15 +481,23 @@ const createSale = async (req, res) => {
         let dteInfo = {};
         let dteResult = null;
         if (company && company.dte_active) {
-            // Días de crédito del cliente (para operaciones a crédito, condición 2)
+            // Días de crédito y condición fiscal del cliente (para operaciones a crédito y exención de IVA)
             let diasCredito = 15;
+            let isCustomerExento = false;
+            let customerData = null;
             if (header.customer_id) {
-                const [custDias] = await connection.query(
-                    'SELECT dias_credito FROM customers WHERE id = ? AND company_id = ?',
+                const [custRows] = await connection.query(
+                    'SELECT dias_credito, exento_iva, condicion_fiscal, aplica_fovial, aplica_cotrans FROM customers WHERE id = ? AND company_id = ?',
                     [header.customer_id, req.company_id]
                 );
-                if (custDias.length > 0 && custDias[0].dias_credito != null) {
-                    diasCredito = parseInt(custDias[0].dias_credito) || 15;
+                if (custRows.length > 0) {
+                    customerData = custRows[0];
+                    if (customerData.dias_credito != null) {
+                        diasCredito = parseInt(customerData.dias_credito) || 15;
+                    }
+                    if (customerData.exento_iva === 1 || customerData.exento_iva === true || customerData.condicion_fiscal === 'exento IVA') {
+                        isCustomerExento = true;
+                    }
                 }
             }
 
@@ -498,10 +506,19 @@ const createSale = async (req, res) => {
 
             const dtePayload = {
                 ...req.body,
+                customer: {
+                    ...(req.body.customer || {}),
+                    ...(customerData ? {
+                        exento_iva: customerData.exento_iva,
+                        condicion_fiscal: customerData.condicion_fiscal
+                    } : {})
+                },
                 sale_id: saleId,
                 linkedDocuments: linkedDocuments,
                 items: (req.body.items || []).map(it => ({
                     ...it,
+                    exento: Boolean(it.exento || isCustomerExento),
+                    tipoItem: isCustomerExento ? 2 : (it.tipoItem || (it.exento ? 2 : 1)),
                     referencedDoc: (header.dte_type === '05' && linkedDocuments && linkedDocuments.length === 1)
                         ? linkedDocuments[0].doc_number
                         : (it.referencedDoc || null)

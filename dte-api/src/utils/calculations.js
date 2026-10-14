@@ -44,7 +44,8 @@ function calculateItem(item, tipoDte = '01', ivaRate = 13) {
         netPrice = priceInput;
         netDiscount = discountInput;
         ventaGravada = round(Math.max(0, (netPrice * quantity) - netDiscount));
-        iva = round6((ventaGravada * ivaRate) / (100 + ivaRate));
+        const isGravado = !item.exento && item.tipoItem !== 2 && item.tipoItem !== 3;
+        iva = isGravado ? round6((ventaGravada * ivaRate) / (100 + ivaRate)) : 0;
     } else if (tipoDte === '11') {
         // MODO EXPORTACIÓN: No lleva IVA, extraer el neto del precio inclusive
         netPrice = round6(priceInput / divisor);
@@ -66,14 +67,17 @@ function calculateItem(item, tipoDte = '01', ivaRate = 13) {
         iva = isGravado ? round(baseConIVA - ventaGravada) : 0;
     }
 
+    const isExento = Boolean(item.exento || item.tipoItem === 2);
+    const isNoSujeto = Boolean(item.no_sujeto || item.tipoItem === 3);
+
     return {
         ...item,
         precioUnitarioOriginal: priceInput,
         precioUnitario: netPrice,
         montoDescu: netDiscount,
-        ventaNoSuj: item.tipoItem === 3 ? ventaGravada : 0,
-        ventaExenta: item.tipoItem === 2 ? ventaGravada : 0,
-        ventaGravada: item.tipoItem === 1 ? ventaGravada : 0,
+        ventaNoSuj: isNoSujeto ? ventaGravada : 0,
+        ventaExenta: isExento ? ventaGravada : 0,
+        ventaGravada: (!isExento && !isNoSujeto) ? ventaGravada : 0,
         ivaItem: iva,
         totalItemInclusive: tipoDte === '01' ? ventaGravada : round(ventaGravada + iva + fovial + cotrans)
     };
