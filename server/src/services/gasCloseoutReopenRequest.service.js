@@ -68,19 +68,21 @@ async function createReopenRequest({ closeoutId, companyId, branchId, userId, us
     const branchName = brRows[0]?.nombre || 'Sucursal';
     const fechaText = formatDateSV(closeout.fecha_turno);
 
-    // Buscar chats de Telegram vinculados a esta empresa/sucursal
-    let [chats] = await pool.query(
-        `SELECT chat_id FROM telegram_chat_bindings
-         WHERE company_id = ? AND (branch_id = ? OR branch_id IS NULL) AND receive_alerts = 1`,
-        [companyId, closeout.branch_id || branchId]
-    );
+    // Buscar chats de Telegram autorizados para recibir solicitudes de reapertura
+    let chats = [];
+    const [settingsRows] = await pool.query('SELECT reopen_requests_active FROM telegram_settings WHERE id = 1');
+    const reopenActive = settingsRows.length > 0 ? (settingsRows[0].reopen_requests_active !== 0) : true;
 
-    if (chats.length === 0) {
-        const [fallbackChats] = await pool.query(
-            `SELECT chat_id FROM telegram_chat_bindings WHERE company_id = ?`,
-            [companyId]
+    if (reopenActive) {
+        const [activeChats] = await pool.query(
+            `SELECT DISTINCT chat_id FROM telegram_chat_bindings
+             WHERE (company_id = ? OR branch_id IS NULL)
+               AND (branch_id = ? OR branch_id IS NULL)
+               AND receive_alerts = 1
+               AND receive_reopen_requests = 1`,
+            [companyId, closeout.branch_id || branchId]
         );
-        chats = fallbackChats;
+        chats = activeChats;
     }
 
     const telegramText =
