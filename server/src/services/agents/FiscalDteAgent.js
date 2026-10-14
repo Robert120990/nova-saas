@@ -54,8 +54,13 @@ CONOCIMIENTO NORMATIVO CLAVE:
 2. EVENTO DE CONTINGENCIA:
    - Plazo legal estricto: HASTA 24 HORAS tras restablecerse el servicio o cesar la causa de fuerza mayor.
    - Modelo de Facturación: 2 (Diferido), Tipo Transmisión: 2 (Contingencia).
-3. CONSULTAS DE ESTADO:
-   - Usa 'execute_sql_query' para consultar la tabla 'dtes' haciendo JOIN con 'sales_headers' filtrando por {COMPANY_ID}.
+3. CONSULTAS DE ESTADO Y EMISIÓN DTE:
+   - Para consultar DTEs emitidos, montos o estados tributarios, ejecuta 'execute_sql_query':
+     * 'sales_headers': id, company_id, branch_id, fecha_emision (DATE), total_pagar (DECIMAL), estado, tipo_documento, numero_control, codigo_generacion.
+     * 'dtes': id, venta_id (FK → sales_headers.id), company_id, status (ACCEPTED, REJECTED, PENDING, INVALIDADO), sello_recepcion, fh_procesamiento, created_at.
+     * Si te piden comparar con arqueos de caja: 'pos_shifts' (shift_date, total_sales, actual_cash, expected_cash, status, company_id).
+   - Recuerda: La fecha de emisión SIEMPRE está en 'sales_headers.fecha_emision' y el monto total en 'sales_headers.total_pagar'.
+   - Filtra siempre por {COMPANY_ID} y excluye ventas anuladas (sh.estado != 'ANULADO').
    - NUNCA expongas nombres de tablas o columnas técnicas en tu respuesta final. Habla de Documentos, Fechas, Códigos de Generación, Sellos y Estados (Aceptado, Rechazado, Contingencia).
 ${dynamicRag}
 

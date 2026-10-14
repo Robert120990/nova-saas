@@ -100,12 +100,35 @@ class BaseAgent {
                     parsedArgs = {};
                 }
 
+                if (context?.onStepLog) {
+                    await context.onStepLog(
+                        this.code,
+                        'tool_call',
+                        `Ejecutando herramienta '${name}'...`,
+                        { toolName: name, args: parsedArgs }
+                    ).catch(() => {});
+                }
+
                 let executionResult;
                 try {
                     executionResult = await this.executeTool(name, parsedArgs, context);
                 } catch (toolError) {
                     console.error(`[${this.name}] Error executing tool '${name}':`, toolError.message);
                     executionResult = { error: toolError.message };
+                }
+
+                if (context?.onStepLog) {
+                    const rowCount = executionResult?.rowCount ?? (Array.isArray(executionResult) ? executionResult.length : null);
+                    await context.onStepLog(
+                        this.code,
+                        'tool_result',
+                        rowCount !== null
+                            ? `Herramienta '${name}' completada con ${rowCount} registros.`
+                            : (executionResult?.error
+                                ? `Herramienta '${name}' finalizó con advertencia: ${executionResult.error}`
+                                : `Herramienta '${name}' ejecutada exitosamente.`),
+                        { toolName: name, hasError: !!executionResult?.error }
+                    ).catch(() => {});
                 }
 
                 toolResults.push({

@@ -50,13 +50,13 @@ REGLAS DE ENCAMINAMIENTO (ROUTING):
 1. CONTABILIDAD Y PARTIDAS ('accounting'):
    - Peticiones para generar o revisar partidas de ventas, compras, cobranzas (cxc), pagos (cxp), ajustes, depreciaciones, cuentas de catálogo o principio de partida doble. Delega SIEMPRE a 'accounting'.
 2. FACTURACIÓN ELECTRÓNICA Y DTE ('dte'):
-   - Dudas de normativa SVFE, plazos de invalidación (10 días vs 3 meses), contingencia (24h), diagnósticos de rechazos de Hacienda o estados de DTEs. Delega a 'dte'.
+   - Dudas de normativa SVFE de El Salvador, plazos de anulación/invalidación (10 días hábiles vs 3 meses), eventos de contingencia (plazo de 24 horas), diagnósticos de rechazos de Hacienda o estados técnicos de transmisión de DTEs en tabla 'dtes'. Delega a 'dte'.
 3. VENTAS Y COMERCIAL ('sales'):
-   - Consultas de cifras de ventas, ticket promedio, ventas por producto/cliente, ventas sospechosas o clientes que deben dinero. Delega a 'sales'.
+   - Consultas de cifras de ventas, facturación, ticket promedio, arqueos de caja / turnos POS ('pos_shifts'), cuadros comparativos diarios entre arqueos y DTEs emitidos, ventas por producto/cliente o clientes con saldo. Delega SIEMPRE a 'sales'.
 4. INVENTARIO Y KARDEX ('inventory'):
    - Existencias de productos, stock bajo, productos estancados o valorización de inventario. Delega a 'inventory'.
 5. COMBUSTIBLES Y PISTA ('gas'):
-   - Niveles de tanques, galones de combustible, cierres de turno de gasolinera o bombas. Delega a 'gas'.
+   - Niveles físicos de tanques, galones de combustible, cierres de turno de pista de gasolinera ('gas_station_closeouts') o bombas. Delega a 'gas'.
 6. OPERACIONES Y ACCIONES ('operations'):
    - Confirmación o ejecución de tareas operativas delicadas.
 7. SALUD DEL SISTEMA Y SERVIDOR ('tech'):

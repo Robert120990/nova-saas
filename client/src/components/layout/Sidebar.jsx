@@ -98,6 +98,11 @@ const Sidebar = ({ onOpenSearch, isMobileOpen = false, onCloseMobile }) => {
                 return true;
             }
         }
+        if (item.permission === 'manage_ai_tasks') {
+            if (isAdminRole || permissions.includes('ai_assistant_access')) {
+                return true;
+            }
+        }
         return permissions.includes(item.permission);
     };
 

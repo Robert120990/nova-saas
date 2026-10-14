@@ -205,6 +205,9 @@ const CustomerAgreements = lazyWithRetry(() => import('./pages/CRM/CustomerAgree
 const CrmConfig = lazyWithRetry(() => import('./pages/CRM/CrmConfig'));
 const CrmQuotations = lazyWithRetry(() => import('./pages/CRM/CrmQuotations'));
 
+// AI Agent Background Tasks
+const AiAgentTasks = lazyWithRetry(() => import('./pages/AiAgentTasks'));
+
 import Layout from './components/layout/Layout';
 
 const queryClient = new QueryClient({
@@ -463,6 +466,9 @@ function App() {
                         <Route path="/crm/cotizaciones" element={<CrmQuotations />} />
                         <Route path="/crm/acuerdos" element={<CustomerAgreements />} />
                         <Route path="/crm/configuracion" element={<CrmConfig />} />
+
+                        {/* Tareas Agénticas Multi-Agente */}
+                        <Route path="/ai-tasks" element={<AiAgentTasks />} />
 
                         {/* Sistema Energético -> Redirigido a pestaña en Dashboard */}
                         <Route path="/sistema-energetico" element={<Navigate to="/dashboard?tab=energy" replace />} />

@@ -59,7 +59,7 @@ class AgentRegistry {
      */
     hasPermission(agentCode, user) {
         if (!user) return true; // Default fallback for Telegram bindings without user_id
-        if (user.role === 'SuperAdmin') return true;
+        if (user.role === 'SuperAdmin' || user.role === 'Admin' || user.is_system_task) return true;
 
         // Si el usuario viene de Telegram con allowed_agents configurados específicamente en su binding
         if (Array.isArray(user.allowed_agents)) {

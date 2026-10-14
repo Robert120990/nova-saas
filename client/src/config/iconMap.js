@@ -80,9 +80,11 @@ import {
     Sun,
     Store,
     BatteryCharging,
+    Bot,
 } from 'lucide-react';
 
 const iconMap = {
+    Bot,
     Store,
     Zap,
     Sun,

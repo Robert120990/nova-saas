@@ -36,13 +36,16 @@ function prepareSql(sql, companyId, branchId) {
         return '?';
     });
 
-    safeSql = safeSql.replace(/\{BRANCH_ID\}/g, () => {
-        if (branchId !== null && branchId !== undefined) {
+    if (branchId !== null && branchId !== undefined && branchId !== 'all') {
+        safeSql = safeSql.replace(/\{BRANCH_ID\}/g, () => {
             params.push(branchId);
             return '?';
-        }
-        return 'branch_id'; // If no branch specified, match itself
-    });
+        });
+    } else {
+        // When no specific branch is selected, neutralize branch_id comparisons to avoid ambiguous column errors in JOINs
+        safeSql = safeSql.replace(/\b(?:[a-zA-Z0-9_]+\.)?branch_id\s*=\s*\{BRANCH_ID\}/gi, '1=1');
+        safeSql = safeSql.replace(/\{BRANCH_ID\}/g, '1=1');
+    }
 
     const hasLimit = /\bLIMIT\s+\d+/i.test(safeSql);
     if (!hasLimit) {
