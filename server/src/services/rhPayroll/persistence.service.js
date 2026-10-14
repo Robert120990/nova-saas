@@ -48,7 +48,7 @@ const createPlanilla = async (req, res, connection) => {
     );
     if (cerradas.length) return res.status(400).json({ message: 'No se puede modificar un período pagado y cerrado.' });
     const [employees] = await connection.query(
-        'SELECT sueldo_base, bonificacion_fija FROM rh_empleados WHERE id = ? AND company_id = ?',
+        'SELECT sueldo_base, bonificacion_fija, branch_id, departamento_personal_id, cargo_id FROM rh_empleados WHERE id = ? AND company_id = ?',
         [empleado_id, req.company_id]
     );
     if (!employees.length) return res.status(404).json({ message: 'Empleado no encontrado' });
@@ -70,10 +70,12 @@ const createPlanilla = async (req, res, connection) => {
         );
     } else {
         if (expected_revision) return res.status(409).json({ message: 'La planilla ya no existe. Recargue el período antes de guardar.' });
+        const emp = employees[0];
         const [inserted] = await connection.query(
             `INSERT INTO rh_planillas
-             (company_id, empleado_id, periodo_anio, periodo_mes, quincena, dias_trabajados, sueldo_base, bonificacion_fija)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, [req.company_id, empleado_id, periodo_anio, periodo_mes, quincena, days, salary, bonus]
+             (company_id, empleado_id, periodo_anio, periodo_mes, quincena, dias_trabajados, sueldo_base, bonificacion_fija, branch_id, departamento_personal_id, cargo_id)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [req.company_id, empleado_id, periodo_anio, periodo_mes, quincena, days, salary, bonus, emp.branch_id || null, emp.departamento_personal_id || null, emp.cargo_id || null]
         );
         id = inserted.insertId;
     }

@@ -34,7 +34,7 @@ async function applyCommissionToPayroll(connection, companyId, commission, accou
     );
     if (other.length) throw payrollError(409, 'Este mes ya tiene una comisión transferida para el vendedor. Concilie la liquidación existente.');
     const [employees] = await connection.query(
-        `SELECT sueldo_base, bonificacion_fija, en_vacaciones, incapacitado FROM rh_empleados
+        `SELECT sueldo_base, bonificacion_fija, en_vacaciones, incapacitado, branch_id, departamento_personal_id, cargo_id FROM rh_empleados
          WHERE id = ? AND company_id = ?`, [commission.employee_id, companyId]
     );
     if (!employees.length) throw payrollError(400, 'El empleado vinculado no pertenece a la empresa activa.');
@@ -53,9 +53,9 @@ async function applyCommissionToPayroll(connection, companyId, commission, accou
         const days = absent ? 0 : 15;
         const [inserted] = await connection.query(
             `INSERT INTO rh_planillas
-             (company_id, empleado_id, periodo_anio, periodo_mes, quincena, dias_trabajados, sueldo_base, bonificacion_fija)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-            [companyId, commission.employee_id, commission.period_year, commission.period_month, quincena, days, salary, bonus]
+             (company_id, empleado_id, periodo_anio, periodo_mes, quincena, dias_trabajados, sueldo_base, bonificacion_fija, branch_id, departamento_personal_id, cargo_id)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [companyId, commission.employee_id, commission.period_year, commission.period_month, quincena, days, salary, bonus, employee.branch_id || null, employee.departamento_personal_id || null, employee.cargo_id || null]
         );
         id = inserted.insertId;
         await cargarCuentasPorDefecto(connection, id, companyId, days, salary, commission.employee_id, quincena, bonus);

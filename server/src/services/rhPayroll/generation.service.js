@@ -51,7 +51,8 @@ const generarPlanilla = async (req, res, pool, notificationService) => {
         const dias = 15;
 
         const [empleados] = await pool.query(
-            `SELECT id, sueldo_base, bonificacion_fija, afp_id, es_jubilado, aplica_renta, codigo, nombres, apellidos, en_vacaciones, incapacitado 
+            `SELECT id, sueldo_base, bonificacion_fija, afp_id, es_jubilado, aplica_renta, codigo, nombres, apellidos, en_vacaciones, incapacitado,
+                    branch_id, departamento_personal_id, cargo_id
              FROM rh_empleados WHERE company_id = ? AND es_activo = 1`,
             [req.company_id]
         );
@@ -119,9 +120,9 @@ const generarPlanilla = async (req, res, pool, notificationService) => {
             const sueldoDiario = sueldoBase / 30;
 
             const [result] = await pool.query(
-                `INSERT INTO ${TABLE} (company_id, empleado_id, periodo_anio, periodo_mes, quincena, dias_trabajados, sueldo_base, bonificacion_fija)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-                [req.company_id, emp.id, periodo_anio, periodo_mes, quincena, diasEmp, sueldoBase, bonificacionFija]
+                `INSERT INTO ${TABLE} (company_id, empleado_id, periodo_anio, periodo_mes, quincena, dias_trabajados, sueldo_base, bonificacion_fija, branch_id, departamento_personal_id, cargo_id)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [req.company_id, emp.id, periodo_anio, periodo_mes, quincena, diasEmp, sueldoBase, bonificacionFija, emp.branch_id || null, emp.departamento_personal_id || null, emp.cargo_id || null]
             );
             const planillaId = result.insertId;
 

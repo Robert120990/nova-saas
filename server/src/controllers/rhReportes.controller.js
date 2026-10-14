@@ -1010,7 +1010,7 @@ const getCostoLaboralReport = async (req, res) => {
                 d.descripcion as departamento_nombre
             FROM rh_planillas p
             JOIN rh_empleados e ON p.empleado_id = e.id
-            LEFT JOIN rh_departamentos d ON e.departamento_personal_id = d.id
+            LEFT JOIN rh_departamentos d ON COALESCE(p.departamento_personal_id, e.departamento_personal_id) = d.id
             WHERE p.company_id = ? AND p.periodo_anio = ? AND p.periodo_mes = ? AND p.estado != 'anulado'
         `;
         const params = [companyId, anio, mes];
@@ -1020,7 +1020,7 @@ const getCostoLaboralReport = async (req, res) => {
             params.push(quincena);
         }
         if (departamento_id && departamento_id !== 'all') {
-            query += ` AND e.departamento_personal_id = ?`;
+            query += ` AND COALESCE(p.departamento_personal_id, e.departamento_personal_id) = ?`;
             params.push(departamento_id);
         }
         query += ` ORDER BY d.descripcion ASC, e.codigo ASC`;
@@ -1182,7 +1182,7 @@ const getDescuentosTercerosReport = async (req, res) => {
             FROM rh_planilla_detalles pd
             JOIN rh_planillas p ON pd.planilla_id = p.id
             JOIN rh_empleados e ON p.empleado_id = e.id
-            LEFT JOIN rh_departamentos d ON e.departamento_personal_id = d.id
+            LEFT JOIN rh_departamentos d ON COALESCE(p.departamento_personal_id, e.departamento_personal_id) = d.id
             LEFT JOIN rh_descuentos_programados dp ON pd.codigo = dp.codigo AND dp.company_id = p.company_id
             LEFT JOIN rh_empleado_descuentos ed ON ed.descuento_id = dp.id AND ed.empleado_id = e.id AND ed.activo = 1
             WHERE p.company_id = ? AND p.periodo_anio = ? AND p.periodo_mes = ? AND p.estado != 'anulado'
@@ -1330,7 +1330,7 @@ const getHorasExtrasReport = async (req, res) => {
                 pd.valor_base, pd.valor_ingresado
             FROM rh_planillas p
             JOIN rh_empleados e ON p.empleado_id = e.id
-            LEFT JOIN rh_departamentos d ON e.departamento_personal_id = d.id
+            LEFT JOIN rh_departamentos d ON COALESCE(p.departamento_personal_id, e.departamento_personal_id) = d.id
             JOIN rh_planilla_detalles pd ON pd.planilla_id = p.id
             WHERE p.company_id = ? AND p.periodo_anio = ? AND p.periodo_mes = ? AND p.estado != 'anulado'
               AND pd.operacion = 'sumar'
@@ -1348,7 +1348,7 @@ const getHorasExtrasReport = async (req, res) => {
             params.push(quincena);
         }
         if (departamento_id && departamento_id !== 'all') {
-            query += ` AND e.departamento_personal_id = ?`;
+            query += ` AND COALESCE(p.departamento_personal_id, e.departamento_personal_id) = ?`;
             params.push(departamento_id);
         }
         if (empleado_id && empleado_id !== 'all' && empleado_id !== '') {

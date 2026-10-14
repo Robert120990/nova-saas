@@ -136,8 +136,9 @@ const exportPlanillaReportePDF = async (req, res) => {
                    e.codigo as empleado_codigo,
                    e.nombres as empleado_nombres,
                    e.apellidos as empleado_apellidos,
-                   e.branch_id,
-                   e.departamento_personal_id,
+                   COALESCE(p.branch_id, e.branch_id) as branch_id,
+                   COALESCE(p.departamento_personal_id, e.departamento_personal_id) as departamento_personal_id,
+                   COALESCE(p.cargo_id, e.cargo_id) as cargo_id,
                    COALESCE(b.nombre, 'SIN SUCURSAL') as branch_nombre,
                    c.descripcion as cargo_nombre,
                    d.descripcion as departamento_nombre,
@@ -155,21 +156,21 @@ const exportPlanillaReportePDF = async (req, res) => {
                    ) as otras_deducciones_calc
             FROM ${TABLE} p
             JOIN rh_empleados e ON p.empleado_id = e.id
-            LEFT JOIN branches b ON e.branch_id = b.id
-            LEFT JOIN rh_cargos c ON e.cargo_id = c.id
-            LEFT JOIN rh_departamentos d ON e.departamento_personal_id = d.id
+            LEFT JOIN branches b ON COALESCE(p.branch_id, e.branch_id) = b.id
+            LEFT JOIN rh_cargos c ON COALESCE(p.cargo_id, e.cargo_id) = c.id
+            LEFT JOIN rh_departamentos d ON COALESCE(p.departamento_personal_id, e.departamento_personal_id) = d.id
             WHERE p.company_id = ? AND p.periodo_anio = ? AND p.periodo_mes = ? AND p.quincena = ?
         `;
         let sqlParams = [req.company_id, parseInt(anio), parseInt(mes), quincena];
 
         const branchList = parseIdList(branch_ids);
         if (branchList.length > 0) {
-            sql += ` AND e.branch_id IN (?)`;
+            sql += ` AND COALESCE(p.branch_id, e.branch_id) IN (?)`;
             sqlParams.push(branchList);
         }
         const deptoList = parseIdList(departamento_ids);
         if (deptoList.length > 0) {
-            sql += ` AND e.departamento_personal_id IN (?)`;
+            sql += ` AND COALESCE(p.departamento_personal_id, e.departamento_personal_id) IN (?)`;
             sqlParams.push(deptoList);
         }
 

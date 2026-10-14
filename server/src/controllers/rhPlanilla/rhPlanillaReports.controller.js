@@ -11,7 +11,9 @@ const exportPDF = async (req, res) => {
                    e.sueldo_base,
                    e.num_dui, e.num_nit,
                    e.fecha_ingreso, e.afp_id,
-                   e.cargo_id, e.departamento_personal_id,
+                   COALESCE(p.cargo_id, e.cargo_id) as cargo_id,
+                   COALESCE(p.departamento_personal_id, e.departamento_personal_id) as departamento_personal_id,
+                   COALESCE(p.branch_id, e.branch_id) as branch_id,
                    c.descripcion as cargo_nombre,
                    d.descripcion as departamento_nombre,
                    comp.razon_social as company_name,
@@ -20,8 +22,8 @@ const exportPDF = async (req, res) => {
             FROM ${TABLE} p
             JOIN rh_empleados e ON p.empleado_id = e.id
             JOIN companies comp ON p.company_id = comp.id
-            LEFT JOIN rh_cargos c ON e.cargo_id = c.id
-            LEFT JOIN rh_departamentos d ON e.departamento_personal_id = d.id
+            LEFT JOIN rh_cargos c ON COALESCE(p.cargo_id, e.cargo_id) = c.id
+            LEFT JOIN rh_departamentos d ON COALESCE(p.departamento_personal_id, e.departamento_personal_id) = d.id
             WHERE p.id = ? AND p.company_id = ?
         `, [id, req.company_id]);
 
@@ -114,7 +116,9 @@ const exportRecibo = async (req, res) => {
                    e.sueldo_base,
                    e.num_dui, e.num_nit,
                    e.fecha_ingreso, e.afp_id,
-                   e.cargo_id, e.departamento_personal_id,
+                   COALESCE(p.cargo_id, e.cargo_id) as cargo_id,
+                   COALESCE(p.departamento_personal_id, e.departamento_personal_id) as departamento_personal_id,
+                   COALESCE(p.branch_id, e.branch_id) as branch_id,
                    c.descripcion as cargo_nombre,
                    d.descripcion as departamento_nombre,
                    comp.razon_social as company_name,
@@ -123,8 +127,8 @@ const exportRecibo = async (req, res) => {
             FROM ${TABLE} p
             JOIN rh_empleados e ON p.empleado_id = e.id
             JOIN companies comp ON p.company_id = comp.id
-            LEFT JOIN rh_cargos c ON e.cargo_id = c.id
-            LEFT JOIN rh_departamentos d ON e.departamento_personal_id = d.id
+            LEFT JOIN rh_cargos c ON COALESCE(p.cargo_id, e.cargo_id) = c.id
+            LEFT JOIN rh_departamentos d ON COALESCE(p.departamento_personal_id, e.departamento_personal_id) = d.id
             WHERE p.id = ? AND p.company_id = ?
         `, [id, req.company_id]);
 

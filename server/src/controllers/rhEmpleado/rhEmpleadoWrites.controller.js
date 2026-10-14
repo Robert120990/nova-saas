@@ -102,6 +102,12 @@ const updateEmpleado = async (req, res) => {
 
         const cleanBranchId = branch_id && branch_id !== '' && branch_id !== 'null' ? parseInt(branch_id) : null;
 
+        const [currentRows] = await pool.query(
+            `SELECT branch_id, departamento_personal_id, cargo_id, sueldo_base FROM ${TABLE} WHERE id = ? AND company_id = ?`,
+            [id, req.company_id]
+        );
+        const prev = currentRows[0] || null;
+
         const [result] = await pool.query(
             `UPDATE ${TABLE} SET codigo = ?, nombres = ?, apellidos = ?, fecha_nacimiento = ?, num_dui = ?, num_nit = ?, afp_id = ?,
              ocupacion = ?, direccion = ?, departamento = ?, municipio = ?, distrito = ?, telefono = ?, correo = ?,
@@ -117,6 +123,38 @@ const updateEmpleado = async (req, res) => {
              id, req.company_id]
         );
         if (result.affectedRows === 0) return res.status(404).json({ message: `${LABEL} no encontrado` });
+
+        if (prev) {
+            const newCargoId = cargo_id && cargo_id !== '' && cargo_id !== 'null' ? parseInt(cargo_id) : null;
+            const newDeptoId = departamento_personal_id && departamento_personal_id !== '' && departamento_personal_id !== 'null' ? parseInt(departamento_personal_id) : null;
+            const newSueldo = sueldo_base !== undefined && sueldo_base !== null ? parseFloat(sueldo_base) : null;
+            const prevSueldo = prev.sueldo_base !== null ? parseFloat(prev.sueldo_base) : null;
+
+            const branchChanged = prev.branch_id !== cleanBranchId;
+            const deptoChanged = prev.departamento_personal_id !== newDeptoId;
+            const cargoChanged = prev.cargo_id !== newCargoId;
+            const sueldoChanged = newSueldo !== null && prevSueldo !== null && Math.abs(newSueldo - prevSueldo) > 0.001;
+
+            if (branchChanged || deptoChanged || cargoChanged || sueldoChanged) {
+                const today = new Date().toISOString().split('T')[0];
+                await pool.query(
+                    `INSERT INTO rh_empleado_traslados
+                     (company_id, empleado_id, fecha_efectiva, branch_id_anterior, branch_id_nuevo,
+                      departamento_id_anterior, departamento_id_nuevo, cargo_id_anterior, cargo_id_nuevo,
+                      sueldo_anterior, sueldo_nuevo, motivo, usuario_id)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                    [
+                        req.company_id, id, req.body.fecha_efectiva_traslado || today,
+                        prev.branch_id, cleanBranchId,
+                        prev.departamento_personal_id, newDeptoId,
+                        prev.cargo_id, newCargoId,
+                        prev.sueldo_base, newSueldo,
+                        req.body.motivo_traslado || 'Modificación en expediente de personal',
+                        req.user?.id || null
+                    ]
+                ).catch(err => console.error('[rh_empleado_traslados log error]:', err.message));
+            }
+        }
 
         if (Array.isArray(emergency_contacts)) {
             await pool.query(`DELETE FROM rh_empleado_emergency_contacts WHERE empleado_id = ?`, [id]);
