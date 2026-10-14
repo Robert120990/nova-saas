@@ -15,6 +15,7 @@ router.put('/rules/:id', notificationController.saveRule);
 router.delete('/rules/:id', notificationController.deleteRule);
 
 router.get('/telegram/status', telegramController.getStatus);
+router.post('/telegram/token', telegramController.saveBotToken);
 router.put('/telegram/bindings/:id', telegramController.updateBinding);
 router.post('/telegram/test', telegramController.testConnection);
 router.get('/sale-suspicious-settings', telegramController.getSuspiciousSettings);

@@ -9,18 +9,41 @@ const { runAssistant } = require('./ai.assistant');
  * Comandos: /ayuda, /cambiar, /alertas on|off
  */
 
-const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const API_BASE = BOT_TOKEN ? `https://api.telegram.org/bot${BOT_TOKEN}` : null;
+let memoryBotToken = process.env.TELEGRAM_BOT_TOKEN || null;
 const MAX_MESSAGE_LENGTH = 4000;
 const LONG_POLL_TIMEOUT = 25; // segundos
 
 let lastUpdateId = 0;
 let botRunning = false;
 let botInfoCache = null;
+let pollIntervalId = null;
 const chatStates = new Map(); // chat_id -> { step, companyId, branchId, companies, branches, ... }
 
+async function getBotToken() {
+    if (memoryBotToken) return memoryBotToken;
+    try {
+        const [rows] = await pool.query('SELECT bot_token FROM telegram_settings WHERE is_active = 1 ORDER BY id DESC LIMIT 1');
+        if (rows.length > 0 && rows[0].bot_token) {
+            memoryBotToken = rows[0].bot_token;
+            return memoryBotToken;
+        }
+    } catch {
+        // Table might not exist yet during migration
+    }
+    return null;
+}
+
+function getApiBase(token) {
+    const t = token || memoryBotToken || process.env.TELEGRAM_BOT_TOKEN;
+    return t ? `https://api.telegram.org/bot${t}` : null;
+}
+
 async function apiCall(method, payload = {}, timeoutMs = 35000) {
-    const res = await fetch(`${API_BASE}/${method}`, {
+    const token = await getBotToken();
+    const base = getApiBase(token);
+    if (!base) throw new Error('Telegram bot token not configured');
+
+    const res = await fetch(`${base}/${method}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -49,7 +72,8 @@ function splitText(text, max = MAX_MESSAGE_LENGTH) {
 }
 
 async function sendMessage(chatId, text, extra = {}) {
-    if (!API_BASE || !text) return null;
+    const token = await getBotToken();
+    if (!token || !text) return null;
     const results = [];
     for (const chunk of splitText(text)) {
         const result = await apiCall('sendMessage', { chat_id: chatId, text: chunk, ...extra });
@@ -59,7 +83,8 @@ async function sendMessage(chatId, text, extra = {}) {
 }
 
 async function getMe(force = false) {
-    if (!API_BASE) return null;
+    const token = await getBotToken();
+    if (!token) return null;
     if (botInfoCache && !force) return botInfoCache;
     try {
         botInfoCache = await apiCall('getMe', {}, 15000);
@@ -216,7 +241,8 @@ async function handleMessage(chatId, text, from) {
 // ============ Long polling ============
 
 async function pollOnce() {
-    if (!API_BASE || botRunning) return;
+    const token = await getBotToken();
+    if (!token || botRunning) return;
     botRunning = true;
     try {
         const updates = await apiCall('getUpdates', {
@@ -242,15 +268,36 @@ async function pollOnce() {
     }
 }
 
-function startBot() {
-    if (!API_BASE) {
+async function startBot() {
+    const token = await getBotToken();
+    if (!token) {
         console.warn('[Telegram] TELEGRAM_BOT_TOKEN no configurado — bot desactivado.');
         return;
     }
     console.log('[Telegram] Bot iniciado (long polling).');
-    getMe();
-    setInterval(pollOnce, 1000);
+    await getMe(true);
+    if (!pollIntervalId) {
+        pollIntervalId = setInterval(pollOnce, 1000);
+    }
     pollOnce();
 }
 
-module.exports = { sendMessage, getMe, startBot, pollOnce, splitText };
+async function setBotToken(newToken) {
+    memoryBotToken = newToken;
+    botInfoCache = null;
+    lastUpdateId = 0;
+    if (newToken) {
+        await startBot();
+    }
+}
+
+module.exports = {
+    sendMessage,
+    getMe,
+    startBot,
+    pollOnce,
+    splitText,
+    getBotToken,
+    setBotToken
+};
+

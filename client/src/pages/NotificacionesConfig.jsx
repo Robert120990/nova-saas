@@ -71,6 +71,20 @@ const NotificacionesConfig = () => {
     onError: (err) => toast.error(err.response?.data?.message || 'Error al actualizar'),
   });
 
+  const [tokenInput, setTokenInput] = useState('');
+  const [showTokenInput, setShowTokenInput] = useState(false);
+
+  const saveTokenMutation = useMutation({
+    mutationFn: (token) => axios.post('/api/notifications/telegram/token', { token }),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries(['telegram-status']);
+      toast.success(res.data?.message || 'Token guardado exitosamente');
+      setTokenInput('');
+      setShowTokenInput(false);
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Error al guardar token'),
+  });
+
   const testTelegramMutation = useMutation({
     mutationFn: () => axios.post('/api/notifications/telegram/test', {}),
     onSuccess: () => toast.success('Mensaje de prueba enviado. Revisa tu Telegram.'),
@@ -208,18 +222,67 @@ const NotificacionesConfig = () => {
                   <p className="text-[10px] text-slate-400 font-medium">Alertas y asistente Novas AI por chat</p>
                 </div>
               </div>
-              {telegramStatus?.configured ? (
-                <span className="inline-flex items-center gap-1.5 text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full">
-                  <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
-                  Bot: @{telegramStatus.botInfo?.username || 'conectado'}
-                </span>
-              ) : (
-                <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2.5 py-1 rounded-full">
-                  TELEGRAM_BOT_TOKEN no configurado
-                </span>
-              )}
+              <div className="flex items-center gap-2">
+                {telegramStatus?.configured ? (
+                  <span className="inline-flex items-center gap-1.5 text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full">
+                    <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
+                    Bot: @{telegramStatus.botInfo?.username || 'conectado'}
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2.5 py-1 rounded-full">
+                    No configurado
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setShowTokenInput(!showTokenInput)}
+                  className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1 rounded-lg transition-colors"
+                >
+                  {showTokenInput ? 'Cerrar' : (telegramStatus?.configured ? 'Cambiar Token' : 'Configurar Token')}
+                </button>
+                {telegramStatus?.configured && (
+                  <button
+                    type="button"
+                    onClick={() => testTelegramMutation.mutate()}
+                    disabled={testTelegramMutation.isPending}
+                    className="text-[10px] font-bold text-slate-600 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 px-2.5 py-1 rounded-lg transition-colors disabled:opacity-50"
+                  >
+                    {testTelegramMutation.isPending ? 'Probando...' : 'Probar'}
+                  </button>
+                )}
+              </div>
             </div>
             <div className="p-4 space-y-3">
+              {showTokenInput && (
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-slate-700">Token del Bot de Telegram (HTTP API Token de @BotFather)</span>
+                    {telegramStatus?.maskedToken && (
+                      <span className="text-[10px] text-slate-400 font-mono">Actual: {telegramStatus.maskedToken}</span>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      type="password"
+                      placeholder="Ej: 123456789:ABCdefGhIJKlmNoP..."
+                      value={tokenInput}
+                      onChange={(e) => setTokenInput(e.target.value)}
+                      className="flex-1 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-mono outline-none focus:ring-2 focus:ring-indigo-500/20"
+                    />
+                    <button
+                      type="button"
+                      disabled={saveTokenMutation.isPending || !tokenInput.trim()}
+                      onClick={() => saveTokenMutation.mutate(tokenInput.trim())}
+                      className="text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 px-4 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+                    >
+                      {saveTokenMutation.isPending ? 'Guardando...' : 'Guardar'}
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-slate-400">
+                    Se guarda de forma persistente en el sistema y se activa de inmediato sin reiniciar servicios.
+                  </p>
+                </div>
+              )}
               <div className="text-[11px] text-slate-500 bg-slate-50 rounded-xl p-3 leading-relaxed">
                 💡 Para recibir alertas y preguntarle al asistente: abre tu bot en Telegram y escribe <b>/start</b>, luego elige empresa y sucursal. Los chats vinculados aparecen aquí.
               </div>

@@ -17,15 +17,44 @@ const getStatus = async (req, res) => {
              ORDER BY b.created_at DESC`,
             [req.company_id]
         );
+        const token = await telegramService.getBotToken();
         const botInfo = await telegramService.getMe();
         res.json({
-            configured: !!process.env.TELEGRAM_BOT_TOKEN,
+            configured: !!token,
+            maskedToken: token ? `${token.slice(0, 6)}...${token.slice(-4)}` : '',
             botInfo,
             bindings
         });
     } catch (error) {
         console.error('Error getTelegramStatus:', error);
         res.status(500).json({ message: 'Error al obtener estado de Telegram' });
+    }
+};
+
+const saveBotToken = async (req, res) => {
+    try {
+        const { token } = req.body;
+        if (!token || typeof token !== 'string' || !token.trim()) {
+            return res.status(400).json({ message: 'El token del bot es obligatorio' });
+        }
+        const cleanToken = token.trim();
+        await pool.query(`
+            INSERT INTO telegram_settings (id, bot_token, is_active)
+            VALUES (1, ?, 1)
+            ON DUPLICATE KEY UPDATE bot_token = VALUES(bot_token), is_active = 1
+        `, [cleanToken]);
+
+        await telegramService.setBotToken(cleanToken);
+        const botInfo = await telegramService.getMe(true);
+
+        res.json({
+            success: true,
+            message: 'Token de Telegram configurado exitosamente',
+            botInfo
+        });
+    } catch (error) {
+        console.error('Error saveBotToken:', error);
+        res.status(500).json({ message: 'Error al guardar token de Telegram: ' + error.message });
     }
 };
 
@@ -51,8 +80,9 @@ const updateBinding = async (req, res) => {
 
 const testConnection = async (req, res) => {
     try {
-        if (!process.env.TELEGRAM_BOT_TOKEN) {
-            return res.status(400).json({ message: 'TELEGRAM_BOT_TOKEN no está configurado en el servidor' });
+        const token = await telegramService.getBotToken();
+        if (!token) {
+            return res.status(400).json({ message: 'El token de Telegram no está configurado en el servidor' });
         }
         const { chat_id } = req.body;
         let targetChat = chat_id;
@@ -139,4 +169,11 @@ const saveSuspiciousSettings = async (req, res) => {
     }
 };
 
-module.exports = { getStatus, updateBinding, testConnection, getSuspiciousSettings, saveSuspiciousSettings };
+module.exports = {
+    getStatus,
+    saveBotToken,
+    updateBinding,
+    testConnection,
+    getSuspiciousSettings,
+    saveSuspiciousSettings
+};
