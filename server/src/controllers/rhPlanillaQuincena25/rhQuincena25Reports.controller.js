@@ -191,16 +191,18 @@ const exportBanco = async (req, res) => {
             return `${cuenta}\t${monto}\t${nombre}`;
         };
 
+        // Formato Banco Atlántida: 78 caracteres exactos por fila (según macro oficial Banco Atlántida)
+        // Monto (18 ceros izq en centavos sin punto) + Nombre cliente (40 der espacios) + Cuenta (16 ceros izq) + Relleno (4 espacios)
         const makeAtlantidaRow = (r) => {
             const cents = Math.round(parseFloat(r.monto_recibir || 0) * 100);
             const montoStr = String(cents).padStart(18, '0');
             const rawName = `${r.nombres || ''} ${r.apellidos || ''}`.trim();
             const cleanName = rawName.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
             const nombreStr = cleanName.slice(0, 40).padEnd(40, ' ');
-            const rawCuenta = String(r.cuenta_planillera || '').trim().replace(/[^0-9A-Za-z]/g, '');
-            const cuentaStr = rawCuenta.slice(0, 16).padEnd(16, ' ');
-            const espaciosStr = '    ';
-            return `${montoStr}${nombreStr}${cuentaStr}${espaciosStr}`;
+            const rawCuenta = String(r.cuenta_planillera || '').trim().replace(/[^0-9]/g, '');
+            const cuentaPadded = rawCuenta.length <= 13 ? rawCuenta.padStart(16, '0') : rawCuenta.slice(0, 16).padStart(16, '0');
+            const cuentaStr = cuentaPadded + '    ';
+            return `${montoStr}${nombreStr}${cuentaStr}`;
         };
 
         // Ordenar defensivamente en memoria: empleados con cuenta primero, sin cuenta al final
