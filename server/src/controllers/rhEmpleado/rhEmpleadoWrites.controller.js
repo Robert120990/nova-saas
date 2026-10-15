@@ -153,6 +153,15 @@ const updateEmpleado = async (req, res) => {
                         req.user?.id || null
                     ]
                 ).catch(err => console.error('[rh_empleado_traslados log error]:', err.message));
+
+                if (branchChanged || deptoChanged || cargoChanged) {
+                    await pool.query(
+                        `UPDATE rh_planillas
+                         SET branch_id = ?, departamento_personal_id = ?, cargo_id = ?
+                         WHERE empleado_id = ? AND company_id = ? AND estado != 'pagada'`,
+                        [cleanBranchId, newDeptoId, newCargoId, id, req.company_id]
+                    ).catch(err => console.error('[update open planillas branch/depto error]:', err.message));
+                }
             }
         }
 
