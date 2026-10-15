@@ -1,4 +1,3 @@
-import PropTypes from 'prop-types';
 import { Save, Upload, Trash2, Image as ImageIcon, Type } from 'lucide-react';
 
 const GeneralSettingsTab = ({
@@ -87,17 +86,6 @@ const GeneralSettingsTab = ({
             </form>
         </div>
     );
-};
-
-GeneralSettingsTab.propTypes = {
-    systemName: PropTypes.string.isRequired,
-    setSystemName: PropTypes.func.isRequired,
-    previewUrl: PropTypes.string,
-    removeLogo: PropTypes.func.isRequired,
-    handleLogoChange: PropTypes.func.isRequired,
-    isCompressing: PropTypes.bool.isRequired,
-    onSubmit: PropTypes.func.isRequired,
-    isPending: PropTypes.bool.isRequired
 };
 
 export default GeneralSettingsTab;

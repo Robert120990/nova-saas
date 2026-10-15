@@ -1,4 +1,3 @@
-import PropTypes from 'prop-types';
 import { Save, Calculator, BookOpen, AlertCircle, CheckCircle2, Coins, ShieldCheck, Info } from 'lucide-react';
 
 const TaxSettingsTab = ({
@@ -283,21 +282,6 @@ const TaxSettingsTab = ({
             </form>
         </div>
     );
-};
-
-TaxSettingsTab.propTypes = {
-    taxes: PropTypes.shape({
-        iva_rate: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
-        fovial_rate: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
-        cotrans_rate: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
-        retencion_rate: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
-        percepcion_rate: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
-        compras_afectan_libro_compras: PropTypes.oneOfType([PropTypes.bool, PropTypes.number]),
-        aplica_pago_cuenta: PropTypes.oneOfType([PropTypes.bool, PropTypes.number])
-    }).isRequired,
-    onChange: PropTypes.func.isRequired,
-    onSubmit: PropTypes.func.isRequired,
-    isPending: PropTypes.bool.isRequired
 };
 
 export default TaxSettingsTab;
