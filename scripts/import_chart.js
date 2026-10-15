@@ -1,8 +1,21 @@
-const mysql = require('C:/Users/Roberto/Desktop/web/nova-saas/server/node_modules/mysql2/promise');
+const mysql = require('mysql2/promise');
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '../server/.env') });
 
 (async () => {
-  const remote = mysql.createPool({ host: '207.244.251.167', user: 'sysadmin', password: 'QwErTy123', database: 'db_sytem_rrs_conta' });
-  const nova = mysql.createPool({ host: 'localhost', user: 'sysadmin', password: 'QwErTy123', database: 'db_sistema_saas', port: 3306 });
+  const remote = mysql.createPool({
+    host: process.env.REMOTE_DB_HOST || '207.244.251.167',
+    user: process.env.REMOTE_DB_USER || 'sysadmin',
+    password: process.env.REMOTE_DB_PASSWORD || '',
+    database: process.env.REMOTE_DB_NAME || 'db_sytem_rrs_conta'
+  });
+  const nova = mysql.createPool({
+    host: process.env.DB_HOST || 'localhost',
+    user: process.env.DB_USER || 'root',
+    password: process.env.DB_PASSWORD || '',
+    database: process.env.DB_NAME || 'db_sistema_saas',
+    port: process.env.DB_PORT ? Number(process.env.DB_PORT) : 3306
+  });
 
   const COMPANY_ID = 1;
 

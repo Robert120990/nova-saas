@@ -1,6 +1,7 @@
-const mysql = require('../node_modules/mysql2/promise');
+const mysql = require('mysql2/promise');
 const fs = require('fs');
 const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 
 // Clean helpers
 function cleanDigits(val) {
@@ -91,22 +92,22 @@ async function runImport() {
 
   const startTime = Date.now();
 
-  // 1. Connect to Localhost (Source)
+  // 1. Connect to Source
   const localConn = await mysql.createConnection({
-    host: 'localhost',
-    user: 'sysadmin',
-    password: 'QwErTy123'
+    host: process.env.SOURCE_DB_HOST || 'localhost',
+    user: process.env.SOURCE_DB_USER || 'root',
+    password: process.env.SOURCE_DB_PASSWORD || ''
   });
-  console.log('✓ Conectado a base de datos de origen en localhost');
+  console.log('✓ Conectado a base de datos de origen');
 
-  // 2. Connect to Destination (db_sistema_saas on 5.252.55.29)
+  // 2. Connect to Destination
   const destConn = await mysql.createConnection({
-    host: '5.252.55.29',
-    user: 'sysadmin',
-    password: 'QwErTy?123',
-    database: 'db_sistema_saas'
+    host: process.env.DB_HOST || 'localhost',
+    user: process.env.DB_USER || 'root',
+    password: process.env.DB_PASSWORD || '',
+    database: process.env.DB_NAME || 'db_sistema_saas'
   });
-  console.log('✓ Conectado a base de datos destino en 5.252.55.29 (db_sistema_saas)');
+  console.log('✓ Conectado a base de datos destino');
 
   const COMPANY_ID = 8;
   const BRANCH_MIRAFLORES = 4; // Puma Miraflores

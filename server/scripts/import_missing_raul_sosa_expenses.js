@@ -1,12 +1,7 @@
-const mysql = require('../node_modules/mysql2/promise');
+const pool = require('../src/config/db');
 
 async function runImport(isCommit = false) {
-    const conn = await mysql.createConnection({
-        host: '5.252.55.29',
-        user: 'sysadmin',
-        password: 'QwErTy?123',
-        database: 'db_sistema_saas'
-    });
+    const conn = await pool.getConnection();
 
     console.log(`\n======================================================`);
     console.log(`IMPORTACIÓN DE GASTOS FALTANTES - RAÚL SOSA (EMPRESA 2)`);
@@ -228,7 +223,8 @@ async function runImport(isCommit = false) {
         console.error('\n❌ ERROR DURANTE LA IMPORTACIÓN (TRANSACCIÓN ABORTADA):', err);
         throw err;
     } finally {
-        await conn.end();
+        if (conn) conn.release();
+        process.exit(0);
     }
 }
 

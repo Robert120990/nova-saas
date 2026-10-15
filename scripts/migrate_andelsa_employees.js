@@ -58,11 +58,11 @@ async function runMigration() {
 
   // 2. Conexión remota
   const remoteDb = await mysql.createConnection({
-    host: '207.244.251.167',
-    user: 'sysadmin',
-    password: 'QwErTy123',
-    database: 'db_sipe_andelsa',
-    port: 3306
+    host: process.env.REMOTE_DB_HOST || '207.244.251.167',
+    user: process.env.REMOTE_DB_USER || 'sysadmin',
+    password: process.env.REMOTE_DB_PASSWORD || '',
+    database: process.env.REMOTE_DB_NAME || 'db_sipe_andelsa',
+    port: process.env.REMOTE_DB_PORT ? Number(process.env.REMOTE_DB_PORT) : 3306
   });
   console.log('✓ Conectado a la base de datos remota (207.244.251.167 / db_sipe_andelsa)\n');
 

@@ -1,4 +1,6 @@
 const mysql = require('mysql2/promise');
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 
 const SOURCE_DB = 'db_sipe_costa';
 const COMPANY_ID = 1;
@@ -54,16 +56,16 @@ function findMatchingCategory(srcName, existingCategories) {
 
 async function main() {
     const src = await mysql.createConnection({
-        host: 'localhost',
-        user: 'sysadmin',
-        password: 'QwErTy123',
+        host: process.env.SOURCE_DB_HOST || 'localhost',
+        user: process.env.SOURCE_DB_USER || 'root',
+        password: process.env.SOURCE_DB_PASSWORD || '',
         database: SOURCE_DB
     });
     const tgt = await mysql.createConnection({
-        host: '5.252.55.29',
-        user: 'sysadmin',
-        password: 'QwErTy?123',
-        database: 'db_sistema_saas'
+        host: process.env.DB_HOST || 'localhost',
+        user: process.env.DB_USER || 'root',
+        password: process.env.DB_PASSWORD || '',
+        database: process.env.DB_NAME || 'db_sistema_saas'
     });
 
     console.log('=== Migracion desde db_sipe_costa ===\n');
