@@ -561,7 +561,7 @@ const generateProviderBalancesPDF = async (data) => {
 const generatePaymentReceiptPDF = (data) => {
     return new Promise((resolve, reject) => {
         try {
-            const doc = new PDFDocument({ margin: 40, size: 'LETTER' });
+            const doc = new PDFDocument({ margin: 40, size: 'LETTER', bufferPages: true });
             const buffers = [];
             doc.on('data', buffers.push.bind(buffers));
             doc.on('end', () => resolve(Buffer.concat(buffers)));
@@ -591,88 +591,130 @@ const generatePaymentReceiptPDF = (data) => {
             doc.fontSize(14).font('Helvetica-Bold').text('RECIBO DE INGRESO', 400, 40, { align: 'right' });
             doc.fontSize(12).font('Helvetica-Bold').fillColor('#4f46e5').text(`No. ${String(data.id).padStart(6, '0')}`, 400, 55, { align: 'right' });
             doc.fillColor('black');
-            doc.moveDown(5);
 
             // --- Receipt Body ---
-            const bodyTop = doc.y;
-            doc.rect(40, bodyTop, 532, 100).stroke('#e5e7eb');
+            const bodyTop = 95;
+            doc.rect(40, bodyTop, 532, 85).strokeColor('#e5e7eb').stroke();
             
-            doc.fontSize(10).font('Helvetica-Bold').text('RECIBIMOS DE:', 55, bodyTop + 15);
-            doc.font('Helvetica').text(data.customer_name.toUpperCase(), 150, bodyTop + 15);
+            doc.fontSize(9.5).font('Helvetica-Bold').text('RECIBIMOS DE:', 55, bodyTop + 12);
+            doc.font('Helvetica').text((data.customer_name || '').toUpperCase(), 150, bodyTop + 12, { width: 410 });
             
-            doc.font('Helvetica-Bold').text('LA CANTIDAD DE:', 55, bodyTop + 35);
-            doc.font('Helvetica').text(`$${parseFloat(data.monto).toFixed(2)}`, 150, bodyTop + 35);
+            doc.font('Helvetica-Bold').text('LA CANTIDAD DE:', 55, bodyTop + 30);
+            doc.font('Helvetica').text(`$${parseFloat(data.monto || 0).toFixed(2)}`, 150, bodyTop + 30);
             
-            doc.font('Helvetica-Bold').text('FECHA DE PAGO:', 55, bodyTop + 55);
-            doc.font('Helvetica').text(new Date(data.fecha_pago).toLocaleDateString('es-SV'), 150, bodyTop + 55);
+            doc.font('Helvetica-Bold').text('FECHA DE PAGO:', 55, bodyTop + 48);
+            doc.font('Helvetica').text(data.fecha_pago ? new Date(data.fecha_pago).toLocaleDateString('es-SV') : '---', 150, bodyTop + 48);
  
             const payInfo = `METODO: ${data.metodo_pago?.toUpperCase() || ''} ${data.referencia ? ` - REF: ${data.referencia.toUpperCase()}` : ''}`;
-            doc.font('Helvetica-Bold').text('INFORMACIÓN:', 55, bodyTop + 75);
-            doc.font('Helvetica').text(payInfo, 150, bodyTop + 75);
+            doc.font('Helvetica-Bold').text('INFORMACIÓN:', 55, bodyTop + 66);
+            doc.font('Helvetica').text(payInfo, 150, bodyTop + 66, { width: 410 });
 
-            doc.moveDown(3);
+            let currentY = bodyTop + 100;
             
             // --- Documents Table ---
-            doc.fontSize(10).font('Helvetica-Bold').text('DETALLE DE DOCUMENTOS ABONADOS:', 40, doc.y);
-            doc.moveDown(0.5);
+            doc.fontSize(10).font('Helvetica-Bold').fillColor('#0f172a').text('DETALLE DE DOCUMENTOS ABONADOS:', 40, currentY);
+            currentY += 16;
             
-            const tableTop = doc.y;
             const colWidths = { fecha: 80, doc: 180, total: 130, abono: 130 };
             
-            // Table Header
-            doc.fontSize(9).font('Helvetica-Bold').fillColor('#4f46e5');
-            let trx = 40;
-            doc.text('FECHA DOC.', trx, tableTop); trx += colWidths.fecha;
-            doc.text('DOCUMENTO', trx, tableTop); trx += colWidths.doc;
-            doc.text('MONTO DOC.', trx, tableTop, { align: 'right', width: colWidths.total }); trx += colWidths.total;
-            doc.text('MONTO ABONO', trx, tableTop, { align: 'right', width: colWidths.abono });
-            
-            doc.moveDown(0.3);
-            doc.moveTo(40, doc.y).lineTo(572, doc.y).strokeColor('#e5e7eb').stroke();
-            doc.moveDown(0.5);
-            doc.fillColor('black').font('Helvetica').fontSize(9);
+            const drawTableHeader = (y) => {
+                doc.fontSize(9).font('Helvetica-Bold').fillColor('#4f46e5');
+                let trx = 40;
+                doc.text('FECHA DOC.', trx, y, { width: colWidths.fecha }); trx += colWidths.fecha;
+                doc.text('DOCUMENTO', trx, y, { width: colWidths.doc }); trx += colWidths.doc;
+                doc.text('MONTO DOC.', trx, y, { align: 'right', width: colWidths.total }); trx += colWidths.total;
+                doc.text('MONTO ABONO', trx, y, { align: 'right', width: colWidths.abono });
+                
+                const lineY = y + 13;
+                doc.moveTo(40, lineY).lineTo(572, lineY).strokeColor('#cbd5e1').stroke();
+                doc.fillColor('black').font('Helvetica').fontSize(9);
+                return lineY + 5;
+            };
+
+            currentY = drawTableHeader(currentY);
 
             if (data.documentos && data.documentos.length > 0) {
                 data.documentos.forEach(docItem => {
-                    const y = doc.y;
-                    let x = 40;
-                    
                     const fDate = docItem.fecha ? new Date(docItem.fecha).toLocaleDateString('es-SV') : '---';
-                    doc.text(fDate, x, y); x += colWidths.fecha;
-                    
                     const docLabel = `${docItem.tipo || ''} ${docItem.numero || ''}`.trim();
-                    doc.text(docLabel, x, y, { width: colWidths.doc, truncate: true }); x += colWidths.doc;
-                    
-                    doc.text(`$${parseFloat(docItem.total || 0).toFixed(2)}`, x, y, { align: 'right', width: colWidths.total }); x += colWidths.total;
-                    doc.text(`$${parseFloat(docItem.abono || 0).toFixed(2)}`, x, y, { align: 'right', width: colWidths.abono });
-                    
-                    doc.moveDown(0.8);
+                    const totalStr = `$${parseFloat(docItem.total || 0).toFixed(2)}`;
+                    const abonoStr = `$${parseFloat(docItem.abono || 0).toFixed(2)}`;
+
+                    doc.font('Helvetica').fontSize(9);
+                    const docHeight = doc.heightOfString(docLabel, { width: colWidths.doc });
+                    const rowHeight = Math.max(docHeight, 11) + 3;
+
+                    // Salto de página defensivo antes de imprimir la fila para evitar desalineación entre columnas
+                    if (currentY + rowHeight > 680) {
+                        doc.addPage();
+                        currentY = 40;
+                        doc.fontSize(9).font('Helvetica-Bold').fillColor('#64748b')
+                           .text(`RECIBO DE INGRESO No. ${String(data.id).padStart(6, '0')} (Continuación)`, 40, currentY);
+                        currentY += 16;
+                        currentY = drawTableHeader(currentY);
+                    }
+
+                    let x = 40;
+                    doc.font('Helvetica').fontSize(9).fillColor('#0f172a');
+                    doc.text(fDate, x, currentY, { width: colWidths.fecha }); 
+                    x += colWidths.fecha;
+
+                    doc.text(docLabel, x, currentY, { width: colWidths.doc }); 
+                    x += colWidths.doc;
+
+                    doc.text(totalStr, x, currentY, { align: 'right', width: colWidths.total }); 
+                    x += colWidths.total;
+
+                    doc.text(abonoStr, x, currentY, { align: 'right', width: colWidths.abono });
+
+                    currentY += rowHeight;
                 });
             } else {
-                // Fallback for single document backward compatibility
                 const concepto = data.documento_aplicado 
                     ? `ABONO A DOCUMENTO ${data.documento_tipo || ''} ${data.documento_aplicado}` 
                     : 'ABONO A CUENTA';
-                doc.text(concepto, 40, doc.y);
-                doc.moveDown();
+                doc.font('Helvetica').fontSize(9).fillColor('black').text(concepto, 40, currentY);
+                currentY += 20;
             }
 
+            // Notas
             if (data.notas) {
-                doc.moveDown();
-                doc.fontSize(9).font('Helvetica-Bold').text('NOTAS:', 40, doc.y);
-                doc.font('Helvetica').text(data.notas, 80, doc.y - 10, { width: 490 });
+                currentY += 8;
+                doc.font('Helvetica').fontSize(9);
+                const notasH = doc.heightOfString(data.notas, { width: 485 });
+                if (currentY + notasH + 15 > 670) {
+                    doc.addPage();
+                    currentY = 40;
+                }
+                doc.fontSize(9).font('Helvetica-Bold').fillColor('black').text('NOTAS:', 40, currentY);
+                doc.font('Helvetica').text(data.notas, 85, currentY, { width: 485 });
+                currentY += Math.max(notasH, 12) + 12;
             }
 
-            // --- Footer / Signatures ---
-            doc.moveDown(10);
-            const footerY = doc.y;
+            // Firmas
+            const sigHeight = 50;
+            if (currentY + sigHeight > 680) {
+                doc.addPage();
+                currentY = 60;
+            }
+
+            const footerY = Math.min(Math.max(currentY + 25, 620), 660);
+            doc.strokeColor('#000000').lineWidth(0.8);
             doc.moveTo(80, footerY).lineTo(250, footerY).stroke();
-            doc.fontSize(9).text('ENTREGADO POR', 125, footerY + 5, { align: 'center', width: 100 });
+            doc.fontSize(9).font('Helvetica').fillColor('black').text('ENTREGADO POR', 125, footerY + 5, { align: 'center', width: 100 });
 
             doc.moveTo(350, footerY).lineTo(520, footerY).stroke();
             doc.fontSize(9).text('RECIBIDO CONFORME (CLIENTE)', 385, footerY + 5, { align: 'center', width: 100 });
 
-            doc.fontSize(8).fillColor('grey').text('Este documento es un comprobante de abono a su cuenta pendiente.', 40, 720, { align: 'center', width: 532 });
+            // Numeración de páginas y pie de página en todas las páginas
+            const range = doc.bufferedPageRange();
+            for (let i = range.start; i < range.start + range.count; i++) {
+                doc.switchToPage(i);
+                doc.fontSize(8).fillColor('grey').text('Este documento es un comprobante de abono a su cuenta pendiente.', 40, 725, { align: 'center', width: 532 });
+                if (range.count > 1) {
+                    doc.fontSize(7.5).fillColor('#64748b').text(`Página ${i + 1} de ${range.count}`, 40, 740, { align: 'center', width: 532 });
+                }
+            }
             
             doc.end();
         } catch (err) {
