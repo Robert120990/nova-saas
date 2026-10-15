@@ -58,14 +58,26 @@ class AIService {
                 const cleanedHistory = firstUserIndex !== -1 ? history.slice(firstUserIndex) : [];
 
                 const chat = model.startChat({
-                    history: cleanedHistory.map(m => ({
-                        role: m.role === 'assistant' ? 'model' : 'user',
-                        parts: [{ text: m.content || '' }]
-                    })),
+                    history: cleanedHistory.map(m => {
+                        let text = m.content || '';
+                        if (m.role === 'tool') {
+                            text = `[Resultado de herramienta ${m.name || ''}]: ${m.content || ''}`;
+                        } else if (m.role === 'assistant' && m.tool_calls) {
+                            text = text || `[Llamada a herramientas: ${m.tool_calls.map(tc => tc.function?.name).join(', ')}]`;
+                        }
+                        return {
+                            role: m.role === 'assistant' ? 'model' : 'user',
+                            parts: [{ text }]
+                        };
+                    }),
                     tools: [{ functionDeclarations: geminiTools }]
                 });
 
-                const lastMsg = messages[messages.length - 1].content;
+                const lastItem = messages[messages.length - 1];
+                let lastMsg = lastItem?.content || '';
+                if (lastItem?.role === 'tool') {
+                    lastMsg = `[Resultado de herramienta ${lastItem.name || ''}]: ${lastItem.content || ''}`;
+                }
                 const result = await chat.sendMessage(lastMsg);
                 const response = result.response;
 

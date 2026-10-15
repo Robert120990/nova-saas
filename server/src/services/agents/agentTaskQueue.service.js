@@ -193,9 +193,20 @@ async function processQueue() {
             `Supervisor evaluando prompt: "${task.prompt.slice(0, 140)}${task.prompt.length > 140 ? '...' : ''}"`
         );
 
+        // Prepare autonomous execution prompt
+        const autonomousPrompt = `[TAREA AGÉNTICA AUTÓNOMA #${task.id} - EJECUCIÓN DIRECTA]:
+OBJETIVO: ${task.prompt}
+
+INSTRUCCIONES CLAVE DE EJECUCIÓN AUTÓNOMA:
+1. Esta es una tarea en segundo plano. NO es un chat interactivo. El usuario NO puede responder preguntas intermedias ni dar confirmaciones.
+2. EJECUTA TÚ MISMO de inmediato todas las consultas SQL y herramientas requeridas para obtener las cifras reales del período y la sucursal.
+3. Si necesitas conocer la estructura de tablas o puntos de venta, consúltalas y DE INMEDIATO ejecuta las consultas de agregación de datos con las fechas solicitadas.
+4. Genera el resultado final exhaustivo con tablas Markdown de datos reales, comparativos numéricos, diferencias y conclusiones de auditoría.
+5. Queda estrictamente prohibido devolver respuestas a medias, pedir confirmación al usuario o devolver tablas con plantillas vacías o guiones ($—).`;
+
         // Execute Supervisor Agent
         const executionResult = await supervisorAgent.execute({
-            messages: [{ role: 'user', content: task.prompt }],
+            messages: [{ role: 'user', content: autonomousPrompt }],
             context: taskContext
         });
 

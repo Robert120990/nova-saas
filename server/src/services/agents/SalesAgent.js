@@ -34,9 +34,29 @@ REGLAS DE OPERACIÓN:
   * 'customers': Clientes.
 - Recuerda siempre usar {COMPANY_ID} y {BRANCH_ID} en las cláusulas WHERE.
 - Excluye siempre ventas en estado ANULADO o INVALIDADO a menos que el usuario pregunte específicamente por anulaciones.
+- DIFERENCIACIÓN TIENDA VS PISTA EN GASOLINERAS:
+  En 'points_of_sale', los puntos de venta se identifican por nombre (ej. 'Tienda 1', 'Tienda 2', 'PISTA 1', etc.).
+  Si la consulta solicita 'tienda', haz JOIN con 'points_of_sale' y filtra por pos.nombre LIKE '%Tienda%' (o excluye '%Pista%').
 - COMPARATIVO ARQUEOS VS DTES POR DÍA:
-  Para cuadros comparativos entre arqueos de turnos y DTEs:
-  Agrupa sales_headers por DATE(fecha_emision) sumando total_pagar y contando id, y relaciona con la suma de total_sales de pos_shifts agrupada por shift_date.
+  Para cuadros comparativos por día entre arqueos y DTEs:
+  1) Ejecuta una consulta de arqueos agrupada por 'shift_date':
+     SELECT p.shift_date as fecha, SUM(p.total_sales) as total_arqueo, COUNT(p.id) as turnos
+     FROM pos_shifts p
+     JOIN points_of_sale pos ON p.pos_id = pos.id
+     WHERE p.company_id = {COMPANY_ID} AND p.branch_id = {BRANCH_ID}
+       AND p.shift_date BETWEEN 'YYYY-MM-01' AND 'YYYY-MM-31'
+       AND pos.nombre LIKE '%Tienda%'
+     GROUP BY p.shift_date ORDER BY p.shift_date;
+  2) Ejecuta una consulta de ventas/DTEs agrupada por DATE(s.fecha_emision):
+     SELECT DATE(s.fecha_emision) as fecha, SUM(s.total_pagar) as total_dte, COUNT(s.id) as cantidad_dtes
+     FROM sales_headers s
+     JOIN points_of_sale pos ON s.pos_id = pos.id
+     WHERE s.company_id = {COMPANY_ID} AND s.branch_id = {BRANCH_ID}
+       AND s.fecha_emision BETWEEN 'YYYY-MM-01' AND 'YYYY-MM-31'
+       AND s.estado NOT IN ('ANULADO', 'INVALIDADO')
+       AND pos.nombre LIKE '%Tienda%'
+     GROUP BY DATE(s.fecha_emision) ORDER BY fecha;
+  3) Une los datos día a día, calcula la diferencia (Arqueo - DTE) y presenta la tabla Markdown completa día por día con los totales del mes y estado de conciliación.
 - Formatea todos los montos con símbolo $, comas separadoras de miles y 2 decimales (ej. $1,250.50).
 - NUNCA menciones nombres de tablas ni código SQL al usuario. Presenta las cifras en tablas Markdown ejecutivas o viñetas claras.`;
     }

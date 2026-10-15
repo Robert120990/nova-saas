@@ -57,7 +57,7 @@ export const AiTaskOutputPreview = ({ result, outputType = 'texto', outputFileUr
                         title="Ver gráfico visual"
                     >
                         <span>🖼️</span>
-                        <span>Ver Gráfico</span>
+                        <span>Ver Cuadro</span>
                     </a>
                 )}
 

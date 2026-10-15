@@ -18,8 +18,10 @@ import {
     Brain,
     Wrench,
     ArrowRight,
-    Pencil
+    Pencil,
+    ExternalLink
 } from 'lucide-react';
+import AiTaskMarkdownRenderer from './AiTaskMarkdownRenderer';
 
 const AGENT_MAP = {
     supervisor: { name: 'Supervisor', icon: '👑', color: 'text-amber-700 bg-amber-50 border-amber-200' },
@@ -382,11 +384,24 @@ const AiTaskDetailModal = ({ isOpen, onClose, taskId, initialTab = 'logs', onTas
 
                             {task.output_type === 'imagen' && task.output_file_url && (
                                 <div className="rounded-2xl overflow-hidden border border-slate-800 bg-slate-950 p-2 shadow-inner">
-                                    <img
-                                        src={task.output_file_url}
-                                        alt="Gráfico generado"
-                                        className="w-full max-h-64 object-contain rounded-xl mx-auto"
-                                    />
+                                    <div className="flex justify-end p-1">
+                                        <a
+                                            href={task.output_file_url}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-400 hover:text-indigo-300"
+                                        >
+                                            <ExternalLink size={12} />
+                                            <span>Abrir Cuadro Completo en Nueva Pestaña</span>
+                                        </a>
+                                    </div>
+                                    <div className="max-h-96 overflow-y-auto">
+                                        <img
+                                            src={task.output_file_url}
+                                            alt="Cuadro generado"
+                                            className="w-full object-contain rounded-xl mx-auto"
+                                        />
+                                    </div>
                                 </div>
                             )}
 
@@ -402,8 +417,8 @@ const AiTaskDetailModal = ({ isOpen, onClose, taskId, initialTab = 'logs', onTas
                                             <span>{copied ? 'Copiado' : 'Copiar Informe'}</span>
                                         </button>
                                     </div>
-                                    <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 text-xs text-slate-800 leading-relaxed font-sans max-h-80 overflow-y-auto whitespace-pre-wrap selection:bg-indigo-100">
-                                        {task.result}
+                                    <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 text-xs text-slate-800 leading-relaxed font-sans max-h-96 overflow-y-auto selection:bg-indigo-100">
+                                        <AiTaskMarkdownRenderer content={task.result} />
                                     </div>
                                 </>
                             ) : (

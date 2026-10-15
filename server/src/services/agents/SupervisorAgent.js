@@ -86,8 +86,13 @@ REGLA DE IDENTIFICACIÓN OBLIGATORIA:
 
             console.log(`[Supervisor] Delegando a '${targetAgent.name}' (${target_agent_code})...`);
 
+            const isAutonomous = !!context?.user?.is_system_task;
+            const promptForSubagent = isAutonomous
+                ? `[MODO AUTÓNOMO EN SEGUNDO PLANO - EJECUTA TODAS LAS CONSULTAS SQL Y HERRAMIENTAS DIRECTAMENTE HASTA OBTENER LAS CIFRAS DEFINITIVAS SIN PEDIR CONFIRMACIÓN]:\n${subtask_prompt}`
+                : subtask_prompt;
+
             const subagentResult = await targetAgent.execute({
-                messages: [{ role: 'user', content: subtask_prompt }],
+                messages: [{ role: 'user', content: promptForSubagent }],
                 context: {
                     ...context,
                     userQuery: subtask_prompt
@@ -96,6 +101,7 @@ REGLA DE IDENTIFICACIÓN OBLIGATORIA:
 
             if (context) {
                 context._delegatedAgent = targetAgent;
+                context._delegatedToolResults = subagentResult.toolResults || [];
             }
 
             return {
@@ -115,6 +121,12 @@ REGLA DE IDENTIFICACIÓN OBLIGATORIA:
         if (params?.context?._delegatedAgent) {
             result.agentCode = params.context._delegatedAgent.code;
             result.agentName = params.context._delegatedAgent.name;
+        }
+        if (params?.context?._delegatedToolResults?.length > 0) {
+            result.toolResults = [
+                ...(result.toolResults || []),
+                ...params.context._delegatedToolResults
+            ];
         }
         return result;
     }
