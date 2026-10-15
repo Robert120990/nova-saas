@@ -102,75 +102,35 @@ const calcular = async (req, res, pool) => {
             }
         }
 
-        let descuentoRenta = 0;
-        const ingresoGravadoQ2 = Math.max(0, totalPercepciones - descuentoISSS - descuentoAFP);
-        let rentaInfo = null;
+        const { getRentaContext, computeEmployeeRenta } = require('./rentaCalculation.service');
+        const ingresoGravado = Math.max(0, totalPercepciones - descuentoISSS - descuentoAFP);
+        const rentaCtx = await getRentaContext(req.company_id, quincena, today);
 
-        // Renta: solo aplica en 2da quincena y si el empleado tiene aplica_renta = 1
-        // Usa tabla MENSUAL (tipo 'M') acumulando 1ra y 2da quincena
-        const aplicaRentaCalc = quincena === 'segunda' && (aplicaRenta !== false);
-
-        if (aplicaRentaCalc) {
-            let q1Gravado = 0;
-            let prevRentaQ1 = 0;
-
-            if (periodoAnio && periodoMes) {
-                const [q1Rows] = await pool.query(
-                    `SELECT total_percepciones, descuento_isss, descuento_afp, descuento_renta
-                     FROM ${TABLE}
-                     WHERE company_id = ? AND empleado_id = ? AND periodo_anio = ? AND periodo_mes = ? AND quincena = 'primera'
-                     LIMIT 1`,
-                    [req.company_id, empleadoId, periodoAnio, periodoMes]
-                );
-                if (q1Rows.length > 0) {
-                    const q1 = q1Rows[0];
-                    q1Gravado = Math.max(0, parseFloat(q1.total_percepciones || 0) - parseFloat(q1.descuento_isss || 0) - parseFloat(q1.descuento_afp || 0));
-                    prevRentaQ1 = parseFloat(q1.descuento_renta || 0);
-                }
-            }
-
-            const ingresoGravadoTotalMes = Math.max(0, ingresoGravadoQ2 + q1Gravado);
-
-            if (esJubilado) {
-                const rentaTotal = Math.round(ingresoGravadoTotalMes * 0.10 * 100) / 100;
-                descuentoRenta = Math.max(0, rentaTotal - prevRentaQ1);
-                rentaInfo = { tipo: 'jubilado', porcentaje: 10, ingreso_gravado: Math.round(ingresoGravadoTotalMes * 100) / 100, ingreso_gravado_q2: Math.round(ingresoGravadoQ2 * 100) / 100, ingreso_gravado_q1: Math.round(q1Gravado * 100) / 100, renta_anterior: prevRentaQ1 };
-            } else {
-                const [rentaConfigRows] = await pool.query(
-                    `SELECT id, tipo FROM rh_renta_config 
-                     WHERE company_id = ? AND tipo = 'M' AND fecha_desde <= ? AND (fecha_hasta IS NULL OR fecha_hasta >= ?)
-                     ORDER BY fecha_desde DESC LIMIT 1`,
-                    [req.company_id, today, today]
-                );
-
-                if (rentaConfigRows.length > 0 && ingresoGravadoTotalMes > 0) {
-                    const [bracketRows] = await pool.query(
-                        `SELECT sueldo_inicial, sueldo_final, porcentaje, valor_descuento, exceso FROM rh_renta_config_detalle 
-                         WHERE renta_config_id = ? AND sueldo_inicial <= ? AND sueldo_final >= ?
-                         ORDER BY sueldo_inicial ASC LIMIT 1`,
-                        [rentaConfigRows[0].id, ingresoGravadoTotalMes, ingresoGravadoTotalMes]
-                    );
-                    if (bracketRows.length > 0) {
-                        const bracket = bracketRows[0];
-                        const excedente = ingresoGravadoTotalMes - bracket.exceso;
-                        const rentaTotal = Math.max(0, (excedente * bracket.porcentaje / 100) + parseFloat(bracket.valor_descuento));
-                        descuentoRenta = Math.max(0, rentaTotal - prevRentaQ1);
-                        rentaInfo = {
-                            sueldo_inicial: bracket.sueldo_inicial,
-                            sueldo_final: bracket.sueldo_final,
-                            porcentaje: bracket.porcentaje,
-                            valor_descuento: bracket.valor_descuento,
-                            exceso: bracket.exceso,
-                            excedente: Math.round(excedente * 100) / 100,
-                            ingreso_gravado: Math.round(ingresoGravadoTotalMes * 100) / 100,
-                            ingreso_gravado_q2: Math.round(ingresoGravadoQ2 * 100) / 100,
-                            ingreso_gravado_q1: Math.round(q1Gravado * 100) / 100,
-                            renta_anterior: prevRentaQ1
-                        };
-                    }
-                }
+        let q1Data = null;
+        if (rentaCtx.calculoRentaModo === 'segunda_quincena' && quincena === 'segunda' && periodoAnio && periodoMes) {
+            const [q1Rows] = await pool.query(
+                `SELECT total_percepciones, descuento_isss, descuento_afp, descuento_renta
+                 FROM ${TABLE}
+                 WHERE company_id = ? AND empleado_id = ? AND periodo_anio = ? AND periodo_mes = ? AND quincena = 'primera'
+                 LIMIT 1`,
+                [req.company_id, empleadoId, periodoAnio, periodoMes]
+            );
+            if (q1Rows.length > 0) {
+                q1Data = q1Rows[0];
             }
         }
+
+        const aplicaRentaCalc = (aplicaRenta !== false && aplicaRenta !== 0);
+        const { descuentoRenta: calcDescuentoRenta, rentaInfo } = computeEmployeeRenta({
+            modo: rentaCtx.calculoRentaModo,
+            brackets: rentaCtx.brackets,
+            ingresoGravado,
+            esJubilado,
+            aplicaRenta: aplicaRentaCalc,
+            quincena,
+            q1Data
+        });
+        let descuentoRenta = calcDescuentoRenta;
 
         descuentoISSS = Math.round(descuentoISSS * 100) / 100;
         descuentoAFP = Math.round(descuentoAFP * 100) / 100;

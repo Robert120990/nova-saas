@@ -34,7 +34,8 @@ const sincronizarPlanilla = async (req, res, pool) => {
 
         // 2. Planillas registradas actualmente para este período
         const [existentes] = await pool.query(
-            `SELECT id, empleado_id, dias_trabajados, sueldo_base, bonificacion_fija, total_percepciones, descuento_isss, descuento_afp, descuento_renta
+            `SELECT id, empleado_id, dias_trabajados, sueldo_base, bonificacion_fija, total_percepciones, descuento_isss, descuento_afp, descuento_renta,
+                    branch_id, departamento_personal_id, cargo_id
              FROM ${TABLE} WHERE company_id = ? AND periodo_anio = ? AND periodo_mes = ? AND quincena = ?`,
             [req.company_id, periodo_anio, periodo_mes, quincena]
         );
@@ -58,12 +59,6 @@ const sincronizarPlanilla = async (req, res, pool) => {
             [req.company_id, quincena]
         );
 
-        // Catálogo de todos los descuentos programados para identificar qué cuentas corresponden a descuentos programados
-        const [descuentosDef] = await pool.query(
-            `SELECT DISTINCT cuenta_id, descripcion FROM rh_descuentos_programados WHERE company_id = ?`,
-            [req.company_id]
-        );
-        const programmedCuentaIds = new Set(descuentosDef.map(d => d.cuenta_id).filter(Boolean));
 
         const today = new Date().toISOString().split('T')[0];
 
@@ -80,18 +75,11 @@ const sincronizarPlanilla = async (req, res, pool) => {
             isssTope = isssRows[0].tope_quincenal || (isssRows[0].tope_mensual ? isssRows[0].tope_mensual / 2 : Infinity);
         }
 
-        // Renta: solo aplica en 2da quincena, usando tabla MENSUAL (tipo 'M')
-        let rentaConfigId = null;
+        // Renta: configuracion segun modo (segunda_quincena o cada_quincena)
+        const { getRentaContext, computeEmployeeRenta } = require('./rentaCalculation.service');
+        const rentaCtx = await getRentaContext(req.company_id, quincena, today);
         let q1PlanillaMap = new Map();
-        if (quincena === 'segunda') {
-            const [rentaConfigRows] = await pool.query(
-                `SELECT id, tipo FROM rh_renta_config 
-                 WHERE company_id = ? AND tipo = 'M' AND fecha_desde <= ? AND (fecha_hasta IS NULL OR fecha_hasta >= ?) 
-                 ORDER BY fecha_desde DESC LIMIT 1`,
-                [req.company_id, today, today]
-            );
-            if (rentaConfigRows.length > 0) rentaConfigId = rentaConfigRows[0].id;
-
+        if (rentaCtx.calculoRentaModo === 'segunda_quincena' && quincena === 'segunda') {
             const [q1Rows] = await pool.query(
                 `SELECT empleado_id, total_percepciones, descuento_isss, descuento_afp, descuento_renta
                  FROM ${TABLE}
@@ -215,32 +203,19 @@ const sincronizarPlanilla = async (req, res, pool) => {
                     descuentoAFP = baseAFP * afpRows[0].porcentaje_empleado / 100;
                 }
             }
-            const ingresoGravadoQ2 = totalPercepciones - descuentoISSS - descuentoAFP;
-            let descuentoRenta = 0;
-            // Renta: solo aplica en 2da quincena y si el empleado tiene aplica_renta = 1
-            const aplicaRentaEmpA = quincena === 'segunda' && (emp.aplica_renta === 1 || emp.aplica_renta === undefined || emp.aplica_renta === null);
+            const ingresoGravado = Math.max(0, totalPercepciones - descuentoISSS - descuentoAFP);
+            const aplicaRentaEmpA = (emp.aplica_renta === 1 || emp.aplica_renta === undefined || emp.aplica_renta === null);
+            const q1Data = q1PlanillaMap.get(emp.id) || null;
 
-            if (aplicaRentaEmpA) {
-                const q1Data = q1PlanillaMap.get(emp.id);
-                const q1Gravado = q1Data ? Math.max(0, parseFloat(q1Data.total_percepciones || 0) - parseFloat(q1Data.descuento_isss || 0) - parseFloat(q1Data.descuento_afp || 0)) : 0;
-                const ingresoGravadoTotalMes = Math.max(0, ingresoGravadoQ2 + q1Gravado);
-                const prevRentaQ1 = q1Data ? parseFloat(q1Data.descuento_renta || 0) : 0;
-
-                if (esJubilado) {
-                    const rentaTotal = Math.round(ingresoGravadoTotalMes * 0.10 * 100) / 100;
-                    descuentoRenta = Math.max(0, rentaTotal - prevRentaQ1);
-                } else if (rentaConfigId && ingresoGravadoTotalMes > 0) {
-                    const [bracketRows] = await pool.query(
-                        `SELECT porcentaje, valor_descuento, exceso FROM rh_renta_config_detalle WHERE renta_config_id = ? AND sueldo_inicial <= ? AND sueldo_final >= ? ORDER BY sueldo_inicial ASC LIMIT 1`,
-                        [rentaConfigId, ingresoGravadoTotalMes, ingresoGravadoTotalMes]
-                    );
-                    if (bracketRows.length > 0) {
-                        const br = bracketRows[0];
-                        const rentaTotal = ((ingresoGravadoTotalMes - br.exceso) * br.porcentaje / 100) + parseFloat(br.valor_descuento);
-                        descuentoRenta = Math.max(0, rentaTotal - prevRentaQ1);
-                    }
-                }
-            }
+            const { descuentoRenta } = computeEmployeeRenta({
+                modo: rentaCtx.calculoRentaModo,
+                brackets: rentaCtx.brackets,
+                ingresoGravado,
+                esJubilado,
+                aplicaRenta: aplicaRentaEmpA,
+                quincena,
+                q1Data
+            });
 
             descuentoISSS = Math.round(descuentoISSS * 100) / 100;
             descuentoAFP = Math.round(descuentoAFP * 100) / 100;
@@ -367,40 +342,27 @@ const sincronizarPlanilla = async (req, res, pool) => {
                                 d.valor_ingresado = expectedVal;
                                 hasChanges = true;
                             }
-                        } else {
-                            // Cuentas manuales quincenales (como anticipos) NUNCA se resetean a cero si no hay descuento programado
-                            const descC = (d.descripcion || '').toLowerCase();
-                            const isAnticipoAccount = d.codigo === '06' || descC.includes('anticipo');
-                            if (isAnticipoAccount) {
-                                continue;
-                            }
-
-                            // Si el empleado ya no tiene este descuento programado activo y la cuenta es de tipo descuento programado
-                            const isProgrammedAccount = (d.cuenta_id && programmedCuentaIds.has(d.cuenta_id)) ||
-                                descC.includes('prestamo') ||
-                                descC.includes('procuraduria') ||
-                                descC.includes('fondo social') ||
-                                descC.includes('fsv');
-
-                            if (isProgrammedAccount && parseFloat(d.valor_ingresado || 0) !== 0) {
-                                await pool.query(
-                                    `UPDATE rh_planilla_detalles SET valor_base = 0, valor_ingresado = 0 WHERE id = ?`,
-                                    [d.id]
-                                );
-                                d.valor_base = 0;
-                                d.valor_ingresado = 0;
-                                hasChanges = true;
-                            }
                         }
+                        // Las cuentas manuales o sin descuento programado en esta quincena (préstamos, anticipos, retenciones)
+                        // NUNCA se resetean a cero para preservar los valores digitados por el usuario.
                     }
                 }
                 // Las demás cuentas (horas extras, comisiones, turnos, etc.) NO se tocan en lo absoluto.
             }
 
-            // También verificar si cambió el sueldo_base o bonificacion_fija en la cabecera
+            // También verificar si cambió el sueldo_base, bonificación fija, días o adscripción (sucursal, departamento, cargo)
+            const empBranchId = emp.branch_id || null;
+            const empDeptoId = emp.departamento_personal_id || null;
+            const empCargoId = emp.cargo_id || null;
+
+            const metaChanged = (planillaExistente.branch_id ?? null) !== empBranchId ||
+                                (planillaExistente.departamento_personal_id ?? null) !== empDeptoId ||
+                                (planillaExistente.cargo_id ?? null) !== empCargoId;
+
             if (parseFloat(planillaExistente.sueldo_base || 0) !== empSueldoBase ||
                 parseFloat(planillaExistente.bonificacion_fija || 0) !== empBonifFija ||
-                parseInt(planillaExistente.dias_trabajados) !== currentDias) {
+                parseInt(planillaExistente.dias_trabajados) !== currentDias ||
+                metaChanged) {
                 hasChanges = true;
             }
 
@@ -437,35 +399,22 @@ const sincronizarPlanilla = async (req, res, pool) => {
                         descuentoAFP = baseAFP * afpRows[0].porcentaje_empleado / 100;
                     }
                 }
-                const ingresoGravadoQ2 = totalPercepciones - descuentoISSS - descuentoAFP;
-                let descuentoRenta = 0;
-                // Renta: solo aplica en 2da quincena y si el empleado tiene aplica_renta = 1
-                const aplicaRentaEmpB = quincena === 'segunda' && (emp.aplica_renta === 1 || emp.aplica_renta === undefined || emp.aplica_renta === null);
-                if (aplicaRentaEmpB) {
-                    const q1Data = q1PlanillaMap.get(emp.id);
-                    const q1Gravado = q1Data ? Math.max(0, parseFloat(q1Data.total_percepciones || 0) - parseFloat(q1Data.descuento_isss || 0) - parseFloat(q1Data.descuento_afp || 0)) : 0;
-                    const ingresoGravadoTotalMes = Math.max(0, ingresoGravadoQ2 + q1Gravado);
-                    const prevRentaQ1 = q1Data ? parseFloat(q1Data.descuento_renta || 0) : 0;
+                const ingresoGravado = Math.max(0, totalPercepciones - descuentoISSS - descuentoAFP);
+                const aplicaRentaEmpB = (emp.aplica_renta === 1 || emp.aplica_renta === undefined || emp.aplica_renta === null);
+                const q1Data = q1PlanillaMap.get(emp.id) || null;
 
-                    if (esJubilado) {
-                        const rentaTotal = Math.round(ingresoGravadoTotalMes * 0.10 * 100) / 100;
-                        descuentoRenta = Math.max(0, rentaTotal - prevRentaQ1);
-                    } else if (rentaConfigId && ingresoGravadoTotalMes > 0) {
-                        const [bracketRows] = await pool.query(
-                            `SELECT porcentaje, valor_descuento, exceso FROM rh_renta_config_detalle WHERE renta_config_id = ? AND sueldo_inicial <= ? AND sueldo_final >= ? ORDER BY sueldo_inicial ASC LIMIT 1`,
-                            [rentaConfigId, ingresoGravadoTotalMes, ingresoGravadoTotalMes]
-                        );
-                        if (bracketRows.length > 0) {
-                            const br = bracketRows[0];
-                            const rentaTotal = ((ingresoGravadoTotalMes - br.exceso) * br.porcentaje / 100) + parseFloat(br.valor_descuento);
-                            descuentoRenta = Math.max(0, rentaTotal - prevRentaQ1);
-                        }
-                    }
-                }
+                const { descuentoRenta } = computeEmployeeRenta({
+                    modo: rentaCtx.calculoRentaModo,
+                    brackets: rentaCtx.brackets,
+                    ingresoGravado,
+                    esJubilado,
+                    aplicaRenta: aplicaRentaEmpB,
+                    quincena,
+                    q1Data
+                });
 
                 descuentoISSS = Math.round(descuentoISSS * 100) / 100;
                 descuentoAFP = Math.round(descuentoAFP * 100) / 100;
-                descuentoRenta = Math.round(descuentoRenta * 100) / 100;
                 const totalDeducciones = Math.round((totalDeduccionesCuentas + descuentoISSS + descuentoAFP + descuentoRenta) * 100) / 100;
                 const montoRecibir = Math.round((totalPercepciones - totalDeducciones) * 100) / 100;
 
@@ -474,6 +423,9 @@ const sincronizarPlanilla = async (req, res, pool) => {
                      SET dias_trabajados = ?,
                          sueldo_base = ?,
                          bonificacion_fija = ?,
+                         branch_id = ?,
+                         departamento_personal_id = ?,
+                         cargo_id = ?,
                          total_percepciones = ?, 
                          total_deducciones = ?, 
                          descuento_isss = ?, 
@@ -481,42 +433,30 @@ const sincronizarPlanilla = async (req, res, pool) => {
                          descuento_renta = ?, 
                          monto_recibir = ? 
                      WHERE id = ?`,
-                    [currentDias, empSueldoBase, empBonifFija, totalPercepciones, totalDeducciones, descuentoISSS, descuentoAFP, descuentoRenta, montoRecibir, planillaExistente.id]
+                    [currentDias, empSueldoBase, empBonifFija, empBranchId, empDeptoId, empCargoId, totalPercepciones, totalDeducciones, descuentoISSS, descuentoAFP, descuentoRenta, montoRecibir, planillaExistente.id]
                 );
 
                 actualizadosCount++;
-            } else if (quincena === 'segunda') {
-                // Si no cambiaron detalles ni sueldos, pero estamos en la 2da quincena, verificar si el descuento de renta actual coincide con el cálculo acumulado mensual
-                let totalPercepciones = parseFloat(planillaExistente.total_percepciones || 0);
-                let descuentoISSS = parseFloat(planillaExistente.descuento_isss || 0);
-                let descuentoAFP = parseFloat(planillaExistente.descuento_afp || 0);
-                const ingresoGravadoQ2 = Math.max(0, totalPercepciones - descuentoISSS - descuentoAFP);
+            } else {
+                // Si no cambiaron detalles ni sueldos, verificar si el descuento de renta actual coincide con la configuración activa
+                const totalPercepciones = parseFloat(planillaExistente.total_percepciones || 0);
+                const descuentoISSS = parseFloat(planillaExistente.descuento_isss || 0);
+                const descuentoAFP = parseFloat(planillaExistente.descuento_afp || 0);
+                const ingresoGravado = Math.max(0, totalPercepciones - descuentoISSS - descuentoAFP);
 
                 const esJubilado = !!emp.es_jubilado;
-                let descuentoRenta = 0;
-                const aplicaRentaEmpB = emp.aplica_renta === 1 || emp.aplica_renta === undefined || emp.aplica_renta === null;
-                if (aplicaRentaEmpB) {
-                    const q1Data = q1PlanillaMap.get(emp.id);
-                    const q1Gravado = q1Data ? Math.max(0, parseFloat(q1Data.total_percepciones || 0) - parseFloat(q1Data.descuento_isss || 0) - parseFloat(q1Data.descuento_afp || 0)) : 0;
-                    const ingresoGravadoTotalMes = Math.max(0, ingresoGravadoQ2 + q1Gravado);
-                    const prevRentaQ1 = q1Data ? parseFloat(q1Data.descuento_renta || 0) : 0;
+                const aplicaRentaEmpB = (emp.aplica_renta === 1 || emp.aplica_renta === undefined || emp.aplica_renta === null);
+                const q1Data = q1PlanillaMap.get(emp.id) || null;
 
-                    if (esJubilado) {
-                        const rentaTotal = Math.round(ingresoGravadoTotalMes * 0.10 * 100) / 100;
-                        descuentoRenta = Math.max(0, rentaTotal - prevRentaQ1);
-                    } else if (rentaConfigId && ingresoGravadoTotalMes > 0) {
-                        const [bracketRows] = await pool.query(
-                            `SELECT porcentaje, valor_descuento, exceso FROM rh_renta_config_detalle WHERE renta_config_id = ? AND sueldo_inicial <= ? AND sueldo_final >= ? ORDER BY sueldo_inicial ASC LIMIT 1`,
-                            [rentaConfigId, ingresoGravadoTotalMes, ingresoGravadoTotalMes]
-                        );
-                        if (bracketRows.length > 0) {
-                            const br = bracketRows[0];
-                            const rentaTotal = ((ingresoGravadoTotalMes - br.exceso) * br.porcentaje / 100) + parseFloat(br.valor_descuento);
-                            descuentoRenta = Math.max(0, rentaTotal - prevRentaQ1);
-                        }
-                    }
-                }
-                descuentoRenta = Math.round(descuentoRenta * 100) / 100;
+                const { descuentoRenta } = computeEmployeeRenta({
+                    modo: rentaCtx.calculoRentaModo,
+                    brackets: rentaCtx.brackets,
+                    ingresoGravado,
+                    esJubilado,
+                    aplicaRenta: aplicaRentaEmpB,
+                    quincena,
+                    q1Data
+                });
 
                 const currentRenta = parseFloat(planillaExistente.descuento_renta || 0);
                 if (Math.abs(descuentoRenta - currentRenta) > 0.001) {

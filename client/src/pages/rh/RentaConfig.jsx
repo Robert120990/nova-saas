@@ -7,7 +7,7 @@ import Modal from '../../components/ui/Modal';
 import Pagination from '../../components/ui/Pagination';
 import { useConfirm } from '../../context/ConfirmContext';
 import { toast } from 'sonner';
-import { Plus, Edit, Trash2, Search, Receipt, X } from 'lucide-react';
+import { Plus, Edit, Trash2, Search, Receipt, X, Calculator } from 'lucide-react';
 
 const RentaConfig = () => {
     const queryClient = useQueryClient();
@@ -23,6 +23,24 @@ const RentaConfig = () => {
         const timer = setTimeout(() => { setDebouncedSearch(searchTerm); setPage(1); }, 500);
         return () => clearTimeout(timer);
     }, [searchTerm]);
+
+    const { data: rhConfig } = useQuery({
+        queryKey: ['rh-config'],
+        queryFn: async () => (await axios.get('/api/rh/config')).data
+    });
+
+    const configMutation = useMutation({
+        mutationFn: (modo) => axios.put('/api/rh/config', { calculo_renta_modo: modo }),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['rh-config'] });
+            toast.success('Modo de retención de renta actualizado');
+        },
+        onError: (err) => {
+            toast.error(err.response?.data?.message || 'Error al actualizar modo de renta');
+        }
+    });
+
+    const currentModo = rhConfig?.calculo_renta_modo || 'segunda_quincena';
 
     const { data: response = { data: [], total: 0, totalPages: 0 }, isLoading } = useQuery({
         queryKey: ['rh-renta-config', debouncedSearch, page],
@@ -127,6 +145,53 @@ const RentaConfig = () => {
                 <button onClick={() => openModal(null)} className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-1.5 rounded-xl font-bold text-sm transition-all shadow-lg shadow-indigo-600/20 active:scale-95">
                     <Plus size={20} /><span>Nueva Configuraci&oacute;n</span>
                 </button>
+            </div>
+
+            {/* Tarjeta de Modo de Retención Activo en Planilla */}
+            <div className="bg-gradient-to-r from-slate-900 to-indigo-950 text-white rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-indigo-500/30 text-indigo-300 border border-indigo-500/40 flex items-center gap-1">
+                            <Calculator size={11} />
+                            Modo de Cálculo Activo
+                        </span>
+                        <span className="text-xs font-bold text-white">
+                            {currentModo === 'segunda_quincena' ? 'Segunda Quincena (Tabla Mensual)' : 'Cada Quincena (Tabla Quincenal)'}
+                        </span>
+                    </div>
+                    <p className="text-xs text-slate-300 max-w-xl leading-relaxed">
+                        {currentModo === 'segunda_quincena'
+                            ? 'El impuesto se retiene en la 2da quincena acumulando el gravado de ambas quincenas con la tabla mensual (1ra quincena $0.00).'
+                            : 'El impuesto se retiene de forma independiente en cada quincena aplicando la tabla quincenal.'}
+                    </p>
+                </div>
+
+                <div className="flex bg-slate-800/90 p-1 rounded-xl border border-slate-700/60 shrink-0 self-start md:self-auto">
+                    <button
+                        type="button"
+                        disabled={configMutation.isPending}
+                        onClick={() => configMutation.mutate('segunda_quincena')}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                            currentModo === 'segunda_quincena'
+                                ? 'bg-indigo-600 text-white shadow-sm'
+                                : 'text-slate-400 hover:text-white'
+                        }`}
+                    >
+                        Segunda Quincena
+                    </button>
+                    <button
+                        type="button"
+                        disabled={configMutation.isPending}
+                        onClick={() => configMutation.mutate('cada_quincena')}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                            currentModo === 'cada_quincena'
+                                ? 'bg-indigo-600 text-white shadow-sm'
+                                : 'text-slate-400 hover:text-white'
+                        }`}
+                    >
+                        Cada Quincena
+                    </button>
+                </div>
             </div>
 
             <div className="relative max-w-sm">

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
-import { Save, Upload, Trash2, Image as ImageIcon } from 'lucide-react';
+import { Save, Upload, Trash2, Image as ImageIcon, Calculator } from 'lucide-react';
 import { toast } from 'sonner';
 
 const API_BASE = 'http://localhost:4000';
@@ -17,6 +17,7 @@ const RhGeneralConfigTab = () => {
     const [notarioNombre, setNotarioNombre] = useState('');
     const [notarioDomicilio, setNotarioDomicilio] = useState('');
     const [notarioDepartamento, setNotarioDepartamento] = useState('');
+    const [calculoRentaModo, setCalculoRentaModo] = useState('segunda_quincena');
 
     const { data: config, isPending } = useQuery({
         queryKey: ['rh-config'],
@@ -31,6 +32,7 @@ const RhGeneralConfigTab = () => {
             setNotarioNombre(config.notario_nombre || '');
             setNotarioDomicilio(config.notario_domicilio || '');
             setNotarioDepartamento(config.notario_departamento || '');
+            setCalculoRentaModo(config.calculo_renta_modo || 'segunda_quincena');
         }
     }, [config]);
 
@@ -91,6 +93,7 @@ const RhGeneralConfigTab = () => {
         formData.append('notario_nombre', notarioNombre);
         formData.append('notario_domicilio', notarioDomicilio);
         formData.append('notario_departamento', notarioDepartamento);
+        formData.append('calculo_renta_modo', calculoRentaModo);
         if (firmaFile) formData.append('firma', firmaFile);
         if (selloFile) formData.append('sello', selloFile);
         mutation.mutate(formData);
@@ -152,6 +155,82 @@ const RhGeneralConfigTab = () => {
                         placeholder="Nombre del responsable de RRHH"
                         className={cls}
                     />
+                </div>
+
+                {/* Modo de Retención de Renta (ISR) */}
+                <div className="pt-2 border-t border-slate-50">
+                    <div className="flex items-center gap-2 mb-1">
+                        <Calculator size={16} className="text-indigo-600" />
+                        <label className={lbl}>Cálculo de Retención de Renta (ISR)</label>
+                    </div>
+                    <p className="text-xs text-slate-400 mb-3">
+                        Configura si el impuesto sobre la renta se descuenta en la segunda quincena de forma acumulada o en cada quincena.
+                    </p>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                        {/* Opción 1: Segunda quincena (Default) */}
+                        <div
+                            onClick={() => setCalculoRentaModo('segunda_quincena')}
+                            className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${
+                                calculoRentaModo === 'segunda_quincena'
+                                    ? 'border-indigo-600 bg-indigo-50/50 shadow-sm ring-2 ring-indigo-500/10'
+                                    : 'border-slate-200 bg-white hover:border-slate-300'
+                            }`}
+                        >
+                            <div className="flex items-center justify-between mb-2">
+                                <span className="text-[11px] font-bold uppercase tracking-wider text-indigo-700 flex items-center gap-1.5">
+                                    Segunda Quincena
+                                    <span className="px-1.5 py-0.5 text-[9px] bg-indigo-100 text-indigo-700 font-extrabold rounded">
+                                        Por Defecto
+                                    </span>
+                                </span>
+                                <input
+                                    type="radio"
+                                    name="calculo_renta_modo"
+                                    value="segunda_quincena"
+                                    checked={calculoRentaModo === 'segunda_quincena'}
+                                    onChange={() => setCalculoRentaModo('segunda_quincena')}
+                                    className="accent-indigo-600 h-4 w-4"
+                                />
+                            </div>
+                            <h4 className="text-[13px] font-bold text-slate-900 mb-1">
+                                Tabla Mensual Acumulada
+                            </h4>
+                            <p className="text-[11px] text-slate-500 leading-relaxed">
+                                En la 1ra quincena no se descuenta renta ($0.00). En la 2da quincena se acumula el ingreso gravado del mes completo y se aplica la tabla mensual del ISR.
+                            </p>
+                        </div>
+
+                        {/* Opción 2: Cada quincena */}
+                        <div
+                            onClick={() => setCalculoRentaModo('cada_quincena')}
+                            className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${
+                                calculoRentaModo === 'cada_quincena'
+                                    ? 'border-indigo-600 bg-indigo-50/50 shadow-sm ring-2 ring-indigo-500/10'
+                                    : 'border-slate-200 bg-white hover:border-slate-300'
+                            }`}
+                        >
+                            <div className="flex items-center justify-between mb-2">
+                                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-700">
+                                    Cada Quincena
+                                </span>
+                                <input
+                                    type="radio"
+                                    name="calculo_renta_modo"
+                                    value="cada_quincena"
+                                    checked={calculoRentaModo === 'cada_quincena'}
+                                    onChange={() => setCalculoRentaModo('cada_quincena')}
+                                    className="accent-indigo-600 h-4 w-4"
+                                />
+                            </div>
+                            <h4 className="text-[13px] font-bold text-slate-900 mb-1">
+                                Tabla Quincenal Regular
+                            </h4>
+                            <p className="text-[11px] text-slate-500 leading-relaxed">
+                                En cada quincena (1ra y 2da) se calcula y descuenta la renta de forma independiente aplicando directamente la tabla quincenal del ISR sobre el gravado del período.
+                            </p>
+                        </div>
+                    </div>
                 </div>
 
                 <div className="pt-2 border-t border-slate-50">

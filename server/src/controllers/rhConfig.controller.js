@@ -7,9 +7,22 @@ const getConfig = async (req, res) => {
         const [rows] = await pool.query(`SELECT * FROM ${TABLE} WHERE company_id = ?`, [req.company_id]);
         if (rows.length === 0) {
             await pool.query(`INSERT INTO ${TABLE} (company_id) VALUES (?)`, [req.company_id]);
-            return res.json({ id: null, company_id: req.company_id, responsable_nombre: '', firma_url: '', sello_url: '', notario_nombre: '', notario_domicilio: '', notario_departamento: '' });
+            return res.json({
+                id: null,
+                company_id: req.company_id,
+                responsable_nombre: '',
+                firma_url: '',
+                sello_url: '',
+                notario_nombre: '',
+                notario_domicilio: '',
+                notario_departamento: '',
+                calculo_renta_modo: 'segunda_quincena'
+            });
         }
-        res.json(rows[0]);
+        res.json({
+            ...rows[0],
+            calculo_renta_modo: rows[0].calculo_renta_modo || 'segunda_quincena'
+        });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -17,13 +30,16 @@ const getConfig = async (req, res) => {
 
 const updateConfig = async (req, res) => {
     try {
-        const { responsable_nombre, notario_nombre, notario_domicilio, notario_departamento } = req.body;
-        const data = {
-            responsable_nombre: responsable_nombre || '',
-            notario_nombre: notario_nombre || '',
-            notario_domicilio: notario_domicilio || '',
-            notario_departamento: notario_departamento || ''
-        };
+        const { responsable_nombre, notario_nombre, notario_domicilio, notario_departamento, calculo_renta_modo } = req.body;
+        const data = {};
+
+        if (responsable_nombre !== undefined) data.responsable_nombre = responsable_nombre || '';
+        if (notario_nombre !== undefined) data.notario_nombre = notario_nombre || '';
+        if (notario_domicilio !== undefined) data.notario_domicilio = notario_domicilio || '';
+        if (notario_departamento !== undefined) data.notario_departamento = notario_departamento || '';
+        if (calculo_renta_modo !== undefined) {
+            data.calculo_renta_modo = calculo_renta_modo === 'cada_quincena' ? 'cada_quincena' : 'segunda_quincena';
+        }
 
         if (req.files) {
             if (req.files.firma && req.files.firma.length > 0) {
@@ -38,12 +54,22 @@ const updateConfig = async (req, res) => {
 
         if (existing.length === 0) {
             data.company_id = req.company_id;
+            if (data.responsable_nombre === undefined) data.responsable_nombre = '';
+            if (data.notario_nombre === undefined) data.notario_nombre = '';
+            if (data.notario_domicilio === undefined) data.notario_domicilio = '';
+            if (data.notario_departamento === undefined) data.notario_departamento = '';
+            if (data.calculo_renta_modo === undefined) data.calculo_renta_modo = 'segunda_quincena';
             const [result] = await pool.query(`INSERT INTO ${TABLE} SET ?`, [data]);
             res.json({ id: result.insertId, ...data });
         } else {
-            await pool.query(`UPDATE ${TABLE} SET ? WHERE company_id = ?`, [data, req.company_id]);
+            if (Object.keys(data).length > 0) {
+                await pool.query(`UPDATE ${TABLE} SET ? WHERE company_id = ?`, [data, req.company_id]);
+            }
             const [updated] = await pool.query(`SELECT * FROM ${TABLE} WHERE company_id = ?`, [req.company_id]);
-            res.json(updated[0]);
+            res.json({
+                ...updated[0],
+                calculo_renta_modo: updated[0].calculo_renta_modo || 'segunda_quincena'
+            });
         }
     } catch (error) {
         console.error('[rhConfig update] Error:', error);
