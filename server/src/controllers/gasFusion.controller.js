@@ -156,16 +156,17 @@ exports.testConnection = async (req, res) => {
     try {
         let config;
         const { host, username, password, branch_id } = req.body || {};
-        if (host && username) {
-            let h = host.trim();
+        if (host !== undefined && host !== null && String(host).trim()) {
+            let h = String(host).trim();
             if (!h.startsWith('http://') && !h.startsWith('https://')) h = `https://${h}`;
-            let pwd = password;
-            // Si no enviaron password en el body pero pasaron branch_id, buscar la guardada
-            if (!pwd && branch_id) {
+            let uName = username !== undefined && username !== null ? String(username).trim() : '';
+            let pwd = password !== undefined && password !== null ? String(password).trim() : '';
+            // Si password es undefined (no enviado en el form) pero pasaron branch_id, buscar la guardada
+            if (password === undefined && branch_id) {
                 const saved = await fusionService.getFusionConfig(req.company_id, branch_id);
                 pwd = saved.password;
             }
-            config = { host: h, username: username.trim(), password: pwd || '' };
+            config = { host: h, username: uName, password: pwd };
         } else {
             const bId = branch_id || req.user?.branch_id;
             config = await fusionService.getFusionConfig(req.company_id, bId);
@@ -304,8 +305,8 @@ exports.getAgentConfig = async (req, res) => {
             branchId: Number(branchId),
             agentKey,
             fusionHost: config.host || 'https://10.19.4.15',
-            fusionUser: config.username || 'MANAGER',
-            fusionPassword: config.password || 'MANAGER'
+            fusionUser: config.username !== undefined && config.username !== null ? config.username : '',
+            fusionPassword: config.password !== undefined && config.password !== null ? config.password : ''
         };
         res.setHeader('Content-Disposition', 'attachment; filename="config.json"');
         res.setHeader('Content-Type', 'application/json');

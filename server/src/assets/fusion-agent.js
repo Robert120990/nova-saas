@@ -10,27 +10,40 @@
  */
 
 const https = require('https');
+const http = require('http');
 const fs = require('fs');
 const path = require('path');
 
-// Cargar configuración local
-const configPath = path.join(__dirname, 'config.json');
+// Cargar configuración local (soportando posible extensión oculta .txt en Windows)
+const possibleConfigPaths = [
+    path.join(__dirname, 'config.json'),
+    path.join(__dirname, 'config.json.txt'),
+    path.join(process.cwd(), 'config.json'),
+    path.join(process.cwd(), 'config.json.txt')
+];
+let configLoadedFrom = null;
+
 let config = {
     serverUrl: 'https://sys.sipesv.com',
     companyId: 1,
-    branchId: 2,
+    branchId: 7,
     agentKey: '',
     fusionHost: 'https://10.19.4.15',
-    fusionUser: 'MANAGER',
-    fusionPassword: 'MANAGER'
+    fusionUser: 'manager',
+    fusionPassword: ''
 };
 
-if (fs.existsSync(configPath)) {
-    try {
-        const loaded = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-        config = { ...config, ...loaded };
-    } catch (e) {
-        console.error('[ADVERTENCIA] Error leyendo config.json, usando valores por defecto:', e.message);
+for (const p of possibleConfigPaths) {
+    if (fs.existsSync(p)) {
+        try {
+            const raw = fs.readFileSync(p, 'utf8').replace(/^\uFEFF/, ''); // Remover BOM si existe
+            const loaded = JSON.parse(raw);
+            config = { ...config, ...loaded };
+            configLoadedFrom = p;
+            break;
+        } catch (e) {
+            console.error(`[ADVERTENCIA] Error leyendo ${path.basename(p)}:`, e.message);
+        }
     }
 }
 
@@ -42,8 +55,8 @@ for (let i = 0; i < args.length; i++) {
     if (args[i] === '--branch' && args[i + 1]) config.branchId = parseInt(args[++i], 10);
     if (args[i] === '--key' && args[i + 1]) config.agentKey = args[++i];
     if (args[i] === '--host' && args[i + 1]) config.fusionHost = args[++i];
-    if (args[i] === '--user' && args[i + 1]) config.fusionUser = args[++i];
-    if (args[i] === '--pass' && args[i + 1]) config.fusionPassword = args[++i];
+    if (args[i] === '--user') config.fusionUser = (args[i + 1] !== undefined && !args[i + 1].startsWith('--')) ? args[++i] : '';
+    if (args[i] === '--pass') config.fusionPassword = (args[i + 1] !== undefined && !args[i + 1].startsWith('--')) ? args[++i] : '';
 }
 
 const WSClass = typeof WebSocket !== 'undefined' ? WebSocket : (() => {
@@ -72,22 +85,29 @@ function sanitizeHost(raw) {
     }
 }
 
-// Helper para peticiones HTTPS directas al controlador Wayne Fusion local (ignora SSL autofirmado)
+// Helper para peticiones HTTP/HTTPS directas al controlador Wayne Fusion local (ignora SSL autofirmado y admite TLS legado)
 function ffcRequest(urlStr, options = {}, body = null) {
     return new Promise((resolve, reject) => {
         try {
             const url = new URL(urlStr);
+            const isHttps = url.protocol === 'https:';
+            const client = isHttps ? https : http;
             const reqOptions = {
                 hostname: url.hostname,
-                port: url.port || 443,
+                port: url.port || (isHttps ? 443 : 80),
                 path: url.pathname + url.search,
                 method: options.method || 'GET',
                 headers: Object.assign({ 'Content-Type': 'application/json' }, options.headers || {}),
-                rejectUnauthorized: false,
                 timeout: options.timeout || 15000
             };
 
-            const req = https.request(reqOptions, (res) => {
+            if (isHttps) {
+                reqOptions.rejectUnauthorized = false;
+                reqOptions.minVersion = 'TLSv1';
+                reqOptions.ciphers = 'DEFAULT:@SECLEVEL=0';
+            }
+
+            const req = client.request(reqOptions, (res) => {
                 let data = '';
                 res.on('data', chunk => data += chunk);
                 res.on('end', () => {
@@ -129,30 +149,48 @@ async function getFusionToken(host, username, password, forceNew = false) {
     if (!forceNew && cachedToken && tokenExpiresAt > now + 60000) return cachedToken;
 
     const baseHost = sanitizeHost(host);
-    const uName = (username || 'MANAGER').trim();
-    const pwd = (password || 'MANAGER').trim();
+    const uName = (username !== undefined && username !== null) ? String(username).trim() : '';
+    const pwd = (password !== undefined && password !== null) ? String(password).trim() : '';
+
+    const tryLogin = async (u, p) => {
+        const res = await ffcRequest(`${baseHost}/fusion/login`, { method: 'POST' }, {
+            userName: u,
+            username: u,
+            password: p
+        });
+        return res.data?.accessToken;
+    };
 
     try {
-        const loginRes = await ffcRequest(`${baseHost}/fusion/login`, { method: 'POST' }, {
-            userName: uName,
-            password: pwd
-        });
-        const token = loginRes.data?.accessToken;
+        const token = await tryLogin(uName, pwd);
         if (!token) throw new Error('Autenticación en Fusion no devolvió accessToken');
         cachedToken = token;
         tokenExpiresAt = now + (15 * 60 * 1000);
         return token;
     } catch (err) {
-        if ((err.status === 401 || err.status === 403) && uName !== uName.toUpperCase()) {
-            const retryRes = await ffcRequest(`${baseHost}/fusion/login`, { method: 'POST' }, {
-                userName: uName.toUpperCase(),
-                password: pwd
-            });
-            const token = retryRes.data?.accessToken;
-            if (token) {
-                cachedToken = token;
-                tokenExpiresAt = now + (15 * 60 * 1000);
-                return token;
+        if (err.status === 401 || err.status === 403) {
+            const variants = [
+                { u: uName.toLowerCase(), p: pwd },
+                { u: uName.toUpperCase(), p: pwd },
+                { u: uName, p: pwd.toLowerCase() },
+                { u: uName, p: pwd.toUpperCase() },
+                { u: uName.toLowerCase(), p: pwd.toUpperCase() },
+                { u: uName.toUpperCase(), p: pwd.toLowerCase() },
+                { u: uName.toLowerCase(), p: pwd.toLowerCase() },
+                { u: uName.toUpperCase(), p: pwd.toUpperCase() }
+            ];
+            for (const v of variants) {
+                if (v.u === uName && v.p === pwd) continue;
+                try {
+                    const token = await tryLogin(v.u, v.p);
+                    if (token) {
+                        cachedToken = token;
+                        tokenExpiresAt = now + (15 * 60 * 1000);
+                        return token;
+                    }
+                } catch {
+                    // seguir probando
+                }
             }
         }
         throw err;
@@ -161,11 +199,21 @@ async function getFusionToken(host, username, password, forceNew = false) {
 
 async function ffcAuthedRequest(endpoint, host, username, password, method = 'GET', body = null) {
     const baseHost = sanitizeHost(host);
-    let token = await getFusionToken(baseHost, username, password);
+    let token = null;
     try {
-        return await ffcRequest(`${baseHost}${endpoint}`, { method, headers: { Authorization: token } }, body);
+        token = await getFusionToken(baseHost, username, password);
     } catch (err) {
-        if (err.status === 401 || err.status === 403) {
+        if (!username && !password) {
+            log(`[Fusion] Sin credenciales: intentando petición directa a ${endpoint}`);
+        } else {
+            throw err;
+        }
+    }
+    const headers = token ? { Authorization: token } : {};
+    try {
+        return await ffcRequest(`${baseHost}${endpoint}`, { method, headers }, body);
+    } catch (err) {
+        if (token && (err.status === 401 || err.status === 403)) {
             token = await getFusionToken(baseHost, username, password, true);
             return await ffcRequest(`${baseHost}${endpoint}`, { method, headers: { Authorization: token } }, body);
         }
@@ -184,12 +232,24 @@ const fmtDT = (d, t) => {
 // Implementación de operaciones locales sobre Fusion FFC
 async function handleAction(action, payload) {
     const host = payload?.config?.host || config.fusionHost;
-    const user = payload?.config?.username || config.fusionUser;
-    const pass = payload?.config?.password || config.fusionPassword;
+    const user = payload?.config?.username !== undefined ? payload.config.username : config.fusionUser;
+    const pass = payload?.config?.password !== undefined ? payload.config.password : config.fusionPassword;
 
     if (action === 'testConnection') {
-        const token = await getFusionToken(host, user, pass, true);
-        return { success: true, host, token: token ? 'OK' : 'FAIL' };
+        try {
+            const token = await getFusionToken(host, user, pass, true);
+            return { success: true, host, token: token ? 'OK' : 'FAIL' };
+        } catch (err) {
+            if (!user && !pass) {
+                try {
+                    await ffcRequest(`${sanitizeHost(host)}/fusion/period/list/shift`, { method: 'GET' });
+                    return { success: true, host, token: 'SIN_AUTH' };
+                } catch {
+                    throw err;
+                }
+            }
+            throw err;
+        }
     }
 
     if (action === 'getShiftPeriods') {
@@ -322,8 +382,25 @@ function startAgent() {
     console.log(` Servidor SaaS   : ${config.serverUrl}`);
     console.log(` Empresa ID     : ${config.companyId} | Estación ID: ${config.branchId}`);
     console.log(` Controlador IP : ${config.fusionHost}`);
-    console.log(` Usuario Fusion : ${config.fusionUser}`);
+    console.log(` Usuario Fusion : ${config.fusionUser || '(En blanco / Sin usuario)'}`);
+    console.log(` Clave Fusion   : ${config.fusionPassword ? '••••••••' : '(En blanco / Sin contraseña)'}`);
+    const keyPreview = config.agentKey ? `${config.agentKey.slice(0, 6)}...${config.agentKey.slice(-4)}` : '(VACIA - REQUERIDA)';
+    console.log(` Clave Conector : ${keyPreview}`);
+    if (configLoadedFrom) {
+        console.log(` Archivo Config : ${path.basename(configLoadedFrom)}`);
+    } else {
+        console.log(' Archivo Config : [No encontrado config.json, usando parametros]');
+    }
     console.log('----------------------------------------------------------------');
+
+    if (!config.agentKey || !config.agentKey.trim()) {
+        log('❌ [ERROR FATAL] Falta la clave de seguridad del conector (agentKey).');
+        log('   Para solucionarlo, descargue el archivo config.json desde SIPE WEB');
+        log('   o ejecute con: node fusion-agent.js --branch <id> --key <clave>');
+        log('   Reintentando en 10 segundos...');
+        setTimeout(startAgent, 10000);
+        return;
+    }
 
     let wsUrl = config.serverUrl.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:');
     if (!wsUrl.includes('/ws/fusion-agent')) {
@@ -344,7 +421,7 @@ function startAgent() {
         return;
     }
 
-    ws.onopen = () => {
+    ws.onopen = async () => {
         log(`✅ Conexión establecida con ${config.serverUrl} (Canal Seguro Activo)`);
         log(`🟢 Conector en línea listo para recibir consultas desde la nube.`);
         heartbeatTimer = setInterval(() => {
@@ -352,6 +429,26 @@ function startAgent() {
                 ws.send(JSON.stringify({ type: 'PING' }));
             }
         }, 25000);
+
+        // Diagnóstico visual inmediato de comunicación con el controlador Fusion local
+        log(`[Fusion Local] Verificando comunicación con controlador en ${config.fusionHost}...`);
+        try {
+            await getFusionToken(config.fusionHost, config.fusionUser, config.fusionPassword, true);
+            log(`[Fusion Local] ✅ Autenticación exitosa en Wayne Fusion FFC (${config.fusionHost})`);
+        } catch (err) {
+            if (!config.fusionUser && !config.fusionPassword) {
+                try {
+                    await ffcRequest(`${sanitizeHost(config.fusionHost)}/fusion/period/list/shift`, { method: 'GET' });
+                    log(`[Fusion Local] ✅ Comunicación exitosa con Wayne Fusion sin credenciales (${config.fusionHost})`);
+                } catch (e2) {
+                    log(`[Fusion Local] ❌ Error conectando con Fusion: ${err.message}`);
+                    log(`[Fusion Local]    (Verifique que la IP ${config.fusionHost} sea accesible desde esta PC)`);
+                }
+            } else {
+                log(`[Fusion Local] ❌ Error conectando con Fusion: ${err.message}`);
+                log(`[Fusion Local]    (Verifique que la IP ${config.fusionHost} sea accesible desde esta PC y que el usuario/clave sean correctos)`);
+            }
+        }
     };
 
     ws.onmessage = async (event) => {
@@ -395,7 +492,10 @@ function startAgent() {
     ws.onclose = (event) => {
         clearInterval(heartbeatTimer);
         const reason = event.reason ? ` (${event.reason})` : '';
-        log(`⚠️ Conexión cerrada con el servidor SaaS (Código: ${event.code}${reason}). Reintentando en 5 segundos...`);
+        const hint1006 = event.code === 1006 
+            ? ' -> El servidor SaaS rechazo la conexion. Revise que la clave (agentKey) corresponda a la Estacion #' + config.branchId + '.'
+            : '';
+        log(`⚠️ Conexión cerrada con el servidor SaaS (Código: ${event.code}${reason})${hint1006}. Reintentando en 5 segundos...`);
         setTimeout(startAgent, 5000);
     };
 

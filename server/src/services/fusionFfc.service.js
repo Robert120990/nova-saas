@@ -1,4 +1,5 @@
 const https = require('https');
+const http = require('http');
 const pool = require('../config/db');
 const fusionAgent = require('./fusionAgent.service');
 
@@ -14,17 +15,24 @@ function ffcRequest(urlStr, options = {}, body = null) {
     return new Promise((resolve, reject) => {
         try {
             const url = new URL(urlStr);
+            const isHttps = url.protocol === 'https:';
+            const client = isHttps ? https : http;
             const reqOptions = {
                 hostname: url.hostname,
-                port: url.port || 443,
+                port: url.port || (isHttps ? 443 : 80),
                 path: url.pathname + url.search,
                 method: options.method || 'GET',
                 headers: Object.assign({ 'Content-Type': 'application/json' }, options.headers || {}),
-                rejectUnauthorized: false,
-                timeout: options.timeout || 10000
+                timeout: options.timeout || 15000
             };
 
-            const req = https.request(reqOptions, (res) => {
+            if (isHttps) {
+                reqOptions.rejectUnauthorized = false;
+                reqOptions.minVersion = 'TLSv1';
+                reqOptions.ciphers = 'DEFAULT:@SECLEVEL=0';
+            }
+
+            const req = client.request(reqOptions, (res) => {
                 let data = '';
                 res.on('data', chunk => data += chunk);
                 res.on('end', () => {
@@ -83,8 +91,8 @@ function sanitizeHost(raw) {
 
 async function getFusionConfig(companyId, branchId) {
     let host = process.env.FUSION_HOST || 'https://10.19.4.15';
-    let username = process.env.FUSION_USER || 'MANAGER';
-    let password = process.env.FUSION_PASSWORD || 'MANAGER';
+    let username = process.env.FUSION_USER || '';
+    let password = process.env.FUSION_PASSWORD || '';
 
     if (companyId) {
         try {
@@ -96,8 +104,12 @@ async function getFusionConfig(companyId, branchId) {
             );
             for (const r of rows) {
                 if (r.setting_key === 'fusion_host' && r.setting_value) host = r.setting_value.trim();
-                if (r.setting_key === 'fusion_user' && r.setting_value) username = r.setting_value.trim();
-                if (r.setting_key === 'fusion_password' && r.setting_value) password = r.setting_value.trim();
+                if (r.setting_key === 'fusion_user' && r.setting_value !== null && r.setting_value !== undefined) {
+                    username = r.setting_value.trim();
+                }
+                if (r.setting_key === 'fusion_password' && r.setting_value !== null && r.setting_value !== undefined) {
+                    password = r.setting_value.trim();
+                }
             }
         } catch (err) {
             console.warn('[Fusion] Advertencia leyendo gas_station_settings:', err.message);
@@ -115,32 +127,45 @@ async function getFusionToken(config, forceNew = false) {
     const uName = (config.username || '').trim();
     const pwd = (config.password || '').trim();
 
-    try {
-        const loginRes = await ffcRequest(`${host}/fusion/login`, { method: 'POST' }, {
-            userName: uName,
-            password: pwd
+    const tryLogin = async (u, p) => {
+        const res = await ffcRequest(`${host}/fusion/login`, { method: 'POST' }, {
+            userName: u,
+            username: u,
+            password: p
         });
-        const token = loginRes.data?.accessToken;
+        return res.data?.accessToken;
+    };
+
+    try {
+        const token = await tryLogin(uName, pwd);
         if (!token) throw new Error('Autenticación en Fusion no devolvió accessToken');
         cachedToken = token;
         tokenExpiresAt = now + (15 * 60 * 1000);
         return token;
     } catch (err) {
-        // Si falló por 401 y el usuario tenía minúsculas, reintentar automáticamente con MAYÚSCULAS
-        if ((err.status === 401 || err.status === 403) && uName !== uName.toUpperCase()) {
-            try {
-                const retryRes = await ffcRequest(`${host}/fusion/login`, { method: 'POST' }, {
-                    userName: uName.toUpperCase(),
-                    password: pwd
-                });
-                const token = retryRes.data?.accessToken;
-                if (token) {
-                    cachedToken = token;
-                    tokenExpiresAt = now + (15 * 60 * 1000);
-                    return token;
+        if (err.status === 401 || err.status === 403) {
+            const variants = [
+                { u: uName.toLowerCase(), p: pwd },
+                { u: uName.toUpperCase(), p: pwd },
+                { u: uName, p: pwd.toLowerCase() },
+                { u: uName, p: pwd.toUpperCase() },
+                { u: uName.toLowerCase(), p: pwd.toUpperCase() },
+                { u: uName.toUpperCase(), p: pwd.toLowerCase() },
+                { u: uName.toLowerCase(), p: pwd.toLowerCase() },
+                { u: uName.toUpperCase(), p: pwd.toUpperCase() }
+            ];
+            for (const v of variants) {
+                if (v.u === uName && v.p === pwd) continue;
+                try {
+                    const token = await tryLogin(v.u, v.p);
+                    if (token) {
+                        cachedToken = token;
+                        tokenExpiresAt = now + (15 * 60 * 1000);
+                        return token;
+                    }
+                } catch {
+                    // seguir probando
                 }
-            } catch {
-                // conservar error original
             }
         }
         throw err;
@@ -149,11 +174,21 @@ async function getFusionToken(config, forceNew = false) {
 
 async function ffcAuthedRequest(endpoint, config, method = 'GET', body = null) {
     const host = sanitizeHost(config.host);
-    let token = await getFusionToken(config);
+    let token = null;
     try {
-        return await ffcRequest(`${host}${endpoint}`, { method, headers: { Authorization: token } }, body);
+        token = await getFusionToken(config);
     } catch (err) {
-        if (err.status === 401 || err.status === 403) {
+        if (!config.username && !config.password) {
+            console.log(`[Fusion] Sin credenciales: intentando petición directa a ${endpoint}`);
+        } else {
+            throw err;
+        }
+    }
+    const headers = token ? { Authorization: token } : {};
+    try {
+        return await ffcRequest(`${host}${endpoint}`, { method, headers }, body);
+    } catch (err) {
+        if (token && (err.status === 401 || err.status === 403)) {
             token = await getFusionToken(config, true);
             return await ffcRequest(`${host}${endpoint}`, { method, headers: { Authorization: token } }, body);
         }
@@ -301,8 +336,20 @@ async function testConnection(config, companyId = null, branchId = null) {
         const res = await fusionAgent.callAgent(companyId, branchId, 'testConnection', { config });
         return { ...res, via: 'agent' };
     }
-    const token = await getFusionToken(config, true);
-    return { success: true, host: config.host, token: token ? 'OK' : 'FAIL', via: 'direct' };
+    try {
+        const token = await getFusionToken(config, true);
+        return { success: true, host: config.host, token: token ? 'OK' : 'FAIL', via: 'direct' };
+    } catch (err) {
+        if (!config.username && !config.password) {
+            try {
+                await ffcRequest(`${sanitizeHost(config.host)}/fusion/period/list/shift`, { method: 'GET' });
+                return { success: true, host: config.host, token: 'SIN_AUTH', via: 'direct' };
+            } catch {
+                throw err;
+            }
+        }
+        throw err;
+    }
 }
 
 module.exports = {

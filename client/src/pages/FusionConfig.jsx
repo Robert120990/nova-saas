@@ -214,13 +214,13 @@ export default function FusionConfig() {
                                             <label className={labelCls}>Usuario Fusion</label>
                                             <input
                                                 type="text"
-                                                placeholder="Ej: manager"
+                                                placeholder="Opcional (ej: manager o en blanco)"
                                                 value={form.fusion_user || ''}
                                                 onChange={(e) => handleFieldChange(st.branch_id, 'fusion_user', e.target.value)}
                                                 className={fieldCls}
                                             />
                                             <span className="text-[10px] text-slate-400 mt-1 block">
-                                                Usuario con acceso a period reports
+                                                Opcional: puede dejarse en blanco
                                             </span>
                                         </div>
 
@@ -229,8 +229,8 @@ export default function FusionConfig() {
                                             <div className="relative">
                                                 <input
                                                     type={showPass ? 'text' : 'password'}
-                                                    placeholder={st.has_password ? '••••••••' : 'Ingrese contraseña'}
-                                                    value={form.fusion_password || ''}
+                                                    placeholder="Dejar en blanco si no tiene"
+                                                    value={form.fusion_password !== undefined ? form.fusion_password : ''}
                                                     onChange={(e) => handleFieldChange(st.branch_id, 'fusion_password', e.target.value)}
                                                     className={`${fieldCls} pr-10`}
                                                 />
@@ -244,7 +244,7 @@ export default function FusionConfig() {
                                                 </button>
                                             </div>
                                             <span className="text-[10px] text-slate-400 mt-1 block">
-                                                {st.has_password ? 'Contraseña configurada (escriba para cambiar)' : 'Sin contraseña'}
+                                                {st.has_password ? 'Contraseña configurada (borre para dejar en blanco)' : 'Sin contraseña (en blanco)'}
                                             </span>
                                         </div>
                                     </div>
