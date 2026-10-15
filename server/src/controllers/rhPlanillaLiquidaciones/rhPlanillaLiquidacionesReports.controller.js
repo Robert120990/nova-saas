@@ -1,5 +1,6 @@
 const pool = require('../../config/db');
 const { generateLiquidacionPDF, generateFiniquitoPDF, generateAcuerdoPagoPDF } = require('../../services/pdf.service');
+const { generateFiniquitoDocx } = require('../../services/finiquitoDocx.service');
 const { numberToWords } = require('../../utils/numberToWords');
 const TABLE = 'rh_planilla_liquidaciones';
 
@@ -122,18 +123,29 @@ const exportPDF = async (req, res) => {
 const exportFiniquito = async (req, res) => {
     try {
         const { id } = req.params;
-        const { motivo } = req.query;
+        const { motivo, format, tipo_persona } = req.query;
 
         const [rows] = await pool.query(`
             SELECT pl.*, 
                    e.codigo as empleado_codigo,
                    e.nombres as empleado_nombres,
                    e.apellidos as empleado_apellidos,
+                   e.fecha_nacimiento,
+                   e.ocupacion,
+                   e.departamento as empleado_departamento,
+                   e.municipio as empleado_municipio,
+                   e.distrito as empleado_distrito,
                    e.num_dui, e.num_nit,
                    e.fecha_ingreso, e.afp_id,
                    c.descripcion as cargo_nombre,
                    comp.razon_social as company_name,
                    comp.nit as company_nit,
+                   comp.nrc as company_nrc,
+                   comp.tipo_persona as company_tipo_persona,
+                   comp.direccion as company_direccion,
+                   comp.departamento as company_departamento,
+                   comp.municipio as company_municipio,
+                   comp.distrito as company_distrito,
                    comp.logo_url
             FROM ${TABLE} pl
             JOIN rh_empleados e ON pl.empleado_id = e.id
@@ -145,12 +157,12 @@ const exportFiniquito = async (req, res) => {
         if (rows.length === 0) return res.status(404).json({ message: 'Liquidacion no encontrada' });
         const p = rows[0];
 
-        let empleadorNombre = p.company_name;
+        let patronoNombre = p.company_name;
         let notarioNombre = '', notarioDomicilio = '', notarioDept = '';
         let firmaUrl = '', selloUrl = '';
         const [rhCfg] = await pool.query(`SELECT responsable_nombre, firma_url, sello_url, notario_nombre, notario_domicilio, notario_departamento FROM rh_config WHERE company_id = ?`, [req.company_id]);
         if (rhCfg.length > 0) {
-            if (rhCfg[0].responsable_nombre) empleadorNombre = rhCfg[0].responsable_nombre;
+            if (rhCfg[0].responsable_nombre) patronoNombre = rhCfg[0].responsable_nombre;
             notarioNombre = rhCfg[0].notario_nombre || '';
             notarioDomicilio = rhCfg[0].notario_domicilio || '';
             notarioDept = rhCfg[0].notario_departamento || '';
@@ -158,31 +170,58 @@ const exportFiniquito = async (req, res) => {
             selloUrl = rhCfg[0].sello_url || '';
         }
 
-        const pdfData = {
+        // Determinar modalidad: Persona Natural o Persona Jurídica
+        let isPersonaNatural = false;
+        if (tipo_persona) {
+            isPersonaNatural = (tipo_persona === 'natural' || String(tipo_persona) === '1');
+        } else {
+            isPersonaNatural = String(p.company_tipo_persona) === '1' ||
+                !/S\.?A\.?|C\.?V\.?|SOCIEDAD|LTDA|LIMITADA|R\.L\./i.test(p.company_name);
+        }
+
+        const finiquitoData = {
+            is_persona_natural: isPersonaNatural,
             company_name: p.company_name,
             company_nit: p.company_nit,
             logo_url: p.logo_url,
             empleado_nombres: p.empleado_nombres,
             empleado_apellidos: p.empleado_apellidos,
+            fecha_nacimiento: p.fecha_nacimiento,
+            empleado_ocupacion: p.ocupacion || p.cargo_nombre || 'empleado(a)',
+            empleado_departamento: p.empleado_departamento || p.company_departamento,
+            empleado_municipio: p.empleado_municipio || p.company_municipio,
+            empleado_distrito: p.empleado_distrito || p.company_distrito,
             cargo_nombre: p.cargo_nombre,
             num_dui: p.num_dui,
             num_nit: p.num_nit,
-            empleador_nombre: empleadorNombre,
-            notario_nombre: notarioNombre,
-            notario_domicilio: notarioDomicilio,
-            notario_dept: notarioDept,
+            patrono_nombre: patronoNombre,
+            patrono_ocupacion: 'mayor de edad, estudiante',
+            patrono_domicilio: p.company_municipio || 'San Salvador',
+            patrono_departamento: p.company_departamento || 'San Salvador',
+            patrono_dui: p.company_nit ? p.company_nit.substring(0, 10) : '',
+            notario_nombre: notarioNombre || 'KARIN ARMANDO BATRES ANGEL',
+            notario_domicilio: notarioDomicilio || 'San Martín',
+            notario_departamento: notarioDept || 'San Salvador',
             firma_url: firmaUrl,
             sello_url: selloUrl,
-            motivo: motivo || 'RENUNCIA INMEDIATA'
+            motivo: motivo || 'RENUNCIA VOLUNTARIA',
+            fecha_documento: p.ultimos_dias_laborados || p.created_at || new Date()
         };
 
-        const pdfBuffer = await generateFiniquitoPDF(pdfData);
+        if (format === 'docx' || format === 'word') {
+            const docxBuffer = await generateFiniquitoDocx(finiquitoData);
+            res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+            res.setHeader('Content-Disposition', `attachment; filename=Finiquito_${id}.docx`);
+            return res.send(docxBuffer);
+        }
+
+        const pdfBuffer = await generateFiniquitoPDF(finiquitoData);
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `inline; filename=Finiquito_${id}.pdf`);
-        res.send(pdfBuffer);
+        return res.send(pdfBuffer);
     } catch (error) {
-        console.error('[Finiquito PDF] Error:', error);
-        res.status(500).json({ message: 'Error al generar PDF de finiquito' });
+        console.error('[Finiquito Export] Error:', error);
+        res.status(500).json({ message: 'Error al generar finiquito' });
     }
 };
 

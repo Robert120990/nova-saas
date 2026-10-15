@@ -386,21 +386,34 @@ const LiquidacionesScreen = ({ companyId }) => {
         setIsFiniquitoModalOpen(true);
     };
 
-    const handleConfirmFiniquito = async () => {
-        if (!finiquitoMotivo.trim()) return toast.error('Ingrese el motivo');
+    const handleConfirmFiniquito = async (opts = {}) => {
+        const finalMotivo = (opts.motivo || finiquitoMotivo || 'RENUNCIA VOLUNTARIA').trim();
+        const finalFormat = opts.format || 'pdf';
+        const finalTipo = opts.tipoPersona || 'juridica';
+
+        if (!finalMotivo) return toast.error('Ingrese el motivo');
         try {
             const res = await axios.get(`/api/rh/planilla-liquidaciones/${finiquitoId}/finiquito`, {
-                params: { motivo: finiquitoMotivo },
-                responseType: 'blob', headers
+                params: {
+                    motivo: finalMotivo,
+                    format: finalFormat,
+                    tipo_persona: finalTipo
+                },
+                responseType: 'blob',
+                headers
             });
-            const url = window.URL.createObjectURL(new Blob([res.data]));
+            const ext = (finalFormat === 'docx' || finalFormat === 'word') ? 'docx' : 'pdf';
+            const mimeType = ext === 'docx'
+                ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+                : 'application/pdf';
+            const url = window.URL.createObjectURL(new Blob([res.data], { type: mimeType }));
             const link = document.createElement('a');
             link.href = url;
-            link.setAttribute('download', `Finiquito_${finiquitoId}.pdf`);
+            link.setAttribute('download', `Finiquito_${finiquitoId}.${ext}`);
             document.body.appendChild(link);
             link.click();
             link.remove();
-            toast.success('Finiquito descargado');
+            toast.success(`Finiquito descargado (${ext.toUpperCase()})`);
             setIsFiniquitoModalOpen(false);
         } catch { toast.error('Error al descargar finiquito'); }
     };
@@ -546,7 +559,13 @@ const LiquidacionesScreen = ({ companyId }) => {
             />
 
             {/* --- Finiquito Motivo Modal --- */}
-            {<FiniquitoModal open={isFiniquitoModalOpen} onClose={() => setIsFiniquitoModalOpen(false)} onSubmit={handleConfirmFiniquito} model={model} />}
+            <FiniquitoModal
+                open={isFiniquitoModalOpen}
+                onClose={() => setIsFiniquitoModalOpen(false)}
+                onSubmit={handleConfirmFiniquito}
+                model={model}
+                companyId={companyId}
+            />
         </div>
     );
 };
