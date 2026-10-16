@@ -5,25 +5,38 @@ const path = require('path');
 const ALGO = 'aes-256-gcm';
 
 function getEnvSecret() {
+    if (process.env.CRYPTO_SECRET) return process.env.CRYPTO_SECRET;
     if (process.env.JWT_SECRET) return process.env.JWT_SECRET;
     try {
         const envPath = path.resolve(__dirname, '../../.env');
         if (fs.existsSync(envPath)) {
             const content = fs.readFileSync(envPath, 'utf8');
             for (const line of content.split('\n')) {
-                const match = line.match(/^\s*JWT_SECRET\s*=\s*(.*)\s*$/);
-                if (match) {
-                    process.env.JWT_SECRET = match[1].trim().replace(/^["']|["']$/g, '');
-                    return process.env.JWT_SECRET;
+                const cryptoMatch = line.match(/^\s*CRYPTO_SECRET\s*=\s*(.*)\s*$/);
+                if (cryptoMatch && !process.env.CRYPTO_SECRET) {
+                    process.env.CRYPTO_SECRET = cryptoMatch[1].trim().replace(/^["']|["']$/g, '');
+                }
+                const jwtMatch = line.match(/^\s*JWT_SECRET\s*=\s*(.*)\s*$/);
+                if (jwtMatch && !process.env.JWT_SECRET) {
+                    process.env.JWT_SECRET = jwtMatch[1].trim().replace(/^["']|["']$/g, '');
+                }
+                const legacyMatch = line.match(/^\s*CRYPTO_LEGACY_KEYS\s*=\s*(.*)\s*$/);
+                if (legacyMatch && !process.env.CRYPTO_LEGACY_KEYS) {
+                    process.env.CRYPTO_LEGACY_KEYS = legacyMatch[1].trim().replace(/^["']|["']$/g, '');
                 }
             }
+            if (process.env.CRYPTO_SECRET) return process.env.CRYPTO_SECRET;
+            if (process.env.JWT_SECRET) return process.env.JWT_SECRET;
         }
     } catch {}
-    return 'nova_saas_secret_fallback_2026';
+    return '';
 }
 
 function getKey(customSecret) {
     const secret = customSecret || getEnvSecret();
+    if (!secret) {
+        throw new Error('CRYPTO_SECRET o JWT_SECRET no configurado en las variables de entorno');
+    }
     return crypto.createHash('sha256').update(secret).digest();
 }
 
@@ -53,17 +66,20 @@ function decrypt(payload) {
         }
     };
 
-    // 1. Clave de entorno activa
-    let result = tryDecryptWith(getKey());
-    if (result !== null) return result;
+    const primarySecret = getEnvSecret();
+    const candidateSecrets = [
+        primarySecret,
+        process.env.JWT_SECRET,
+        ...(process.env.CRYPTO_LEGACY_KEYS || '')
+            .split(',')
+            .map(s => s.trim())
+            .filter(Boolean)
+    ].filter(Boolean);
 
-    // 2. Fallback de migración
-    result = tryDecryptWith(getKey('nova_saas_secret_fallback_2026'));
-    if (result !== null) return result;
-
-    // 3. Fallback de servidor saas
-    result = tryDecryptWith(getKey('supersecretjwtkey123'));
-    if (result !== null) return result;
+    for (const secret of new Set(candidateSecrets)) {
+        const result = tryDecryptWith(getKey(secret));
+        if (result !== null) return result;
+    }
 
     return '';
 }

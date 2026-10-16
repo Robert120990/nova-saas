@@ -8,7 +8,7 @@ const jwt = require('jsonwebtoken');
 const { TEST_CATALOG, buildTestPayload, buildFacturaPayload } = require('./companyDteTestPayloads');
 
 const DTE_API_URL = process.env.DTE_API_URL || 'http://localhost:5000/api';
-const DTE_JWT_SECRET = process.env.DTE_JWT_SECRET || 'saas_dte_api_secret_2024';
+const DTE_JWT_SECRET = process.env.DTE_JWT_SECRET || process.env.JWT_SECRET;
 
 async function getTestSummary(companyId) {
     const [companies] = await pool.query(

@@ -9,7 +9,10 @@ const authMiddleware = (req, res, next) => {
         return res.status(401).json({ success: false, message: 'Token no proporcionado' });
     }
 
-    const secret = process.env.JWT_SECRET || process.env.DTE_JWT_SECRET || 'saas_dte_api_secret_2024';
+    const secret = process.env.JWT_SECRET || process.env.DTE_JWT_SECRET;
+    if (!secret) {
+        return res.status(500).json({ success: false, message: 'Error de configuración de seguridad en servidor DTE' });
+    }
     jwt.verify(token, secret, (err, user) => {
         if (err) {
             return res.status(403).json({ success: false, message: 'Token inválido' });

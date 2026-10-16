@@ -65,6 +65,12 @@ const resolveLogPath = (paths) => {
 };
 
 const streamLogs = async (req, res) => {
+    const isSuperAdmin = req.user?.role === 'SuperAdmin';
+    const perms = Array.isArray(req.user?.permissions) ? req.user.permissions : [];
+    if (!isSuperAdmin && !perms.includes('manage_server_terminal')) {
+        return res.status(403).json({ message: 'No tienes permiso para visualizar los logs del servidor.' });
+    }
+
     const { service } = req.params;
 
     if (!LOG_PATHS[service]) {

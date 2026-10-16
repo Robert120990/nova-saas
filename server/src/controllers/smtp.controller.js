@@ -1,5 +1,13 @@
 const pool = require('../config/db');
 
+const FORBIDDEN_SMTP_HOSTS = new Set(['169.254.169.254', 'localhost', '127.0.0.1', '0.0.0.0', '::1', '[::1]']);
+
+function isForbiddenSmtpHost(rawHost) {
+    const h = String(rawHost || '').trim().toLowerCase();
+    if (!h) return false;
+    return FORBIDDEN_SMTP_HOSTS.has(h) || h.startsWith('127.') || h.startsWith('169.254.');
+}
+
 const getSmtpByBranch = async (req, res) => {
     const { branchId } = req.params;
     try {
@@ -22,7 +30,11 @@ const getSmtpByBranch = async (req, res) => {
             return res.json(null);
         }
 
-        res.json(rows[0]);
+        res.json({
+            ...rows[0],
+            password: rows[0].password ? '********' : '',
+            has_password: Boolean(rows[0].password)
+        });
     } catch (error) {
         console.error('Error in getSmtpByBranch:', error);
         res.status(500).json({ message: 'Error al obtener configuración SMTP' });
@@ -52,6 +64,19 @@ const saveSmtp = async (req, res) => {
             return res.status(403).json({ message: 'No tienes permiso para configurar esta sucursal' });
         }
 
+        if (isForbiddenSmtpHost(host)) {
+            return res.status(400).json({ message: 'Dirección del servidor SMTP no permitida por seguridad' });
+        }
+
+        let passwordToSave = password;
+        if (!password || String(password).trim() === '' || /^\*+$/.test(String(password).trim())) {
+            const [existingRows] = await pool.query(
+                'SELECT password FROM smtp_settings WHERE branch_id = ? LIMIT 1',
+                [branch_id]
+            );
+            passwordToSave = existingRows.length > 0 ? existingRows[0].password : '';
+        }
+
         // Usar INSERT ... ON DUPLICATE KEY UPDATE para manejar creación/actualización
         const query = `
             INSERT INTO smtp_settings 
@@ -68,7 +93,7 @@ const saveSmtp = async (req, res) => {
         `;
 
         await pool.query(query, [
-            branch_id, host, port, user, password, encryption, from_email, from_name
+            branch_id, host, port, user, passwordToSave, encryption, from_email, from_name
         ]);
 
         res.json({ message: 'Configuración SMTP guardada exitosamente' });
@@ -82,6 +107,7 @@ const nodemailer = require('nodemailer');
 
 const testSmtp = async (req, res) => {
     const { 
+        branch_id,
         host, 
         port, 
         user, 
@@ -92,6 +118,39 @@ const testSmtp = async (req, res) => {
     } = req.body;
 
     try {
+        if (!host || isForbiddenSmtpHost(host)) {
+            return res.status(400).json({ message: 'Dirección del servidor SMTP inválida o restringida por seguridad' });
+        }
+
+        let effectivePassword = password;
+        if (!password || String(password).trim() === '' || /^\*+$/.test(String(password).trim())) {
+            effectivePassword = '';
+            if (branch_id) {
+                const [branchCheck] = await pool.query(
+                    'SELECT id FROM branches WHERE id = ? AND company_id = ?',
+                    [branch_id, req.company_id]
+                );
+                if (branchCheck.length === 0) {
+                    return res.status(403).json({ message: 'No tienes permiso para acceder a esta sucursal' });
+                }
+
+                const [storedRows] = await pool.query(
+                    'SELECT host, password FROM smtp_settings WHERE branch_id = ? LIMIT 1',
+                    [branch_id]
+                );
+                if (storedRows.length > 0) {
+                    const stored = storedRows[0];
+                    if (String(host).trim().toLowerCase() === String(stored.host || '').trim().toLowerCase()) {
+                        effectivePassword = stored.password;
+                    } else {
+                        return res.status(400).json({
+                            message: 'Por seguridad, al probar un servidor SMTP distinto al guardado debe ingresar la contraseña'
+                        });
+                    }
+                }
+            }
+        }
+
         console.log('Testing SMTP connection with:', { host, port, user, encryption, from_email });
         
         // Auto-detect secure based on port if encryption is SSL
@@ -103,7 +162,7 @@ const testSmtp = async (req, res) => {
             secure: isSecure,
             auth: {
                 user,
-                pass: password
+                pass: effectivePassword
             },
             tls: {
                 // do not fail on invalid certs

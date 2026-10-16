@@ -42,15 +42,18 @@ const filproController = {
                     portal_url: 'https://api-filpro-service.apiconsumofel.com/api',
                     filpro_email: '',
                     filpro_password: '',
+                    has_password: false,
                     branch_id: null,
                     filpro_company_id: null,
                     filpro_establishment_code: ''
                 });
             }
 
+            const hasPassword = Boolean(rows[0].filpro_password);
             const config = {
                 ...rows[0],
-                filpro_password: decrypt(rows[0].filpro_password)
+                filpro_password: hasPassword ? '********' : '',
+                has_password: hasPassword
             };
             return res.json({
                 configured: true,
@@ -82,14 +85,38 @@ const filproController = {
                 return res.status(400).json({ message: 'El usuario/correo de FilPro es obligatorio.' });
             }
 
+            const resolvedPortalUrl = String(portal_url || 'https://api-filpro-service.apiconsumofel.com/api').trim();
+            if (!/^https?:\/\//i.test(resolvedPortalUrl)) {
+                return res.status(400).json({ message: 'La URL del portal de FilPro debe iniciar con https:// o http://.' });
+            }
+            try {
+                const parsedUrl = new URL(resolvedPortalUrl);
+                const hostname = (parsedUrl.hostname || '').toLowerCase();
+                if (
+                    hostname === 'localhost' ||
+                    hostname === '127.0.0.1' ||
+                    hostname === '0.0.0.0' ||
+                    hostname === '169.254.169.254' ||
+                    hostname === '::1' ||
+                    hostname === '[::1]' ||
+                    hostname.startsWith('127.') ||
+                    hostname.startsWith('169.254.')
+                ) {
+                    return res.status(400).json({ message: 'La URL del portal de FilPro apunta a un destino restringido por seguridad.' });
+                }
+            } catch {
+                return res.status(400).json({ message: 'La URL del portal de FilPro no es válida.' });
+            }
+
             const [existing] = await pool.query(
                 'SELECT id, filpro_password FROM filpro_connections WHERE company_id = ? LIMIT 1',
                 [companyId]
             );
 
             let encryptedPassword = '';
-            if (filpro_password) {
-                encryptedPassword = encrypt(filpro_password);
+            const trimmedPassword = filpro_password !== undefined && filpro_password !== null ? String(filpro_password).trim() : '';
+            if (trimmedPassword && !/^\*+$/.test(trimmedPassword)) {
+                encryptedPassword = encrypt(trimmedPassword);
             } else if (existing.length > 0) {
                 encryptedPassword = existing[0].filpro_password;
             } else {
@@ -99,7 +126,7 @@ const filproController = {
             const dataToSave = {
                 company_id: companyId,
                 branch_id: branch_id || null,
-                portal_url: portal_url || 'https://api-filpro-service.apiconsumofel.com/api',
+                portal_url: resolvedPortalUrl,
                 filpro_email: filpro_email.trim(),
                 filpro_password: encryptedPassword,
                 filpro_company_id: filpro_company_id || null,
@@ -130,15 +157,18 @@ const filproController = {
             let password = req.body.filpro_password || '';
             let forcedCompanyId = req.body.filpro_company_id || null;
 
-            if (!email || !password) {
+            const isMaskedPassword = !password || String(password).trim() === '' || /^\*+$/.test(String(password).trim());
+            if (!email || isMaskedPassword) {
                 const [saved] = await pool.query(
                     'SELECT filpro_email, filpro_password, filpro_company_id FROM filpro_connections WHERE company_id = ? LIMIT 1',
                     [companyId]
                 );
                 if (saved.length > 0) {
                     if (!email) email = saved[0].filpro_email;
-                    if (!password) password = saved[0].filpro_password;
+                    if (isMaskedPassword) password = saved[0].filpro_password;
                     if (!forcedCompanyId) forcedCompanyId = saved[0].filpro_company_id;
+                } else if (isMaskedPassword) {
+                    password = '';
                 }
             }
 

@@ -148,6 +148,14 @@ exports.getPeriodReadings = async (req, res) => {
     }
 };
 
+function normalizeFusionHost(rawHost) {
+    return String(rawHost || '')
+        .trim()
+        .toLowerCase()
+        .replace(/^https?:\/\//i, '')
+        .replace(/\/+$/, '');
+}
+
 /**
  * Probar conexión con el controlador Fusion
  * Permite probar con datos enviados en el body o con la config guardada de la estación
@@ -161,9 +169,18 @@ exports.testConnection = async (req, res) => {
             if (!h.startsWith('http://') && !h.startsWith('https://')) h = `https://${h}`;
             let uName = username !== undefined && username !== null ? String(username).trim() : '';
             let pwd = password !== undefined && password !== null ? String(password).trim() : '';
-            // Si password es undefined (no enviado en el form) pero pasaron branch_id, buscar la guardada
-            if (password === undefined && branch_id) {
+            const isOmittedOrMasked = password === undefined || password === null || pwd === '' || /^\*+$/.test(pwd);
+            // Si password fue omitida o está enmascarada y pasaron branch_id, buscar la guardada solo si el host coincide
+            if (isOmittedOrMasked && branch_id) {
                 const saved = await fusionService.getFusionConfig(req.company_id, branch_id);
+                const requestedNormalized = normalizeFusionHost(h);
+                const savedNormalized = normalizeFusionHost(saved.host);
+                if (savedNormalized && requestedNormalized !== savedNormalized) {
+                    return res.status(400).json({
+                        success: false,
+                        message: 'Por seguridad, al probar un servidor Fusion distinto al guardado debe ingresar la contraseña explícitamente.'
+                    });
+                }
                 pwd = saved.password;
             }
             config = { host: h, username: uName, password: pwd };
@@ -220,7 +237,7 @@ exports.getStationConfigs = async (req, res) => {
                 nombre: b.nombre,
                 fusion_host: bSettings.fusion_host || '',
                 fusion_user: bSettings.fusion_user || '',
-                fusion_password: bSettings.fusion_password || '',
+                fusion_password: '',
                 has_password: Boolean(bSettings.fusion_password)
             };
         });
@@ -237,7 +254,7 @@ exports.getStationConfigs = async (req, res) => {
  */
 exports.saveStationConfig = async (req, res) => {
     try {
-        const { branch_id, fusion_host, fusion_user, fusion_password } = req.body;
+        const { branch_id, fusion_host, fusion_user, fusion_password, clear_password } = req.body;
         if (!branch_id) {
             return res.status(400).json({ message: 'El ID de la estación / sucursal es requerido' });
         }
@@ -247,7 +264,14 @@ exports.saveStationConfig = async (req, res) => {
             { key: 'fusion_user', val: (fusion_user || '').trim() }
         ];
 
-        if (fusion_password !== undefined && fusion_password !== null) {
+        if (clear_password === true) {
+            toSave.push({ key: 'fusion_password', val: '' });
+        } else if (
+            fusion_password !== undefined &&
+            fusion_password !== null &&
+            String(fusion_password).trim() !== '' &&
+            !/^\*+$/.test(String(fusion_password).trim())
+        ) {
             toSave.push({ key: 'fusion_password', val: String(fusion_password).trim() });
         }
 

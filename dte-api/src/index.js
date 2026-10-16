@@ -37,7 +37,15 @@ console.warn = (...args) => { logFile.write(`[${new Date().toISOString()}] [WARN
 
 // Middleware
 app.use(httpLogger);
-app.use(cors());
+const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:3000,http://localhost:4000,http://127.0.0.1:3000,http://127.0.0.1:4000').split(',').map(o => o.trim());
+app.use(cors({
+    origin: (origin, callback) => {
+        if (!origin || allowedOrigins.includes(origin)) {
+            return callback(null, true);
+        }
+        return callback(new Error('Origen no permitido por CORS'));
+    }
+}));
 app.use(express.json());
 
 // Initialization

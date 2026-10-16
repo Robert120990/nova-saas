@@ -16,7 +16,7 @@ class DteService {
         }
 
         const DTE_API_URL = process.env.DTE_API_URL || 'http://localhost:5000/api';
-        const DTE_JWT_SECRET = process.env.DTE_JWT_SECRET || 'saas_dte_api_secret_2024';
+        const DTE_JWT_SECRET = process.env.DTE_JWT_SECRET || process.env.JWT_SECRET;
 
         try {
             // 1. Generar Token para la API interna
@@ -242,7 +242,7 @@ class DteService {
         }
 
         const DTE_API_URL = process.env.DTE_API_URL || 'http://localhost:5000/api';
-        const DTE_JWT_SECRET = process.env.DTE_JWT_SECRET || 'saas_dte_api_secret_2024';
+        const DTE_JWT_SECRET = process.env.DTE_JWT_SECRET || process.env.JWT_SECRET;
 
         try {
             const token = jwt.sign({
@@ -294,7 +294,7 @@ class DteService {
         }
 
         const DTE_API_URL = process.env.DTE_API_URL || 'http://localhost:5000/api';
-        const DTE_JWT_SECRET = process.env.DTE_JWT_SECRET || 'saas_dte_api_secret_2024';
+        const DTE_JWT_SECRET = process.env.DTE_JWT_SECRET || process.env.JWT_SECRET;
 
         try {
             // 1. Generar Token para la API interna

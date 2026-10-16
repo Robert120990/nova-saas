@@ -226,7 +226,7 @@ const checkExistingCR = async (req, res) => {
 };
 
 const DTE_API_URL = process.env.DTE_API_URL || 'http://localhost:5000/api';
-const DTE_JWT_SECRET = process.env.DTE_JWT_SECRET || 'saas_dte_api_secret_2024';
+const DTE_JWT_SECRET = process.env.DTE_JWT_SECRET || process.env.JWT_SECRET;
 
 const regenerateDTE = async (req, res) => {
     const { id } = req.params;
