@@ -76,10 +76,10 @@ async function createReopenRequest({ closeoutId, companyId, branchId, userId, us
     if (reopenActive) {
         const [activeChats] = await pool.query(
             `SELECT DISTINCT chat_id FROM telegram_chat_bindings
-             WHERE (company_id = ? OR branch_id IS NULL)
+             WHERE (company_id = ? OR company_id IS NULL)
                AND (branch_id = ? OR branch_id IS NULL)
                AND receive_alerts = 1
-               AND receive_reopen_requests = 1`,
+               AND (receive_reopen_requests = 1 OR can_approve_entries = 1)`,
             [companyId, closeout.branch_id || branchId]
         );
         chats = activeChats;

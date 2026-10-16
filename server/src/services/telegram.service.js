@@ -195,10 +195,40 @@ async function handleAIQuestion(chatId, text, state, from = {}) {
 
 async function handleMessage(chatId, text, from) {
     const trimmed = (text || '').trim();
-    const state = chatStates.get(chatId);
 
-    // Comandos
+    // /start primero para permitir vinculación con enlaces de invitación (/start bind_<token>)
     if (trimmed.startsWith('/start')) return handleStart(chatId, from, trimmed);
+
+    // Validar que el chat esté vinculado en BD antes de ejecutar cualquier otro comando o consulta
+    const [bindings] = await pool.query(
+        'SELECT company_id, branch_id, receive_alerts, can_approve_entries, allowed_agents FROM telegram_chat_bindings WHERE chat_id = ? LIMIT 1',
+        [chatId]
+    );
+    if (bindings.length === 0) {
+        chatStates.delete(chatId);
+        return sendMessage(chatId,
+            `🔒 *Acceso Restringido — SIPE WEB*\n\n` +
+            `Este bot es de uso exclusivo para empresas y sucursales autorizadas.\n\n` +
+            `*Para conectar tu cuenta:*\n` +
+            `1. Inicia sesión en la plataforma SIPE WEB.\n` +
+            `2. Ve a Notificaciones > Conexión Telegram.\n` +
+            `3. Solicita a un Administrador un *Enlace de Invitación* oficial para tu empresa/sucursal.\n\n` +
+            `_Los enlaces de invitación son personales, seguros y de un solo uso._`,
+            { parse_mode: 'Markdown' }
+        );
+    }
+
+    const state = {
+        step: 'ready',
+        companyId: bindings[0].company_id,
+        branchId: bindings[0].branch_id,
+        receiveAlerts: bindings[0].receive_alerts,
+        canApproveEntries: bindings[0].can_approve_entries,
+        allowedAgents: bindings[0].allowed_agents
+    };
+    chatStates.set(chatId, state);
+
+    // Comandos para chats vinculados
     if (trimmed.startsWith('/ayuda') || trimmed.startsWith('/help')) return handleHelp(chatId);
     if (trimmed.startsWith('/agentes')) {
         const { handleAgentTelegramCommand } = require('./telegramAgentBridge.service');
@@ -219,18 +249,8 @@ async function handleMessage(chatId, text, from) {
         console.error('[Telegram] Error en text approval:', err.message);
     }
 
-    // Chat libre: si ya está vinculado (estado en memoria o en BD)
-    if (state?.step === 'ready') {
-        return handleAIQuestion(chatId, trimmed, state, from);
-    }
-
-    const [rows] = await pool.query('SELECT * FROM telegram_chat_bindings WHERE chat_id = ?', [chatId]);
-    if (rows.length > 0) {
-        chatStates.set(chatId, { step: 'ready', companyId: rows[0].company_id, branchId: rows[0].branch_id });
-        return handleAIQuestion(chatId, trimmed, chatStates.get(chatId), from);
-    }
-
-    return listCompanies(chatId);
+    // Chat libre con Novas AI
+    return handleAIQuestion(chatId, trimmed, state, from);
 }
 
 // ============ Long polling ============

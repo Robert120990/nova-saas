@@ -113,7 +113,7 @@ async function processJob(job) {
         if (rule.channel_telegram) {
             const [chats] = await pool.query(
                 `SELECT chat_id FROM telegram_chat_bindings
-                 WHERE company_id = ? AND branch_id = ? AND receive_alerts = 1`,
+                 WHERE (company_id = ? OR company_id IS NULL) AND (branch_id = ? OR branch_id IS NULL) AND receive_alerts = 1`,
                 [job.company_id, job.branch_id]
             );
             for (const chat of chats) {

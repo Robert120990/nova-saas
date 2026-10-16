@@ -16,7 +16,15 @@ const getSettings = async (req, res) => {
             'SELECT * FROM whatsapp_settings WHERE branch_id = ?',
             [branchId]
         );
-        res.json(rows[0] || null);
+        if (rows.length === 0) {
+            return res.json(null);
+        }
+
+        res.json({
+            ...rows[0],
+            token: rows[0].token ? '********' + String(rows[0].token).slice(-4) : '',
+            has_token: Boolean(rows[0].token)
+        });
     } catch (error) {
         console.error('Error in getWhatsAppSettings:', error);
         res.status(500).json({ message: 'Error al obtener configuración WhatsApp' });
@@ -25,7 +33,7 @@ const getSettings = async (req, res) => {
 
 const saveSettings = async (req, res) => {
     const { branch_id, phone_number_id, token, from_phone } = req.body;
-    if (!branch_id || !phone_number_id || !token || !from_phone) {
+    if (!branch_id || !phone_number_id || !from_phone) {
         return res.status(400).json({ message: 'Todos los campos son requeridos' });
     }
 
@@ -38,6 +46,18 @@ const saveSettings = async (req, res) => {
             return res.status(403).json({ message: 'No tienes permiso para configurar esta sucursal' });
         }
 
+        let finalToken = token ? String(token).trim() : '';
+        if (!finalToken || finalToken.includes('***')) {
+            const [existingRows] = await pool.query(
+                'SELECT token FROM whatsapp_settings WHERE branch_id = ?',
+                [branch_id]
+            );
+            finalToken = existingRows[0]?.token || '';
+            if (!finalToken) {
+                return res.status(400).json({ message: 'El token de WhatsApp es requerido' });
+            }
+        }
+
         await pool.query(
             `INSERT INTO whatsapp_settings (branch_id, phone_number_id, token, from_phone)
              VALUES (?, ?, ?, ?)
@@ -45,7 +65,7 @@ const saveSettings = async (req, res) => {
              phone_number_id = VALUES(phone_number_id),
              token = VALUES(token),
              from_phone = VALUES(from_phone)`,
-            [branch_id, phone_number_id, token, from_phone]
+            [branch_id, phone_number_id, finalToken, from_phone]
         );
 
         res.json({ message: 'Configuración WhatsApp guardada exitosamente' });
@@ -62,6 +82,14 @@ const testConnection = async (req, res) => {
     }
 
     try {
+        const [branchCheck] = await pool.query(
+            'SELECT id FROM branches WHERE id = ? AND company_id = ?',
+            [branch_id, req.company_id]
+        );
+        if (branchCheck.length === 0) {
+            return res.status(403).json({ message: 'No tienes permiso para acceder a esta sucursal' });
+        }
+
         const result = await whatsappService.testConnection(branch_id);
         res.json({ message: 'Conexión exitosa. Mensaje de prueba enviado.', result });
     } catch (error) {

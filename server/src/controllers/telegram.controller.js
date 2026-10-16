@@ -21,9 +21,9 @@ const getStatus = async (req, res) => {
                     COALESCE(br.nombre, 'Todas las sucursales (Global)') as branch_nombre
              FROM telegram_chat_bindings b
              LEFT JOIN companies c ON c.id = b.company_id
-             LEFT JOIN branches br ON br.id = b.branch_id
-             ${isSuperAdmin ? '' : 'WHERE b.company_id = ? OR b.branch_id IS NULL'}
-             ORDER BY b.created_at DESC`,
+              LEFT JOIN branches br ON br.id = b.branch_id
+              ${isSuperAdmin ? '' : 'WHERE b.company_id = ?'}
+              ORDER BY b.created_at DESC`,
             isSuperAdmin ? [] : [req.company_id]
         );
         const token = await telegramService.getBotToken();
@@ -65,11 +65,7 @@ const saveBotToken = async (req, res) => {
         await telegramService.setBotToken(cleanToken);
         const botInfo = await telegramService.getMe(true);
 
-        res.json({
-            success: true,
-            message: 'Token de Telegram configurado exitosamente',
-            botInfo
-        });
+        res.json({ success: true, message: 'Token de Telegram configurado exitosamente', botInfo });
     } catch (error) {
         console.error('Error saveBotToken:', error);
         res.status(500).json({ message: 'Error al guardar token de Telegram: ' + error.message });
@@ -163,12 +159,7 @@ const createInviteToken = async (req, res) => {
         const botUsername = botInfo?.username || 'Sipeweb_bot';
         const deepLink = `https://t.me/${botUsername}?start=bind_${result.token}`;
 
-        res.json({
-            success: true,
-            token: result.token,
-            deepLink,
-            expiresAt: result.expiresAt
-        });
+        res.json({ success: true, token: result.token, deepLink, expiresAt: result.expiresAt });
     } catch (error) {
         console.error('Error createInviteToken:', error);
         res.status(500).json({ message: 'Error al generar enlace de invitación' });
@@ -183,6 +174,25 @@ const getPendingInvites = async (req, res) => {
     } catch (error) {
         console.error('Error getPendingInvites:', error);
         res.status(500).json({ message: 'Error al obtener invitaciones' });
+    }
+};
+
+const deletePendingInvite = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const isSuperAdmin = req.user?.role === 'SuperAdmin';
+        const query = isSuperAdmin
+            ? 'DELETE FROM telegram_invite_tokens WHERE id = ?'
+            : 'DELETE FROM telegram_invite_tokens WHERE id = ? AND company_id = ?';
+        const params = isSuperAdmin ? [id] : [id, req.company_id];
+        const [result] = await pool.query(query, params);
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ message: 'Invitación no encontrada o no autorizada' });
+        }
+        res.json({ success: true, message: 'Invitación eliminada exitosamente' });
+    } catch (error) {
+        console.error('Error deletePendingInvite:', error);
+        res.status(500).json({ message: 'Error al eliminar invitación' });
     }
 };
 
@@ -232,10 +242,7 @@ const getSuspiciousSettings = async (req, res) => {
                 `INSERT INTO sale_suspicious_settings (company_id, branch_id) VALUES (?, ?)`,
                 [req.company_id, branch_id]
             );
-            const [created] = await pool.query(
-                'SELECT * FROM sale_suspicious_settings WHERE id = ?',
-                [insert.insertId]
-            );
+            const [created] = await pool.query('SELECT * FROM sale_suspicious_settings WHERE id = ?', [insert.insertId]);
             return res.json(created[0]);
         }
         res.json(rows[0]);
@@ -247,9 +254,8 @@ const getSuspiciousSettings = async (req, res) => {
 
 const saveSuspiciousSettings = async (req, res) => {
     try {
-        const { branch_id } = req.body;
         const {
-            enabled, monto_maximo, descuento_maximo_porcentaje,
+            branch_id, enabled, monto_maximo, descuento_maximo_porcentaje,
             montos_redondos, horas_inicio, horas_fin,
             anulaciones_maximas, ventana_anulaciones_min
         } = req.body;
@@ -331,16 +337,8 @@ const updateReopenRequestsSetting = async (req, res) => {
 };
 
 module.exports = {
-    getStatus,
-    saveBotToken,
-    updateBinding,
-    deleteBinding,
-    createInviteToken,
-    getPendingInvites,
-    testConnection,
-    getSuspiciousSettings,
-    saveSuspiciousSettings,
-    updateDailyBriefingSetting,
-    testDailyBriefing,
-    updateReopenRequestsSetting
+    getStatus, getConfig: getStatus, saveBotToken, updateBinding, updateChatBinding: updateBinding,
+    deleteBinding, deleteChatBinding: deleteBinding, createInviteToken, getPendingInvites, deletePendingInvite,
+    testConnection, getSuspiciousSettings, saveSuspiciousSettings, updateDailyBriefingSetting,
+    testDailyBriefing, updateReopenRequestsSetting
 };

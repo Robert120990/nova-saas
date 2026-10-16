@@ -37,26 +37,35 @@ async function handleTelegramCallback(cb) {
 
         // 2. Validar que el chat de Telegram está vinculado y cuenta con permiso de aprobación
         const [bindings] = await pool.query(
-            'SELECT company_id, branch_id, can_approve_entries, is_admin FROM telegram_chat_bindings WHERE chat_id = ?',
+            'SELECT company_id, branch_id, can_approve_entries, receive_reopen_requests FROM telegram_chat_bindings WHERE chat_id = ?',
             [chatId]
         );
         if (bindings.length === 0) {
             await telegramService.sendMessage(chatId, '⛔ Tu cuenta de Telegram no está vinculada al sistema.').catch(() => {});
             return;
         }
-        const b = bindings[0];
-        if (!b.can_approve_entries && !b.is_admin) {
+        const hasApprovePermission = bindings.some(b => b.can_approve_entries || b.receive_reopen_requests);
+        if (!hasApprovePermission) {
             await telegramService.sendMessage(chatId, '⛔ No tienes permiso para aprobar o rechazar reaperturas de turnos.').catch(() => {});
             return;
         }
 
-        // 3. Aislamiento multi-empresa
-        if (b.company_id !== null && b.company_id !== reopenReq.company_id) {
-            await telegramService.sendMessage(chatId, '⛔ No tienes autorización para gestionar solicitudes de otra empresa.').catch(() => {});
-            return;
-        }
-        if (b.branch_id !== null && reopenReq.branch_id !== null && b.branch_id !== reopenReq.branch_id) {
-            await telegramService.sendMessage(chatId, '⛔ Esta solicitud pertenece a otra sucursal.').catch(() => {});
+        // 3. Aislamiento multi-empresa y sucursal estricto
+        const reqRow = reopenReq;
+        const authorizedBinding = bindings.find(b =>
+            (b.can_approve_entries || b.receive_reopen_requests) &&
+            (b.company_id === null || Number(b.company_id) === Number(reqRow.company_id)) &&
+            (b.branch_id === null || Number(b.branch_id) === Number(reqRow.branch_id))
+        );
+        if (!authorizedBinding) {
+            const sameCompany = bindings.some(b =>
+                (b.can_approve_entries || b.receive_reopen_requests) &&
+                (b.company_id === null || Number(b.company_id) === Number(reqRow.company_id))
+            );
+            const errorMsg = sameCompany
+                ? '⛔ Esta solicitud pertenece a otra sucursal.'
+                : '⛔ No tienes autorización para gestionar solicitudes de otra empresa.';
+            await telegramService.sendMessage(chatId, errorMsg).catch(() => {});
             return;
         }
 
@@ -87,18 +96,24 @@ async function handleTelegramTextApproval(chatId, text, from, state) {
 
     // Validar autorización del chat en BD
     const [bindings] = await pool.query(
-        'SELECT company_id, branch_id, can_approve_entries, is_admin FROM telegram_chat_bindings WHERE chat_id = ?',
+        'SELECT company_id, branch_id, can_approve_entries, receive_reopen_requests FROM telegram_chat_bindings WHERE chat_id = ?',
         [chatId]
     );
     if (bindings.length === 0) return false;
 
-    const b = bindings[0];
-    if (!b.can_approve_entries && !b.is_admin) {
+    let authorizedBinding = null;
+    for (const b of bindings) {
+        if (b.can_approve_entries || b.receive_reopen_requests) {
+            authorizedBinding = b;
+            break;
+        }
+    }
+    if (!authorizedBinding) {
         return false;
     }
 
-    const companyId = b.company_id || state?.companyId;
-    const branchId = b.branch_id || state?.branchId;
+    const companyId = authorizedBinding.company_id || state?.companyId;
+    const branchId = authorizedBinding.branch_id || state?.branchId;
     if (!companyId) return false;
 
     const pendingReq = await getLatestPendingForCompany(companyId, branchId);
