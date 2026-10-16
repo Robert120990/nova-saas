@@ -244,3 +244,12 @@ La matriz de asignación de permisos para los roles (`Roles.jsx`) se construye d
     2. Verificar con `git status` o inspeccionar diferencias (`git log HEAD..origin/<rama>`) para comprobar si la rama local está al día o retrasada.
     3. Si existen cambios remotos en GitHub (`Your branch is behind...`), se DEBE ejecutar `git pull --rebase origin <rama>` (o `git pull`) y resolver cualquier posible conflicto antes de publicar cambios.
     4. Solo proceder con `git push` una vez que la rama local esté completamente sincronizada, limpia y sin conflictos con el repositorio remoto en GitHub.
+- **Verificación Preventiva de Seguridad Obligatoria (Zero Tokens ni Datos Vulnerables) — OBLIGATORIO**:
+  - Queda ESTRICTAMENTE PROHIBIDO commitear o incluir en el repositorio cualquier secreto, token, clave API, certificado privado o credencial sensible.
+  - Antes de realizar cualquier `git commit`, es obligatorio verificar que ningún archivo staged contenga información vulnerable:
+    1. **Tokens de Bots y APIs**: Telegram (`[0-9]{8,11}:[a-zA-Z0-9_-]{35}`), OpenAI (`sk-...`), Anthropic (`sk-ant-...`), GitHub (`ghp_...`, `github_pat_...`), Google (`AIza...`), AWS (`AKIA...`), Slack (`xox...`), Stripe (`sk_...`).
+    2. **Archivos de Entorno**: Archivos `.env`, `.env.production`, `.env.local`, `.env.*` (únicamente `.env.example` está permitido sin credenciales reales).
+    3. **Llaves Privadas y Certificados**: Archivos `.p12`, `.pfx` o bloques de clave privada tipo BEGIN PRIVATE KEY.
+    4. **Contraseñas o URLs con credenciales**: Cadenas de conexión con usuario y clave expuestos, passwords hardcodeados en scripts o controladores.
+  - **Mecanismo Automatizado**: Se ejecuta de forma automática en cada commit mediante el hook `.git/hooks/pre-commit` respaldado por `node scripts/security-check.js`. Si se detecta cualquier vulnerabilidad, el commit se cancela inmediatamente.
+
