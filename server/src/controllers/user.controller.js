@@ -1,6 +1,28 @@
 const pool = require('../config/db');
 const bcrypt = require('bcryptjs');
 const notificationService = require('../services/notification.service');
+const { invalidateSessionCache } = require('../middlewares/auth');
+
+const isSuperAdmin = (req) => req.user?.role === 'SuperAdmin';
+
+async function isRoleSuperAdmin(connOrPool, roleId) {
+    if (!roleId) return false;
+    if (Number(roleId) === 1) return true;
+    const [rows] = await connOrPool.query('SELECT name FROM roles WHERE id = ? LIMIT 1', [roleId]);
+    return rows.length > 0 && String(rows[0].name || '').trim().toLowerCase() === 'superadmin';
+}
+
+async function isUserSuperAdmin(connOrPool, userId) {
+    if (!userId) return false;
+    const [rows] = await connOrPool.query(
+        `SELECT 1 FROM usuario_empresa ue
+         JOIN roles r ON ue.role_id = r.id
+         WHERE ue.usuario_id = ? AND (ue.role_id = 1 OR LOWER(r.name) = 'superadmin')
+         LIMIT 1`,
+        [userId]
+    );
+    return rows.length > 0;
+}
 
 const getUsers = async (req, res) => {
     try {
@@ -52,6 +74,10 @@ const createUser = async (req, res) => {
 
     if (telefono && !/^\d{4}-\d{4}$/.test(telefono)) {
         return res.status(400).json({ message: 'El teléfono debe tener el formato 0000-0000' });
+    }
+
+    if (!isSuperAdmin(req) && role_id && await isRoleSuperAdmin(pool, role_id)) {
+        return res.status(403).json({ message: 'Solo un SuperAdmin puede asignar el rol SuperAdmin' });
     }
 
     console.log('DEBUG: createUser', { username, role_id, companyId, user: req.user });
@@ -118,6 +144,15 @@ const updateUser = async (req, res) => {
 
     if (telefono && !/^\d{4}-\d{4}$/.test(telefono)) {
         return res.status(400).json({ message: 'El teléfono debe tener el formato 0000-0000' });
+    }
+
+    if (!isSuperAdmin(req)) {
+        if (await isUserSuperAdmin(pool, id)) {
+            return res.status(403).json({ message: 'Solo un SuperAdmin puede modificar o eliminar cuentas de nivel SuperAdmin' });
+        }
+        if (role_id && await isRoleSuperAdmin(pool, role_id)) {
+            return res.status(403).json({ message: 'Solo un SuperAdmin puede asignar el rol SuperAdmin' });
+        }
     }
     
     const connection = await pool.getConnection();
@@ -196,6 +231,15 @@ const getAllUsers = async (req, res) => {
 
 const assignCompanyAccess = async (req, res) => {
     const { userId, companyId, roleId, branches } = req.body;
+
+    if (!isSuperAdmin(req)) {
+        if (await isRoleSuperAdmin(pool, roleId)) {
+            return res.status(403).json({ message: 'Solo un SuperAdmin puede asignar el rol SuperAdmin' });
+        }
+        if (await isUserSuperAdmin(pool, userId)) {
+            return res.status(403).json({ message: 'Solo un SuperAdmin puede modificar o eliminar cuentas de nivel SuperAdmin' });
+        }
+    }
     
     const connection = await pool.getConnection();
     await connection.beginTransaction();
@@ -337,6 +381,11 @@ const getAccessSummary = async (req, res) => {
 
 const deleteCompanyAccess = async (req, res) => {
     const { userId, companyId } = req.params;
+
+    if (!isSuperAdmin(req) && await isUserSuperAdmin(pool, userId)) {
+        return res.status(403).json({ message: 'Solo un SuperAdmin puede modificar o eliminar cuentas de nivel SuperAdmin' });
+    }
+
     const connection = await pool.getConnection();
     await connection.beginTransaction();
 
@@ -413,6 +462,19 @@ const assignBulkAccess = async (req, res) => {
         return res.status(400).json({ message: 'Debe especificar al menos una empresa con rol' });
     }
 
+    if (!isSuperAdmin(req)) {
+        for (const assignment of assignments) {
+            if (assignment?.roleId && await isRoleSuperAdmin(pool, assignment.roleId)) {
+                return res.status(403).json({ message: 'Solo un SuperAdmin puede asignar el rol SuperAdmin' });
+            }
+        }
+        for (const userId of userIds) {
+            if (await isUserSuperAdmin(pool, userId)) {
+                return res.status(403).json({ message: 'Solo un SuperAdmin puede modificar o eliminar cuentas de nivel SuperAdmin' });
+            }
+        }
+    }
+
     const connection = await pool.getConnection();
     await connection.beginTransaction();
 
@@ -478,6 +540,17 @@ const cloneUserAccess = async (req, res) => {
         return res.status(400).json({ message: 'Debe seleccionar al menos un usuario destino' });
     }
 
+    if (!isSuperAdmin(req)) {
+        if (await isUserSuperAdmin(pool, sourceUserId)) {
+            return res.status(403).json({ message: 'Solo un SuperAdmin puede asignar el rol SuperAdmin' });
+        }
+        for (const targetId of targetUserIds) {
+            if (await isUserSuperAdmin(pool, targetId)) {
+                return res.status(403).json({ message: 'Solo un SuperAdmin puede modificar o eliminar cuentas de nivel SuperAdmin' });
+            }
+        }
+    }
+
     const connection = await pool.getConnection();
     await connection.beginTransaction();
 
@@ -491,6 +564,15 @@ const cloneUserAccess = async (req, res) => {
         if (sourceCompanies.length === 0) {
             await connection.rollback();
             return res.status(400).json({ message: 'El usuario origen no tiene accesos configurados para clonar' });
+        }
+
+        if (!isSuperAdmin(req)) {
+            for (const sc of sourceCompanies) {
+                if (await isRoleSuperAdmin(connection, sc.role_id)) {
+                    await connection.rollback();
+                    return res.status(403).json({ message: 'Solo un SuperAdmin puede asignar el rol SuperAdmin' });
+                }
+            }
         }
 
         // Obtener sucursales del usuario origen con su company_id
@@ -562,6 +644,17 @@ const bulkUpdateRole = async (req, res) => {
         return res.status(400).json({ message: 'Debe seleccionar el nuevo rol' });
     }
 
+    if (!isSuperAdmin(req)) {
+        if (await isRoleSuperAdmin(pool, newRoleId)) {
+            return res.status(403).json({ message: 'Solo un SuperAdmin puede asignar el rol SuperAdmin' });
+        }
+        for (const item of items) {
+            if (item?.userId && await isUserSuperAdmin(pool, item.userId)) {
+                return res.status(403).json({ message: 'Solo un SuperAdmin puede modificar o eliminar cuentas de nivel SuperAdmin' });
+            }
+        }
+    }
+
     const connection = await pool.getConnection();
     await connection.beginTransaction();
 
@@ -592,6 +685,14 @@ const bulkDeleteAccess = async (req, res) => {
 
     if (!Array.isArray(items) || items.length === 0) {
         return res.status(400).json({ message: 'Debe seleccionar al menos un registro' });
+    }
+
+    if (!isSuperAdmin(req)) {
+        for (const item of items) {
+            if (item?.userId && await isUserSuperAdmin(pool, item.userId)) {
+                return res.status(403).json({ message: 'Solo un SuperAdmin puede modificar o eliminar cuentas de nivel SuperAdmin' });
+            }
+        }
     }
 
     const connection = await pool.getConnection();
@@ -629,6 +730,11 @@ const bulkDeleteAccess = async (req, res) => {
 
 const deleteUser = async (req, res) => {
     const { id } = req.params;
+
+    if (!isSuperAdmin(req) && await isUserSuperAdmin(pool, id)) {
+        return res.status(403).json({ message: 'Solo un SuperAdmin puede modificar o eliminar cuentas de nivel SuperAdmin' });
+    }
+
     const connection = await pool.getConnection();
     await connection.beginTransaction();
 
@@ -707,6 +813,9 @@ const terminateSession = async (req, res) => {
         }
 
         await pool.query('UPDATE user_sessions SET is_active = 0 WHERE id = ?', [id]);
+        if (typeof invalidateSessionCache === 'function') {
+            invalidateSessionCache(id);
+        }
         res.json({ message: 'Sesión finalizada' });
     } catch (error) {
         console.error('Error terminating session:', error);

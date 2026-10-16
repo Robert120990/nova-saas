@@ -55,13 +55,28 @@ const login = async (req, res) => {
         return res.status(400).json({ message: 'Usuario y contraseña son requeridos' });
     }
 
+    const clientRateIp = loginRateLimit.getClientIp(req);
+    const normalizedUsername = String(username).trim().toLowerCase();
+
     try {
+        try {
+            const blockStatus = await loginRateLimit.checkBlocked(clientRateIp, normalizedUsername);
+            if (blockStatus.blocked) {
+                return res.status(429).json({
+                    message: `Demasiados intentos fallidos. Intente nuevamente en ${blockStatus.minutes} minuto(s).`
+                });
+            }
+        } catch (rlError) {
+            console.error('Advertencia en verificación de rate-limit:', rlError.message);
+        }
+
         const [users] = await pool.query(
             'SELECT * FROM users WHERE username = ?', 
             [username]
         );
 
         if (users.length === 0) {
+            await loginRateLimit.recordFailure(clientRateIp, normalizedUsername).catch(() => {});
             return res.status(401).json({ message: 'Credenciales inválidas' });
         }
 
@@ -69,14 +84,17 @@ const login = async (req, res) => {
         
         const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) {
-             return res.status(401).json({ message: 'Credenciales inválidas' });
+            await loginRateLimit.recordFailure(clientRateIp, normalizedUsername).catch(() => {});
+            return res.status(401).json({ message: 'Credenciales inválidas' });
         }
+
+        await loginRateLimit.recordSuccess(clientRateIp, normalizedUsername).catch(() => {});
 
         if (user.status !== 'activo') {
             return res.status(403).json({ message: 'Usuario inactivo' });
         }
 
-        // Validar IP permitida
+        // Validar IP permitida (priorizando IP de red verificada sobre cabecera de cliente)
         let allowedIPs = [];
         try {
             allowedIPs = user.allowed_ips ? (typeof user.allowed_ips === 'string' ? JSON.parse(user.allowed_ips) : user.allowed_ips) : [];
@@ -84,9 +102,10 @@ const login = async (req, res) => {
             allowedIPs = [];
         }
         if (allowedIPs.length > 0) {
-            const rawIP = req.headers['x-client-public-ip'] || (req.headers['x-forwarded-for'] || '').split(',')[0]?.trim() || req.socket.remoteAddress || req.ip;
-            const clientIP = rawIP ? rawIP.replace(/^::ffff:/, '').replace(/^::1$/, '127.0.0.1') : '';
-            if (!allowedIPs.includes(clientIP)) {
+            const networkRaw = (req.headers['x-forwarded-for'] || '').split(',')[0]?.trim() || req.socket?.remoteAddress || req.ip || '';
+            const networkIP = networkRaw ? networkRaw.replace(/^::ffff:/, '').replace(/^::1$/, '127.0.0.1') : '';
+            const clientIP = loginRateLimit.getClientIp(req);
+            if (!allowedIPs.includes(clientIP) && !allowedIPs.includes(networkIP)) {
                 return res.status(403).json({ message: `Acceso no permitido desde su IP (${clientIP})` });
             }
         }

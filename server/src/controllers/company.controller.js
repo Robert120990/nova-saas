@@ -3,6 +3,22 @@ const path = require('path');
 const fs = require('fs');
 const notificationService = require('../services/notification.service');
 
+const SENSITIVE_COMPANY_FIELDS = ['api_password', 'certificate_password', 'clave_privada'];
+
+function sanitizeCompanyRow(row) {
+    if (!row) return row;
+    const sanitized = {
+        ...row,
+        has_api_password: Boolean(row.api_password),
+        has_certificate_password: Boolean(row.certificate_password),
+        has_clave_privada: Boolean(row.clave_privada)
+    };
+    for (const field of SENSITIVE_COMPANY_FIELDS) {
+        delete sanitized[field];
+    }
+    return sanitized;
+}
+
 const getCompanies = async (req, res) => {
     try {
         const [rows] = await pool.query(`
@@ -21,7 +37,7 @@ const getCompanies = async (req, res) => {
             LEFT JOIN cat_001_ambiente env ON c.ambiente = env.code
             LEFT JOIN cat_029_tipo_persona tp ON c.tipo_persona = tp.code
         `);
-        res.json(rows);
+        res.json(rows.map(sanitizeCompanyRow));
     } catch (error) {
         res.status(500).json({ message: 'Error al obtener empresas' });
     }
@@ -65,6 +81,10 @@ const handleFileUploads = (req, data) => {
 };
 
 const createCompany = async (req, res) => {
+    if (req.user?.role !== 'SuperAdmin') {
+        return res.status(403).json({ message: 'Solo un SuperAdmin puede crear o eliminar empresas en la plataforma.' });
+    }
+
     const validColumns = [
         'nit', 'nrc', 'razon_social', 'nombre_comercial', 'codigo_actividad', 
         'direccion', 'departamento', 'municipio', 'distrito', 'correo', 'telefono', 
@@ -130,7 +150,7 @@ const createCompany = async (req, res) => {
             nit: data.nit || '',
             usuario_creador: req.user?.nombre || ''
         }).catch(() => {});
-        res.status(201).json({ id: companyId, ...data });
+        res.status(201).json(sanitizeCompanyRow({ id: companyId, ...data }));
     } catch (error) {
         await connection.rollback();
         console.error('Error al crear empresa:', error.message);
@@ -154,6 +174,9 @@ const updateCompany = async (req, res) => {
     Object.keys(req.body).forEach(key => {
         if (validColumns.includes(key)) {
             let val = req.body[key];
+            if (SENSITIVE_COMPANY_FIELDS.includes(key) && (!val || String(val).trim() === '')) {
+                return;
+            }
             if ((key === 'nit' || key === 'nrc') && typeof val === 'string') {
                 val = val.trim();
             }
@@ -190,6 +213,10 @@ const updateCompany = async (req, res) => {
 };
 
 const deleteCompany = async (req, res) => {
+    if (req.user?.role !== 'SuperAdmin') {
+        return res.status(403).json({ message: 'Solo un SuperAdmin puede crear o eliminar empresas en la plataforma.' });
+    }
+
     const { id } = req.params;
     try {
         await pool.query('DELETE FROM companies WHERE id = ?', [id]);

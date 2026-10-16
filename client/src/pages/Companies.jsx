@@ -472,7 +472,13 @@ const Companies = () => {
                             </div>
                             <div>
                                 <label className={labelCls}>Contraseña del Certificado</label>
-                                <input name="certificate_password" type="password" defaultValue={selectedCompany?.certificate_password} className={fieldCls} />
+                                <input
+                                    name="certificate_password"
+                                    type="password"
+                                    defaultValue=""
+                                    placeholder={selectedCompany?.has_certificate_password ? '•••••••• (Guardada — dejar vacío para mantener)' : 'Ingrese contraseña'}
+                                    className={fieldCls}
+                                />
                             </div>
                         </div>
                     </div>
@@ -499,12 +505,23 @@ const Companies = () => {
                             </div>
                             <div>
                                 <label className={labelCls}>API Password</label>
-                                <input name="api_password" type="password" defaultValue={selectedCompany?.api_password} className={fieldCls} />
+                                <input
+                                    name="api_password"
+                                    type="password"
+                                    defaultValue=""
+                                    placeholder={selectedCompany?.has_api_password ? '•••••••• (Guardada — dejar vacío para mantener)' : 'Ingrese API Password'}
+                                    className={fieldCls}
+                                />
                             </div>
                         </div>
                         <div>
                             <label className={labelCls}>Clave Privada (.key / PEM)</label>
-                            <textarea name="clave_privada" defaultValue={selectedCompany?.clave_privada} placeholder="---BEGIN PRIVATE KEY---" className={`${fieldCls} h-16 font-mono text-[10px] resize-none bg-slate-800 text-emerald-400 border-slate-700`} />
+                            <textarea
+                                name="clave_privada"
+                                defaultValue=""
+                                placeholder={selectedCompany?.has_clave_privada ? '--- LLAVE PRIVADA CONFIGURADA (Dejar vacío para conservar) ---' : '---BEGIN PRIVATE KEY---'}
+                                className={`${fieldCls} h-16 font-mono text-[10px] resize-none bg-slate-800 text-emerald-400 border-slate-700`}
+                            />
                         </div>
                     </div>
                     </div>

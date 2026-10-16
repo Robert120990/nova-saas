@@ -3,8 +3,14 @@ const router = express.Router();
 const { verifyToken, checkPermission } = require('../middlewares/auth');
 const terminalController = require('../controllers/terminal.controller');
 
-// Todas las rutas de terminal requieren autenticación y permiso 'manage_server_terminal' (o SuperAdmin)
+// Todas las rutas de terminal requieren autenticación y rol exclusivo SuperAdmin
 router.use(verifyToken);
+router.use((req, res, next) => {
+    if (req.user?.role !== 'SuperAdmin') {
+        return res.status(403).json({ success: false, message: 'Acceso exclusivo para SuperAdmin.' });
+    }
+    next();
+});
 router.use(checkPermission('manage_server_terminal'));
 
 // Obtener estado y especificaciones del servidor

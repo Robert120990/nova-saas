@@ -12,14 +12,16 @@ const IP_MAX_ATTEMPTS = parseInt(process.env.LOGIN_IP_MAX_ATTEMPTS, 10) || 30;
 const WINDOW_MINUTES = parseInt(process.env.LOGIN_WINDOW_MINUTES, 10) || 15;
 const PURGE_AFTER_DAYS = 2;
 
-/** IP del cliente con la misma normalización que usa auth.controller. */
+/** IP del cliente priorizando la IP de red/proxy para evitar evasión por spoofing de cabeceras. */
 function getClientIp(req) {
-    const raw = req.headers['x-client-public-ip']
-        || (req.headers['x-forwarded-for'] || '').split(',')[0]?.trim()
-        || req.socket.remoteAddress
+    const networkRaw = (req.headers['x-forwarded-for'] || '').split(',')[0]?.trim()
+        || req.socket?.remoteAddress
         || req.ip
         || '';
-    return String(raw).replace(/^::ffff:/, '').replace(/^::1$/, '127.0.0.1');
+    const networkIp = String(networkRaw).replace(/^::ffff:/, '').replace(/^::1$/, '127.0.0.1');
+    const isLocal = /^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(networkIp) || !networkIp;
+    const headerIp = (req.headers['x-client-public-ip'] || '').trim();
+    return (isLocal && headerIp) ? headerIp : (networkIp || '127.0.0.1');
 }
 
 /**
