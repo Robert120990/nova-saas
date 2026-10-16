@@ -61,6 +61,34 @@ const Empleados = () => {
     const [showEmergencyForm, setShowEmergencyForm] = useState(false);
     const [editEmergency, setEditEmergency] = useState(null);
     const [emergencyForm, setEmergencyForm] = useState({ nombre: '', telefono: '', parentesco: '' });
+    const [isJubilado, setIsJubilado] = useState(false);
+    const [isJubiladoConAfp, setIsJubiladoConAfp] = useState(false);
+
+    useEffect(() => {
+        if (selected) {
+            setIsJubilado(!!selected.es_jubilado && !selected.es_jubilado_con_afp);
+            setIsJubiladoConAfp(!!selected.es_jubilado_con_afp);
+        } else {
+            setIsJubilado(false);
+            setIsJubiladoConAfp(false);
+        }
+    }, [selected, isModalOpen]);
+
+    const handleJubiladoChange = (e) => {
+        const checked = e.target.checked;
+        setIsJubilado(checked);
+        if (checked) {
+            setIsJubiladoConAfp(false);
+        }
+    };
+
+    const handleJubiladoConAfpChange = (e) => {
+        const checked = e.target.checked;
+        setIsJubiladoConAfp(checked);
+        if (checked) {
+            setIsJubilado(false);
+        }
+    };
 
     useDirtyTracker('empleados', isModalOpen && selected);
 
@@ -226,7 +254,11 @@ const Empleados = () => {
         data.sueldo_base = parseFloat(data.sueldo_base) || 0;
         data.bonificacion_fija = parseFloat(data.bonificacion_fija) || 0;
         data.es_activo = data.es_activo === 'on' || data.es_activo === '1' ? 1 : 0;
-        data.es_jubilado = data.es_jubilado === 'on' || data.es_jubilado === '1' ? 1 : 0;
+        data.es_jubilado = isJubilado ? 1 : 0;
+        data.es_jubilado_con_afp = isJubiladoConAfp ? 1 : 0;
+        if (data.es_jubilado_con_afp === 1) {
+            data.es_jubilado = 0;
+        }
         data.aplica_renta = data.aplica_renta === 'on' || data.aplica_renta === '1' ? 1 : 0;
         data.en_vacaciones = data.en_vacaciones === 'on' || data.en_vacaciones === '1' ? 1 : 0;
         data.incapacitado = data.incapacitado === 'on' || data.incapacitado === '1' ? 1 : 0;
@@ -426,7 +458,19 @@ const Empleados = () => {
                             <span className="text-[10px] font-mono font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">{item.codigo}</span>
                         </td>
                         <td className="px-3 py-1">
-                            <div className="text-xs font-bold text-slate-900">{item.nombres} {item.apellidos}</div>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="text-xs font-bold text-slate-900">{item.nombres} {item.apellidos}</span>
+                                {item.es_jubilado === 1 && !item.es_jubilado_con_afp && (
+                                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800" title="Jubilado (Sin ISSS ni AFP, Renta 10%)">
+                                        Jubilado
+                                    </span>
+                                )}
+                                {item.es_jubilado_con_afp === 1 && (
+                                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-800" title="Jubilado con AFP (Sin ISSS, con AFP, Renta 10%)">
+                                        Jub. c/ AFP
+                                    </span>
+                                )}
+                            </div>
                         </td>
                         <td className="px-3 py-1 text-[10px] font-mono text-slate-500">{item.num_dui}</td>
                         <td className="px-3 py-1 text-xs text-slate-600">{item.cargo_nombre || <span className="text-slate-300 italic">Sin cargo</span>}</td>
@@ -722,14 +766,18 @@ const Empleados = () => {
                                     <input name="cuenta_planillera" defaultValue={selected?.cuenta_planillera || ''} placeholder="Cuenta bancaria" className={fieldCls} />
                                 </div>
                             </div>
-                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
                                 <label className="flex items-center gap-2 p-2.5 bg-white border border-slate-200 rounded-xl cursor-pointer hover:border-indigo-200 transition-colors">
                                     <input type="checkbox" name="es_activo" defaultChecked={selected ? !!selected.es_activo : true} className="rounded text-indigo-600" />
                                     <span className="text-xs font-bold text-slate-600">Activo</span>
                                 </label>
-                                <label className="flex items-center gap-2 p-2.5 bg-white border border-slate-200 rounded-xl cursor-pointer hover:border-indigo-200 transition-colors">
-                                    <input type="checkbox" name="es_jubilado" defaultChecked={!!selected?.es_jubilado} className="rounded text-indigo-600" />
+                                <label className="flex items-center gap-2 p-2.5 bg-white border border-slate-200 rounded-xl cursor-pointer hover:border-indigo-200 transition-colors" title="Jubilado normal: sin AFP, sin ISSS, renta 10%">
+                                    <input type="checkbox" name="es_jubilado" checked={isJubilado} onChange={handleJubiladoChange} className="rounded text-indigo-600" />
                                     <span className="text-xs font-bold text-slate-600">Jubilado</span>
+                                </label>
+                                <label className="flex items-center gap-2 p-2.5 bg-white border border-slate-200 rounded-xl cursor-pointer hover:border-indigo-200 transition-colors" title="Jubilado que cotiza AFP: con AFP, sin ISSS, renta 10%">
+                                    <input type="checkbox" name="es_jubilado_con_afp" checked={isJubiladoConAfp} onChange={handleJubiladoConAfpChange} className="rounded text-indigo-600" />
+                                    <span className="text-xs font-bold text-slate-600">Jub. c/ AFP</span>
                                 </label>
                                 <label className="flex items-center gap-2 p-2.5 bg-white border border-slate-200 rounded-xl cursor-pointer hover:border-indigo-200 transition-colors" title="Si está activo, se aplica descuento de renta en la segunda quincena usando la tabla mensual">
                                     <input type="checkbox" name="aplica_renta" defaultChecked={selected ? (selected.aplica_renta === undefined || selected.aplica_renta === null ? true : !!selected.aplica_renta) : true} className="rounded text-indigo-600" />

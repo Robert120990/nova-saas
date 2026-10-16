@@ -22,7 +22,7 @@ const sincronizarPlanilla = async (req, res, pool) => {
 
         // 1. Empleados activos de la empresa
         const [empleados] = await pool.query(
-            `SELECT id, sueldo_base, bonificacion_fija, afp_id, es_jubilado, aplica_renta, codigo, nombres, apellidos, en_vacaciones, incapacitado,
+            `SELECT id, sueldo_base, bonificacion_fija, afp_id, es_jubilado, es_jubilado_con_afp, aplica_renta, codigo, nombres, apellidos, en_vacaciones, incapacitado,
                     branch_id, departamento_personal_id, cargo_id
              FROM rh_empleados WHERE company_id = ? AND es_activo = 1`,
             [req.company_id]
@@ -183,9 +183,12 @@ const sincronizarPlanilla = async (req, res, pool) => {
                 );
             }
 
-            const esJubilado = !!emp.es_jubilado;
+            const esJubiladoConAfp = !!emp.es_jubilado_con_afp;
+            const esJubilado = !!emp.es_jubilado && !esJubiladoConAfp;
+            const esCualquierJubilado = esJubilado || esJubiladoConAfp;
+
             let descuentoISSS = 0;
-            if (!esJubilado && isssTasa) {
+            if (!esCualquierJubilado && isssTasa) {
                 const baseISSS = Math.min(totalPercepciones, isssTope || Infinity);
                 descuentoISSS = baseISSS * isssTasa / 100;
             }
@@ -211,7 +214,7 @@ const sincronizarPlanilla = async (req, res, pool) => {
                 modo: rentaCtx.calculoRentaModo,
                 brackets: rentaCtx.brackets,
                 ingresoGravado,
-                esJubilado,
+                esJubilado: esCualquierJubilado,
                 aplicaRenta: aplicaRentaEmpA,
                 quincena,
                 q1Data
@@ -379,9 +382,12 @@ const sincronizarPlanilla = async (req, res, pool) => {
                 totalPercepciones = Math.round(totalPercepciones * 100) / 100;
                 totalDeduccionesCuentas = Math.round(totalDeduccionesCuentas * 100) / 100;
 
-                const esJubilado = !!emp.es_jubilado;
+                const esJubiladoConAfp = !!emp.es_jubilado_con_afp;
+                const esJubilado = !!emp.es_jubilado && !esJubiladoConAfp;
+                const esCualquierJubilado = esJubilado || esJubiladoConAfp;
+
                 let descuentoISSS = 0;
-                if (!esJubilado && isssTasa) {
+                if (!esCualquierJubilado && isssTasa) {
                     const baseISSS = Math.min(totalPercepciones, isssTope || Infinity);
                     descuentoISSS = baseISSS * isssTasa / 100;
                 }
@@ -407,7 +413,7 @@ const sincronizarPlanilla = async (req, res, pool) => {
                     modo: rentaCtx.calculoRentaModo,
                     brackets: rentaCtx.brackets,
                     ingresoGravado,
-                    esJubilado,
+                    esJubilado: esCualquierJubilado,
                     aplicaRenta: aplicaRentaEmpB,
                     quincena,
                     q1Data
@@ -444,7 +450,9 @@ const sincronizarPlanilla = async (req, res, pool) => {
                 const descuentoAFP = parseFloat(planillaExistente.descuento_afp || 0);
                 const ingresoGravado = Math.max(0, totalPercepciones - descuentoISSS - descuentoAFP);
 
-                const esJubilado = !!emp.es_jubilado;
+                const esJubiladoConAfp = !!emp.es_jubilado_con_afp;
+                const esJubilado = !!emp.es_jubilado && !esJubiladoConAfp;
+                const esCualquierJubilado = esJubilado || esJubiladoConAfp;
                 const aplicaRentaEmpB = (emp.aplica_renta === 1 || emp.aplica_renta === undefined || emp.aplica_renta === null);
                 const q1Data = q1PlanillaMap.get(emp.id) || null;
 
@@ -452,7 +460,7 @@ const sincronizarPlanilla = async (req, res, pool) => {
                     modo: rentaCtx.calculoRentaModo,
                     brackets: rentaCtx.brackets,
                     ingresoGravado,
-                    esJubilado,
+                    esJubilado: esCualquierJubilado,
                     aplicaRenta: aplicaRentaEmpB,
                     quincena,
                     q1Data

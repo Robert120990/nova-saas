@@ -12,19 +12,21 @@ async function calculateVacaciones(pool, companyId, query) {
 
         // 1. Get employee data
         const [empRows] = await pool.query(
-            `SELECT afp_id, sueldo_base, bonificacion_fija, es_jubilado FROM rh_empleados WHERE id = ? AND company_id = ?`,
+            `SELECT afp_id, sueldo_base, bonificacion_fija, es_jubilado, es_jubilado_con_afp FROM rh_empleados WHERE id = ? AND company_id = ?`,
             [empleado_id, companyId]
         );
         if (empRows.length === 0) {
             throw httpError(404, 'Empleado no encontrado');
         }
         const empleado = empRows[0];
-        const esJubilado = !!empleado.es_jubilado;
+        const esJubiladoConAfp = !!empleado.es_jubilado_con_afp;
+        const esJubilado = !!empleado.es_jubilado && !esJubiladoConAfp;
+        const esCualquierJubilado = esJubilado || esJubiladoConAfp;
 
         // 2. ISSS calculation (skip if jubilado)
         let descuentoISSS = 0;
         let isssInfo = null;
-        if (!esJubilado) {
+        if (!esCualquierJubilado) {
             const [isssRows] = await pool.query(
                 `SELECT porcentaje_empleado, tope_mensual, tope_quincenal FROM rh_isss_tasas 
                  WHERE company_id = ? AND fecha_desde <= ? AND (fecha_hasta IS NULL OR fecha_hasta >= ?)
@@ -42,7 +44,7 @@ async function calculateVacaciones(pool, companyId, query) {
             }
         }
 
-        // 3. AFP calculation (skip if jubilado)
+        // 3. AFP calculation (skip if jubilado normal, apply if jubilado con afp)
         let descuentoAFP = 0;
         let afpInfo = null;
         if (!esJubilado && empleado.afp_id) {
@@ -70,7 +72,7 @@ async function calculateVacaciones(pool, companyId, query) {
         const ingresoGravado = vacacionesMonto - descuentoISSS - descuentoAFP;
         let rentaInfo = null;
 
-        if (esJubilado) {
+        if (esCualquierJubilado) {
             // Jubilado: flat 10% ISR
             descuentoRenta = Math.round(ingresoGravado * 0.10 * 100) / 100;
             rentaInfo = { tipo: 'jubilado', porcentaje: 10, ingreso_gravado: Math.round(ingresoGravado * 100) / 100 };
@@ -148,19 +150,21 @@ async function calculateLiquidaciones(pool, companyId, query) {
         const today = new Date().toISOString().split('T')[0];
 
         const [empRows] = await pool.query(
-            `SELECT afp_id, sueldo_base, es_jubilado FROM rh_empleados WHERE id = ? AND company_id = ?`,
+            `SELECT afp_id, sueldo_base, es_jubilado, es_jubilado_con_afp FROM rh_empleados WHERE id = ? AND company_id = ?`,
             [empleado_id, companyId]
         );
         if (empRows.length === 0) {
             throw httpError(404, 'Empleado no encontrado');
         }
         const empleado = empRows[0];
-        const esJubilado = !!empleado.es_jubilado;
+        const esJubiladoConAfp = !!empleado.es_jubilado_con_afp;
+        const esJubilado = !!empleado.es_jubilado && !esJubiladoConAfp;
+        const esCualquierJubilado = esJubilado || esJubiladoConAfp;
 
         // ISSS (skip if jubilado)
         let descuentoISSS = 0;
         let isssInfo = null;
-        if (!esJubilado && baseCotizable > 0) {
+        if (!esCualquierJubilado && baseCotizable > 0) {
             const [isssRows] = await pool.query(
                 `SELECT porcentaje_empleado, tope_mensual FROM rh_isss_tasas 
                  WHERE company_id = ? AND fecha_desde <= ? AND (fecha_hasta IS NULL OR fecha_hasta >= ?)
@@ -176,7 +180,7 @@ async function calculateLiquidaciones(pool, companyId, query) {
             }
         }
 
-        // AFP (skip if jubilado)
+        // AFP (skip if jubilado normal, apply if jubilado con afp)
         let descuentoAFP = 0;
         let afpInfo = null;
         if (!esJubilado && empleado.afp_id && baseCotizable > 0) {
@@ -202,7 +206,7 @@ async function calculateLiquidaciones(pool, companyId, query) {
         const ingresoGravado = Math.max(0, (baseCotizable + excedenteAguinaldo) - descuentoISSS - descuentoAFP);
         let rentaInfo = null;
 
-        if (esJubilado) {
+        if (esCualquierJubilado) {
             descuentoRenta = Math.round(ingresoGravado * 0.10 * 100) / 100;
             rentaInfo = { tipo: 'jubilado', porcentaje: 10, ingreso_gravado: Math.round(ingresoGravado * 100) / 100 };
         } else {

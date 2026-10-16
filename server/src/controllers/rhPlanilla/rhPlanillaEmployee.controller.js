@@ -9,7 +9,7 @@ const getEmpleadoData = async (req, res, pool) => {
         const [rows] = await pool.query(
             `SELECT e.id, e.codigo, e.nombres, e.apellidos, e.sueldo_base, e.bonificacion_fija,
                     e.afp_id, e.cargo_id, e.departamento_personal_id, e.num_dui, e.num_nit,
-                    e.fecha_ingreso, e.es_jubilado, e.en_vacaciones, e.incapacitado,
+                    e.fecha_ingreso, e.es_jubilado, e.es_jubilado_con_afp, e.en_vacaciones, e.incapacitado,
                     c.descripcion as cargo_nombre,
                     d.descripcion as departamento_nombre
              FROM rh_empleados e

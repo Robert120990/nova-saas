@@ -72,6 +72,7 @@ const empleadoBaseShape = {
     cuenta_planillera: emptyToNull.nullable().optional(),
     es_activo: z.coerce.number().optional().or(z.boolean()),
     es_jubilado: z.coerce.number().optional().or(z.boolean()),
+    es_jubilado_con_afp: z.coerce.number().optional().or(z.boolean()),
     aplica_renta: z.coerce.number().optional().or(z.boolean()),
     en_vacaciones: z.coerce.number().optional().or(z.boolean()),
     incapacitado: z.coerce.number().optional().or(z.boolean()),

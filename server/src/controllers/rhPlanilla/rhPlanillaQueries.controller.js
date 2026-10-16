@@ -91,6 +91,7 @@ const getPlanilla = async (req, res, pool) => {
                     e.fecha_ingreso,
                     e.afp_id,
                     e.es_jubilado,
+                    e.es_jubilado_con_afp,
                     COALESCE(p.cargo_id, e.cargo_id) as cargo_id,
                     COALESCE(p.departamento_personal_id, e.departamento_personal_id) as departamento_personal_id,
                     COALESCE(p.branch_id, e.branch_id) as branch_id,

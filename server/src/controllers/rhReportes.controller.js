@@ -854,7 +854,7 @@ const getPlanillaInsaforpReport = async (req, res) => {
             SELECT 
                 p.id, p.empleado_id, p.dias_trabajados, p.sueldo_base, p.total_percepciones,
                 p.quincena,
-                e.codigo, e.nombres, e.apellidos, e.num_dui, e.num_isss, e.es_jubilado
+                e.codigo, e.nombres, e.apellidos, e.num_dui, e.num_isss, e.es_jubilado, e.es_jubilado_con_afp
             FROM rh_planillas p
             JOIN rh_empleados e ON p.empleado_id = e.id
             WHERE p.company_id = ? AND p.periodo_anio = ? AND p.periodo_mes = ? AND p.estado != 'anulado'
@@ -885,7 +885,8 @@ const getPlanillaInsaforpReport = async (req, res) => {
                     num_dui: r.num_dui || '',
                     dias_trabajados: dias,
                     salario_devengado: perc,
-                    es_jubilado: r.es_jubilado
+                    es_jubilado: r.es_jubilado,
+                    es_jubilado_con_afp: r.es_jubilado_con_afp
                 });
             } else {
                 const existing = empMap.get(empId);
@@ -1006,7 +1007,7 @@ const getCostoLaboralReport = async (req, res) => {
         let query = `
             SELECT 
                 p.id, p.empleado_id, p.total_percepciones, p.quincena,
-                e.codigo, e.nombres, e.apellidos, e.es_jubilado,
+                e.codigo, e.nombres, e.apellidos, e.es_jubilado, e.es_jubilado_con_afp,
                 d.descripcion as departamento_nombre
             FROM rh_planillas p
             JOIN rh_empleados e ON p.empleado_id = e.id
@@ -1039,7 +1040,8 @@ const getCostoLaboralReport = async (req, res) => {
                     nombre: `${r.nombres || ''} ${r.apellidos || ''}`.trim(),
                     departamento: r.departamento_nombre || 'GENERAL',
                     salario_devengado: perc,
-                    es_jubilado: r.es_jubilado
+                    es_jubilado: r.es_jubilado,
+                    es_jubilado_con_afp: r.es_jubilado_con_afp
                 });
             } else {
                 const existing = empMap.get(empId);
@@ -1051,8 +1053,12 @@ const getCostoLaboralReport = async (req, res) => {
         const items = Array.from(empMap.values()).map(emp => {
             const dev = Math.round(emp.salario_devengado * 100) / 100;
             const cotIsss = Math.min(dev, capIsss);
-            const isssPat = emp.es_jubilado ? 0 : Math.round(cotIsss * 0.075 * 100) / 100;
-            const afpPat = emp.es_jubilado ? 0 : Math.round(dev * 0.0875 * 100) / 100;
+            const esJubiladoConAfp = !!emp.es_jubilado_con_afp;
+            const esJubilado = !!emp.es_jubilado && !esJubiladoConAfp;
+            const esCualquierJubilado = esJubilado || esJubiladoConAfp;
+
+            const isssPat = esCualquierJubilado ? 0 : Math.round(cotIsss * 0.075 * 100) / 100;
+            const afpPat = esJubilado ? 0 : Math.round(dev * 0.0875 * 100) / 100;
             const incaf = Math.round(cotIsss * 0.01 * 100) / 100;
             const provVac = Math.round(dev * 0.0541 * 100) / 100;
             const provAguin = Math.round(dev * 0.0833 * 100) / 100;

@@ -51,7 +51,7 @@ const generarPlanilla = async (req, res, pool, notificationService) => {
         const dias = 15;
 
         const [empleados] = await pool.query(
-            `SELECT id, sueldo_base, bonificacion_fija, afp_id, es_jubilado, aplica_renta, codigo, nombres, apellidos, en_vacaciones, incapacitado,
+            `SELECT id, sueldo_base, bonificacion_fija, afp_id, es_jubilado, es_jubilado_con_afp, aplica_renta, codigo, nombres, apellidos, en_vacaciones, incapacitado,
                     branch_id, departamento_personal_id, cargo_id
              FROM rh_empleados WHERE company_id = ? AND es_activo = 1`,
             [req.company_id]
@@ -194,9 +194,12 @@ const generarPlanilla = async (req, res, pool, notificationService) => {
                 );
             }
 
-            const esJubilado = !!emp.es_jubilado;
+            const esJubiladoConAfp = !!emp.es_jubilado_con_afp;
+            const esJubilado = !!emp.es_jubilado && !esJubiladoConAfp;
+            const esCualquierJubilado = esJubilado || esJubiladoConAfp;
+
             let descuentoISSS = 0;
-            if (!esJubilado && isssTasa) {
+            if (!esCualquierJubilado && isssTasa) {
                 const baseISSS = Math.min(totalPercepciones, isssTope || Infinity);
                 descuentoISSS = baseISSS * isssTasa / 100;
             }
@@ -222,7 +225,7 @@ const generarPlanilla = async (req, res, pool, notificationService) => {
                 modo: rentaCtx.calculoRentaModo,
                 brackets: rentaCtx.brackets,
                 ingresoGravado,
-                esJubilado,
+                esJubilado: esCualquierJubilado,
                 aplicaRenta: aplicaRentaEmp,
                 quincena,
                 q1Data

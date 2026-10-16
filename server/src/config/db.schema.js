@@ -793,7 +793,7 @@ ORDER BY gc.fecha_turno DESC
 - cargo_id FK -> rh_cargos, departamento_personal_id FK -> rh_departamentos
 - num_isss, num_nup, fecha_ingreso, tipo_contrato_id FK -> rh_tipos_contrato
 - sueldo_base DECIMAL, bonificacion_fija DECIMAL, cuenta_planillera
-- es_activo TINYINT, es_jubilado TINYINT, en_vacaciones TINYINT, incapacitado TINYINT
+- es_activo TINYINT, es_jubilado TINYINT, es_jubilado_con_afp TINYINT, aplica_renta TINYINT, en_vacaciones TINYINT, incapacitado TINYINT
 - comentarios TEXT, created_at, updated_at
 - UNIQUE(company_id, codigo)
 

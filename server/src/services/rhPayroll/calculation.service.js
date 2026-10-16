@@ -4,14 +4,14 @@ const calcular = async (req, res, pool) => {
     try {
         const { planilla_id, empleado_id: reqEmpleadoId, detalles: reqDetalles, quincena: reqQuincena, periodo_anio: reqPeriodoAnio, periodo_mes: reqPeriodoMes } = req.body;
 
-        let empleadoId, afpId, esJubilado, aplicaRenta, detalles, quincena = reqQuincena || 'primera';
+        let empleadoId, afpId, esJubilado, esJubiladoConAfp = false, aplicaRenta, detalles, quincena = reqQuincena || 'primera';
         let planilla = null;
         let periodoAnio = reqPeriodoAnio || null;
         let periodoMes = reqPeriodoMes || null;
 
         if (planilla_id) {
             const [planillaRows] = await pool.query(
-                `SELECT p.*, e.afp_id, e.es_jubilado, e.aplica_renta, e.sueldo_base, e.bonificacion_fija
+                `SELECT p.*, e.afp_id, e.es_jubilado, e.es_jubilado_con_afp, e.aplica_renta, e.sueldo_base, e.bonificacion_fija
                  FROM ${TABLE} p
                  JOIN rh_empleados e ON p.empleado_id = e.id
                  WHERE p.id = ? AND p.company_id = ?`,
@@ -24,7 +24,8 @@ const calcular = async (req, res, pool) => {
             }
             empleadoId = planilla.empleado_id;
             afpId = planilla.afp_id;
-            esJubilado = !!planilla.es_jubilado;
+            esJubiladoConAfp = !!planilla.es_jubilado_con_afp;
+            esJubilado = !!planilla.es_jubilado && !esJubiladoConAfp;
             aplicaRenta = planilla.aplica_renta === 0 ? false : true;
             quincena = planilla.quincena || quincena;
             periodoAnio = planilla.periodo_anio;
@@ -38,12 +39,13 @@ const calcular = async (req, res, pool) => {
         } else if (reqEmpleadoId && reqDetalles) {
             empleadoId = reqEmpleadoId;
             const [empRows] = await pool.query(
-                `SELECT afp_id, es_jubilado, aplica_renta FROM rh_empleados WHERE id = ? AND company_id = ?`,
+                `SELECT afp_id, es_jubilado, es_jubilado_con_afp, aplica_renta FROM rh_empleados WHERE id = ? AND company_id = ?`,
                 [reqEmpleadoId, req.company_id]
             );
             if (empRows.length === 0) return res.status(404).json({ message: 'Empleado no encontrado' });
             afpId = empRows[0].afp_id;
-            esJubilado = !!empRows[0].es_jubilado;
+            esJubiladoConAfp = !!empRows[0].es_jubilado_con_afp;
+            esJubilado = !!empRows[0].es_jubilado && !esJubiladoConAfp;
             aplicaRenta = empRows[0].aplica_renta === 0 ? false : true;
             detalles = reqDetalles;
         } else {
@@ -64,9 +66,10 @@ const calcular = async (req, res, pool) => {
 
         const today = new Date().toISOString().split('T')[0];
 
+        // 1. ISSS: Ningún jubilado (ni normal ni con AFP) lleva ISSS
         let descuentoISSS = 0;
         let isssInfo = null;
-        if (!esJubilado) {
+        if (!esJubilado && !esJubiladoConAfp) {
             const [isssRows] = await pool.query(
                 `SELECT porcentaje_empleado, tope_quincenal, tope_mensual FROM rh_isss_tasas 
                  WHERE company_id = ? AND fecha_desde <= ? AND (fecha_hasta IS NULL OR fecha_hasta >= ?)
@@ -82,6 +85,7 @@ const calcular = async (req, res, pool) => {
             }
         }
 
+        // 2. AFP: Jubilado normal no lleva AFP. Jubilado con AFP sí lleva AFP
         let descuentoAFP = 0;
         let afpInfo = null;
         if (!esJubilado && afpId) {
@@ -121,11 +125,12 @@ const calcular = async (req, res, pool) => {
         }
 
         const aplicaRentaCalc = (aplicaRenta !== false && aplicaRenta !== 0);
+        // Ambos jubilados aplican renta 10%
         const { descuentoRenta: calcDescuentoRenta, rentaInfo } = computeEmployeeRenta({
             modo: rentaCtx.calculoRentaModo,
             brackets: rentaCtx.brackets,
             ingresoGravado,
-            esJubilado,
+            esJubilado: (esJubilado || esJubiladoConAfp),
             aplicaRenta: aplicaRentaCalc,
             quincena,
             q1Data
@@ -161,6 +166,7 @@ const calcular = async (req, res, pool) => {
             afp_info: afpInfo,
             renta_info: rentaInfo,
             es_jubilado: esJubilado,
+            es_jubilado_con_afp: esJubiladoConAfp,
             total_deducciones: totalDeducciones,
             monto_recibir: montoRecibir
         });

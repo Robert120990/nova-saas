@@ -70,20 +70,23 @@ function computeEmployeeRenta({ modo, brackets = [], ingresoGravado, esJubilado,
 
     const gravadoActual = Math.max(0, parseFloat(ingresoGravado || 0));
 
+    // Jubilados (tanto normal como con AFP): retención fija del 10% plano sobre el ingreso gravado
+    // Aplica en cada quincena directamente sobre el ingreso gravable (sin ISSS y descontando AFP si aplica)
+    if (esJubilado) {
+        const descuentoRenta = Math.round(gravadoActual * 0.10 * 100) / 100;
+        return {
+            descuentoRenta,
+            rentaInfo: {
+                tipo: 'jubilado',
+                porcentaje: 10,
+                ingreso_gravado: Math.round(gravadoActual * 100) / 100,
+                modo: modo || 'cada_quincena'
+            }
+        };
+    }
+
     // MODE: Cada quincena usando tabla quincenal ('Q')
     if (modo === 'cada_quincena') {
-        if (esJubilado) {
-            const descuentoRenta = Math.round(gravadoActual * 0.10 * 100) / 100;
-            return {
-                descuentoRenta,
-                rentaInfo: {
-                    tipo: 'jubilado',
-                    porcentaje: 10,
-                    ingreso_gravado: Math.round(gravadoActual * 100) / 100,
-                    modo: 'cada_quincena'
-                }
-            };
-        }
 
         if (brackets.length > 0 && gravadoActual > 0) {
             const br = brackets.find(b =>
@@ -126,23 +129,6 @@ function computeEmployeeRenta({ modo, brackets = [], ingresoGravado, esJubilado,
         : 0;
     const ingresoGravadoTotalMes = Math.max(0, gravadoActual + q1Gravado);
     const prevRentaQ1 = q1Data ? parseFloat(q1Data.descuento_renta || 0) : 0;
-
-    if (esJubilado) {
-        const rentaTotal = Math.round(ingresoGravadoTotalMes * 0.10 * 100) / 100;
-        const descuentoRenta = Math.round(Math.max(0, rentaTotal - prevRentaQ1) * 100) / 100;
-        return {
-            descuentoRenta,
-            rentaInfo: {
-                tipo: 'jubilado',
-                porcentaje: 10,
-                ingreso_gravado: Math.round(ingresoGravadoTotalMes * 100) / 100,
-                ingreso_gravado_q2: Math.round(gravadoActual * 100) / 100,
-                ingreso_gravado_q1: Math.round(q1Gravado * 100) / 100,
-                renta_anterior: prevRentaQ1,
-                modo: 'segunda_quincena'
-            }
-        };
-    }
 
     if (brackets.length > 0 && ingresoGravadoTotalMes > 0) {
         const br = brackets.find(b =>

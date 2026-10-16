@@ -64,7 +64,7 @@ async function getPlanillaIsssReportData(companyId, filters = {}) {
         SELECT 
             p.id, p.empleado_id, p.dias_trabajados, p.sueldo_base, p.total_percepciones,
             p.descuento_isss, p.quincena,
-            e.codigo, e.nombres, e.apellidos, e.num_dui, e.num_isss, e.num_nup, e.es_jubilado,
+            e.codigo, e.nombres, e.apellidos, e.num_dui, e.num_isss, e.num_nup, e.es_jubilado, e.es_jubilado_con_afp,
             COALESCE(a.descripcion, 'SIN AFP') AS afp_nombre,
             COALESCE(d.descripcion, 'GENERAL') AS depto_nombre,
             COALESCE(b.nombre, 'MATRIZ') AS branch_nombre
@@ -158,7 +158,8 @@ async function getPlanillaIsssReportData(companyId, filters = {}) {
                 dias_otras_ausencias: 0,
                 salario_devengado: perc,
                 isss_laboral: isssLab,
-                es_jubilado: r.es_jubilado
+                es_jubilado: r.es_jubilado,
+                es_jubilado_con_afp: r.es_jubilado_con_afp
             });
         } else {
             const existing = empMap.get(empId);
@@ -174,7 +175,7 @@ async function getPlanillaIsssReportData(companyId, filters = {}) {
     const cap = quincena === 'todas' ? 1000.00 : 500.00;
     const items = Array.from(empMap.values()).map(emp => {
         const cotizable = Math.min(emp.salario_devengado, cap);
-        const isssPatronal = emp.isss_laboral > 0 || !emp.es_jubilado
+        const isssPatronal = emp.isss_laboral > 0 || (!emp.es_jubilado && !emp.es_jubilado_con_afp)
             ? Math.round(cotizable * 0.075 * 100) / 100
             : 0;
         const totalIsss = Math.round((emp.isss_laboral + isssPatronal) * 100) / 100;

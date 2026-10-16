@@ -98,6 +98,22 @@ const PlanillaEmployeeHeader = ({ model }) => {
                                                 </span>
                                             </>
                                         )}
+                                        {empleadoData.es_jubilado === 1 && !empleadoData.es_jubilado_con_afp && (
+                                            <>
+                                                <div className="h-6 w-px bg-slate-200 hidden sm:block"></div>
+                                                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-purple-800 bg-purple-50 border border-purple-200/80 px-2 py-0.5 rounded-lg">
+                                                    👴 Jubilado
+                                                </span>
+                                            </>
+                                        )}
+                                        {empleadoData.es_jubilado_con_afp === 1 && (
+                                            <>
+                                                <div className="h-6 w-px bg-slate-200 hidden sm:block"></div>
+                                                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-800 bg-indigo-50 border border-indigo-200/80 px-2 py-0.5 rounded-lg">
+                                                    👴 Jubilado (c/ AFP)
+                                                </span>
+                                            </>
+                                        )}
                                         {(empleadoData.en_vacaciones === 1 || empleadoData.incapacitado === 1) && diasTrabajados > 0 && (
                                             <button
                                                 type="button"
