@@ -295,7 +295,17 @@ router.get('/public/dte/:codigo/json', salesController.getPublicDTEJson);
 router.get('/public/dte/:codigo/invalidation/pdf', salesController.getPublicInvalidationPDF);
 router.get('/public/dte/:codigo/invalidation/json', salesController.getPublicInvalidationJson);
 router.post('/public/dte/:codigo/send-email', salesController.sendPublicDTEEmail);
-router.post('/internal/dte/notify-accepted', salesController.notifyDTEAccepted);
+const requireLocalOrInternalKey = (req, res, next) => {
+    const rawIp = String(req.socket?.remoteAddress || req.ip || '').replace(/^::ffff:/, '');
+    const isLoopback = rawIp === '127.0.0.1' || rawIp === '::1';
+    const internalKey = req.headers['x-internal-key'];
+    const validKey = process.env.RESTART_KEY || process.env.JWT_SECRET;
+    if (isLoopback || (validKey && internalKey === validKey)) {
+        return next();
+    }
+    return res.status(403).json({ message: 'Acceso permitido únicamente para comunicación interna del servidor.' });
+};
+router.post('/internal/dte/notify-accepted', requireLocalOrInternalKey, salesController.notifyDTEAccepted);
 
 // Public scan routes (no auth required - accessed via QR token)
 router.get('/inventory/scan/:token', inventoryScanController.getScanSession);
@@ -311,10 +321,6 @@ router.post('/rh/biometric/heartbeat', rhBiometricController.heartbeatFromAgent)
 
 // Routes
 router.use(verifyToken);
-
-// Purchase Period (Top priority)
-router.get('/period-purchases', periodController.getPurchasePeriod);
-router.post('/period-purchases', periodController.savePurchasePeriod);
 
 router.get('/test-db', async (req, res) => {
     try {
@@ -376,11 +382,15 @@ router.use('/terminal', require('./terminal.routes'));
 router.use(tenantMiddleware);
 router.use(require('../middlewares/audit'));
 
+// Purchase Period (Tenant scoped)
+router.get('/period-purchases', periodController.getPurchasePeriod);
+router.post('/period-purchases', periodController.savePurchasePeriod);
+
 // Security (Roles & Users)
 router.get('/roles', roleController.getRoles);
-router.post('/roles', validate(roleCreateSchema), roleController.createRole);
-router.put('/roles/:id', validate(roleUpdateSchema), roleController.updateRole);
-router.delete('/roles/:id', roleController.deleteRole);
+router.post('/roles', checkPermission('manage_roles'), validate(roleCreateSchema), roleController.createRole);
+router.put('/roles/:id', checkPermission('manage_roles'), validate(roleUpdateSchema), roleController.updateRole);
+router.delete('/roles/:id', checkPermission('manage_roles'), roleController.deleteRole);
 
 // Menu Items
 router.get('/menu-items', verifyToken, menuItemController.getMenuItems);
@@ -455,13 +465,13 @@ router.put('/products/:id', validate(productUpdateSchema), productController.upd
 router.delete('/products/:id', productController.deleteProduct);
 
 // SMTP Configuration
-router.get('/smtp/:branchId', smtpController.getSmtpByBranch);
-router.post('/smtp', smtpController.saveSmtp);
-router.post('/smtp/test', smtpController.testSmtp);
+router.get('/smtp/:branchId', checkPermission(['manage_smtp', 'manage_settings', 'manage_branches', 'manage_companies']), smtpController.getSmtpByBranch);
+router.post('/smtp', checkPermission(['manage_smtp', 'manage_settings', 'manage_branches', 'manage_companies']), smtpController.saveSmtp);
+router.post('/smtp/test', checkPermission(['manage_smtp', 'manage_settings', 'manage_branches', 'manage_companies']), smtpController.testSmtp);
 
 // System Settings
 router.get('/settings', settingsController.getSettings);
-router.put('/settings', settingsController.updateSettings);
+router.put('/settings', checkPermission(['manage_settings', 'manage_companies']), settingsController.updateSettings);
 
 // Taxes Configuration
 router.use('/taxes', taxRoutes);
@@ -830,9 +840,9 @@ router.post('/accounting/correlativos', validate(accountingCorrelativosSchema), 
 router.post('/accounting/correlativos/renumber', validate(accountingRenumberSchema), accountingCorrelativosController.renumber);
 
 // Office DB Connection
-router.get('/accounting/office/connection', officeConnectionController.getConnection);
-router.post('/accounting/office/connection', officeConnectionController.saveConnection);
-router.post('/accounting/office/test', officeConnectionController.test);
+router.get('/accounting/office/connection', checkPermission(['manage_accounting_office_connection', 'manage_accounting_settings', 'manage_accounting']), officeConnectionController.getConnection);
+router.post('/accounting/office/connection', checkPermission(['manage_accounting_office_connection', 'manage_accounting_settings', 'manage_accounting']), officeConnectionController.saveConnection);
+router.post('/accounting/office/test', checkPermission(['manage_accounting_office_connection', 'manage_accounting_settings', 'manage_accounting']), officeConnectionController.test);
 
 // Accounting Reports
 router.get('/accounting/reports/libro-diario', accountingReportsController.getLibroDiario);
@@ -945,12 +955,12 @@ router.get('/gas-station/fusion/periods', gasFusionController.getPeriods);
 router.get('/gas-station/fusion/periods/:periodId/readings', gasFusionController.getPeriodReadings);
 router.get('/gas-station/fusion/test-connection', gasFusionController.testConnection);
 router.post('/gas-station/fusion/test-connection', gasFusionController.testConnection);
-router.get('/gas-station/fusion/configs', gasFusionController.getStationConfigs);
-router.put('/gas-station/fusion/configs', gasFusionController.saveStationConfig);
-router.get('/gas-station/fusion/agent-status', gasFusionController.getAgentStatus);
-router.get('/gas-station/fusion/agent-config', gasFusionController.getAgentConfig);
-router.get('/gas-station/fusion/agent-launcher', gasFusionController.getAgentLauncher);
-router.get('/gas-station/fusion/agent-script', gasFusionController.getAgentScript);
+router.get('/gas-station/fusion/configs', checkPermission(['manage_gas_settings', 'manage_gas_closeouts', 'manage_settings', 'manage_companies']), gasFusionController.getStationConfigs);
+router.put('/gas-station/fusion/configs', checkPermission(['manage_gas_settings', 'manage_gas_closeouts', 'manage_settings', 'manage_companies']), gasFusionController.saveStationConfig);
+router.get('/gas-station/fusion/agent-status', checkPermission(['manage_gas_settings', 'manage_gas_closeouts', 'manage_settings', 'manage_companies']), gasFusionController.getAgentStatus);
+router.get('/gas-station/fusion/agent-config', checkPermission(['manage_gas_settings', 'manage_gas_closeouts', 'manage_settings', 'manage_companies']), gasFusionController.getAgentConfig);
+router.get('/gas-station/fusion/agent-launcher', checkPermission(['manage_gas_settings', 'manage_gas_closeouts', 'manage_settings', 'manage_companies']), gasFusionController.getAgentLauncher);
+router.get('/gas-station/fusion/agent-script', checkPermission(['manage_gas_settings', 'manage_gas_closeouts', 'manage_settings', 'manage_companies']), gasFusionController.getAgentScript);
 
 // Gas Station - Expense Categories
 router.get('/gas-station/expense-categories', gasCloseoutController.getExpenseCategories);
@@ -1392,7 +1402,7 @@ router.post('/rh/biometric/zk-import/import', tenantMiddleware, checkPermission(
 router.get('/rh/biometric/zk-import/export-excel', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.exportZkConsolidatedExcel);
 
 
-router.get('/logs/stream/:service', verifyToken, settingsController.streamLogs);
+router.get('/logs/stream/:service', verifyToken, checkPermission('manage_server_terminal'), settingsController.streamLogs);
 
 // FilPro DTE Integration
 router.get('/filpro/config', verifyToken, tenantMiddleware, checkPermission('manage_filpro_sync'), filproController.getConnection);

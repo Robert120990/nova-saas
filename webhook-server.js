@@ -5,7 +5,7 @@ const path = require('path');
 const fs = require('fs');
 
 const PORT = process.env.WEBHOOK_PORT || 7777;
-const SECRET = process.env.WEBHOOK_SECRET || 'mi-secreto-cambiame';
+const SECRET = process.env.WEBHOOK_SECRET || process.env.RESTART_KEY || '';
 const BRANCH = process.env.AUTO_UPDATE_BRANCH || 'main';
 const PROJECT_DIR = __dirname;
 
@@ -115,10 +115,18 @@ function deploy(force = false) {
   }
 }
 
-function verifySignature(payload, signature) {
-  if (!SECRET || SECRET === 'mi-secreto-cambiame') return true;
-  const sig = 'sha256=' + crypto.createHmac('sha256', SECRET).update(payload).digest('hex');
-  return crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(signature));
+function verifyGitHubSignature(payload, signature) {
+  if (!SECRET || !signature || typeof signature !== 'string') return false;
+  const expected = 'sha256=' + crypto.createHmac('sha256', SECRET).update(payload).digest('hex');
+  const sigBuf = Buffer.from(signature);
+  const expBuf = Buffer.from(expected);
+  if (sigBuf.length !== expBuf.length) return false;
+  return crypto.timingSafeEqual(sigBuf, expBuf);
+}
+
+function isLoopbackRequest(req) {
+  const rawIp = String(req.socket?.remoteAddress || '').replace(/^::ffff:/, '');
+  return rawIp === '127.0.0.1' || rawIp === '::1';
 }
 
 const server = http.createServer((req, res) => {
@@ -127,7 +135,7 @@ const server = http.createServer((req, res) => {
     req.on('data', chunk => { body += chunk; });
     req.on('end', () => {
       const sig = req.headers['x-hub-signature-256'] || '';
-      if (!verifySignature(body, sig)) {
+      if (!verifyGitHubSignature(body, sig)) {
         res.writeHead(403);
         return res.end('Invalid signature');
       }
@@ -164,14 +172,25 @@ const server = http.createServer((req, res) => {
       uptime_seconds: Math.floor(process.uptime()),
     }));
   } else if (req.method === 'POST' && req.url === '/deploy') {
-    res.writeHead(202, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ success: true, message: 'Despliegue iniciado en segundo plano' }));
-    setImmediate(() => {
-      try {
-        deploy(true);
-      } catch (e) {
-        console.error('[webhook] Manual deploy failed:', e.message);
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', () => {
+      const sig = req.headers['x-hub-signature-256'] || '';
+      const deploySecret = req.headers['x-deploy-secret'] || '';
+      const hasValidSecret = Boolean(SECRET && deploySecret && deploySecret === SECRET);
+      if (!isLoopbackRequest(req) && !hasValidSecret && !verifyGitHubSignature(body, sig)) {
+        res.writeHead(401, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ success: false, message: 'Unauthorized' }));
       }
+      res.writeHead(202, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true, message: 'Despliegue iniciado en segundo plano' }));
+      setImmediate(() => {
+        try {
+          deploy(true);
+        } catch (e) {
+          console.error('[webhook] Manual deploy failed:', e.message);
+        }
+      });
     });
   } else {
     res.writeHead(404);

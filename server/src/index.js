@@ -51,10 +51,25 @@ console.warn = (...args) => { logFile.write(`[${new Date().toISOString()}] [WARN
 
 // Middlewares
 app.use(httpLogger);
+app.use((req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    res.setHeader('X-Permitted-Cross-Domain-Policies', 'none');
+    next();
+});
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
-app.use('/uploads', express.static(uploadsDir));
+app.use('/uploads', express.static(uploadsDir, {
+    setHeaders: (res, filePath) => {
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+        res.setHeader('Content-Security-Policy', "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; sandbox");
+        if (/\.(svg|html?|xml)$/i.test(filePath)) {
+            res.setHeader('Content-Disposition', 'attachment');
+        }
+    }
+}));
 
 // Prevenir cache HTTP en respuestas dinámicas de la API
 app.use('/api', (req, res, next) => {
@@ -151,6 +166,9 @@ if (process.env.NODE_ENV === 'production' && fs.existsSync(clientDist)) {
         }
     }));
     app.get('*', (req, res) => {
+        if (req.path.startsWith('/assets/')) {
+            return res.status(404).end();
+        }
         if (!req.path.startsWith('/api') && !req.path.startsWith('/uploads') && !req.path.startsWith('/ws')) {
             res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
             res.setHeader('Pragma', 'no-cache');
