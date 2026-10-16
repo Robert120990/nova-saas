@@ -81,12 +81,22 @@ async function saveBenefit(connection, kind, companyId, body, id) {
         if (field === 'pago_cuotas') return body[field] ? 1 : 0;
         return body[field] ?? null;
     });
+    let savedId = id;
     if (id) {
         await connection.query(`UPDATE ${definition.table} SET ${definition.fields.map(field => `\`${field}\` = ?`).join(', ')} WHERE id = ? AND company_id = ?`, [...values, id, companyId]);
-        return { id };
+    } else {
+        const [result] = await connection.query(`INSERT INTO ${definition.table} (company_id, ${definition.fields.map(field => `\`${field}\``).join(', ')}) VALUES (${values.map(() => '?').concat('?').join(', ')})`, [companyId, ...values]);
+        savedId = result.insertId;
     }
-    const [result] = await connection.query(`INSERT INTO ${definition.table} (company_id, ${definition.fields.map(field => `\`${field}\``).join(', ')}) VALUES (${values.map(() => '?').concat('?').join(', ')})`, [companyId, ...values]);
-    return { id: result.insertId };
+
+    if (kind === 'liquidaciones' && (body.marcar_inactivo === true || body.marcar_inactivo === 1 || body.marcar_inactivo === '1')) {
+        await connection.query(
+            'UPDATE rh_empleados SET es_activo = 0 WHERE id = ? AND company_id = ?',
+            [body.empleado_id, companyId]
+        );
+    }
+
+    return { id: savedId, empleado_inactivado: !!body.marcar_inactivo };
 }
 
 async function persistBenefit(pool, kind, companyId, body, id) {

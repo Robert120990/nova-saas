@@ -32,6 +32,7 @@ const months = [
 
 import LiquidacionesModal from './LiquidacionesModal';
 import FiniquitoModal from './FiniquitoModal';
+import ConfirmarInactivarModal from './ConfirmarInactivarModal';
 
 const LiquidacionesScreen = ({ companyId }) => {
     const queryClient = useQueryClient();
@@ -57,6 +58,9 @@ const LiquidacionesScreen = ({ companyId }) => {
     const [isFiniquitoModalOpen, setIsFiniquitoModalOpen] = useState(false);
     const [finiquitoMotivo, setFiniquitoMotivo] = useState('RENUNCIA INMEDIATA');
     const [finiquitoId, setFiniquitoId] = useState(null);
+
+    // Confirm inactivate modal
+    const [isConfirmInactivarOpen, setIsConfirmInactivarOpen] = useState(false);
 
     // Form
     const [empleadoId, setEmpleadoId] = useState('');
@@ -270,13 +274,25 @@ const LiquidacionesScreen = ({ companyId }) => {
             const config = { headers: { 'x-company-id': company } };
             return id ? axios.put(`/api/rh/planilla-liquidaciones/${id}`, payload, config) : axios.post('/api/rh/planilla-liquidaciones', payload, config);
         },
-        onSuccess: async (_result, { id, request }) => {
-            await queryClient.invalidateQueries({ queryKey: ['rh-planilla-liquidaciones', companyId] });
+        onSuccess: async (_result, { id, request, payload }) => {
+            await Promise.all([
+                queryClient.invalidateQueries({ queryKey: ['rh-planilla-liquidaciones', companyId] }),
+                queryClient.invalidateQueries({ queryKey: ['rh-empleados'] })
+            ]);
             
-            if (request.isCurrent()) { setIsModalOpen(false); resetForm(); }
-            toast.success(id ? 'Liquidación actualizada' : 'Liquidación creada');
+            if (request.isCurrent()) { 
+                setIsConfirmInactivarOpen(false);
+                setIsModalOpen(false); 
+                resetForm(); 
+            }
+            if (payload?.marcar_inactivo) {
+                toast.success(id ? 'Liquidación actualizada y empleado marcado como inactivo' : 'Liquidación registrada y empleado marcado como inactivo');
+            } else {
+                toast.success(id ? 'Liquidación actualizada' : 'Liquidación registrada');
+            }
         },
         onError: (error) => {
+            setIsConfirmInactivarOpen(false);
             if (error?.response?.status === 404) {
                 toast.error('El registro de liquidación ya no existe o fue eliminado en el servidor');
                 setIsModalOpen(false);
@@ -292,6 +308,7 @@ const LiquidacionesScreen = ({ companyId }) => {
         if (savingRef.current) return;
         if (empleadoId && !await confirm({ title: '¿Cerrar el formulario?', message: 'Los datos del formulario que no haya guardado se descartarán. Puede cancelar para continuar editando.', confirmLabel: 'Cerrar formulario', variant: 'danger' })) return;
         employeeScope.cancel();
+        setIsConfirmInactivarOpen(false);
         setIsModalOpen(false);
         setIsEmpModalOpen(false);
         resetForm();
@@ -315,6 +332,7 @@ const LiquidacionesScreen = ({ companyId }) => {
         setLoadingEmployee(false);
         setEmployeeError('');
         setIsEmpModalOpen(false);
+        setIsConfirmInactivarOpen(false);
         setSelected(null); setEmpleadoId(''); setEmpleadoData(null); setCodigoInput('');
         setPeriodoAño(yearNow); setPeriodoMes(monthNow);
         setPeriodoIndemnizacion(emptyPeriod); setPeriodoVacaciones(emptyPeriod); setPeriodoAguinaldo(emptyPeriod);
@@ -339,7 +357,8 @@ const LiquidacionesScreen = ({ companyId }) => {
             id: item.empleado_id, codigo: item.empleado_codigo,
             nombres: item.empleado_nombres, apellidos: item.empleado_apellidos,
             sueldo_base: item.sueldo_base, cargo_nombre: item.cargo_nombre,
-            departamento_nombre: item.departamento_nombre
+            departamento_nombre: item.departamento_nombre,
+            es_activo: item.es_activo
         });
         setPeriodoIndemnizacion({ desde: toDateInput(item.periodo_indemnizacion_desde), hasta: toDateInput(item.periodo_indemnizacion_hasta) });
         setPeriodoVacaciones({ desde: toDateInput(item.periodo_vacaciones_desde), hasta: toDateInput(item.periodo_vacaciones_hasta) });
@@ -441,6 +460,11 @@ const LiquidacionesScreen = ({ companyId }) => {
         if (loadingEmployee || employeeError) return toast.error('Cargue correctamente el empleado y su historial antes de guardar');
         if (!calculationReady) return toast.error(calculationError || 'Espere a que termine el cálculo de las retenciones antes de guardar');
 
+        // Preguntar al usuario si desea marcar como inactivo al empleado
+        setIsConfirmInactivarOpen(true);
+    };
+
+    const handleConfirmSave = (marcarInactivo) => {
         const payload = {
             expected_revision: selected?.revision,
             empleado_id: empleadoId,
@@ -469,7 +493,8 @@ const LiquidacionesScreen = ({ companyId }) => {
             monto_recibir: montoRecibir,
             pago_cuotas: pagoCuotas,
             cuotas: cuotas,
-            pago_por_cuota: pagoPorCuota
+            pago_por_cuota: pagoPorCuota,
+            marcar_inactivo: !!marcarInactivo
         };
         savingRef.current = true;
         mutation.mutate({ payload, id: selected?.id, company: companyId, request: saveScope.begin() });
@@ -565,6 +590,15 @@ const LiquidacionesScreen = ({ companyId }) => {
                 onSubmit={handleConfirmFiniquito}
                 model={model}
                 companyId={companyId}
+            />
+
+            {/* --- Confirmar Inactivar Empleado Modal --- */}
+            <ConfirmarInactivarModal
+                open={isConfirmInactivarOpen}
+                onClose={() => setIsConfirmInactivarOpen(false)}
+                onConfirm={handleConfirmSave}
+                empleado={empleadoData}
+                isSaving={mutation.isPending}
             />
         </div>
     );

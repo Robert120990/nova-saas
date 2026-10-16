@@ -14,6 +14,7 @@ const getLiquidaciones = async (req, res) => {
                    e.nombres as empleado_nombres,
                    e.apellidos as empleado_apellidos,
                    e.sueldo_base,
+                   e.es_activo,
                    c.descripcion as cargo_nombre,
                    d.descripcion as departamento_nombre
             FROM ${TABLE} pl
@@ -63,6 +64,7 @@ const getLiquidacion = async (req, res) => {
                     e.cargo_id,
                     e.departamento_personal_id,
                     e.afp_id,
+                    e.es_activo,
                     c.descripcion as cargo_nombre,
                     d.descripcion as departamento_nombre
              FROM ${TABLE} pl
@@ -84,7 +86,7 @@ const getEmpleadoData = async (req, res) => {
         const { id } = req.params;
         const [rows] = await pool.query(
             `SELECT e.id, e.codigo, e.nombres, e.apellidos, e.sueldo_base, e.bonificacion_fija,
-                    e.afp_id, e.cargo_id, e.departamento_personal_id, e.fecha_ingreso,
+                    e.afp_id, e.cargo_id, e.departamento_personal_id, e.fecha_ingreso, e.es_activo,
                     c.descripcion as cargo_nombre,
                     d.descripcion as departamento_nombre
              FROM rh_empleados e
