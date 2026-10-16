@@ -331,9 +331,9 @@ INSTRUCCIONES CLAVE DE EJECUCIÓN AUTÓNOMA:
     } finally {
         if (task && task.id) {
             runningTasks.delete(task.id);
+            // Check next pending task in queue only when a task was just finished
+            setImmediate(() => processQueue());
         }
-        // Check next pending task in queue
-        setImmediate(() => processQueue());
     }
 }
 
@@ -472,6 +472,11 @@ async function retryTask(taskId, companyId) {
 setTimeout(() => {
     processQueue().catch(e => console.error('[AgentTaskQueue] Startup queue error:', e));
 }, 5000);
+
+// Gentle periodic check every 30s to catch any unhandled pending tasks safely
+setInterval(() => {
+    processQueue().catch(e => console.error('[AgentTaskQueue] Periodic check error:', e));
+}, 30000);
 
 module.exports = {
     enqueueTask,
