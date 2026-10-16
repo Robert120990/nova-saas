@@ -48,6 +48,9 @@ const getStatus = async (req, res) => {
 
 const saveBotToken = async (req, res) => {
     try {
+        if (req.user?.role !== 'SuperAdmin') {
+            return res.status(403).json({ message: 'Solo SuperAdmin puede configurar el token del bot de Telegram' });
+        }
         const { token } = req.body;
         if (!token || typeof token !== 'string' || !token.trim()) {
             return res.status(400).json({ message: 'El token del bot es obligatorio' });
@@ -76,25 +79,20 @@ const saveBotToken = async (req, res) => {
 const updateBinding = async (req, res) => {
     try {
         const { id } = req.params;
+        const isSuperAdmin = req.user?.role === 'SuperAdmin';
         const {
             receive_alerts, receive_reopen_requests, branch_id, company_id,
             allowed_agents, can_approve_entries, receive_inventory_alerts, receive_dte_alerts
         } = req.body;
         const updates = [];
         const params = [];
-        if (receive_alerts !== undefined) {
-            updates.push('receive_alerts = ?');
-            params.push(receive_alerts ? 1 : 0);
-        }
-        if (receive_reopen_requests !== undefined) {
-            updates.push('receive_reopen_requests = ?');
-            params.push(receive_reopen_requests ? 1 : 0);
-        }
+        if (receive_alerts !== undefined) { updates.push('receive_alerts = ?'); params.push(receive_alerts ? 1 : 0); }
+        if (receive_reopen_requests !== undefined) { updates.push('receive_reopen_requests = ?'); params.push(receive_reopen_requests ? 1 : 0); }
         if (branch_id !== undefined) {
             updates.push('branch_id = ?');
-            params.push(branch_id === 'all' || branch_id === null || branch_id === '' ? null : parseInt(branch_id, 10));
+            params.push(!branch_id || branch_id === 'all' ? null : parseInt(branch_id, 10));
         }
-        if (company_id !== undefined) {
+        if (company_id !== undefined && isSuperAdmin) {
             updates.push('company_id = ?');
             params.push(parseInt(company_id, 10));
         }
@@ -102,26 +100,24 @@ const updateBinding = async (req, res) => {
             updates.push('allowed_agents = ?');
             params.push(JSON.stringify(allowed_agents));
         }
-        if (can_approve_entries !== undefined) {
-            updates.push('can_approve_entries = ?');
-            params.push(can_approve_entries ? 1 : 0);
-        }
-        if (receive_inventory_alerts !== undefined) {
-            updates.push('receive_inventory_alerts = ?');
-            params.push(receive_inventory_alerts ? 1 : 0);
-        }
-        if (receive_dte_alerts !== undefined) {
-            updates.push('receive_dte_alerts = ?');
-            params.push(receive_dte_alerts ? 1 : 0);
-        }
+        if (can_approve_entries !== undefined) { updates.push('can_approve_entries = ?'); params.push(can_approve_entries ? 1 : 0); }
+        if (receive_inventory_alerts !== undefined) { updates.push('receive_inventory_alerts = ?'); params.push(receive_inventory_alerts ? 1 : 0); }
+        if (receive_dte_alerts !== undefined) { updates.push('receive_dte_alerts = ?'); params.push(receive_dte_alerts ? 1 : 0); }
         if (updates.length === 0) return res.json({ message: 'Sin cambios' });
+
+        let whereClause = 'WHERE id = ?';
         params.push(id);
+        if (!isSuperAdmin) {
+            whereClause += ' AND company_id = ?';
+            params.push(req.company_id);
+        }
+
         const [result] = await pool.query(
-            `UPDATE telegram_chat_bindings SET ${updates.join(', ')} WHERE id = ?`,
+            `UPDATE telegram_chat_bindings SET ${updates.join(', ')} ${whereClause}`,
             params
         );
         if (result.affectedRows === 0) {
-            return res.status(404).json({ message: 'Vinculación no encontrada' });
+            return res.status(404).json({ message: 'Vinculación no encontrada o no autorizada' });
         }
         res.json({ message: 'Vinculación actualizada' });
     } catch (error) {
@@ -133,7 +129,15 @@ const updateBinding = async (req, res) => {
 const deleteBinding = async (req, res) => {
     try {
         const { id } = req.params;
-        await pool.query('DELETE FROM telegram_chat_bindings WHERE id = ?', [id]);
+        const isSuperAdmin = req.user?.role === 'SuperAdmin';
+        const query = isSuperAdmin
+            ? 'DELETE FROM telegram_chat_bindings WHERE id = ?'
+            : 'DELETE FROM telegram_chat_bindings WHERE id = ? AND company_id = ?';
+        const params = isSuperAdmin ? [id] : [id, req.company_id];
+        const [result] = await pool.query(query, params);
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ message: 'Vinculación no encontrada o no autorizada' });
+        }
         res.json({ success: true, message: 'Vinculación eliminada exitosamente' });
     } catch (error) {
         console.error('Error deleteBinding:', error);
@@ -144,7 +148,8 @@ const deleteBinding = async (req, res) => {
 const createInviteToken = async (req, res) => {
     try {
         const { branch_id, assigned_name, permissions, expires_in_hours } = req.body;
-        const companyId = req.body.company_id || req.company_id;
+        const isSuperAdmin = req.user?.role === 'SuperAdmin';
+        const companyId = (isSuperAdmin && req.body.company_id) ? req.body.company_id : req.company_id;
         const result = await telegramInviteService.createInviteToken({
             companyId,
             branchId: branch_id,
@@ -184,21 +189,28 @@ const getPendingInvites = async (req, res) => {
 const testConnection = async (req, res) => {
     try {
         const token = await telegramService.getBotToken();
-        if (!token) {
-            return res.status(400).json({ message: 'El token de Telegram no está configurado en el servidor' });
-        }
+        if (!token) return res.status(400).json({ message: 'El token de Telegram no está configurado en el servidor' });
         const { chat_id } = req.body;
         let targetChat = chat_id;
+        const isSuperAdmin = req.user?.role === 'SuperAdmin';
+
         if (!targetChat) {
             const [rows] = await pool.query(
                 'SELECT chat_id FROM telegram_chat_bindings WHERE company_id = ? ORDER BY id DESC LIMIT 1',
                 [req.company_id]
             );
             targetChat = rows[0]?.chat_id;
+        } else if (!isSuperAdmin) {
+            const [rows] = await pool.query(
+                'SELECT id FROM telegram_chat_bindings WHERE chat_id = ? AND company_id = ?',
+                [targetChat, req.company_id]
+            );
+            if (rows.length === 0) {
+                return res.status(403).json({ message: 'No tienes autorización para enviar pruebas a este chat' });
+            }
         }
-        if (!targetChat) {
-            return res.status(400).json({ message: 'No hay chats vinculados. Escribe /start al bot desde Telegram.' });
-        }
+
+        if (!targetChat) return res.status(400).json({ message: 'No hay chats vinculados para esta empresa.' });
         await telegramService.sendMessage(targetChat, '✅ Prueba de conexión de Novas.\n\nSi recibes este mensaje, las alertas de Telegram funcionan correctamente.');
         res.json({ message: 'Mensaje de prueba enviado' });
     } catch (error) {
@@ -254,15 +266,10 @@ const saveSuspiciousSettings = async (req, res) => {
                 horas_fin = VALUES(horas_fin), anulaciones_maximas = VALUES(anulaciones_maximas),
                 ventana_anulaciones_min = VALUES(ventana_anulaciones_min)`,
             [
-                req.company_id, branch_id,
-                enabled ? 1 : 0,
-                parseFloat(monto_maximo) || 0,
-                parseFloat(descuento_maximo_porcentaje) || 0,
-                montos_redondos ? 1 : 0,
-                horas_inicio || '00:00:00',
-                horas_fin || '23:59:59',
-                parseInt(anulaciones_maximas, 10) || 0,
-                parseInt(ventana_anulaciones_min, 10) || 10
+                req.company_id, branch_id, enabled ? 1 : 0, parseFloat(monto_maximo) || 0,
+                parseFloat(descuento_maximo_porcentaje) || 0, montos_redondos ? 1 : 0,
+                horas_inicio || '00:00:00', horas_fin || '23:59:59',
+                parseInt(anulaciones_maximas, 10) || 0, parseInt(ventana_anulaciones_min, 10) || 10
             ]
         );
         res.json({ message: 'Configuración de ventas sospechosas guardada' });
@@ -274,13 +281,14 @@ const saveSuspiciousSettings = async (req, res) => {
 
 const updateDailyBriefingSetting = async (req, res) => {
     try {
-        const { active } = req.body;
-        const val = active ? 1 : 0;
-        await pool.query(`
-            INSERT INTO telegram_settings (id, daily_briefing_active)
-            VALUES (1, ?)
-            ON DUPLICATE KEY UPDATE daily_briefing_active = VALUES(daily_briefing_active)
-        `, [val]);
+        if (req.user?.role !== 'SuperAdmin') {
+            return res.status(403).json({ message: 'Solo SuperAdmin puede cambiar la configuración global' });
+        }
+        const val = req.body.active ? 1 : 0;
+        await pool.query(
+            'INSERT INTO telegram_settings (id, daily_briefing_active) VALUES (1, ?) ON DUPLICATE KEY UPDATE daily_briefing_active = VALUES(daily_briefing_active)',
+            [val]
+        );
         res.json({ success: true, message: `Reporte diario matutino ${val ? 'activado' : 'desactivado'}` });
     } catch (error) {
         console.error('Error updateDailyBriefingSetting:', error);
@@ -290,12 +298,15 @@ const updateDailyBriefingSetting = async (req, res) => {
 
 const testDailyBriefing = async (req, res) => {
     try {
-        const result = await telegramDailyBriefingService.sendAllDailyBriefings({ manual: true });
+        const isSuperAdmin = req.user?.role === 'SuperAdmin';
+        const result = isSuperAdmin
+            ? await telegramDailyBriefingService.sendAllDailyBriefings({ manual: true })
+            : await telegramDailyBriefingService.sendDailyBriefingForCompany(req.company_id, { manual: true });
+
         if (result.success) {
-            res.json({ success: true, message: result.message || 'Reporte de prueba enviado exitosamente a Telegram' });
-        } else {
-            res.status(400).json({ success: false, message: result.message || 'No se pudo enviar el reporte' });
+            return res.json({ success: true, message: result.message || 'Reporte de prueba enviado exitosamente a Telegram' });
         }
+        res.status(400).json({ success: false, message: result.message || 'No se pudo enviar el reporte' });
     } catch (error) {
         console.error('Error testDailyBriefing:', error);
         res.status(500).json({ message: `Error al enviar reporte de prueba: ${error.message}` });
@@ -304,13 +315,14 @@ const testDailyBriefing = async (req, res) => {
 
 const updateReopenRequestsSetting = async (req, res) => {
     try {
-        const { active } = req.body;
-        const val = active ? 1 : 0;
-        await pool.query(`
-            INSERT INTO telegram_settings (id, reopen_requests_active)
-            VALUES (1, ?)
-            ON DUPLICATE KEY UPDATE reopen_requests_active = VALUES(reopen_requests_active)
-        `, [val]);
+        if (req.user?.role !== 'SuperAdmin') {
+            return res.status(403).json({ message: 'Solo SuperAdmin puede cambiar la configuración global' });
+        }
+        const val = req.body.active ? 1 : 0;
+        await pool.query(
+            'INSERT INTO telegram_settings (id, reopen_requests_active) VALUES (1, ?) ON DUPLICATE KEY UPDATE reopen_requests_active = VALUES(reopen_requests_active)',
+            [val]
+        );
         res.json({ success: true, message: `Solicitud de apertura de turnos vía Telegram ${val ? 'activada' : 'desactivada'}` });
     } catch (error) {
         console.error('Error updateReopenRequestsSetting:', error);

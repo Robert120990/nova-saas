@@ -79,22 +79,31 @@ async function handleAgentTelegramMessage(chatId, text, from, state) {
         let allowedAgents = ['accounting', 'dte', 'sales', 'inventory', 'gas', 'operations', 'tech'];
         let bindingName = from?.first_name || from?.username || 'Usuario Telegram';
         let canApprove = false;
+        let bindingCompanyId = state?.companyId || null;
+        let bindingBranchId = state?.branchId || null;
 
         try {
             const [bindings] = await pool.query(
                 'SELECT * FROM telegram_chat_bindings WHERE chat_id = ?',
                 [chatId]
             );
-            if (bindings.length > 0) {
-                const b = bindings[0];
-                if (b.nombre) bindingName = b.nombre;
-                canApprove = Boolean(b.can_approve_entries);
-                if (b.allowed_agents) {
-                    const parsed = typeof b.allowed_agents === 'string'
-                        ? JSON.parse(b.allowed_agents)
-                        : b.allowed_agents;
-                    if (Array.isArray(parsed)) allowedAgents = parsed;
-                }
+            if (bindings.length === 0) {
+                await telegramService.sendMessage(
+                    chatId,
+                    '🔒 Acceso restringido. Tu cuenta de Telegram no está vinculada a ninguna empresa autorizada.'
+                );
+                return;
+            }
+            const b = bindings[0];
+            bindingCompanyId = b.company_id || state?.companyId;
+            bindingBranchId = b.branch_id || state?.branchId;
+            if (b.nombre) bindingName = b.nombre;
+            canApprove = Boolean(b.can_approve_entries);
+            if (b.allowed_agents) {
+                const parsed = typeof b.allowed_agents === 'string'
+                    ? JSON.parse(b.allowed_agents)
+                    : b.allowed_agents;
+                if (Array.isArray(parsed)) allowedAgents = parsed;
             }
         } catch (err) {
             console.error('[TelegramAgentBridge] Error consultando binding:', err.message);
@@ -103,7 +112,9 @@ async function handleAgentTelegramMessage(chatId, text, from, state) {
         const user = {
             id: null,
             nombre: bindingName,
-            role: 'Admin',
+            role: canApprove ? 'Admin' : 'Operator',
+            company_id: bindingCompanyId,
+            branch_id: bindingBranchId,
             allowed_agents: allowedAgents,
             can_approve_entries: canApprove
         };
@@ -226,9 +237,42 @@ async function handleAgentTelegramCallback(cb) {
 
     telegramService.apiCall('answerCallbackQuery', { callback_query_id: cb.id }).catch(() => {});
 
+    // 1. Validar vinculación del chat y permisos
+    const [bindings] = await pool.query(
+        'SELECT company_id, branch_id, can_approve_entries FROM telegram_chat_bindings WHERE chat_id = ?',
+        [chatId]
+    );
+    if (bindings.length === 0) {
+        await telegramService.sendMessage(chatId, '⛔ Tu cuenta no está vinculada al sistema.');
+        return true;
+    }
+    const binding = bindings[0];
+
     if (data.startsWith('agent_post:')) {
         const auditId = parseInt(data.replace('agent_post:', ''), 10);
         if (isNaN(auditId)) return true;
+
+        if (!binding.can_approve_entries) {
+            await telegramService.sendMessage(chatId, '⛔ No cuentas con permisos para asentar o aprobar partidas contables.');
+            return true;
+        }
+
+        const [auditRows] = await pool.query(
+            'SELECT company_id, status FROM ai_agent_actions_audit WHERE id = ?',
+            [auditId]
+        );
+        if (auditRows.length === 0) {
+            await telegramService.sendMessage(chatId, '⚠️ La propuesta de partida no existe o ya no está disponible.');
+            return true;
+        }
+        if (binding.company_id !== null && auditRows[0].company_id !== binding.company_id) {
+            await telegramService.sendMessage(chatId, '⛔ No tienes permiso para operar acciones de otra empresa.');
+            return true;
+        }
+        if (auditRows[0].status !== 'pending_approval') {
+            await telegramService.sendMessage(chatId, `ℹ️ Esta acción ya fue ${auditRows[0].status === 'executed' ? 'asentada' : 'cancelada'} previamente.`);
+            return true;
+        }
 
         try {
             const operationsAgent = agentRegistry.getAgent('operations');
@@ -255,12 +299,18 @@ async function handleAgentTelegramCallback(cb) {
     if (data.startsWith('agent_cancel:')) {
         const auditId = parseInt(data.replace('agent_cancel:', ''), 10);
         if (!isNaN(auditId)) {
-            await updateAuditAction(auditId, {
-                status: 'rejected',
-                approvedByUserId: null,
-                approvedVia: 'telegram',
-                executionResult: { reason: `Descartado por ${userDisplayName}` }
-            });
+            const [auditRows] = await pool.query(
+                'SELECT company_id, status FROM ai_agent_actions_audit WHERE id = ?',
+                [auditId]
+            );
+            if (auditRows.length > 0 && (binding.company_id === null || auditRows[0].company_id === binding.company_id)) {
+                await updateAuditAction(auditId, {
+                    status: 'rejected',
+                    approvedByUserId: null,
+                    approvedVia: 'telegram',
+                    executionResult: { reason: `Descartado por ${userDisplayName}` }
+                });
+            }
         }
         await telegramService.sendMessage(
             chatId,

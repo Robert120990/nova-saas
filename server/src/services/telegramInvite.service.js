@@ -147,83 +147,31 @@ async function listPendingInvites(companyId, isSuperAdmin = false) {
     return rows;
 }
 
-async function handleBindingCallback(callbackQuery, { apiCall, sendMessage, chatStates }) {
+async function handleBindingCallback(callbackQuery, { apiCall, sendMessage }) {
     const data = callbackQuery?.data || '';
     const chatId = callbackQuery?.message?.chat?.id;
-    const from = callbackQuery?.from || {};
 
     if (!data.startsWith('bind_co:') && !data.startsWith('bind_br:')) {
         return false;
     }
 
     try {
-        await apiCall('answerCallbackQuery', { callback_query_id: callbackQuery.id });
+        await apiCall('answerCallbackQuery', {
+            callback_query_id: callbackQuery.id,
+            text: 'La auto-vinculación manual ha sido deshabilitada por seguridad.',
+            show_alert: true
+        });
     } catch {
         // Ignore answerCallbackQuery error
     }
 
-    if (data.startsWith('bind_co:')) {
-        const companyId = parseInt(data.replace('bind_co:', ''), 10);
-        const [companies] = await pool.query('SELECT razon_social FROM companies WHERE id = ?', [companyId]);
-        const companyName = companies[0]?.razon_social || 'Empresa';
-
-        const [branches] = await pool.query('SELECT id, nombre FROM branches WHERE company_id = ? ORDER BY nombre', [companyId]);
-        if (branches.length === 0) {
-            await sendMessage(chatId, `⚠️ ${companyName} no tiene sucursales registradas.`);
-            return true;
-        }
-
-        const buttons = [];
-        buttons.push([{ text: '🌐 Todas las sucursales (Global)', callback_data: `bind_br:${companyId}:all` }]);
-        branches.forEach(b => {
-            buttons.push([{ text: `📍 ${b.nombre}`, callback_data: `bind_br:${companyId}:${b.id}` }]);
-        });
-
-        await sendMessage(chatId, `🏢 *${companyName}*\n\nSelecciona a qué sucursal deseas conectarte:`, {
-            reply_markup: { inline_keyboard: buttons }
-        });
-        return true;
-    }
-
-    if (data.startsWith('bind_br:')) {
-        const parts = data.replace('bind_br:', '').split(':');
-        const companyId = parseInt(parts[0], 10);
-        const branchIdStr = parts[1];
-        const branchId = branchIdStr === 'all' ? null : parseInt(branchIdStr, 10);
-
-        const [companies] = await pool.query('SELECT razon_social FROM companies WHERE id = ?', [companyId]);
-        const companyName = companies[0]?.razon_social || '';
-        let branchName = 'Todas las sucursales (Acceso Global)';
-        if (branchId) {
-            const [bRows] = await pool.query('SELECT nombre FROM branches WHERE id = ?', [branchId]);
-            branchName = bRows[0]?.nombre || 'Sucursal';
-        }
-
-        const nombre = from.first_name || from.username || 'Usuario';
-        await pool.query(`
-            INSERT INTO telegram_chat_bindings (chat_id, company_id, branch_id, nombre, username, receive_alerts)
-            VALUES (?, ?, ?, ?, ?, 1)
-            ON DUPLICATE KEY UPDATE
-                company_id = VALUES(company_id),
-                branch_id = VALUES(branch_id),
-                nombre = VALUES(nombre),
-                username = VALUES(username),
-                receive_alerts = 1
-        `, [chatId, companyId, branchId, nombre, from.username || null]);
-
-        if (chatStates) {
-            chatStates.set(chatId, { step: 'ready', companyId, branchId });
-        }
-
-        await sendMessage(chatId,
-            `🎉 *¡Conectado exitosamente!*\n\n` +
-            `🏢 Empresa: *${companyName}*\n` +
-            `📍 Sucursal: *${branchName}*\n\n` +
-            `Ya puedes interactuar con los agentes con comandos como /agentes, /contador, /fiscal, o escribir directamente tus dudas.`);
-        return true;
-    }
-
-    return false;
+    await sendMessage(chatId,
+        `🔒 *Acción Deshabilitada por Seguridad*\n\n` +
+        `La auto-vinculación directa ha sido deshabilitada.\n` +
+        `Por favor solicita a tu administrador un enlace de invitación oficial desde la plataforma web SIPE WEB.`,
+        { parse_mode: 'Markdown' }
+    );
+    return true;
 }
 
 async function handleStartInvite(chatId, from, fullText, { sendMessage, chatStates }) {

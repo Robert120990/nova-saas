@@ -118,17 +118,6 @@ async function getMe(force = false) {
 
 // ============ Flujo por chat ============
 
-async function listCompanies(chatId) {
-    const [companies] = await pool.query('SELECT id, razon_social FROM companies ORDER BY razon_social');
-    if (companies.length === 0) return sendMessage(chatId, '⚠️ No hay empresas registradas en el sistema todavía.');
-    chatStates.set(chatId, { step: 'awaiting_company', companies });
-    const buttons = companies.map(c => [{ text: `🏢 ${c.razon_social}`, callback_data: `bind_co:${c.id}` }]);
-    const list = companies.map((c, i) => `${i + 1}. ${c.razon_social}`).join('\n');
-    return sendMessage(chatId, `👋 ¡Hola! Bienvenido al bot de Novas.\n\nSelecciona tu empresa con los botones o envía su número:\n\n${list}\n\nEn cualquier momento: /ayuda`, {
-        reply_markup: { inline_keyboard: buttons }
-    });
-}
-
 async function handleStart(chatId, from, text = '') {
     const { handleStartInvite } = require('./telegramInvite.service');
     const inviteDone = await handleStartInvite(chatId, from, text, { sendMessage, chatStates });
@@ -147,7 +136,18 @@ async function handleStart(chatId, from, text = '') {
             `Puedes preguntarme cosas como:\n- "dime las ventas de ayer"\n- "nivel de tanques"\n- "clientes con saldo"\n\n` +
             `Comandos:\n/agentes · /contador · /fiscal · /ventas · /ayuda`);
     }
-    return listCompanies(chatId);
+
+    // Acceso restringido por seguridad: No permitir auto-vinculación anónima
+    return sendMessage(chatId,
+        `🔒 *Acceso Restringido — SIPE WEB*\n\n` +
+        `Este bot es de uso exclusivo para empresas y sucursales autorizadas.\n\n` +
+        `*Para conectar tu cuenta:*\n` +
+        `1. Inicia sesión en la plataforma SIPE WEB.\n` +
+        `2. Ve a Notificaciones > Conexión Telegram.\n` +
+        `3. Solicita a un Administrador un *Enlace de Invitación* oficial para tu empresa/sucursal.\n\n` +
+        `_Los enlaces de invitación son personales, seguros y de un solo uso._`,
+        { parse_mode: 'Markdown' }
+    );
 }
 
 async function handleHelp(chatId) {
@@ -169,14 +169,19 @@ async function handleHelp(chatId) {
 }
 
 async function handleCambiar(chatId) {
-    return listCompanies(chatId);
+    return sendMessage(chatId,
+        `🔒 *Aislamiento de Seguridad Multi-Empresa*\n\n` +
+        `Por seguridad y protección de datos confidenciales, la vinculación a una empresa o sucursal requiere autorización previa.\n\n` +
+        `Para conectarte a otra empresa o sucursal, solicita un nuevo enlace de invitación desde la plataforma web SIPE WEB.`,
+        { parse_mode: 'Markdown' }
+    );
 }
 
 async function handleAlertas(chatId, arg) {
     const on = /^on|1|si|activar|recibir$/i.test((arg || '').trim());
     const off = /^off|0|no|desactivar|quitar$/i.test((arg || '').trim());
     const [rows] = await pool.query('SELECT id FROM telegram_chat_bindings WHERE chat_id = ?', [chatId]);
-    if (rows.length === 0) return sendMessage(chatId, 'Primero conéctate con /start para poder recibir alertas.');
+    if (rows.length === 0) return sendMessage(chatId, 'Primero conéctate con un enlace de invitación oficial para poder recibir alertas.');
     if (!on && !off) return sendMessage(chatId, 'Uso: /alertas on  o  /alertas off');
     const value = on ? 1 : 0;
     await pool.query('UPDATE telegram_chat_bindings SET receive_alerts = ? WHERE id = ?', [value, rows[0].id]);
@@ -191,7 +196,6 @@ async function handleAIQuestion(chatId, text, state, from = {}) {
 async function handleMessage(chatId, text, from) {
     const trimmed = (text || '').trim();
     const state = chatStates.get(chatId);
-    const firstName = from?.first_name || from?.username || '';
 
     // Comandos
     if (trimmed.startsWith('/start')) return handleStart(chatId, from, trimmed);
@@ -204,45 +208,6 @@ async function handleMessage(chatId, text, from) {
     if (trimmed.startsWith('/alertas')) {
         const arg = trimmed.replace(/^\/alertas\s*/i, '');
         return handleAlertas(chatId, arg);
-    }
-
-    // Máquina de estados de vinculación
-    if (state?.step === 'awaiting_company') {
-        const idx = parseInt(trimmed, 10) - 1;
-        if (isNaN(idx) || !state.companies[idx]) {
-            return sendMessage(chatId, 'Envía el número de una empresa de la lista.');
-        }
-        const company = state.companies[idx];
-        const [branches] = await pool.query(
-            'SELECT id, nombre FROM branches WHERE company_id = ? ORDER BY nombre',
-            [company.id]
-        );
-        if (branches.length === 0) {
-            return sendMessage(chatId, `⚠️ ${company.razon_social} no tiene sucursales registradas. Elige otra empresa con /cambiar.`);
-        }
-        chatStates.set(chatId, { step: 'awaiting_branch', companyId: company.id, companyName: company.razon_social, branches });
-        const list = branches.map((b, i) => `${i + 1}. ${b.nombre}`).join('\n');
-        return sendMessage(chatId, `¿A qué sucursal de *${company.razon_social}* perteneces? (envía el número)\n\n${list}`);
-    }
-
-    if (state?.step === 'awaiting_branch') {
-        const idx = parseInt(trimmed, 10) - 1;
-        if (isNaN(idx) || !state.branches[idx]) {
-            return sendMessage(chatId, 'Envía el número de una sucursal de la lista.');
-        }
-        const branch = state.branches[idx];
-        await pool.query(
-            `INSERT INTO telegram_chat_bindings (chat_id, company_id, branch_id, nombre, username)
-             VALUES (?, ?, ?, ?, ?)
-             ON DUPLICATE KEY UPDATE company_id = VALUES(company_id), branch_id = VALUES(branch_id),
-                 nombre = VALUES(nombre), username = VALUES(username), receive_alerts = 1`,
-            [chatId, state.companyId, branch.id, firstName, from?.username || null]
-        );
-        chatStates.set(chatId, { step: 'ready', companyId: state.companyId, branchId: branch.id });
-        return sendMessage(chatId,
-            `✅ ¡Conectado! Sucursal: *${branch.nombre}* (${state.companyName}).\n\n` +
-            `Ya puedes preguntarme, por ejemplo:\n- "dime las ventas de ayer"\n- "nivel de tanques"\n- "clientes con saldo"\n\n` +
-            `También recibirás alertas de tu sucursal aquí. (/alertas off para desactivarlas)`);
     }
 
     // Interceptar aprobaciones o rechazos de reapertura de turnos por texto

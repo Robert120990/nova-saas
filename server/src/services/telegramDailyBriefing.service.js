@@ -147,18 +147,18 @@ async function generateDailyBriefingReport(companyId, targetDate = null) {
 }
 
 async function getAlertChatIds(companyId = null) {
-    let query = 'SELECT DISTINCT chat_id FROM telegram_chat_bindings WHERE receive_alerts = 1';
-    let params = [];
     if (companyId) {
-        query += ' AND company_id = ?';
-        params.push(companyId);
+        const [chats] = await pool.query(
+            'SELECT DISTINCT chat_id FROM telegram_chat_bindings WHERE receive_alerts = 1 AND (company_id = ? OR company_id IS NULL)',
+            [companyId]
+        );
+        return chats.map(c => c.chat_id);
     }
-    let [chats] = await pool.query(query, params);
-    if (chats.length === 0) {
-        const [allAlerts] = await pool.query('SELECT DISTINCT chat_id FROM telegram_chat_bindings WHERE receive_alerts = 1');
-        chats = allAlerts.length > 0 ? allAlerts : (await pool.query('SELECT DISTINCT chat_id FROM telegram_chat_bindings'))[0];
-    }
-    return chats.map(c => c.chat_id);
+    // Global alerts only for multi-company consolidation
+    const [globalChats] = await pool.query(
+        'SELECT DISTINCT chat_id FROM telegram_chat_bindings WHERE receive_alerts = 1 AND company_id IS NULL'
+    );
+    return globalChats.map(c => c.chat_id);
 }
 
 /**
@@ -174,7 +174,7 @@ async function sendDailyBriefingForCompany(companyId, { targetDate = null, manua
     if (!report?.message) return { success: false, message: 'No se encontraron sucursales para esta empresa.' };
 
     const chatIds = await getAlertChatIds(companyId);
-    if (chatIds.length === 0) return { success: false, message: 'No hay chats de Telegram vinculados.' };
+    if (chatIds.length === 0) return { success: false, message: 'No hay chats de Telegram vinculados a esta empresa.' };
 
     let sentCount = 0;
     for (const chatId of chatIds) {
@@ -214,10 +214,7 @@ async function sendAllDailyBriefings({ targetDate = null, manual = false } = {})
          ORDER BY c.id`
     );
 
-    const chatIds = await getAlertChatIds();
-    if (chatIds.length === 0) return { success: false, message: 'No hay chats configurados para recibir alertas.' };
-
-    console.log(`[DailyBriefing] Enviando reporte diario de ${companies.length} empresas a ${chatIds.length} chat(s)...`);
+    console.log(`[DailyBriefing] Procesando reporte diario de ${companies.length} empresas...`);
     const generatedReports = [];
 
     for (const c of companies) {
@@ -225,21 +222,33 @@ async function sendAllDailyBriefings({ targetDate = null, manual = false } = {})
             const report = await generateDailyBriefingReport(c.id, targetDate);
             if (report?.message) {
                 generatedReports.push(report);
-                for (const chatId of chatIds) {
-                    await telegramService.sendMessage(chatId, report.message, { parse_mode: 'Markdown' });
+                const companyChats = await getAlertChatIds(c.id);
+                for (const chatId of companyChats) {
+                    try {
+                        await telegramService.sendMessage(chatId, report.message, { parse_mode: 'Markdown' });
+                    } catch (err) {
+                        console.error(`[DailyBriefing] Error enviando a chat ${chatId}:`, err.message);
+                    }
                 }
-                await new Promise(r => setTimeout(r, 600));
+                await new Promise(r => setTimeout(r, 400));
             }
         } catch (err) {
             console.error(`[DailyBriefing] Error procesando empresa ${c.id}:`, err.message);
         }
     }
 
-    // Si hay más de una empresa, enviar Consolidado General del Grupo Empresarial
+    // Si hay más de una empresa, enviar Consolidado General ÚNICAMENTE a chats corporativos globales (company_id IS NULL)
     if (generatedReports.length > 1) {
-        const groupMsg = formatGroupSummaryMessage(generatedReports, generatedReports[0].fechaDisplay);
-        for (const chatId of chatIds) {
-            await telegramService.sendMessage(chatId, groupMsg, { parse_mode: 'Markdown' });
+        const globalChats = await getAlertChatIds(null);
+        if (globalChats.length > 0) {
+            const groupMsg = formatGroupSummaryMessage(generatedReports, generatedReports[0].fechaDisplay);
+            for (const chatId of globalChats) {
+                try {
+                    await telegramService.sendMessage(chatId, groupMsg, { parse_mode: 'Markdown' });
+                } catch (err) {
+                    console.error(`[DailyBriefing] Error enviando consolidado a chat global ${chatId}:`, err.message);
+                }
+            }
         }
     }
 
@@ -247,7 +256,7 @@ async function sendAllDailyBriefings({ targetDate = null, manual = false } = {})
         success: true,
         count: generatedReports.length,
         companies: generatedReports.map(r => r.companyName),
-        message: `Reportes matutinos de ${generatedReports.length} empresas enviados exitosamente a Telegram.`
+        message: `Reportes matutinos de ${generatedReports.length} empresas procesados exitosamente.`
     };
 }
 
