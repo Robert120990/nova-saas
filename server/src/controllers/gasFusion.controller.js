@@ -344,7 +344,7 @@ exports.getAgentConfig = async (req, res) => {
  * Descargar iniciador Windows (.bat) para el conector
  */
 exports.getAgentLauncher = (req, res) => {
-    const bat = `@echo off\r\ntitle Conector Wayne Fusion FFC - SIPE WEB\r\ncolor 0A\r\ncd /d "%~dp0"\r\necho Conector Local Wayne Fusion FFC - SIPE WEB\r\nwhere node >nul 2>nul\r\nif %errorlevel% neq 0 ( echo [ERROR] Node.js no instalado. Descargue desde https://nodejs.org & pause & exit /b 1 )\r\nnode fusion-agent.js\r\nif %errorlevel% neq 0 pause\r\n`;
+    const bat = `@echo off\r\ntitle Conector Wayne Fusion FFC - SIPE WEB\r\ncolor 0A\r\ncd /d "%~dp0"\r\necho Conector Local Wayne Fusion FFC - SIPE WEB\r\nwhere node >nul 2>nul\r\nif %errorlevel% neq 0 ( echo [ERROR] Node.js no instalado. Descargue desde https://nodejs.org & pause & exit /b 1 )\r\nif not exist "fusion-agent.js" (\r\n    if exist "fusion-agent.js.txt" ( ren "fusion-agent.js.txt" "fusion-agent.js" )\r\n    if exist "%USERPROFILE%\\Downloads\\fusion-agent.js" ( copy /y "%USERPROFILE%\\Downloads\\fusion-agent.js" "fusion-agent.js" >nul )\r\n    if exist "%USERPROFILE%\\Descargas\\fusion-agent.js" ( copy /y "%USERPROFILE%\\Descargas\\fusion-agent.js" "fusion-agent.js" >nul )\r\n)\r\nif not exist "fusion-agent.js" (\r\n    color 0C\r\n    echo [ERROR] Falta el archivo 'fusion-agent.js' en esta carpeta: %~dp0\r\n    echo Mueva los 3 archivos descargados (fusion-agent.js, config.json, iniciar-agente.bat) a esta misma carpeta.\r\n    pause\r\n    exit /b 1\r\n)\r\nnode fusion-agent.js\r\nif %errorlevel% neq 0 pause\r\n`;
     res.setHeader('Content-Disposition', 'attachment; filename="iniciar-agente.bat"');
     res.setHeader('Content-Type', 'application/x-bat');
     res.send(bat);
