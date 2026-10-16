@@ -430,6 +430,20 @@ const syncSalesDeliveryToRrs = async (deliveryId, companyId) => {
     const hora = delivery.hora ? String(delivery.hora).substring(0, 5) : '00:00';
     const concepto = `${delivery.branch_name || 'Sucursal'} - ${fechaStr} ${hora}`;
 
+    // 1. Preservar num_partida y es_contabilizado si el movimiento ya existía en RRS
+    const [existingMain] = await rrsPool.query(
+        cuenta.numero
+            ? `SELECT num_partida, es_contabilizado FROM movimientos_bancarios 
+               WHERE (llave = ? OR (llave = ? AND numero_cuenta = ?)) 
+               ORDER BY (es_contabilizado = 'S' OR es_contabilizado = 1) DESC LIMIT 1`
+            : `SELECT num_partida, es_contabilizado FROM movimientos_bancarios 
+               WHERE llave = ? 
+               ORDER BY (es_contabilizado = 'S' OR es_contabilizado = 1) DESC LIMIT 1`,
+        cuenta.numero ? [llave, legacyLlave, cuenta.numero] : [llave]
+    );
+    const prevNumPartida = existingMain[0]?.num_partida || '';
+    const prevEsContabilizado = (existingMain[0]?.es_contabilizado === 'S' || existingMain[0]?.es_contabilizado == 1) ? 'S' : 'N';
+
     await rrsPool.query(
         `DELETE FROM movimientos_bancarios WHERE llave = ? OR (llave = ? AND numero_cuenta = ?)`,
         [llave, legacyLlave, cuenta.numero]
@@ -437,8 +451,8 @@ const syncSalesDeliveryToRrs = async (deliveryId, companyId) => {
 
     await rrsPool.query(
         `INSERT INTO movimientos_bancarios 
-         (id_empresa, llave, cod_remesa, documento, numero_cuenta, concepto, cargo, abono, fecha_aplicado, fecha, monto, tipo_destino) 
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (id_empresa, llave, cod_remesa, documento, numero_cuenta, concepto, cargo, abono, fecha_aplicado, fecha, monto, tipo_destino, num_partida, es_contabilizado) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
             cuenta.id_empresa,
             llave,
@@ -451,7 +465,9 @@ const syncSalesDeliveryToRrs = async (deliveryId, companyId) => {
             '',
             fechaStr,
             montoEntregado.toFixed(2),
-            'P'
+            'P',
+            prevNumPartida,
+            prevEsContabilizado
         ]
     );
 
@@ -582,6 +598,26 @@ exports.revertirEntregado = async (req, res) => {
                 if (cuentas.length > 0) {
                     cuentaNumero = cuentas[0].numero;
                 }
+            }
+
+            // Verificar si el movimiento ya está contabilizado en RRS
+            const [checkMovs] = await rrsPool.query(
+                cuentaNumero
+                    ? `SELECT num_partida, es_contabilizado FROM movimientos_bancarios 
+                       WHERE llave = ? OR (llave = ? AND numero_cuenta = ?)`
+                    : `SELECT num_partida, es_contabilizado FROM movimientos_bancarios 
+                       WHERE llave = ?`,
+                cuentaNumero ? [llave, legacyLlave, cuentaNumero] : [llave]
+            );
+            const isContabilizado = checkMovs.some(m => 
+                (m.es_contabilizado === 'S' || m.es_contabilizado == 1) || 
+                (m.num_partida && String(m.num_partida).trim() !== '')
+            );
+            if (isContabilizado) {
+                const partidas = [...new Set(checkMovs.map(m => m.num_partida).filter(Boolean))].join(', ');
+                return res.status(400).json({ 
+                    message: `No se puede revertir esta entrega de remesas porque ya fue contabilizada en RRS (Partida: #${partidas || 'registrada'}). Para modificarla, contabilidad debe desvincular la partida primero.` 
+                });
             }
 
             const [delMain] = await rrsPool.query(
