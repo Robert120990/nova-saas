@@ -38,6 +38,9 @@ class AgentRegistry {
     }
 
     getAgent(code) {
+        if (code === 'technical') {
+            return this.agents.get('technical') || this.agents.get('tech') || null;
+        }
         return this.agents.get(code) || null;
     }
 
@@ -52,22 +55,20 @@ class AgentRegistry {
 
     /**
      * Checks if a user has permission to interact with a specific agent.
-     * Supports:
-     * - Telegram bindings with granular allowed_agents
-     * - SuperAdmin global access
-     * - RBAC permissions array for web users
+     * Supports both (user, agentCode) and (agentCode, user) signatures.
      */
-    hasPermission(agentCode, user) {
-        if (!user) return true; // Default fallback for Telegram bindings without user_id
-        if (user.role === 'SuperAdmin' || user.role === 'Admin' || user.is_system_task) return true;
-
-        // Si el usuario viene de Telegram con allowed_agents configurados específicamente en su binding
-        if (Array.isArray(user.allowed_agents)) {
-            return user.allowed_agents.includes(agentCode);
+    canUserAccessAgent(userOrCode, codeOrUser) {
+        let user = userOrCode;
+        let agentCode = codeOrUser;
+        if (typeof userOrCode === 'string') {
+            agentCode = userOrCode;
+            user = codeOrUser;
         }
 
+        if (!user || typeof user !== 'object') return false;
+
         const agent = this.getAgent(agentCode);
-        if (!agent || !agent.requiredPermission) return true;
+        if (!agent) return false;
 
         let userPerms = [];
         if (Array.isArray(user.permissions)) {
@@ -76,9 +77,35 @@ class AgentRegistry {
             try { userPerms = JSON.parse(user.permissions); } catch { userPerms = []; }
         }
 
+        // Strict restriction for TechnicalAgent ('tech' / 'technical')
+        if (agent.code === 'technical' || agent.code === 'tech' || agentCode === 'technical' || agentCode === 'tech') {
+            if (Array.isArray(user.allowed_agents)) {
+                const allowedInList = user.allowed_agents.includes(agent.code) ||
+                    user.allowed_agents.includes('technical') ||
+                    user.allowed_agents.includes('tech') ||
+                    user.allowed_agents.includes('all');
+                if (!allowedInList) return false;
+            }
+            return user.role === 'SuperAdmin' || userPerms.includes('manage_server_terminal');
+        }
+
+        // Evaluate explicit allowed_agents list FIRST (before checking user.role === 'Admin')
+        if (Array.isArray(user.allowed_agents)) {
+            return user.allowed_agents.includes(agent.code) || user.allowed_agents.includes('all');
+        }
+
+        if (user.role === 'SuperAdmin' || user.role === 'Admin' || user.is_system_task) return true;
+
+        if (!agent.requiredPermission) return true;
+
         return userPerms.includes(agent.requiredPermission);
+    }
+
+    hasPermission(agentCode, user) {
+        return this.canUserAccessAgent(user, agentCode);
     }
 }
 
 const registryInstance = new AgentRegistry();
 module.exports = registryInstance;
+

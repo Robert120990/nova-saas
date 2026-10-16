@@ -76,7 +76,7 @@ async function handleAgentTelegramMessage(chatId, text, from, state) {
         });
 
         // 3. Cargar permisos y configuración de allowed_agents del binding
-        let allowedAgents = ['accounting', 'dte', 'sales', 'inventory', 'gas', 'operations', 'tech'];
+        let allowedAgents = null;
         let bindingName = from?.first_name || from?.username || 'Usuario Telegram';
         let canApprove = false;
         let bindingCompanyId = state?.companyId || null;
@@ -109,13 +109,18 @@ async function handleAgentTelegramMessage(chatId, text, from, state) {
             console.error('[TelegramAgentBridge] Error consultando binding:', err.message);
         }
 
+        const hasRestrictedAgents = Array.isArray(allowedAgents) && !allowedAgents.includes('all');
+        const effectiveAllowedAgents = Array.isArray(allowedAgents)
+            ? allowedAgents
+            : (canApprove ? null : ['accounting', 'dte', 'sales', 'inventory', 'gas', 'operations']);
+
         const user = {
             id: null,
             nombre: bindingName,
-            role: canApprove ? 'Admin' : 'Operator',
+            role: (canApprove && !hasRestrictedAgents) ? 'Admin' : 'Operator',
             company_id: bindingCompanyId,
             branch_id: bindingBranchId,
-            allowed_agents: allowedAgents,
+            allowed_agents: Array.isArray(effectiveAllowedAgents) ? effectiveAllowedAgents : null,
             can_approve_entries: canApprove
         };
 

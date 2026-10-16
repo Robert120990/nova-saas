@@ -20,28 +20,98 @@ const { searchRelevantKnowledge } = require('./ai/knowledgeSearchService');
 const FORBIDDEN_KEYWORDS = [
     'INSERT', 'UPDATE', 'DELETE', 'DROP', 'TRUNCATE', 'ALTER',
     'CREATE', 'REPLACE', 'GRANT', 'REVOKE', 'EXEC', 'EXECUTE',
-    'CALL', 'LOAD', 'OUTFILE', 'DUMPFILE', 'INTO'
+    'CALL', 'LOAD', 'OUTFILE', 'DUMPFILE', 'INTO',
+    'SLEEP', 'BENCHMARK', 'GET_LOCK', 'RELEASE_LOCK', 'IS_FREE_LOCK',
+    'IS_USED_LOCK', 'LOAD_FILE', 'HANDLER', 'SHOW', 'DESCRIBE',
+    'EXPLAIN', 'SET', 'PREPARE', 'DEALLOCATE'
 ];
+
+const FORBIDDEN_TABLES = [
+    'users', 'roles', 'usuario_empresa', 'usuario_sucursal',
+    'user_sessions', 'login_rate_limits',
+    'telegram_settings', 'telegram_chat_bindings', 'telegram_invite_tokens',
+    'whatsapp_settings', 'smtp_settings', 'filpro_connections',
+    'accounting_settings', 'gas_station_settings', 'energy_system_settings',
+    'rh_biometric_devices', 'audit_logs',
+    'ai_agent_tasks', 'ai_agent_task_logs', 'agent_conversations', 'agent_messages',
+    'information_schema', 'performance_schema', 'mysql', 'sys'
+];
+
+const FORBIDDEN_COLUMNS = [
+    'api_password', 'certificate_password', 'clave_privada', 'clave_publica',
+    'password', 'bot_token', 'agent_key', 'fusion_password', 'fusion_agent_key',
+    'oficina_db_password', 'filpro_password', 'growatt_password', 'gess_password',
+    'restart_key'
+];
+
+function isCatalogOnlyQuery(sql) {
+    const tableMatches = [...sql.matchAll(/\b(?:FROM|JOIN)\s+`?([a-zA-Z0-9_]+)`?(?:\s+(?:AS\s+)?[a-zA-Z0-9_]+)?(\s*,\s*`?[a-zA-Z0-9_]+`?)*/gi)];
+    if (tableMatches.length === 0) return false;
+
+    for (const match of tableMatches) {
+        const primaryTable = match[1];
+        if (!/^cat_0[a-zA-Z0-9_]*$/i.test(primaryTable)) {
+            return false;
+        }
+        if (match[2]) {
+            const extraTables = match[0].replace(/^\b(?:FROM|JOIN)\s+/i, '').split(',');
+            for (const part of extraTables) {
+                const tbl = part.trim().split(/\s+/)[0].replace(/`/g, '');
+                if (!/^cat_0[a-zA-Z0-9_]*$/i.test(tbl)) {
+                    return false;
+                }
+            }
+        }
+    }
+    return true;
+}
 
 /**
  * Valida que un SQL sea una consulta SELECT segura.
  */
-const validateSql = (sql) => {
-    const cleaned = sql
+const validateSql = (sql, _context = {}) => {
+    const cleaned = String(sql || '')
         .replace(/--[^\n]*/g, '')
         .replace(/\/\*[\s\S]*?\*\//g, '')
+        .replace(/#[^\n]*/g, '')
+        .trim()
+        .replace(/;+\s*$/, '')
         .trim();
 
-    if (!/^SELECT\s+/i.test(cleaned)) {
-        return { valid: false, reason: 'Solo se permiten consultas SELECT.' };
+    if (cleaned.includes(';')) {
+        return { valid: false, reason: 'Solo se permite una instrucción SELECT por consulta.' };
     }
 
-    const upperSql = cleaned.toUpperCase();
+    if (!/^(SELECT|WITH)\s+/i.test(cleaned)) {
+        return { valid: false, reason: 'Solo se permiten consultas SELECT de lectura.' };
+    }
+
     for (const keyword of FORBIDDEN_KEYWORDS) {
-        const regex = new RegExp(`\\b${keyword}\\b`);
-        if (regex.test(upperSql)) {
+        const regex = new RegExp(`\\b${keyword}\\b`, 'i');
+        if (regex.test(cleaned)) {
             return { valid: false, reason: `Instrucción no permitida detectada: ${keyword}` };
         }
+    }
+
+    for (const table of FORBIDDEN_TABLES) {
+        const regex = new RegExp(`\\b${table}\\b`, 'i');
+        if (regex.test(cleaned)) {
+            return { valid: false, reason: `Acceso no permitido a tabla restringida: ${table}` };
+        }
+    }
+
+    for (const col of FORBIDDEN_COLUMNS) {
+        const regex = new RegExp(`\\b${col}\\b`, 'i');
+        if (regex.test(cleaned)) {
+            return { valid: false, reason: `Acceso no permitido a columna sensible: ${col}` };
+        }
+    }
+
+    if (!cleaned.includes('{COMPANY_ID}') && !isCatalogOnlyQuery(cleaned)) {
+        return {
+            valid: false,
+            reason: 'Por seguridad multi-empresa, toda consulta debe filtrar obligatoriamente con el marcador {COMPANY_ID}.'
+        };
     }
 
     return { valid: true, cleanedSql: cleaned };
@@ -54,19 +124,24 @@ const prepareSql = (sql, companyId, branchId) => {
     const params = [];
 
     let safeSql = sql.replace(/\{COMPANY_ID\}/g, () => {
-        params.push(companyId);
+        params.push(Number(companyId));
         return '?';
     });
 
-    safeSql = safeSql.replace(/\{BRANCH_ID\}/g, () => {
-        params.push(branchId);
-        return '?';
-    });
+    if (branchId !== null && branchId !== undefined && branchId !== 'all' && branchId !== '') {
+        safeSql = safeSql.replace(/\{BRANCH_ID\}/g, () => {
+            params.push(Number(branchId));
+            return '?';
+        });
+    } else {
+        safeSql = safeSql.replace(/\b(?:[a-zA-Z0-9_]+\.)?branch_id\s*=\s*\{BRANCH_ID\}/gi, '1=1');
+        safeSql = safeSql.replace(/\{BRANCH_ID\}/g, '1=1');
+    }
 
     const hasLimit = /\bLIMIT\s+\d+/i.test(safeSql);
     if (!hasLimit) {
         safeSql = safeSql.replace(/;\s*$/, '');
-        safeSql += ` LIMIT ${AI_QUERY_MAX_ROWS}`;
+        safeSql += ` LIMIT ${AI_QUERY_MAX_ROWS || 50}`;
     }
 
     return { sql: safeSql, params };
@@ -78,6 +153,14 @@ const prepareSql = (sql, companyId, branchId) => {
  * @returns {Promise<{ role: string, content?: string, tool_calls?: Array }>}
  */
 async function runAssistant({ messages, companyId, branchId }) {
+    const parsedCompanyId = Number(companyId);
+    if (!companyId || !Number.isInteger(parsedCompanyId) || parsedCompanyId <= 0) {
+        return {
+            role: 'assistant',
+            content: 'Error: Se requiere una empresa válida (companyId) para ejecutar consultas de datos.',
+            error: 'companyId válido es requerido para ejecutar consultas de datos.'
+        };
+    }
     // RAG Dinámico en la Nube con DeepSeek:
     // Buscar los fragmentos oficiales más relevantes del Manual Funcional V2.0 y Catálogos
     const lastUserMessage = messages
@@ -264,12 +347,12 @@ ${DB_SCHEMA}`;
 
                 const rawSql = args.sql || '';
 
-                const validation = validateSql(rawSql);
+                const validation = validateSql(rawSql, { companyId: parsedCompanyId, branchId });
                 if (!validation.valid) {
                     console.warn('[Novas AI] SQL rechazado:', validation.reason, '| SQL:', rawSql);
                     resultData = { error: `Consulta rechazada por seguridad: ${validation.reason}` };
                 } else {
-                    const { sql: safeSql, params } = prepareSql(validation.cleanedSql, companyId, branchId);
+                    const { sql: safeSql, params } = prepareSql(validation.cleanedSql, parsedCompanyId, branchId);
                     console.log('[Novas AI] Ejecutando SQL:', safeSql, '| Params:', params);
 
                     try {
@@ -313,4 +396,5 @@ ${DB_SCHEMA}`;
     return firstResponse;
 }
 
-module.exports = { runAssistant };
+module.exports = { runAssistant, validateSql, prepareSql };
+

@@ -162,7 +162,20 @@ async function processQueue() {
             [task.user_id, task.company_id]
         );
 
-        let userRole = ueRows[0]?.role_name || 'SuperAdmin';
+        let userRole = ueRows[0]?.role_name || null;
+        if (!userRole && task.user_id) {
+            const [saRows] = await pool.query(
+                `SELECT 1 FROM usuario_empresa ue
+                 JOIN roles r ON ue.role_id = r.id
+                 WHERE ue.usuario_id = ? AND r.name = 'SuperAdmin'
+                 LIMIT 1`,
+                [task.user_id]
+            );
+            userRole = saRows.length > 0 ? 'SuperAdmin' : (ueRows[0]?.role_name || 'Operador');
+        } else if (!userRole) {
+            userRole = 'Operador';
+        }
+
         let userPermissions = ueRows[0]?.permissions || [];
         if (typeof userPermissions === 'string') {
             try { userPermissions = JSON.parse(userPermissions); } catch { userPermissions = []; }
@@ -178,7 +191,7 @@ async function processQueue() {
                 email: task.user_email || '',
                 role: userRole,
                 permissions: userPermissions,
-                is_system_task: true
+                is_system_task: false
             },
             taskId: task.id,
             onStepLog: async (agentCode, type, msg, meta) => {
@@ -331,8 +344,8 @@ async function sendTelegramCompletionNotification(task, agentName, resultContent
     try {
         const [chats] = await pool.query(
             `SELECT chat_id FROM telegram_chat_bindings 
-             WHERE company_id = ? AND receive_alerts = 1`,
-            [task.company_id]
+             WHERE company_id = ? AND (branch_id = ? OR branch_id IS NULL) AND receive_alerts = 1`,
+            [task.company_id, task.branch_id || null]
         );
 
         if (!chats || chats.length === 0) return;
