@@ -33,15 +33,21 @@ async function signWithExternalSigner(dteJson, nit, certificatePassword, ambient
 
         console.log('[Signature] Signer raw response:', JSON.stringify(response.data).substring(0, 200));
 
-        if (response.data && response.data.codigo) {
-            const errorMsg = Array.isArray(response.data.mensaje) ? response.data.mensaje.join(', ') : response.data.mensaje;
-            throw new Error(`${response.data.codigo}: ${errorMsg || 'Error desconocido del firmador'}`);
+        if (response.data) {
+            if (response.data.status === 'ERROR' || response.data.codigo || (response.data.body && typeof response.data.body === 'object' && response.data.body.codigo)) {
+                const errObj = (response.data.body && typeof response.data.body === 'object') ? response.data.body : response.data;
+                const errCode = errObj.codigo || response.data.codigo || 'ERROR';
+                const errMsg = errObj.mensaje || response.data.mensaje || JSON.stringify(errObj);
+                const formattedMsg = Array.isArray(errMsg) ? errMsg.join(', ') : errMsg;
+                throw new Error(`${errCode}: ${formattedMsg || 'Error reportado por el firmador externo'}`);
+            }
         }
 
-        const jws = typeof response.data === 'string' ? response.data : response.data.body || response.data;
+        const jws = typeof response.data === 'string' ? response.data : (response.data.body || response.data);
 
         if (!jws || typeof jws !== 'string' || !jws.startsWith('eyJ')) {
-            throw new Error(`El firmador externo no retornó una firma JWS válida (recibido: ${typeof jws === 'string' ? jws.substring(0, 20) : 'objeto'})`);
+            const preview = typeof jws === 'string' ? jws.substring(0, 30) : JSON.stringify(jws);
+            throw new Error(`El firmador externo no retornó una firma JWS válida (recibido: ${preview})`);
         }
 
         return {

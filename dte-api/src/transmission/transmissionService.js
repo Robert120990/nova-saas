@@ -49,10 +49,15 @@ async function authenticate(apiUser, apiPassword, ambiente, forceRefresh = false
                 token: token
             };
         } else {
-            const msg = response.data?.message || response.data?.body?.mensaje || 'Respuesta de autenticación no reconocida';
+            const msg = response.data?.body?.descripcionMsg 
+                || response.data?.message 
+                || response.data?.body?.mensaje 
+                || response.data?.descripcion 
+                || 'Respuesta de autenticación no reconocida';
+            const code = response.data?.body?.codigoMsg || response.data?.codigo || '';
             return {
                 success: false,
-                message: msg
+                message: code ? `${code} - ${msg}` : msg
             };
         }
     } catch (error) {
