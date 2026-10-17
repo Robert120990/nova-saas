@@ -85,6 +85,7 @@ const AiTaskFiltersBar = ({
                     <option value="gas">⛽ Combustibles</option>
                     <option value="sales">📈 Ventas</option>
                     <option value="tech">🛠️ SysAdmin</option>
+                    <option value="support">🎫 Soporte & Tickets</option>
                 </select>
 
                 {/* Reset button if any filter is active */}

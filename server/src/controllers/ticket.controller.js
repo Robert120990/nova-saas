@@ -60,7 +60,7 @@ async function checkIsTechManager(req) {
         const [rows] = await pool.query(
             `SELECT r.permissions FROM usuario_empresa ue
              JOIN roles r ON r.id = ue.role_id
-             WHERE ue.user_id = ? AND ue.company_id = ? AND ue.has_access = 1 LIMIT 1`,
+             WHERE ue.usuario_id = ? AND ue.empresa_id = ? AND ue.has_access = 1 LIMIT 1`,
             [req.user.id, companyId]
         );
         if (rows.length > 0 && rows[0].permissions) {

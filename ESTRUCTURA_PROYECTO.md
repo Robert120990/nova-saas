@@ -227,6 +227,7 @@ Express.js, patrón controller → service → model (los modelos son SQL direct
 | `telegramInvite.service.js` | Telegram Invite.service. |
 | `template.service.js` | Plantillas con variables (correo/documentos) y renderizado. |
 | `ticket.service.js` | Ticket.service. |
+| `ticketAiTaskBridge.service.js` | Ticket Ai Task Bridge.service. |
 | `ticketTelegram.service.js` | Ticket Telegram.service. |
 | `vatDeclarations.service.js` | Vat Declarations.service. |
 | `vatDeclarationsExcel.service.js` | Vat Declarations Excel.service. |

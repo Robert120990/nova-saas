@@ -1,51 +1,35 @@
 const pool = require('../config/db');
 const agentTaskQueue = require('../services/agents/agentTaskQueue.service');
+const ticketAiTaskBridge = require('../services/ticketAiTaskBridge.service');
 
 /**
  * List agent tasks with pagination, filtering and KPI metrics.
  */
 exports.getTasks = async (req, res) => {
     try {
-        const companyId = req.company_id;
+        const companyId = req.company_id || req.companyId || 1;
+        const isSuperAdmin = req.user?.role === 'SuperAdmin';
+        await ticketAiTaskBridge.syncAllFlaggedTicketsToAiTasks(isSuperAdmin ? null : companyId);
         const page = Math.max(1, parseInt(req.query.page) || 1);
         const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 15));
         const offset = (page - 1) * limit;
-
         const { search, status, priority, agent_code } = req.query;
-
-        let whereClause = 'WHERE t.company_id = ?';
+        let whereClause = isSuperAdmin ? "WHERE (t.company_id = ? OR t.assigned_agent_code = 'support')" : 'WHERE t.company_id = ?';
         const params = [companyId];
 
-        if (status && status !== 'todos') {
-            whereClause += ' AND t.status = ?';
-            params.push(status);
-        }
-
-        if (priority && priority !== 'todas') {
-            whereClause += ' AND t.priority = ?';
-            params.push(priority);
-        }
-
-        if (agent_code && agent_code !== 'todos') {
-            whereClause += ' AND t.assigned_agent_code = ?';
-            params.push(agent_code);
-        }
-
+        if (status && status !== 'todos') { whereClause += ' AND t.status = ?'; params.push(status); }
+        if (priority && priority !== 'todas') { whereClause += ' AND t.priority = ?'; params.push(priority); }
+        if (agent_code && agent_code !== 'todos') { whereClause += ' AND t.assigned_agent_code = ?'; params.push(agent_code); }
         if (search && search.trim()) {
             whereClause += ' AND (t.title LIKE ? OR t.prompt LIKE ?)';
             const term = `%${search.trim()}%`;
             params.push(term, term);
         }
 
-        // Count total matching tasks
-        const [countResult] = await pool.query(
-            `SELECT COUNT(*) as total FROM ai_agent_tasks t ${whereClause}`,
-            params
-        );
+        const [countResult] = await pool.query(`SELECT COUNT(*) as total FROM ai_agent_tasks t ${whereClause}`, params);
         const total = countResult[0]?.total || 0;
         const totalPages = Math.ceil(total / limit) || 1;
 
-        // Fetch paginated tasks
         const [tasks] = await pool.query(
             `SELECT t.*, u.nombre as user_name, b.nombre as branch_name
              FROM ai_agent_tasks t
@@ -57,7 +41,7 @@ exports.getTasks = async (req, res) => {
             [...params, limit, offset]
         );
 
-        // Calculate KPI summary for this company
+        const kpiWhere = isSuperAdmin ? "WHERE (company_id = ? OR assigned_agent_code = 'support')" : 'WHERE company_id = ?';
         const [kpiRows] = await pool.query(`
             SELECT 
                 COUNT(CASE WHEN status IN ('analizando', 'en_proceso') THEN 1 END) as in_progress,
@@ -65,26 +49,11 @@ exports.getTasks = async (req, res) => {
                 COUNT(CASE WHEN status = 'completada' AND DATE(completed_at) = CURDATE() THEN 1 END) as completed_today,
                 COUNT(CASE WHEN status = 'fallida' THEN 1 END) as failed
             FROM ai_agent_tasks
-            WHERE company_id = ?
+            ${kpiWhere}
         `, [companyId]);
 
-        const summary = kpiRows[0] || {
-            in_progress: 0,
-            pending: 0,
-            completed_today: 0,
-            failed: 0
-        };
-
-        res.json({
-            data: tasks,
-            pagination: {
-                total,
-                page,
-                limit,
-                totalPages
-            },
-            summary
-        });
+        const summary = kpiRows[0] || { in_progress: 0, pending: 0, completed_today: 0, failed: 0 };
+        res.json({ data: tasks, pagination: { total, page, limit, totalPages }, summary });
     } catch (error) {
         console.error('[AgentTaskController] Error getTasks:', error);
         res.status(500).json({ message: 'Error al obtener lista de tareas agénticas' });
@@ -97,21 +66,20 @@ exports.getTasks = async (req, res) => {
 exports.getTaskById = async (req, res) => {
     try {
         const { id } = req.params;
-        const companyId = req.company_id;
+        const companyId = req.company_id || req.companyId || 1;
+        const isSuperAdmin = req.user?.role === 'SuperAdmin';
+        const whereSql = isSuperAdmin ? "WHERE t.id = ? AND (t.company_id = ? OR t.assigned_agent_code = 'support')" : 'WHERE t.id = ? AND t.company_id = ?';
 
         const [tasks] = await pool.query(
             `SELECT t.*, u.nombre as user_name, b.nombre as branch_name
              FROM ai_agent_tasks t
              LEFT JOIN users u ON t.user_id = u.id
              LEFT JOIN branches b ON t.branch_id = b.id
-             WHERE t.id = ? AND t.company_id = ?`,
+             ${whereSql}`,
             [id, companyId]
         );
 
-        if (tasks.length === 0) {
-            return res.status(404).json({ message: 'Tarea no encontrada' });
-        }
-
+        if (tasks.length === 0) return res.status(404).json({ message: 'Tarea no encontrada' });
         const task = tasks[0];
 
         const [logs] = await pool.query(

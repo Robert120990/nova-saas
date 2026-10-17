@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const pool = require('../config/db');
 const ticketService = require('../services/ticket.service');
+const ticketAiTaskBridge = require('../services/ticketAiTaskBridge.service');
 
 function parseJsonSafe(val, fallback = null) {
     if (!val) return fallback;
@@ -106,7 +107,7 @@ async function checkIsTechManager(req) {
     try {
         const companyId = req.companyId || req.company_id;
         const [rows] = await pool.query(
-            `SELECT r.permissions FROM usuario_empresa ue JOIN roles r ON r.id = ue.role_id WHERE ue.user_id = ? AND ue.company_id = ? AND ue.has_access = 1 LIMIT 1`,
+            `SELECT r.permissions FROM usuario_empresa ue JOIN roles r ON r.id = ue.role_id WHERE ue.usuario_id = ? AND ue.empresa_id = ? AND ue.has_access = 1 LIMIT 1`,
             [req.user?.id, companyId]
         );
         const perms = rows[0]?.permissions ? (typeof rows[0].permissions === 'string' ? JSON.parse(rows[0].permissions) : rows[0].permissions) : [];
@@ -137,6 +138,7 @@ const updateTicketAiReview = async (req, res) => {
         }
 
         const updated = await ticketService.getTicketById(id);
+        await ticketAiTaskBridge.syncTicketToAiTask(updated);
         res.json({ success: true, data: updated, ticket: updated });
     } catch (error) {
         console.error('Error updateTicketAiReview:', error);
@@ -153,36 +155,13 @@ const getAiBundleTickets = async (req, res) => {
         const reqCompanyId = req.companyId || req.company_id;
         const tenantFilter = !isSuperAdmin && reqCompanyId ? ' AND t.company_id = ?' : '';
         const tenantParams = !isSuperAdmin && reqCompanyId ? [reqCompanyId] : [];
-
-        let rows = [];
-        if (idList.length > 0) {
-            const [r] = await pool.query(
-                `SELECT t.*, t.ticket_code AS code, c.razon_social AS company_name
-                 FROM support_tickets t
-                 LEFT JOIN companies c ON c.id = t.company_id
-                 WHERE t.id IN (?)${tenantFilter}
-                 ORDER BY FIELD(t.priority, 'urgente', 'alta', 'media', 'baja'), t.id ASC`,
-                [idList, ...tenantParams]
-            );
-            rows = r;
-        } else {
-            const [r] = await pool.query(
-                `SELECT t.*, t.ticket_code AS code, c.razon_social AS company_name
-                 FROM support_tickets t
-                 LEFT JOIN companies c ON c.id = t.company_id
-                 WHERE t.include_in_ai_prompt = 1 AND t.status NOT IN ('cerrado', 'rechazado')${tenantFilter}
-                 ORDER BY FIELD(t.priority, 'urgente', 'alta', 'media', 'baja'), t.id ASC`,
-                tenantParams
-            );
-            rows = r;
-        }
+        const baseSql = `SELECT t.*, t.ticket_code AS code, c.razon_social AS company_name FROM support_tickets t LEFT JOIN companies c ON c.id = t.company_id`;
+        const [rows] = idList.length > 0
+            ? await pool.query(`${baseSql} WHERE t.id IN (?)${tenantFilter} ORDER BY FIELD(t.priority, 'urgente', 'alta', 'media', 'baja'), t.id ASC`, [idList, ...tenantParams])
+            : await pool.query(`${baseSql} WHERE t.include_in_ai_prompt = 1 AND t.status NOT IN ('cerrado', 'rechazado')${tenantFilter} ORDER BY FIELD(t.priority, 'urgente', 'alta', 'media', 'baja'), t.id ASC`, tenantParams);
 
         const promptMarkdown = buildAiPromptMarkdown(rows, '');
-        res.json({
-            data: rows,
-            total: rows.length,
-            promptMarkdown
-        });
+        res.json({ data: rows, total: rows.length, promptMarkdown });
     } catch (error) {
         console.error('Error getAiBundleTickets:', error);
         res.status(500).json({ message: 'Error al obtener paquete de tickets para IA' });
@@ -218,6 +197,10 @@ const saveAndGenerateAiBundle = async (req, res) => {
             ? await pool.query(`${baseSql} WHERE t.id IN (?)${tenantFilter} ORDER BY FIELD(t.priority, 'urgente', 'alta', 'media', 'baja'), t.id ASC`, [selectedIds, ...tenantParams])
             : await pool.query(`${baseSql} WHERE t.include_in_ai_prompt = 1 AND t.status NOT IN ('cerrado', 'rechazado')${tenantFilter} ORDER BY FIELD(t.priority, 'urgente', 'alta', 'media', 'baja'), t.id ASC`, tenantParams);
 
+        for (const r of rows) {
+            await ticketAiTaskBridge.syncTicketToAiTask(r);
+        }
+
         const promptMarkdown = buildAiPromptMarkdown(rows, extraContext);
         try {
             fs.writeFileSync(path.join(__dirname, '..', '..', '..', 'TICKETS_PARA_IA.md'), promptMarkdown, 'utf8');
@@ -227,7 +210,7 @@ const saveAndGenerateAiBundle = async (req, res) => {
 
         res.json({
             success: true,
-            message: `Paquete de ${rows.length} ticket(s) generado y sincronizado en TICKETS_PARA_IA.md`,
+            message: `Paquete de ${rows.length} ticket(s) sincronizado con Centro de Tareas IA (/ai-tasks) y TICKETS_PARA_IA.md`,
             data: rows,
             promptMarkdown,
             filePath: 'TICKETS_PARA_IA.md'
@@ -284,15 +267,17 @@ const autoTriageAiBundle = async (req, res) => {
         const supportTicketDiagnosticTool = require('../services/agents/tools/supportTicketDiagnosticTool');
         const isSuperAdmin = req.user?.role === 'SuperAdmin';
         const reqCompanyId = req.companyId || req.company_id;
+        const targetCompany = isSuperAdmin ? (reqCompanyId || null) : (reqCompanyId || 0);
         const result = await supportTicketDiagnosticTool.execute(
             { status: 'todos', limit: 35, auto_flag_for_ai: true },
-            { companyId: isSuperAdmin ? (reqCompanyId || null) : (reqCompanyId || 0), user: req.user }
+            { companyId: targetCompany, user: req.user }
         );
+        await ticketAiTaskBridge.syncAllFlaggedTicketsToAiTasks(targetCompany);
         const flagged = result.triage_breakdown?.auto_flagged_count ?? 0;
         const totalIa = result.summary?.marcados_para_ia ?? flagged;
         res.json({
             success: true,
-            message: `Auto-Triaje del Agente IA completado: ${flagged} nuevo(s) ticket(s) marcados (${totalIa} en paquete IA).`,
+            message: `Auto-Triaje del Agente IA completado: ${flagged} nuevo(s) ticket(s) marcados y enviados al Centro de Tareas IA (${totalIa} en paquete).`,
             data: result
         });
     } catch (error) {
