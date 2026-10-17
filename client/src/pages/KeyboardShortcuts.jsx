@@ -300,12 +300,26 @@ const SHORTCUTS = [
         isSecret: false,
         badgeType: 'global',
         badgeLabel: '🌐 Global',
-        title: 'Paleta de Comandos y Búsqueda Rápida',
-        module: 'Sistema Global',
+        title: 'Paleta de Comandos y Atajo "ticket"',
+        module: 'Sistema Global y Soporte',
         path: 'En cualquier pantalla',
-        description: 'Abre el buscador flotante central para navegar instantáneamente a cualquier módulo o reporte.',
-        instructions: 'Presiona Ctrl + K (en Windows) o Cmd + K (en Mac) desde cualquier parte del sistema para saltar de pantalla.',
-        tags: ['global', 'ctrl k', 'cmd k', 'paleta', 'buscador', 'navegacion']
+        description: 'Abre el buscador flotante central para navegar a cualquier módulo o escribe "ticket" para capturar la pantalla actual y reportar un problema a soporte.',
+        instructions: 'Presiona Ctrl + K, escribe "ticket" (o "ticket: descripción del problema") y presiona Enter. El sistema capturará automáticamente tu pantalla y notificará a los técnicos por Telegram.',
+        tags: ['global', 'ctrl k', 'cmd k', 'paleta', 'buscador', 'navegacion', 'ticket', 'soporte', 'captura']
+    },
+    {
+        id: 'global-quick-ticket-capture',
+        keys: ['Ctrl / ⌘', 'Shift', 'K'],
+        category: 'global',
+        isSecret: false,
+        badgeType: 'fast',
+        badgeLabel: '🎫 Soporte Directo',
+        title: 'Captura de Pantalla y Ticket Instantáneo',
+        module: 'Soporte y Tickets',
+        path: 'En cualquier pantalla',
+        description: 'Toma una fotografía instantánea de la pantalla actual y abre la ventana de creación de Ticket de Soporte.',
+        instructions: 'Presiona Ctrl + Shift + K cuando tengas un error o requerimiento en pantalla. Los técnicos recibirán la captura en Telegram y te llegará un aviso emergente exclusivo al resolverse.',
+        tags: ['ticket', 'soporte', 'captura', 'pantalla', 'telegram', 'problema', 'requerimiento', 'ctrl shift k']
     },
     {
         id: 'global-confirm-dialog',

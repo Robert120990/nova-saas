@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useUpdate } from '../../context/UpdateContext';
+import { useTickets } from '../../context/TicketContext';
 import { useSafeNavigate } from '../../hooks/useSafeNavigate';
-import { LogOut, Building2, GitBranch, ChevronRight, ChevronDown, Check, X, Save, Eye, EyeOff, Menu, Sparkles } from 'lucide-react';
+import { LogOut, Building2, GitBranch, ChevronRight, ChevronDown, Check, X, Save, Eye, EyeOff, Menu, Sparkles, Ticket } from 'lucide-react';
 import NotificationBell from '../ui/NotificationBell';
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
@@ -11,8 +12,8 @@ import { toast } from 'sonner';
 const Navbar = ({ onToggleMobileMenu }) => {
     const { logout, user, selectContext, updateUser } = useAuth();
     const { updateAvailable, updateInfo, openModal } = useUpdate();
+    const { openQuickTicket } = useTickets();
     const { confirmAction } = useSafeNavigate();
-    console.log('Navbar user object:', user);
     const [isMenuOpen, setIsMenuOpen] = useState(false);
 
     // Profile modal state
@@ -216,15 +217,21 @@ const Navbar = ({ onToggleMobileMenu }) => {
                     </button>
                 )}
 
+                <button
+                    type="button"
+                    onClick={() => openQuickTicket({ autoCapture: true })}
+                    className="w-10 h-10 flex items-center justify-center text-slate-400 hover:text-indigo-400 bg-slate-800/30 hover:bg-indigo-500/15 rounded-xl relative transition-all cursor-pointer"
+                    title="Crear Ticket de Soporte con Captura de Pantalla (Ctrl+Shift+K)"
+                >
+                    <Ticket size={19} />
+                </button>
+
                 <NotificationBell />
 
                 <div className="hidden md:block h-8 w-px bg-slate-800/60" />
 
                 <div className="flex items-center gap-1.5 sm:gap-3 bg-slate-800/20 p-1 sm:pl-3 sm:pr-1 sm:py-1 rounded-xl border border-slate-700/30 shrink-0">
-                    <button 
-                        onClick={openProfile}
-                        className="flex items-center gap-2.5 hover:opacity-80 transition-opacity text-left shrink-0"
-                    >
+                    <button onClick={openProfile} className="flex items-center gap-2.5 hover:opacity-80 transition-opacity text-left shrink-0">
                         <div className="hidden md:flex flex-col items-end leading-tight">
                             <span className="text-sm font-bold text-slate-200">{user?.nombre || user?.username}</span>
                             <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">{user?.role}</span>
@@ -250,11 +257,9 @@ const Navbar = ({ onToggleMobileMenu }) => {
                 </div>
             </div>
 
-            {/* Profile Modal */}
             {showProfile && (
                 <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
                     <div className="w-full max-w-md bg-[#0f172a] border border-slate-700/50 rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
-                        {/* Header */}
                         <div className="flex items-center justify-between px-6 py-5 border-b border-slate-800 bg-[#1e293b]/30">
                             <div>
                                 <h2 className="text-lg font-bold text-white">Mi Perfil</h2>
@@ -265,72 +270,33 @@ const Navbar = ({ onToggleMobileMenu }) => {
                             </button>
                         </div>
 
-                        {/* Form */}
                         <form onSubmit={handleSaveProfile} className="p-6 space-y-4">
                             <div className="space-y-1.5">
                                 <label className="text-xs font-bold text-slate-400">Nombre completo</label>
-                                <input
-                                    value={profileForm.nombre}
-                                    onChange={e => setProfileForm(p => ({ ...p, nombre: e.target.value }))}
-                                    className="w-full bg-[#1e293b]/60 border border-slate-700/50 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all"
-                                    placeholder="Tu nombre..."
-                                />
+                                <input value={profileForm.nombre} onChange={e => setProfileForm(p => ({ ...p, nombre: e.target.value }))} className="w-full bg-[#1e293b]/60 border border-slate-700/50 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all" placeholder="Tu nombre..." />
                             </div>
-
                             <div className="space-y-1.5">
                                 <label className="text-xs font-bold text-slate-400">Correo electrónico</label>
-                                <input
-                                    type="email"
-                                    value={profileForm.email}
-                                    onChange={e => setProfileForm(p => ({ ...p, email: e.target.value }))}
-                                    className="w-full bg-[#1e293b]/60 border border-slate-700/50 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all"
-                                    placeholder="correo@ejemplo.com"
-                                />
+                                <input type="email" value={profileForm.email} onChange={e => setProfileForm(p => ({ ...p, email: e.target.value }))} className="w-full bg-[#1e293b]/60 border border-slate-700/50 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all" placeholder="correo@ejemplo.com" />
                             </div>
-
                             <div className="space-y-1.5">
                                 <label className="text-xs font-bold text-slate-400">Nombre de usuario</label>
-                                <input
-                                    value={profileForm.username}
-                                    onChange={e => setProfileForm(p => ({ ...p, username: e.target.value }))}
-                                    className="w-full bg-[#1e293b]/60 border border-slate-700/50 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all"
-                                    placeholder="username"
-                                />
+                                <input value={profileForm.username} onChange={e => setProfileForm(p => ({ ...p, username: e.target.value }))} className="w-full bg-[#1e293b]/60 border border-slate-700/50 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all" placeholder="username" />
                             </div>
-
                             <div className="space-y-1.5">
                                 <label className="text-xs font-bold text-slate-400">Nueva contraseña <span className="text-slate-600 font-normal">(dejar en blanco para no cambiar)</span></label>
                                 <div className="relative">
-                                    <input
-                                        type={showPassword ? 'text' : 'password'}
-                                        value={profileForm.password}
-                                        onChange={e => setProfileForm(p => ({ ...p, password: e.target.value }))}
-                                        className="w-full bg-[#1e293b]/60 border border-slate-700/50 rounded-xl px-4 py-2.5 pr-12 text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all"
-                                        placeholder="••••••••"
-                                    />
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowPassword(v => !v)}
-                                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors"
-                                    >
+                                    <input type={showPassword ? 'text' : 'password'} value={profileForm.password} onChange={e => setProfileForm(p => ({ ...p, password: e.target.value }))} className="w-full bg-[#1e293b]/60 border border-slate-700/50 rounded-xl px-4 py-2.5 pr-12 text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all" placeholder="••••••••" />
+                                    <button type="button" onClick={() => setShowPassword(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors">
                                         {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                                     </button>
                                 </div>
                             </div>
-
                             <div className="flex justify-end gap-3 pt-2">
-                                <button
-                                    type="button"
-                                    onClick={() => setShowProfile(false)}
-                                    className="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl text-sm transition-colors"
-                                >
+                                <button type="button" onClick={() => setShowProfile(false)} className="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl text-sm transition-colors">
                                     Cancelar
                                 </button>
-                                <button
-                                    type="submit"
-                                    disabled={saving}
-                                    className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-sm transition-all flex items-center gap-2 shadow-lg shadow-indigo-600/20 disabled:opacity-50 active:scale-95"
-                                >
+                                <button type="submit" disabled={saving} className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-sm transition-all flex items-center gap-2 shadow-lg shadow-indigo-600/20 disabled:opacity-50 active:scale-95">
                                     <Save size={16} />
                                     {saving ? 'Guardando...' : 'Guardar cambios'}
                                 </button>

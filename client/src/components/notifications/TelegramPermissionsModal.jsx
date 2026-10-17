@@ -23,6 +23,7 @@ export default function TelegramPermissionsModal({ open, onClose, binding, branc
   const [receiveAlerts, setReceiveAlerts] = useState(true);
   const [receiveInventory, setReceiveInventory] = useState(true);
   const [receiveDte, setReceiveDte] = useState(true);
+  const [receiveSupportTickets, setReceiveSupportTickets] = useState(true);
 
   useEffect(() => {
     if (binding) {
@@ -41,6 +42,7 @@ export default function TelegramPermissionsModal({ open, onClose, binding, branc
       setReceiveAlerts(binding.receive_alerts !== 0);
       setReceiveInventory(binding.receive_inventory_alerts !== 0);
       setReceiveDte(binding.receive_dte_alerts !== 0);
+      setReceiveSupportTickets(binding.receive_support_tickets !== 0);
     }
   }, [binding]);
 
@@ -79,7 +81,8 @@ export default function TelegramPermissionsModal({ open, onClose, binding, branc
       receive_reopen_requests: receiveReopen ? 1 : 0,
       receive_alerts: receiveAlerts ? 1 : 0,
       receive_inventory_alerts: receiveInventory ? 1 : 0,
-      receive_dte_alerts: receiveDte ? 1 : 0
+      receive_dte_alerts: receiveDte ? 1 : 0,
+      receive_support_tickets: receiveSupportTickets ? 1 : 0
     });
   };
 
@@ -250,6 +253,16 @@ export default function TelegramPermissionsModal({ open, onClose, binding, branc
                   className="rounded text-indigo-600 focus:ring-indigo-500 w-4 h-4"
                 />
                 <span className="text-slate-700">Alertas de DTE y Hacienda</span>
+              </label>
+
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={receiveSupportTickets}
+                  onChange={(e) => setReceiveSupportTickets(e.target.checked)}
+                  className="rounded text-indigo-600 focus:ring-indigo-500 w-4 h-4"
+                />
+                <span className="text-slate-700 font-semibold">🎫 Recibir y resolver Tickets de Soporte</span>
               </label>
             </div>
           </div>

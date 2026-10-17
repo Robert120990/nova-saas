@@ -6,6 +6,7 @@ import AIAssistant from '../ui/AIAssistant';
 import CommandPalette from '../ui/CommandPalette';
 import ErrorBoundary from '../ui/ErrorBoundary';
 import { useAuth } from '../../context/AuthContext';
+import { TicketProvider } from '../../context/TicketContext';
 
 const PageLoader = () => (
     <div className="flex flex-col items-center justify-center min-h-[300px] p-8 space-y-3">
@@ -38,7 +39,7 @@ const Layout = () => {
 
     useEffect(() => {
         const handleKeyDown = (e) => {
-            if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+            if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'k') {
                 e.preventDefault();
                 setPaletteOpen(prev => !prev);
             }
@@ -49,32 +50,34 @@ const Layout = () => {
     }, []);
 
     return (
-        <div className="flex app-layout-viewport bg-slate-50 overflow-hidden text-slate-900">
-            <Sidebar 
-                onOpenSearch={openPalette} 
-                isMobileOpen={mobileMenuOpen} 
-                onCloseMobile={closeMobileMenu} 
-            />
-            <div className="flex-1 flex flex-col min-w-0 min-h-0 h-full overflow-hidden">
-                <Navbar onToggleMobileMenu={toggleMobileMenu} />
-                <main 
-                    ref={mainRef}
-                    id="main-scroll-container"
-                    className="flex-1 min-h-0 min-w-0 overflow-y-auto p-3 sm:p-6 md:p-8 touch-pan-y"
-                    style={{ WebkitOverflowScrolling: 'touch' }}
-                >
-                    <div className="max-w-7xl mx-auto min-h-0" key={`${user?.id}:${user?.company_id}:${user?.branch_id}:${location.pathname}`}>
-                        <ErrorBoundary showDetails>
-                            <Suspense fallback={<PageLoader />}>
-                                <Outlet />
-                            </Suspense>
-                        </ErrorBoundary>
-                    </div>
-                </main>
-                <AIAssistant />
+        <TicketProvider>
+            <div className="flex app-layout-viewport bg-slate-50 overflow-hidden text-slate-900">
+                <Sidebar 
+                    onOpenSearch={openPalette} 
+                    isMobileOpen={mobileMenuOpen} 
+                    onCloseMobile={closeMobileMenu} 
+                />
+                <div className="flex-1 flex flex-col min-w-0 min-h-0 h-full overflow-hidden">
+                    <Navbar onToggleMobileMenu={toggleMobileMenu} />
+                    <main 
+                        ref={mainRef}
+                        id="main-scroll-container"
+                        className="flex-1 min-h-0 min-w-0 overflow-y-auto p-3 sm:p-6 md:p-8 touch-pan-y"
+                        style={{ WebkitOverflowScrolling: 'touch' }}
+                    >
+                        <div className="max-w-7xl mx-auto min-h-0" key={`${user?.id}:${user?.company_id}:${user?.branch_id}:${location.pathname}`}>
+                            <ErrorBoundary showDetails>
+                                <Suspense fallback={<PageLoader />}>
+                                    <Outlet />
+                                </Suspense>
+                            </ErrorBoundary>
+                        </div>
+                    </main>
+                    <AIAssistant />
+                </div>
+                <CommandPalette isOpen={paletteOpen} onClose={closePalette} />
             </div>
-            <CommandPalette isOpen={paletteOpen} onClose={closePalette} />
-        </div>
+        </TicketProvider>
     );
 };
 

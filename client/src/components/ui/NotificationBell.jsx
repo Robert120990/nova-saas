@@ -93,6 +93,11 @@ const NotificationBell = () => {
               window.__onVersionReceived(data);
             }
           }
+          if (evt && evt.startsWith('ticket_')) {
+            if (typeof window.__onTicketEvent === 'function') {
+              window.__onTicketEvent(evt, data);
+            }
+          }
           if (evt === 'new_notification') {
             queryClient.invalidateQueries({ queryKey: ['notifications-unread-count'] });
             if (isOpen) {

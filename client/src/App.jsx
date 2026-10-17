@@ -207,6 +207,7 @@ const CrmQuotations = lazyWithRetry(() => import('./pages/CRM/CrmQuotations'));
 
 // AI Agent Background Tasks
 const AiAgentTasks = lazyWithRetry(() => import('./pages/AiAgentTasks'));
+const SupportTickets = lazyWithRetry(() => import('./pages/SupportTickets'));
 
 import Layout from './components/layout/Layout';
 
@@ -340,6 +341,7 @@ function App() {
                         <Route path="/seguridad/bitacora" element={<AuditLog />} />
                         <Route path="/seguridad/conectados" element={<ConnectedUsers />} />
                         <Route path="/seguridad/atajos" element={<KeyboardShortcuts />} />
+                        <Route path="/soporte/tickets" element={<SupportTickets />} />
                         <Route path="/changelog" element={<Changelog />} />
                         <Route path="/notificaciones" element={<NotificacionesLista />} />
 
