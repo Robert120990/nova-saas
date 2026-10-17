@@ -1,21 +1,13 @@
 import { useState, useRef, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
-import {
-    X, Ticket, CheckCircle2, Clock, Play, Lock, Send,
-    MessageSquare, Image as ImageIcon, User, Building2, Globe, Sparkles, Paperclip, Bot
-} from 'lucide-react';
+import { X, Ticket, CheckCircle2, Clock, Play, Lock, Send, MessageSquare, Image as ImageIcon, User, Building2, Globe, Sparkles, Paperclip, Bot } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatDateTime } from '../../utils/dateUtils';
 import { compressTicketImage } from '../../utils/ticketImageCompressor';
 import TicketDiagnosticsPanel from './TicketDiagnosticsPanel';
 
-const STATUS_BADGES = {
-    abierto: 'bg-amber-500/15 text-amber-600 border-amber-500/30',
-    en_proceso: 'bg-sky-500/15 text-sky-600 border-sky-500/30',
-    resuelto: 'bg-emerald-500/15 text-emerald-600 border-emerald-500/30',
-    cerrado: 'bg-slate-500/15 text-slate-600 border-slate-500/30'
-};
+const STATUS_BADGES = { abierto: 'bg-amber-500/15 text-amber-600 border-amber-500/30', en_proceso: 'bg-sky-500/15 text-sky-600 border-sky-500/30', resuelto: 'bg-emerald-500/15 text-emerald-600 border-emerald-500/30', cerrado: 'bg-slate-500/15 text-slate-600 border-slate-500/30' };
 const STATUS_LABELS = { abierto: 'Abierto', en_proceso: 'En Proceso', resuelto: 'Resuelto', cerrado: 'Cerrado' };
 
 const TicketDetailModal = ({ open, ticketId, onClose, onUpdated, canManage = false }) => {
@@ -26,6 +18,7 @@ const TicketDetailModal = ({ open, ticketId, onClose, onUpdated, canManage = fal
     const [resolvedVersion, setResolvedVersion] = useState('');
     const [showResolveBox, setShowResolveBox] = useState(false);
     const [aiNotes, setAiNotes] = useState('');
+    const [previewImageUrl, setPreviewImageUrl] = useState(null);
     const replyFileRef = useRef(null);
 
     const { data: ticket, isLoading } = useQuery({
@@ -222,12 +215,12 @@ const TicketDetailModal = ({ open, ticketId, onClose, onUpdated, canManage = fal
                                     <div className={`grid gap-2.5 ${parsedAttachments.length > 1 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
                                         {(Array.isArray(parsedAttachments) ? parsedAttachments : []).map((att, idx) => (
                                             <div key={idx} className="bg-slate-950/90 border border-slate-800 rounded-lg p-2 flex flex-col gap-1.5">
-                                                <a href={att.url} target="_blank" rel="noreferrer" className="relative flex items-center justify-center bg-black/40 rounded overflow-hidden max-h-44">
+                                                <button type="button" onClick={() => setPreviewImageUrl(att.url)} className="relative flex items-center justify-center bg-black/40 rounded overflow-hidden max-h-44 cursor-zoom-in">
                                                     <img src={att.url} alt={`Captura ${idx + 1}`} className="max-h-44 w-auto object-contain hover:scale-[1.02] transition-transform" />
                                                     {att.annotated && (
                                                         <span className="absolute top-1.5 left-1.5 px-2 py-0.5 rounded bg-indigo-600/90 text-[10px] font-bold text-white">Con trazos / señalización</span>
                                                     )}
-                                                </a>
+                                                </button>
                                                 {att.caption && <p className="text-[11px] text-slate-300 font-medium px-1">&ldquo;{att.caption}&rdquo;</p>}
                                             </div>
                                         ))}
@@ -308,9 +301,9 @@ const TicketDetailModal = ({ open, ticketId, onClose, onUpdated, canManage = fal
                                         </div>
                                         <p className="text-[13px] text-slate-700 whitespace-pre-line">{msg.message}</p>
                                         {msg.attachment_url && (
-                                            <a href={msg.attachment_url} target="_blank" rel="noreferrer" className="mt-2 inline-block">
+                                            <button type="button" onClick={() => setPreviewImageUrl(msg.attachment_url)} className="mt-2 inline-block cursor-zoom-in">
                                                 <img src={msg.attachment_url} alt="Adjunto" className="max-h-32 rounded-lg border border-slate-200" />
-                                            </a>
+                                            </button>
                                         )}
                                     </div>
                                 ))}
@@ -334,6 +327,15 @@ const TicketDetailModal = ({ open, ticketId, onClose, onUpdated, canManage = fal
                     </div>
                 )}
             </div>
+            {previewImageUrl && (
+                <div className="fixed inset-0 z-[9999] bg-black/90 flex flex-col items-center justify-center p-4" onClick={(e) => { e.stopPropagation(); setPreviewImageUrl(null); }}>
+                    <div className="flex items-center gap-3 mb-3">
+                        <a href={previewImageUrl} download onClick={(e) => e.stopPropagation()} className="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold">Descargar Imagen</a>
+                        <button type="button" onClick={() => setPreviewImageUrl(null)} className="px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold">Cerrar Vista (Esc)</button>
+                    </div>
+                    <img src={previewImageUrl} alt="Vista ampliada" onClick={(e) => e.stopPropagation()} className="max-w-full max-h-[85vh] object-contain rounded-xl border border-slate-700 shadow-2xl" />
+                </div>
+            )}
         </div>
     );
 };

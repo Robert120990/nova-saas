@@ -20,16 +20,31 @@ function getCurrentSystemVersion() {
     return '2.08';
 }
 
+function toApiUploadUrl(url) {
+    if (!url || typeof url !== 'string') return url;
+    return url.startsWith('/uploads/') ? `/api${url}` : url;
+}
+
 function normalizeTicketRow(row, messages = undefined) {
     if (!row) return null;
+    let parsedAtt = row.attachments_json;
+    if (typeof parsedAtt === 'string') {
+        try { parsedAtt = JSON.parse(parsedAtt); } catch { parsedAtt = null; }
+    }
+    if (Array.isArray(parsedAtt)) {
+        parsedAtt = parsedAtt.map((a) => (a && a.url ? { ...a, url: toApiUploadUrl(a.url) } : a));
+    }
     const base = {
         ...row,
         code: row.ticket_code,
-        creator_name: row.user_name
+        creator_name: row.user_name,
+        screenshot_url: toApiUploadUrl(row.screenshot_url),
+        attachments_json: parsedAtt || row.attachments_json
     };
     if (messages !== undefined) {
         base.messages = messages.map((m) => ({
             ...m,
+            attachment_url: toApiUploadUrl(m.attachment_url),
             sender_role: m.sender_type === 'user' ? 'user' : 'tech',
             source: m.sender_type === 'telegram' ? 'telegram' : 'web'
         }));
@@ -273,6 +288,11 @@ async function updateTicketStatus(ticketId, {
         } catch {
             // Ignore
         }
+    }
+
+    if (updatedByType !== 'telegram' && (status === 'resuelto' || status === 'en_proceso')) {
+        const { notifyTicketStatusToTelegram } = require('./ticketTelegram.service');
+        notifyTicketStatusToTelegram(updatedTicket).catch(() => {});
     }
 
     try {

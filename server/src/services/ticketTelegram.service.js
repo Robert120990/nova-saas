@@ -19,19 +19,31 @@ async function getTechChatsForTicket(companyId, branchId) {
     const active = settingsRows.length > 0 ? (settingsRows[0].support_tickets_active !== 0) : true;
     if (!active) return [];
 
+    // Los usuarios técnicos globales (Roberto y Raul) siempre reciben todos los tickets de cualquier empresa/sucursal,
+    // además de los enlaces configurados con receive_support_tickets = 1 para la empresa del ticket.
     const [chats] = await pool.query(
-        `SELECT DISTINCT chat_id FROM telegram_chat_bindings
-         WHERE (company_id = ? OR company_id IS NULL)
-           AND (branch_id = ? OR branch_id IS NULL)
-           AND receive_alerts = 1
-           AND COALESCE(receive_support_tickets, 1) = 1`,
-        [companyId, branchId]
+        `SELECT DISTINCT chat_id, nombre, username FROM telegram_chat_bindings
+         WHERE COALESCE(receive_support_tickets, 1) = 1
+           AND (
+               LOWER(COALESCE(nombre, '')) LIKE '%robert%'
+               OR LOWER(COALESCE(username, '')) LIKE '%robert%'
+               OR LOWER(COALESCE(nombre, '')) LIKE '%raul%'
+               OR LOWER(COALESCE(nombre, '')) LIKE '%raúl%'
+               OR LOWER(COALESCE(username, '')) LIKE '%raul%'
+               OR LOWER(COALESCE(username, '')) LIKE '%rrsm%'
+               OR (
+                   receive_alerts = 1
+                   AND (company_id = ? OR company_id IS NULL)
+                   AND (branch_id = ? OR branch_id IS NULL)
+               )
+           )`,
+        [companyId || null, branchId || null]
     );
     if (chats.length > 0) return chats;
 
     const [globalChats] = await pool.query(
-        `SELECT DISTINCT chat_id FROM telegram_chat_bindings
-         WHERE branch_id IS NULL AND receive_alerts = 1 AND COALESCE(receive_support_tickets, 1) = 1`
+        `SELECT DISTINCT chat_id, nombre, username FROM telegram_chat_bindings
+         WHERE COALESCE(receive_support_tickets, 1) = 1`
     );
     return globalChats;
 }
@@ -150,12 +162,7 @@ async function notifyTicketCommentToTelegram(ticket, senderName, commentText, at
     const chats = await getTechChatsForTicket(ticket.company_id, ticket.branch_id);
     if (chats.length === 0) return;
 
-    const msg =
-        `💬 *Nuevo comentario en Ticket #${escapeMd(ticket.ticket_code)}*\n` +
-        `📌 *Asunto:* ${escapeMd(ticket.subject)}\n` +
-        `👤 *Usuario:* ${escapeMd(senderName)}\n\n` +
-        `"${escapeMd(commentText)}"`;
-
+    const msg = `💬 *Nuevo comentario en Ticket #${escapeMd(ticket.ticket_code)}*\n📌 *Asunto:* ${escapeMd(ticket.subject)}\n👤 *Usuario:* ${escapeMd(senderName)}\n\n"${escapeMd(commentText)}"`;
     const replyMarkup = buildTicketInlineKeyboard(ticket.id, ticket.status);
     for (const chat of chats) {
         let sentPhoto = false;
@@ -168,16 +175,25 @@ async function notifyTicketCommentToTelegram(ticket, senderName, commentText, at
     }
 }
 
+async function notifyTicketStatusToTelegram(ticket) {
+    if (!ticket) return;
+    const chats = await getTechChatsForTicket(ticket.company_id, ticket.branch_id);
+    if (chats.length === 0) return;
+    const msg = ticket.status === 'resuelto'
+        ? `✅ *Ticket #${escapeMd(ticket.ticket_code)} RESUELTO*\n📌 *Asunto:* ${escapeMd(ticket.subject)}\n🛠️ *Resuelto por:* ${escapeMd(ticket.resolved_by_name || 'Soporte Técnico')}\n📝 *Solución:* ${escapeMd(ticket.resolution_notes || 'Mejora/corrección aplicada.')}\n🔔 _Pop-up exclusivo enviado a ${escapeMd(ticket.user_name)}._`
+        : `🛠️ *Ticket #${escapeMd(ticket.ticket_code)} — ${escapeMd(String(ticket.status || '').toUpperCase())}*\n📌 *Asunto:* ${escapeMd(ticket.subject)}\n👤 *Asignado:* ${escapeMd(ticket.assigned_name || 'Soporte Técnico')}`;
+    for (const chat of chats) {
+        await telegramService.sendMessage(chat.chat_id, msg, { parse_mode: 'Markdown' }).catch(() => {});
+    }
+}
+
 async function handleTicketTelegramCallback(cb) {
     const data = cb?.data || '';
     if (!data.startsWith('ticket_')) return false;
-
     const chatId = cb.message?.chat?.id;
     const techName = cb.from?.first_name || cb.from?.username || 'Soporte Técnico';
     const { getTicketById, updateTicketStatus } = require('./ticket.service');
-
     telegramService.apiCall('answerCallbackQuery', { callback_query_id: cb.id }).catch(() => {});
-
     const [action, rawId] = data.split(':');
     const ticketId = parseInt(rawId, 10);
     if (isNaN(ticketId)) return true;
@@ -189,33 +205,14 @@ async function handleTicketTelegramCallback(cb) {
     }
 
     if (action === 'ticket_take') {
-        await updateTicketStatus(ticketId, {
-            status: 'en_proceso',
-            assignedName: `${techName} (Telegram)`,
-            updatedByType: 'telegram'
-        });
-        await telegramService.sendMessage(
-            chatId,
-            `🛠️ *Ticket #${escapeMd(ticket.ticket_code)} en proceso*\nAsignado a: *${escapeMd(techName)}*\nAsunto: ${escapeMd(ticket.subject)}`,
-            { parse_mode: 'Markdown' }
-        ).catch(() => {});
+        await updateTicketStatus(ticketId, { status: 'en_proceso', assignedName: `${techName} (Telegram)`, updatedByType: 'telegram' });
+        await telegramService.sendMessage(chatId, `🛠️ *Ticket #${escapeMd(ticket.ticket_code)} en proceso*\nAsignado a: *${escapeMd(techName)}*\nAsunto: ${escapeMd(ticket.subject)}`, { parse_mode: 'Markdown' }).catch(() => {});
         return true;
     }
 
     if (action === 'ticket_resolve') {
-        await updateTicketStatus(ticketId, {
-            status: 'resuelto',
-            resolvedByName: `${techName} (Telegram)`,
-            resolutionNotes: 'El equipo técnico ha realizado los ajustes solicitados y resuelto tu ticket.',
-            updatedByType: 'telegram'
-        });
-        await telegramService.sendMessage(
-            chatId,
-            `✅ *Ticket #${escapeMd(ticket.ticket_code)} MARCADO COMO RESUELTO*\n` +
-            `📌 *Asunto:* ${escapeMd(ticket.subject)}\n` +
-            `🔔 _Se ha enviado automáticamente el pop-up de resolución únicamente a ${escapeMd(ticket.user_name)}._`,
-            { parse_mode: 'Markdown' }
-        ).catch(() => {});
+        await updateTicketStatus(ticketId, { status: 'resuelto', resolvedByName: `${techName} (Telegram)`, resolutionNotes: 'El equipo técnico ha realizado los ajustes solicitados y resuelto tu ticket.', updatedByType: 'telegram' });
+        await telegramService.sendMessage(chatId, `✅ *Ticket #${escapeMd(ticket.ticket_code)} MARCADO COMO RESUELTO*\n📌 *Asunto:* ${escapeMd(ticket.subject)}\n🔔 _Se ha enviado automáticamente el pop-up de resolución únicamente a ${escapeMd(ticket.user_name)}._`, { parse_mode: 'Markdown' }).catch(() => {});
         return true;
     }
 
@@ -225,17 +222,13 @@ async function handleTicketTelegramCallback(cb) {
             const now = Date.now();
             for (const [k, v] of pendingTechActions.entries()) { if (now > v.expiresAt) pendingTechActions.delete(k); }
         }
-        pendingTechActions.set(chatId, {
-            action: isResolve ? 'resolve_note' : 'comment',
-            ticketId, ticketCode: ticket.ticket_code, techName, expiresAt: Date.now() + 10 * 60 * 1000
-        });
+        pendingTechActions.set(chatId, { action: isResolve ? 'resolve_note' : 'comment', ticketId, ticketCode: ticket.ticket_code, techName, expiresAt: Date.now() + 10 * 60 * 1000 });
         const promptText = isResolve
             ? `✍️ *Resolver Ticket #${escapeMd(ticket.ticket_code)} con nota*\nEscribe qué solución aplicaste para enviársela en el pop-up a *${escapeMd(ticket.user_name)}* (o /cancelar):`
             : `💬 *Comentar en Ticket #${escapeMd(ticket.ticket_code)}*\nEscribe el mensaje para *${escapeMd(ticket.user_name)}* (o /cancelar):`;
         await telegramService.sendMessage(chatId, promptText, { parse_mode: 'Markdown' }).catch(() => {});
         return true;
     }
-
     return false;
 }
 
@@ -251,19 +244,14 @@ async function handleTicketTelegramText(chatId, text, from) {
     }
 
     if (/^\/tickets\b/i.test(trimmed)) {
-        const [rows] = await pool.query(
-            `SELECT id, ticket_code, subject, priority, status, user_name
-             FROM support_tickets WHERE status IN ('abierto', 'en_proceso')
-             ORDER BY FIELD(priority, 'urgente', 'alta', 'media', 'baja'), created_at DESC LIMIT 10`
-        );
+        const [rows] = await pool.query(`SELECT id, ticket_code, subject, priority, status, user_name FROM support_tickets WHERE status IN ('abierto', 'en_proceso') ORDER BY FIELD(priority, 'urgente', 'alta', 'media', 'baja'), created_at DESC LIMIT 10`);
         if (rows.length === 0) {
             await telegramService.sendMessage(chatId, '🎉 No hay tickets pendientes o en proceso en este momento.');
             return true;
         }
         let listMsg = `🎫 *Tickets Activos (${rows.length}):*\n\n`;
         for (const r of rows) {
-            const stIcon = r.status === 'en_proceso' ? '🛠️' : '🆕';
-            listMsg += `${stIcon} *#${escapeMd(r.ticket_code)}* (${r.priority.toUpperCase()}) — ${escapeMd(r.subject)} _(${escapeMd(r.user_name)})_\n`;
+            listMsg += `${r.status === 'en_proceso' ? '🛠️' : '🆕'} *#${escapeMd(r.ticket_code)}* (${r.priority.toUpperCase()}) — ${escapeMd(r.subject)} _(${escapeMd(r.user_name)})_\n`;
         }
         listMsg += `\n_Para resolver escribe:_ \`/resolver TKT-0001 Detalle de la solución\``;
         await telegramService.sendMessage(chatId, listMsg, { parse_mode: 'Markdown' });
@@ -278,14 +266,8 @@ async function handleTicketTelegramText(chatId, text, from) {
             return true;
         }
         const note = (resolveMatch[2] || '').trim() || 'El equipo técnico ha aplicado los cambios y resuelto tu ticket.';
-        await updateTicketStatus(ticket.id, {
-            status: 'resuelto', resolvedByName: `${techName} (Telegram)`, resolutionNotes: note, updatedByType: 'telegram'
-        });
-        await telegramService.sendMessage(
-            chatId,
-            `✅ *Ticket #${escapeMd(ticket.ticket_code)} RESUELTO*\n📝 *Solución:* ${escapeMd(note)}\n🔔 _Pop-up enviado únicamente a ${escapeMd(ticket.user_name)}._`,
-            { parse_mode: 'Markdown' }
-        );
+        await updateTicketStatus(ticket.id, { status: 'resuelto', resolvedByName: `${techName} (Telegram)`, resolutionNotes: note, updatedByType: 'telegram' });
+        await telegramService.sendMessage(chatId, `✅ *Ticket #${escapeMd(ticket.ticket_code)} RESUELTO*\n📝 *Solución:* ${escapeMd(note)}\n🔔 _Pop-up enviado únicamente a ${escapeMd(ticket.user_name)}._`, { parse_mode: 'Markdown' });
         return true;
     }
 
@@ -293,31 +275,17 @@ async function handleTicketTelegramText(chatId, text, from) {
     if (pending) {
         pendingTechActions.delete(chatId);
         if (Date.now() > pending.expiresAt || trimmed.startsWith('/')) return false;
-
         if (pending.action === 'resolve_note') {
-            const updated = await updateTicketStatus(pending.ticketId, {
-                status: 'resuelto', resolvedByName: `${techName} (Telegram)`, resolutionNotes: trimmed, updatedByType: 'telegram'
-            });
-            await telegramService.sendMessage(
-                chatId,
-                `✅ *Ticket #${escapeMd(updated.ticket_code)} RESUELTO CON NOTA*\n📝 *Nota:* ${escapeMd(trimmed)}\n🔔 _Notificado únicamente a ${escapeMd(updated.user_name)}._`,
-                { parse_mode: 'Markdown' }
-            );
+            const updated = await updateTicketStatus(pending.ticketId, { status: 'resuelto', resolvedByName: `${techName} (Telegram)`, resolutionNotes: trimmed, updatedByType: 'telegram' });
+            await telegramService.sendMessage(chatId, `✅ *Ticket #${escapeMd(updated.ticket_code)} RESUELTO CON NOTA*\n📝 *Nota:* ${escapeMd(trimmed)}\n🔔 _Notificado únicamente a ${escapeMd(updated.user_name)}._`, { parse_mode: 'Markdown' });
             return true;
         }
         if (pending.action === 'comment') {
-            const updated = await addTicketMessage(pending.ticketId, {
-                senderType: 'telegram', senderName: `${techName} (Telegram)`, message: trimmed
-            });
-            await telegramService.sendMessage(
-                chatId,
-                `💬 Comentario enviado a *${escapeMd(updated.user_name)}* en el ticket *#${escapeMd(updated.ticket_code)}*.`,
-                { parse_mode: 'Markdown' }
-            );
+            const updated = await addTicketMessage(pending.ticketId, { senderType: 'telegram', senderName: `${techName} (Telegram)`, message: trimmed });
+            await telegramService.sendMessage(chatId, `💬 Comentario enviado a *${escapeMd(updated.user_name)}* en el ticket *#${escapeMd(updated.ticket_code)}*.`, { parse_mode: 'Markdown' });
             return true;
         }
     }
-
     return false;
 }
 
@@ -325,6 +293,7 @@ module.exports = {
     resolveLocalUploadPath,
     notifyNewTicketToTelegram,
     notifyTicketCommentToTelegram,
+    notifyTicketStatusToTelegram,
     handleTicketTelegramCallback,
     handleTicketTelegramText
 };

@@ -294,6 +294,7 @@ const updateStatus = async (req, res) => {
             updatedByType: isTech ? 'tech' : 'user',
             updatedById: req.user.id
         });
+        await require('../services/ticketAiTaskBridge.service').syncTicketToAiTask(updated);
 
         res.json({
             success: true,
