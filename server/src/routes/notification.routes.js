@@ -27,6 +27,7 @@ router.post('/telegram/test', checkPermission(notifAdminPerms), telegramControll
 router.put('/telegram/daily-briefing', checkPermission(notifAdminPerms), telegramController.updateDailyBriefingSetting);
 router.post('/telegram/daily-briefing/test', checkPermission(notifAdminPerms), telegramController.testDailyBriefing);
 router.put('/telegram/reopen-requests', checkPermission(notifAdminPerms), telegramController.updateReopenRequestsSetting);
+router.put('/telegram/support-tickets', checkPermission(notifAdminPerms), telegramController.updateSupportTicketsSetting);
 router.get('/sale-suspicious-settings', checkPermission(notifAdminPerms), telegramController.getSuspiciousSettings);
 router.put('/sale-suspicious-settings', checkPermission(notifAdminPerms), telegramController.saveSuspiciousSettings);
 

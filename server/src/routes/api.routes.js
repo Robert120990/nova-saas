@@ -286,6 +286,7 @@ const notificationRoutes = require('./notification.routes');
 const whatsappRoutes = require('./whatsapp.routes');
 const restaurantRoutes = require('./restaurant.routes');
 const agentTaskRoutes = require('./agentTask.routes');
+const ticketRoutes = require('./ticket.routes');
 
 // Public routes
 router.get('/settings/public', settingsController.getPublicSettings);
@@ -1441,5 +1442,8 @@ router.use('/restaurant', restaurantRoutes);
 
 // AI Agent Background Tasks
 router.use('/agent-tasks', agentTaskRoutes);
+
+// Support Tickets System
+router.use('/tickets', ticketRoutes);
 
 module.exports = router;

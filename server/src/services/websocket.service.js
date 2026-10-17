@@ -46,6 +46,7 @@ function initWebSocket(server, appVersion = 'unknown') {
     wss.on('connection', (ws, req) => {
         const { companyId, user, path } = req.wsContext;
         add(companyClients, companyId, ws);
+        if (user?.id) add(userClients, Number(user.id), ws);
         const versionPayload = typeof currentAppVersion === 'object' && currentAppVersion !== null
             ? currentAppVersion
             : { version: currentAppVersion, commit: currentAppVersion };

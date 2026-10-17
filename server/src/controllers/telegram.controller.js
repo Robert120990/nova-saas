@@ -17,6 +17,7 @@ const getStatus = async (req, res) => {
                     COALESCE(b.can_approve_entries, 0) as can_approve_entries,
                     COALESCE(b.receive_inventory_alerts, 1) as receive_inventory_alerts,
                     COALESCE(b.receive_dte_alerts, 1) as receive_dte_alerts,
+                    COALESCE(b.receive_support_tickets, 1) as receive_support_tickets,
                     COALESCE(c.razon_social, 'Todas las Empresas') as company_nombre,
                     COALESCE(br.nombre, 'Todas las sucursales (Global)') as branch_nombre
              FROM telegram_chat_bindings b
@@ -28,9 +29,10 @@ const getStatus = async (req, res) => {
         );
         const token = await telegramService.getBotToken();
         const botInfo = await telegramService.getMe();
-        const [settingsRows] = await pool.query('SELECT daily_briefing_active, reopen_requests_active FROM telegram_settings WHERE id = 1');
+        const [settingsRows] = await pool.query('SELECT daily_briefing_active, reopen_requests_active, COALESCE(support_tickets_active, 1) as support_tickets_active FROM telegram_settings WHERE id = 1');
         const dailyBriefingActive = settingsRows.length > 0 ? (settingsRows[0].daily_briefing_active !== 0) : true;
         const reopenRequestsActive = settingsRows.length > 0 ? (settingsRows[0].reopen_requests_active !== 0) : true;
+        const supportTicketsActive = settingsRows.length > 0 ? (settingsRows[0].support_tickets_active !== 0) : true;
 
         res.json({
             configured: !!token,
@@ -38,7 +40,8 @@ const getStatus = async (req, res) => {
             botInfo,
             bindings,
             dailyBriefingActive,
-            reopenRequestsActive
+            reopenRequestsActive,
+            supportTicketsActive
         });
     } catch (error) {
         console.error('Error getTelegramStatus:', error);
@@ -78,7 +81,7 @@ const updateBinding = async (req, res) => {
         const isSuperAdmin = req.user?.role === 'SuperAdmin';
         const {
             receive_alerts, receive_reopen_requests, branch_id, company_id,
-            allowed_agents, can_approve_entries, receive_inventory_alerts, receive_dte_alerts
+            allowed_agents, can_approve_entries, receive_inventory_alerts, receive_dte_alerts, receive_support_tickets
         } = req.body;
         const updates = [];
         const params = [];
@@ -92,13 +95,11 @@ const updateBinding = async (req, res) => {
             updates.push('company_id = ?');
             params.push(parseInt(company_id, 10));
         }
-        if (allowed_agents !== undefined) {
-            updates.push('allowed_agents = ?');
-            params.push(JSON.stringify(allowed_agents));
-        }
+        if (allowed_agents !== undefined) { updates.push('allowed_agents = ?'); params.push(JSON.stringify(allowed_agents)); }
         if (can_approve_entries !== undefined) { updates.push('can_approve_entries = ?'); params.push(can_approve_entries ? 1 : 0); }
         if (receive_inventory_alerts !== undefined) { updates.push('receive_inventory_alerts = ?'); params.push(receive_inventory_alerts ? 1 : 0); }
         if (receive_dte_alerts !== undefined) { updates.push('receive_dte_alerts = ?'); params.push(receive_dte_alerts ? 1 : 0); }
+        if (receive_support_tickets !== undefined) { updates.push('receive_support_tickets = ?'); params.push(receive_support_tickets ? 1 : 0); }
         if (updates.length === 0) return res.json({ message: 'Sin cambios' });
 
         let whereClause = 'WHERE id = ?';
@@ -287,14 +288,9 @@ const saveSuspiciousSettings = async (req, res) => {
 
 const updateDailyBriefingSetting = async (req, res) => {
     try {
-        if (req.user?.role !== 'SuperAdmin') {
-            return res.status(403).json({ message: 'Solo SuperAdmin puede cambiar la configuración global' });
-        }
+        if (req.user?.role !== 'SuperAdmin') return res.status(403).json({ message: 'Solo SuperAdmin puede cambiar la configuración global' });
         const val = req.body.active ? 1 : 0;
-        await pool.query(
-            'INSERT INTO telegram_settings (id, daily_briefing_active) VALUES (1, ?) ON DUPLICATE KEY UPDATE daily_briefing_active = VALUES(daily_briefing_active)',
-            [val]
-        );
+        await pool.query('INSERT INTO telegram_settings (id, daily_briefing_active) VALUES (1, ?) ON DUPLICATE KEY UPDATE daily_briefing_active = VALUES(daily_briefing_active)', [val]);
         res.json({ success: true, message: `Reporte diario matutino ${val ? 'activado' : 'desactivado'}` });
     } catch (error) {
         console.error('Error updateDailyBriefingSetting:', error);
@@ -308,10 +304,7 @@ const testDailyBriefing = async (req, res) => {
         const result = isSuperAdmin
             ? await telegramDailyBriefingService.sendAllDailyBriefings({ manual: true })
             : await telegramDailyBriefingService.sendDailyBriefingForCompany(req.company_id, { manual: true });
-
-        if (result.success) {
-            return res.json({ success: true, message: result.message || 'Reporte de prueba enviado exitosamente a Telegram' });
-        }
+        if (result.success) return res.json({ success: true, message: result.message || 'Reporte de prueba enviado exitosamente a Telegram' });
         res.status(400).json({ success: false, message: result.message || 'No se pudo enviar el reporte' });
     } catch (error) {
         console.error('Error testDailyBriefing:', error);
@@ -321,14 +314,9 @@ const testDailyBriefing = async (req, res) => {
 
 const updateReopenRequestsSetting = async (req, res) => {
     try {
-        if (req.user?.role !== 'SuperAdmin') {
-            return res.status(403).json({ message: 'Solo SuperAdmin puede cambiar la configuración global' });
-        }
+        if (req.user?.role !== 'SuperAdmin') return res.status(403).json({ message: 'Solo SuperAdmin puede cambiar la configuración global' });
         const val = req.body.active ? 1 : 0;
-        await pool.query(
-            'INSERT INTO telegram_settings (id, reopen_requests_active) VALUES (1, ?) ON DUPLICATE KEY UPDATE reopen_requests_active = VALUES(reopen_requests_active)',
-            [val]
-        );
+        await pool.query('INSERT INTO telegram_settings (id, reopen_requests_active) VALUES (1, ?) ON DUPLICATE KEY UPDATE reopen_requests_active = VALUES(reopen_requests_active)', [val]);
         res.json({ success: true, message: `Solicitud de apertura de turnos vía Telegram ${val ? 'activada' : 'desactivada'}` });
     } catch (error) {
         console.error('Error updateReopenRequestsSetting:', error);
@@ -336,9 +324,20 @@ const updateReopenRequestsSetting = async (req, res) => {
     }
 };
 
+const updateSupportTicketsSetting = async (req, res) => {
+    try {
+        if (req.user?.role !== 'SuperAdmin') return res.status(403).json({ message: 'Solo SuperAdmin puede cambiar la configuración global' });
+        const val = req.body.active ? 1 : 0;
+        await pool.query('INSERT INTO telegram_settings (id, support_tickets_active) VALUES (1, ?) ON DUPLICATE KEY UPDATE support_tickets_active = VALUES(support_tickets_active)', [val]);
+        res.json({ success: true, message: `Gestión de tickets vía Telegram ${val ? 'activada' : 'desactivada'}` });
+    } catch {
+        res.status(500).json({ message: 'Error al actualizar configuración de tickets' });
+    }
+};
+
 module.exports = {
     getStatus, getConfig: getStatus, saveBotToken, updateBinding, updateChatBinding: updateBinding,
     deleteBinding, deleteChatBinding: deleteBinding, createInviteToken, getPendingInvites, deletePendingInvite,
     testConnection, getSuspiciousSettings, saveSuspiciousSettings, updateDailyBriefingSetting,
-    testDailyBriefing, updateReopenRequestsSetting
+    testDailyBriefing, updateReopenRequestsSetting, updateSupportTicketsSetting
 };

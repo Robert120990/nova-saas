@@ -240,6 +240,15 @@ async function handleMessage(chatId, text, from) {
         return handleAlertas(chatId, arg);
     }
 
+    // Interceptar gestión de tickets de soporte (/tickets, /resolver, notas interactivas)
+    try {
+        const { handleTicketTelegramText } = require('./ticketTelegram.service');
+        const handledTicket = await handleTicketTelegramText(chatId, trimmed, from);
+        if (handledTicket) return;
+    } catch (err) {
+        console.error('[Telegram] Error en ticket text handler:', err.message);
+    }
+
     // Interceptar aprobaciones o rechazos de reapertura de turnos por texto
     try {
         const { handleTelegramTextApproval } = require('./gasCloseoutReopenTelegram.service');

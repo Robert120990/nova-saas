@@ -201,6 +201,9 @@ async function handleStartInvite(chatId, from, fullText, { sendMessage, chatStat
 async function routeTelegramCallback(query, { apiCall, sendMessage, chatStates }) {
     const handledBinding = await handleBindingCallback(query, { apiCall, sendMessage, chatStates });
     if (handledBinding) return;
+    const { handleTicketTelegramCallback } = require('./ticketTelegram.service');
+    const handledTicket = await handleTicketTelegramCallback(query);
+    if (handledTicket) return;
     const { handleAgentTelegramCallback } = require('./telegramAgentBridge.service');
     const handledAgent = await handleAgentTelegramCallback(query);
     if (!handledAgent) {
