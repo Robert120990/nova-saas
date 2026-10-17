@@ -6,6 +6,7 @@ const fs = require('fs');
 const { initSentry, setupSentryErrorHandler } = require('./config/sentry');
 const { logger, httpLogger } = require('./utils/logger');
 const authRoutes = require('./routes/auth.routes');
+const integrationContractRoutes = require('./routes/integrationContract.routes');
 const apiRoutes = require('./routes/api.routes');
 const { syncAllCrtCertificates } = require('./utils/certSync');
 
@@ -82,6 +83,7 @@ app.use('/api', (req, res, next) => {
 
 // Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/integration', integrationContractRoutes);
 
 // Restart DTE API (reinicia proceso dte-api en puerto 5000)
 app.post('/api/restart', express.json(), async (req, res) => {
