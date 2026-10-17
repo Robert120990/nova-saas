@@ -21,6 +21,10 @@ const path = require('path');
 const http = require('http');
 const https = require('https');
 
+// Reutilización de sockets TCP para evitar saturación de puertos en Windows
+const httpAgent = new http.Agent({ keepAlive: true, maxSockets: 10, keepAliveMsecs: 30000 });
+const httpsAgent = new https.Agent({ keepAlive: true, maxSockets: 10, keepAliveMsecs: 30000 });
+
 let ZKLib;
 try {
     ZKLib = require('node-zklib');
@@ -168,6 +172,7 @@ function sendToServer(apiPath, method = 'POST', data = {}) {
                     'Content-Length': Buffer.byteLength(postData),
                     'x-agent-key': config.agentKey
                 },
+                agent: isHttps ? httpsAgent : httpAgent,
                 rejectUnauthorized: false, // Permite certificados autofirmados si los hubiese
                 timeout: 20000
             };

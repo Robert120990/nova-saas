@@ -184,6 +184,19 @@ const downloadBat = (req, res) => {
     res.send(fallbackBat);
 };
 
+const downloadStopBat = (req, res) => {
+    const batPath = path.resolve(__dirname, '../../../../scripts/biometric-agent/detener-conector.bat');
+    if (fs.existsSync(batPath)) {
+        res.setHeader('Content-Type', 'application/x-bat');
+        res.setHeader('Content-Disposition', 'attachment; filename="detener-conector.bat"');
+        return res.sendFile(batPath);
+    }
+    const fallbackBat = `@echo off\r\ntitle Detener Conector Marcador Biometrico ZKTeco\r\ncolor 0C\r\ntaskkill /fi "WINDOWTITLE eq Conector Marcador Biometrico*" /f /t >nul 2>nul\r\npowershell -NoProfile -Command "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*biometric-agent*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }" >nul 2>nul\r\necho [OK] Conector biometrico detenido.\r\npause\r\n`;
+    res.setHeader('Content-Type', 'application/x-bat');
+    res.setHeader('Content-Disposition', 'attachment; filename="detener-conector.bat"');
+    res.send(fallbackBat);
+};
+
 const downloadAgentScript = (req, res) => {
     const candidatePaths = [
         path.resolve(__dirname, '../../../../scripts/biometric-agent/biometric-agent.js'),
@@ -211,5 +224,6 @@ module.exports = {
     heartbeatFromAgent,
     downloadConfig,
     downloadBat,
+    downloadStopBat,
     downloadAgentScript
 };

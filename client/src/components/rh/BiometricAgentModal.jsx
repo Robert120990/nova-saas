@@ -4,7 +4,7 @@ import axios from 'axios';
 import { toast } from 'sonner';
 import {
     Radio, X, Copy, Check, RefreshCw, Download, FileCode,
-    Terminal, HelpCircle
+    Terminal, HelpCircle, Square
 } from 'lucide-react';
 import { formatDateTime } from '../../utils/dateUtils';
 
@@ -50,9 +50,10 @@ const BiometricAgentModal = ({ open, onClose, device = null, onDeviceUpdated }) 
 
     const handleDownloadAll = () => {
         handleDownload(`/api/rh/biometric/devices/${device?.id}/download-config`, 'config.json');
-        setTimeout(() => handleDownload('/api/rh/biometric/agent/download-bat', 'iniciar-conector.bat'), 500);
-        setTimeout(() => handleDownload('/api/rh/biometric/agent/download-script', 'biometric-agent.js'), 1000);
-        toast.success('Descargando los 3 archivos del conector...');
+        setTimeout(() => handleDownload('/api/rh/biometric/agent/download-bat', 'iniciar-conector.bat'), 400);
+        setTimeout(() => handleDownload('/api/rh/biometric/agent/download-stop-bat', 'detener-conector.bat'), 800);
+        setTimeout(() => handleDownload('/api/rh/biometric/agent/download-script', 'biometric-agent.js'), 1200);
+        toast.success('Descargando los 4 archivos del conector...');
     };
 
     return (
@@ -167,10 +168,10 @@ const BiometricAgentModal = ({ open, onClose, device = null, onDeviceUpdated }) 
                                 className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors border border-indigo-200"
                             >
                                 <Download className="w-3.5 h-3.5" />
-                                Descargar los 3 archivos
+                                Descargar los 4 archivos
                             </button>
                         </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                             <button
                                 type="button"
                                 onClick={() => handleDownload(`/api/rh/biometric/devices/${device?.id}/download-config`, 'config.json')}
@@ -197,6 +198,18 @@ const BiometricAgentModal = ({ open, onClose, device = null, onDeviceUpdated }) 
 
                             <button
                                 type="button"
+                                onClick={() => handleDownload('/api/rh/biometric/agent/download-stop-bat', 'detener-conector.bat')}
+                                className="flex flex-col items-start p-3 bg-white border border-slate-200 hover:border-rose-400 hover:bg-rose-50/30 rounded-xl transition-all group text-left"
+                            >
+                                <div className="flex items-center gap-2 mb-1">
+                                    <Square className="w-4 h-4 text-rose-600 fill-rose-600/20" />
+                                    <span className="text-xs font-bold text-slate-800 group-hover:text-rose-700">detener-conector.bat</span>
+                                </div>
+                                <span className="text-[11px] text-slate-400">Detiene el proceso y libera red</span>
+                            </button>
+
+                            <button
+                                type="button"
                                 onClick={() => handleDownload('/api/rh/biometric/agent/download-script', 'biometric-agent.js')}
                                 className="flex flex-col items-start p-3 bg-white border border-slate-200 hover:border-amber-400 hover:bg-amber-50/30 rounded-xl transition-all group text-left"
                             >
@@ -204,7 +217,7 @@ const BiometricAgentModal = ({ open, onClose, device = null, onDeviceUpdated }) 
                                     <Download className="w-4 h-4 text-amber-600" />
                                     <span className="text-xs font-bold text-slate-800 group-hover:text-amber-700">biometric-agent.js</span>
                                 </div>
-                                <span className="text-[11px] text-slate-400">Código fuente del agente Node</span>
+                                <span className="text-[11px] text-slate-400">Código fuente del conector</span>
                             </button>
                         </div>
                     </div>
@@ -217,13 +230,13 @@ const BiometricAgentModal = ({ open, onClose, device = null, onDeviceUpdated }) 
                         </h4>
                         <ol className="text-xs text-slate-600 space-y-2 list-decimal list-inside font-normal">
                             <li>
-                                <strong>Ubicación:</strong> Coloque los 3 archivos descargados (o la carpeta <code className="bg-white px-1.5 py-0.5 rounded border text-[11px] font-mono text-indigo-700">scripts/biometric-agent</code>) en cualquier PC de la empresa que esté conectada a la misma red LAN que el reloj checador.
+                                <strong>Ubicación:</strong> Coloque los archivos descargados (o la carpeta <code className="bg-white px-1.5 py-0.5 rounded border text-[11px] font-mono text-indigo-700">scripts/biometric-agent</code>) en cualquier PC de la empresa que esté conectada a la misma red LAN que el reloj checador.
                             </li>
                             <li>
                                 <strong>Requisito:</strong> Verifique que la PC tenga instalado <code className="bg-white px-1.5 py-0.5 rounded border text-[11px] font-mono">Node.js</code> (v18 o superior).
                             </li>
                             <li>
-                                <strong>Ejecución:</strong> Haga doble clic sobre <code className="bg-white px-1.5 py-0.5 rounded border text-[11px] font-mono text-emerald-700">iniciar-conector.bat</code>. El script verificará las dependencias e iniciará la sincronización en tiempo real inmediatamente.
+                                <strong>Ejecución y Control:</strong> Haga doble clic sobre <code className="bg-white px-1.5 py-0.5 rounded border text-[11px] font-mono text-emerald-700">iniciar-conector.bat</code> para sincronizar. Para finalizarlo limpiamente en cualquier momento, ejecute <code className="bg-white px-1.5 py-0.5 rounded border text-[11px] font-mono text-rose-700">detener-conector.bat</code>.
                             </li>
                         </ol>
                     </div>

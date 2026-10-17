@@ -1370,6 +1370,7 @@ router.post('/rh/biometric/devices', tenantMiddleware, checkPermission('manage_r
 router.post('/rh/biometric/devices/:id/regenerate-key', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.regenerateAgentKey);
 router.get('/rh/biometric/devices/:id/download-config', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.downloadConfig);
 router.get('/rh/biometric/agent/download-bat', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.downloadBat);
+router.get('/rh/biometric/agent/download-stop-bat', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.downloadStopBat);
 router.get('/rh/biometric/agent/download-script', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.downloadAgentScript);
 router.get('/rh/biometric/attendance-logs', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.getAttendanceLogs);
 router.post('/rh/biometric/manual-punch', tenantMiddleware, checkPermission('manage_rh_biometric_attendance'), rhBiometricController.createManualPunch);
