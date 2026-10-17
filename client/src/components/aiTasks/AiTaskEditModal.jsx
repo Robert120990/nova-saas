@@ -4,23 +4,30 @@ import axios from 'axios';
 import { toast } from 'sonner';
 import { Edit3, Play, Save, Loader2 } from 'lucide-react';
 import { OUTPUT_TYPES } from './aiTaskConstants';
+import AiModeAndLogsSelector from './AiModeAndLogsSelector';
 
 const AiTaskEditModal = ({ isOpen, onClose, task, onSuccess }) => {
     const [title, setTitle] = useState('');
     const [prompt, setPrompt] = useState('');
     const [priority, setPriority] = useState('media');
     const [outputType, setOutputType] = useState('texto');
+    const [executionMode, setExecutionMode] = useState('api');
+    const [agentPlatform, setAgentPlatform] = useState('antigravity');
+    const [customLogs, setCustomLogs] = useState('');
     const [reExecute, setReExecute] = useState(true);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     useEffect(() => {
         if (task && isOpen) {
+            const isTicket = task.assigned_agent_code === 'support' || /\[Ticket #TKT-\d+\]/i.test(task.title || '');
             setTitle(task.title || '');
             setPrompt(task.prompt || '');
             setPriority(task.priority || 'media');
             setOutputType(task.output_type || 'texto');
-            // Default to re-execute if completed, failed, or cancelled
-            setReExecute(['completada', 'fallida', 'cancelada'].includes(task.status));
+            setExecutionMode(task.execution_mode || (isTicket ? 'agent_prompt' : 'api'));
+            setAgentPlatform(task.agent_platform || 'antigravity');
+            setCustomLogs(task.custom_logs || '');
+            setReExecute(true);
         }
     }, [task, isOpen]);
 
@@ -46,6 +53,9 @@ const AiTaskEditModal = ({ isOpen, onClose, task, onSuccess }) => {
                 prompt: prompt.trim(),
                 priority,
                 output_type: outputType,
+                execution_mode: executionMode,
+                agent_platform: agentPlatform,
+                custom_logs: customLogs,
                 re_execute: reExecute
             });
 
@@ -63,17 +73,25 @@ const AiTaskEditModal = ({ isOpen, onClose, task, onSuccess }) => {
         <Modal
             isOpen={isOpen}
             onClose={onClose}
-            title={`Editar Tarea #${task.id}`}
+            title={`Configurar Modo IA / Logs — Tarea #${task.id}`}
             maxWidth="max-w-2xl"
         >
             <form onSubmit={handleSubmit} className="space-y-4">
-                {/* Form Header Info */}
                 <div className="flex items-center gap-2 p-3 bg-indigo-50/70 border border-indigo-100 rounded-xl text-xs text-indigo-900 font-medium">
                     <Edit3 size={15} className="text-indigo-600 shrink-0" />
                     <span>
-                        Modifica los parámetros o refina la instrucción del prompt para que el Supervisor y los agentes ejecuten el objetivo con mayor precisión.
+                        Elige entre <strong>Modo 1 (API Interna)</strong> o <strong>Modo 2 (Prompt + Logs para Antigravity / IDE)</strong> y adjunta tus logs para empaquetarlos.
                     </span>
                 </div>
+
+                <AiModeAndLogsSelector
+                    executionMode={executionMode}
+                    onExecutionModeChange={setExecutionMode}
+                    agentPlatform={agentPlatform}
+                    onAgentPlatformChange={setAgentPlatform}
+                    customLogs={customLogs}
+                    onCustomLogsChange={setCustomLogs}
+                />
 
                 {/* Title */}
                 <div>

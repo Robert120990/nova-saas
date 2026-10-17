@@ -3,25 +3,29 @@ const path = require('path');
 const pool = require('../config/db');
 const ticketService = require('../services/ticket.service');
 const ticketAiTaskBridge = require('../services/ticketAiTaskBridge.service');
+const agentTaskQueue = require('../services/agents/agentTaskQueue.service');
+const { getPlatformMeta } = require('../services/aiPromptBuilder.service');
 
 function parseJsonSafe(val, fallback = null) {
     if (!val) return fallback;
     if (typeof val === 'object') return val;
-    try {
-        return JSON.parse(val);
-    } catch {
-        return fallback;
-    }
+    try { return JSON.parse(val); } catch { return fallback; }
 }
 
-function buildAiPromptMarkdown(tickets = [], extraContext = '') {
+function buildAiPromptMarkdown(tickets = [], extraContext = '', agentPlatform = 'antigravity', aiMode = 'agent_prompt') {
     const nowStr = new Date().toLocaleString('es-SV');
+    const plat = getPlatformMeta(agentPlatform);
+    const modeTitle = aiMode === 'api'
+        ? '⚡ MODO 1: EJECUCIÓN POR API INTERNA (AGENTES GEMINI)'
+        : `${plat.icon} MODO 2: PAQUETE DE PROMPT + LOGS PARA ${plat.name.toUpperCase()}`;
+
     const lines = [
-        '# PAQUETE DE TICKETS DE SOPORTE Y MEJORA PARA IA',
-        `> Generado: ${nowStr} | Total de tickets seleccionados para resolución técnica: **${tickets.length}**`,
+        `# ${modeTitle}`,
+        `> Generado: ${nowStr} | Plataforma Destino: **${plat.name}** | Total de tickets: **${tickets.length}**`,
+        `> ${plat.headerNote}`,
         '',
-        'Analiza y resuelve cada uno de los siguientes tickets seleccionados tras la revisión técnica (se han filtrado los casos que eran únicamente dudas de usuario).',
-        'Para cada ticket se incluye: el reporte original, la **Directriz Técnica para la IA**, las rutas locales de las capturas anotadas (`.webp`) y el **Log de Diagnóstico Automático** (errores de consola y operaciones HTTP fallidas).',
+        'Analiza y resuelve cada uno de los siguientes tickets seleccionados tras la revisión técnica.',
+        'Para cada ticket se incluye: el reporte original, la **Directriz Técnica**, las rutas locales de las capturas WebP, los **Logs Cargados por el Usuario** y el **Log de Diagnóstico Automático**.',
         ''
     ];
 
@@ -40,7 +44,7 @@ function buildAiPromptMarkdown(tickets = [], extraContext = '') {
 
         lines.push('---');
         lines.push(`## ${idx + 1}. Ticket #${t.ticket_code} — ${t.subject}`);
-        lines.push(`- **Tipo:** \`${t.type}\` | **Prioridad:** \`${t.priority}\` | **Estado actual:** \`${t.status}\``);
+        lines.push(`- **Tipo:** \`${t.type}\` | **Prioridad:** \`${t.priority}\` | **Estado actual:** \`${t.status}\` | **Modo IA:** \`${t.ai_mode || aiMode}\``);
         lines.push(`- **Módulo / Pantalla:** ${t.module_name || 'General'} (\`${t.page_url || '/'}\`)`);
         lines.push(`- **Reportado por:** ${t.user_name} (${t.company_name || 'Empresa'})`);
         lines.push('');
@@ -52,19 +56,27 @@ function buildAiPromptMarkdown(tickets = [], extraContext = '') {
         lines.push(
             t.ai_notes && String(t.ai_notes).trim()
                 ? `**Instrucción de revisión:** ${String(t.ai_notes).trim()}`
-                : '_Sin comentario adicional del revisor; resolver según la descripción, captura anotada y log de diagnóstico._'
+                : '_Sin comentario adicional del revisor; resolver según la descripción, captura anotada y logs adjuntos._'
         );
         lines.push('');
 
         if (listAtt.length > 0) {
             lines.push('### 🖼️ Capturas de Pantalla Adjuntas (Formato Liviano WebP)');
             listAtt.forEach((att, i) => {
-                const relPath = String(att.url || '').replace(/^\/+/, '');
+                const relPath = String(att.url || '').replace(/^\/+/, '').replace(/^api\/+/, '');
                 const localServerPath = `server/${relPath}`;
                 const flags = att.annotated ? ' [CON TRAZOS/FLECHAS DE SEÑALIZACIÓN]' : '';
                 const cap = att.caption ? ` — Nota en imagen: "${att.caption}"` : '';
                 lines.push(`- Captura #${i + 1}${flags}: \`${localServerPath}\`${cap}`);
             });
+            lines.push('');
+        }
+
+        if (t.custom_logs && String(t.custom_logs).trim()) {
+            lines.push('### 📎 Logs Cargados Manualmente por el Usuario (Consola / Servidor / Stack Trace)');
+            lines.push('```log');
+            lines.push(String(t.custom_logs).trim().slice(0, 10000));
+            lines.push('```');
             lines.push('');
         }
 
@@ -119,7 +131,7 @@ const updateTicketAiReview = async (req, res) => {
     try {
         if (!(await checkIsTechManager(req))) return res.status(403).json({ message: 'Requiere permisos de gestión técnica de tickets' });
         const { id } = req.params;
-        const { include_in_ai_prompt, ai_notes } = req.body;
+        const { include_in_ai_prompt, ai_notes, ai_mode, agent_platform, custom_logs } = req.body;
         const ticket = await ticketService.getTicketById(id);
         if (!ticket) return res.status(404).json({ message: 'Ticket no encontrado' });
 
@@ -132,13 +144,21 @@ const updateTicketAiReview = async (req, res) => {
         const params = [];
         if (include_in_ai_prompt !== undefined) { updates.push('include_in_ai_prompt = ?'); params.push(include_in_ai_prompt ? 1 : 0); }
         if (ai_notes !== undefined) { updates.push('ai_notes = ?'); params.push(ai_notes === null ? null : String(ai_notes)); }
+        if (ai_mode !== undefined && ['api', 'agent_prompt'].includes(ai_mode)) { updates.push('ai_mode = ?'); params.push(ai_mode); }
+        if (agent_platform !== undefined && ['antigravity', 'cursor', 'claude_code', 'universal'].includes(agent_platform)) {
+            updates.push('agent_platform = ?'); params.push(agent_platform);
+        }
+        if (custom_logs !== undefined) { updates.push('custom_logs = ?'); params.push(custom_logs === null ? null : String(custom_logs)); }
         if (updates.length > 0) {
             params.push(id);
             await pool.query(`UPDATE support_tickets SET ${updates.join(', ')} WHERE id = ?`, params);
         }
 
         const updated = await ticketService.getTicketById(id);
-        await ticketAiTaskBridge.syncTicketToAiTask(updated);
+        const taskId = await ticketAiTaskBridge.syncTicketToAiTask(updated);
+        if (ai_mode === 'api' && taskId) {
+            await agentTaskQueue.retryTask(taskId, updated.company_id).catch(() => {});
+        }
         res.json({ success: true, data: updated, ticket: updated });
     } catch (error) {
         console.error('Error updateTicketAiReview:', error);
@@ -149,7 +169,7 @@ const updateTicketAiReview = async (req, res) => {
 const getAiBundleTickets = async (req, res) => {
     try {
         if (!(await checkIsTechManager(req))) return res.status(403).json({ message: 'Requiere permisos de gestión técnica de tickets' });
-        const { ids = '' } = req.query;
+        const { ids = '', agent_platform = 'antigravity', ai_mode = 'agent_prompt' } = req.query;
         const idList = String(ids).split(',').map((n) => parseInt(n.trim(), 10)).filter((n) => !isNaN(n) && n > 0);
         const isSuperAdmin = req.user?.role === 'SuperAdmin';
         const reqCompanyId = req.companyId || req.company_id;
@@ -160,7 +180,7 @@ const getAiBundleTickets = async (req, res) => {
             ? await pool.query(`${baseSql} WHERE t.id IN (?)${tenantFilter} ORDER BY FIELD(t.priority, 'urgente', 'alta', 'media', 'baja'), t.id ASC`, [idList, ...tenantParams])
             : await pool.query(`${baseSql} WHERE t.include_in_ai_prompt = 1 AND t.status NOT IN ('cerrado', 'rechazado')${tenantFilter} ORDER BY FIELD(t.priority, 'urgente', 'alta', 'media', 'baja'), t.id ASC`, tenantParams);
 
-        const promptMarkdown = buildAiPromptMarkdown(rows, '');
+        const promptMarkdown = buildAiPromptMarkdown(rows, '', agent_platform, ai_mode);
         res.json({ data: rows, total: rows.length, promptMarkdown });
     } catch (error) {
         console.error('Error getAiBundleTickets:', error);
@@ -171,20 +191,34 @@ const getAiBundleTickets = async (req, res) => {
 const saveAndGenerateAiBundle = async (req, res) => {
     try {
         if (!(await checkIsTechManager(req))) return res.status(403).json({ message: 'Requiere permisos de gestión técnica de tickets' });
-        const { items = [], extraContext = '' } = req.body;
+        const { items = [], extraContext = '', ai_mode = 'agent_prompt', agent_platform = 'antigravity' } = req.body;
         const selectedIds = [];
         const isSuperAdmin = req.user?.role === 'SuperAdmin';
         const reqCompanyId = req.companyId || req.company_id;
+        const cleanMode = ai_mode === 'api' ? 'api' : 'agent_prompt';
+        const cleanPlat = ['antigravity', 'cursor', 'claude_code', 'universal'].includes(agent_platform) ? agent_platform : 'antigravity';
 
         if (Array.isArray(items)) {
             for (const item of items) {
                 if (!item?.id) continue;
                 const inc = item.include_in_ai_prompt !== undefined ? (item.include_in_ai_prompt ? 1 : 0) : 1;
                 const notes = item.ai_notes !== undefined ? String(item.ai_notes || '') : null;
-                if (!isSuperAdmin && reqCompanyId) {
-                    await pool.query('UPDATE support_tickets SET include_in_ai_prompt = ?, ai_notes = COALESCE(?, ai_notes) WHERE id = ? AND company_id = ?', [inc, notes, item.id, reqCompanyId]);
+                const logs = item.custom_logs !== undefined ? (item.custom_logs ? String(item.custom_logs) : null) : undefined;
+                const itemMode = item.ai_mode || cleanMode;
+                const itemPlat = item.agent_platform || cleanPlat;
+                const tenantWhere = !isSuperAdmin && reqCompanyId ? ' AND company_id = ?' : '';
+                const tParams = !isSuperAdmin && reqCompanyId ? [reqCompanyId] : [];
+
+                if (logs !== undefined) {
+                    await pool.query(
+                        `UPDATE support_tickets SET include_in_ai_prompt = ?, ai_notes = COALESCE(?, ai_notes), ai_mode = ?, agent_platform = ?, custom_logs = ? WHERE id = ?${tenantWhere}`,
+                        [inc, notes, itemMode, itemPlat, logs, item.id, ...tParams]
+                    );
                 } else {
-                    await pool.query('UPDATE support_tickets SET include_in_ai_prompt = ?, ai_notes = COALESCE(?, ai_notes) WHERE id = ?', [inc, notes, item.id]);
+                    await pool.query(
+                        `UPDATE support_tickets SET include_in_ai_prompt = ?, ai_notes = COALESCE(?, ai_notes), ai_mode = ?, agent_platform = ? WHERE id = ?${tenantWhere}`,
+                        [inc, notes, itemMode, itemPlat, item.id, ...tParams]
+                    );
                 }
                 if (inc === 1) selectedIds.push(Number(item.id));
             }
@@ -198,10 +232,13 @@ const saveAndGenerateAiBundle = async (req, res) => {
             : await pool.query(`${baseSql} WHERE t.include_in_ai_prompt = 1 AND t.status NOT IN ('cerrado', 'rechazado')${tenantFilter} ORDER BY FIELD(t.priority, 'urgente', 'alta', 'media', 'baja'), t.id ASC`, tenantParams);
 
         for (const r of rows) {
-            await ticketAiTaskBridge.syncTicketToAiTask(r);
+            const taskId = await ticketAiTaskBridge.syncTicketToAiTask(r);
+            if ((r.ai_mode || cleanMode) === 'api' && taskId && r.status !== 'resuelto') {
+                await agentTaskQueue.retryTask(taskId, r.company_id).catch(() => {});
+            }
         }
 
-        const promptMarkdown = buildAiPromptMarkdown(rows, extraContext);
+        const promptMarkdown = buildAiPromptMarkdown(rows, extraContext, cleanPlat, cleanMode);
         try {
             fs.writeFileSync(path.join(__dirname, '..', '..', '..', 'TICKETS_PARA_IA.md'), promptMarkdown, 'utf8');
         } catch (writeErr) {
@@ -210,7 +247,9 @@ const saveAndGenerateAiBundle = async (req, res) => {
 
         res.json({
             success: true,
-            message: `Paquete de ${rows.length} ticket(s) sincronizado con Centro de Tareas IA (/ai-tasks) y TICKETS_PARA_IA.md`,
+            message: cleanMode === 'api'
+                ? `${rows.length} ticket(s) enviados a ejecución autónoma por API Interna en /ai-tasks`
+                : `Paquete de ${rows.length} ticket(s) + Logs listo para ${getPlatformMeta(cleanPlat).name} y guardado en TICKETS_PARA_IA.md`,
             data: rows,
             promptMarkdown,
             filePath: 'TICKETS_PARA_IA.md'
@@ -246,6 +285,7 @@ const resolveAiBundleBatch = async (req, res) => {
                 status: 'resuelto', resolvedByName: actorName, resolutionNotes: note,
                 resolvedVersion: resolved_version || null, updatedByType: 'tech', updatedById: req.user?.id || null
             });
+            await ticketAiTaskBridge.syncTicketToAiTask({ ...upd, include_in_ai_prompt: 1 });
             await pool.query('UPDATE support_tickets SET include_in_ai_prompt = 0 WHERE id = ?', [id]);
             resolvedList.push(upd);
         }

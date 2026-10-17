@@ -4,6 +4,7 @@ const agentRegistry = require('./agentRegistry');
 const agentReportGenerator = require('./agentReportGenerator.service');
 const telegramService = require('../telegram.service');
 const { notify } = require('../notification.service');
+const { buildTaskExternalPrompt, getPlatformMeta } = require('../aiPromptBuilder.service');
 
 // Event emitter / subscriber map for real-time SSE updates
 const subscribers = new Map(); // taskId -> Set of res objects
@@ -109,12 +110,12 @@ async function processQueue() {
 
     let task = null;
     try {
-        // Pick highest priority task (alta = 1, media = 2, baja = 3)
+        // Pick highest priority task in API mode (alta = 1, media = 2, baja = 3)
         const [rows] = await pool.query(`
             SELECT t.*, u.nombre as user_name, u.email as user_email
             FROM ai_agent_tasks t
             LEFT JOIN users u ON t.user_id = u.id
-            WHERE t.status = 'pendiente'
+            WHERE t.status = 'pendiente' AND COALESCE(t.execution_mode, 'api') = 'api'
             ORDER BY 
                 CASE t.priority 
                     WHEN 'alta' THEN 1 
@@ -206,9 +207,13 @@ async function processQueue() {
             `Supervisor evaluando prompt: "${task.prompt.slice(0, 140)}${task.prompt.length > 140 ? '...' : ''}"`
         );
 
+        const logsBlock = task.custom_logs && String(task.custom_logs).trim()
+            ? `\n\nLOGS ADJUNTOS POR EL USUARIO PARA ANÁLISIS:\n\`\`\`log\n${String(task.custom_logs).trim().slice(0, 10000)}\n\`\`\``
+            : '';
+
         // Prepare autonomous execution prompt
         const autonomousPrompt = `[TAREA AGÉNTICA AUTÓNOMA #${task.id} - EJECUCIÓN DIRECTA]:
-OBJETIVO: ${task.prompt}
+OBJETIVO: ${task.prompt}${logsBlock}
 
 INSTRUCCIONES CLAVE DE EJECUCIÓN AUTÓNOMA:
 1. Esta es una tarea en segundo plano. NO es un chat interactivo. El usuario NO puede responder preguntas intermedias ni dar confirmaciones.
@@ -378,17 +383,77 @@ async function sendTelegramCompletionNotification(task, agentName, resultContent
 }
 
 /**
- * Enqueue a new agent task.
+ * Enqueue a new agent task (Mode 1: 'api' | Mode 2: 'agent_prompt').
  */
-async function enqueueTask({ companyId, branchId, userId, title, prompt, priority = 'media', outputType = 'texto', notifyTelegram = 1 }) {
+async function enqueueTask({
+    companyId,
+    branchId,
+    userId,
+    title,
+    prompt,
+    priority = 'media',
+    outputType = 'texto',
+    notifyTelegram = 1,
+    executionMode = 'api',
+    agentPlatform = 'antigravity',
+    customLogs = null
+}) {
     const cleanPriority = ['alta', 'media', 'baja'].includes(priority) ? priority : 'media';
     const cleanOutput = ['texto', 'pdf', 'excel', 'imagen'].includes(outputType) ? outputType : 'texto';
+    const cleanMode = executionMode === 'agent_prompt' ? 'agent_prompt' : 'api';
+    const cleanPlatform = ['antigravity', 'cursor', 'claude_code', 'universal'].includes(agentPlatform)
+        ? agentPlatform
+        : 'antigravity';
+    const cleanLogs = customLogs && String(customLogs).trim() ? String(customLogs).trim() : null;
+
+    if (cleanMode === 'agent_prompt') {
+        const plat = getPlatformMeta(cleanPlatform);
+        const [result] = await pool.query(
+            `INSERT INTO ai_agent_tasks 
+             (company_id, branch_id, user_id, title, prompt, priority, output_type, status, assigned_agent_code, execution_mode, agent_platform, custom_logs, progress, notify_telegram, current_step, started_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, 'en_proceso', 'support', 'agent_prompt', ?, ?, 50, ?, ?, NOW())`,
+            [
+                companyId,
+                branchId || null,
+                userId,
+                String(title).trim(),
+                String(prompt).trim(),
+                cleanPriority,
+                cleanOutput,
+                cleanPlatform,
+                cleanLogs,
+                notifyTelegram ? 1 : 0,
+                `Prompt + Logs listos · Esperando ejecutar en ${plat.name}`
+            ]
+        );
+
+        const taskId = result.insertId;
+        const packagedPrompt = buildTaskExternalPrompt({
+            id: taskId,
+            title: String(title).trim(),
+            prompt: String(prompt).trim(),
+            priority: cleanPriority,
+            agentPlatform: cleanPlatform,
+            customLogs: cleanLogs
+        });
+
+        await pool.query('UPDATE ai_agent_tasks SET result = ? WHERE id = ?', [packagedPrompt, taskId]);
+
+        await logTaskStep(
+            taskId,
+            'support',
+            'info',
+            `Tarea #${taskId} creada en Modo 2 (Prompt + Logs para ${plat.name}). Paquete listo para copiar y ejecutar en el agente externo.`
+        );
+
+        return taskId;
+    }
 
     const [result] = await pool.query(
         `INSERT INTO ai_agent_tasks 
-         (company_id, branch_id, user_id, title, prompt, priority, output_type, status, notify_telegram, current_step)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 'pendiente', ?, 'En cola de espera...')`,
-        [companyId, branchId || null, userId, String(title).trim(), String(prompt).trim(), cleanPriority, cleanOutput, notifyTelegram ? 1 : 0]
+         (company_id, branch_id, user_id, title, prompt, priority, output_type, status, execution_mode, agent_platform, custom_logs, notify_telegram, current_step)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'pendiente', 'api', ?, ?, ?, 'En cola de espera (API Interna)...')`,
+        [companyId, branchId || null, userId, String(title).trim(), String(prompt).trim(), cleanPriority, cleanOutput, cleanPlatform, cleanLogs, notifyTelegram ? 1 : 0]
     );
 
     const taskId = result.insertId;
@@ -397,7 +462,7 @@ async function enqueueTask({ companyId, branchId, userId, title, prompt, priorit
         taskId,
         'supervisor',
         'info',
-        `Tarea #${taskId} registrada en cola de procesamiento con prioridad ${cleanPriority.toUpperCase()}.`
+        `Tarea #${taskId} registrada en cola de procesamiento (Modo 1: API Interna) con prioridad ${cleanPriority.toUpperCase()}.`
     );
 
     // Trigger queue processing asynchronously
@@ -439,11 +504,11 @@ async function cancelTask(taskId, companyId) {
 }
 
 /**
- * Retry a failed or cancelled task.
+ * Retry a failed or cancelled task, or rebuild external prompt package if in agent_prompt mode.
  */
 async function retryTask(taskId, companyId) {
     const [tasks] = await pool.query(
-        'SELECT id, status FROM ai_agent_tasks WHERE id = ? AND company_id = ?',
+        'SELECT * FROM ai_agent_tasks WHERE id = ? AND (company_id = ? OR assigned_agent_code = "support")',
         [taskId, companyId]
     );
 
@@ -451,17 +516,40 @@ async function retryTask(taskId, companyId) {
         throw new Error('Tarea no encontrada.');
     }
 
+    const task = tasks[0];
+    if (task.execution_mode === 'agent_prompt') {
+        const plat = getPlatformMeta(task.agent_platform || 'antigravity');
+        const packagedPrompt = buildTaskExternalPrompt({
+            id: task.id,
+            title: task.title,
+            prompt: task.prompt,
+            priority: task.priority,
+            agentPlatform: task.agent_platform || 'antigravity',
+            customLogs: task.custom_logs || ''
+        });
+        await updateTaskStatus(taskId, {
+            status: 'en_proceso',
+            progress: 50,
+            current_step: `Prompt + Logs regenerados · Listo para ejecutar en ${plat.name}`,
+            result: packagedPrompt,
+            error_message: null,
+            completed_at: null
+        });
+        await logTaskStep(taskId, 'support', 'info', `Paquete de Prompt + Logs regenerado para ${plat.name}.`);
+        return true;
+    }
+
     await updateTaskStatus(taskId, {
         status: 'pendiente',
         progress: 0,
-        current_step: 'Reencolada para nuevo intento...',
+        current_step: 'Reencolada para nuevo intento (API Interna)...',
         error_message: null,
         result: null,
         started_at: null,
         completed_at: null
     });
 
-    await logTaskStep(taskId, 'supervisor', 'info', 'Tarea reencolada para nuevo intento.');
+    await logTaskStep(taskId, 'supervisor', 'info', 'Tarea reencolada para nuevo intento por API Interna.');
 
     setImmediate(() => processQueue());
 

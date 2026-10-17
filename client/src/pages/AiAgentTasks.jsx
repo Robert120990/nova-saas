@@ -15,7 +15,8 @@ import {
     AiTaskOutputPreview,
     AiTaskEditModal,
     AGENT_BADGES,
-    PRIORITY_STYLES
+    PRIORITY_STYLES,
+    getTaskActivityMeta
 } from '../components/aiTasks';
 import {
     Bot,
@@ -24,13 +25,13 @@ import {
     Loader2,
     Clock,
     AlertTriangle,
-    Pencil
+    Pencil,
+    Copy
 } from 'lucide-react';
 
 const AiAgentTasks = () => {
     const queryClient = useQueryClient();
 
-    // Filters and pagination state
     const [search, setSearch] = useState('');
     const [status, setStatus] = useState('todos');
     const [priority, setPriority] = useState('todas');
@@ -38,7 +39,6 @@ const AiAgentTasks = () => {
     const [page, setPage] = useState(1);
     const limit = 12;
 
-    // Modals state
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [selectedTaskId, setSelectedTaskId] = useState(null);
     const [selectedTab, setSelectedTab] = useState('logs');
@@ -48,17 +48,9 @@ const AiAgentTasks = () => {
     const [pdfUrl, setPdfUrl] = useState(null);
     const [isPdfOpen, setIsPdfOpen] = useState(false);
 
-    const handleOpenEdit = (task) => {
-        setTaskToEdit(task);
-        setIsEditModalOpen(true);
-    };
+    const handleOpenEdit = (task) => { setTaskToEdit(task); setIsEditModalOpen(true); };
+    const handleOpenPdf = (url) => { setPdfUrl(url); setIsPdfOpen(true); };
 
-    const handleOpenPdf = (url) => {
-        setPdfUrl(url);
-        setIsPdfOpen(true);
-    };
-
-    // Query for agent tasks
     const { data: responseData, isLoading } = useQuery({
         queryKey: ['agent-tasks', search, status, priority, agentCode, page],
         queryFn: async () => {
@@ -68,9 +60,8 @@ const AiAgentTasks = () => {
             return res.data;
         },
         refetchInterval: (query) => {
-            // Auto-refresh every 3s if any task is actively running or analyzing
             const items = query.state.data?.data || [];
-            const hasActive = items.some(t => ['analizando', 'en_proceso', 'pendiente'].includes(t.status));
+            const hasActive = items.some(t => ['analizando', 'en_proceso', 'pendiente'].includes(t.status) && t.execution_mode !== 'agent_prompt');
             return hasActive ? 3000 : false;
         }
     });
@@ -86,30 +77,29 @@ const AiAgentTasks = () => {
     };
 
     const handleResetFilters = () => {
-        setSearch('');
-        setStatus('todos');
-        setPriority('todas');
-        setAgentCode('todos');
-        setPage(1);
+        setSearch(''); setStatus('todos'); setPriority('todas'); setAgentCode('todos'); setPage(1);
     };
 
-    const handleTaskSuccess = () => {
-        queryClient.invalidateQueries({ queryKey: ['agent-tasks'] });
-    };
+    const handleTaskSuccess = () => { queryClient.invalidateQueries({ queryKey: ['agent-tasks'] }); };
 
     const handleRetryTask = async (taskId) => {
         try {
             await axios.post(`/api/agent-tasks/${taskId}/retry`);
-            toast.success('Tarea reencolada exitosamente para nuevo intento');
+            toast.success('Tarea actualizada / reencolada exitosamente');
             queryClient.invalidateQueries({ queryKey: ['agent-tasks'] });
         } catch (error) {
             toast.error(error.response?.data?.message || 'Error al reintentar la tarea');
         }
     };
 
+    const handleCopyTaskPrompt = (item, meta) => {
+        const textToCopy = item.result || `${item.title}\n\n${item.prompt}${item.custom_logs ? `\n\nLogs:\n${item.custom_logs}` : ''}`;
+        navigator.clipboard.writeText(textToCopy);
+        toast.success(`Prompt + Logs copiados para ${meta.platform.name}`);
+    };
+
     return (
         <div className="space-y-4">
-            {/* Header Title */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
                 <div className="flex items-center gap-3">
                     <div className="p-2.5 bg-indigo-50 text-indigo-600 rounded-2xl border border-indigo-100">
@@ -119,20 +109,18 @@ const AiAgentTasks = () => {
                         <h1 className="text-lg sm:text-xl font-black text-slate-900 flex items-center gap-2">
                             <span>Tareas Agénticas</span>
                             <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700">
-                                Multi-Agente AI
+                                Modo 1 API · Modo 2 Prompt + Logs
                             </span>
                         </h1>
                         <p className="text-xs text-slate-500 font-medium">
-                            Orquestación autónoma en segundo plano con el Supervisor y agentes especialistas
+                            Ejecución autónoma por API Interna o generación de Prompts + Logs para Antigravity, Cursor y Claude Code
                         </p>
                     </div>
                 </div>
             </div>
 
-            {/* KPI Summary Cards */}
             <AiTaskSummaryCards summary={summary} />
 
-            {/* Filters Bar */}
             <AiTaskFiltersBar
                 search={search}
                 onSearchChange={(val) => { setSearch(val); setPage(1); }}
@@ -146,16 +134,16 @@ const AiAgentTasks = () => {
                 onResetFilters={handleResetFilters}
             />
 
-            {/* Main Table / Grid */}
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                 <Table
-                    headers={['Tarea / Objetivo', 'Prioridad', 'Agente Especialista', 'Progreso', 'Solicitado', 'Acciones']}
+                    headers={['Tarea / Objetivo', 'Prioridad', 'Agente y Modo IA', 'Progreso, Estado y Acción Humana', 'Solicitado', 'Acciones']}
                     data={tasks}
                     isLoading={isLoading}
                     renderRow={(item) => {
                         const agent = AGENT_BADGES[item.assigned_agent_code] || AGENT_BADGES.supervisor;
                         const pStyle = PRIORITY_STYLES[item.priority] || PRIORITY_STYLES.media;
-                        const isRunning = ['analizando', 'en_proceso', 'pendiente'].includes(item.status);
+                        const meta = getTaskActivityMeta(item);
+                        const isRunning = ['analizando', 'en_proceso', 'pendiente'].includes(item.status) && meta.execMode !== 'agent_prompt';
 
                         return (
                             <tr
@@ -191,29 +179,52 @@ const AiAgentTasks = () => {
                                     </span>
                                 </td>
 
-                                <td className="px-3 py-3 whitespace-nowrap">
-                                    <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-bold border ${agent.cls}`}>
-                                        <span>{agent.icon}</span>
-                                        <span>{agent.name}</span>
-                                    </span>
+                                <td className="px-3 py-3 whitespace-nowrap space-y-1">
+                                    <div>
+                                        <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-xl text-xs font-bold border ${agent.cls}`}>
+                                            <span>{agent.icon}</span>
+                                            <span>{agent.name}</span>
+                                        </span>
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold border ${meta.modeBadge.cls}`}>
+                                            <span>{meta.modeBadge.icon}</span>
+                                            <span>{meta.modeBadge.label}</span>
+                                        </span>
+                                        {meta.hasCustomLogs && (
+                                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-slate-800 text-emerald-300">
+                                                📎 Logs
+                                            </span>
+                                        )}
+                                    </div>
                                 </td>
 
-                                <td className="px-3 py-3 min-w-[160px]">
-                                    <div className="flex items-center justify-between text-[11px] font-bold text-slate-700 mb-1">
-                                        <span className="flex items-center gap-1 truncate text-slate-600 max-w-[120px]">
-                                            {isRunning && <Loader2 size={11} className="animate-spin text-indigo-600 shrink-0" />}
-                                            <span className="truncate">{item.current_step || item.status}</span>
+                                <td className="px-3 py-3 min-w-[230px] max-w-[270px]">
+                                    <div className="flex items-center justify-between gap-2 mb-1">
+                                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold border ${meta.statusBadge.cls}`}>
+                                            <span>{meta.statusBadge.icon}</span>
+                                            <span>{meta.statusBadge.label}</span>
                                         </span>
-                                        <span className="font-mono">{item.progress || 0}%</span>
+                                        <span className="font-mono text-xs font-black text-slate-800">{meta.progress}%</span>
                                     </div>
-                                    <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                                    <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden mb-1.5">
                                         <div
                                             className={`h-full rounded-full transition-all duration-300 ${
                                                 item.status === 'completada' ? 'bg-emerald-500' :
                                                 item.status === 'fallida' ? 'bg-rose-500' : 'bg-indigo-600'
                                             }`}
-                                            style={{ width: `${Math.min(100, Math.max(0, item.progress || 0))}%` }}
+                                            style={{ width: `${meta.progress}%` }}
                                         />
+                                    </div>
+                                    <div className="text-[10px] text-slate-500 font-medium truncate mb-1" title={item.current_step || item.status}>
+                                        {isRunning && <Loader2 size={10} className="inline animate-spin text-indigo-600 mr-1" />}
+                                        {item.current_step || item.status}
+                                    </div>
+                                    <div
+                                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold border ${meta.humanCls}`}
+                                        title={meta.humanDetail}
+                                    >
+                                        <span>{meta.humanBadge}</span>
                                     </div>
                                 </td>
 
@@ -230,13 +241,18 @@ const AiAgentTasks = () => {
                                         <button onClick={() => handleOpenDetail(item.id)} className="p-1.5 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all" title="Ver bitácora y reporte">
                                             <Eye size={16} />
                                         </button>
+                                        {meta.execMode === 'agent_prompt' && (
+                                            <button onClick={() => handleCopyTaskPrompt(item, meta)} className="p-1.5 text-purple-600 hover:bg-purple-50 rounded-xl transition-all" title={`Copiar Prompt + Logs para ${meta.platform.name}`}>
+                                                <Copy size={15} />
+                                            </button>
+                                        )}
                                         {!isRunning && (
-                                            <button onClick={() => handleOpenEdit(item)} className="p-1.5 text-slate-600 hover:text-amber-600 hover:bg-amber-50 rounded-xl transition-all" title="Editar tarea o prompt">
+                                            <button onClick={() => handleOpenEdit(item)} className="p-1.5 text-slate-600 hover:text-amber-600 hover:bg-amber-50 rounded-xl transition-all" title="Configurar Modo IA / Cargar Logs">
                                                 <Pencil size={15} />
                                             </button>
                                         )}
                                         {!isRunning && (
-                                            <button onClick={() => handleRetryTask(item.id)} className="p-1.5 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all" title={item.status === 'completada' ? 'Volver a ejecutar tarea' : 'Reintentar tarea'}>
+                                            <button onClick={() => handleRetryTask(item.id)} className="p-1.5 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all" title={meta.execMode === 'agent_prompt' ? 'Regenerar paquete de Prompt + Logs' : 'Reejecutar por API Interna'}>
                                                 <RotateCcw size={16} />
                                             </button>
                                         )}
@@ -248,7 +264,8 @@ const AiAgentTasks = () => {
                     renderCard={(item) => {
                         const agent = AGENT_BADGES[item.assigned_agent_code] || AGENT_BADGES.supervisor;
                         const pStyle = PRIORITY_STYLES[item.priority] || PRIORITY_STYLES.media;
-                        const isRunning = ['analizando', 'en_proceso', 'pendiente'].includes(item.status);
+                        const meta = getTaskActivityMeta(item);
+                        const isRunning = ['analizando', 'en_proceso', 'pendiente'].includes(item.status) && meta.execMode !== 'agent_prompt';
 
                         return (
                             <div className="space-y-2.5" onClick={() => handleOpenDetail(item.id)}>
@@ -265,42 +282,23 @@ const AiAgentTasks = () => {
                                     </span>
                                 </div>
 
-                                <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-100">
-                                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-bold border ${agent.cls}`}>
-                                        <span>{agent.icon}</span>
-                                        <span>{agent.name}</span>
-                                    </span>
-                                    <span className="text-[11px] font-mono font-bold text-slate-600">
-                                        {item.progress || 0}%
-                                    </span>
+                                <div className="flex flex-wrap items-center justify-between gap-1.5 text-xs pt-1 border-t border-slate-100">
+                                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-bold border ${agent.cls}`}>{agent.icon} {agent.name}</span>
+                                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold border ${meta.statusBadge.cls}`}>{meta.statusBadge.icon} {meta.statusBadge.label} ({meta.progress}%)</span>
                                 </div>
 
-                                <AiTaskOutputPreview
-                                    result={item.result}
-                                    outputType={item.output_type}
-                                    outputFileUrl={item.output_file_url}
-                                    onOpenDetail={() => handleOpenDetail(item.id, 'result')}
-                                    onOpenPdf={handleOpenPdf}
-                                />
+                                <div className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border ${meta.humanCls}`}>
+                                    {meta.humanBadge} · <span className="font-medium">{meta.humanDetail}</span>
+                                </div>
+
+                                <AiTaskOutputPreview result={item.result} outputType={item.output_type} outputFileUrl={item.output_file_url} onOpenDetail={() => handleOpenDetail(item.id, 'result')} onOpenPdf={handleOpenPdf} />
 
                                 <div className="flex items-center justify-between pt-1 border-t border-slate-100 text-[10px] text-slate-400">
                                     <span>{formatDateTime(item.created_at)}</span>
                                     {!isRunning && (
                                         <div className="flex items-center gap-2">
-                                            <button
-                                                type="button"
-                                                onClick={(e) => { e.stopPropagation(); handleOpenEdit(item); }}
-                                                className="font-bold text-amber-600 hover:text-amber-800"
-                                            >
-                                                Editar
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={(e) => { e.stopPropagation(); handleRetryTask(item.id); }}
-                                                className="font-bold text-indigo-600 hover:text-indigo-800"
-                                            >
-                                                {item.status === 'completada' ? 'Reejecutar' : 'Reintentar'}
-                                            </button>
+                                            <button type="button" onClick={(e) => { e.stopPropagation(); handleOpenEdit(item); }} className="font-bold text-amber-600 hover:text-amber-800">Editar</button>
+                                            <button type="button" onClick={(e) => { e.stopPropagation(); handleRetryTask(item.id); }} className="font-bold text-indigo-600 hover:text-indigo-800">{item.status === 'completada' ? 'Reejecutar' : 'Reintentar'}</button>
                                         </div>
                                     )}
                                 </div>
@@ -318,15 +316,7 @@ const AiAgentTasks = () => {
 
             <AiTaskCreateModal isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} onSuccess={handleTaskSuccess} />
             <AiTaskEditModal isOpen={isEditModalOpen} onClose={() => { setIsEditModalOpen(false); setTaskToEdit(null); }} task={taskToEdit} onSuccess={handleTaskSuccess} />
-            <AiTaskDetailModal
-                isOpen={isDetailModalOpen}
-                onClose={() => { setIsDetailModalOpen(false); setSelectedTaskId(null); }}
-                taskId={selectedTaskId}
-                initialTab={selectedTab}
-                onTaskUpdated={handleTaskSuccess}
-                onEdit={(task) => { setIsDetailModalOpen(false); handleOpenEdit(task); }}
-                onOpenPdf={handleOpenPdf}
-            />
+            <AiTaskDetailModal isOpen={isDetailModalOpen} onClose={() => { setIsDetailModalOpen(false); setSelectedTaskId(null); }} taskId={selectedTaskId} initialTab={selectedTab} onTaskUpdated={handleTaskSuccess} onEdit={(task) => { setIsDetailModalOpen(false); handleOpenEdit(task); }} onOpenPdf={handleOpenPdf} />
             <PdfViewerModal isOpen={isPdfOpen} onClose={() => setIsPdfOpen(false)} pdfUrl={pdfUrl} title="Reporte Agéntico Oficial" />
         </div>
     );

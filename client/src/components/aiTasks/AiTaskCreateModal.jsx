@@ -4,6 +4,7 @@ import axios from 'axios';
 import { toast } from 'sonner';
 import { Sparkles, Send, Loader2, MessageSquare } from 'lucide-react';
 import { OUTPUT_TYPES } from './aiTaskConstants';
+import AiModeAndLogsSelector from './AiModeAndLogsSelector';
 
 const QUICK_TEMPLATES = [
     {
@@ -48,6 +49,9 @@ const AiTaskCreateModal = ({ isOpen, onClose, onSuccess }) => {
     const [prompt, setPrompt] = useState('');
     const [priority, setPriority] = useState('media');
     const [outputType, setOutputType] = useState('texto');
+    const [executionMode, setExecutionMode] = useState('api');
+    const [agentPlatform, setAgentPlatform] = useState('antigravity');
+    const [customLogs, setCustomLogs] = useState('');
     const [notifyTelegram, setNotifyTelegram] = useState(true);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -78,6 +82,9 @@ const AiTaskCreateModal = ({ isOpen, onClose, onSuccess }) => {
                 prompt: prompt.trim(),
                 priority,
                 output_type: outputType,
+                execution_mode: executionMode,
+                agent_platform: agentPlatform,
+                custom_logs: customLogs,
                 notify_telegram: notifyTelegram
             });
 
@@ -96,6 +103,9 @@ const AiTaskCreateModal = ({ isOpen, onClose, onSuccess }) => {
         setPrompt('');
         setPriority('media');
         setOutputType('texto');
+        setExecutionMode('api');
+        setAgentPlatform('antigravity');
+        setCustomLogs('');
         setNotifyTelegram(true);
         onClose();
     };
@@ -104,10 +114,18 @@ const AiTaskCreateModal = ({ isOpen, onClose, onSuccess }) => {
         <Modal
             isOpen={isOpen}
             onClose={handleClose}
-            title="Nueva Tarea Agéntica en Segundo Plano"
+            title="Nueva Tarea Agéntica (API o Prompt con Logs)"
             maxWidth="max-w-2xl"
         >
             <form onSubmit={handleSubmit} className="space-y-4">
+                <AiModeAndLogsSelector
+                    executionMode={executionMode}
+                    onExecutionModeChange={setExecutionMode}
+                    agentPlatform={agentPlatform}
+                    onAgentPlatformChange={setAgentPlatform}
+                    customLogs={customLogs}
+                    onCustomLogsChange={setCustomLogs}
+                />
                 {/* Preconfigured Quick Templates */}
                 <div>
                     <label className="text-[11px] font-bold text-slate-500 uppercase flex items-center gap-1 mb-1.5">
