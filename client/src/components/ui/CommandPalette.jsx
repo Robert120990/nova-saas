@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Search, CornerDownLeft } from 'lucide-react';
+import { Search, CornerDownLeft, Calculator } from 'lucide-react';
+import { toast } from 'sonner';
 import { useMenuItems, GROUP_MODULE_MAP, ITEM_MODULE_MAP } from '../../hooks/useMenuItems';
 import { useAuth } from '../../context/AuthContext';
 import { useSafeNavigate } from '../../hooks/useSafeNavigate';
+import { evaluateSafeMath, copyTextToClipboard } from '../../utils/calculatorUtils';
 
 const CommandPalette = ({ isOpen, onClose }) => {
     const [search, setSearch] = useState('');
@@ -20,7 +22,7 @@ const CommandPalette = ({ isOpen, onClose }) => {
         if (Array.isArray(user.permissions)) return user.permissions;
         try {
             return JSON.parse(user.permissions);
-        } catch (e) {
+        } catch {
             return [];
         }
     };
@@ -50,21 +52,12 @@ const CommandPalette = ({ isOpen, onClose }) => {
 
     const navigableItems = useMemo(() => {
         const results = [];
-        const parentMap = {};
-        flatItems.forEach(item => {
-            if (!item.parent_id) {
-                parentMap[item.id] = item.label;
-            }
-        });
-
-        const isAndelsaContext = user?.company_id === 9 || 
+        const isAndelsaContext = user?.company_id === 9 ||
                                  (typeof user?.company_name === 'string' && user.company_name.toUpperCase().includes('ANDELSA')) ||
                                  (typeof window !== 'undefined' && window.location.hostname.includes('andelsa'));
 
         flatItems.forEach(item => {
-            if (!item.path) return;
-            if (!hasPermission(item)) return;
-            if (item.hide_in_menu) return;
+            if (!item.path || !hasPermission(item) || item.hide_in_menu) return;
 
             let groupLabel = '';
             if (item.parent_id) {
@@ -110,6 +103,9 @@ const CommandPalette = ({ isOpen, onClose }) => {
         return results;
     }, [flatItems, permissions, isSuperAdmin, user?.enabled_modules, user?.company_id, user?.company_name]);
 
+    const calcResult = useMemo(() => evaluateSafeMath(search), [search]);
+    const hasCalc = calcResult !== null;
+
     const filteredItems = useMemo(() => {
         if (!search.trim()) return [];
         const query = search.toLowerCase().trim();
@@ -136,27 +132,43 @@ const CommandPalette = ({ isOpen, onClose }) => {
         safeNavigate(path);
     };
 
+    const handleCopyCalc = async (val) => {
+        if (val === null || val === undefined) return;
+        const textVal = val.toString();
+        await copyTextToClipboard(textVal);
+        toast.success(`Resultado ${textVal} copiado al portapapeles`);
+        onClose();
+    };
+
     useEffect(() => {
         if (!isOpen) return;
 
         const handleKeyDown = (e) => {
+            const total = hasCalc ? 1 + filteredItems.length : filteredItems.length;
+            if (total === 0 && e.key !== 'Escape') return;
+
             switch (e.key) {
                 case 'ArrowDown':
                     e.preventDefault();
                     setSelectedIndex(prev =>
-                        prev < filteredItems.length - 1 ? prev + 1 : 0
+                        prev < total - 1 ? prev + 1 : 0
                     );
                     break;
                 case 'ArrowUp':
                     e.preventDefault();
                     setSelectedIndex(prev =>
-                        prev > 0 ? prev - 1 : filteredItems.length - 1
+                        prev > 0 ? prev - 1 : total - 1
                     );
                     break;
                 case 'Enter':
                     e.preventDefault();
-                    if (filteredItems[selectedIndex]) {
-                        handleSelectItem(filteredItems[selectedIndex].path);
+                    if (hasCalc && selectedIndex === 0) {
+                        handleCopyCalc(calcResult);
+                    } else {
+                        const itemIndex = hasCalc ? selectedIndex - 1 : selectedIndex;
+                        if (filteredItems[itemIndex]) {
+                            handleSelectItem(filteredItems[itemIndex].path);
+                        }
                     }
                     break;
                 case 'Escape':
@@ -168,7 +180,7 @@ const CommandPalette = ({ isOpen, onClose }) => {
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [isOpen, filteredItems, selectedIndex, onClose]);
+    }, [isOpen, filteredItems, selectedIndex, hasCalc, calcResult, onClose]);
 
     useEffect(() => {
         if (listRef.current) {
@@ -220,39 +232,91 @@ const CommandPalette = ({ isOpen, onClose }) => {
                                 También puedes usar el atajo <kbd className="font-mono bg-slate-800 px-1 py-0.5 rounded text-slate-400 border border-slate-700">Ctrl+K</kbd>
                             </p>
                         </div>
-                    ) : filteredItems.length === 0 ? (
+                    ) : filteredItems.length === 0 && !hasCalc ? (
                         <div className="px-4 py-8 text-center">
                             <p className="text-[11px] text-slate-500 font-medium">Sin resultados</p>
                         </div>
                     ) : (
-                        filteredItems.map((item, index) => {
-                            const showGroup = index === 0 || filteredItems[index - 1].group !== item.group;
-                            return (
-                                <React.Fragment key={item.id}>
-                                    {showGroup && item.group && (
-                                        <div className="px-3 py-2 mt-1">
-                                            <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">
-                                                {item.group}
-                                            </span>
-                                        </div>
+                        <>
+                            {hasCalc && (
+                                <button
+                                    type="button"
+                                    data-index={0}
+                                    onClick={() => handleCopyCalc(calcResult)}
+                                    onMouseEnter={() => setSelectedIndex(0)}
+                                    className={`relative w-full flex items-center gap-3 px-3 py-2.5 mb-1.5 rounded-xl transition-all duration-150 text-left overflow-hidden group select-none ${
+                                        selectedIndex === 0
+                                            ? 'bg-slate-800/90 text-white border border-slate-700/80 shadow-md'
+                                            : 'text-slate-300 hover:bg-slate-800/50 hover:text-white border border-transparent'
+                                    }`}
+                                >
+                                    {/* Indicador azul activo en el borde izquierdo */}
+                                    {selectedIndex === 0 && (
+                                        <div className="absolute left-0 top-1.5 bottom-1.5 w-1 bg-sky-400 rounded-r" />
                                     )}
-                                    <button
-                                        data-index={index}
-                                        onClick={() => handleSelectItem(item.path)}
-                                        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 text-left ${
-                                            index === selectedIndex
-                                                ? 'bg-indigo-600/20 text-indigo-400 border border-indigo-600/30'
-                                                : 'text-slate-400 hover:bg-white/5 hover:text-slate-100 border border-transparent'
-                                        }`}
-                                    >
-                                        <span className="text-[13px] font-medium">{item.label}</span>
-                                        {index === selectedIndex && (
-                                            <CornerDownLeft size={14} className="ml-auto text-indigo-400/60" />
+
+                                    {/* Ícono de calculadora */}
+                                    <div className={`flex items-center justify-center w-8 h-8 rounded-lg shrink-0 transition-colors ${
+                                        selectedIndex === 0
+                                            ? 'bg-sky-500/20 text-sky-400 border border-sky-500/30'
+                                            : 'bg-slate-800 text-slate-400 border border-slate-700'
+                                    }`}>
+                                        <Calculator size={18} />
+                                    </div>
+
+                                    {/* Número y leyenda */}
+                                    <div className="flex flex-col min-w-0">
+                                        <span className="text-[15px] font-bold text-white tracking-wide leading-tight">
+                                            {typeof calcResult === 'number'
+                                                ? calcResult.toLocaleString('en-US', { maximumFractionDigits: 6 })
+                                                : calcResult}
+                                        </span>
+                                        <span className="text-[11px] text-slate-400 group-hover:text-slate-300 transition-colors">
+                                            Copiar resultado al portapapeles
+                                        </span>
+                                    </div>
+
+                                    {/* Atajo de teclado Enter */}
+                                    <div className="ml-auto flex items-center gap-1.5">
+                                        <kbd className="hidden sm:inline-flex items-center text-[10px] font-mono text-slate-400 bg-slate-800/80 px-1.5 py-0.5 rounded border border-slate-700">
+                                            ↵ Enter
+                                        </kbd>
+                                    </div>
+                                </button>
+                            )}
+
+                            {filteredItems.map((item, index) => {
+                                const itemSelectIndex = hasCalc ? index + 1 : index;
+                                const isSelected = selectedIndex === itemSelectIndex;
+                                const showGroup = index === 0 || filteredItems[index - 1].group !== item.group;
+                                return (
+                                    <React.Fragment key={item.id}>
+                                        {showGroup && item.group && (
+                                            <div className="px-3 py-2 mt-1">
+                                                <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">
+                                                    {item.group}
+                                                </span>
+                                            </div>
                                         )}
-                                    </button>
-                                </React.Fragment>
-                            );
-                        })
+                                        <button
+                                            data-index={itemSelectIndex}
+                                            onClick={() => handleSelectItem(item.path)}
+                                            onMouseEnter={() => setSelectedIndex(itemSelectIndex)}
+                                            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 text-left ${
+                                                isSelected
+                                                    ? 'bg-indigo-600/20 text-indigo-400 border border-indigo-600/30'
+                                                    : 'text-slate-400 hover:bg-white/5 hover:text-slate-100 border border-transparent'
+                                            }`}
+                                        >
+                                            <span className="text-[13px] font-medium">{item.label}</span>
+                                            {isSelected && (
+                                                <CornerDownLeft size={14} className="ml-auto text-indigo-400/60" />
+                                            )}
+                                        </button>
+                                    </React.Fragment>
+                                );
+                            })}
+                        </>
                     )}
                 </div>
 
