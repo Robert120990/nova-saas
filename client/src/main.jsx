@@ -47,7 +47,7 @@ const updateSW = registerSW({
     immediate: true,
     onNeedRefresh() {
         console.log('[PWA] Nuevo Service Worker disponible en espera.');
-        fetch('/health', { headers: { 'Cache-Control': 'no-cache' } })
+        fetch('/api/health', { headers: { 'Cache-Control': 'no-cache' } })
             .then(res => res.json())
             .then(data => {
                 if (typeof window.__notifyAppUpdate === 'function') {

@@ -376,13 +376,15 @@ const Sidebar = ({ onOpenSearch, isMobileOpen = false, onCloseMobile }) => {
     }));
 
     useEffect(() => {
-        fetch('/health')
+        fetch('/api/health', { headers: { 'Cache-Control': 'no-cache' } })
             .then(r => r.json())
             .then(d => {
-                setVersionInfo({
-                    commit: d.commit || d.version || '?',
-                    version: d.appVersion || ''
-                });
+                if (d && (d.commit || d.version)) {
+                    setVersionInfo({
+                        commit: d.commit || d.version || '?',
+                        version: d.appVersion || ''
+                    });
+                }
             })
             .catch(() => {});
     }, []);

@@ -46,6 +46,7 @@ export default defineConfig({
         maximumFileSizeToCacheInBytes: 8 * 1024 * 1024,
         skipWaiting: false,
         clientsClaim: true,
+        navigateFallbackDenylist: [/^\/api/, /^\/uploads/, /^\/ws/, /^\/health/],
       }
     })
   ],

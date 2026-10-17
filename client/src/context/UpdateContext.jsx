@@ -210,7 +210,7 @@ export const UpdateProvider = ({ children }) => {
         const checkServerVersion = async () => {
             if (isUpdatingRef.current || document.visibilityState !== 'visible') return;
             try {
-                const { data } = await axios.get('/health', {
+                const { data } = await axios.get('/api/health', {
                     headers: { 'Cache-Control': 'no-cache' }
                 });
 
