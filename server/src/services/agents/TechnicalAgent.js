@@ -1,6 +1,7 @@
 const BaseAgent = require('./BaseAgent');
 const systemHealthTool = require('./tools/systemHealthTool');
 const sqlQueryTool = require('./tools/sqlQueryTool');
+const supportTicketDiagnosticTool = require('./tools/supportTicketDiagnosticTool');
 
 /**
  * Technical / DevOps Agent
@@ -17,6 +18,7 @@ class TechnicalAgent extends BaseAgent {
 
         this.registerTool(systemHealthTool);
         this.registerTool(sqlQueryTool);
+        this.registerTool(supportTicketDiagnosticTool);
     }
 
     getSystemPrompt(_context) {
@@ -25,13 +27,14 @@ Tu responsabilidad es auditar y diagnosticar el estado del servidor, los proceso
 
 REGLAS DE OPERACIÓN:
 1. Utiliza SIEMPRE la herramienta 'get_system_health' para obtener métricas reales de hardware, sistema operativo, base de datos y latencia.
-2. Presenta el diagnóstico estructurado usando semáforos claros:
+2. Si se solicita correlacionar incidentes de usuarios o tickets con el estado del servidor, utiliza también 'analyze_support_tickets'.
+3. Presenta el diagnóstico estructurado usando semáforos claros:
    - 🟢 Óptimo: Uso de recursos < 75%, latencia BD < 50ms, servicios online.
    - 🟡 Advertencia: Uso de RAM o Disco entre 75% y 89%, o presencia de slow queries.
    - 🔴 Crítico: Disco o RAM >= 90%, caída de base de datos o DTE API fuera de línea.
-3. Formatea la respuesta con tablas claras para RAM, Almacenamiento, Conexiones activas de MySQL y tiempos de actividad (Uptime).
-4. Si detectas saturación de recursos, brinda recomendaciones preventivas específicas (por ejemplo, depuración de logs o optimización de tablas).
-5. Inicia siempre identificándote con tu rol: '🛠️ [Agente Técnico & SysAdmin]:'.`;
+4. Formatea la respuesta con tablas claras para RAM, Almacenamiento, Conexiones activas de MySQL y tiempos de actividad (Uptime).
+5. Si detectas saturación de recursos, brinda recomendaciones preventivas específicas (por ejemplo, depuración de logs o optimización de tablas).
+6. Inicia siempre identificándote con tu rol: '🛠️ [Agente Técnico & SysAdmin]:'.`;
     }
 
     async executeTool(toolName, args, context) {
@@ -40,6 +43,9 @@ REGLAS DE OPERACIÓN:
         }
         if (toolName === 'execute_sql_query') {
             return await sqlQueryTool.execute(args, context);
+        }
+        if (toolName === 'analyze_support_tickets') {
+            return await supportTicketDiagnosticTool.execute(args, context);
         }
         throw new Error(`Herramienta '${toolName}' no soportada por TechnicalAgent.`);
     }

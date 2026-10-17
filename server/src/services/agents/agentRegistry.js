@@ -5,6 +5,7 @@ const InventoryAgent = require('./InventoryAgent');
 const GasStationAgent = require('./GasStationAgent');
 const OperationsAgent = require('./OperationsAgent');
 const TechnicalAgent = require('./TechnicalAgent');
+const SupportTicketAgent = require('./SupportTicketAgent');
 
 /**
  * Registry holding singleton instances of specialized agents.
@@ -23,6 +24,7 @@ class AgentRegistry {
         const gas = new GasStationAgent();
         const operations = new OperationsAgent();
         const tech = new TechnicalAgent();
+        const support = new SupportTicketAgent();
 
         this.register(accounting);
         this.register(dte);
@@ -31,6 +33,7 @@ class AgentRegistry {
         this.register(gas);
         this.register(operations);
         this.register(tech);
+        this.register(support);
     }
 
     register(agent) {

@@ -19,8 +19,8 @@ class SupervisorAgent extends BaseAgent {
                     properties: {
                         target_agent_code: {
                             type: 'string',
-                            enum: ['accounting', 'dte', 'sales', 'inventory', 'gas', 'operations', 'tech'],
-                            description: 'Código del agente especialista: accounting (Contador CPA), dte (Fiscal DTE), sales (Ventas), inventory (Inventario/Kardex), gas (Combustibles/Tanques), operations (Operaciones), tech (Técnico SysAdmin/Servidor).'
+                            enum: ['accounting', 'dte', 'sales', 'inventory', 'gas', 'operations', 'tech', 'support'],
+                            description: 'Código del agente especialista: accounting (Contador CPA), dte (Fiscal DTE), sales (Ventas), inventory (Inventario/Kardex), gas (Combustibles/Tanques), operations (Operaciones), tech (Técnico SysAdmin/Servidor), support (Tickets de Soporte & Diagnóstico).'
                         },
                         subtask_prompt: {
                             type: 'string',
@@ -61,10 +61,12 @@ REGLAS DE ENCAMINAMIENTO (ROUTING):
    - Confirmación o ejecución de tareas operativas delicadas.
 7. SALUD DEL SISTEMA Y SERVIDOR ('tech'):
    - Consultas de rendimiento del servidor, CPU, memoria RAM, almacenamiento en disco, salud de la base de datos MySQL, lentitud, latencia o disponibilidad del microservicio DTE. Delega a 'tech'.
+8. TICKETS DE SOPORTE, DIAGNÓSTICO DE ERRORES DE USUARIO Y PAQUETES IA ('support'):
+   - Consultas sobre tickets de soporte ('support_tickets'), errores reportados por usuarios, capturas de pantalla, logs de navegador/red en tickets o preparación del paquete de tickets para IA. Delega SIEMPRE a 'support'.
 
 REGLA DE IDENTIFICACIÓN OBLIGATORIA:
 - Cuando recibas el resultado del agente especialista, presenta la respuesta iniciando con su distintivo formal, por ejemplo:
-  '**[⚖️ Agente Contador CPA]:**' o '**[⛽ Agente de Combustibles & Pistas]:**' o '**[🛠️ Agente Técnico & SysAdmin]:**' o '**[📈 Agente Comercial]:**'.
+  '**[⚖️ Agente Contador CPA]:**' o '**[⛽ Agente de Combustibles & Pistas]:**' o '**[🛠️ Agente Técnico & SysAdmin]:**' o '**[📈 Agente Comercial]:**' o '**[🎫 Agente de Soporte & Diagnóstico]:**'.
 - De esta manera el usuario sabrá de inmediato y sin ambigüedades qué especialista lo atendió.`;
     }
 

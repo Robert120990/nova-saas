@@ -5,7 +5,8 @@ export const AGENT_BADGES = {
     inventory: { name: 'Inventario', icon: '📦', cls: 'bg-sky-50 text-sky-700 border-sky-200' },
     gas: { name: 'Combustibles', icon: '⛽', cls: 'bg-orange-50 text-orange-700 border-orange-200' },
     sales: { name: 'Ventas', icon: '📈', cls: 'bg-purple-50 text-purple-700 border-purple-200' },
-    tech: { name: 'SysAdmin', icon: '🛠️', cls: 'bg-slate-100 text-slate-700 border-slate-300' }
+    tech: { name: 'SysAdmin', icon: '🛠️', cls: 'bg-slate-100 text-slate-700 border-slate-300' },
+    support: { name: 'Soporte & Tickets', icon: '🎫', cls: 'bg-cyan-50 text-cyan-700 border-cyan-200' }
 };
 
 export const PRIORITY_STYLES = {
