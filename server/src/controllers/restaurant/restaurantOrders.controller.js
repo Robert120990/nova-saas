@@ -166,7 +166,8 @@ async function addItemsToOrder(req, res) {
             return res.status(404).json({ success: false, message: 'Comanda no encontrada' });
         }
 
-        const resolvedItems = await resolveStationsForOrderItems(companyId, orders[0].branch_id || branchId, items);
+        const branchId = orders[0].branch_id || req.branch_id || req.body?.branch_id;
+        const resolvedItems = await resolveStationsForOrderItems(companyId, branchId, items);
         for (const item of resolvedItems) {
             await pool.query(`
                 INSERT INTO restaurant_order_items (order_id, product_id, station_id, quantity, unit_price, course, course_status, seat_number, status, notes, selected_modifiers, sent_at)
