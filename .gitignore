@@ -24,6 +24,16 @@ dte-api/.env*
 # Global env protection
 **/.env*
 
+# Digital certificates & keys (Zero Credentials in Git)
+*.crt
+*.p12
+*.pfx
+*.key
+server/certificados-crt/
+server/certificados-p12pfx/
+certificados-crt/
+certificados-p12pfx/
+
 # Database & Temps
 database/data/
 *.db

@@ -4,6 +4,7 @@
 
 const { signWithInternalSigner } = require('./internalSignerService');
 const { signWithExternalSigner } = require('./externalSignerService');
+const { signWithNativeCrt, findCrtFile } = require('./nativeCrtSigner');
 require('dotenv').config();
 
 /**
@@ -13,16 +14,30 @@ require('dotenv').config();
  * @returns {Promise<Object>}
  */
 async function signDTE(dteJson, options = {}) {
-    const { certificatePath, certificatePassword, nit, ambiente } = options;
+    const { certificatePath, certificateCrtPath, certificatePassword, nit, ambiente } = options;
     const mode = process.env.SIGNATURE_MODE || 'internal';
     
     console.log(`[Signature] Using mode: ${mode}`);
     
     try {
         if (mode === 'internal') {
+            const hasCrt = findCrtFile(nit, certificateCrtPath);
+            if (hasCrt) {
+                return await signWithNativeCrt(dteJson, nit, certificatePassword, certificateCrtPath);
+            }
             return await signWithInternalSigner(dteJson, certificatePath, certificatePassword);
         } else if (mode === 'external') {
-            return await signWithExternalSigner(dteJson, nit, certificatePassword, ambiente || 'test');
+            try {
+                return await signWithExternalSigner(dteJson, nit, certificatePassword, ambiente || 'test');
+            } catch (externalErr) {
+                console.warn('[Signature] Falló firmador externo:', externalErr.message);
+                const hasCrt = findCrtFile(nit, certificateCrtPath);
+                if (hasCrt) {
+                    console.log(`[Signature] Ejecutando firma nativa CRT de respaldo para NIT: ${nit}...`);
+                    return await signWithNativeCrt(dteJson, nit, certificatePassword, certificateCrtPath);
+                }
+                throw externalErr;
+            }
         } else if (mode === 'mock') {
             console.log('[Signature] Using MOCK mode... returning dummy JWS');
             return {

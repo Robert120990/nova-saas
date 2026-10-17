@@ -7,6 +7,7 @@ const { initSentry, setupSentryErrorHandler } = require('./config/sentry');
 const { logger, httpLogger } = require('./utils/logger');
 const authRoutes = require('./routes/auth.routes');
 const apiRoutes = require('./routes/api.routes');
+const { syncAllCrtCertificates } = require('./utils/certSync');
 
 const app = express();
 app.set('trust proxy', 1);
@@ -253,4 +254,5 @@ server.listen(PORT, () => {
     startRrsAutoSyncCron();
     startEnergyAutoSyncCron();
     preloadHaciendaCatalogs();
+    syncAllCrtCertificates();
 });

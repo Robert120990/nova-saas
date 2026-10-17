@@ -2,6 +2,7 @@ const pool = require('../config/db');
 const path = require('path');
 const fs = require('fs');
 const notificationService = require('../services/notification.service');
+const { syncCertToFirmador } = require('../utils/certSync');
 
 const SENSITIVE_COMPANY_FIELDS = ['api_password', 'certificate_password', 'clave_privada'];
 
@@ -71,11 +72,13 @@ const handleFileUploads = (req, data) => {
         const file = req.files.certificate_crt[0];
         const newFilename = nit + path.extname(file.originalname);
         const destDir = path.join(process.cwd(), 'certificados-crt');
+        if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
         const newPath = path.join(destDir, newFilename);
         
         if (fs.existsSync(file.path)) {
             fs.renameSync(file.path, newPath);
             data.certificate_crt_path = newPath;
+            syncCertToFirmador(newPath, nit);
         }
     }
 };

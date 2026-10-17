@@ -57,20 +57,21 @@ async function emit(req, res) {
         const { codigoGeneracion, numeroControl, tipoDte } = dte.identificacion;
 
         // 2. Get Company/Branch credentials for signing and transmission
-        const [company] = await pool.query('SELECT nit, api_user, api_password, certificate_path, certificate_password, ambiente FROM companies WHERE id = ?', [req.company_id]);
+        const [company] = await pool.query('SELECT nit, api_user, api_password, certificate_path, certificate_password, certificate_crt_path, ambiente FROM companies WHERE id = ?', [req.company_id]);
         const [branchEnv] = await pool.query('SELECT ambiente FROM branches WHERE id = ? AND company_id = ?', [req.branch_id, req.company_id]);
         const ambiente = (branchEnv.length > 0 && branchEnv[0].ambiente) || company[0].ambiente;
         console.log(`[DTE-EMIT-DEBUG] Company ${req.company_id} — ambiente DB: "${ambiente}"`);
         const certPass = bodyPassword || company[0].certificate_password;
         const signatureMode = process.env.SIGNATURE_MODE || 'internal';
 
-        if (signatureMode === 'internal' && !company[0].certificate_path) {
+        if (signatureMode === 'internal' && !company[0].certificate_path && !company[0].certificate_crt_path) {
             throw new Error('Certificado no configurado para la empresa (Modo Interno)');
         }
 
         // 3. Sign Document
         const signResult = await signatureService.signDTE(dte, {
             certificatePath: company[0].certificate_path,
+            certificateCrtPath: company[0].certificate_crt_path,
             certificatePassword: certPass,
             nit: company[0].nit,
             ambiente: ambiente
@@ -470,20 +471,22 @@ async function sign(req, res) {
         if (rows.length === 0) return res.status(404).json({ success: false, message: 'DTE no encontrado' });
 
         const dte = rows[0];
-        const [company] = await pool.query('SELECT nit, certificate_path, certificate_password, ambiente FROM companies WHERE id = ?', [req.company_id]);
+        const [company] = await pool.query('SELECT nit, certificate_path, certificate_password, certificate_crt_path, ambiente FROM companies WHERE id = ?', [req.company_id]);
         const [branchEnv] = await pool.query('SELECT ambiente FROM branches WHERE id = ? AND company_id = ?', [dte.branch_id, req.company_id]);
         const ambiente = (branchEnv.length > 0 && branchEnv[0].ambiente) || company[0].ambiente;
         
         const certPath = company[0].certificate_path;
+        const certCrtPath = company[0].certificate_crt_path;
         const certPass = bodyPassword || company[0].certificate_password;
 
-        if (!certPath) {
+        if (!certPath && !certCrtPath) {
             return res.status(400).json({ success: false, message: 'Ruta de certificado no configurada para la empresa' });
         }
 
         // 2. Call unified signature service
         const signResult = await signatureService.signDTE(dte.json_original, {
             certificatePath: certPath,
+            certificateCrtPath: certCrtPath,
             certificatePassword: certPass,
             nit: company[0].nit,
             ambiente: ambiente
