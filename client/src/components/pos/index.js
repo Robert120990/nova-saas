@@ -10,4 +10,4 @@ export { default as PosProductCatalogModal } from './PosProductCatalogModal';
 export { default as PosSuccessModal } from './PosSuccessModal';
 export { default as PosSupervisorAuthModal } from './PosSupervisorAuthModal';
 export { default as PosRemisionesModal } from './PosRemisionesModal';
-
+export { default as PosFormModal } from './PosFormModal';

@@ -2,10 +2,11 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import Table from '../components/ui/Table';
-import Modal from '../components/ui/Modal';
+import { PosFormModal } from '../components/pos';
 import { Plus, Edit, Trash2, Power, Printer } from 'lucide-react';
 import { toast } from 'sonner';
 import { useConfirm } from '../context/ConfirmContext';
+import { unwrapList } from '../utils/apiUtils';
 
 const POS = () => {
     const queryClient = useQueryClient();
@@ -15,55 +16,62 @@ const POS = () => {
 
     const { data: posList = [], isLoading } = useQuery({
         queryKey: ['pos'],
-        queryFn: async () => (await axios.get('/api/pos')).data
+        queryFn: async () => unwrapList(await axios.get('/api/pos'))
     });
 
     const { data: branches = [] } = useQuery({ 
         queryKey: ['branches'], 
-        queryFn: async () => (await axios.get('/api/branches')).data 
+        queryFn: async () => unwrapList(await axios.get('/api/branches'))
     });
 
     const createMutation = useMutation({
         mutationFn: (newPos) => axios.post('/api/pos', newPos),
         onSuccess: () => {
-            queryClient.invalidateQueries(['pos']);
+            queryClient.invalidateQueries({ queryKey: ['pos'] });
             setIsModalOpen(false);
             toast.success('Caja/POS creada');
+        },
+        onError: (err) => {
+            toast.error(err?.response?.data?.message || 'Error al crear punto de venta');
         }
     });
 
     const updateMutation = useMutation({
         mutationFn: ({ id, ...data }) => axios.put(`/api/pos/${id}`, data),
         onSuccess: () => {
-            queryClient.invalidateQueries(['pos']);
+            queryClient.invalidateQueries({ queryKey: ['pos'] });
             setIsModalOpen(false);
             setSelectedPos(null);
             toast.success('Punto de venta actualizado');
+        },
+        onError: (err) => {
+            toast.error(err?.response?.data?.message || 'Error al actualizar punto de venta');
         }
     });
 
     const deleteMutation = useMutation({
         mutationFn: (id) => axios.delete(`/api/pos/${id}`),
-        onSuccess: () => {
-            queryClient.invalidateQueries(['pos']);
-            toast.success('Punto de venta eliminado');
+        onSuccess: (res) => {
+            queryClient.invalidateQueries({ queryKey: ['pos'] });
+            toast.success(res?.data?.message || 'Punto de venta eliminado');
+        },
+        onError: (err) => {
+            toast.error(err?.response?.data?.message || 'Error al eliminar punto de venta');
         }
     });
 
     const toggleStatusMutation = useMutation({
         mutationFn: ({ id, status }) => axios.put(`/api/pos/${id}`, { status: status === 'activo' ? 'inactivo' : 'activo' }),
         onSuccess: () => {
-            queryClient.invalidateQueries(['pos']);
-            toast.success('Estado actualizado');
+            queryClient.invalidateQueries({ queryKey: ['pos'] });
+            toast.success('Punto de venta desactivado');
+        },
+        onError: (err) => {
+            toast.error(err?.response?.data?.message || 'Error al cambiar el estado');
         }
     });
 
-    const handleSubmit = (e) => {
-        e.preventDefault();
-        const formData = new FormData(e.target);
-        const data = Object.fromEntries(formData);
-        data.allow_discounts = formData.get('allow_discounts') ? 1 : 0;
-        data.auto_print = formData.get('auto_print') ? 1 : 0;
+    const handleSave = (data) => {
         if (selectedPos) {
             updateMutation.mutate({ id: selectedPos.id, ...data });
         } else {
@@ -76,14 +84,17 @@ const POS = () => {
         setIsModalOpen(true);
     };
 
-    const handleDelete = async (id) => {
+    const handleDelete = async (pos) => {
+        const hasRecords = Number(pos?.records_count || 0) > 0;
         const ok = await confirm({
-            title: '¿Eliminar punto de venta?',
-            message: 'Esta terminal será eliminada permanentemente del sistema.',
-            confirmLabel: 'Sí, eliminar',
+            title: hasRecords ? '¿Desactivar punto de venta?' : '¿Eliminar punto de venta?',
+            message: hasRecords
+                ? 'Esta terminal tiene registros históricos asociados (ventas o turnos), por lo que será desactivada y dejará de aparecer en el sistema.'
+                : 'Esta terminal no tiene registros asociados y será eliminada permanentemente del sistema.',
+            confirmLabel: hasRecords ? 'Sí, desactivar' : 'Sí, eliminar',
             variant: 'danger',
         });
-        if (ok) deleteMutation.mutate(id);
+        if (ok) deleteMutation.mutate(pos.id);
     };
 
     return (
@@ -95,7 +106,7 @@ const POS = () => {
                 </div>
                 <button 
                     onClick={() => { setSelectedPos(null); setIsModalOpen(true); }} 
-                    className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-xl font-bold flex items-center gap-2 transition-all shadow-lg shadow-indigo-600/20 active:scale-95"
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-indigo-600/20 active:scale-95"
                 >
                     <Plus size={20}/>
                     <span>Nuevo POS</span>
@@ -104,7 +115,7 @@ const POS = () => {
 
             <Table 
                 headers={['Sucursal', 'Código', 'Terminal', 'Descuentos', 'Impresora', 'Estado', 'Acciones']}
-                data={posList}
+                data={Array.isArray(posList) ? posList : []}
                 isLoading={isLoading}
                 renderRow={(pos) => (
                     <tr key={pos.id} className="hover:bg-slate-50 transition-colors border-b border-slate-100 last:border-0">
@@ -143,6 +154,7 @@ const POS = () => {
                         <td className="px-6 py-4">
                             <button
                                 onClick={() => toggleStatusMutation.mutate({ id: pos.id, status: pos.status })}
+                                title="Clic para desactivar y ocultar"
                                 className={`group flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-bold uppercase transition-all border ${
                                     pos.status === 'activo' 
                                     ? 'bg-emerald-50 text-emerald-700 border-emerald-100 hover:bg-emerald-100' 
@@ -164,9 +176,9 @@ const POS = () => {
                                     <Edit size={18} />
                                 </button>
                                 <button 
-                                    onClick={() => handleDelete(pos.id)}
+                                    onClick={() => handleDelete(pos)}
                                     className="p-2 text-slate-600 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
-                                    title="Eliminar"
+                                    title={Number(pos.records_count || 0) > 0 ? 'Desactivar punto de venta' : 'Eliminar permanentemente'}
                                 >
                                     <Trash2 size={18} />
                                 </button>
@@ -176,114 +188,16 @@ const POS = () => {
                 )}
             />
 
-            <Modal 
-                isOpen={isModalOpen} 
-                onClose={() => setIsModalOpen(false)} 
-                title={selectedPos ? "Editar Punto de Venta" : "Nuevo Punto de Venta"}
-            >
-                <form onSubmit={handleSubmit} className="space-y-5 p-1">
-                    <div className="space-y-1.5">
-                        <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-1">Sucursal</label>
-                        <select 
-                            name="branch_id" 
-                            defaultValue={selectedPos?.branch_id}
-                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-400 transition-all appearance-none" 
-                            required
-                        >
-                            <option value="">Selecciona Sucursal</option>
-                            {branches.map(b => (
-                                <option key={b.id} value={b.id}>{b.nombre} ({b.codigo})</option>
-                            ))}
-                        </select>
-                    </div>
-
-                    <div className="space-y-1.5">
-                        <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-1">Código POS</label>
-                        <input 
-                            name="codigo" 
-                            defaultValue={selectedPos?.codigo}
-                            placeholder="Ej: BOX-01" 
-                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-400 transition-all font-mono" 
-                            required 
-                        />
-                    </div>
-
-                    <div className="space-y-1.5">
-                        <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-1">Nombre Terminal</label>
-                        <input 
-                            name="nombre" 
-                            defaultValue={selectedPos?.nombre}
-                            placeholder="Caja Principal / Terminal Móvil" 
-                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-400 transition-all" 
-                            required 
-                        />
-                    </div>
-
-                    <div className="border-t border-slate-100 pt-4">
-                        <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider ml-1 block mb-3">Políticas de Facturación</label>
-                        <div className="p-3 bg-slate-50 border border-slate-200/80 rounded-xl space-y-2">
-                            <label className="flex items-start gap-3 cursor-pointer">
-                                <input 
-                                    type="checkbox"
-                                    name="allow_discounts"
-                                    value="1"
-                                    defaultChecked={selectedPos ? Boolean(selectedPos.allow_discounts && Number(selectedPos.allow_discounts) !== 0) : false}
-                                    id="allow_discounts"
-                                    className="w-4 h-4 mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                                />
-                                <div>
-                                    <span className="text-xs font-bold text-slate-700 block">Habilitar Descuentos en esta Terminal</span>
-                                    <span className="text-[11px] text-slate-500 block font-medium">Permite a los usuarios con permisos aplicar descuentos por ítem y globales en las ventas de este POS.</span>
-                                </div>
-                            </label>
-                        </div>
-                    </div>
-
-                    <div className="border-t border-slate-100 pt-4">
-                        <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider ml-1 block mb-3">Configuración de Impresión</label>
-                        <div className="space-y-3">
-                            <div className="flex items-center gap-3">
-                                <input 
-                                    type="checkbox"
-                                    name="auto_print"
-                                    value="1"
-                                    defaultChecked={selectedPos?.auto_print}
-                                    id="auto_print"
-                                    className="w-4 h-4 rounded border-slate-300 text-indigo-600"
-                                />
-                                <label htmlFor="auto_print" className="text-xs font-bold text-slate-600">Impresión directa (sin vista previa)</label>
-                            </div>
-                            <div className="space-y-1.5">
-                                <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-1">Nombre de Impresora</label>
-                                <input 
-                                    name="printer_name" 
-                                    defaultValue={selectedPos?.printer_name || ''}
-                                    placeholder="Ej: EPSON TM-T20II" 
-                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-400 transition-all" 
-                                />
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="pt-4 flex gap-3">
-                        <button 
-                            type="button" 
-                            onClick={() => setIsModalOpen(false)}
-                            className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-600 py-3 rounded-xl font-bold transition-all"
-                        >
-                            Cancelar
-                        </button>
-                        <button 
-                            type="submit" 
-                            disabled={createMutation.isPending || updateMutation.isPending}
-                            className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-xl font-bold transition-all shadow-lg shadow-indigo-600/20 disabled:opacity-50"
-                        >
-                            {selectedPos ? 'Actualizar' : 'Crear Terminal'}
-                        </button>
-                    </div>
-                </form>
-            </Modal>
+            <PosFormModal
+                open={isModalOpen}
+                onClose={() => { setIsModalOpen(false); setSelectedPos(null); }}
+                onSave={handleSave}
+                selectedPos={selectedPos}
+                branches={branches}
+                isSubmitting={createMutation.isPending || updateMutation.isPending}
+            />
         </div>
     );
 };
+
 export default POS;
