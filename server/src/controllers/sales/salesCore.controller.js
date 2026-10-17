@@ -643,7 +643,9 @@ const getSales = async (req, res) => {
         only_processed, 
         exclude_has_nc, 
         shift_id, 
-        has_dte 
+        has_dte,
+        sort_by = 'fecha',
+        sort_dir = 'desc'
     } = req.query;
     const offset = (page - 1) * limit;
 
@@ -735,6 +737,18 @@ const getSales = async (req, res) => {
             )`;
         }
 
+        const safeDir = String(sort_dir || 'desc').toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
+        const sortMap = {
+            fecha: `h.fecha_emision ${safeDir}, h.hora_emision ${safeDir}, h.id ${safeDir}`,
+            sucursal: `COALESCE(b.nombre, '') ${safeDir}, h.id DESC`,
+            documento: `COALESCE(h.numero_control, h.codigo_generacion, '') ${safeDir}, h.id DESC`,
+            cliente: `COALESCE(c.nombre, h.cliente_nombre, 'Consumidor Final') ${safeDir}, h.id DESC`,
+            estado: `CASE WHEN h.estado IN ('anulado', 'invalidado') THEN 'INVALIDADO' ELSE COALESCE(d_c.status, d_v.status, 'PENDING') END ${safeDir}, h.id DESC`,
+            total: `CAST(h.total_pagar AS DECIMAL(15,2)) ${safeDir}, h.id DESC`,
+            monto: `CAST(h.total_pagar AS DECIMAL(15,2)) ${safeDir}, h.id DESC`
+        };
+        const orderByClause = sortMap[String(sort_by || 'fecha').toLowerCase()] || sortMap.fecha;
+
         const sql = `
             SELECT h.*, s.nombre as seller_name, p.nombre as pos_name, b.nombre as branch_name, c.correo as customer_email,
             c.nit as customer_nit, c.nrc as customer_nrc, c.numero_documento as customer_dui,
@@ -759,7 +773,7 @@ const getSales = async (req, res) => {
             LEFT JOIN dtes d_c ON d_c.codigo_generacion = h.codigo_generacion AND d_c.company_id = h.company_id
             LEFT JOIN dtes d_v ON (h.codigo_generacion IS NULL OR h.codigo_generacion = '') AND d_v.venta_id = h.id AND d_v.company_id = h.company_id
             ${whereClause}
-            ORDER BY h.fecha_emision DESC, h.hora_emision DESC
+            ORDER BY ${orderByClause}
             LIMIT ? OFFSET ?
         `;
         const params = [...whereParams, parseInt(limit), parseInt(offset)];

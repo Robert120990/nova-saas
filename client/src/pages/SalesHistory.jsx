@@ -9,9 +9,11 @@ import Modal from '../components/ui/Modal';
 import { 
     Search, FileText, Eye, Printer, Trash2,
     Mail, Terminal, Code, CheckCircle2, XCircle, AlertCircle, Info, Clock, Send, Ban, RefreshCcw,
-    BarChart3, Filter, RotateCcw, X, Sparkles, User, MoreVertical, ShieldCheck
+    BarChart3, Filter, RotateCcw, X, Sparkles, User, MoreVertical, ShieldCheck,
+    ArrowUpDown, ArrowUp, ArrowDown
 } from 'lucide-react';
 import Money from '../components/ui/Money';
+import { formatDateTime } from '../utils/dateUtils';
 import { 
     SaleDetailModal, 
     DteStatsModal, 
@@ -20,22 +22,6 @@ import {
     SalesIntegrityAuditModal 
 } from '../components/sales';
 import { useAuth } from '../context/AuthContext';
-
-const formatDateTime = (dateStr) => {
-    if (!dateStr || dateStr === 'N/A') return 'N/A 00:00';
-    
-    // Si la cadena no contiene fecha válida, retornar N/A
-    const date = new Date(dateStr);
-    if (isNaN(date.getTime())) return 'N/A 00:00';
-
-    const day = String(date.getDate()).padStart(2, '0');
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const year = date.getFullYear();
-    const hours = String(date.getHours()).padStart(2, '0');
-    const minutes = String(date.getMinutes()).padStart(2, '0');
-    
-    return `${day}/${month}/${year} ${hours}:${minutes}`;
-};
 
 const formatNIT = (value) => {
     if (!value) return '';
@@ -138,6 +124,18 @@ const SalesHistory = () => {
     const [selectedSaleForCustomerEdit, setSelectedSaleForCustomerEdit] = useState(null);
     const [editableItems, setEditableItems] = useState([]);
     const [editDTESaving, setEditDTESaving] = useState(false);
+    const [sortBy, setSortBy] = useState('fecha');
+    const [sortDir, setSortDir] = useState('desc');
+
+    const handleSortColumn = (colKey, defaultDir = 'asc') => {
+        if (sortBy === colKey) {
+            setSortDir(prev => (prev === 'asc' ? 'desc' : 'asc'));
+        } else {
+            setSortBy(colKey);
+            setSortDir(defaultDir);
+        }
+        setPage(1);
+    };
 
     useEffect(() => {
         const handler = setTimeout(() => {
@@ -153,7 +151,7 @@ const SalesHistory = () => {
     });
 
     const { data: salesData = { data: [], totalItems: 0, totalPages: 0 }, isLoading, isFetching } = useQuery({
-        queryKey: ['sales-history', debouncedSearch, page, limit, startDate, endDate, tipoDocumento, status],
+        queryKey: ['sales-history', debouncedSearch, page, limit, startDate, endDate, tipoDocumento, status, sortBy, sortDir],
         queryFn: async () => {
             const params = {
                 page,
@@ -162,12 +160,47 @@ const SalesHistory = () => {
                 start_date: startDate || undefined,
                 end_date: endDate || undefined,
                 tipo_documento: tipoDocumento || undefined,
-                status: status || undefined
+                status: status || undefined,
+                sort_by: sortBy,
+                sort_dir: sortDir
             };
             return (await axios.get('/api/sales', { params })).data;
         },
         keepPreviousData: true
     });
+
+    const sortedSales = useMemo(() => {
+        const rows = Array.isArray(salesData?.data) ? [...salesData.data] : [];
+        const mult = sortDir === 'asc' ? 1 : -1;
+        return rows.sort((a, b) => {
+            if (sortBy === 'total') {
+                return ((parseFloat(a.total_pagar) || 0) - (parseFloat(b.total_pagar) || 0)) * mult;
+            }
+            if (sortBy === 'cliente') {
+                const nameA = String(a.customer_name || 'Consumidor Final').toLowerCase();
+                const nameB = String(b.customer_name || 'Consumidor Final').toLowerCase();
+                return nameA.localeCompare(nameB, 'es') * mult;
+            }
+            if (sortBy === 'sucursal') {
+                const brA = String(a.branch_name || 'Central').toLowerCase();
+                const brB = String(b.branch_name || 'Central').toLowerCase();
+                return brA.localeCompare(brB, 'es') * mult;
+            }
+            if (sortBy === 'documento') {
+                const docA = String(a.numero_control || a.codigo_generacion || '').toLowerCase();
+                const docB = String(b.numero_control || b.codigo_generacion || '').toLowerCase();
+                return docA.localeCompare(docB, 'es') * mult;
+            }
+            if (sortBy === 'estado') {
+                const stA = String(a.dte_status || 'PENDING').toLowerCase();
+                const stB = String(b.dte_status || 'PENDING').toLowerCase();
+                return stA.localeCompare(stB, 'es') * mult;
+            }
+            const dateA = `${String(a.fecha_emision || '').substring(0, 10)}T${a.hora_emision || '00:00:00'}`;
+            const dateB = `${String(b.fecha_emision || '').substring(0, 10)}T${b.hora_emision || '00:00:00'}`;
+            return dateA.localeCompare(dateB) * mult;
+        });
+    }, [salesData?.data, sortBy, sortDir]);
 
     const getTodayStr = () => {
         const d = new Date();
@@ -233,8 +266,9 @@ const SalesHistory = () => {
         if (endDate) count++;
         if (tipoDocumento) count++;
         if (status) count++;
+        if (sortBy !== 'fecha' || sortDir !== 'desc') count++;
         return count;
-    }, [search, startDate, endDate, tipoDocumento, status]);
+    }, [search, startDate, endDate, tipoDocumento, status, sortBy, sortDir]);
 
     const handleClearFilters = () => {
         setSearch('');
@@ -243,7 +277,42 @@ const SalesHistory = () => {
         setEndDate('');
         setTipoDocumento('');
         setStatus('');
+        setSortBy('fecha');
+        setSortDir('desc');
         setPage(1);
+    };
+
+    const renderSortHeader = (label, colKey, defaultDir = 'asc', hint = '') => {
+        const isActive = sortBy === colKey;
+        const badgeText = isActive
+            ? colKey === 'total'
+                ? (sortDir === 'asc' ? 'Menor→Mayor' : 'Mayor→Menor')
+                : colKey === 'fecha'
+                    ? (sortDir === 'asc' ? 'Antiguas' : 'Recientes')
+                    : (sortDir === 'asc' ? 'A→Z' : 'Z→A')
+            : '';
+        return (
+            <button
+                type="button"
+                onClick={() => handleSortColumn(colKey, defaultDir)}
+                title={hint || `Ordenar por ${label}`}
+                className={`inline-flex items-center gap-1 uppercase tracking-wider font-bold text-[10px] transition-colors cursor-pointer select-none group ${
+                    isActive ? 'text-indigo-600' : 'text-slate-500 hover:text-slate-800'
+                }`}
+            >
+                <span>{label}</span>
+                {isActive ? (
+                    sortDir === 'asc' ? <ArrowUp size={12} className="text-indigo-600 shrink-0" /> : <ArrowDown size={12} className="text-indigo-600 shrink-0" />
+                ) : (
+                    <ArrowUpDown size={11} className="text-slate-400 opacity-60 group-hover:opacity-100 shrink-0" />
+                )}
+                {badgeText && (
+                    <span className="px-1 py-0.5 rounded bg-indigo-50 text-indigo-600 text-[8.5px] font-extrabold normal-case tracking-normal border border-indigo-200/80">
+                        {badgeText}
+                    </span>
+                )}
+            </button>
+        );
     };
 
     const documentTypes = useMemo(() => {
@@ -962,8 +1031,16 @@ const SalesHistory = () => {
                 </div>
 
                 <Table 
-                    headers={['Fecha', 'Sucursal', 'Documento', 'Cliente', 'Estado MH', 'Total', 'Acciones']}
-                    data={salesData.data}
+                    headers={[
+                        { label: renderSortHeader('Fecha', 'fecha', 'desc', 'Ordenar por fecha y hora de emisión') },
+                        { label: renderSortHeader('Sucursal', 'sucursal', 'asc', 'Ordenar por sucursal (A-Z / Z-A)') },
+                        { label: renderSortHeader('Documento', 'documento', 'asc', 'Ordenar por correlativo / código de generación') },
+                        { label: renderSortHeader('Cliente', 'cliente', 'asc', 'Ordenar por nombre de cliente (A-Z / Z-A)') },
+                        { label: renderSortHeader('Estado MH', 'estado', 'asc', 'Ordenar por estado DTE') },
+                        { label: renderSortHeader('Total', 'total', 'asc', 'Ordenar por monto total (Menor a Mayor / Mayor a Menor)') },
+                        'Acciones'
+                    ]}
+                    data={sortedSales}
                     isLoading={isLoading}
                     renderRow={(sale) => (
                         <tr key={sale.id} className="hover:bg-slate-50 transition-colors border-b border-slate-100 last:border-0 text-sm">
