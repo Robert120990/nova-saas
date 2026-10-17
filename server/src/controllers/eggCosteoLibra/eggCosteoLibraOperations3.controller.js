@@ -235,6 +235,8 @@ const getAgreementHistory = async (req, res) => {
 
         let query = `
             SELECT h.*,
+                   COALESCE(h.recorded_by, 'Sistema') as changed_by,
+                   LAG(h.agreed_price_per_lb) OVER (PARTITION BY h.agreement_id ORDER BY h.created_at ASC, h.id ASC) as previous_price_per_lb,
                    c.nombre as customer_registered_name,
                    p.nombre as catalog_product_name
             FROM egg_costing_agreement_history h

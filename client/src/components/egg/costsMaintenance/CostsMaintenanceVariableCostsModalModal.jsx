@@ -46,7 +46,7 @@ export default function CostsMaintenanceVariableCostsModalModal({ model, open = 
                                 </div>
                             ))}
                             <div className="flex flex-wrap sm:flex-nowrap gap-2 pt-2">
-                                <MoneyInput
+                                <input
                                     type="text"
                                     value={newVarCost.concept_name}
                                     onChange={(e) => setNewVarCost({ ...newVarCost, concept_name: e.target.value })}

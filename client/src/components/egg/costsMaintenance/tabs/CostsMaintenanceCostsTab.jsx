@@ -3,12 +3,25 @@ import Money from '../../../ui/Money';
 import {
     Plus,
     DollarSign,
-    Calendar
+    Calendar,
+    RefreshCw
 } from 'lucide-react';
 
 
 export default function CostsMaintenanceCostsTab({ model }) {
-    const { batches, activeTab, profitMarginPercent, dateStart, setDateStart, dateEnd, setDateEnd, openVariableCosts, getTotalFixedCost } = model;
+    const { batches, activeTab, profitMarginPercent, dateStart, setDateStart, dateEnd, setDateEnd, openVariableCosts, getTotalFixedCost, isSyncingCosts, syncSystemCosts } = model;
+
+    const getBatchEffectiveDate = (b) => b.completed_at || b.packaging_closed_at || b.started_at || '';
+    const filteredBatches = (Array.isArray(batches) ? batches : [])
+        .filter(b => {
+            if (b.status === 'cancelado') return false;
+            const dStr = String(getBatchEffectiveDate(b)).split('T')[0];
+            if (!dStr) return false;
+            if (dateStart && dStr < dateStart) return false;
+            if (dateEnd && dStr > dateEnd) return false;
+            return true;
+        })
+        .sort((a, b) => new Date(getBatchEffectiveDate(b)) - new Date(getBatchEffectiveDate(a)));
 
     return (<>{activeTab === 'costs' && (
                 <div className="space-y-6">
@@ -18,7 +31,18 @@ export default function CostsMaintenanceCostsTab({ model }) {
                                 <DollarSign className="h-4 w-4 text-teal-600" />
                                 <span>Centro de Costos de Producción</span>
                             </h2>
-                            <div className="flex items-center gap-2">
+                            <div className="flex flex-wrap items-center gap-2">
+                                {syncSystemCosts && (
+                                    <button
+                                        type="button"
+                                        onClick={syncSystemCosts}
+                                        disabled={isSyncingCosts}
+                                        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all disabled:opacity-50"
+                                    >
+                                        <RefreshCw size={13} className={isSyncingCosts ? 'animate-spin' : ''} />
+                                        <span>{isSyncingCosts ? 'Sincronizando...' : 'Sincronizar Datos Reales'}</span>
+                                    </button>
+                                )}
                                 <Calendar size={14} className="text-slate-500" />
                                 <input
                                     type="date"
@@ -38,22 +62,21 @@ export default function CostsMaintenanceCostsTab({ model }) {
 
                         <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
                             <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-center">
-                                <span className="text-[10px] font-bold text-slate-500 uppercase block truncate">Costo Fijo Base</span>
+                                <span className="text-[10px] font-bold text-slate-500 uppercase block truncate">Costo Fijo Base / Lote</span>
                                 <span className="text-sm font-black text-amber-700 block mt-1">
                                     <Money value={getTotalFixedCost()} />
                                 </span>
                             </div>
                             {(() => {
-                                const filtered = batches.filter(b => b.completed_at && b.completed_at >= dateStart && b.completed_at <= dateEnd + 'T23:59:59');
-                                const totalYield = filtered.reduce((s, b) => s + parseFloat(b.yield_liquid_lbs || 0), 0);
-                                const totalVar = filtered.reduce((s, b) => s + (b.variable_costs || []).reduce((ss, c) => ss + parseFloat(c.amount || 0), 0), 0);
-                                const totalAll = getTotalFixedCost() * filtered.length + totalVar;
-                                const totalWasteLbs = filtered.reduce((s, b) => s + parseFloat(b.waste_shell_lbs || 0) + parseFloat(b.waste_loss_lbs || 0), 0);
+                                const totalYield = filteredBatches.reduce((s, b) => s + parseFloat(b.yield_liquid_lbs || 0), 0);
+                                const totalVar = filteredBatches.reduce((s, b) => s + (b.variable_costs || []).reduce((ss, c) => ss + parseFloat(c.amount || 0), 0), 0);
+                                const totalAll = getTotalFixedCost() * filteredBatches.length + totalVar;
+                                const totalWasteLbs = filteredBatches.reduce((s, b) => s + parseFloat(b.waste_shell_lbs || 0) + parseFloat(b.waste_loss_lbs || 0), 0);
                                 return (
                                     <>
                                         <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-center">
                                             <span className="text-[10px] font-bold text-slate-500 uppercase block truncate">Lotes Procesados</span>
-                                            <span className="text-sm font-black text-slate-900 block mt-1">{filtered.length}</span>
+                                            <span className="text-sm font-black text-slate-900 block mt-1">{filteredBatches.length}</span>
                                         </div>
                                         <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-center">
                                             <span className="text-[10px] font-bold text-slate-500 uppercase block truncate">Rendimiento Líquido</span>
@@ -81,17 +104,17 @@ export default function CostsMaintenanceCostsTab({ model }) {
                         </div>
                     </div>
 
-                    {batches.filter(b => b.completed_at && b.completed_at >= dateStart && b.completed_at <= dateEnd + 'T23:59:59').length === 0 ? (
+                    {filteredBatches.length === 0 ? (
                         <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center text-slate-500 text-xs font-semibold shadow-sm">
-                            No hay lotes finalizados en el rango de fechas seleccionado.
+                            No hay lotes procesados en el rango de fechas seleccionado.
                         </div>
                     ) : (
                         <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
                             <table className="w-full text-left text-xs border-collapse">
                                 <thead>
                                     <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px]">
-                                        <th className="px-4 py-3">Producto</th>
-                                        <th className="px-3 py-3">Fecha Fin</th>
+                                        <th className="px-4 py-3">Producto / Lote</th>
+                                        <th className="px-3 py-3">Fecha Lote</th>
                                         <th className="px-3 py-3 text-right">Rendimiento</th>
                                         <th className="px-3 py-3 text-right">Merma</th>
                                         <th className="px-3 py-3 text-right">Costo Total</th>
@@ -102,7 +125,7 @@ export default function CostsMaintenanceCostsTab({ model }) {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100 font-semibold text-slate-800">
-                                    {(Array.isArray(batches.filter(b => b.completed_at && b.completed_at >= dateStart && b.completed_at <= dateEnd + 'T23:59:59').sort((a, b) => new Date(b.completed_at) - new Date(a.completed_at))) ? batches.filter(b => b.completed_at && b.completed_at >= dateStart && b.completed_at <= dateEnd + 'T23:59:59').sort((a, b) => new Date(b.completed_at) - new Date(a.completed_at)) : []).map(b => {
+                                    {filteredBatches.map(b => {
                                         const yieldLbs = parseFloat(b.yield_liquid_lbs || 0);
                                         const inputLbs = parseFloat(b.input_weight_lbs || 1);
                                         const wasteShell = parseFloat(b.waste_shell_lbs || 0);
@@ -118,11 +141,11 @@ export default function CostsMaintenanceCostsTab({ model }) {
                                                 <td className="px-4 py-3">
                                                     <div className="flex flex-col">
                                                         <span className="font-bold text-slate-900 text-xs capitalize">{b.product_type}</span>
-                                                        <span className="text-[10px] text-slate-500">{b.presentation}</span>
+                                                        <span className="text-[10px] text-slate-500">{b.batch_code_display || b.batch_uuid || b.presentation}</span>
                                                     </div>
                                                 </td>
                                                 <td className="px-3 py-3 text-[11px] text-slate-600 font-medium">
-                                                    {formatDate(b.completed_at)}
+                                                    {formatDate(getBatchEffectiveDate(b))}
                                                 </td>
                                                 <td className="px-3 py-3 text-right">
                                                     <span className="font-bold text-teal-700 text-xs">{yieldLbs.toLocaleString()} Lbs</span>
@@ -142,7 +165,7 @@ export default function CostsMaintenanceCostsTab({ model }) {
                                                         </span>
                                                         {varTotal > 0 && (
                                                             <span className="text-[9px] text-indigo-600 font-bold">
-                                                                +<Money value={varTotal} /> var
+                                                                +<Money value={varTotal} /> MP/Emp
                                                             </span>
                                                         )}
                                                     </div>
@@ -166,7 +189,7 @@ export default function CostsMaintenanceCostsTab({ model }) {
                                                     <button
                                                         onClick={() => openVariableCosts(b)}
                                                         className="px-2 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-[10px] font-bold flex items-center gap-1"
-                                                        title="Agregar costos variables"
+                                                        title="Ver y agregar costos variables del lote"
                                                     >
                                                         <Plus size={11} />
                                                         <span>Variables</span>

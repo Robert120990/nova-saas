@@ -1,12 +1,14 @@
 const { pool, ensureSeedData } = require('./shared');
+const { ensureAndLinkCostingCatalog, ensureHistoricalBatchCosts } = require('../../services/eggIndustrial/eggCostsSync.service');
 
 const syncPurchasesWithInvoices = async (req, res) => {
     try {
         await ensureSeedData(req.company_id);
-        let updatedCount = 0;
-        const updatedDetails = [];
+        const catSync = await ensureAndLinkCostingCatalog(req.company_id, true);
+        let updatedCount = catSync.updatedCount || 0;
+        const updatedDetails = [...(catSync.details || [])];
 
-        // 1. Sincronizar empaques
+        // 1. Sincronizar empaques desde facturas de compras
         const [packRows] = await pool.query(`
             SELECT
                 pack.id, pack.item_code, pack.item_name, pack.unit_cost, pack.product_id,
@@ -36,7 +38,7 @@ const syncPurchasesWithInvoices = async (req, res) => {
         for (const p of packRows) {
             if (p.latest_purchase_cost !== null && p.latest_purchase_cost !== undefined) {
                 const newCost = parseFloat(p.latest_purchase_cost);
-                if (Math.abs(parseFloat(p.unit_cost) - newCost) > 0.0001) {
+                if (newCost > 0 && Math.abs(parseFloat(p.unit_cost) - newCost) > 0.0001) {
                     await pool.query('UPDATE egg_costing_packaging SET unit_cost = ? WHERE id = ?', [newCost, p.id]);
                     updatedCount++;
                     updatedDetails.push({
@@ -84,7 +86,7 @@ const syncPurchasesWithInvoices = async (req, res) => {
             if (c.latest_purchase_cost !== null && c.latest_purchase_cost !== undefined) {
                 const qty = parseFloat(c.presentation_qty) || 1;
                 const newCost = parseFloat(c.latest_purchase_cost) * qty;
-                if (Math.abs(parseFloat(c.presentation_cost) - newCost) > 0.0001) {
+                if (newCost > 0 && Math.abs(parseFloat(c.presentation_cost) - newCost) > 0.0001) {
                     await pool.query('UPDATE egg_costing_cip_items SET presentation_cost = ? WHERE id = ?', [newCost, c.id]);
                     updatedCount++;
                     updatedDetails.push({
@@ -100,10 +102,12 @@ const syncPurchasesWithInvoices = async (req, res) => {
             }
         }
 
+        await ensureHistoricalBatchCosts(req.company_id, true);
+
         res.json({
             message: updatedCount > 0
-                ? `Se actualizaron ${updatedCount} costos con base en las facturas de compra más recientes.`
-                : 'Todos los costos de insumos ya coinciden con las últimas facturas de compras registradas.',
+                ? `Se actualizaron ${updatedCount} costos con base en el catálogo de productos y facturas de compra más recientes.`
+                : 'Todos los costos de insumos y lotes ya están sincronizados con el catálogo y las últimas facturas registradas.',
             updated_count: updatedCount,
             details: updatedDetails
         });

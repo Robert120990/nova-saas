@@ -65,23 +65,23 @@ const ensureEggSchema = async () => {
             const [columns] = await pool.query("SHOW COLUMNS FROM egg_packaging_records LIKE 'dispatched_units'");
             if (!columns.length) {
                 console.log('[EggIndustrial] Ejecutando auto-migración de integridad y columnas faltantes v234...');
-                const { migrate } = require('../../../database/migration_v234_egg_integrity');
+                const { migrate } = require('../../../../database/migration_v234_egg_integrity');
                 await migrate(pool);
                 console.log('[EggIndustrial] Auto-migración v234 completada exitosamente.');
             }
             const [coprodCols] = await pool.query("SHOW COLUMNS FROM egg_production_batches LIKE 'parent_batch_id'");
             if (!coprodCols.length) {
-                console.log('[EggIndustrial] Ejecutando auto-migración v235 para soporte de co-productos...');
-                const { migrate: migrate235 } = require('../../../database/migration_v235_egg_coproduct_batches');
-                await migrate235(pool);
-                console.log('[EggIndustrial] Auto-migración v235 completada exitosamente.');
+                console.log('[EggIndustrial] Ejecutando auto-migración v244 para soporte de co-productos...');
+                const { migrate: migrate244 } = require('../../../../database/migration_v244_egg_coproduct_batches');
+                await migrate244(pool);
+                console.log('[EggIndustrial] Auto-migración v244 completada exitosamente.');
             }
             const [pkgSyncCols] = await pool.query("SHOW COLUMNS FROM egg_packaging_records LIKE 'product_id'");
             if (!pkgSyncCols.length) {
-                console.log('[EggIndustrial] Ejecutando auto-migración v236 para sincronización de envasado con inventario...');
-                const { migrate: migrate236 } = require('../../../database/migration_v236_egg_packaging_inventory_sync');
-                await migrate236(pool);
-                console.log('[EggIndustrial] Auto-migración v236 completada exitosamente.');
+                console.log('[EggIndustrial] Ejecutando auto-migración v245 para sincronización de envasado con inventario...');
+                const { migrate: migrate245 } = require('../../../../database/migration_v245_egg_packaging_inventory_sync');
+                await migrate245(pool);
+                console.log('[EggIndustrial] Auto-migración v245 completada exitosamente.');
             }
             schemaEnsured = true;
         } catch (err) {

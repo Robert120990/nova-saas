@@ -73,8 +73,13 @@ export default function useCostsMaintenanceModel() {
     });
 
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [isSyncingCosts, setIsSyncingCosts] = useState(false);
     const [profitMarginPercent, _setProfitMarginPercent] = useState(35);
-    const [dateStart, setDateStart] = useState(getTodayString(new Date(new Date().setDate(1))));
+    const [dateStart, setDateStart] = useState(() => {
+        const d = new Date();
+        d.setDate(d.getDate() - 90);
+        return getTodayString(d);
+    });
     const [dateEnd, setDateEnd] = useState(getTodayString(new Date()));
     const [costConcepts, setCostConcepts] = useState([]);
     const [variableCostsModal, setVariableCostsModal] = useState(null);
@@ -322,6 +327,21 @@ export default function useCostsMaintenanceModel() {
         }
     };
 
+    const syncSystemCosts = async () => {
+        setIsSyncingCosts(true);
+        try {
+            await Promise.all([
+                axios.post('/api/egg-industrial/costs/sync-system-sources', {}),
+                axios.post('/api/egg-industrial/costeo-libra/sync-purchases')
+            ]);
+            toast.success('Costos de planilla, catálogo, empaques y lotes sincronizados con éxito.');
+            await fetchData();
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Error al sincronizar costos reales.');
+        } finally {
+            setIsSyncingCosts(false);
+        }
+    };
 
- return { user, navigate, companyId, setCosts, batches, setBatches, maintenanceLogs, setMaintenanceLogs, forecast, setForecast, setLoading, returnables, setReturnables, loadingReturnables, setLoadingReturnables, isSyncingSales, setIsSyncingSales, returnableSearch, setReturnableSearch, returnableFilter, setReturnableFilter, statementModal, setStatementModal, statementData, setStatementData, loadingStatement, setLoadingStatement, statementTypeFilter, setStatementTypeFilter, movementModal, setMovementModal, movementForm, setMovementForm, newCustomerModal, setNewCustomerModal, customerCatalog, setCustomerCatalog, newCustomerForm, setNewCustomerForm, activeTab, setActiveTab, maintenanceForm, setMaintenanceForm, isSubmitting, setIsSubmitting, profitMarginPercent, _setProfitMarginPercent, dateStart, setDateStart, dateEnd, setDateEnd, costConcepts, setCostConcepts, variableCostsModal, setVariableCostsModal, variableCosts, setVariableCosts, newVarCost, setNewVarCost, fetchData, fetchReturnables, openVariableCosts, addVariableCost, deleteVariableCost, getTotalFixedCost, handleCreateMaintenance, syncSalesReturnables, openStatement, openNewCustomerModal, handleMovementSubmit, handleNewCustomerSubmit };
+ return { user, navigate, companyId, setCosts, batches, setBatches, maintenanceLogs, setMaintenanceLogs, forecast, setForecast, setLoading, returnables, setReturnables, loadingReturnables, setLoadingReturnables, isSyncingSales, setIsSyncingSales, returnableSearch, setReturnableSearch, returnableFilter, setReturnableFilter, statementModal, setStatementModal, statementData, setStatementData, loadingStatement, setLoadingStatement, statementTypeFilter, setStatementTypeFilter, movementModal, setMovementModal, movementForm, setMovementForm, newCustomerModal, setNewCustomerModal, customerCatalog, setCustomerCatalog, newCustomerForm, setNewCustomerForm, activeTab, setActiveTab, maintenanceForm, setMaintenanceForm, isSubmitting, setIsSubmitting, isSyncingCosts, syncSystemCosts, profitMarginPercent, _setProfitMarginPercent, dateStart, setDateStart, dateEnd, setDateEnd, costConcepts, setCostConcepts, variableCostsModal, setVariableCostsModal, variableCosts, setVariableCosts, newVarCost, setNewVarCost, fetchData, fetchReturnables, openVariableCosts, addVariableCost, deleteVariableCost, getTotalFixedCost, handleCreateMaintenance, syncSalesReturnables, openStatement, openNewCustomerModal, handleMovementSubmit, handleNewCustomerSubmit };
 }

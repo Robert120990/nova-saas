@@ -28,7 +28,7 @@ const createProductionBatch = async (req) => {
             if (schedule.status === 'cancelado') {
                 eggRules.fail('La producción programada se encuentra cancelada.', 409);
             }
-            if (Boolean(schedule.is_coproduct)) {
+            if (schedule.is_coproduct) {
                 is_coproduct = true;
                 if (!parent_batch_id && schedule.parent_production_id) {
                     const [parentSchedRows] = await connection.query(

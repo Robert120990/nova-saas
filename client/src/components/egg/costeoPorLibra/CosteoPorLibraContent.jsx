@@ -52,8 +52,9 @@ export default function CosteoPorLibraContent({ model }) {
                             <Money value={opSummary.real_box_cost ? opSummary.real_box_cost.toFixed(2) : '38.00'} />
                             <span className="text-xs font-normal text-indigo-300"> /caja</span>
                         </div>
-                        <div className="text-[10px] text-indigo-200/70 mt-1">
-                            {opSummary.total_lbs_received ? opSummary.total_lbs_received.toLocaleString() : 0} lbs recibidas
+                        <div className="text-[10px] text-indigo-200/70 mt-1 flex items-center justify-between gap-1">
+                            <span>{opSummary.total_lbs_received ? opSummary.total_lbs_received.toLocaleString() : 0} lbs recibidas</span>
+                            <span className="text-amber-300 font-bold">{opSummary.avg_lbs_per_box ? opSummary.avg_lbs_per_box.toFixed(2) : '47.88'} lb/cj</span>
                         </div>
                     </div>
 
@@ -84,7 +85,9 @@ export default function CosteoPorLibraContent({ model }) {
                                 <ShoppingCart className="w-3.5 h-3.5 text-emerald-400" />
                                 Venta Pactada
                             </span>
-                            <span className="text-[10px] text-slate-400">Promedio</span>
+                            <span className="text-[10px] text-slate-400">
+                                {opSummary.invoiced_sales_count ? `${opSummary.invoiced_sales_count} fact.` : 'Promedio'}
+                            </span>
                         </div>
                         <div className="text-xl font-black text-emerald-400 mt-1">
                             <Money value={opSummary.avg_sale_price_per_lb ? opSummary.avg_sale_price_per_lb.toFixed(2) : '1.25'} />

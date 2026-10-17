@@ -152,6 +152,12 @@ const getProductionBatches = async (req, res) => {
         if (!companyId) {
             return res.status(400).json({ message: 'Company ID is required' });
         }
+        try {
+            const { ensureHistoricalBatchCosts } = require('../../../services/eggIndustrial/eggCostsSync.service');
+            await ensureHistoricalBatchCosts(companyId, false);
+        } catch (syncErr) {
+            console.warn('[getProductionBatches] Notice syncing batch costs:', syncErr.message);
+        }
         let rows = [];
         try {
             const [queriedRows] = await pool.query(

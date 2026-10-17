@@ -1,22 +1,12 @@
 const {
     pool,
-    nodemailer,
-    broadcastToCompany,
     notificationService,
-    eggExportService,
-    eggReportsExportService,
-    eggQualityLetterExport,
-    eggRawMaterialLabReport,
-    eggOriginCertificate,
-    reportPdfHelper,
-    excelService,
-    resolveEggCatalogProduct,
-    safeNum,
-    safeInt,
-    computeJulianLotCode,
     ensureEggSchema
 } = require('./eggUtils');
-
+const {
+    computeSystemCostsData,
+    ensureHistoricalBatchCosts
+} = require('../../services/eggIndustrial/eggCostsSync.service');
 
 // --- REGISTROS DE MANTENIMIENTO Y COSTOS INDUSTRIALES ---
 const getMaintenanceLogs = async (req, res) => {
@@ -41,7 +31,6 @@ const createMaintenanceLog = async (req, res) => {
             [req.company_id, equipment_name, maintenance_type, description, spare_parts_used, usage_hours_count, technician_name, cost]
         );
 
-        // Evento
         await pool.query(
             `INSERT INTO egg_industrial_events (company_id, event_type, severity, description, payload, operator_name)
              VALUES (?, 'maintenance.logged', 'info', ?, ?, ?)`,
@@ -66,6 +55,7 @@ const createMaintenanceLog = async (req, res) => {
 const getIndustrialCosts = async (req, res) => {
     try {
         await ensureEggSchema();
+        await ensureHistoricalBatchCosts(req.company_id, false);
         const [rows] = await pool.query(
             `SELECT ic.*, b.product_type, b.batch_uuid, b.yield_liquid_lbs, b.presentation 
              FROM egg_industrial_costs ic
@@ -95,11 +85,10 @@ const createIndustrialCosts = async (req, res) => {
     }
 };
 
-// 10. PREVISIÓN Y FORECASTING
-
 // --- CONCEPTOS DE COSTO Y SINCRONIZACIÓN DE FUENTES DEL SISTEMA ---
 const getCostConcepts = async (req, res) => {
     try {
+        await ensureHistoricalBatchCosts(req.company_id, false);
         const [rows] = await pool.query(
             'SELECT * FROM egg_cost_concepts WHERE company_id = ? ORDER BY concept_name',
             [req.company_id]
@@ -139,148 +128,8 @@ const deleteCostConcept = async (req, res) => {
 // 14.1 CARGA AUTOMÁTICA DE COSTOS DESDE PLANILLAS RRHH Y GASTOS OPERATIVOS
 const getCostsSystemSources = async (req, res) => {
     try {
-        const companyId = req.company_id;
-        const { month, year } = req.query;
-        const currentYear = parseInt(year) || new Date().getFullYear();
-        const currentMonth = parseInt(month) || (new Date().getMonth() + 1);
-
-        // 1. Planillas de RRHH (Sueldos y Mano de Obra)
-        let payrollQuery = `
-            SELECT 
-                p.id, p.empleado_id, p.periodo_mes, p.periodo_anio, p.quincena, p.estado,
-                COALESCE(p.sueldo_base, 0) as sueldo_base,
-                COALESCE(p.total_percepciones, 0) as total_percepciones,
-                COALESCE(p.monto_recibir, 0) as monto_recibir,
-                COALESCE(p.bonificacion_fija, 0) as bonificacion_fija
-            FROM rh_planillas p
-            WHERE p.company_id = ? AND p.estado != 'anulada'
-        `;
-        const payrollParams = [companyId];
-        if (month && year) {
-            payrollQuery += ' AND p.periodo_mes = ? AND p.periodo_anio = ?';
-            payrollParams.push(currentMonth, currentYear);
-        }
-        payrollQuery += ' ORDER BY p.periodo_anio DESC, p.periodo_mes DESC, p.id DESC LIMIT 50';
-
-        const [payrolls] = await pool.query(payrollQuery, payrollParams);
-
-        const totalPayrollPerceptions = payrolls.reduce((sum, p) => sum + parseFloat(p.total_percepciones || 0), 0);
-        const totalPayrollBase = payrolls.reduce((sum, p) => sum + parseFloat(p.sueldo_base || 0), 0);
-
-        // 2. Gastos Fijos y Operativos de Planta (Facturas / Comprobantes)
-        let expensesQuery = `
-            SELECT 
-                h.id, h.fecha, h.numero_documento, h.monto_total, h.observaciones,
-                i.description as item_description, i.total as item_total,
-                t.name as expense_type_name
-            FROM expense_headers h
-            LEFT JOIN expense_items i ON h.id = i.expense_id
-            LEFT JOIN cat_expense_types t ON i.expense_type_id = t.id
-            WHERE h.company_id = ? AND h.status = 'ACTIVO'
-        `;
-        const expensesParams = [companyId];
-        if (month && year) {
-            expensesQuery += ' AND ((h.period_month = ? AND h.period_year = ?) OR (MONTH(h.fecha) = ? AND YEAR(h.fecha) = ?))';
-            expensesParams.push(currentMonth, currentYear, currentMonth, currentYear);
-        }
-        expensesQuery += ' ORDER BY h.fecha DESC LIMIT 100';
-
-        const [expenseRows] = await pool.query(expensesQuery, expensesParams);
-
-        let energyTotal = 0;
-        let boilerFuelTotal = 0;
-        let maintenanceTotal = 0;
-        let otherOpsTotal = 0;
-
-        expenseRows.forEach(row => {
-            const desc = ((row.item_description || '') + ' ' + (row.observaciones || '') + ' ' + (row.expense_type_name || '')).toLowerCase();
-            const amount = parseFloat(row.item_total || row.monto_total || 0);
-
-            if (/energ[ií]a|luz|electric|delsur|caess|clea|edesal/i.test(desc)) {
-                energyTotal += amount;
-            } else if (/diesel|di[eé]sel|combustible|gas\b|glp|bunker|caldera/i.test(desc)) {
-                boilerFuelTotal += amount;
-            } else if (/mantenimiento|reparaci[oó]n|repuesto|t[eé]cnico|taller/i.test(desc)) {
-                maintenanceTotal += amount;
-            } else {
-                otherOpsTotal += amount;
-            }
-        });
-
-        // 3. Obtener volumen proyectado de planta para cálculo por lote y por libra
-        const [costingCfg] = await pool.query(
-            "SELECT setting_key, setting_value FROM egg_costing_configurations WHERE company_id = ? AND setting_key IN ('monthly_projected_lbs', 'standard_batch_weight_lbs')",
-            [companyId]
-        );
-        const cfgMap = {};
-        costingCfg.forEach(c => { cfgMap[c.setting_key] = parseFloat(c.setting_value) || 0; });
-        const monthlyProjectedLbs = cfgMap.monthly_projected_lbs || 100000;
-        const standardBatchLbs = cfgMap.standard_batch_weight_lbs || 12000;
-        const estimatedBatchesPerMonth = standardBatchLbs > 0 ? (monthlyProjectedLbs / standardBatchLbs) : 8;
-
-        const suggestedConcepts = [
-            {
-                concept_name: 'Mano de Obra Operativa (Planilla RRHH)',
-                monthly_total: totalPayrollPerceptions,
-                default_value: estimatedBatchesPerMonth > 0 ? +(totalPayrollPerceptions / estimatedBatchesPerMonth).toFixed(2) : 0,
-                source_type: 'rh_planillas',
-                details: `${payrolls.length} registros de nómina encontrados. Total mensual: $${totalPayrollPerceptions.toFixed(2)}. Distribuido en ${estimatedBatchesPerMonth.toFixed(1)} lotes mensuales proyectados.`
-            },
-            {
-                concept_name: 'Energía Eléctrica de Planta',
-                monthly_total: energyTotal,
-                default_value: estimatedBatchesPerMonth > 0 ? +(energyTotal / estimatedBatchesPerMonth).toFixed(2) : 0,
-                source_type: 'expenses_energy',
-                details: `Facturación eléctrica del período: $${energyTotal.toFixed(2)}.`
-            },
-            {
-                concept_name: 'Combustible / Caldera (Diesel/Gas)',
-                monthly_total: boilerFuelTotal,
-                default_value: estimatedBatchesPerMonth > 0 ? +(boilerFuelTotal / estimatedBatchesPerMonth).toFixed(2) : 0,
-                source_type: 'expenses_boiler',
-                details: `Consumo de combustibles y caldera del período: $${boilerFuelTotal.toFixed(2)}.`
-            },
-            {
-                concept_name: 'Mantenimiento Técnico y Repuestos',
-                monthly_total: maintenanceTotal,
-                default_value: estimatedBatchesPerMonth > 0 ? +(maintenanceTotal / estimatedBatchesPerMonth).toFixed(2) : 0,
-                source_type: 'expenses_maintenance',
-                details: `Servicios de mantenimiento y refacciones del período: $${maintenanceTotal.toFixed(2)}.`
-            },
-            {
-                concept_name: 'Gastos Operativos e Indirectos Generales',
-                monthly_total: otherOpsTotal,
-                default_value: estimatedBatchesPerMonth > 0 ? +(otherOpsTotal / estimatedBatchesPerMonth).toFixed(2) : 0,
-                source_type: 'expenses_general',
-                details: `Otros gastos operativos registrados: $${otherOpsTotal.toFixed(2)}.`
-            }
-        ];
-
-        res.json({
-            period: { month: currentMonth, year: currentYear },
-            payrolls_summary: {
-                count: payrolls.length,
-                total_perceptions: totalPayrollPerceptions,
-                total_base: totalPayrollBase,
-                items: payrolls
-            },
-            expenses_summary: {
-                count: expenseRows.length,
-                total: energyTotal + boilerFuelTotal + maintenanceTotal + otherOpsTotal,
-                breakdown: {
-                    energy: energyTotal,
-                    boiler_fuel: boilerFuelTotal,
-                    maintenance: maintenanceTotal,
-                    other_ops: otherOpsTotal
-                }
-            },
-            production_basis: {
-                monthly_projected_lbs: monthlyProjectedLbs,
-                standard_batch_lbs: standardBatchLbs,
-                estimated_batches: estimatedBatchesPerMonth
-            },
-            suggested_concepts: suggestedConcepts
-        });
+        const data = await computeSystemCostsData(req.company_id, req.query || {});
+        res.json(data);
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -289,7 +138,14 @@ const getCostsSystemSources = async (req, res) => {
 const syncCostsSystemSources = async (req, res) => {
     try {
         const companyId = req.company_id;
-        const { concepts, update_gif_config } = req.body;
+        let { concepts, update_gif_config, month, year, projected_batches } = req.body || {};
+
+        let computedData = null;
+        if (!Array.isArray(concepts) || concepts.length === 0) {
+            computedData = await computeSystemCostsData(companyId, { month, year, projected_batches });
+            concepts = computedData.suggested_concepts;
+            if (update_gif_config === undefined) update_gif_config = true;
+        }
 
         if (!Array.isArray(concepts) || concepts.length === 0) {
             return res.status(400).json({ message: 'No se recibieron conceptos para sincronizar.' });
@@ -318,9 +174,8 @@ const syncCostsSystemSources = async (req, res) => {
             }
         }
 
-        // Si se solicitó actualizar los GIF en egg_costing_configurations
         if (update_gif_config) {
-            const totalMonthly = concepts.reduce((sum, c) => sum + (parseFloat(c.monthly_total) || 0), 0);
+            const totalMonthly = concepts.reduce((sum, c) => sum + (parseFloat(c.monthly_total) || (parseFloat(c.default_value) || 0) * (parseInt(projected_batches) || 10)), 0);
             if (totalMonthly > 0) {
                 await pool.query(
                     `UPDATE egg_costing_configurations 
@@ -331,17 +186,21 @@ const syncCostsSystemSources = async (req, res) => {
             }
         }
 
-        res.json({ success: true, message: 'Conceptos de costos fijos y operativos sincronizados exitosamente.' });
+        await ensureHistoricalBatchCosts(companyId, true);
+
+        res.json({
+            success: true,
+            message: 'Conceptos de costos fijos, nómina y costos por lote sincronizados exitosamente.'
+        });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
 };
 
-// 14.2 PARAMETRIZACIÓN DE PREFIJOS DE LOTE POR PROVEEDOR
-
 // --- COSTOS VARIABLES POR LOTE ---
 const getBatchVariableCosts = async (req, res) => {
     try {
+        await ensureHistoricalBatchCosts(req.company_id, false);
         const [rows] = await pool.query(
             'SELECT * FROM egg_batch_variable_costs WHERE batch_id = ? AND company_id = ?',
             [req.params.batchId, req.company_id]
@@ -373,8 +232,6 @@ const deleteBatchVariableCost = async (req, res) => {
         res.status(500).json({ message: error.message });
     }
 };
-
-// 16. CONTROL MICROBIOLÓGICO Y CALIDAD LAB-004 CON PARAMETRIZACIÓN DINÁMICA
 
 module.exports = {
     getMaintenanceLogs,

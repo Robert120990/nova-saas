@@ -1,4 +1,6 @@
 const pool = require('../../config/db');
+const { ensureAndLinkCostingCatalog, ensureHistoricalBatchCosts } = require('../../services/eggIndustrial/eggCostsSync.service');
+
 const ensureSeedData = async (companyId) => {
     try {
         if (!companyId) return;
@@ -20,7 +22,7 @@ const ensureSeedData = async (companyId) => {
                     (?, 'he_plus_citric_acid_pct', 'Dosis Ácido Cítrico HE Plus', 0.0010, '% p/p', 'additive'),
                     (?, 'yolk_sugar_pct', 'Porcentaje Azúcar Yema Azucarada', 0.0400, '% p/p', 'additive'),
                     (?, 'standard_batch_weight_lbs', 'Peso Batch Estándar', 12000.0000, 'LBS', 'production')
-            `, [companyId, companyId, companyId, companyId, companyId, companyId, companyId, companyId, companyId, companyId]);
+            `, Array(10).fill(companyId));
         }
 
         const [cipRows] = await pool.query('SELECT COUNT(*) as c FROM egg_costing_cip_items WHERE company_id = ?', [companyId]);
@@ -32,7 +34,7 @@ const ensureSeedData = async (companyId) => {
                     (?, 'Hipoclorito de Sodio 13%', 55.00, 'gal', 66.00, 3.500, 'gal'),
                     (?, 'Ácido Fosfórico / Nítrico (Desincrustante)', 60.00, 'kg', 145.00, 4.000, 'kg'),
                     (?, 'Detergente Espumante Clean Foam', 20.00, 'kg', 55.00, 2.000, 'kg')
-            `, [companyId, companyId, companyId, companyId]);
+            `, Array(4).fill(companyId));
         }
 
         const [pRows] = await pool.query('SELECT COUNT(*) as c FROM egg_costing_packaging WHERE company_id = ?', [companyId]);
@@ -53,7 +55,7 @@ const ensureSeedData = async (companyId) => {
                     (?, 'TAPA-LITRO', 'Tapa con Sello para Botella 2 LBS', 0.0800, 'tapadera'),
                     (?, 'MEDIO-LITRO-1LB', 'Botella Plástica Medio Litro 1 LB', 0.2500, 'recipiente'),
                     (?, 'TAPA-MEDIO-LITRO', 'Tapa con Sello para Botella 1 LB', 0.0500, 'tapadera')
-            `, [companyId, companyId, companyId, companyId, companyId, companyId, companyId]);
+            `, Array(13).fill(companyId));
         }
 
         // Asegurar columnas de vinculación con productos y compras
@@ -65,6 +67,9 @@ const ensureSeedData = async (companyId) => {
         if (packCols.length === 0) {
             await pool.query("ALTER TABLE egg_costing_packaging ADD COLUMN product_id INT NULL AFTER company_id");
         }
+
+        await ensureAndLinkCostingCatalog(companyId, false);
+        await ensureHistoricalBatchCosts(companyId, false);
 
         // Asegurar columnas de vigencia en egg_costing_customer_agreements
         const [agrCols] = await pool.query("SHOW COLUMNS FROM egg_costing_customer_agreements LIKE 'valid_from'");

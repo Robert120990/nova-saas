@@ -126,7 +126,7 @@ export default function EggDispatchSection6({ model }) {
                             </label>
                             <MoneyInput
                                 value={maintenanceForm.costo_total}
-                                onChange={(val) => setMaintenanceForm(prev => ({ ...prev, costo_total: val }))}
+                                onChange={(e) => setMaintenanceForm(prev => ({ ...prev, costo_total: e?.target ? e.target.value : e }))}
                                 placeholder="0.00"
                                 className="w-full text-xs font-semibold border border-slate-200 rounded-xl px-3 py-2 text-slate-800 outline-none"
                             />

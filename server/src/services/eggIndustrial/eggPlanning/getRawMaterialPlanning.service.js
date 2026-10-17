@@ -33,7 +33,7 @@ const getRawMaterialPlanning = async (req) => {
         try {
             const [provRows] = await pool.query(
                 `SELECT id, nombre, nombre_comercial, telefono, correo FROM providers
-                 WHERE company_id = ? AND status = 'activo'
+                 WHERE company_id = ?
                  ORDER BY nombre ASC`,
                 [company_id]
             );

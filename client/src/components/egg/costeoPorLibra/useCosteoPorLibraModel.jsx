@@ -125,8 +125,16 @@ export default function useCosteoPorLibraModel() {
             setScenarios(Array.isArray(scenRes.data) ? scenRes.data : []);
             setProductsLookup(Array.isArray(prodRes?.data) ? prodRes.data : []);
 
+            const nextParams = {
+                ...calcParams,
+                custom_gif_monthly: confMap.monthly_gif_total || calcParams.custom_gif_monthly,
+                custom_monthly_volume_lbs: confMap.monthly_projected_lbs || calcParams.custom_monthly_volume_lbs,
+                custom_mod_per_lb: confMap.mod_cost_per_lb || calcParams.custom_mod_per_lb
+            };
+            setCalcParams(nextParams);
+
             // Ejecutar primer cálculo pasando rango de fecha
-            runCalculation(calcParams, false, sDate, eDate);
+            runCalculation(nextParams, false, sDate, eDate);
         } catch (error) {
             console.error('Error cargando datos de costeo:', error);
             toast.error('Error al inicializar datos del módulo de costeo.');
@@ -375,15 +383,17 @@ export default function useCosteoPorLibraModel() {
             const updated = {
                 ...prev,
                 raw_egg_box_cost: op.real_box_cost ? op.real_box_cost.toFixed(2) : prev.raw_egg_box_cost,
-                raw_egg_lbs_per_box: op.avg_lbs_per_box ? op.avg_lbs_per_box.toFixed(1) : prev.raw_egg_lbs_per_box,
+                raw_egg_lbs_per_box: op.avg_lbs_per_box ? op.avg_lbs_per_box.toFixed(2) : prev.raw_egg_lbs_per_box,
+                batch_size_lbs: op.avg_batch_size_lbs ? String(op.avg_batch_size_lbs) : prev.batch_size_lbs,
                 target_sale_price_per_lb: op.avg_sale_price_per_lb ? op.avg_sale_price_per_lb.toFixed(2) : prev.target_sale_price_per_lb,
-                custom_monthly_volume_lbs: brk.volume_basis_lbs || prev.custom_monthly_volume_lbs
+                custom_monthly_volume_lbs: brk.volume_basis_lbs || prev.custom_monthly_volume_lbs,
+                custom_gif_monthly: configs.monthly_gif_total || prev.custom_gif_monthly
             };
             runCalculation(updated, false);
             return updated;
         });
 
-        toast.success('Parámetros de planta reales aplicados al simulador.');
+        toast.success('Parámetros reales de planta (recepciones, lotes y acuerdos) cargados al simulador.');
     };
 
     // Guardar Escenario
@@ -440,13 +450,17 @@ export default function useCosteoPorLibraModel() {
         }
     };
 
-    // Sincronización con Facturas de Compras
+    // Sincronización con Facturas de Compras y Catálogo
     const handleSyncPurchases = async () => {
         setSyncingPurchases(true);
         try {
             const res = await axios.post('/api/egg-industrial/costeo-libra/sync-purchases');
-            toast.success(res.data.message || 'Costos sincronizados con facturas de compras.');
-            await loadData(dateRange.startDate, dateRange.endDate);
+            toast.success(res.data.message || 'Costos sincronizados con catálogo y facturas de compras.');
+            await Promise.all([
+                loadData(dateRange.startDate, dateRange.endDate),
+                loadOperationalCost(dateRange.startDate, dateRange.endDate),
+                loadCostingHistory(dateRange.startDate, dateRange.endDate)
+            ]);
         } catch (error) {
             console.error('Error sincronizando con compras:', error);
             toast.error(error.response?.data?.message || 'Error al sincronizar costos con compras.');
