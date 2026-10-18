@@ -252,8 +252,52 @@ function callAgent(companyId, branchId, action, payload, timeoutMs = 25000) {
     });
 }
 
-function getLauncherBatContent() {
-    return `@echo off\r\ntitle Conector Wayne Fusion FFC - SIPE WEB\r\ncolor 0A\r\ncd /d "%~dp0"\r\necho Conector Local Wayne Fusion FFC - SIPE WEB\r\nwhere node >nul 2>nul\r\nif %errorlevel% neq 0 ( echo [ERROR] Node.js no instalado. Descargue desde https://nodejs.org & pause & exit /b 1 )\r\nif not exist "fusion-agent.js" (\r\n    if exist "fusion-agent.js.txt" ( ren "fusion-agent.js.txt" "fusion-agent.js" )\r\n    if exist "%USERPROFILE%\\Downloads\\fusion-agent.js" ( copy /y "%USERPROFILE%\\Downloads\\fusion-agent.js" "fusion-agent.js" >nul )\r\n    if exist "%USERPROFILE%\\Descargas\\fusion-agent.js" ( copy /y "%USERPROFILE%\\Descargas\\fusion-agent.js" "fusion-agent.js" >nul )\r\n)\r\nif not exist "fusion-agent.js" (\r\n    color 0C\r\n    echo [ERROR] Falta el archivo 'fusion-agent.js' en esta carpeta: %~dp0\r\n    echo Mueva los 3 archivos descargados (fusion-agent.js, config.json, iniciar-agente.bat) a esta misma carpeta.\r\n    pause\r\n    exit /b 1\r\n)\r\nnode fusion-agent.js\r\nif %errorlevel% neq 0 pause\r\n`;
+function getLauncherBatContent(payload = null) {
+    const cliArgs = payload && payload.agentKey
+        ? ` --server "${payload.serverUrl || 'https://sys.sipesv.com'}" --company ${Number(payload.companyId || 1)} --branch ${Number(payload.branchId || 1)} --key "${payload.agentKey}"`
+        : '';
+    return [
+        '@echo off',
+        'title Conector Wayne Fusion FFC - SIPE WEB',
+        'color 0A',
+        'cd /d "%~dp0"',
+        'echo ================================================================',
+        'echo      CONECTOR LOCAL WAYNE FUSION FFC - SIPE WEB NOVASAAS',
+        'echo ================================================================',
+        'where node >nul 2>nul',
+        'if errorlevel 1 goto NO_NODE',
+        'echo [INFO] Cerrando instancias anteriores del conector en memoria...',
+        'powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \\"Name=\'node.exe\' AND CommandLine LIKE \'%fusion-agent%\'\\" | Invoke-CimMethod -MethodName Terminate" >nul 2>nul',
+        'if exist "fusion-agent.js" goto RUN_AGENT',
+        'if exist "fusion-agent.js.txt" copy /y "fusion-agent.js.txt" "fusion-agent.js" >nul',
+        'for %%F in ("fusion-agent*.js") do if not exist "fusion-agent.js" copy /y "%%~fF" "fusion-agent.js" >nul',
+        'if not exist "fusion-agent.js" if exist "C:\\fusion-agent\\fusion-agent.js" copy /y "C:\\fusion-agent\\fusion-agent.js" "fusion-agent.js" >nul',
+        'for %%F in ("%USERPROFILE%\\Downloads\\fusion-agent*.js") do if not exist "fusion-agent.js" copy /y "%%~fF" "fusion-agent.js" >nul',
+        'for %%F in ("%USERPROFILE%\\Descargas\\fusion-agent*.js") do if not exist "fusion-agent.js" copy /y "%%~fF" "fusion-agent.js" >nul',
+        'for %%F in ("config*.json") do if not exist "config.json" copy /y "%%~fF" "config.json" >nul',
+        'for %%F in ("%USERPROFILE%\\Downloads\\config*.json") do if not exist "config.json" copy /y "%%~fF" "config.json" >nul',
+        'for %%F in ("%USERPROFILE%\\Descargas\\config*.json") do if not exist "config.json" copy /y "%%~fF" "config.json" >nul',
+        'if not exist "fusion-agent.js" goto NO_SCRIPT',
+        ':RUN_AGENT',
+        'echo [INFO] Iniciando conector...',
+        `node "fusion-agent.js"${cliArgs}`,
+        'echo.',
+        'echo [AVISO] El proceso del conector finalizo.',
+        'pause',
+        'exit /b 0',
+        ':NO_NODE',
+        'color 0C',
+        'echo [ERROR] Node.js no esta instalado en esta PC. Descarguelo desde https://nodejs.org',
+        'pause',
+        'exit /b 1',
+        ':NO_SCRIPT',
+        'color 0C',
+        'echo [ERROR] No se encontro el archivo fusion-agent.js en %~dp0 ni en Descargas.',
+        'echo Asegurese de guardar fusion-agent.js, config.json e iniciar-agente.bat en la misma carpeta.',
+        'pause',
+        'exit /b 1',
+        ''
+    ].join('\r\n');
 }
 
 function getAgentScriptPath() {

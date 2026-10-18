@@ -319,10 +319,12 @@ exports.getAgentConfig = async (req, res) => {
     }
 };
 
-exports.getAgentLauncher = (req, res) => {
+exports.getAgentLauncher = async (req, res) => {
+    const branchId = req.query?.branch_id || req.user?.branch_id;
+    const payload = (req.company_id && branchId) ? await buildAgentPayload(req, branchId).catch(() => null) : null;
     res.setHeader('Content-Disposition', 'attachment; filename="iniciar-agente.bat"');
     res.setHeader('Content-Type', 'application/x-bat');
-    res.send(fusionAgent.getLauncherBatContent());
+    res.send(fusionAgent.getLauncherBatContent(payload));
 };
 
 exports.getAgentScript = (req, res) => {
