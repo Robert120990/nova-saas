@@ -42,31 +42,30 @@ const AiTaskDetailModal = ({ isOpen, onClose, taskId, initialTab = 'logs', onTas
     const [isRetrying, setIsRetrying] = useState(false);
     const logContainerRef = useRef(null);
 
+    const normalizeTaskData = (data) => (data ? {
+        ...data,
+        output_file_url: typeof data.output_file_url === 'string' && data.output_file_url.startsWith('/uploads/')
+            ? `/api${data.output_file_url}` : data.output_file_url
+    } : null);
+
+    const refreshTaskDetail = async () => {
+        const res = await axios.get(`/api/agent-tasks/${taskId}`);
+        if (res.data) { setTask(normalizeTaskData(res.data)); setLogs(res.data.logs || []); }
+    };
+
     useEffect(() => {
         if (!isOpen || !taskId) return;
         let isMounted = true;
         setLoading(true);
-
         axios.get(`/api/agent-tasks/${taskId}`)
             .then((res) => {
                 if (!isMounted) return;
-                const normalizedTask = res.data ? {
-                    ...res.data,
-                    output_file_url: typeof res.data.output_file_url === 'string' && res.data.output_file_url.startsWith('/uploads/')
-                        ? `/api${res.data.output_file_url}`
-                        : res.data.output_file_url
-                } : null;
-                setTask(normalizedTask);
+                setTask(normalizeTaskData(res.data));
                 setLogs(res.data?.logs || []);
-                if (initialTab === 'result' || res.data.result || res.data.output_file_url) {
-                    setActiveTab('result');
-                } else {
-                    setActiveTab(initialTab || 'logs');
-                }
+                setActiveTab((initialTab === 'result' || res.data.result || res.data.output_file_url) ? 'result' : (initialTab || 'logs'));
             })
             .catch(() => toast.error('Error al cargar detalle de la tarea'))
             .finally(() => { if (isMounted) setLoading(false); });
-
         return () => { isMounted = false; };
     }, [isOpen, taskId, initialTab]);
 
@@ -76,10 +75,7 @@ const AiTaskDetailModal = ({ isOpen, onClose, taskId, initialTab = 'logs', onTas
         try {
             eventSource = new EventSource(`/api/agent-tasks/${taskId}/stream`);
             eventSource.addEventListener('task_log', (e) => {
-                try {
-                    const newLog = JSON.parse(e.data);
-                    setLogs((prev) => (prev.some((l) => l.id === newLog.id) ? prev : [...prev, newLog]));
-                } catch { /* ignore */ }
+                try { const nl = JSON.parse(e.data); setLogs((prev) => (prev.some((l) => l.id === nl.id) ? prev : [...prev, nl])); } catch { /* ignore */ }
             });
             eventSource.addEventListener('task_progress', (e) => {
                 try {
@@ -89,9 +85,7 @@ const AiTaskDetailModal = ({ isOpen, onClose, taskId, initialTab = 'logs', onTas
                     if (onTaskUpdated) onTaskUpdated();
                 } catch { /* ignore */ }
             });
-        } catch (err) {
-            console.error('SSE Error:', err);
-        }
+        } catch (err) { console.error('SSE Error:', err); }
         return () => { if (eventSource) eventSource.close(); };
     }, [isOpen, taskId, onTaskUpdated]);
 
@@ -120,27 +114,31 @@ const AiTaskDetailModal = ({ isOpen, onClose, taskId, initialTab = 'logs', onTas
             if (onTaskUpdated) onTaskUpdated();
         } catch (error) {
             toast.error(error.response?.data?.message || 'Error al cancelar la tarea');
-        } finally {
-            setIsCancelling(false);
-        }
+        } finally { setIsCancelling(false); }
     };
 
     const handleRetry = async () => {
         setIsRetrying(true);
         try {
             await axios.post(`/api/agent-tasks/${taskId}/retry`);
-            toast.success('Tarea actualizada / reencolada exitosamente');
-            const res = await axios.get(`/api/agent-tasks/${taskId}`);
-            if (res.data) {
-                setTask(res.data);
-                setLogs(res.data.logs || []);
-            }
+            toast.success('Tarea procesada / actualizada exitosamente');
+            await refreshTaskDetail();
             if (onTaskUpdated) onTaskUpdated();
         } catch (error) {
             toast.error(error.response?.data?.message || 'Error al reintentar la tarea');
-        } finally {
-            setIsRetrying(false);
-        }
+        } finally { setIsRetrying(false); }
+    };
+
+    const handleMarkCompleted = async () => {
+        setIsRetrying(true);
+        try {
+            await axios.put(`/api/agent-tasks/${taskId}`, { mark_completed: true });
+            toast.success('Tarea completada al 100%');
+            await refreshTaskDetail();
+            if (onTaskUpdated) onTaskUpdated();
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Error al completar la tarea');
+        } finally { setIsRetrying(false); }
     };
 
     const agentInfo = AGENT_MAP[task?.assigned_agent_code] || AGENT_MAP.supervisor;
@@ -159,31 +157,24 @@ const AiTaskDetailModal = ({ isOpen, onClose, taskId, initialTab = 'logs', onTas
                 <div className="space-y-4">
                     <div className="flex flex-wrap items-center justify-between gap-2 p-3 bg-slate-50 rounded-2xl border border-slate-200">
                         <div className="flex flex-wrap items-center gap-2">
-                            <span className={`px-2.5 py-0.5 rounded-lg text-xs font-bold uppercase tracking-wider ${
-                                task.priority === 'alta' ? 'bg-rose-100 text-rose-700' :
-                                task.priority === 'media' ? 'bg-indigo-100 text-indigo-700' : 'bg-emerald-100 text-emerald-700'
-                            }`}>
+                            <span className={`px-2.5 py-0.5 rounded-lg text-xs font-bold uppercase tracking-wider ${task.priority === 'alta' ? 'bg-rose-100 text-rose-700' : task.priority === 'media' ? 'bg-indigo-100 text-indigo-700' : 'bg-emerald-100 text-emerald-700'}`}>
                                 Prioridad {task.priority}
                             </span>
                             <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-xs font-bold uppercase tracking-wider border ${activityMeta.statusBadge.cls}`}>
                                 {isRunning && <Loader2 size={12} className="animate-spin" />}
-                                <span>{activityMeta.statusBadge.icon}</span>
-                                <span>{activityMeta.statusBadge.label}</span>
+                                <span>{activityMeta.statusBadge.icon}</span><span>{activityMeta.statusBadge.label}</span>
                             </span>
                             {activityMeta.modeBadge && (
                                 <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-xs font-bold border ${activityMeta.modeBadge.cls}`}>
-                                    <span>{activityMeta.modeBadge.icon}</span>
-                                    <span>{activityMeta.modeBadge.label}</span>
+                                    <span>{activityMeta.modeBadge.icon}</span><span>{activityMeta.modeBadge.label}</span>
                                 </span>
                             )}
                             <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-bold border ${agentInfo.color}`}>
-                                <span>{agentInfo.icon}</span>
-                                <span>Agente: {agentInfo.name}</span>
+                                <span>{agentInfo.icon}</span><span>Agente: {agentInfo.name}</span>
                             </div>
                         </div>
                         <div className="text-[11px] font-medium text-slate-500 flex items-center gap-1">
-                            <Clock size={13} />
-                            <span>Iniciada: {formatDateTime(task.started_at || task.created_at)}</span>
+                            <Clock size={13} /><span>Iniciada: {formatDateTime(task.started_at || task.created_at)}</span>
                         </div>
                     </div>
 
@@ -196,13 +187,7 @@ const AiTaskDetailModal = ({ isOpen, onClose, taskId, initialTab = 'logs', onTas
                             <span className="font-mono text-sm">{activityMeta.progress}%</span>
                         </div>
                         <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
-                            <div
-                                className={`h-full rounded-full transition-all duration-500 ${
-                                    task.status === 'completada' ? 'bg-emerald-500' :
-                                    task.status === 'fallida' ? 'bg-rose-500' : 'bg-indigo-600'
-                                }`}
-                                style={{ width: `${activityMeta.progress}%` }}
-                            />
+                            <div className={`h-full rounded-full transition-all duration-500 ${task.status === 'completada' ? 'bg-emerald-500' : task.status === 'fallida' ? 'bg-rose-500' : 'bg-indigo-600'}`} style={{ width: `${activityMeta.progress}%` }} />
                         </div>
                         <div className={`flex flex-wrap items-center justify-between gap-2 px-3 py-1.5 rounded-xl text-xs font-bold border ${activityMeta.humanCls}`}>
                             <span>{activityMeta.humanBadge}</span>
@@ -263,24 +248,17 @@ const AiTaskDetailModal = ({ isOpen, onClose, taskId, initialTab = 'logs', onTas
                                     </div>
                                     <div className="flex items-center gap-2">
                                         {task.output_type === 'pdf' && (
-                                            <button type="button" onClick={() => (onOpenPdf ? onOpenPdf(task.output_file_url) : window.open(task.output_file_url, '_blank'))} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 transition-all shadow-xs">
-                                                <span>Ver PDF Oficial</span>
-                                            </button>
+                                            <button type="button" onClick={() => (onOpenPdf ? onOpenPdf(task.output_file_url) : window.open(task.output_file_url, '_blank'))} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 transition-all shadow-xs">Ver PDF Oficial</button>
                                         )}
                                         {task.output_type === 'excel' && (
-                                            <a href={task.output_file_url} download target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 transition-all shadow-xs">
-                                                <span>Descargar Excel</span>
-                                            </a>
+                                            <a href={task.output_file_url} download target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 transition-all shadow-xs">Descargar Excel</a>
                                         )}
                                         {(task.output_type === 'imagen' || /\.(svg|png|webp|jpe?g|gif)$/i.test(task.output_file_url)) && (
-                                            <a href={task.output_file_url} download className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 transition-all shadow-xs">
-                                                <span>Descargar Imagen</span>
-                                            </a>
+                                            <a href={task.output_file_url} download className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 transition-all shadow-xs">Descargar Imagen</a>
                                         )}
                                     </div>
                                 </div>
                             )}
-
                             {task.output_file_url && (task.output_type === 'imagen' || /\.(svg|png|webp|jpe?g|gif)$/i.test(task.output_file_url)) && (
                                 <div className="rounded-2xl overflow-hidden border border-slate-800 bg-slate-950 p-2 shadow-inner">
                                     <div className="flex justify-end p-1">
@@ -293,7 +271,6 @@ const AiTaskDetailModal = ({ isOpen, onClose, taskId, initialTab = 'logs', onTas
                                     </div>
                                 </div>
                             )}
-
                             {task.result ? (
                                 <>
                                     <div className="flex justify-end">
@@ -338,17 +315,22 @@ const AiTaskDetailModal = ({ isOpen, onClose, taskId, initialTab = 'logs', onTas
                         </div>
                     )}
 
-                    <div className="flex items-center justify-between pt-3 border-t border-slate-100">
-                        <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-slate-100">
+                        <div className="flex flex-wrap items-center gap-2">
                             {isRunning && (
                                 <button type="button" onClick={handleCancel} disabled={isCancelling} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-rose-600 hover:bg-rose-50 rounded-xl transition-all border border-rose-200 active:scale-95 disabled:opacity-50">
                                     {isCancelling ? <Loader2 size={13} className="animate-spin" /> : <XCircle size={13} />}<span>Cancelar Tarea</span>
                                 </button>
                             )}
+                            {canRetry && task.status !== 'completada' && (
+                                <button type="button" onClick={handleMarkCompleted} disabled={isRetrying} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-xl transition-all border border-emerald-200 active:scale-95 disabled:opacity-50">
+                                    <CheckCircle2 size={13} /><span>Marcar Completada (100%)</span>
+                                </button>
+                            )}
                             {canRetry && (
                                 <button type="button" onClick={handleRetry} disabled={isRetrying} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all border border-indigo-200 active:scale-95 disabled:opacity-50">
                                     {isRetrying ? <Loader2 size={13} className="animate-spin" /> : <RotateCcw size={13} />}
-                                    <span>{activityMeta.execMode === 'agent_prompt' ? 'Regenerar Prompt + Logs' : task.status === 'completada' ? 'Volver a Ejecutar' : 'Reintentar Tarea'}</span>
+                                    <span>{activityMeta.execMode === 'agent_prompt' ? 'Completar y Actualizar Prompt (100%)' : task.status === 'completada' ? 'Volver a Ejecutar' : 'Reintentar Tarea'}</span>
                                 </button>
                             )}
                             {onEdit && !isRunning && (

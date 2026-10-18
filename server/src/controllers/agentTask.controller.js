@@ -176,8 +176,8 @@ exports.retryTask = async (req, res) => {
     try {
         const { id } = req.params;
         const companyId = req.company_id || req.companyId || 1;
-        await agentTaskQueue.retryTask(id, companyId);
-        res.json({ message: 'Tarea actualizada / reencolada exitosamente' });
+        await agentTaskQueue.retryTask(id, companyId, { forceApi: Boolean(req.body?.force_api) });
+        res.json({ message: 'Tarea actualizada / procesada exitosamente' });
     } catch (error) {
         console.error('[AgentTaskController] Error retryTask:', error);
         res.status(400).json({ message: error.message || 'Error al reintentar la tarea' });
@@ -193,26 +193,15 @@ exports.updateTask = async (req, res) => {
         const companyId = req.company_id || req.companyId || 1;
         const isSuperAdmin = req.user?.role === 'SuperAdmin';
         const {
-            title,
-            prompt,
-            priority,
-            output_type,
-            branch_id,
-            execution_mode,
-            agent_platform,
-            custom_logs,
-            mark_completed,
-            re_execute
+            title, prompt, priority, output_type, branch_id,
+            execution_mode, agent_platform, custom_logs, mark_completed, re_execute
         } = req.body;
 
         const whereSql = isSuperAdmin
             ? "SELECT * FROM ai_agent_tasks WHERE id = ? AND (company_id = ? OR assigned_agent_code = 'support')"
             : 'SELECT * FROM ai_agent_tasks WHERE id = ? AND company_id = ?';
         const [tasks] = await pool.query(whereSql, [id, companyId]);
-
-        if (tasks.length === 0) {
-            return res.status(404).json({ message: 'Tarea no encontrada' });
-        }
+        if (tasks.length === 0) return res.status(404).json({ message: 'Tarea no encontrada' });
 
         const task = tasks[0];
         if (task.status === 'analizando' && task.execution_mode !== 'agent_prompt') {
@@ -221,24 +210,14 @@ exports.updateTask = async (req, res) => {
 
         const updates = [];
         const params = [];
-
         if (title !== undefined && String(title).trim()) { updates.push('title = ?'); params.push(String(title).trim()); }
         if (prompt !== undefined && String(prompt).trim()) { updates.push('prompt = ?'); params.push(String(prompt).trim()); }
         if (priority !== undefined && ['alta', 'media', 'baja'].includes(priority)) { updates.push('priority = ?'); params.push(priority); }
         if (output_type !== undefined && ['texto', 'pdf', 'excel', 'imagen'].includes(output_type)) { updates.push('output_type = ?'); params.push(output_type); }
         if (branch_id !== undefined) { updates.push('branch_id = ?'); params.push(branch_id ? Number(branch_id) : null); }
-        if (execution_mode !== undefined && ['api', 'agent_prompt'].includes(execution_mode)) {
-            updates.push('execution_mode = ?');
-            params.push(execution_mode);
-        }
-        if (agent_platform !== undefined && ['antigravity', 'cursor', 'claude_code', 'universal'].includes(agent_platform)) {
-            updates.push('agent_platform = ?');
-            params.push(agent_platform);
-        }
-        if (custom_logs !== undefined) {
-            updates.push('custom_logs = ?');
-            params.push(custom_logs && String(custom_logs).trim() ? String(custom_logs).trim() : null);
-        }
+        if (execution_mode !== undefined && ['api', 'agent_prompt'].includes(execution_mode)) { updates.push('execution_mode = ?'); params.push(execution_mode); }
+        if (agent_platform !== undefined && ['antigravity', 'cursor', 'claude_code', 'universal'].includes(agent_platform)) { updates.push('agent_platform = ?'); params.push(agent_platform); }
+        if (custom_logs !== undefined) { updates.push('custom_logs = ?'); params.push(custom_logs && String(custom_logs).trim() ? String(custom_logs).trim() : null); }
         if (mark_completed === true) {
             updates.push("status = 'completada'", 'progress = 100', "current_step = 'Completada y validada en plataforma de Agente.'", 'completed_at = NOW()');
         }
@@ -246,7 +225,14 @@ exports.updateTask = async (req, res) => {
         if (updates.length > 0) {
             params.push(id);
             await pool.query(`UPDATE ai_agent_tasks SET ${updates.join(', ')} WHERE id = ?`, params);
-            await agentTaskQueue.logTaskStep(id, 'supervisor', 'info', 'Configuración de modo IA, logs o parámetros actualizados por el usuario.');
+            await agentTaskQueue.logTaskStep(
+                id,
+                mark_completed ? (task.assigned_agent_code || 'support') : 'supervisor',
+                mark_completed ? 'tool_result' : 'info',
+                mark_completed
+                    ? 'Tarea marcada como completada al 100% y validada.'
+                    : 'Configuración de modo IA, logs o parámetros actualizados por el usuario.'
+            );
         }
 
         // Sync back to support_tickets if linked
@@ -258,12 +244,15 @@ exports.updateTask = async (req, res) => {
             if (execution_mode !== undefined) { tUpdates.push('ai_mode = ?'); tParams.push(execution_mode === 'api' ? 'api' : 'agent_prompt'); }
             if (agent_platform !== undefined) { tUpdates.push('agent_platform = ?'); tParams.push(agent_platform); }
             if (custom_logs !== undefined) { tUpdates.push('custom_logs = ?'); tParams.push(custom_logs || null); }
+            if (mark_completed === true) {
+                tUpdates.push("status = 'resuelto'", 'resolved_at = COALESCE(resolved_at, NOW())', "resolution_notes = COALESCE(resolution_notes, 'Resuelto y validado desde Tareas Agénticas.')");
+            }
             if (tUpdates.length > 0) {
                 tParams.push(metaObj.ticket_id);
                 await pool.query(`UPDATE support_tickets SET ${tUpdates.join(', ')} WHERE id = ?`, tParams);
             }
             if (!re_execute && !mark_completed) {
-                await ticketAiTaskBridge.syncTicketToAiTask(metaObj.ticket_id);
+                await ticketAiTaskBridge.syncTicketToAiTask(metaObj.ticket_id, { forceSync: true });
             }
         }
 
@@ -272,9 +261,9 @@ exports.updateTask = async (req, res) => {
         }
 
         res.json({
-            message: re_execute
-                ? 'Tarea actualizada y procesada según el modo IA seleccionado'
-                : 'Tarea y logs actualizados exitosamente'
+            message: mark_completed
+                ? 'Tarea completada al 100% exitosamente'
+                : (re_execute ? 'Tarea actualizada y procesada según el modo IA seleccionado' : 'Tarea y logs actualizados exitosamente')
         });
     } catch (error) {
         console.error('[AgentTaskController] Error updateTask:', error);

@@ -184,8 +184,9 @@ async function ensureTaskLogs(taskId, ticket) {
     }
 }
 
-async function syncTicketToAiTask(ticketOrId) {
+async function syncTicketToAiTask(ticketOrId, options = {}) {
     try {
+        const forceSync = Boolean(options?.forceSync);
         const ticket = typeof ticketOrId === 'object' && ticketOrId?.ticket_code
             ? ticketOrId
             : (await pool.query('SELECT * FROM support_tickets WHERE id = ? LIMIT 1', [Number(ticketOrId)]))[0]?.[0];
@@ -194,7 +195,7 @@ async function syncTicketToAiTask(ticketOrId) {
 
         const codeTag = `[Ticket #${ticket.ticket_code}]`;
         const [existingRows] = await pool.query(
-            `SELECT id, status FROM ai_agent_tasks
+            `SELECT id, status, progress, execution_mode FROM ai_agent_tasks
              WHERE company_id = ? AND (title LIKE ? OR title LIKE ?)
              ORDER BY id DESC LIMIT 1`,
             [ticket.company_id || 1, `%${codeTag}%`, `%${ticket.ticket_code}%`]
@@ -203,7 +204,7 @@ async function syncTicketToAiTask(ticketOrId) {
         const existing = existingRows[0] || null;
 
         if (!Number(ticket.include_in_ai_prompt)) {
-            if (existing && existing.status !== 'cancelada') {
+            if (existing && !['cancelada', 'completada'].includes(existing.status)) {
                 await pool.query(
                     `UPDATE ai_agent_tasks SET status = 'cancelada', current_step = 'Retirado del paquete IA en Tickets de Soporte.' WHERE id = ?`,
                     [existing.id]
@@ -217,13 +218,29 @@ async function syncTicketToAiTask(ticketOrId) {
         const agentPlat = ticket.agent_platform || 'antigravity';
         const platMeta = getPlatformMeta(agentPlat);
 
-        const taskStatus = isResolved ? 'completada' : 'en_proceso';
-        const taskProgress = isResolved ? 100 : 50;
-        const taskStep = isResolved
-            ? 'Mejora/corrección aplicada en código · Ticket resuelto.'
-            : (execMode === 'api'
-                ? 'Procesando diagnóstico autónomo por API Interna...'
-                : `Prompt + Logs listos · Esperando ejecutar en ${platMeta.name}`);
+        // Do not overwrite tasks that are already completed, queued, analyzing, or past 50% during passive list syncs
+        if (existing && !isResolved && !forceSync) {
+            if (
+                ['completada', 'analizando', 'pendiente'].includes(existing.status) ||
+                Number(existing.progress) > 50
+            ) {
+                return existing.id;
+            }
+        }
+
+        let taskStatus = 'en_proceso';
+        let taskProgress = 50;
+        let taskStep = `Prompt + Logs listos · Esperando ejecutar en ${platMeta.name}`;
+
+        if (isResolved) {
+            taskStatus = 'completada';
+            taskProgress = 100;
+            taskStep = 'Mejora/corrección aplicada en código · Ticket resuelto.';
+        } else if (execMode === 'api') {
+            taskStatus = 'pendiente';
+            taskProgress = 0;
+            taskStep = 'En cola de espera (API Interna)...';
+        }
 
         const title = `${codeTag} ${String(ticket.subject || '').slice(0, 190)}`.slice(0, 250);
         const prompt = buildSingleTicketTaskPrompt(ticket);
@@ -261,6 +278,11 @@ async function syncTicketToAiTask(ticketOrId) {
                 ]
             );
             await ensureTaskLogs(existing.id, ticket);
+            if (!isResolved && execMode === 'api') {
+                setImmediate(() => {
+                    try { require('./agents/agentTaskQueue.service').processQueue(); } catch { /* ignore */ }
+                });
+            }
             return existing.id;
         }
 
@@ -290,6 +312,11 @@ async function syncTicketToAiTask(ticketOrId) {
 
         const taskId = ins.insertId;
         await ensureTaskLogs(taskId, ticket);
+        if (!isResolved && execMode === 'api') {
+            setImmediate(() => {
+                try { require('./agents/agentTaskQueue.service').processQueue(); } catch { /* ignore */ }
+            });
+        }
         return taskId;
     } catch (err) {
         console.error('[TicketAiTaskBridge] Error syncing ticket to ai_agent_tasks:', err.message);
@@ -308,7 +335,7 @@ async function syncAllFlaggedTicketsToAiTasks(companyId = null) {
         const [tickets] = await pool.query(`SELECT * FROM support_tickets ${where} ORDER BY id ASC`, params);
         const syncedIds = [];
         for (const t of tickets) {
-            const taskId = await syncTicketToAiTask(t);
+            const taskId = await syncTicketToAiTask(t, { forceSync: false });
             if (taskId) syncedIds.push(taskId);
         }
         return syncedIds;

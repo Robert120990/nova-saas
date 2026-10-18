@@ -19,14 +19,8 @@ import {
     getTaskActivityMeta
 } from '../components/aiTasks';
 import {
-    Bot,
-    Eye,
-    RotateCcw,
-    Loader2,
-    Clock,
-    AlertTriangle,
-    Pencil,
-    Copy
+    Bot, Eye, RotateCcw, Loader2, Clock,
+    AlertTriangle, Pencil, Copy, CheckCircle2
 } from 'lucide-react';
 
 const AiAgentTasks = () => {
@@ -85,10 +79,20 @@ const AiAgentTasks = () => {
     const handleRetryTask = async (taskId) => {
         try {
             await axios.post(`/api/agent-tasks/${taskId}/retry`);
-            toast.success('Tarea actualizada / reencolada exitosamente');
+            toast.success('Tarea procesada / actualizada exitosamente');
             queryClient.invalidateQueries({ queryKey: ['agent-tasks'] });
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Error al reintentar la tarea');
+            toast.error(error.response?.data?.message || 'Error al procesar la tarea');
+        }
+    };
+
+    const handleMarkCompleted = async (taskId) => {
+        try {
+            await axios.put(`/api/agent-tasks/${taskId}`, { mark_completed: true });
+            toast.success('Tarea marcada como completada (100%)');
+            queryClient.invalidateQueries({ queryKey: ['agent-tasks'] });
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Error al completar la tarea');
         }
     };
 
@@ -246,13 +250,18 @@ const AiAgentTasks = () => {
                                                 <Copy size={15} />
                                             </button>
                                         )}
+                                        {!isRunning && item.status !== 'completada' && (
+                                            <button onClick={() => handleMarkCompleted(item.id)} className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-xl transition-all" title="Marcar tarea como completada (100%)">
+                                                <CheckCircle2 size={15} />
+                                            </button>
+                                        )}
                                         {!isRunning && (
                                             <button onClick={() => handleOpenEdit(item)} className="p-1.5 text-slate-600 hover:text-amber-600 hover:bg-amber-50 rounded-xl transition-all" title="Configurar Modo IA / Cargar Logs">
                                                 <Pencil size={15} />
                                             </button>
                                         )}
                                         {!isRunning && (
-                                            <button onClick={() => handleRetryTask(item.id)} className="p-1.5 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all" title={meta.execMode === 'agent_prompt' ? 'Regenerar paquete de Prompt + Logs' : 'Reejecutar por API Interna'}>
+                                            <button onClick={() => handleRetryTask(item.id)} className="p-1.5 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all" title={meta.execMode === 'agent_prompt' ? 'Completar y actualizar paquete de Prompt + Logs (100%)' : 'Reejecutar por API Interna'}>
                                                 <RotateCcw size={16} />
                                             </button>
                                         )}
@@ -297,6 +306,9 @@ const AiAgentTasks = () => {
                                     <span>{formatDateTime(item.created_at)}</span>
                                     {!isRunning && (
                                         <div className="flex items-center gap-2">
+                                            {item.status !== 'completada' && (
+                                                <button type="button" onClick={(e) => { e.stopPropagation(); handleMarkCompleted(item.id); }} className="font-bold text-emerald-600 hover:text-emerald-800">Completar 100%</button>
+                                            )}
                                             <button type="button" onClick={(e) => { e.stopPropagation(); handleOpenEdit(item); }} className="font-bold text-amber-600 hover:text-amber-800">Editar</button>
                                             <button type="button" onClick={(e) => { e.stopPropagation(); handleRetryTask(item.id); }} className="font-bold text-indigo-600 hover:text-indigo-800">{item.status === 'completada' ? 'Reejecutar' : 'Reintentar'}</button>
                                         </div>

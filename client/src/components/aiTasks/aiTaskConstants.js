@@ -89,6 +89,9 @@ export function getTaskActivityMeta(item = {}) {
     }
 
     if ((execMode === 'agent_prompt' || isTicketTask) && status !== 'completada' && status !== 'cancelada') {
+        const promptReadyBadge = execMode === 'agent_prompt' && status === 'en_proceso'
+            ? { label: 'Prompt Listo', icon: '📋', cls: 'bg-purple-50 text-purple-700 border-purple-200' }
+            : statusBadge;
         return {
             progress,
             isCompleted: false,
@@ -96,10 +99,10 @@ export function getTaskActivityMeta(item = {}) {
             platform,
             modeBadge,
             hasCustomLogs,
-            statusBadge,
+            statusBadge: promptReadyBadge,
             requiresHumanAction: true,
             humanBadge: `👤 Acción Humana (${platform.name})`,
-            humanDetail: `Copiar Prompt + Logs y ejecutarlo en ${platform.name}`,
+            humanDetail: `Copiar Prompt + Logs y ejecutarlo en ${platform.name} (o marcar completada al 100%)`,
             humanCls: 'bg-amber-50 text-amber-800 border-amber-300'
         };
     }

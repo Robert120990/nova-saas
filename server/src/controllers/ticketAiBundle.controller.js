@@ -155,7 +155,7 @@ const updateTicketAiReview = async (req, res) => {
         }
 
         const updated = await ticketService.getTicketById(id);
-        const taskId = await ticketAiTaskBridge.syncTicketToAiTask(updated);
+        const taskId = await ticketAiTaskBridge.syncTicketToAiTask(updated, { forceSync: true });
         if (ai_mode === 'api' && taskId) {
             await agentTaskQueue.retryTask(taskId, updated.company_id).catch(() => {});
         }
@@ -232,7 +232,7 @@ const saveAndGenerateAiBundle = async (req, res) => {
             : await pool.query(`${baseSql} WHERE t.include_in_ai_prompt = 1 AND t.status NOT IN ('cerrado', 'rechazado')${tenantFilter} ORDER BY FIELD(t.priority, 'urgente', 'alta', 'media', 'baja'), t.id ASC`, tenantParams);
 
         for (const r of rows) {
-            const taskId = await ticketAiTaskBridge.syncTicketToAiTask(r);
+            const taskId = await ticketAiTaskBridge.syncTicketToAiTask(r, { forceSync: true });
             if ((r.ai_mode || cleanMode) === 'api' && taskId && r.status !== 'resuelto') {
                 await agentTaskQueue.retryTask(taskId, r.company_id).catch(() => {});
             }
@@ -285,7 +285,7 @@ const resolveAiBundleBatch = async (req, res) => {
                 status: 'resuelto', resolvedByName: actorName, resolutionNotes: note,
                 resolvedVersion: resolved_version || null, updatedByType: 'tech', updatedById: req.user?.id || null
             });
-            await ticketAiTaskBridge.syncTicketToAiTask({ ...upd, include_in_ai_prompt: 1 });
+            await ticketAiTaskBridge.syncTicketToAiTask({ ...upd, include_in_ai_prompt: 1 }, { forceSync: true });
             await pool.query('UPDATE support_tickets SET include_in_ai_prompt = 0 WHERE id = ?', [id]);
             resolvedList.push(upd);
         }

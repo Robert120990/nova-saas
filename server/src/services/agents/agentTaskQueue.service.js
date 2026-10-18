@@ -181,6 +181,10 @@ async function processQueue() {
         if (typeof userPermissions === 'string') {
             try { userPermissions = JSON.parse(userPermissions); } catch { userPermissions = []; }
         }
+        if (!Array.isArray(userPermissions)) userPermissions = [];
+        if (task.assigned_agent_code === 'support' && !userPermissions.includes('view_support_tickets')) {
+            userPermissions = [...userPermissions, 'view_support_tickets'];
+        }
 
         // Prepare context for execution
         const taskContext = {
@@ -192,7 +196,7 @@ async function processQueue() {
                 email: task.user_email || '',
                 role: userRole,
                 permissions: userPermissions,
-                is_system_task: false
+                is_system_task: true
             },
             taskId: task.id,
             onStepLog: async (agentCode, type, msg, meta) => {
@@ -283,6 +287,16 @@ INSTRUCCIONES CLAVE DE EJECUCIÓN AUTÓNOMA:
             }
         }
 
+        let mergedMeta = outputMeta ? JSON.stringify(outputMeta) : null;
+        if (task.output_metadata) {
+            try {
+                const prevObj = typeof task.output_metadata === 'string' ? JSON.parse(task.output_metadata) : task.output_metadata;
+                mergedMeta = JSON.stringify(outputMeta ? { ...prevObj, ...outputMeta } : prevObj);
+            } catch {
+                mergedMeta = outputMeta ? JSON.stringify(outputMeta) : task.output_metadata;
+            }
+        }
+
         // Complete the task
         await updateTaskStatus(task.id, {
             status: 'completada',
@@ -290,8 +304,8 @@ INSTRUCCIONES CLAVE DE EJECUCIÓN AUTÓNOMA:
             progress: 100,
             current_step: 'Tarea completada exitosamente.',
             result: finalContent,
-            output_file_url: outputUrl,
-            output_metadata: outputMeta ? JSON.stringify(outputMeta) : null,
+            output_file_url: outputUrl || task.output_file_url || null,
+            output_metadata: mergedMeta,
             completed_at: new Date()
         });
 
@@ -506,7 +520,7 @@ async function cancelTask(taskId, companyId) {
 /**
  * Retry a failed or cancelled task, or rebuild external prompt package if in agent_prompt mode.
  */
-async function retryTask(taskId, companyId) {
+async function retryTask(taskId, companyId, options = {}) {
     const [tasks] = await pool.query(
         'SELECT * FROM ai_agent_tasks WHERE id = ? AND (company_id = ? OR assigned_agent_code = "support")',
         [taskId, companyId]
@@ -517,29 +531,49 @@ async function retryTask(taskId, companyId) {
     }
 
     const task = tasks[0];
-    if (task.execution_mode === 'agent_prompt') {
+    if (task.execution_mode === 'agent_prompt' && !options?.forceApi) {
         const plat = getPlatformMeta(task.agent_platform || 'antigravity');
-        const packagedPrompt = buildTaskExternalPrompt({
-            id: task.id,
-            title: task.title,
-            prompt: task.prompt,
-            priority: task.priority,
-            agentPlatform: task.agent_platform || 'antigravity',
-            customLogs: task.custom_logs || ''
-        });
+        let packagedPrompt = null;
+        try {
+            const metaObj = typeof task.output_metadata === 'string' ? JSON.parse(task.output_metadata) : task.output_metadata;
+            if (metaObj?.ticket_id) {
+                const [tRows] = await pool.query('SELECT * FROM support_tickets WHERE id = ? LIMIT 1', [Number(metaObj.ticket_id)]);
+                if (tRows[0]) {
+                    const { buildTicketDiagnosticMarkdown } = require('../ticketAiTaskBridge.service');
+                    packagedPrompt = buildTicketDiagnosticMarkdown(tRows[0]);
+                }
+            }
+        } catch { /* fallback to standard external prompt */ }
+
+        if (!packagedPrompt) {
+            packagedPrompt = buildTaskExternalPrompt({
+                id: task.id,
+                title: task.title,
+                prompt: task.prompt,
+                priority: task.priority,
+                agentPlatform: task.agent_platform || 'antigravity',
+                customLogs: task.custom_logs || ''
+            });
+        }
+
         await updateTaskStatus(taskId, {
-            status: 'en_proceso',
-            progress: 50,
-            current_step: `Prompt + Logs regenerados · Listo para ejecutar en ${plat.name}`,
+            status: 'completada',
+            progress: 100,
+            current_step: `Paquete de Prompt + Diagnóstico completado al 100% · Listo para ${plat.name}`,
             result: packagedPrompt,
             error_message: null,
-            completed_at: null
+            completed_at: new Date()
         });
-        await logTaskStep(taskId, 'support', 'info', `Paquete de Prompt + Logs regenerado para ${plat.name}.`);
+        await logTaskStep(
+            taskId,
+            'support',
+            'tool_result',
+            `Paquete de Prompt + Diagnóstico completado al 100% y listo para ${plat.name}.`
+        );
         return true;
     }
 
-    await updateTaskStatus(taskId, {
+    const updatePayload = {
         status: 'pendiente',
         progress: 0,
         current_step: 'Reencolada para nuevo intento (API Interna)...',
@@ -547,9 +581,13 @@ async function retryTask(taskId, companyId) {
         result: null,
         started_at: null,
         completed_at: null
-    });
+    };
+    if (options?.forceApi) {
+        updatePayload.execution_mode = 'api';
+    }
 
-    await logTaskStep(taskId, 'supervisor', 'info', 'Tarea reencolada para nuevo intento por API Interna.');
+    await updateTaskStatus(taskId, updatePayload);
+    await logTaskStep(taskId, 'supervisor', 'info', 'Tarea reencolada para ejecución autónoma por API Interna.');
 
     setImmediate(() => processQueue());
 
