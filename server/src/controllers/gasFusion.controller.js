@@ -68,22 +68,16 @@ exports.getPeriodReadings = async (req, res) => {
         const { periodInfo, totalizers, pumpSales } = await fusionService.getPeriodTotalizers(periodId, config, req.company_id, branchId);
 
         if (!closeoutId) {
-            return res.json({
-                periodInfo,
-                totalizers,
-                pumpSales,
-                total: totalizers.length
-            });
+            return res.json({ periodInfo, totalizers, pumpSales, total: totalizers.length });
         }
 
         // Buscar lecturas del cierre en base de datos
-        const [readings] = await pool.query(`
-            SELECT id, nozzle_id, codigo_pistola, codigo_producto, descripcion_producto,
-                   lectura_anterior, lectura_actual
-            FROM gas_station_closeout_readings
-            WHERE closeout_id = ?
-            ORDER BY CAST(codigo_pistola AS UNSIGNED), codigo_pistola ASC
-        `, [closeoutId]);
+        const [readings] = await pool.query(
+            `SELECT id, nozzle_id, codigo_pistola, codigo_producto, descripcion_producto, lectura_anterior, lectura_actual
+             FROM gas_station_closeout_readings WHERE closeout_id = ?
+             ORDER BY CAST(codigo_pistola AS UNSIGNED), codigo_pistola ASC`,
+            [closeoutId]
+        );
 
         const matched = [];
         const warnings = [];
@@ -95,18 +89,15 @@ exports.getPeriodReadings = async (req, res) => {
             const nozzleLabel = `Bomba ${row.pumpId} / Manguera ${row.hoseId}`;
 
             if (!reading) {
-                unmatched.push({
-                    row: nozzleLabel,
-                    reason: `No hay lectura en la posición ${i + 1} del cierre`
-                });
+                unmatched.push({ row: nozzleLabel, reason: `No hay lectura en la posición ${i + 1} del cierre` });
                 continue;
             }
 
             const initialVolume = parseFloat(row.initialVolume) || 0;
             const finalVolume = parseFloat(row.finalVolume) || 0;
             const lecturaAnterior = parseFloat(reading.lectura_anterior) || 0;
-
             const antDiff = Math.abs(lecturaAnterior - initialVolume);
+
             if (antDiff >= 0.001) {
                 warnings.push({
                     row: nozzleLabel,
@@ -131,20 +122,10 @@ exports.getPeriodReadings = async (req, res) => {
             });
         }
 
-        res.json({
-            periodInfo,
-            matched,
-            warnings,
-            unmatched,
-            total: totalizers.length,
-            totalizers,
-            pumpSales
-        });
+        res.json({ periodInfo, matched, warnings, unmatched, total: totalizers.length, totalizers, pumpSales });
     } catch (error) {
         console.error('Error getPeriodReadings Fusion:', error);
-        res.status(500).json({
-            message: error.message || 'Error al obtener lecturas del turno desde Fusion'
-        });
+        res.status(500).json({ message: error.message || 'Error al obtener lecturas del turno desde Fusion' });
     }
 };
 
@@ -291,15 +272,12 @@ exports.saveStationConfig = async (req, res) => {
     }
 };
 
-/**
- * Consultar estado de conexión del conector local de la estación
- */
 exports.getAgentStatus = async (req, res) => {
     try {
         const branchId = req.query.branch_id || req.user?.branch_id;
         if (!branchId) return res.status(400).json({ message: 'Se requiere branch_id' });
-        const status = fusionAgent.getAgentStatus(req.company_id, branchId);
         const agentKey = await fusionAgent.getOrGenerateAgentKey(req.company_id, branchId);
+        const status = fusionAgent.getAgentStatus(req.company_id, branchId, agentKey);
         const config = await fusionService.getFusionConfig(req.company_id, branchId);
         res.json({
             ...status,
@@ -314,24 +292,25 @@ exports.getAgentStatus = async (req, res) => {
     }
 };
 
-/**
- * Descargar paquete de configuración config.json para el conector de la estación
- */
+async function buildAgentPayload(req, branchId) {
+    const config = await fusionService.getFusionConfig(req.company_id, branchId);
+    const agentKey = await fusionAgent.getOrGenerateAgentKey(req.company_id, branchId);
+    return {
+        serverUrl: `${req.protocol}://${req.get('host')}`,
+        companyId: Number(req.company_id),
+        branchId: Number(branchId),
+        agentKey,
+        fusionHost: config.host || 'https://10.19.4.15',
+        fusionUser: config.username !== undefined && config.username !== null ? config.username : '',
+        fusionPassword: config.password !== undefined && config.password !== null ? config.password : ''
+    };
+}
+
 exports.getAgentConfig = async (req, res) => {
     try {
         const branchId = req.query.branch_id || req.user?.branch_id;
         if (!branchId) return res.status(400).json({ message: 'Se requiere branch_id' });
-        const config = await fusionService.getFusionConfig(req.company_id, branchId);
-        const agentKey = await fusionAgent.getOrGenerateAgentKey(req.company_id, branchId);
-        const payload = {
-            serverUrl: `${req.protocol}://${req.get('host')}`,
-            companyId: Number(req.company_id),
-            branchId: Number(branchId),
-            agentKey,
-            fusionHost: config.host || 'https://10.19.4.15',
-            fusionUser: config.username !== undefined && config.username !== null ? config.username : '',
-            fusionPassword: config.password !== undefined && config.password !== null ? config.password : ''
-        };
+        const payload = await buildAgentPayload(req, branchId);
         res.setHeader('Content-Disposition', 'attachment; filename="config.json"');
         res.setHeader('Content-Type', 'application/json');
         res.send(JSON.stringify(payload, null, 2));
@@ -340,35 +319,41 @@ exports.getAgentConfig = async (req, res) => {
     }
 };
 
-/**
- * Descargar iniciador Windows (.bat) para el conector
- */
 exports.getAgentLauncher = (req, res) => {
-    const bat = `@echo off\r\ntitle Conector Wayne Fusion FFC - SIPE WEB\r\ncolor 0A\r\ncd /d "%~dp0"\r\necho Conector Local Wayne Fusion FFC - SIPE WEB\r\nwhere node >nul 2>nul\r\nif %errorlevel% neq 0 ( echo [ERROR] Node.js no instalado. Descargue desde https://nodejs.org & pause & exit /b 1 )\r\nif not exist "fusion-agent.js" (\r\n    if exist "fusion-agent.js.txt" ( ren "fusion-agent.js.txt" "fusion-agent.js" )\r\n    if exist "%USERPROFILE%\\Downloads\\fusion-agent.js" ( copy /y "%USERPROFILE%\\Downloads\\fusion-agent.js" "fusion-agent.js" >nul )\r\n    if exist "%USERPROFILE%\\Descargas\\fusion-agent.js" ( copy /y "%USERPROFILE%\\Descargas\\fusion-agent.js" "fusion-agent.js" >nul )\r\n)\r\nif not exist "fusion-agent.js" (\r\n    color 0C\r\n    echo [ERROR] Falta el archivo 'fusion-agent.js' en esta carpeta: %~dp0\r\n    echo Mueva los 3 archivos descargados (fusion-agent.js, config.json, iniciar-agente.bat) a esta misma carpeta.\r\n    pause\r\n    exit /b 1\r\n)\r\nnode fusion-agent.js\r\nif %errorlevel% neq 0 pause\r\n`;
     res.setHeader('Content-Disposition', 'attachment; filename="iniciar-agente.bat"');
     res.setHeader('Content-Type', 'application/x-bat');
-    res.send(bat);
+    res.send(fusionAgent.getLauncherBatContent());
 };
 
-/**
- * Descargar archivo fuente fusion-agent.js
- */
 exports.getAgentScript = (req, res) => {
-    const fs = require('fs');
-    const path = require('path');
-    const possiblePaths = [
-        path.resolve(__dirname, '../assets/fusion-agent.js'),
-        path.resolve(__dirname, '../../../scripts/fusion-agent/fusion-agent.js'),
-        path.resolve(process.cwd(), 'scripts/fusion-agent/fusion-agent.js'),
-        path.resolve(process.cwd(), '../scripts/fusion-agent/fusion-agent.js'),
-        path.resolve(__dirname, '../../scripts/fusion-agent/fusion-agent.js')
-    ];
-    for (const p of possiblePaths) {
-        if (fs.existsSync(p)) {
-            res.setHeader('Content-Disposition', 'attachment; filename="fusion-agent.js"');
-            res.setHeader('Content-Type', 'application/javascript');
-            return res.sendFile(p);
-        }
+    const scriptPath = fusionAgent.getAgentScriptPath();
+    if (scriptPath) {
+        res.setHeader('Content-Disposition', 'attachment; filename="fusion-agent.js"');
+        res.setHeader('Content-Type', 'application/javascript');
+        return res.sendFile(scriptPath);
     }
     res.status(404).json({ message: 'Script conector no encontrado' });
+};
+
+exports.syncAgentConfig = async (req, res) => {
+    try {
+        const branchId = req.body?.branch_id || req.query.branch_id || req.user?.branch_id;
+        if (!branchId) return res.status(400).json({ message: 'Se requiere branch_id' });
+        const newConfig = await buildAgentPayload(req, branchId);
+        const status = fusionAgent.getAgentStatus(req.company_id, branchId, newConfig.agentKey);
+        if (!status.connected) {
+            return res.status(400).json({ message: 'El conector local no está en línea en este momento. Inícielo en la PC de la estación primero.' });
+        }
+        const fs = require('fs');
+        const scriptPath = fusionAgent.getAgentScriptPath();
+        const newScript = scriptPath ? fs.readFileSync(scriptPath, 'utf8') : null;
+        try {
+            await fusionAgent.callAgent(req.company_id, branchId, 'updateAgent', { newConfig, newScript }, 10000);
+            return res.json({ success: true, updatedOnDisk: true, message: 'Conector local actualizado exitosamente en la PC de la estación.' });
+        } catch {
+            return res.json({ success: true, updatedOnDisk: false, message: 'Conector vinculado en línea para esta estación correctamente.' });
+        }
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
 };

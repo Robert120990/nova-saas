@@ -3,11 +3,39 @@ import axios from 'axios';
 import { Download, Copy, Check, Loader2, ArrowDownToLine } from 'lucide-react';
 import { toast } from 'sonner';
 
-const GasFusionAgentFiles = ({ branchId }) => {
+const GasFusionAgentFiles = ({ branchId, agentStatus }) => {
     const [downloading, setDownloading] = useState({});
     const [downloadingAll, setDownloadingAll] = useState(false);
     const [copiedConfig, setCopiedConfig] = useState(false);
     const [copiedBat, setCopiedBat] = useState(false);
+    const [copiedScript, setCopiedScript] = useState(false);
+
+    const batContent = `@echo off\r\ntitle Conector Wayne Fusion FFC - SIPE WEB\r\ncolor 0A\r\ncd /d "%~dp0"\r\necho Conector Local Wayne Fusion FFC - SIPE WEB\r\nwhere node >nul 2>nul\r\nif %errorlevel% neq 0 ( echo [ERROR] Node.js no instalado. Descargue desde https://nodejs.org & pause & exit /b 1 )\r\nif not exist "fusion-agent.js" (\r\n    if exist "fusion-agent.js.txt" ( ren "fusion-agent.js.txt" "fusion-agent.js" )\r\n    if exist "%USERPROFILE%\\Downloads\\fusion-agent.js" ( copy /y "%USERPROFILE%\\Downloads\\fusion-agent.js" "fusion-agent.js" >nul )\r\n    if exist "%USERPROFILE%\\Descargas\\fusion-agent.js" ( copy /y "%USERPROFILE%\\Descargas\\fusion-agent.js" "fusion-agent.js" >nul )\r\n)\r\nif not exist "fusion-agent.js" (\r\n    color 0C\r\n    echo [ERROR] Falta el archivo 'fusion-agent.js' en esta carpeta: %~dp0\r\n    echo Mueva los 3 archivos descargados (fusion-agent.js, config.json, iniciar-agente.bat) a esta misma carpeta.\r\n    pause\r\n    exit /b 1\r\n)\r\nnode fusion-agent.js\r\nif %errorlevel% neq 0 pause\r\n`;
+
+    const triggerBlobDownload = (content, filename, mimeType = 'application/octet-stream') => {
+        const blob = content instanceof Blob ? content : new Blob([content], { type: mimeType });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => window.URL.revokeObjectURL(url), 1000);
+    };
+
+    const buildFallbackConfigJson = () => {
+        if (!agentStatus?.agentKey) return null;
+        return JSON.stringify({
+            serverUrl: agentStatus.serverUrl || window.location.origin,
+            companyId: Number(agentStatus.companyId || 1),
+            branchId: Number(branchId),
+            agentKey: agentStatus.agentKey,
+            fusionHost: agentStatus.fusionHost || 'https://10.19.4.15',
+            fusionUser: 'manager',
+            fusionPassword: ''
+        }, null, 2);
+    };
 
     const handleDownload = async (endpoint, filename) => {
         try {
@@ -16,21 +44,33 @@ const GasFusionAgentFiles = ({ branchId }) => {
                 params: { branch_id: branchId },
                 responseType: 'blob'
             });
-            const blob = new Blob([res.data], {
-                type: res.headers['content-type'] || 'application/octet-stream'
-            });
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = filename;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            setTimeout(() => window.URL.revokeObjectURL(url), 1000);
+            triggerBlobDownload(res.data, filename, res.headers['content-type'] || 'application/octet-stream');
             toast.success(`${filename} descargado exitosamente`);
         } catch (error) {
-            console.error('Error al descargar archivo:', error);
-            toast.error(error.response?.data?.message || `Error al descargar ${filename}`);
+            if (filename === 'iniciar-agente.bat') {
+                triggerBlobDownload(batContent, 'iniciar-agente.bat', 'application/x-bat');
+                toast.success('iniciar-agente.bat descargado exitosamente');
+                return;
+            }
+            if (filename === 'config.json') {
+                const fallbackCfg = buildFallbackConfigJson();
+                if (fallbackCfg) {
+                    triggerBlobDownload(fallbackCfg, 'config.json', 'application/json');
+                    toast.success('config.json descargado exitosamente');
+                    return;
+                }
+            }
+            let errMsg = `Error al descargar ${filename}`;
+            if (error.response?.data instanceof Blob) {
+                try {
+                    const txt = await error.response.data.text();
+                    const parsed = JSON.parse(txt);
+                    if (parsed?.message) errMsg = parsed.message;
+                } catch { /* ignore */ }
+            } else if (error.response?.data?.message) {
+                errMsg = error.response.data.message;
+            }
+            toast.error(errMsg);
         } finally {
             setDownloading(prev => ({ ...prev, [filename]: false }));
         }
@@ -50,8 +90,6 @@ const GasFusionAgentFiles = ({ branchId }) => {
             setDownloadingAll(false);
         }
     };
-
-    const batContent = `@echo off\r\ntitle Conector Wayne Fusion FFC - SIPE WEB\r\ncolor 0A\r\ncd /d "%~dp0"\r\necho Conector Local Wayne Fusion FFC - SIPE WEB\r\nwhere node >nul 2>nul\r\nif %errorlevel% neq 0 ( echo [ERROR] Node.js no instalado. Descargue desde https://nodejs.org & pause & exit /b 1 )\r\nif not exist "fusion-agent.js" (\r\n    if exist "fusion-agent.js.txt" ( ren "fusion-agent.js.txt" "fusion-agent.js" )\r\n    if exist "%USERPROFILE%\\Downloads\\fusion-agent.js" ( copy /y "%USERPROFILE%\\Downloads\\fusion-agent.js" "fusion-agent.js" >nul )\r\n    if exist "%USERPROFILE%\\Descargas\\fusion-agent.js" ( copy /y "%USERPROFILE%\\Descargas\\fusion-agent.js" "fusion-agent.js" >nul )\r\n)\r\nif not exist "fusion-agent.js" (\r\n    color 0C\r\n    echo [ERROR] Falta el archivo 'fusion-agent.js' en esta carpeta: %~dp0\r\n    echo Mueva los 3 archivos descargados (fusion-agent.js, config.json, iniciar-agente.bat) a esta misma carpeta.\r\n    pause\r\n    exit /b 1\r\n)\r\nnode fusion-agent.js\r\nif %errorlevel% neq 0 pause\r\n`;
 
     const handleCopyBat = (e) => {
         e.stopPropagation();
@@ -73,7 +111,32 @@ const GasFusionAgentFiles = ({ branchId }) => {
             toast.success('Contenido de config.json copiado al portapapeles');
             setTimeout(() => setCopiedConfig(false), 2000);
         } catch {
+            const fallbackCfg = buildFallbackConfigJson();
+            if (fallbackCfg) {
+                navigator.clipboard.writeText(fallbackCfg);
+                setCopiedConfig(true);
+                toast.success('Contenido de config.json copiado al portapapeles');
+                setTimeout(() => setCopiedConfig(false), 2000);
+                return;
+            }
             toast.error('Error al obtener contenido de config.json');
+        }
+    };
+
+    const handleCopyScript = async (e) => {
+        e.stopPropagation();
+        try {
+            const res = await axios.get('/api/gas-station/fusion/agent-script', {
+                params: { branch_id: branchId },
+                responseType: 'text'
+            });
+            const text = typeof res.data === 'string' ? res.data : JSON.stringify(res.data);
+            navigator.clipboard.writeText(text);
+            setCopiedScript(true);
+            toast.success('Contenido de fusion-agent.js copiado al portapapeles');
+            setTimeout(() => setCopiedScript(false), 2000);
+        } catch {
+            toast.error('Error al obtener contenido de fusion-agent.js');
         }
     };
 
@@ -177,6 +240,14 @@ const GasFusionAgentFiles = ({ branchId }) => {
                             <span className="text-[11px] font-black font-mono text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded">
                                 3. fusion-agent.js
                             </span>
+                            <button
+                                type="button"
+                                onClick={handleCopyScript}
+                                title="Copiar código de fusion-agent.js"
+                                className="text-slate-400 hover:text-slate-700 p-0.5 rounded transition-colors"
+                            >
+                                {copiedScript ? <Check size={13} className="text-emerald-600" /> : <Copy size={13} />}
+                            </button>
                         </div>
                         <p className="text-[10px] text-slate-500 mb-2">Script ligero de comunicación</p>
                     </div>

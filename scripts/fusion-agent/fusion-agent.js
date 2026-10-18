@@ -235,6 +235,27 @@ async function handleAction(action, payload) {
     const user = payload?.config?.username !== undefined ? payload.config.username : config.fusionUser;
     const pass = payload?.config?.password !== undefined ? payload.config.password : config.fusionPassword;
 
+    if (action === 'updateAgent') {
+        const targetDir = configLoadedFrom ? path.dirname(configLoadedFrom) : __dirname;
+        if (payload?.newConfig && typeof payload.newConfig === 'object') {
+            config = { ...config, ...payload.newConfig };
+            const cfgPath = configLoadedFrom || path.join(targetDir, 'config.json');
+            fs.writeFileSync(cfgPath, JSON.stringify(config, null, 2), 'utf8');
+            log(`[AutoUpdate] Archivo config.json actualizado (Empresa #${config.companyId}, Estación #${config.branchId})`);
+        }
+        if (payload?.newScript && typeof payload.newScript === 'string' && payload.newScript.includes('startAgent')) {
+            const scriptPath = path.join(targetDir, 'fusion-agent.js');
+            fs.writeFileSync(scriptPath, payload.newScript, 'utf8');
+            log('[AutoUpdate] Archivo fusion-agent.js actualizado desde la nube.');
+        }
+        return {
+            success: true,
+            companyId: config.companyId,
+            branchId: config.branchId,
+            updatedAt: new Date().toISOString()
+        };
+    }
+
     if (action === 'testConnection') {
         try {
             const token = await getFusionToken(host, user, pass, true);

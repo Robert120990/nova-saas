@@ -952,16 +952,18 @@ router.put('/gas-station/closeouts/:id/despachadores', gasCloseoutController.upd
 router.put('/gas-station/closeouts/:id/despachador-nozzles', gasCloseoutController.updateCloseoutDespachadorNozzles);
 
 // Gas Station - Wayne Fusion FFC Controller Integration
+const fusionSettingsPerms = ['manage_fusion_settings', 'manage_gas_settings', 'manage_gas_readings_closure', 'view_gas_readings_history', 'manage_gas_closeouts', 'manage_settings', 'manage_companies'];
 router.get('/gas-station/fusion/periods', gasFusionController.getPeriods);
 router.get('/gas-station/fusion/periods/:periodId/readings', gasFusionController.getPeriodReadings);
 router.get('/gas-station/fusion/test-connection', gasFusionController.testConnection);
 router.post('/gas-station/fusion/test-connection', gasFusionController.testConnection);
-router.get('/gas-station/fusion/configs', checkPermission(['manage_gas_settings', 'manage_gas_closeouts', 'manage_settings', 'manage_companies']), gasFusionController.getStationConfigs);
-router.put('/gas-station/fusion/configs', checkPermission(['manage_gas_settings', 'manage_gas_closeouts', 'manage_settings', 'manage_companies']), gasFusionController.saveStationConfig);
-router.get('/gas-station/fusion/agent-status', checkPermission(['manage_gas_settings', 'manage_gas_closeouts', 'manage_settings', 'manage_companies']), gasFusionController.getAgentStatus);
-router.get('/gas-station/fusion/agent-config', checkPermission(['manage_gas_settings', 'manage_gas_closeouts', 'manage_settings', 'manage_companies']), gasFusionController.getAgentConfig);
-router.get('/gas-station/fusion/agent-launcher', checkPermission(['manage_gas_settings', 'manage_gas_closeouts', 'manage_settings', 'manage_companies']), gasFusionController.getAgentLauncher);
-router.get('/gas-station/fusion/agent-script', checkPermission(['manage_gas_settings', 'manage_gas_closeouts', 'manage_settings', 'manage_companies']), gasFusionController.getAgentScript);
+router.get('/gas-station/fusion/configs', checkPermission(fusionSettingsPerms), gasFusionController.getStationConfigs);
+router.put('/gas-station/fusion/configs', checkPermission(fusionSettingsPerms), gasFusionController.saveStationConfig);
+router.get('/gas-station/fusion/agent-status', gasFusionController.getAgentStatus);
+router.get('/gas-station/fusion/agent-config', gasFusionController.getAgentConfig);
+router.get('/gas-station/fusion/agent-launcher', gasFusionController.getAgentLauncher);
+router.get('/gas-station/fusion/agent-script', gasFusionController.getAgentScript);
+router.post('/gas-station/fusion/agent-sync', gasFusionController.syncAgentConfig);
 
 // Gas Station - Expense Categories
 router.get('/gas-station/expense-categories', gasCloseoutController.getExpenseCategories);

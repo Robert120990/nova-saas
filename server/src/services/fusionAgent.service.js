@@ -11,39 +11,48 @@ const pendingRequests = new Map();
 const wss = new WebSocket.Server({ noServer: true });
 
 wss.on('connection', (ws, req) => {
-    const { companyId, branchId, remoteAddress } = req.agentContext;
-    const key = `${companyId}:${branchId}`;
+    const { companyId, branchId, remoteAddress, agentKey, boundKeys } = req.agentContext;
+    const primaryKey = `${companyId}:${branchId}`;
+    const keysToBind = Array.isArray(boundKeys) && boundKeys.length > 0 ? boundKeys : [primaryKey];
 
-    // Si ya existía un socket anterior para esta sucursal, cerrarlo limpiamente
-    const prev = connectedAgents.get(key);
-    if (prev && prev.ws !== ws && prev.ws.readyState === WebSocket.OPEN) {
-        try { prev.ws.close(1000, 'Reemplazado por nueva conexión de agente'); } catch { /* ignore */ }
+    // Si ya existía un socket anterior para cualquiera de las sucursales vinculadas, cerrarlo limpiamente
+    for (const k of keysToBind) {
+        const prev = connectedAgents.get(k);
+        if (prev && prev.ws !== ws && prev.ws.readyState === WebSocket.OPEN) {
+            try { prev.ws.close(1000, 'Reemplazado por nueva conexión de agente'); } catch { /* ignore */ }
+        }
     }
 
-    connectedAgents.set(key, {
+    const agentRecord = {
         ws,
         companyId,
         branchId,
+        agentKey: agentKey || '',
+        boundKeys: keysToBind,
         remoteAddress,
         connectedAt: new Date().toISOString(),
         lastPing: Date.now()
-    });
+    };
 
-    console.log(`[FusionAgent] Conector conectado para Empresa #${companyId}, Estación #${branchId} desde ${remoteAddress}`);
+    for (const k of keysToBind) {
+        connectedAgents.set(k, agentRecord);
+    }
+
+    console.log(`[FusionAgent] Conector conectado para [${keysToBind.join(', ')}] desde ${remoteAddress}`);
 
     ws.send(JSON.stringify({
         type: 'CONNECTED',
         message: 'Conectado exitosamente al servidor SaaS como Conector Fusion FFC',
         companyId,
-        branchId
+        branchId,
+        boundBranches: keysToBind
     }));
 
     ws.on('message', (message) => {
         try {
             const data = JSON.parse(message);
             if (data.type === 'PONG' || data.type === 'PING') {
-                const agent = connectedAgents.get(key);
-                if (agent) agent.lastPing = Date.now();
+                agentRecord.lastPing = Date.now();
                 if (data.type === 'PING') ws.send(JSON.stringify({ type: 'PONG' }));
                 return;
             }
@@ -66,15 +75,17 @@ wss.on('connection', (ws, req) => {
     });
 
     ws.on('close', () => {
-        const current = connectedAgents.get(key);
-        if (current && current.ws === ws) {
-            connectedAgents.delete(key);
-            console.log(`[FusionAgent] Conector desconectado para Empresa #${companyId}, Estación #${branchId}`);
+        for (const k of keysToBind) {
+            const current = connectedAgents.get(k);
+            if (current && current.ws === ws) {
+                connectedAgents.delete(k);
+            }
         }
+        console.log(`[FusionAgent] Conector desconectado para [${keysToBind.join(', ')}]`);
     });
 
     ws.on('error', (err) => {
-        console.warn(`[FusionAgent] Error en socket Empresa #${companyId}, Estación #${branchId}:`, err.message);
+        console.warn(`[FusionAgent] Error en socket [${keysToBind.join(', ')}]:`, err.message);
         try { ws.close(); } catch { /* ignore */ }
     });
 });
@@ -109,25 +120,49 @@ async function getOrGenerateAgentKey(companyId, branchId) {
 async function handleUpgrade(request, socket, head) {
     try {
         const url = new URL(request.url, `http://${request.headers.host}`);
-        const companyId = parseInt(url.searchParams.get('company_id') || request.headers['x-company-id'], 10);
-        const branchId = parseInt(url.searchParams.get('branch_id') || request.headers['x-branch-id'], 10);
+        let companyId = parseInt(url.searchParams.get('company_id') || request.headers['x-company-id'], 10);
+        let branchId = parseInt(url.searchParams.get('branch_id') || request.headers['x-branch-id'], 10);
         const providedKey = (url.searchParams.get('key') || request.headers['x-agent-key'] || '').trim();
 
-        if (!companyId || !branchId || !providedKey) {
+        if (!providedKey) {
             socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');
             socket.destroy();
             return;
         }
 
-        const validKey = await getOrGenerateAgentKey(companyId, branchId);
-        if (providedKey !== validKey) {
+        // Buscar todas las estaciones que compartan esta clave de agente (soporta estaciones migradas de empresa/sucursal)
+        const [matchingRows] = await pool.query(
+            `SELECT company_id, branch_id FROM gas_station_settings
+             WHERE setting_key = 'fusion_agent_key' AND setting_value = ?
+             ORDER BY updated_at DESC, id DESC`,
+            [providedKey]
+        );
+
+        let isValid = false;
+        if (matchingRows.length > 0) {
+            isValid = true;
+            if (!companyId || !branchId) {
+                companyId = Number(matchingRows[0].company_id);
+                branchId = Number(matchingRows[0].branch_id);
+            }
+        } else if (companyId && branchId) {
+            const validKey = await getOrGenerateAgentKey(companyId, branchId);
+            isValid = (providedKey === validKey);
+        }
+
+        if (!isValid) {
             socket.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
             socket.destroy();
             return;
         }
 
+        const boundKeys = Array.from(new Set([
+            ...(companyId && branchId ? [`${companyId}:${branchId}`] : []),
+            ...matchingRows.map(r => `${r.company_id}:${r.branch_id}`)
+        ]));
+
         const remoteAddress = request.headers['x-forwarded-for'] || request.socket.remoteAddress || '127.0.0.1';
-        request.agentContext = { companyId, branchId, remoteAddress };
+        request.agentContext = { companyId, branchId, remoteAddress, agentKey: providedKey, boundKeys };
 
         wss.handleUpgrade(request, socket, head, (ws) => {
             wss.emit('connection', ws, request);
@@ -140,21 +175,38 @@ async function handleUpgrade(request, socket, head) {
 }
 
 /**
+ * Resolver un agente conectado por companyId:branchId o por clave compartida
+ */
+function resolveAgent(companyId, branchId, agentKey = null) {
+    const key = `${companyId}:${branchId}`;
+    const direct = connectedAgents.get(key);
+    if (direct && direct.ws && direct.ws.readyState === WebSocket.OPEN) {
+        return direct;
+    }
+    if (agentKey) {
+        for (const candidate of connectedAgents.values()) {
+            if (candidate && candidate.agentKey === agentKey && candidate.ws && candidate.ws.readyState === WebSocket.OPEN) {
+                connectedAgents.set(key, candidate);
+                return candidate;
+            }
+        }
+    }
+    return null;
+}
+
+/**
  * Comprobar si hay un conector de estación en línea para la sucursal
  */
-function isAgentConnected(companyId, branchId) {
-    const key = `${companyId}:${branchId}`;
-    const agent = connectedAgents.get(key);
-    return Boolean(agent && agent.ws && agent.ws.readyState === WebSocket.OPEN);
+function isAgentConnected(companyId, branchId, agentKey = null) {
+    return Boolean(resolveAgent(companyId, branchId, agentKey));
 }
 
 /**
  * Obtener estado del conector
  */
-function getAgentStatus(companyId, branchId) {
-    const key = `${companyId}:${branchId}`;
-    const agent = connectedAgents.get(key);
-    if (!agent || agent.ws.readyState !== WebSocket.OPEN) {
+function getAgentStatus(companyId, branchId, agentKey = null) {
+    const agent = resolveAgent(companyId, branchId, agentKey);
+    if (!agent) {
         return { connected: false };
     }
     return {
@@ -169,8 +221,7 @@ function getAgentStatus(companyId, branchId) {
  * Enviar petición RPC al conector local de la estación
  */
 function callAgent(companyId, branchId, action, payload, timeoutMs = 25000) {
-    const key = `${companyId}:${branchId}`;
-    const agent = connectedAgents.get(key);
+    const agent = resolveAgent(companyId, branchId);
 
     if (!agent || agent.ws.readyState !== WebSocket.OPEN) {
         throw new Error(`No hay ningún Conector Local conectado para la estación #${branchId}. Inicie el agente en la estación.`);
@@ -201,10 +252,32 @@ function callAgent(companyId, branchId, action, payload, timeoutMs = 25000) {
     });
 }
 
+function getLauncherBatContent() {
+    return `@echo off\r\ntitle Conector Wayne Fusion FFC - SIPE WEB\r\ncolor 0A\r\ncd /d "%~dp0"\r\necho Conector Local Wayne Fusion FFC - SIPE WEB\r\nwhere node >nul 2>nul\r\nif %errorlevel% neq 0 ( echo [ERROR] Node.js no instalado. Descargue desde https://nodejs.org & pause & exit /b 1 )\r\nif not exist "fusion-agent.js" (\r\n    if exist "fusion-agent.js.txt" ( ren "fusion-agent.js.txt" "fusion-agent.js" )\r\n    if exist "%USERPROFILE%\\Downloads\\fusion-agent.js" ( copy /y "%USERPROFILE%\\Downloads\\fusion-agent.js" "fusion-agent.js" >nul )\r\n    if exist "%USERPROFILE%\\Descargas\\fusion-agent.js" ( copy /y "%USERPROFILE%\\Descargas\\fusion-agent.js" "fusion-agent.js" >nul )\r\n)\r\nif not exist "fusion-agent.js" (\r\n    color 0C\r\n    echo [ERROR] Falta el archivo 'fusion-agent.js' en esta carpeta: %~dp0\r\n    echo Mueva los 3 archivos descargados (fusion-agent.js, config.json, iniciar-agente.bat) a esta misma carpeta.\r\n    pause\r\n    exit /b 1\r\n)\r\nnode fusion-agent.js\r\nif %errorlevel% neq 0 pause\r\n`;
+}
+
+function getAgentScriptPath() {
+    const fs = require('fs');
+    const path = require('path');
+    const possiblePaths = [
+        path.resolve(__dirname, '../assets/fusion-agent.js'),
+        path.resolve(__dirname, '../../../scripts/fusion-agent/fusion-agent.js'),
+        path.resolve(process.cwd(), 'scripts/fusion-agent/fusion-agent.js'),
+        path.resolve(process.cwd(), '../scripts/fusion-agent/fusion-agent.js'),
+        path.resolve(__dirname, '../../scripts/fusion-agent/fusion-agent.js')
+    ];
+    for (const p of possiblePaths) {
+        if (fs.existsSync(p)) return p;
+    }
+    return null;
+}
+
 module.exports = {
     handleUpgrade,
     isAgentConnected,
     getAgentStatus,
     callAgent,
-    getOrGenerateAgentKey
+    getOrGenerateAgentKey,
+    getLauncherBatContent,
+    getAgentScriptPath
 };

@@ -12,6 +12,8 @@ import GasFusionAgentFiles from './GasFusionAgentFiles';
 const GasFusionAgentModal = ({ isOpen, onClose, branch }) => {
     const [copiedKey, setCopiedKey] = useState(false);
     const [copiedCmd, setCopiedCmd] = useState(false);
+    const [copiedPsUpdate, setCopiedPsUpdate] = useState(false);
+    const [syncingAgent, setSyncingAgent] = useState(false);
 
     const branchId = branch?.branch_id;
 
@@ -38,8 +40,12 @@ const GasFusionAgentModal = ({ isOpen, onClose, branch }) => {
     const isConnected = Boolean(agentStatus?.connected);
     const agentKey = agentStatus?.agentKey || '';
     const serverUrl = agentStatus?.serverUrl || window.location.origin;
+    const companyId = agentStatus?.companyId || 1;
+    const fusionHost = agentStatus?.fusionHost || 'https://10.19.4.15';
 
-    const runCommand = `node fusion-agent.js --server ${serverUrl} --company ${agentStatus?.companyId || 1} --branch ${branchId} --key ${agentKey}`;
+    const runCommand = `node fusion-agent.js --server ${serverUrl} --company ${companyId} --branch ${branchId} --key ${agentKey}`;
+
+    const psUpdateCommand = `$cfg = @{ serverUrl="${serverUrl}"; companyId=${companyId}; branchId=${branchId}; agentKey="${agentKey}"; fusionHost="${fusionHost}"; fusionUser="manager"; fusionPassword="MANAGER" } | ConvertTo-Json; Set-Content -Path "C:\\fusion-agent\\config.json" -Value $cfg -Encoding UTF8; Write-Host "config.json actualizado a Empresa #${companyId} / Estacion #${branchId}" -ForegroundColor Green`;
 
     const handleCopyKey = () => {
         navigator.clipboard.writeText(agentKey);
@@ -53,6 +59,26 @@ const GasFusionAgentModal = ({ isOpen, onClose, branch }) => {
         setCopiedCmd(true);
         toast.success('Comando copiado al portapapeles');
         setTimeout(() => setCopiedCmd(false), 2000);
+    };
+
+    const handleCopyPsUpdate = () => {
+        navigator.clipboard.writeText(psUpdateCommand);
+        setCopiedPsUpdate(true);
+        toast.success('Comando PowerShell de actualización local copiado');
+        setTimeout(() => setCopiedPsUpdate(false), 2000);
+    };
+
+    const handleSyncAgent = async () => {
+        setSyncingAgent(true);
+        try {
+            const res = await axios.post('/api/gas-station/fusion/agent-sync', { branch_id: branchId });
+            toast.success(res.data?.message || 'Conector sincronizado correctamente');
+            refetch();
+        } catch (err) {
+            toast.error(err.response?.data?.message || 'No se pudo sincronizar el conector');
+        } finally {
+            setSyncingAgent(false);
+        }
     };
 
     return (
@@ -107,8 +133,8 @@ const GasFusionAgentModal = ({ isOpen, onClose, branch }) => {
                             ? 'bg-emerald-50/70 border-emerald-200 text-emerald-950' 
                             : 'bg-amber-50/70 border-amber-200 text-amber-950'
                     }`}>
-                        <div className="flex items-start justify-between gap-3">
-                            <div className="flex items-start gap-3">
+                        <div className="flex items-start justify-between gap-3 flex-wrap">
+                            <div className="flex items-start gap-3 flex-1 min-w-[220px]">
                                 <div className={`w-7 h-7 rounded-xl flex items-center justify-center shrink-0 mt-0.5 ${
                                     isConnected ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600'
                                 }`}>
@@ -128,21 +154,46 @@ const GasFusionAgentModal = ({ isOpen, onClose, branch }) => {
                                     </p>
                                 </div>
                             </div>
+                            {isConnected && (
+                                <button
+                                    type="button"
+                                    onClick={handleSyncAgent}
+                                    disabled={syncingAgent}
+                                    className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[11px] font-bold flex items-center gap-1.5 shadow-xs transition-colors disabled:opacity-50 cursor-pointer shrink-0"
+                                    title="Actualizar config.json y fusion-agent.js remotamente en la PC de la estación"
+                                >
+                                    <RefreshCw size={12} className={syncingAgent ? 'animate-spin' : ''} />
+                                    <span>{syncingAgent ? 'Actualizando...' : 'Actualizar Conector'}</span>
+                                </button>
+                            )}
                         </div>
                     </div>
 
                     {/* Descarga de Archivos */}
-                    <GasFusionAgentFiles branchId={branchId} />
+                    <GasFusionAgentFiles branchId={branchId} agentStatus={agentStatus} />
 
                     {/* Guía Rápida */}
                     <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-2.5">
-                        <h5 className="text-[11px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                            <Terminal size={14} className="text-indigo-600" />
-                            Instrucciones de Instalación en la Estación (3 Pasos)
-                        </h5>
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                            <h5 className="text-[11px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                                <Terminal size={14} className="text-indigo-600" />
+                                Instrucciones de Instalación / Actualización Local (3 Pasos)
+                            </h5>
+                            {agentKey && (
+                                <button
+                                    type="button"
+                                    onClick={handleCopyPsUpdate}
+                                    className="text-[10px] font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-2 py-1 rounded-lg flex items-center gap-1 transition-colors cursor-pointer"
+                                    title="Copia un comando PowerShell que actualiza C:\fusion-agent\config.json automáticamente"
+                                >
+                                    {copiedPsUpdate ? <Check size={11} className="text-emerald-600" /> : <Terminal size={11} />}
+                                    <span>{copiedPsUpdate ? 'Comando copiado' : 'Copiar comando PowerShell (Actualizar C:\\fusion-agent)'}</span>
+                                </button>
+                            )}
+                        </div>
                         <ol className="text-xs text-slate-600 space-y-1.5 list-decimal list-inside leading-relaxed">
                             <li>
-                                Guarde los 3 archivos descargados en una misma carpeta (ej: <code className="bg-white px-1.5 py-0.5 rounded border border-slate-200 text-indigo-700 font-mono text-[11px]">C:\fusion-agent</code>) en la computadora de la estación.
+                                Guarde los 3 archivos descargados en una misma carpeta (ej: <code className="bg-white px-1.5 py-0.5 rounded border border-slate-200 text-indigo-700 font-mono text-[11px]">C:\fusion-agent</code>) en la computadora de la estación (si ya estaba instalado, basta con reemplazar <code className="bg-white px-1.5 py-0.5 rounded border border-slate-200 text-indigo-700 font-mono text-[11px]">config.json</code>).
                             </li>
                             <li>
                                 Verifique que la computadora tenga instalado <strong>Node.js</strong> (descarga gratuita en <a href="https://nodejs.org" target="_blank" rel="noreferrer" className="text-indigo-600 underline font-medium">nodejs.org</a>).
