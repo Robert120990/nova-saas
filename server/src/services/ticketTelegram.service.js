@@ -92,6 +92,7 @@ function buildTicketInlineKeyboard(ticketId, status = 'abierto') {
     }
     return {
         inline_keyboard: [
+            [{ text: '🤖 Aprobar y Planificar AGY (5.252.55.29)', callback_data: `agy_start_plan:${ticketId}` }],
             [{ text: '🛠️ En Proceso', callback_data: `ticket_take:${ticketId}` }, { text: '✅ Marcar Resuelto', callback_data: `ticket_resolve:${ticketId}` }],
             [{ text: '✍️ Resolver con Nota', callback_data: `ticket_resolve_note:${ticketId}` }, { text: '💬 Comentar al Usuario', callback_data: `ticket_comment:${ticketId}` }]
         ]
@@ -189,6 +190,10 @@ async function notifyTicketStatusToTelegram(ticket) {
 
 async function handleTicketTelegramCallback(cb) {
     const data = cb?.data || '';
+    if (data.startsWith('agy_')) {
+        const { handleAgyTelegramCallback } = require('./ticketAgyTelegram.service');
+        return handleAgyTelegramCallback(cb);
+    }
     if (!data.startsWith('ticket_')) return false;
     const chatId = cb.message?.chat?.id;
     const techName = cb.from?.first_name || cb.from?.username || 'Soporte Técnico';
@@ -233,6 +238,10 @@ async function handleTicketTelegramCallback(cb) {
 }
 
 async function handleTicketTelegramText(chatId, text, from) {
+    const { handleAgyTelegramText } = require('./ticketAgyTelegram.service');
+    const handledAgy = await handleAgyTelegramText(chatId, text, from);
+    if (handledAgy) return true;
+
     const trimmed = (text || '').trim();
     const techName = from?.first_name || from?.username || 'Soporte Técnico';
     const { getTicketByCodeOrId, updateTicketStatus, addTicketMessage } = require('./ticket.service');
@@ -253,7 +262,7 @@ async function handleTicketTelegramText(chatId, text, from) {
         for (const r of rows) {
             listMsg += `${r.status === 'en_proceso' ? '🛠️' : '🆕'} *#${escapeMd(r.ticket_code)}* (${r.priority.toUpperCase()}) — ${escapeMd(r.subject)} _(${escapeMd(r.user_name)})_\n`;
         }
-        listMsg += `\n_Para resolver escribe:_ \`/resolver TKT-0001 Detalle de la solución\``;
+        listMsg += `\n_Comandos:_ \`/agy TKT-0001\` _(planificar en 5.252.55.29)_ | \`/resolver TKT-0001 Solución\``;
         await telegramService.sendMessage(chatId, listMsg, { parse_mode: 'Markdown' });
         return true;
     }
@@ -290,6 +299,7 @@ async function handleTicketTelegramText(chatId, text, from) {
 }
 
 module.exports = {
+    getTechChatsForTicket,
     resolveLocalUploadPath,
     notifyNewTicketToTelegram,
     notifyTicketCommentToTelegram,

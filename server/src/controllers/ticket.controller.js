@@ -340,4 +340,4 @@ const addMessage = async (req, res) => {
     }
 };
 
-module.exports = { getTickets, getTicketStats, getPendingResolvedForCreator, acknowledgeResolvedTicket, getTicketDetail, createTicket, updateStatus, addMessage, ...require('./ticketAiBundle.controller') };
+module.exports = { getTickets, getTicketStats, getPendingResolvedForCreator, acknowledgeResolvedTicket, getTicketDetail, createTicket, updateStatus, addMessage, ...require('./ticketAiBundle.controller'), ...require('./ticketAgyFlow.controller') };

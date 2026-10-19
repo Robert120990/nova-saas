@@ -6,3 +6,4 @@ export { default as TicketFiltersBar } from './TicketFiltersBar';
 export { default as ScreenshotAnnotatorModal } from './ScreenshotAnnotatorModal';
 export { default as TicketDiagnosticsPanel } from './TicketDiagnosticsPanel';
 export { default as TicketAiBundleModal } from './TicketAiBundleModal';
+export { default as TicketAgyFlowModal } from './TicketAgyFlowModal';

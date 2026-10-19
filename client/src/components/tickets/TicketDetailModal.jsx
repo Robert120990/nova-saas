@@ -1,11 +1,12 @@
 import { useState, useRef, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
-import { X, Ticket, CheckCircle2, Clock, Play, Lock, Send, MessageSquare, Image as ImageIcon, User, Building2, Globe, Sparkles, Paperclip, Bot } from 'lucide-react';
+import { X, Ticket, CheckCircle2, Clock, Play, Lock, Send, MessageSquare, Image as ImageIcon, User, Building2, Globe, Sparkles, Paperclip, Bot, Terminal } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatDateTime } from '../../utils/dateUtils';
 import { compressTicketImage } from '../../utils/ticketImageCompressor';
 import TicketDiagnosticsPanel from './TicketDiagnosticsPanel';
+import TicketAgyFlowModal from './TicketAgyFlowModal';
 
 const STATUS_BADGES = { abierto: 'bg-amber-500/15 text-amber-600 border-amber-500/30', en_proceso: 'bg-sky-500/15 text-sky-600 border-sky-500/30', resuelto: 'bg-emerald-500/15 text-emerald-600 border-emerald-500/30', cerrado: 'bg-slate-500/15 text-slate-600 border-slate-500/30' };
 const STATUS_LABELS = { abierto: 'Abierto', en_proceso: 'En Proceso', resuelto: 'Resuelto', cerrado: 'Cerrado' };
@@ -19,6 +20,7 @@ const TicketDetailModal = ({ open, ticketId, onClose, onUpdated, canManage = fal
     const [showResolveBox, setShowResolveBox] = useState(false);
     const [aiNotes, setAiNotes] = useState('');
     const [previewImageUrl, setPreviewImageUrl] = useState(null);
+    const [agyOpen, setAgyOpen] = useState(false);
     const replyFileRef = useRef(null);
 
     const { data: ticket, isLoading } = useQuery({
@@ -234,10 +236,13 @@ const TicketDetailModal = ({ open, ticketId, onClose, onUpdated, canManage = fal
                         {canManage && (
                             <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
                                 <div className="flex flex-wrap items-center justify-between gap-2">
-                                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Acciones de Técnico y Empaquetado para IA</span>
+                                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Acciones de Técnico y Consola AGY (5.252.55.29)</span>
                                     <div className="flex flex-wrap items-center gap-2">
+                                        <button type="button" onClick={() => setAgyOpen(true)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-emerald-400 border border-slate-700 text-xs font-extrabold shadow-sm cursor-pointer">
+                                            <Terminal size={13} /> <span>{ticket.agy_plan_version ? `Plan AGY v${ticket.agy_plan_version} (${ticket.agy_status})` : 'Aprobar y Planificar AGY (5.252.55.29)'}</span>
+                                        </button>
                                         <button type="button" disabled={aiReviewMutation.isPending} onClick={() => aiReviewMutation.mutate({ include_in_ai_prompt: !inAiBundle, ai_notes: aiNotes })} className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-extrabold border transition-all cursor-pointer ${inAiBundle ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-white text-indigo-700 border-indigo-200 hover:bg-indigo-50'}`}>
-                                            <Bot size={14} /> <span>{inAiBundle ? 'Incluido en Paquete IA ✓' : 'Incluir en Paquete para IA'}</span>
+                                            <Bot size={14} /> <span>{inAiBundle ? 'En Paquete IA ✓' : 'Paquete IA'}</span>
                                         </button>
                                         {ticket.status !== 'en_proceso' && ticket.status !== 'resuelto' && (
                                             <button type="button" disabled={statusMutation.isPending} onClick={() => statusMutation.mutate({ status: 'en_proceso' })} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold cursor-pointer">
@@ -327,6 +332,7 @@ const TicketDetailModal = ({ open, ticketId, onClose, onUpdated, canManage = fal
                     </div>
                 )}
             </div>
+            <TicketAgyFlowModal open={agyOpen} ticketId={ticketId} onClose={() => setAgyOpen(false)} />
             {previewImageUrl && (
                 <div className="fixed inset-0 z-[9999] bg-black/90 flex flex-col items-center justify-center p-4" onClick={(e) => { e.stopPropagation(); setPreviewImageUrl(null); }}>
                     <div className="flex items-center gap-3 mb-3">

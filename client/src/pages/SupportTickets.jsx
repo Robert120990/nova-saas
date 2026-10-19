@@ -3,14 +3,14 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import {
     Ticket, Camera, Eye, Image as ImageIcon, CheckCircle2,
-    Clock, AlertCircle, Lock, Sparkles, Keyboard, Bot
+    Clock, AlertCircle, Lock, Sparkles, Keyboard, Bot, Terminal
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useTickets } from '../context/TicketContext';
 import { unwrapList, unwrapPagination } from '../utils/apiUtils';
 import { formatDateTime } from '../utils/dateUtils';
 import Pagination from '../components/ui/Pagination';
-import { TicketSummaryCards, TicketFiltersBar, TicketAiBundleModal } from '../components/tickets';
+import { TicketSummaryCards, TicketFiltersBar, TicketAiBundleModal, TicketAgyFlowModal } from '../components/tickets';
 
 const STATUS_CONFIG = {
     abierto: { label: 'Abierto', badge: 'bg-amber-50 text-amber-700 border-amber-200', icon: AlertCircle },
@@ -19,19 +19,8 @@ const STATUS_CONFIG = {
     cerrado: { label: 'Cerrado', badge: 'bg-slate-100 text-slate-600 border-slate-200', icon: Lock }
 };
 
-const PRIORITY_BADGES = {
-    baja: 'bg-slate-100 text-slate-600 border-slate-200',
-    media: 'bg-amber-50 text-amber-700 border-amber-200',
-    alta: 'bg-orange-50 text-orange-700 border-orange-200',
-    urgente: 'bg-rose-50 text-rose-700 border-rose-200 font-extrabold'
-};
-
-const TYPE_LABELS = {
-    problema: 'Problema / Error',
-    requerimiento: 'Requerimiento',
-    mejora: 'Mejora',
-    consulta: 'Consulta'
-};
+const PRIORITY_BADGES = { b: 'bg-slate-100 text-slate-600 border-slate-200', baja: 'bg-slate-100 text-slate-600 border-slate-200', media: 'bg-amber-50 text-amber-700 border-amber-200', alta: 'bg-orange-50 text-orange-700 border-orange-200', urgente: 'bg-rose-50 text-rose-700 border-rose-200 font-extrabold' };
+const TYPE_LABELS = { problema: 'Problema / Error', requerimiento: 'Requerimiento', mejora: 'Mejora', consulta: 'Consulta' };
 
 const SupportTickets = () => {
     const queryClient = useQueryClient();
@@ -46,6 +35,7 @@ const SupportTickets = () => {
     const [page, setPage] = useState(1);
     const [limit, setLimit] = useState(15);
     const [aiBundleOpen, setAiBundleOpen] = useState(false);
+    const [agyTicketId, setAgyTicketId] = useState(null);
 
     useEffect(() => {
         const timer = setTimeout(() => {
@@ -283,19 +273,30 @@ const SupportTickets = () => {
                                             <td className="py-3 px-4 whitespace-nowrap text-right" onClick={(e) => e.stopPropagation()}>
                                                 <div className="inline-flex items-center gap-1.5">
                                                     {canManageTickets && (
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => toggleAiMutation.mutate({ id: t.id, nextVal: !inAi })}
-                                                            title={inAi ? 'Incluido en el paquete de prompt para IA (clic para quitar)' : 'Incluir este ticket en el paquete de prompt para IA'}
-                                                            className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-extrabold border transition-all cursor-pointer ${
-                                                                inAi
-                                                                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
-                                                                    : 'bg-white hover:bg-indigo-50 text-slate-600 hover:text-indigo-600 border-slate-200'
-                                                            }`}
-                                                        >
-                                                            <Bot size={13} />
-                                                            <span>{inAi ? 'En IA ✓' : 'IA'}</span>
-                                                        </button>
+                                                        <>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setAgyTicketId(t.id)}
+                                                                title="Aprobar ticket y ejecutar flujo AGY en 5.252.55.29 con aprobación por Telegram"
+                                                                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-extrabold border bg-slate-900 hover:bg-slate-800 text-emerald-400 border-slate-700 transition-all cursor-pointer"
+                                                            >
+                                                                <Terminal size={13} />
+                                                                <span>{t.agy_plan_version ? `AGY v${t.agy_plan_version}` : 'AGY'}</span>
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => toggleAiMutation.mutate({ id: t.id, nextVal: !inAi })}
+                                                                title={inAi ? 'Incluido en el paquete de prompt para IA (clic para quitar)' : 'Incluir este ticket en el paquete de prompt para IA'}
+                                                                className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-extrabold border transition-all cursor-pointer ${
+                                                                    inAi
+                                                                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                                                                        : 'bg-white hover:bg-indigo-50 text-slate-600 hover:text-indigo-600 border-slate-200'
+                                                                }`}
+                                                            >
+                                                                <Bot size={13} />
+                                                                <span>{inAi ? 'En IA ✓' : 'IA'}</span>
+                                                            </button>
+                                                        </>
                                                     )}
                                                     <button
                                                         type="button"
@@ -327,10 +328,8 @@ const SupportTickets = () => {
                 />
             </div>
 
-            <TicketAiBundleModal
-                open={aiBundleOpen}
-                onClose={() => setAiBundleOpen(false)}
-            />
+            <TicketAiBundleModal open={aiBundleOpen} onClose={() => setAiBundleOpen(false)} />
+            <TicketAgyFlowModal open={Boolean(agyTicketId)} ticketId={agyTicketId} onClose={() => setAgyTicketId(null)} />
         </div>
     );
 };

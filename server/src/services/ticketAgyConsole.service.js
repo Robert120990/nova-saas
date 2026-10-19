@@ -1,0 +1,286 @@
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const { spawn } = require('child_process');
+const { Client } = require('ssh2');
+const pool = require('../config/db');
+const { buildTicketDiagnosticMarkdown } = require('./ticketAiTaskBridge.service');
+
+const DEFAULT_SETTINGS = {
+    ssh_host: process.env.AGY_SSH_HOST || '5.252.55.29',
+    ssh_port: Number(process.env.AGY_SSH_PORT || 22),
+    ssh_user: process.env.AGY_SSH_USER || 'root',
+    ssh_password: process.env.AGY_SSH_PASSWORD || '',
+    ssh_private_key_path: process.env.AGY_SSH_PRIVATE_KEY_PATH || '',
+    project_path: process.env.AGY_PROJECT_PATH || '/var/www/SIPEWEBgas',
+    agy_command: process.env.AGY_COMMAND || 'agy',
+    default_model: process.env.AGY_DEFAULT_MODEL || 'gemini-4-argon-high',
+    execution_mode: process.env.AGY_EXECUTION_MODE || 'auto'
+};
+
+const AVAILABLE_AGY_MODELS = [
+    { id: 'gemini-4-argon-high', label: 'gemini-4-argon-high (Máxima Velocidad e Inteligencia)', badge: 'Recomendado' },
+    { id: 'gemini-3.1-pro', label: 'gemini-3.1-pro (Razonamiento Profundo)', badge: 'Pro' },
+    { id: 'gemini-3-flash', label: 'gemini-3-flash (Ultra Rápido)', badge: 'Flash' }
+];
+
+async function getAgyServerSettings() {
+    try {
+        const [rows] = await pool.query('SELECT * FROM agy_server_settings WHERE id = 1 LIMIT 1');
+        if (rows.length > 0) {
+            return {
+                ...DEFAULT_SETTINGS,
+                ...rows[0],
+                ssh_password: rows[0].ssh_password || DEFAULT_SETTINGS.ssh_password,
+                ssh_private_key_path: rows[0].ssh_private_key_path || DEFAULT_SETTINGS.ssh_private_key_path
+            };
+        }
+    } catch {
+        // Fallback si la migración aún está corriendo
+    }
+    return { ...DEFAULT_SETTINGS };
+}
+
+async function saveAgyServerSettings(payload = {}) {
+    const current = await getAgyServerSettings();
+    const next = {
+        ssh_host: String(payload.ssh_host || current.ssh_host || '5.252.55.29').trim(),
+        ssh_port: Number(payload.ssh_port || current.ssh_port || 22),
+        ssh_user: String(payload.ssh_user || current.ssh_user || 'root').trim(),
+        ssh_password: payload.ssh_password !== undefined && payload.ssh_password !== '********'
+            ? String(payload.ssh_password || '')
+            : (current.ssh_password || ''),
+        ssh_private_key_path: payload.ssh_private_key_path !== undefined
+            ? String(payload.ssh_private_key_path || '').trim()
+            : (current.ssh_private_key_path || ''),
+        project_path: String(payload.project_path || current.project_path || '/var/www/SIPEWEBgas').trim(),
+        agy_command: String(payload.agy_command || current.agy_command || 'agy').trim(),
+        default_model: String(payload.default_model || current.default_model || 'gemini-4-argon-high').trim(),
+        execution_mode: ['auto', 'ssh', 'local'].includes(payload.execution_mode) ? payload.execution_mode : current.execution_mode
+    };
+
+    await pool.query(
+        `INSERT INTO agy_server_settings
+         (id, ssh_host, ssh_port, ssh_user, ssh_password, ssh_private_key_path, project_path, agy_command, default_model, execution_mode)
+         VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE
+            ssh_host = VALUES(ssh_host),
+            ssh_port = VALUES(ssh_port),
+            ssh_user = VALUES(ssh_user),
+            ssh_password = VALUES(ssh_password),
+            ssh_private_key_path = VALUES(ssh_private_key_path),
+            project_path = VALUES(project_path),
+            agy_command = VALUES(agy_command),
+            default_model = VALUES(default_model),
+            execution_mode = VALUES(execution_mode)`,
+        [
+            next.ssh_host, next.ssh_port, next.ssh_user, next.ssh_password || null,
+            next.ssh_private_key_path || null, next.project_path, next.agy_command,
+            next.default_model, next.execution_mode
+        ]
+    );
+    return next;
+}
+
+function isRunningOnTargetServer(targetHost) {
+    if (!targetHost || targetHost === 'localhost' || targetHost === '127.0.0.1') return true;
+    const nets = os.networkInterfaces();
+    for (const iface of Object.values(nets)) {
+        for (const addr of iface || []) {
+            if (addr.address === targetHost) return true;
+        }
+    }
+    return false;
+}
+
+function stripAnsiCodes(str = '') {
+    return String(str)
+        // eslint-disable-next-line no-control-regex
+        .replace(/\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~]|\][^\x07]*\x07)/g, '')
+        .replace(/\r/g, '');
+}
+
+function parseFeedbackHistory(raw) {
+    if (!raw) return [];
+    if (Array.isArray(raw)) return raw;
+    try {
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : [];
+    } catch {
+        return [];
+    }
+}
+
+function buildAgyPlanningPrompt(ticket, model, planVersion = 1) {
+    const feedbackList = parseFeedbackHistory(ticket.agy_feedback_history);
+    const feedbackBlock = feedbackList.length > 0
+        ? `\n### HISTORIAL DE DECISIONES / RESPUESTAS Y COMENTARIOS DEL ADMIN:\n` +
+          feedbackList.map((f, i) => `${i + 1}. [${f.author || 'Admin'} - ${f.date || ''}]: ${f.comment}`).join('\n') + '\n'
+        : '';
+
+    const diagBlock = buildTicketDiagnosticMarkdown(ticket);
+
+    return [
+        `SOLICITUD DE PLAN DE EJECUCIÓN — TICKET #${ticket.ticket_code} (Plan v${planVersion})`,
+        `Modelo activo requerido: ${model} | Servidor: 5.252.55.29`,
+        `Asunto: ${ticket.subject} | Tipo: ${ticket.type} | Prioridad: ${ticket.priority}`,
+        `Empresa: ${ticket.company_name || 'Global'} (${ticket.branch_name || 'Global'})`,
+        `Módulo / Ruta: ${ticket.module_name || 'General'} (${ticket.page_url || 'N/A'})`,
+        `Descripción reportada: ${ticket.description}`,
+        ticket.ai_notes ? `Directriz Técnica del Administrador (ai_notes): ${ticket.ai_notes}` : '',
+        feedbackBlock,
+        diagBlock,
+        `INSTRUCCIONES ESTRICTAS PARA AGY (FASE 1 - SOLO PLANIFICACIÓN):`,
+        `1. Inspecciona los archivos reales del repositorio relacionados con este ticket.`,
+        `2. NO modifiques ningún archivo todavía. Esta fase es EXCLUSIVAMENTE para generar el Plan de Ejecución que será enviado a Telegram.`,
+        `3. Estructura tu respuesta en Markdown con: 🎯 Diagnóstico de Causa Raíz, 📂 Archivos a Intervenir, 🛠️ Pasos del Plan de Ejecución y ✅ Validaciones.`,
+        `4. SI TIENES DUDAS DE CÓMO PROCEDER O REQUIERES QUE EL ADMINISTRADOR SELECCIONE UNA OPCIÓN: incluye una sección "❓ DUDAS / OPCIONES A ELEGIR", lista cada alternativa en su propia línea con el formato exacto:`,
+        `   [OPCION_1]: Descripción breve de la primera opción`,
+        `   [OPCION_2]: Descripción breve de la segunda opción`,
+        `   [OPCION_3]: Descripción breve de la tercera opción (si aplica)`,
+        `   y agrega la etiqueta [[REQUIERE_DECISION_AGY]] antes del cierre.`,
+        `5. Al finalizar tu respuesta, escribe en la última línea exactamente la marca: [[FIN_PLAN_AGY]]`
+    ].filter(Boolean).join('\n');
+}
+
+function extractAgyQuestionsAndOptions(planText = '') {
+    const text = String(planText || '');
+    const options = [];
+    const regex = /\[OPCION_(\d+)\]\s*:\s*([^\n\r]+)/gi;
+    let match = regex.exec(text);
+    while (match) {
+        options.push({ index: Number(match[1]), label: match[2].trim() });
+        match = regex.exec(text);
+    }
+    const requiresDecision = text.includes('[[REQUIERE_DECISION_AGY]]') || options.length > 0;
+    return { requiresDecision, options: options.slice(0, 4) };
+}
+
+function buildAgyExecutionPrompt(ticket, model) {
+    return [
+        `ORDEN DE EJECUCIÓN APROBADA POR TELEGRAM — TICKET #${ticket.ticket_code}`,
+        `Modelo activo: ${model} | Asunto: ${ticket.subject}`,
+        `Módulo / Ruta: ${ticket.module_name || 'General'} (${ticket.page_url || 'N/A'})`,
+        ticket.ai_notes ? `Directriz Técnica: ${ticket.ai_notes}` : '',
+        `\nPLAN DE EJECUCIÓN APROBADO A APLICAR AHORA:\n${ticket.agy_plan_markdown || ''}`,
+        `\nINSTRUCCIONES DE EJECUCIÓN:`,
+        `1. Aplica todos los pasos del Plan de Ejecución aprobado en el repositorio.`,
+        `2. Respeta estrictamente AGENTS.md (máximo 350 líneas por archivo, modales en archivos *Modal.jsx separados, dateUtils, Money).`,
+        `3. NO ejecutes git commit ni git push automáticos.`,
+        `4. Al concluir, entrega un resumen claro de los archivos modificados y escribe en la última línea: [[FIN_EJECUCION_AGY]]`
+    ].filter(Boolean).join('\n');
+}
+
+function extractCleanAgyResult(rawTranscript, endMarker) {
+    const clean = stripAnsiCodes(rawTranscript);
+    if (clean.includes(endMarker)) {
+        const beforeMarker = clean.split(endMarker)[0];
+        const parts = beforeMarker.split(/\[\[INICIO_PROMPT_AGY\]\]/g);
+        return (parts[parts.length - 1] || beforeMarker).trim();
+    }
+    const lines = clean.split('\n').map((l) => l.trimEnd()).filter((l) => l.length > 0);
+    return lines.slice(-80).join('\n').trim();
+}
+
+function buildRemoteShellScript({ projectPath, agyCommand, model, promptText, isPlanPhase, endMarker }) {
+    const b64Prompt = Buffer.from(promptText, 'utf8').toString('base64');
+    const safeModel = String(model || 'gemini-4-argon-high').replace(/[^a-zA-Z0-9._-]/g, '');
+    const safeCmd = String(agyCommand || 'agy').trim();
+    const safePath = String(projectPath || '/var/www/SIPEWEBgas').replace(/"/g, '');
+
+    return `
+mkdir -p ~/.gemini/antigravity-cli
+if [ -f ~/.gemini/antigravity-cli/settings.json ]; then
+  node -e '
+    const fs = require("fs");
+    const p = process.env.HOME + "/.gemini/antigravity-cli/settings.json";
+    let cfg = {};
+    try { cfg = JSON.parse(fs.readFileSync(p, "utf8")); } catch {}
+    cfg.model = "${safeModel}";
+    fs.writeFileSync(p, JSON.stringify(cfg, null, 2));
+  ' 2>/dev/null || true
+else
+  echo '{"model":"${safeModel}"}' > ~/.gemini/antigravity-cli/settings.json
+fi
+[ -d "${safePath}" ] && cd "${safePath}"
+PROMPT_FILE="/tmp/agy_ticket_${Date.now()}.txt"
+echo "${b64Prompt}" | base64 -d > "$PROMPT_FILE"
+FLAT_PROMPT=$(tr '\\n' ' ' < "$PROMPT_FILE")
+echo "=== CONSOLA 5.252.55.29 | Directorio: $(pwd) | Comando: ${safeCmd} | Modelo: ${safeModel} ==="
+echo "[[INICIO_PROMPT_AGY]]"
+if command -v ${safeCmd} >/dev/null 2>&1; then
+  (
+    sleep 2
+    echo "/model ${safeModel}"
+    sleep 1
+    ${isPlanPhase ? 'echo "/plan $FLAT_PROMPT"' : 'echo "$FLAT_PROMPT"'}
+    ${isPlanPhase ? 'sleep 35' : 'for i in 1 2 3 4 5; do sleep 8; echo "y"; done'}
+    echo "/exit"
+  ) | ${safeCmd} 2>&1
+  echo "${endMarker}"
+else
+  echo "AGY_BINARY_NOT_FOUND_ON_HOST"
+fi
+rm -f "$PROMPT_FILE"
+`;
+}
+
+function runSshInteractiveSession(settings, scriptContent, onChunk, timeoutMs = 120000) {
+    return new Promise((resolve, reject) => {
+        const conn = new Client();
+        let output = '';
+        let finished = false;
+        const timer = setTimeout(() => {
+            if (!finished) { finished = true; try { conn.end(); } catch { /* ignore */ } resolve({ output, timedOut: true }); }
+        }, timeoutMs);
+
+        const connectConfig = {
+            host: settings.ssh_host || '5.252.55.29', port: Number(settings.ssh_port || 22),
+            username: settings.ssh_user || 'root', readyTimeout: 15000
+        };
+        if (settings.ssh_password) connectConfig.password = settings.ssh_password;
+        if (settings.ssh_private_key_path && fs.existsSync(settings.ssh_private_key_path)) {
+            connectConfig.privateKey = fs.readFileSync(settings.ssh_private_key_path);
+        } else {
+            for (const k of [path.join(os.homedir(), '.ssh', 'id_ed25519'), path.join(os.homedir(), '.ssh', 'id_rsa')]) {
+                if (fs.existsSync(k)) { try { connectConfig.privateKey = fs.readFileSync(k); break; } catch { /* ignore */ } }
+            }
+        }
+
+        conn.on('ready', () => {
+            conn.exec(scriptContent, { pty: { term: 'xterm-256color', cols: 140, rows: 45 } }, (err, stream) => {
+                if (err) { clearTimeout(timer); conn.end(); return reject(err); }
+                stream.on('data', (data) => { output += data.toString('utf8'); if (onChunk) onChunk(stripAnsiCodes(output)); });
+                stream.stderr.on('data', (data) => { output += data.toString('utf8'); if (onChunk) onChunk(stripAnsiCodes(output)); });
+                stream.on('close', () => {
+                    if (!finished) { finished = true; clearTimeout(timer); conn.end(); resolve({ output, timedOut: false }); }
+                });
+            });
+        }).on('error', (err) => {
+            if (!finished) { finished = true; clearTimeout(timer); reject(err); }
+        }).connect(connectConfig);
+    });
+}
+
+function runLocalInteractiveSession(settings, scriptContent, onChunk, timeoutMs = 120000) {
+    return new Promise((resolve, reject) => {
+        const shellBin = process.platform === 'win32' ? 'bash' : '/bin/bash';
+        const child = spawn(shellBin, ['-c', scriptContent], {
+            cwd: fs.existsSync(settings.project_path) ? settings.project_path : process.cwd(),
+            env: { ...process.env, TERM: 'xterm-256color' }
+        });
+        let output = '';
+        const timer = setTimeout(() => { try { child.kill('SIGTERM'); } catch { /* ignore */ } resolve({ output, timedOut: true }); }, timeoutMs);
+        child.stdout.on('data', (d) => { output += d.toString('utf8'); if (onChunk) onChunk(stripAnsiCodes(output)); });
+        child.stderr.on('data', (d) => { output += d.toString('utf8'); if (onChunk) onChunk(stripAnsiCodes(output)); });
+        child.on('error', (err) => { clearTimeout(timer); reject(err); });
+        child.on('close', () => { clearTimeout(timer); resolve({ output, timedOut: false }); });
+    });
+}
+
+module.exports = {
+    AVAILABLE_AGY_MODELS, getAgyServerSettings, saveAgyServerSettings, isRunningOnTargetServer,
+    stripAnsiCodes, parseFeedbackHistory, buildAgyPlanningPrompt, extractAgyQuestionsAndOptions,
+    buildAgyExecutionPrompt, extractCleanAgyResult, buildRemoteShellScript,
+    runSshInteractiveSession, runLocalInteractiveSession
+};
