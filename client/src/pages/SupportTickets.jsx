@@ -28,7 +28,7 @@ const SupportTickets = () => {
 
     const [search, setSearch] = useState('');
     const [debouncedSearch, setDebouncedSearch] = useState('');
-    const [status, setStatus] = useState('');
+    const [status, setStatus] = useState('pendientes');
     const [type, setType] = useState('');
     const [priority, setPriority] = useState('');
     const [mineOnly, setMineOnly] = useState(false);
@@ -91,7 +91,7 @@ const SupportTickets = () => {
     const handleResetFilters = () => {
         setSearch('');
         setDebouncedSearch('');
-        setStatus('');
+        setStatus('pendientes');
         setType('');
         setPriority('');
         setMineOnly(false);
@@ -272,7 +272,7 @@ const SupportTickets = () => {
                                             </td>
                                             <td className="py-3 px-4 whitespace-nowrap text-right" onClick={(e) => e.stopPropagation()}>
                                                 <div className="inline-flex items-center gap-1.5">
-                                                    {canManageTickets && (
+                                                    {canManageTickets && t.status !== 'resuelto' && t.status !== 'cerrado' && t.agy_status !== 'completado' && (
                                                         <>
                                                             <button
                                                                 type="button"

@@ -75,6 +75,7 @@ async function checkIsTechManager(req) {
 
 const getTickets = async (req, res) => {
     try {
+        await require('../services/ticketAgyWorkflow.service').ensureAgyFlowSchema();
         const { search = '', status = '', priority = '', type = '', scope = 'auto', mine = 'false', page = 1, limit = 15 } = req.query;
         const isTech = await checkIsTechManager(req);
         const isSuperAdmin = req.user?.role === 'SuperAdmin';
@@ -94,7 +95,12 @@ const getTickets = async (req, res) => {
             params.push(activeCompanyId || 0);
         }
 
-        if (status && status !== 'all') { where.push('t.status = ?'); params.push(status); }
+        if (status === 'pendientes') {
+            where.push("t.status IN ('abierto', 'en_proceso')");
+        } else if (status && status !== 'all') {
+            where.push('t.status = ?');
+            params.push(status);
+        }
         if (priority && priority !== 'all') { where.push('t.priority = ?'); params.push(priority); }
         if (type && type !== 'all') { where.push('t.type = ?'); params.push(type); }
         if (search && search.trim()) {
@@ -204,6 +210,7 @@ const acknowledgeResolvedTicket = async (req, res) => {
 
 const getTicketDetail = async (req, res) => {
     try {
+        await require('../services/ticketAgyWorkflow.service').ensureAgyFlowSchema();
         const ticket = await ticketService.getTicketById(req.params.id);
         if (!ticket) return res.status(404).json({ message: 'Ticket no encontrado' });
 

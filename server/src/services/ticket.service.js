@@ -309,42 +309,26 @@ async function addTicketMessage(ticketId, { senderType = 'user', senderId = null
     if (!existing) throw new Error('Ticket no encontrado');
 
     await pool.query(
-        `INSERT INTO support_ticket_messages (ticket_id, sender_type, sender_id, sender_name, message, attachment_url)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO support_ticket_messages (ticket_id, sender_type, sender_id, sender_name, message, attachment_url) VALUES (?, ?, ?, ?, ?, ?)`,
         [ticketId, senderType, senderId, senderName || 'Usuario', message.trim(), attachmentUrl || null]
     );
 
-    await pool.query('UPDATE support_tickets SET updated_at = NOW() WHERE id = ?', [ticketId]);
+    if (senderType === 'user' && (existing.status === 'resuelto' || existing.agy_status === 'completado')) {
+        await pool.query(`UPDATE support_tickets SET status = 'en_proceso', agy_status = 'reiterado', include_in_ai_prompt = 1, updated_at = NOW() WHERE id = ?`, [ticketId]);
+    } else {
+        await pool.query('UPDATE support_tickets SET updated_at = NOW() WHERE id = ?', [ticketId]);
+    }
 
     const updated = await getTicketById(ticketId);
-
     if (senderType === 'tech' || senderType === 'telegram') {
         try {
-            sendToUser(existing.user_id, 'ticket_message', {
-                id: existing.id,
-                ticket_id: existing.id,
-                code: existing.ticket_code,
-                ticket_code: existing.ticket_code,
-                sender_name: senderName,
-                message: message.trim()
-            });
-        } catch {
-            // Ignore
-        }
+            sendToUser(existing.user_id, 'ticket_message', { id: existing.id, ticket_id: existing.id, code: existing.ticket_code, ticket_code: existing.ticket_code, sender_name: senderName, message: message.trim() });
+        } catch { /* Ignore */ }
     } else {
         const { notifyTicketCommentToTelegram } = require('./ticketTelegram.service');
         notifyTicketCommentToTelegram(updated, senderName, message.trim(), attachmentUrl).catch(() => {});
     }
-
     return updated;
 }
 
-module.exports = {
-    generateTicketCode,
-    normalizeTicketRow,
-    createTicket,
-    getTicketById,
-    getTicketByCodeOrId,
-    updateTicketStatus,
-    addTicketMessage
-};
+module.exports = { generateTicketCode, normalizeTicketRow, createTicket, getTicketById, getTicketByCodeOrId, updateTicketStatus, addTicketMessage };

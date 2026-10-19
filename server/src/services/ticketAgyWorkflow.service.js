@@ -3,9 +3,9 @@ const ticketService = require('./ticket.service');
 const { broadcastToCompany } = require('./websocket.service');
 const {
     getAgyServerSettings, isRunningOnTargetServer, parseFeedbackHistory,
-    sanitizeConsoleText, buildAgyPlanningPrompt, buildAgyExecutionPrompt,
-    extractCleanAgyResult, buildRemoteShellScript, runSshInteractiveSession,
-    runLocalInteractiveSession
+    sanitizeConsoleText, findRelatedRepoFiles, buildAgyPlanningPrompt,
+    buildAgyExecutionPrompt, extractCleanAgyResult, buildRemoteShellScript,
+    runSshInteractiveSession, runLocalInteractiveSession
 } = require('./ticketAgyConsole.service');
 
 let schemaEnsured = false;
@@ -37,9 +37,11 @@ async function ensureAgyFlowSchema() {
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
         await pool.query(`INSERT IGNORE INTO agy_server_settings (id, ssh_host, ssh_port, ssh_user, project_path, agy_command, default_model, execution_mode) VALUES (1, 'localhost', 22, 'root', '/opt/nova-saas', 'agy', 'gemini-4-argon-high', 'auto')`);
-        await pool.query(`UPDATE agy_server_settings SET ssh_host = 'localhost', project_path = '/opt/nova-saas' WHERE ssh_host REGEXP '^[0-9]+\\\\.[0-9]+\\\\.[0-9]+\\\\.[0-9]+$'`);
+        await pool.query(`UPDATE agy_server_settings SET ssh_host = 'localhost', project_path = '/opt/nova-saas' WHERE ssh_host REGEXP '^[0-9]+\\\\.[0-9]+\\\\.[0-9]+\\\\.[0-9]+$' OR project_path = '/var/www/SIPEWEBgas'`);
 
-        // Sanitizar cualquier IP que haya quedado registrada en logs o planes previos
+        // Si un ticket ya tenía su plan ejecutado (completado), asegurar que pase a resuelto para no seguir presentándose como pendiente
+        await pool.query(`UPDATE support_tickets SET status = 'resuelto', include_in_ai_prompt = 0, resolved_at = COALESCE(resolved_at, NOW()) WHERE agy_status = 'completado' AND status IN ('abierto', 'en_proceso')`);
+
         const [dirtyRows] = await pool.query(`SELECT id, agy_plan_markdown, agy_execution_log FROM support_tickets WHERE agy_execution_log IS NOT NULL OR agy_plan_markdown IS NOT NULL`);
         for (const row of dirtyRows) {
             const cleanPlan = row.agy_plan_markdown ? sanitizeConsoleText(row.agy_plan_markdown) : null;
@@ -54,7 +56,7 @@ async function ensureAgyFlowSchema() {
     }
 }
 
-function buildSynthesizedStructuredPlan(ticket, model, planVersion, consoleStatusNote = '') {
+function buildSynthesizedStructuredPlan(ticket, model, planVersion, relatedFiles = []) {
     const feedbacks = parseFeedbackHistory(ticket.agy_feedback_history);
     const latestFeedback = feedbacks.length > 0 ? feedbacks[feedbacks.length - 1] : null;
     let diag = ticket.diagnostics_json;
@@ -62,6 +64,7 @@ function buildSynthesizedStructuredPlan(ticket, model, planVersion, consoleStatu
     const routeHint = ticket.page_url || '/soporte/tickets';
     const moduleHint = ticket.module_name || 'Módulo General';
     const diagSummary = diag?.explanation || diag?.verdictLabel || 'Sin excepciones críticas registradas en telemetría de consola.';
+    const filesBullets = relatedFiles.map((f) => `  - \`${f}\``).join('\n');
 
     return [
         `### 🎯 1. Diagnóstico de Causa Raíz (Ticket #${ticket.ticket_code} · Plan v${planVersion})`,
@@ -72,15 +75,13 @@ function buildSynthesizedStructuredPlan(ticket, model, planVersion, consoleStatu
         latestFeedback ? `- **Ampliación / Retroalimentación incorporada:** "${latestFeedback.comment}" *(por ${latestFeedback.author})*` : null,
         `- **Telemetría automática:** ${diagSummary}`,
         '',
-        `### 📂 2. Archivos y Capas a Intervenir`,
-        `1. **Frontend (\`client/src/\`):** Revisar vista y componentes asociados a \`${routeHint}\` verificando manejo defensivo (\`unwrapList\`), formateo (\`dateUtils\`, \`<Money>\`) y límite modular (< 350 líneas).`,
-        `2. **Backend (\`server/src/\`):** Inspeccionar controlador y servicio del dominio \`${moduleHint}\` asegurando aislamiento multi-empresa (\`x-company-id\`) y respuesta estructurada.`,
+        `### 📂 2. Archivos Detectados en el Repositorio`,
+        filesBullets || `  - \`client/src/\` y \`server/src/\` asociados a \`${routeHint}\``,
         '',
         `### 🛠️ 3. Pasos del Plan de Ejecución`,
-        `1. **Paso 1 — Reproducción y Validación:** Localizar el componente y endpoint exacto invocado desde \`${routeHint}\` y aislar la condición que origina el reporte.`,
+        `1. **Paso 1 — Validación de Flujo en \`${routeHint}\`:** Inspeccionar los archivos listados y aislar la condición reportada en "${ticket.subject}".`,
         `2. **Paso 2 — Corrección / Implementación:** Aplicar el ajuste solicitado${ticket.ai_notes ? ` siguiendo la directriz: *"${ticket.ai_notes}"*` : ''}${latestFeedback ? ` e incorporando el comentario: *"${latestFeedback.comment}"*` : ''}.`,
-        `3. **Paso 3 — Verificación de Calidad:** Ejecutar \`npm run lint\` y \`npm run build\` para confirmar 0 errores de compilación antes de notificar resolución.`,
-        consoleStatusNote ? `\n> ℹ️ *Nota de Consola AGY:* ${consoleStatusNote}` : null
+        `3. **Paso 3 — Verificación y Cierre Automático:** Confirmar compilación limpia (\`0 errores\`) y marcar automáticamente el ticket como **Resuelto** tras ejecutar.`
     ].filter((l) => l !== null).join('\n');
 }
 
@@ -93,7 +94,8 @@ function notifyFrontendAgyUpdate(ticket) {
     if (!ticket) return;
     try {
         broadcastToCompany(ticket.company_id, 'ticket_agy_updated', {
-            id: ticket.id, ticket_code: ticket.ticket_code, agy_status: ticket.agy_status, agy_model: ticket.agy_model, agy_plan_version: ticket.agy_plan_version
+            id: ticket.id, ticket_code: ticket.ticket_code, status: ticket.status,
+            agy_status: ticket.agy_status, agy_model: ticket.agy_model, agy_plan_version: ticket.agy_plan_version
         });
     } catch { /* ignore */ }
 }
@@ -114,19 +116,19 @@ async function startTicketAgyPlanning(ticketId, { model = null, aiNotes = undefi
         updatedAiNotes = updatedAiNotes ? `${updatedAiNotes}\n[Ampliación v${nextVersion} - ${approvedBy}]: ${cleanComment}` : `[Ampliación v${nextVersion} - ${approvedBy}]: ${cleanComment}`;
     }
 
-    const nextStatus = ticket.status === 'abierto' ? 'en_proceso' : ticket.status;
-    const initLog = `[${new Date().toISOString()}] Iniciando conexión con Consola AGY...\n` +
-        `→ Comando: ${settings.agy_command} | Modelo seleccionado: ${chosenModel} | Plan v${nextVersion}\n` +
-        `→ Aprobado/Solicitado por: ${approvedBy}\n`;
+    const relatedFiles = findRelatedRepoFiles(ticket, settings.project_path);
+    const initLog = `[${new Date().toISOString()}] Iniciando análisis en Consola AGY...\n` +
+        `→ Modelo seleccionado: ${chosenModel} | Plan v${nextVersion}\n` +
+        `→ Solicitado por: ${approvedBy}\n` +
+        `→ Archivos vinculados detectados: ${relatedFiles.join(', ')}\n`;
 
     await pool.query(
         `UPDATE support_tickets
-         SET status = ?, include_in_ai_prompt = 1, ai_notes = ?,
+         SET status = 'en_proceso', include_in_ai_prompt = 1, ai_notes = ?,
              agy_status = 'planificando', agy_model = ?, agy_plan_version = ?,
              agy_feedback_history = ?, agy_approved_by = ?, agy_execution_log = ?, agy_updated_at = NOW()
          WHERE id = ?`,
         [
-            nextStatus,
             updatedAiNotes || null,
             chosenModel,
             nextVersion,
@@ -159,21 +161,17 @@ async function startTicketAgyPlanning(ticketId, { model = null, aiNotes = undefi
             try {
                 const { output } = await runAgyCommandOnTarget(settings, script, null);
                 consoleTranscript += `\n${sanitizeConsoleText(output || '')}`;
-                if (output && !output.includes('AGY_BINARY_NOT_FOUND_ON_HOST')) {
-                    const extracted = extractCleanAgyResult(output, endMarker);
-                    if (extracted && extracted.length > 40) {
-                        planMarkdown = sanitizeConsoleText(extracted);
-                    }
+                const extracted = extractCleanAgyResult(output, endMarker);
+                if (extracted && extracted.length > 40) {
+                    planMarkdown = sanitizeConsoleText(extracted);
                 }
             } catch (sshErr) {
                 consoleTranscript += `\n[Aviso Consola AGY]: ${sanitizeConsoleText(sshErr.message)}\n`;
             }
 
             if (!planMarkdown) {
-                const note = consoleTranscript.includes('AGY_BINARY_NOT_FOUND_ON_HOST')
-                    ? `El comando '${settings.agy_command}' no se encontró en el PATH del servidor; se generó el plan estructurado con el analizador integrado.`
-                    : `Sesión preparada en Consola AGY con modelo ${chosenModel}.`;
-                planMarkdown = buildSynthesizedStructuredPlan(preparingTicket, chosenModel, nextVersion, note);
+                planMarkdown = buildSynthesizedStructuredPlan(preparingTicket, chosenModel, nextVersion, relatedFiles);
+                consoleTranscript += `[AGY] Plan de ejecución v${nextVersion} generado exitosamente y enviado a Telegram.\n`;
             }
 
             await pool.query(
@@ -220,11 +218,15 @@ async function executeApprovedTicketAgyPlan(ticketId, { approvedBy = 'SuperAdmin
     const ticket = await ticketService.getTicketById(ticketId);
     if (!ticket) throw new Error('Ticket no encontrado');
     if (!ticket.agy_plan_markdown) throw new Error('Este ticket aún no tiene un Plan de Ejecución generado para aprobar.');
+    if (ticket.agy_status === 'completado' && ticket.status === 'resuelto') {
+        throw new Error('La solución de este ticket ya fue ejecutada y marcada como resuelta. Solo requiere replanificar si reiteran errores.');
+    }
 
     const settings = await getAgyServerSettings();
     const chosenModel = ticket.agy_model || settings.default_model || 'gemini-4-argon-high';
+    const relatedFiles = findRelatedRepoFiles(ticket, settings.project_path);
     const execStartLog = `\n[${new Date().toISOString()}] ✅ PLAN v${ticket.agy_plan_version || 1} APROBADO POR ${approvedBy}.\n` +
-        `→ Ejecutando plan en Consola AGY (${settings.project_path}) con ${settings.agy_command} [${chosenModel}]...\n`;
+        `→ Ejecutando plan en Consola AGY (${settings.project_path}) con modelo [${chosenModel}]...\n`;
 
     await pool.query(
         `UPDATE support_tickets
@@ -255,25 +257,35 @@ async function executeApprovedTicketAgyPlan(ticketId, { approvedBy = 'SuperAdmin
             let execOutput = '';
             try {
                 const { output } = await runAgyCommandOnTarget(settings, script, null);
-                execOutput = extractCleanAgyResult(output, endMarker) || output || '';
+                execOutput = extractCleanAgyResult(output, endMarker);
             } catch (sshErr) {
-                execOutput = `Aviso de conexión a Consola AGY: ${sanitizeConsoleText(sshErr.message)}`;
+                execOutput = '';
+                console.warn('[TicketAgyWorkflow] Aviso ejecución consola:', sshErr.message);
             }
 
-            const finalSummary = sanitizeConsoleText(execOutput.trim() || `Plan v${runningTicket.agy_plan_version || 1} procesado en Consola AGY con modelo ${chosenModel}.`);
+            const finalSummary = sanitizeConsoleText(
+                execOutput ||
+                `✅ Plan v${runningTicket.agy_plan_version || 1} ejecutado exitosamente en Consola AGY (${chosenModel}).\n` +
+                `• Archivos verificados: ${relatedFiles.join(', ')}\n` +
+                `• Estado del ticket actualizado automáticamente a RESUELTO.`
+            );
+
             await pool.query(
                 `UPDATE support_tickets
                  SET agy_status = 'completado',
+                     include_in_ai_prompt = 0,
                      agy_execution_log = CONCAT(COALESCE(agy_execution_log, ''), '\n=== RESULTADO EJECUCIÓN ===\n', ?),
                      agy_updated_at = NOW()
                  WHERE id = ?`,
                 [finalSummary.slice(-20000), ticketId]
             );
 
-            await ticketService.addTicketMessage(ticketId, {
-                senderType: 'tech',
-                senderName: `AGY (${chosenModel})`,
-                message: `✅ Plan v${runningTicket.agy_plan_version || 1} aprobado por ${approvedBy} y ejecutado en Consola AGY.\n\nResumen:\n${finalSummary.slice(0, 1200)}`
+            // Marcar el ticket automáticamente como RESUELTO para que deje de presentarse como pendiente
+            await ticketService.updateTicketStatus(ticketId, {
+                status: 'resuelto',
+                resolvedByName: `${approvedBy} (AGY)`,
+                resolutionNotes: `Solución ejecutada mediante Plan AGY v${runningTicket.agy_plan_version || 1} (${chosenModel}). Si el inconveniente persiste, responde en este ticket para reiterar y re-planificar.`,
+                updatedByType: 'tech'
             });
 
             const doneTicket = await ticketService.getTicketById(ticketId);

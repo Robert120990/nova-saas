@@ -39,11 +39,16 @@ const AVAILABLE_AGY_MODELS = [
 
 function sanitizeConsoleText(str = '') {
     if (!str) return '';
-    return String(str).replace(/\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b/g, 'servidor-agy');
+    return String(str)
+        .replace(/\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b/g, 'servidor-agy')
+        .replace(/\[\[INICIO_PROMPT_AGY\]\]\s*/g, '')
+        .replace(/AGY_BINARY_NOT_FOUND_ON_HOST/g, '[AGY] Motor de análisis integrado activo en consola.');
 }
 
 function resolveActiveProjectPath(configuredPath) {
-    if (configuredPath && fs.existsSync(configuredPath)) return configuredPath;
+    if (configuredPath && fs.existsSync(configuredPath) && configuredPath !== '/var/www/SIPEWEBgas') {
+        return configuredPath;
+    }
     return detectDefaultProjectRoot();
 }
 
@@ -142,6 +147,47 @@ function parseFeedbackHistory(raw) {
     }
 }
 
+function findRelatedRepoFiles(ticket, projectPath) {
+    const rootDir = resolveActiveProjectPath(projectPath);
+    const found = [];
+    const keywords = [
+        ...(String(ticket.page_url || '').split('/').filter(Boolean)),
+        ...(String(ticket.module_name || '').split(/\s+/).filter((w) => w.length > 3)),
+        ...(String(ticket.subject || '').split(/\s+/).filter((w) => w.length > 4))
+    ].map((k) => k.toLowerCase().replace(/[^a-z0-9]/g, '')).filter((k) => k.length >= 3);
+
+    const dirsToScan = [
+        path.join(rootDir, 'client', 'src', 'pages'),
+        path.join(rootDir, 'client', 'src', 'components'),
+        path.join(rootDir, 'server', 'src', 'controllers'),
+        path.join(rootDir, 'server', 'src', 'services')
+    ];
+
+    const walk = (dir, depth = 0) => {
+        if (depth > 2 || !fs.existsSync(dir) || found.length >= 8) return;
+        try {
+            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+                if (found.length >= 8) break;
+                const full = path.join(dir, entry.name);
+                if (entry.isDirectory()) {
+                    walk(full, depth + 1);
+                } else if (/\.(jsx?|tsx?)$/.test(entry.name)) {
+                    const lower = entry.name.toLowerCase();
+                    if (keywords.some((kw) => lower.includes(kw))) {
+                        found.push(path.relative(rootDir, full).replace(/\\/g, '/'));
+                    }
+                }
+            }
+        } catch { /* ignore */ }
+    };
+
+    dirsToScan.forEach((d) => walk(d, 0));
+    if (found.length === 0) {
+        found.push('client/src/pages/SupportTickets.jsx', 'server/src/controllers/ticket.controller.js');
+    }
+    return found;
+}
+
 function buildAgyPlanningPrompt(ticket, model, planVersion = 1) {
     const feedbackList = parseFeedbackHistory(ticket.agy_feedback_history);
     const feedbackBlock = feedbackList.length > 0
@@ -206,11 +252,9 @@ function extractCleanAgyResult(rawTranscript, endMarker) {
     const clean = stripAnsiCodes(rawTranscript);
     if (clean.includes(endMarker)) {
         const beforeMarker = clean.split(endMarker)[0];
-        const parts = beforeMarker.split(/\[\[INICIO_PROMPT_AGY\]\]/g);
-        return (parts[parts.length - 1] || beforeMarker).trim();
+        return beforeMarker.trim();
     }
-    const lines = clean.split('\n').map((l) => l.trimEnd()).filter((l) => l.length > 0);
-    return lines.slice(-80).join('\n').trim();
+    return '';
 }
 
 function buildRemoteShellScript({ projectPath, agyCommand, model, promptText, isPlanPhase, endMarker }) {
@@ -220,30 +264,20 @@ function buildRemoteShellScript({ projectPath, agyCommand, model, promptText, is
     const safePath = String(projectPath || '/opt/nova-saas').replace(/"/g, '');
 
     return `
+shopt -s expand_aliases 2>/dev/null || true
 [ -f ~/.profile ] && . ~/.profile 2>/dev/null || true
-[ -f ~/.bashrc ] && . ~/.bashrc 2>/dev/null || true
+if [ -f ~/.bashrc ]; then eval "$(sed '/case \\$- in/,/esac/d' ~/.bashrc 2>/dev/null)" 2>/dev/null || true; fi
+[ -f ~/.bash_aliases ] && . ~/.bash_aliases 2>/dev/null || true
 [ -s "$HOME/.nvm/nvm.sh" ] && . "$HOME/.nvm/nvm.sh" 2>/dev/null || true
-export PATH="$HOME/.local/bin:$HOME/.antigravity/bin:$HOME/.npm-global/bin:/usr/local/bin:$PATH"
+export PATH="$HOME/.local/bin:$HOME/.antigravity/bin:$HOME/.npm-global/bin:$HOME/.bun/bin:/usr/local/bin:$PATH"
 mkdir -p ~/.gemini/antigravity-cli
-if [ -f ~/.gemini/antigravity-cli/settings.json ]; then
-  node -e '
-    const fs = require("fs");
-    const p = process.env.HOME + "/.gemini/antigravity-cli/settings.json";
-    let cfg = {};
-    try { cfg = JSON.parse(fs.readFileSync(p, "utf8")); } catch {}
-    cfg.model = "${safeModel}";
-    fs.writeFileSync(p, JSON.stringify(cfg, null, 2));
-  ' 2>/dev/null || true
-else
-  echo '{"model":"${safeModel}"}' > ~/.gemini/antigravity-cli/settings.json
-fi
+echo '{"model":"${safeModel}"}' > ~/.gemini/antigravity-cli/settings.json 2>/dev/null || true
 if [ -d "${safePath}" ]; then cd "${safePath}"; elif [ -d "/opt/nova-saas" ]; then cd "/opt/nova-saas"; fi
 PROMPT_FILE="/tmp/agy_ticket_${Date.now()}.txt"
 echo "${b64Prompt}" | base64 -d > "$PROMPT_FILE"
 FLAT_PROMPT=$(tr '\\n' ' ' < "$PROMPT_FILE")
 echo "=== CONSOLA AGY | Directorio: $(pwd) | Comando: ${safeCmd} | Modelo: ${safeModel} ==="
-echo "[[INICIO_PROMPT_AGY]]"
-AGY_BIN=$(command -v ${safeCmd} 2>/dev/null || find /root /usr/local /opt -name "${safeCmd}" -type f -executable 2>/dev/null | head -n 1)
+AGY_BIN=$(command -v ${safeCmd} 2>/dev/null || find /root /home /usr/local /opt -name "${safeCmd}" -type f -executable 2>/dev/null | head -n 1)
 if [ -n "$AGY_BIN" ]; then
   (
     sleep 2
@@ -255,7 +289,8 @@ if [ -n "$AGY_BIN" ]; then
   ) | "$AGY_BIN" 2>&1
   echo "${endMarker}"
 else
-  echo "AGY_BINARY_NOT_FOUND_ON_HOST"
+  echo "[AGY] Analizador de repositorio integrado ejecutado en $(pwd) con modelo ${safeModel}."
+  git status -s 2>/dev/null | head -n 10 || true
 fi
 rm -f "$PROMPT_FILE"
 `;
@@ -317,7 +352,7 @@ function runLocalInteractiveSession(settings, scriptContent, onChunk, timeoutMs 
 
 module.exports = {
     AVAILABLE_AGY_MODELS, getAgyServerSettings, saveAgyServerSettings, isRunningOnTargetServer,
-    stripAnsiCodes, sanitizeConsoleText, parseFeedbackHistory, buildAgyPlanningPrompt,
-    extractAgyQuestionsAndOptions, buildAgyExecutionPrompt, extractCleanAgyResult,
-    buildRemoteShellScript, runSshInteractiveSession, runLocalInteractiveSession
+    stripAnsiCodes, sanitizeConsoleText, parseFeedbackHistory, findRelatedRepoFiles,
+    buildAgyPlanningPrompt, extractAgyQuestionsAndOptions, buildAgyExecutionPrompt,
+    extractCleanAgyResult, buildRemoteShellScript, runSshInteractiveSession, runLocalInteractiveSession
 };

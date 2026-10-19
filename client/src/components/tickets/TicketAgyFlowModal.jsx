@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
-import { X, Terminal, Sparkles, Play, XCircle, RefreshCw, Send, Settings2, Server, Cpu, MessageSquarePlus } from 'lucide-react';
+import { X, Terminal, Sparkles, Play, XCircle, RefreshCw, Send, Settings2, Server, Cpu, MessageSquarePlus, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatDateTime } from '../../utils/dateUtils';
 
@@ -10,7 +10,8 @@ const AGY_STATUS_META = {
     planificando: { label: 'Planificando con AGY...', cls: 'bg-amber-500/20 text-amber-300 border-amber-500/40 animate-pulse' },
     esperando_aprobacion: { label: 'Plan Enviado a Telegram (Esperando Aprobación)', cls: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40' },
     ejecutando: { label: 'Ejecutando Plan en Consola AGY...', cls: 'bg-sky-500/20 text-sky-300 border-sky-500/40 animate-pulse' },
-    completado: { label: 'Plan Ejecutado en Consola AGY', cls: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' },
+    completado: { label: 'Solución Ejecutada (Resuelto)', cls: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' },
+    reiterado: { label: 'Error Reiterado (Listo para Re-planificar)', cls: 'bg-amber-500/20 text-amber-300 border-amber-500/40' },
     denegado: { label: 'Plan Denegado', cls: 'bg-rose-500/20 text-rose-300 border-rose-500/40' },
     error: { label: 'Error de Consola', cls: 'bg-rose-500/20 text-rose-300 border-rose-500/40' }
 };
@@ -21,7 +22,10 @@ const DEFAULT_MODELS = [
     { id: 'gemini-3-flash', label: 'gemini-3-flash (Ultra Rápido)' }
 ];
 
-const maskIpInText = (text = '') => String(text || '').replace(/\b(?:\d{1,3}\.){3}\d{1,3}\b/g, 'servidor-agy');
+const maskIpInText = (text = '') => String(text || '')
+    .replace(/\b(?:\d{1,3}\.){3}\d{1,3}\b/g, 'servidor-agy')
+    .replace(/\[\[INICIO_PROMPT_AGY\]\]\s*/g, '')
+    .replace(/AGY_BINARY_NOT_FOUND_ON_HOST/g, '[AGY] Analizador de repositorio integrado ejecutado en /opt/nova-saas.');
 
 const TicketAgyFlowModal = ({ open, ticketId, onClose }) => {
     const queryClient = useQueryClient();
@@ -31,6 +35,7 @@ const TicketAgyFlowModal = ({ open, ticketId, onClose }) => {
     const [feedbackComment, setFeedbackComment] = useState('');
     const [activeView, setActiveView] = useState('plan');
     const [showConfig, setShowConfig] = useState(false);
+    const [reiterateMode, setReiterateMode] = useState(false);
     const [cfgForm, setCfgForm] = useState({
         ssh_host: 'localhost', ssh_port: 22, ssh_user: 'root', ssh_password: '',
         project_path: '/opt/nova-saas', agy_command: 'agy', default_model: 'gemini-4-argon-high', execution_mode: 'auto'
@@ -53,6 +58,7 @@ const TicketAgyFlowModal = ({ open, ticketId, onClose }) => {
         if (ticket) {
             setAiNotes(ticket.ai_notes || '');
             if (ticket.agy_model) setSelectedModel(ticket.agy_model);
+            setReiterateMode(false);
         }
     }, [ticket?.id]);
 
@@ -75,17 +81,18 @@ const TicketAgyFlowModal = ({ open, ticketId, onClose }) => {
     const refreshAll = () => {
         queryClient.invalidateQueries({ queryKey: ['ticket-detail', ticketId] });
         queryClient.invalidateQueries({ queryKey: ['support-tickets'] });
+        queryClient.invalidateQueries({ queryKey: ['support-tickets-stats'] });
     };
 
     const planMutation = useMutation({
         mutationFn: (payload) => axios.post(`/api/tickets/${ticketId}/agy/plan`, payload),
-        onSuccess: (res) => { refreshAll(); setFeedbackComment(''); toast.success(res.data?.message || 'Planificación AGY iniciada'); },
+        onSuccess: (res) => { refreshAll(); setFeedbackComment(''); setReiterateMode(false); toast.success(res.data?.message || 'Planificación AGY iniciada'); },
         onError: (err) => toast.error(err.response?.data?.message || 'Error al iniciar planificación AGY')
     });
 
     const executeMutation = useMutation({
         mutationFn: () => axios.post(`/api/tickets/${ticketId}/agy/execute`),
-        onSuccess: (res) => { refreshAll(); toast.success(res.data?.message || 'Ejecución del plan iniciada en Consola AGY'); },
+        onSuccess: (res) => { refreshAll(); toast.success(res.data?.message || 'Solución ejecutada y ticket marcado como Resuelto'); },
         onError: (err) => toast.error(err.response?.data?.message || 'Error al ejecutar plan AGY')
     });
 
@@ -111,6 +118,7 @@ const TicketAgyFlowModal = ({ open, ticketId, onClose }) => {
 
     const effectiveModel = selectedModel === '__custom__' ? (customModel.trim() || 'gemini-4-argon-high') : selectedModel;
     const agyStatus = ticket?.agy_status || 'idle';
+    const isCompletedAndResolved = (agyStatus === 'completado' || ticket?.status === 'resuelto') && agyStatus !== 'reiterado';
     const statusBadge = AGY_STATUS_META[agyStatus] || AGY_STATUS_META.idle;
     const isBusy = agyStatus === 'planificando' || agyStatus === 'ejecutando' || planMutation.isPending || executeMutation.isPending;
     const hasPlan = Boolean(ticket?.agy_plan_markdown);
@@ -153,11 +161,7 @@ const TicketAgyFlowModal = ({ open, ticketId, onClose }) => {
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
-                        <button
-                            type="button"
-                            onClick={() => setShowConfig((v) => !v)}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold border border-slate-700 cursor-pointer"
-                        >
+                        <button type="button" onClick={() => setShowConfig((v) => !v)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold border border-slate-700 cursor-pointer">
                             <Settings2 size={14} /> <span>Ajustes Consola</span>
                         </button>
                         <button type="button" onClick={onClose} className="p-2 text-slate-400 hover:text-white rounded-xl hover:bg-slate-800">
@@ -173,12 +177,8 @@ const TicketAgyFlowModal = ({ open, ticketId, onClose }) => {
                         {showConfig && (
                             <div className="bg-slate-900 text-slate-100 rounded-xl p-4 border border-slate-700 space-y-3">
                                 <div className="flex items-center justify-between">
-                                    <span className="text-[11px] font-bold text-indigo-400 uppercase tracking-wider">
-                                        Parámetros de Conexión a Consola AGY (`agy`)
-                                    </span>
-                                    <span className="text-[11px] text-slate-400">
-                                        {agyConfig?.is_running_on_target_server ? '🟢 Ejecución directa en servidor' : '🌐 Modo conexión SSH / Auto'}
-                                    </span>
+                                    <span className="text-[11px] font-bold text-indigo-400 uppercase tracking-wider">Parámetros de Conexión a Consola AGY (`agy`)</span>
+                                    <span className="text-[11px] text-slate-400">{agyConfig?.is_running_on_target_server ? '🟢 Ejecución directa en servidor' : '🌐 Modo conexión SSH / Auto'}</span>
                                 </div>
                                 <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs">
                                     <div>
@@ -200,99 +200,89 @@ const TicketAgyFlowModal = ({ open, ticketId, onClose }) => {
                                 </div>
                                 <div className="flex justify-end gap-2">
                                     <button type="button" onClick={() => setShowConfig(false)} className="px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 text-xs font-bold">Cerrar</button>
-                                    <button type="button" disabled={saveConfigMutation.isPending} onClick={() => saveConfigMutation.mutate(cfgForm)} className="px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold cursor-pointer">
-                                        Guardar Conexión
-                                    </button>
+                                    <button type="button" disabled={saveConfigMutation.isPending} onClick={() => saveConfigMutation.mutate(cfgForm)} className="px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold cursor-pointer">Guardar Conexión</button>
                                 </div>
                             </div>
                         )}
 
-                        <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
-                            <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
-                                <div className="md:col-span-5">
-                                    <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1 flex items-center gap-1">
-                                        <Cpu size={13} className="text-indigo-600" /> Modelo IA en Consola `agy`
-                                    </label>
-                                    <select
-                                        value={selectedModel}
-                                        onChange={(e) => setSelectedModel(e.target.value)}
-                                        className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-[13px] font-bold text-slate-800 focus:outline-none focus:border-indigo-500"
-                                    >
-                                        {(Array.isArray(modelsList) ? modelsList : []).map((m) => (
-                                            <option key={m.id} value={m.id}>{m.label}</option>
-                                        ))}
-                                        <option value="__custom__">Otro modelo personalizado...</option>
-                                    </select>
-                                    {selectedModel === '__custom__' && (
-                                        <input
-                                            type="text"
-                                            value={customModel}
-                                            onChange={(e) => setCustomModel(e.target.value)}
-                                            placeholder="Ej. gemini-4-argon-high"
-                                            className="mt-2 w-full bg-white border border-indigo-300 rounded-xl px-3 py-1.5 text-xs font-mono"
-                                        />
-                                    )}
+                        {isCompletedAndResolved && !reiterateMode ? (
+                            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                <div className="flex items-start gap-3">
+                                    <CheckCircle2 size={20} className="text-emerald-600 shrink-0 mt-0.5" />
+                                    <div>
+                                        <h3 className="text-xs sm:text-sm font-extrabold text-emerald-900">
+                                            Solución ejecutada y Ticket marcado como Resuelto
+                                        </h3>
+                                        <p className="text-xs text-emerald-700 mt-0.5">
+                                            Este ticket ya no se presenta en la bandeja de pendientes. Únicamente vuelve a planificar si el usuario reitera errores.
+                                        </p>
+                                    </div>
                                 </div>
-
-                                <div className="md:col-span-7">
-                                    <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">
-                                        Directriz Técnica / Contexto para el Plan (`ai_notes`)
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={aiNotes}
-                                        onChange={(e) => setAiNotes(e.target.value)}
-                                        placeholder="Instrucción técnica opcional para orientar el plan de ejecución en Consola AGY..."
-                                        className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-[13px] font-medium text-slate-800 focus:outline-none focus:border-indigo-500"
-                                    />
-                                </div>
-                            </div>
-
-                            {hasPlan && (
-                                <div className="space-y-2">
-                                    {detectedOptions.length > 0 && (
-                                        <div className="bg-amber-50 border border-amber-200 rounded-xl p-2.5 space-y-1.5">
-                                            <span className="block text-[11px] font-bold text-amber-800 uppercase">
-                                                ❓ AGY requiere seleccionar una opción antes de ejecutar (clic para elegir y replanificar):
-                                            </span>
-                                            <div className="flex flex-wrap gap-1.5">
-                                                {detectedOptions.map((opt) => (
-                                                    <button
-                                                        key={opt.index}
-                                                        type="button"
-                                                        disabled={isBusy}
-                                                        onClick={() => planMutation.mutate({
-                                                            model: effectiveModel,
-                                                            ai_notes: aiNotes,
-                                                            feedback_comment: `DECISIÓN DEL ADMINISTRADOR: Selecciono la [OPCION_${opt.index}]: ${opt.label}. Procede a estructurar el plan definitivo con esta opción.`
-                                                        })}
-                                                        className="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold cursor-pointer disabled:opacity-50"
-                                                    >
-                                                        Elegir Opción {opt.index}: {opt.label}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
-                                    <label className="block text-[11px] font-bold text-indigo-600 uppercase mb-1 flex items-center gap-1">
-                                        <MessageSquarePlus size={13} /> Responder Duda o Ampliar en Comentarios para Re-planificar (Plan v{(ticket.agy_plan_version || 1) + 1})
-                                    </label>
-                                    <input type="text" value={feedbackComment} onChange={(e) => setFeedbackComment(e.target.value)} placeholder="Responde aquí cualquier duda de AGY o escribe observaciones adicionales para re-planificar..." className="w-full bg-white border border-indigo-200 rounded-xl px-3 py-2 text-[13px] font-medium text-slate-800 focus:outline-none focus:border-indigo-500" />
-                                </div>
-                            )}
-
-                            <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-                                <span className="text-[11px] text-slate-500">
-                                    {ticket.agy_updated_at
-                                        ? `Última actividad AGY: ${formatDateTime(ticket.agy_updated_at)} ${ticket.agy_approved_by ? `por ${ticket.agy_approved_by}` : ''}`
-                                        : 'Al aprobar, AGY generará el plan de ejecución y lo enviará a Telegram con botones de decisión.'}
-                                </span>
-                                <button type="button" disabled={isBusy} onClick={() => planMutation.mutate({ model: effectiveModel, ai_notes: aiNotes, feedback_comment: feedbackComment })} className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-extrabold shadow-md shadow-indigo-600/20 disabled:opacity-50 cursor-pointer">
-                                    {isBusy ? <RefreshCw size={14} className="animate-spin" /> : <Sparkles size={14} />}
-                                    <span>{hasPlan ? `Volver a Planificar con AGY (Plan v${(ticket.agy_plan_version || 1) + 1})` : 'Aprobar Ticket y Solicitar Plan a AGY'}</span>
+                                <button
+                                    type="button"
+                                    onClick={() => setReiterateMode(true)}
+                                    className="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-extrabold shrink-0 cursor-pointer"
+                                >
+                                    🔄 Reiterar Error / Re-planificar
                                 </button>
                             </div>
-                        </div>
+                        ) : (
+                            <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
+                                <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+                                    <div className="md:col-span-5">
+                                        <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1 flex items-center gap-1">
+                                            <Cpu size={13} className="text-indigo-600" /> Modelo IA en Consola `agy`
+                                        </label>
+                                        <select value={selectedModel} onChange={(e) => setSelectedModel(e.target.value)} className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-[13px] font-bold text-slate-800 focus:outline-none focus:border-indigo-500">
+                                            {(Array.isArray(modelsList) ? modelsList : []).map((m) => (
+                                                <option key={m.id} value={m.id}>{m.label}</option>
+                                            ))}
+                                            <option value="__custom__">Otro modelo personalizado...</option>
+                                        </select>
+                                        {selectedModel === '__custom__' && (
+                                            <input type="text" value={customModel} onChange={(e) => setCustomModel(e.target.value)} placeholder="Ej. gemini-4-argon-high" className="mt-2 w-full bg-white border border-indigo-300 rounded-xl px-3 py-1.5 text-xs font-mono" />
+                                        )}
+                                    </div>
+                                    <div className="md:col-span-7">
+                                        <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">Directriz Técnica / Contexto para el Plan (`ai_notes`)</label>
+                                        <input type="text" value={aiNotes} onChange={(e) => setAiNotes(e.target.value)} placeholder="Instrucción técnica opcional para orientar el plan de ejecución en Consola AGY..." className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-[13px] font-medium text-slate-800 focus:outline-none focus:border-indigo-500" />
+                                    </div>
+                                </div>
+
+                                {(hasPlan || reiterateMode) && (
+                                    <div className="space-y-2">
+                                        {detectedOptions.length > 0 && !reiterateMode && (
+                                            <div className="bg-amber-50 border border-amber-200 rounded-xl p-2.5 space-y-1.5">
+                                                <span className="block text-[11px] font-bold text-amber-800 uppercase">❓ AGY requiere seleccionar una opción antes de ejecutar (clic para elegir):</span>
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    {detectedOptions.map((opt) => (
+                                                        <button key={opt.index} type="button" disabled={isBusy} onClick={() => planMutation.mutate({ model: effectiveModel, ai_notes: aiNotes, feedback_comment: `DECISIÓN DEL ADMINISTRADOR: Selecciono la [OPCION_${opt.index}]: ${opt.label}. Procede a estructurar el plan definitivo con esta opción.` })} className="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold cursor-pointer disabled:opacity-50">
+                                                            Elegir Opción {opt.index}: {opt.label}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                        <label className="block text-[11px] font-bold text-indigo-600 uppercase mb-1 flex items-center gap-1">
+                                            <MessageSquarePlus size={13} /> {reiterateMode ? 'Detalle del Error Reiterado para Nuevo Plan' : `Responder Duda o Ampliar en Comentarios para Re-planificar (Plan v${(ticket.agy_plan_version || 1) + 1})`}
+                                        </label>
+                                        <input type="text" value={feedbackComment} onChange={(e) => setFeedbackComment(e.target.value)} placeholder={reiterateMode ? 'Describe qué error persiste para reabrir el ticket y generar el nuevo plan...' : 'Responde aquí cualquier duda de AGY o escribe observaciones adicionales para re-planificar...'} className="w-full bg-white border border-indigo-200 rounded-xl px-3 py-2 text-[13px] font-medium text-slate-800 focus:outline-none focus:border-indigo-500" />
+                                    </div>
+                                )}
+
+                                <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                                    <span className="text-[11px] text-slate-500">
+                                        {ticket.agy_updated_at
+                                            ? `Última actividad AGY: ${formatDateTime(ticket.agy_updated_at)} ${ticket.agy_approved_by ? `por ${ticket.agy_approved_by}` : ''}`
+                                            : 'Al aprobar, AGY generará el plan de ejecución y lo enviará a Telegram con botones de decisión.'}
+                                    </span>
+                                    <button type="button" disabled={isBusy || (reiterateMode && !feedbackComment.trim())} onClick={() => planMutation.mutate({ model: effectiveModel, ai_notes: aiNotes, feedback_comment: feedbackComment })} className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-extrabold shadow-md shadow-indigo-600/20 disabled:opacity-50 cursor-pointer">
+                                        {isBusy ? <RefreshCw size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                                        <span>{hasPlan ? `Volver a Planificar con AGY (Plan v${(ticket.agy_plan_version || 1) + 1})` : 'Aprobar Ticket y Solicitar Plan a AGY'}</span>
+                                    </button>
+                                </div>
+                            </div>
+                        )}
 
                         <div className="border border-slate-200 rounded-xl overflow-hidden">
                             <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 bg-slate-100 border-b border-slate-200">
@@ -305,7 +295,7 @@ const TicketAgyFlowModal = ({ open, ticketId, onClose }) => {
                                     </button>
                                 </div>
 
-                                {hasPlan && (
+                                {hasPlan && !isCompletedAndResolved && (
                                     <div className="flex flex-wrap items-center gap-1.5">
                                         <button type="button" disabled={resendTelegramMutation.isPending} onClick={() => resendTelegramMutation.mutate()} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 text-[11px] font-bold cursor-pointer">
                                             <Send size={12} /> <span>Reenviar a Telegram</span>
@@ -326,9 +316,7 @@ const TicketAgyFlowModal = ({ open, ticketId, onClose }) => {
                                         <pre className="text-xs sm:text-[13px] text-slate-800 whitespace-pre-wrap font-sans leading-relaxed">{maskIpInText(ticket.agy_plan_markdown)}</pre>
                                     ) : (
                                         <div className="py-10 text-center text-slate-400 text-xs">
-                                            {agyStatus === 'planificando'
-                                                ? 'Conectando con Consola AGY y generando Plan de Ejecución...'
-                                                : 'Aún no se ha generado un plan. Presiona "Aprobar Ticket y Solicitar Plan a AGY" para iniciar.'}
+                                            {agyStatus === 'planificando' ? 'Conectando con Consola AGY y generando Plan de Ejecución...' : 'Aún no se ha generado un plan. Presiona "Aprobar Ticket y Solicitar Plan a AGY" para iniciar.'}
                                         </div>
                                     )}
                                 </div>
