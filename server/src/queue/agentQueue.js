@@ -110,7 +110,7 @@ class AgentQueueService {
 
                 if (lowStock.length > 0) {
                     const [chats] = await pool.query(
-                        'SELECT DISTINCT chat_id FROM telegram_chat_bindings WHERE company_id = ? AND receive_alerts = 1',
+                        'SELECT DISTINCT chat_id FROM telegram_chat_bindings WHERE (company_id = ? OR company_id IS NULL) AND receive_alerts = 1',
                         [companyId]
                     );
 
@@ -139,7 +139,7 @@ class AgentQueueService {
 
                 if (pending.length > 0) {
                     const [chats] = await pool.query(
-                        'SELECT DISTINCT chat_id FROM telegram_chat_bindings WHERE company_id = ? AND receive_alerts = 1',
+                        'SELECT DISTINCT chat_id FROM telegram_chat_bindings WHERE (company_id = ? OR company_id IS NULL) AND receive_alerts = 1',
                         [companyId]
                     );
                     const alertMsg = `🚨 **ALERTA DE AGENTE FISCAL DTE**\n\nHay ${pending.length} documento(s) en contingencia con más de 18 horas de emisión. Recuerda que el plazo legal del Ministerio de Hacienda vence a las 24 horas.`;

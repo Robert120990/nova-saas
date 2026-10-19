@@ -70,7 +70,7 @@ async function handleAgentTelegramMessage(chatId, text, from, state) {
         const session = await getOrCreateSession({
             channel: 'telegram',
             externalChatId: chatId,
-            companyId: state.companyId,
+            companyId: state.companyId || 1,
             branchId: state.branchId,
             userId: null
         });
@@ -79,7 +79,7 @@ async function handleAgentTelegramMessage(chatId, text, from, state) {
         let allowedAgents = null;
         let bindingName = from?.first_name || from?.username || 'Usuario Telegram';
         let canApprove = false;
-        let bindingCompanyId = state?.companyId || null;
+        let bindingCompanyId = state?.companyId || session.company_id || 1;
         let bindingBranchId = state?.branchId || null;
 
         try {
@@ -95,7 +95,7 @@ async function handleAgentTelegramMessage(chatId, text, from, state) {
                 return;
             }
             const b = bindings[0];
-            bindingCompanyId = b.company_id || state?.companyId;
+            bindingCompanyId = b.company_id || state?.companyId || session.company_id || 1;
             bindingBranchId = b.branch_id || state?.branchId;
             if (b.nombre) bindingName = b.nombre;
             canApprove = Boolean(b.can_approve_entries);

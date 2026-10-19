@@ -129,8 +129,10 @@ async function handleStart(chatId, from, text = '') {
             ? await pool.query('SELECT nombre FROM branches WHERE id = ?', [rows[0].branch_id])
             : [[{ nombre: 'Todas las sucursales (Acceso Global)' }]];
         const branchName = branch[0]?.nombre || 'Todas las sucursales (Acceso Global)';
-        const [company] = await pool.query('SELECT razon_social FROM companies WHERE id = ?', [rows[0].company_id]);
-        const companyName = company[0]?.razon_social || '';
+        const [company] = rows[0].company_id
+            ? await pool.query('SELECT razon_social FROM companies WHERE id = ?', [rows[0].company_id])
+            : [[{ razon_social: 'Todas las Empresas' }]];
+        const companyName = company[0]?.razon_social || 'Todas las Empresas';
         return sendMessage(chatId,
             `✅ Ya estás conectado a **${branchName}** (${companyName}).\n\n` +
             `Puedes preguntarme cosas como:\n- "dime las ventas de ayer"\n- "nivel de tanques"\n- "clientes con saldo"\n\n` +

@@ -121,7 +121,7 @@ async function resolveInviteToken(tokenStr, chatId, from = {}) {
     return {
         valid: true,
         companyId: invite.company_id,
-        companyName: invite.company_name,
+        companyName: invite.company_name || 'Todas las Empresas (Acceso Global)',
         branchId: invite.branch_id,
         branchName: invite.branch_name || 'Acceso Global (Todas las sucursales)',
         assignedName: nombre

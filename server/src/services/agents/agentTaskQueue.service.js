@@ -363,7 +363,7 @@ async function sendTelegramCompletionNotification(task, agentName, resultContent
     try {
         const [chats] = await pool.query(
             `SELECT chat_id FROM telegram_chat_bindings 
-             WHERE company_id = ? AND (branch_id = ? OR branch_id IS NULL) AND receive_alerts = 1`,
+             WHERE (company_id = ? OR company_id IS NULL) AND (branch_id = ? OR branch_id IS NULL) AND receive_alerts = 1`,
             [task.company_id, task.branch_id || null]
         );
 

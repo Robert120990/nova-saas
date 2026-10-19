@@ -5,8 +5,9 @@ import { QRCodeSVG } from 'qrcode.react';
 import { X, QrCode, Copy, Check, ExternalLink, Sparkles, MapPin, User, Clock } from 'lucide-react';
 import { toast } from 'sonner';
 
-export default function TelegramInviteModal({ open, onClose, branches = [] }) {
+export default function TelegramInviteModal({ open, onClose, branches = [], isSuperAdmin = false }) {
   const queryClient = useQueryClient();
+  const [companyScope, setCompanyScope] = useState('current');
   const [branchId, setBranchId] = useState('');
   const [assignedName, setAssignedName] = useState('');
   const [expiresInHours, setExpiresInHours] = useState('48');
@@ -29,7 +30,8 @@ export default function TelegramInviteModal({ open, onClose, branches = [] }) {
   const handleGenerate = (e) => {
     e.preventDefault();
     createMutation.mutate({
-      branch_id: branchId ? parseInt(branchId, 10) : null,
+      company_id: isSuperAdmin && companyScope === 'all' ? 'all' : undefined,
+      branch_id: companyScope === 'all' || !branchId ? null : parseInt(branchId, 10),
       assigned_name: assignedName.trim() || undefined,
       expires_in_hours: parseInt(expiresInHours, 10) || 48
     });
@@ -45,6 +47,7 @@ export default function TelegramInviteModal({ open, onClose, branches = [] }) {
 
   const handleReset = () => {
     setGeneratedInvite(null);
+    setCompanyScope('current');
     setBranchId('');
     setAssignedName('');
   };
@@ -93,6 +96,26 @@ export default function TelegramInviteModal({ open, onClose, branches = [] }) {
                 />
               </div>
 
+              {isSuperAdmin && (
+                <div>
+                  <label className="text-[11px] font-bold text-slate-500 uppercase flex items-center gap-1.5 mb-1.5">
+                    <MapPin className="w-3.5 h-3.5 text-indigo-500" />
+                    Alcance de Empresa
+                  </label>
+                  <select
+                    value={companyScope}
+                    onChange={(e) => {
+                      setCompanyScope(e.target.value);
+                      if (e.target.value === 'all') setBranchId('');
+                    }}
+                    className="w-full text-[13px] font-medium border border-slate-300 rounded-xl px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+                  >
+                    <option value="current">🏢 Empresa Actual</option>
+                    <option value="all">🌐 Todas las Empresas (Administrador Global)</option>
+                  </select>
+                </div>
+              )}
+
               <div>
                 <label className="text-[11px] font-bold text-slate-500 uppercase flex items-center gap-1.5 mb-1.5">
                   <MapPin className="w-3.5 h-3.5 text-indigo-500" />
@@ -101,7 +124,8 @@ export default function TelegramInviteModal({ open, onClose, branches = [] }) {
                 <select
                   value={branchId}
                   onChange={(e) => setBranchId(e.target.value)}
-                  className="w-full text-[13px] font-medium border border-slate-300 rounded-xl px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+                  disabled={companyScope === 'all'}
+                  className="w-full text-[13px] font-medium border border-slate-300 rounded-xl px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white disabled:bg-slate-50 disabled:text-slate-400"
                 >
                   <option value="">🌐 Acceso Global (Todas las sucursales)</option>
                   {branches.map((b) => (

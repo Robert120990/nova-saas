@@ -14,8 +14,9 @@ const AVAILABLE_AGENTS = [
   { id: 'operations', name: 'Operaciones Generales', icon: '⚙️', desc: 'Consultas operativas, usuarios y turnos' }
 ];
 
-export default function TelegramPermissionsModal({ open, onClose, binding, branches = [] }) {
+export default function TelegramPermissionsModal({ open, onClose, binding, branches = [], isSuperAdmin = false }) {
   const queryClient = useQueryClient();
+  const [selectedCompanyScope, setSelectedCompanyScope] = useState('all');
   const [selectedBranchId, setSelectedBranchId] = useState('');
   const [allowedAgents, setAllowedAgents] = useState([]);
   const [canApproveEntries, setCanApproveEntries] = useState(false);
@@ -27,6 +28,7 @@ export default function TelegramPermissionsModal({ open, onClose, binding, branc
 
   useEffect(() => {
     if (binding) {
+      setSelectedCompanyScope(binding.company_id ? String(binding.company_id) : 'all');
       setSelectedBranchId(binding.branch_id ? String(binding.branch_id) : 'all');
       let agents = [];
       try {
@@ -74,8 +76,8 @@ export default function TelegramPermissionsModal({ open, onClose, binding, branc
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    updateMutation.mutate({
-      branch_id: selectedBranchId === 'all' ? null : parseInt(selectedBranchId, 10),
+    const payload = {
+      branch_id: selectedCompanyScope === 'all' || selectedBranchId === 'all' ? null : parseInt(selectedBranchId, 10),
       allowed_agents: allowedAgents,
       can_approve_entries: canApproveEntries ? 1 : 0,
       receive_reopen_requests: receiveReopen ? 1 : 0,
@@ -83,7 +85,11 @@ export default function TelegramPermissionsModal({ open, onClose, binding, branc
       receive_inventory_alerts: receiveInventory ? 1 : 0,
       receive_dte_alerts: receiveDte ? 1 : 0,
       receive_support_tickets: receiveSupportTickets ? 1 : 0
-    });
+    };
+    if (isSuperAdmin) {
+      payload.company_id = selectedCompanyScope === 'all' ? null : parseInt(selectedCompanyScope, 10);
+    }
+    updateMutation.mutate(payload);
   };
 
   return (
@@ -109,6 +115,30 @@ export default function TelegramPermissionsModal({ open, onClose, binding, branc
 
         {/* Scrollable Body */}
         <form onSubmit={handleSubmit} className="p-6 overflow-y-auto space-y-5 text-slate-700 flex-1">
+          {/* Alcance de Empresa (SuperAdmin) */}
+          {isSuperAdmin && (
+            <div>
+              <label className="text-[11px] font-bold text-slate-500 uppercase block mb-1.5">
+                Alcance de Empresa
+              </label>
+              <select
+                value={selectedCompanyScope}
+                onChange={(e) => {
+                  setSelectedCompanyScope(e.target.value);
+                  if (e.target.value === 'all') setSelectedBranchId('all');
+                }}
+                className="w-full text-[13px] font-medium border border-slate-300 rounded-xl px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+              >
+                <option value="all">🌐 Todas las Empresas (Administrador Global Multi-Empresa)</option>
+                {binding.company_id && (
+                  <option value={String(binding.company_id)}>
+                    🏢 Solo {binding.company_nombre || 'Empresa Asignada'}
+                  </option>
+                )}
+              </select>
+            </div>
+          )}
+
           {/* Sucursal asignada */}
           <div>
             <label className="text-[11px] font-bold text-slate-500 uppercase block mb-1.5">
@@ -117,7 +147,8 @@ export default function TelegramPermissionsModal({ open, onClose, binding, branc
             <select
               value={selectedBranchId}
               onChange={(e) => setSelectedBranchId(e.target.value)}
-              className="w-full text-[13px] font-medium border border-slate-300 rounded-xl px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+              disabled={selectedCompanyScope === 'all'}
+              className="w-full text-[13px] font-medium border border-slate-300 rounded-xl px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white disabled:bg-slate-50 disabled:text-slate-400"
             >
               <option value="all">🌐 Todas las sucursales (Acceso Global)</option>
               {branches.map((b) => (

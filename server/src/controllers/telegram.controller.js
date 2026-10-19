@@ -23,7 +23,7 @@ const getStatus = async (req, res) => {
              FROM telegram_chat_bindings b
              LEFT JOIN companies c ON c.id = b.company_id
               LEFT JOIN branches br ON br.id = b.branch_id
-              ${isSuperAdmin ? '' : 'WHERE b.company_id = ?'}
+              ${isSuperAdmin ? '' : 'WHERE (b.company_id = ? OR b.company_id IS NULL)'}
               ORDER BY b.created_at DESC`,
             isSuperAdmin ? [] : [req.company_id]
         );
@@ -93,7 +93,7 @@ const updateBinding = async (req, res) => {
         }
         if (company_id !== undefined && isSuperAdmin) {
             updates.push('company_id = ?');
-            params.push(parseInt(company_id, 10));
+            params.push(!company_id || company_id === 'all' ? null : parseInt(company_id, 10));
         }
         if (allowed_agents !== undefined) { updates.push('allowed_agents = ?'); params.push(JSON.stringify(allowed_agents)); }
         if (can_approve_entries !== undefined) { updates.push('can_approve_entries = ?'); params.push(can_approve_entries ? 1 : 0); }
@@ -105,7 +105,7 @@ const updateBinding = async (req, res) => {
         let whereClause = 'WHERE id = ?';
         params.push(id);
         if (!isSuperAdmin) {
-            whereClause += ' AND company_id = ?';
+            whereClause += ' AND (company_id = ? OR company_id IS NULL)';
             params.push(req.company_id);
         }
 
@@ -146,7 +146,12 @@ const createInviteToken = async (req, res) => {
     try {
         const { branch_id, assigned_name, permissions, expires_in_hours } = req.body;
         const isSuperAdmin = req.user?.role === 'SuperAdmin';
-        const companyId = (isSuperAdmin && req.body.company_id) ? req.body.company_id : req.company_id;
+        let companyId = req.company_id;
+        if (isSuperAdmin && req.body.company_id !== undefined) {
+            companyId = (!req.body.company_id || req.body.company_id === 'all')
+                ? null
+                : parseInt(req.body.company_id, 10);
+        }
         const result = await telegramInviteService.createInviteToken({
             companyId,
             branchId: branch_id,
@@ -207,13 +212,13 @@ const testConnection = async (req, res) => {
 
         if (!targetChat) {
             const [rows] = await pool.query(
-                'SELECT chat_id FROM telegram_chat_bindings WHERE company_id = ? ORDER BY id DESC LIMIT 1',
+                'SELECT chat_id FROM telegram_chat_bindings WHERE (company_id = ? OR company_id IS NULL) ORDER BY id DESC LIMIT 1',
                 [req.company_id]
             );
             targetChat = rows[0]?.chat_id;
         } else if (!isSuperAdmin) {
             const [rows] = await pool.query(
-                'SELECT id FROM telegram_chat_bindings WHERE chat_id = ? AND company_id = ?',
+                'SELECT id FROM telegram_chat_bindings WHERE chat_id = ? AND (company_id = ? OR company_id IS NULL)',
                 [targetChat, req.company_id]
             );
             if (rows.length === 0) {

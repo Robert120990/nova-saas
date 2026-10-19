@@ -383,6 +383,7 @@ export default function TelegramConfigTab({ telegramStatus, branches = [], isSup
         onClose={() => { setPermissionsModalOpen(false); setSelectedBinding(null); }}
         binding={selectedBinding}
         branches={branches}
+        isSuperAdmin={isSuperAdmin}
       />
     </div>
   );

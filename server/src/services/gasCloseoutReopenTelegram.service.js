@@ -112,9 +112,13 @@ async function handleTelegramTextApproval(chatId, text, from, state) {
         return false;
     }
 
-    const companyId = authorizedBinding.company_id || state?.companyId;
-    const branchId = authorizedBinding.branch_id || state?.branchId;
-    if (!companyId) return false;
+    // Si company_id es NULL (Acceso Global a todas las empresas), buscar la última solicitud pendiente de cualquier empresa
+    const companyId = authorizedBinding.company_id !== null
+        ? authorizedBinding.company_id
+        : null;
+    const branchId = authorizedBinding.branch_id !== null
+        ? authorizedBinding.branch_id
+        : null;
 
     const pendingReq = await getLatestPendingForCompany(companyId, branchId);
     if (!pendingReq) return false;

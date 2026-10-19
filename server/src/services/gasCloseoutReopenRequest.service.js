@@ -4,6 +4,11 @@ const { broadcastToCompany } = require('./websocket.service');
 const { revertCloseoutLubricantsInventory } = require('./gasCloseoutInventory.service');
 const { logCloseoutChange } = require('../controllers/gasCloseout/gasCloseoutUtils');
 
+function escapeMd(str) {
+    if (!str) return '';
+    return String(str).replace(/([_*`[])/g, '\\$1');
+}
+
 function formatDateSV(dateVal) {
     if (!dateVal) return '';
     try {
@@ -19,51 +24,16 @@ function formatDateSV(dateVal) {
 }
 
 /**
- * Registra una solicitud de reapertura y notifica a los chats de Telegram autorizados.
+ * Envía la alerta interactiva de reapertura a los chats de Telegram autorizados.
  */
-async function createReopenRequest({ closeoutId, companyId, branchId, userId, userName, reason }) {
-    const [closeouts] = await pool.query(
-        `SELECT id, numero_turno, fecha_turno, estado, seller_name, branch_id, company_id
-         FROM gas_station_closeouts WHERE id = ? AND company_id = ?`,
-        [closeoutId, companyId]
-    );
-
-    if (closeouts.length === 0) {
-        throw new Error('Cierre de lecturas no encontrado.');
-    }
-    const closeout = closeouts[0];
-    if (closeout.estado !== 'cerrado') {
-        throw new Error('Solo se puede solicitar la apertura de un cierre que esté cerrado.');
-    }
-
-    // Verificar si ya existe una solicitud pendiente
-    const [existing] = await pool.query(
-        `SELECT id, created_at FROM gas_station_closeout_reopen_requests
-         WHERE closeout_id = ? AND status = 'pending'
-         ORDER BY id DESC LIMIT 1`,
-        [closeoutId]
-    );
-
-    if (existing.length > 0) {
-        return {
-            alreadyPending: true,
-            requestId: existing[0].id,
-            message: 'Ya existe una solicitud pendiente de aprobación para este turno.'
-        };
-    }
-
-    const [insertResult] = await pool.query(
-        `INSERT INTO gas_station_closeout_reopen_requests
-         (company_id, branch_id, closeout_id, requested_by, requested_by_name, reason, status)
-         VALUES (?, ?, ?, ?, ?, ?, 'pending')`,
-        [companyId, closeout.branch_id || branchId, closeoutId, userId, userName || 'Usuario', reason || null]
-    );
-
-    const requestId = insertResult.insertId;
+async function sendReopenTelegramNotification({ requestId, closeout, companyId, branchId, userName, reason }) {
+    const effectiveBranchId = closeout.branch_id || branchId || null;
 
     // Obtener nombres de empresa y sucursal
     const [compRows] = await pool.query('SELECT razon_social FROM companies WHERE id = ?', [companyId]);
-    const [brRows] = await pool.query('SELECT nombre FROM branches WHERE id = ?', [closeout.branch_id || branchId]);
+    const [brRows] = effectiveBranchId
+        ? await pool.query('SELECT nombre FROM branches WHERE id = ?', [effectiveBranchId])
+        : [[]];
     const companyName = compRows[0]?.razon_social || 'Empresa';
     const branchName = brRows[0]?.nombre || 'Sucursal';
     const fechaText = formatDateSV(closeout.fecha_turno);
@@ -80,20 +50,20 @@ async function createReopenRequest({ closeoutId, companyId, branchId, userId, us
                AND (branch_id = ? OR branch_id IS NULL)
                AND receive_alerts = 1
                AND (receive_reopen_requests = 1 OR can_approve_entries = 1)`,
-            [companyId, closeout.branch_id || branchId]
+            [companyId, effectiveBranchId]
         );
         chats = activeChats;
     }
 
     const telegramText =
         `🔓 *SOLICITUD DE REAPERTURA DE TURNO*\n\n` +
-        `El usuario *${userName}* solicita la apertura del cierre de lectura:\n\n` +
-        `🏢 *Empresa:* ${companyName}\n` +
-        `📍 *Sucursal:* ${branchName}\n` +
-        `📋 *Turno:* #${closeout.numero_turno}\n` +
-        `📅 *Fecha:* ${fechaText}\n` +
-        `👤 *Responsable:* ${closeout.seller_name || 'No especificado'}\n` +
-        `💬 *Motivo:* ${reason || 'Sin motivo especificado'}\n\n` +
+        `El usuario *${escapeMd(userName)}* solicita la apertura del cierre de lectura:\n\n` +
+        `🏢 *Empresa:* ${escapeMd(companyName)}\n` +
+        `📍 *Sucursal:* ${escapeMd(branchName)}\n` +
+        `📋 *Turno:* #${escapeMd(closeout.numero_turno)}\n` +
+        `📅 *Fecha:* ${escapeMd(fechaText)}\n` +
+        `👤 *Responsable:* ${escapeMd(closeout.seller_name || 'No especificado')}\n` +
+        `💬 *Motivo:* ${escapeMd(reason || 'Sin motivo especificado')}\n\n` +
         `¿Apruebas la reapertura de este turno?`;
 
     const inlineKeyboard = {
@@ -117,6 +87,84 @@ async function createReopenRequest({ closeoutId, companyId, branchId, userId, us
             console.error(`[ReopenRequest] Error enviando Telegram a chat ${chat.chat_id}:`, err.message);
         }
     }
+
+    return sentCount;
+}
+
+/**
+ * Registra una solicitud de reapertura y notifica a los chats de Telegram autorizados.
+ */
+async function createReopenRequest({ closeoutId, companyId, branchId, userId, userName, reason }) {
+    const [closeouts] = await pool.query(
+        `SELECT id, numero_turno, fecha_turno, estado, seller_name, branch_id, company_id
+         FROM gas_station_closeouts WHERE id = ? AND company_id = ?`,
+        [closeoutId, companyId]
+    );
+
+    if (closeouts.length === 0) {
+        throw new Error('Cierre de lecturas no encontrado.');
+    }
+    const closeout = closeouts[0];
+    if (closeout.estado !== 'cerrado') {
+        throw new Error('Solo se puede solicitar la apertura de un cierre que esté cerrado.');
+    }
+
+    // Verificar si ya existe una solicitud pendiente
+    const [existing] = await pool.query(
+        `SELECT id, reason, requested_by_name, created_at FROM gas_station_closeout_reopen_requests
+         WHERE closeout_id = ? AND status = 'pending'
+         ORDER BY id DESC LIMIT 1`,
+        [closeoutId]
+    );
+
+    if (existing.length > 0) {
+        const effectiveReason = reason || existing[0].reason;
+        const effectiveUser = userName || existing[0].requested_by_name || 'Usuario';
+        if (reason && reason !== existing[0].reason) {
+            await pool.query(
+                `UPDATE gas_station_closeout_reopen_requests
+                 SET reason = ?, requested_by = ?, requested_by_name = ?
+                 WHERE id = ?`,
+                [reason, userId, effectiveUser, existing[0].id]
+            );
+        }
+
+        const sentCount = await sendReopenTelegramNotification({
+            requestId: existing[0].id,
+            closeout,
+            companyId,
+            branchId: closeout.branch_id || branchId,
+            userName: effectiveUser,
+            reason: effectiveReason
+        });
+
+        return {
+            alreadyPending: true,
+            requestId: existing[0].id,
+            sentToTelegram: sentCount > 0,
+            message: sentCount > 0
+                ? 'Solicitud reenviada a los administradores vía Telegram.'
+                : 'Ya existe una solicitud pendiente de aprobación para este turno.'
+        };
+    }
+
+    const [insertResult] = await pool.query(
+        `INSERT INTO gas_station_closeout_reopen_requests
+         (company_id, branch_id, closeout_id, requested_by, requested_by_name, reason, status)
+         VALUES (?, ?, ?, ?, ?, ?, 'pending')`,
+        [companyId, closeout.branch_id || branchId, closeoutId, userId, userName || 'Usuario', reason || null]
+    );
+
+    const requestId = insertResult.insertId;
+
+    const sentCount = await sendReopenTelegramNotification({
+        requestId,
+        closeout,
+        companyId,
+        branchId: closeout.branch_id || branchId,
+        userName: userName || 'Usuario',
+        reason
+    });
 
     // Notificar en tiempo real vía WebSocket a la empresa
     try {
@@ -220,9 +268,9 @@ async function approveReopenRequest({ requestId, resolvedBy = 'Administrador', c
     const branchName = brRows[0]?.nombre || 'Sucursal';
     const updateText =
         `✅ *SOLICITUD APROBADA*\n\n` +
-        `El Turno *#${closeout.numero_turno}* (${branchName}) ha sido *REABIERTO* en el sistema inmediatamente.\n\n` +
-        `🟢 *Aprobado por:* ${resolvedBy}\n` +
-        `👤 *Solicitante:* ${req.requested_by_name}\n` +
+        `El Turno *#${escapeMd(closeout.numero_turno)}* (${escapeMd(branchName)}) ha sido *REABIERTO* en el sistema inmediatamente.\n\n` +
+        `🟢 *Aprobado por:* ${escapeMd(resolvedBy)}\n` +
+        `👤 *Solicitante:* ${escapeMd(req.requested_by_name)}\n` +
         `⏰ *Hora:* ${new Date().toLocaleTimeString('es-SV', { hour: '2-digit', minute: '2-digit' })}\n\n` +
         `_El usuario ya puede editar el cierre en el sistema._`;
 
@@ -279,8 +327,8 @@ async function rejectReopenRequest({ requestId, resolvedBy = 'Administrador', ch
 
     const rejectText =
         `❌ *SOLICITUD RECHAZADA*\n\n` +
-        `La reapertura del Turno *#${turnoNum}* fue rechazada por *${resolvedBy}*.\n\n` +
-        `👤 *Solicitante:* ${req.requested_by_name}`;
+        `La reapertura del Turno *#${escapeMd(turnoNum)}* fue rechazada por *${escapeMd(resolvedBy)}*.\n\n` +
+        `👤 *Solicitante:* ${escapeMd(req.requested_by_name)}`;
 
     if (chatId && messageId) {
         try {
@@ -302,10 +350,15 @@ async function rejectReopenRequest({ requestId, resolvedBy = 'Administrador', ch
 
 /**
  * Obtiene la última solicitud pendiente para un chat / empresa.
+ * Si companyId es null (Administrador Global), busca en todas las empresas.
  */
-async function getLatestPendingForCompany(companyId, branchId = null) {
-    let query = `SELECT * FROM gas_station_closeout_reopen_requests WHERE company_id = ? AND status = 'pending'`;
-    const params = [companyId];
+async function getLatestPendingForCompany(companyId = null, branchId = null) {
+    let query = `SELECT * FROM gas_station_closeout_reopen_requests WHERE status = 'pending'`;
+    const params = [];
+    if (companyId) {
+        query += ` AND company_id = ?`;
+        params.push(companyId);
+    }
     if (branchId) {
         query += ` AND branch_id = ?`;
         params.push(branchId);
@@ -331,6 +384,7 @@ async function getCloseoutReopenStatus(closeoutId, companyId) {
 
 module.exports = {
     createReopenRequest,
+    sendReopenTelegramNotification,
     approveReopenRequest,
     rejectReopenRequest,
     getLatestPendingForCompany,
