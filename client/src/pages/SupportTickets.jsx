@@ -277,7 +277,7 @@ const SupportTickets = () => {
                                                             <button
                                                                 type="button"
                                                                 onClick={() => setAgyTicketId(t.id)}
-                                                                title="Aprobar ticket y ejecutar flujo AGY en 5.252.55.29 con aprobación por Telegram"
+                                                                title="Aprobar ticket y ejecutar flujo en Consola AGY con aprobación por Telegram"
                                                                 className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-extrabold border bg-slate-900 hover:bg-slate-800 text-emerald-400 border-slate-700 transition-all cursor-pointer"
                                                             >
                                                                 <Terminal size={13} />

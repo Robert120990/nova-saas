@@ -68,7 +68,7 @@ export default function ServerTerminal() {
             if (saved) return JSON.parse(saved);
         } catch {}
         return {
-            host: '5.252.55.29',
+            host: '',
             port: 22,
             username: 'root',
             password: '',
@@ -514,7 +514,7 @@ export default function ServerTerminal() {
                                 type="text"
                                 value={sshConfig.host}
                                 onChange={(e) => handleSaveSshConfig({ ...sshConfig, host: e.target.value })}
-                                placeholder="5.252.55.29"
+                                placeholder="Host o dominio SSH"
                                 className="w-full mt-1 px-3 py-1.5 text-xs font-mono rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100"
                             />
                         </div>

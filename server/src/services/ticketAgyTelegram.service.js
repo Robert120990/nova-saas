@@ -1,5 +1,5 @@
 const telegramService = require('./telegram.service');
-const { getAgyServerSettings, extractAgyQuestionsAndOptions } = require('./ticketAgyConsole.service');
+const { getAgyServerSettings, extractAgyQuestionsAndOptions, sanitizeConsoleText } = require('./ticketAgyConsole.service');
 
 // chat_id -> { ticketId, ticketCode, techName, expiresAt }
 const pendingAgyFeedbackMap = new Map();
@@ -47,7 +47,7 @@ function buildAgyPostExecutionKeyboard(ticketId) {
 }
 
 async function safeSendTelegramWithKeyboard(chatId, text, replyMarkup) {
-    const cleanText = String(text || '').slice(0, 3850);
+    const cleanText = sanitizeConsoleText(String(text || '')).slice(0, 3850);
     try {
         await telegramService.apiCall('sendMessage', {
             chat_id: chatId,
@@ -75,7 +75,7 @@ async function sendAgyPlanToTelegram(ticket) {
     const settings = await getAgyServerSettings();
     const version = ticket.agy_plan_version || 1;
     const model = ticket.agy_model || settings.default_model || 'gemini-4-argon-high';
-    const rawPlan = String(ticket.agy_plan_markdown || 'Sin contenido de plan.').replace('[[REQUIERE_DECISION_AGY]]', '').trim();
+    const rawPlan = sanitizeConsoleText(String(ticket.agy_plan_markdown || 'Sin contenido de plan.').replace('[[REQUIERE_DECISION_AGY]]', '').trim());
     const { requiresDecision, options } = extractAgyQuestionsAndOptions(ticket.agy_plan_markdown || '');
     const planBody = rawPlan.slice(0, 2850);
 
@@ -87,11 +87,11 @@ async function sendAgyPlanToTelegram(ticket) {
         ? `👇 *AGY detectó ${options.length} opciones posibles. Toca un botón para elegir la opción o escribe tu respuesta:*`
         : (requiresDecision
             ? `👇 *AGY planteó una duda antes de ejecutar. Presiona "✍️ Responder Duda" o aprueba el plan:*`
-            : `👇 *Selecciona una decisión para la consola ${escapeMd(settings.ssh_host)}:*`);
+            : `👇 *Selecciona una decisión para la Consola AGY:*`);
 
     const msg =
         `${headerTitle}\n` +
-        `🖥️ *Consola:* \`${escapeMd(settings.ssh_host)}\`  |  🧠 *Modelo:* \`${escapeMd(model)}\`\n` +
+        `🖥️ *Entorno:* \`Consola AGY\`  |  🧠 *Modelo:* \`${escapeMd(model)}\`\n` +
         `📌 *Asunto:* ${escapeMd(ticket.subject)}\n` +
         `🏢 *Empresa:* ${escapeMd(ticket.company_name || 'Global')} · *Módulo:* ${escapeMd(ticket.module_name || 'General')}\n` +
         (ticket.ai_notes ? `🎯 *Directriz IA:* ${escapeMd(ticket.ai_notes)}\n` : '') +
@@ -117,10 +117,10 @@ async function notifyAgyExecutionResultToTelegram(ticket, summaryText, approvedB
     const model = ticket.agy_model || settings.default_model || 'gemini-4-argon-high';
     const msg =
         `🚀 *EJECUCIÓN AGY COMPLETADA — #${escapeMd(ticket.ticket_code)}*\n` +
-        `🖥️ *Servidor:* \`${escapeMd(settings.ssh_host)}\`  |  🧠 *Modelo:* \`${escapeMd(model)}\`\n` +
+        `🖥️ *Entorno:* \`Consola AGY\`  |  🧠 *Modelo:* \`${escapeMd(model)}\`\n` +
         `👤 *Aprobado por:* ${escapeMd(approvedBy)}\n` +
         `📌 *Asunto:* ${escapeMd(ticket.subject)}\n\n` +
-        `📝 *Resultado de Consola:*\n${String(summaryText || '').slice(0, 2500)}\n\n` +
+        `📝 *Resultado de Consola:*\n${sanitizeConsoleText(String(summaryText || '')).slice(0, 2500)}\n\n` +
         `_Puedes marcar el ticket como resuelto para notificar al usuario o ampliar comentarios si requiere otro ajuste:_`;
 
     const replyMarkup = buildAgyPostExecutionKeyboard(ticket.id);
@@ -169,7 +169,7 @@ async function handleAgyTelegramCallback(cb) {
             chatId,
             `🎯 *Opción ${optIdx} seleccionada por ${escapeMd(techName)}*\n` +
             `👉 _"${escapeMd(chosenText)}"_\n\n` +
-            `🔄 Enviando tu elección a \`agy\` (\`${escapeMd(model)}\`) en \`${escapeMd(settings.ssh_host)}\` para actualizar el plan...`,
+            `🔄 Enviando tu elección a \`agy\` (\`${escapeMd(model)}\`) en Consola AGY para actualizar el plan...`,
             { parse_mode: 'Markdown' }
         ).catch(() => {});
 
@@ -184,7 +184,7 @@ async function handleAgyTelegramCallback(cb) {
     if (action === 'agy_start_plan') {
         await telegramService.sendMessage(
             chatId,
-            `🤖 *Iniciando Planificación AGY en ${escapeMd(settings.ssh_host)}*\n` +
+            `🤖 *Iniciando Planificación en Consola AGY*\n` +
             `🎫 Ticket: *#${escapeMd(ticket.ticket_code)}*\n` +
             `🧠 Modelo: \`${escapeMd(model)}\`\n` +
             `_Generando plan de ejecución... Te lo enviaré por aquí al finalizar._`,
@@ -201,7 +201,7 @@ async function handleAgyTelegramCallback(cb) {
         await telegramService.sendMessage(
             chatId,
             `✅ *Plan v${ticket.agy_plan_version || 1} Aprobado por ${escapeMd(techName)}*\n` +
-            `🚀 Ejecutando cambios con \`agy\` (\`${escapeMd(model)}\`) en \`${escapeMd(settings.ssh_host)}\` para el ticket *#${escapeMd(ticket.ticket_code)}*...`,
+            `🚀 Ejecutando cambios con \`agy\` (\`${escapeMd(model)}\`) en Consola AGY para el ticket *#${escapeMd(ticket.ticket_code)}*...`,
             { parse_mode: 'Markdown' }
         ).catch(() => {});
         await executeApprovedTicketAgyPlan(ticketId, {
@@ -218,7 +218,7 @@ async function handleAgyTelegramCallback(cb) {
         await safeSendTelegramWithKeyboard(
             chatId,
             `❌ *Plan v${ticket.agy_plan_version || 1} DENEGADO* en Ticket *#${escapeMd(ticket.ticket_code)}* por *${escapeMd(techName)}*.\n` +
-            `_No se aplicaron cambios en ${escapeMd(settings.ssh_host)}. Puedes ampliar comentarios si deseas generar un nuevo plan:_`,
+            `_No se aplicaron cambios en el servidor. Puedes ampliar comentarios si deseas generar un nuevo plan:_`,
             {
                 inline_keyboard: [
                     [{ text: '✏️ Ampliar Comentarios y Re-planificar', callback_data: `agy_plan_feedback:${ticketId}` }]
@@ -238,7 +238,7 @@ async function handleAgyTelegramCallback(cb) {
         await telegramService.sendMessage(
             chatId,
             `✍️ *Responder Duda / Ampliar Comentarios en Ticket #${escapeMd(ticket.ticket_code)}*\n\n` +
-            `Escribe tu respuesta, opción elegida o indicaciones adicionales para que \`agy\` (\`${escapeMd(model)}\`) continúe en \`${escapeMd(settings.ssh_host)}\` (o escribe /cancelar):`,
+            `Escribe tu respuesta, opción elegida o indicaciones adicionales para que \`agy\` (\`${escapeMd(model)}\`) continúe en Consola AGY (o escribe /cancelar):`,
             { parse_mode: 'Markdown' }
         ).catch(() => {});
         return true;
@@ -271,7 +271,7 @@ async function handleAgyTelegramText(chatId, text, from) {
         const settings = await getAgyServerSettings();
         await telegramService.sendMessage(
             chatId,
-            `🤖 Conectando con \`${escapeMd(settings.ssh_host)}\` (\`agy\` · \`${escapeMd(ticket.agy_model || settings.default_model)}\`) para planificar el Ticket *#${escapeMd(ticket.ticket_code)}*...`,
+            `🤖 Conectando con Consola AGY (\`agy\` · \`${escapeMd(ticket.agy_model || settings.default_model)}\`) para planificar el Ticket *#${escapeMd(ticket.ticket_code)}*...`,
             { parse_mode: 'Markdown' }
         );
         await startTicketAgyPlanning(ticket.id, {
@@ -288,12 +288,11 @@ async function handleAgyTelegramText(chatId, text, from) {
     if (Date.now() > pending.expiresAt || trimmed.startsWith('/')) return false;
 
     const { startTicketAgyPlanning } = require('./ticketAgyWorkflow.service');
-    const settings = await getAgyServerSettings();
     await telegramService.sendMessage(
         chatId,
         `🔄 *Comentarios recibidos para #${escapeMd(pending.ticketCode)}*\n` +
         `📝 _"${escapeMd(trimmed)}"_\n\n` +
-        `Ejecutando \`agy\` en \`${escapeMd(settings.ssh_host)}\` para re-planificar... Te enviaré el nuevo plan en breve.`,
+        `Ejecutando \`agy\` en Consola AGY para re-planificar... Te enviaré el nuevo plan en breve.`,
         { parse_mode: 'Markdown' }
     );
 

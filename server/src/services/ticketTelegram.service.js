@@ -92,7 +92,7 @@ function buildTicketInlineKeyboard(ticketId, status = 'abierto') {
     }
     return {
         inline_keyboard: [
-            [{ text: '🤖 Aprobar y Planificar AGY (5.252.55.29)', callback_data: `agy_start_plan:${ticketId}` }],
+            [{ text: '🤖 Aprobar y Planificar AGY', callback_data: `agy_start_plan:${ticketId}` }],
             [{ text: '🛠️ En Proceso', callback_data: `ticket_take:${ticketId}` }, { text: '✅ Marcar Resuelto', callback_data: `ticket_resolve:${ticketId}` }],
             [{ text: '✍️ Resolver con Nota', callback_data: `ticket_resolve_note:${ticketId}` }, { text: '💬 Comentar al Usuario', callback_data: `ticket_comment:${ticketId}` }]
         ]
@@ -262,7 +262,7 @@ async function handleTicketTelegramText(chatId, text, from) {
         for (const r of rows) {
             listMsg += `${r.status === 'en_proceso' ? '🛠️' : '🆕'} *#${escapeMd(r.ticket_code)}* (${r.priority.toUpperCase()}) — ${escapeMd(r.subject)} _(${escapeMd(r.user_name)})_\n`;
         }
-        listMsg += `\n_Comandos:_ \`/agy TKT-0001\` _(planificar en 5.252.55.29)_ | \`/resolver TKT-0001 Solución\``;
+        listMsg += `\n_Comandos:_ \`/agy TKT-0001\` _(planificar con AGY)_ | \`/resolver TKT-0001 Solución\``;
         await telegramService.sendMessage(chatId, listMsg, { parse_mode: 'Markdown' });
         return true;
     }

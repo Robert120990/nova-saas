@@ -79,7 +79,7 @@ const updateAgyConfig = async (req, res) => {
         const saved = await saveAgyServerSettings(req.body || {});
         res.json({
             success: true,
-            message: `Configuración de consola ${saved.ssh_host} actualizada correctamente`,
+            message: 'Configuración de Consola AGY actualizada correctamente',
             data: {
                 ...saved,
                 ssh_password: saved.ssh_password ? '********' : '',
@@ -111,13 +111,13 @@ const approveTicketAndStartAgyPlan = async (req, res) => {
 
         res.json({
             success: true,
-            message: `Ticket #${updated.ticket_code} aprobado. Ejecutando comando agy (${updated.agy_model}) en 5.252.55.29; el plan se enviará a Telegram al finalizar.`,
+            message: `Ticket #${updated.ticket_code} aprobado. Ejecutando comando agy (${updated.agy_model}) en Consola AGY; el plan se enviará a Telegram al finalizar.`,
             data: updated,
             ticket: updated
         });
     } catch (error) {
         console.error('Error approveTicketAndStartAgyPlan:', error);
-        res.status(400).json({ message: error.message || 'Error al iniciar planificación AGY en 5.252.55.29' });
+        res.status(400).json({ message: error.message || 'Error al iniciar planificación en Consola AGY' });
     }
 };
 
@@ -132,7 +132,7 @@ const approveAndExecuteAgyPlan = async (req, res) => {
 
         res.json({
             success: true,
-            message: `Plan aprobado. AGY (${updated.agy_model}) está ejecutando los cambios en 5.252.55.29.`,
+            message: `Plan aprobado. AGY (${updated.agy_model}) está ejecutando los cambios en Consola AGY.`,
             data: updated,
             ticket: updated
         });

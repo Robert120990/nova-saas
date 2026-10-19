@@ -7,10 +7,10 @@ import { formatDateTime } from '../../utils/dateUtils';
 
 const AGY_STATUS_META = {
     idle: { label: 'Listo para Planificar', cls: 'bg-slate-500/20 text-slate-300 border-slate-600' },
-    planificando: { label: 'Planificando en 5.252.55.29...', cls: 'bg-amber-500/20 text-amber-300 border-amber-500/40 animate-pulse' },
+    planificando: { label: 'Planificando con AGY...', cls: 'bg-amber-500/20 text-amber-300 border-amber-500/40 animate-pulse' },
     esperando_aprobacion: { label: 'Plan Enviado a Telegram (Esperando Aprobación)', cls: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40' },
-    ejecutando: { label: 'Ejecutando Plan en 5.252.55.29...', cls: 'bg-sky-500/20 text-sky-300 border-sky-500/40 animate-pulse' },
-    completado: { label: 'Plan Ejecutado en 5.252.55.29', cls: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' },
+    ejecutando: { label: 'Ejecutando Plan en Consola AGY...', cls: 'bg-sky-500/20 text-sky-300 border-sky-500/40 animate-pulse' },
+    completado: { label: 'Plan Ejecutado en Consola AGY', cls: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' },
     denegado: { label: 'Plan Denegado', cls: 'bg-rose-500/20 text-rose-300 border-rose-500/40' },
     error: { label: 'Error de Consola', cls: 'bg-rose-500/20 text-rose-300 border-rose-500/40' }
 };
@@ -21,6 +21,8 @@ const DEFAULT_MODELS = [
     { id: 'gemini-3-flash', label: 'gemini-3-flash (Ultra Rápido)' }
 ];
 
+const maskIpInText = (text = '') => String(text || '').replace(/\b(?:\d{1,3}\.){3}\d{1,3}\b/g, 'servidor-agy');
+
 const TicketAgyFlowModal = ({ open, ticketId, onClose }) => {
     const queryClient = useQueryClient();
     const [selectedModel, setSelectedModel] = useState('gemini-4-argon-high');
@@ -30,8 +32,8 @@ const TicketAgyFlowModal = ({ open, ticketId, onClose }) => {
     const [activeView, setActiveView] = useState('plan');
     const [showConfig, setShowConfig] = useState(false);
     const [cfgForm, setCfgForm] = useState({
-        ssh_host: '5.252.55.29', ssh_port: 22, ssh_user: 'root', ssh_password: '',
-        project_path: '/var/www/SIPEWEBgas', agy_command: 'agy', default_model: 'gemini-4-argon-high', execution_mode: 'auto'
+        ssh_host: 'localhost', ssh_port: 22, ssh_user: 'root', ssh_password: '',
+        project_path: '/opt/nova-saas', agy_command: 'agy', default_model: 'gemini-4-argon-high', execution_mode: 'auto'
     });
 
     const { data: ticket, isLoading } = useQuery({
@@ -55,14 +57,14 @@ const TicketAgyFlowModal = ({ open, ticketId, onClose }) => {
     }, [ticket?.id]);
 
     useEffect(() => {
-        if (agyConfig?.ssh_host) {
+        if (agyConfig) {
             setCfgForm((prev) => ({
                 ...prev,
-                ssh_host: agyConfig.ssh_host || '5.252.55.29',
+                ssh_host: maskIpInText(agyConfig.ssh_host || 'localhost'),
                 ssh_port: agyConfig.ssh_port || 22,
                 ssh_user: agyConfig.ssh_user || 'root',
                 ssh_password: agyConfig.ssh_password || '',
-                project_path: agyConfig.project_path || '/var/www/SIPEWEBgas',
+                project_path: agyConfig.project_path || '/opt/nova-saas',
                 agy_command: agyConfig.agy_command || 'agy',
                 default_model: agyConfig.default_model || 'gemini-4-argon-high',
                 execution_mode: agyConfig.execution_mode || 'auto'
@@ -77,13 +79,13 @@ const TicketAgyFlowModal = ({ open, ticketId, onClose }) => {
 
     const planMutation = useMutation({
         mutationFn: (payload) => axios.post(`/api/tickets/${ticketId}/agy/plan`, payload),
-        onSuccess: (res) => { refreshAll(); setFeedbackComment(''); toast.success(res.data?.message || 'Planificación AGY iniciada en 5.252.55.29'); },
+        onSuccess: (res) => { refreshAll(); setFeedbackComment(''); toast.success(res.data?.message || 'Planificación AGY iniciada'); },
         onError: (err) => toast.error(err.response?.data?.message || 'Error al iniciar planificación AGY')
     });
 
     const executeMutation = useMutation({
         mutationFn: () => axios.post(`/api/tickets/${ticketId}/agy/execute`),
-        onSuccess: (res) => { refreshAll(); toast.success(res.data?.message || 'Ejecución del plan iniciada en 5.252.55.29'); },
+        onSuccess: (res) => { refreshAll(); toast.success(res.data?.message || 'Ejecución del plan iniciada en Consola AGY'); },
         onError: (err) => toast.error(err.response?.data?.message || 'Error al ejecutar plan AGY')
     });
 
@@ -139,7 +141,7 @@ const TicketAgyFlowModal = ({ open, ticketId, onClose }) => {
                                     {ticket?.code || ticket?.ticket_code || `#${ticketId}`}
                                 </span>
                                 <span className="inline-flex items-center gap-1 text-[11px] font-mono px-2 py-0.5 rounded bg-slate-800 text-emerald-400 border border-slate-700">
-                                    <Server size={11} /> {cfgForm.ssh_host} (`agy`)
+                                    <Server size={11} /> Consola AGY (`agy`)
                                 </span>
                                 <span className={`text-[10px] font-bold uppercase px-2.5 py-0.5 rounded-full border ${statusBadge.cls}`}>
                                     {statusBadge.label}
@@ -156,7 +158,7 @@ const TicketAgyFlowModal = ({ open, ticketId, onClose }) => {
                             onClick={() => setShowConfig((v) => !v)}
                             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold border border-slate-700 cursor-pointer"
                         >
-                            <Settings2 size={14} /> <span>Consola {cfgForm.ssh_host}</span>
+                            <Settings2 size={14} /> <span>Ajustes Consola</span>
                         </button>
                         <button type="button" onClick={onClose} className="p-2 text-slate-400 hover:text-white rounded-xl hover:bg-slate-800">
                             <X size={18} />
@@ -168,21 +170,20 @@ const TicketAgyFlowModal = ({ open, ticketId, onClose }) => {
                     <div className="p-10 text-center text-slate-500 text-sm">Cargando flujo AGY del ticket...</div>
                 ) : (
                     <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 custom-scrollbar">
-                        {/* Panel de configuración de consola 5.252.55.29 */}
                         {showConfig && (
                             <div className="bg-slate-900 text-slate-100 rounded-xl p-4 border border-slate-700 space-y-3">
                                 <div className="flex items-center justify-between">
                                     <span className="text-[11px] font-bold text-indigo-400 uppercase tracking-wider">
-                                        Parámetros de Conexión a Consola 5.252.55.29 (`agy`)
+                                        Parámetros de Conexión a Consola AGY (`agy`)
                                     </span>
                                     <span className="text-[11px] text-slate-400">
-                                        {agyConfig?.is_running_on_target_server ? '🟢 Corriendo localmente en 5.252.55.29' : '🌐 Modo conexión SSH / Auto'}
+                                        {agyConfig?.is_running_on_target_server ? '🟢 Ejecución directa en servidor' : '🌐 Modo conexión SSH / Auto'}
                                     </span>
                                 </div>
                                 <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs">
                                     <div>
-                                        <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Host Servidor</label>
-                                        <input type="text" value={cfgForm.ssh_host} onChange={(e) => setCfgForm({ ...cfgForm, ssh_host: e.target.value })} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-mono" />
+                                        <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Host / Destino</label>
+                                        <input type="password" value={cfgForm.ssh_host} onChange={(e) => setCfgForm({ ...cfgForm, ssh_host: e.target.value })} placeholder="localhost" className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-mono" />
                                     </div>
                                     <div>
                                         <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Usuario SSH</label>
@@ -206,7 +207,6 @@ const TicketAgyFlowModal = ({ open, ticketId, onClose }) => {
                             </div>
                         )}
 
-                        {/* Selección de Modelo e Instrucciones para AGY */}
                         <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
                             <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
                                 <div className="md:col-span-5">
@@ -242,7 +242,7 @@ const TicketAgyFlowModal = ({ open, ticketId, onClose }) => {
                                         type="text"
                                         value={aiNotes}
                                         onChange={(e) => setAiNotes(e.target.value)}
-                                        placeholder="Instrucción técnica opcional para orientar el plan de ejecución en 5.252.55.29..."
+                                        placeholder="Instrucción técnica opcional para orientar el plan de ejecución en Consola AGY..."
                                         className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-[13px] font-medium text-slate-800 focus:outline-none focus:border-indigo-500"
                                     />
                                 </div>
@@ -285,11 +285,11 @@ const TicketAgyFlowModal = ({ open, ticketId, onClose }) => {
                                 <span className="text-[11px] text-slate-500">
                                     {ticket.agy_updated_at
                                         ? `Última actividad AGY: ${formatDateTime(ticket.agy_updated_at)} ${ticket.agy_approved_by ? `por ${ticket.agy_approved_by}` : ''}`
-                                        : 'Al aprobar, AGY generará el plan en 5.252.55.29 y lo enviará a Telegram con botones de decisión.'}
+                                        : 'Al aprobar, AGY generará el plan de ejecución y lo enviará a Telegram con botones de decisión.'}
                                 </span>
                                 <button type="button" disabled={isBusy} onClick={() => planMutation.mutate({ model: effectiveModel, ai_notes: aiNotes, feedback_comment: feedbackComment })} className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-extrabold shadow-md shadow-indigo-600/20 disabled:opacity-50 cursor-pointer">
                                     {isBusy ? <RefreshCw size={14} className="animate-spin" /> : <Sparkles size={14} />}
-                                    <span>{hasPlan ? `Volver a Planificar en 5.252.55.29 (Plan v${(ticket.agy_plan_version || 1) + 1})` : 'Aprobar Ticket y Solicitar Plan a AGY (5.252.55.29)'}</span>
+                                    <span>{hasPlan ? `Volver a Planificar con AGY (Plan v${(ticket.agy_plan_version || 1) + 1})` : 'Aprobar Ticket y Solicitar Plan a AGY'}</span>
                                 </button>
                             </div>
                         </div>
@@ -301,7 +301,7 @@ const TicketAgyFlowModal = ({ open, ticketId, onClose }) => {
                                         📋 Plan de Ejecución {ticket.agy_plan_version ? `(v${ticket.agy_plan_version})` : ''}
                                     </button>
                                     <button type="button" onClick={() => setActiveView('console')} className={`px-3 py-1 rounded-lg text-xs font-bold cursor-pointer ${activeView === 'console' ? 'bg-slate-900 text-emerald-400' : 'text-slate-600 hover:bg-slate-200'}`}>
-                                        💻 Salida Consola 5.252.55.29
+                                        💻 Salida Consola AGY
                                     </button>
                                 </div>
 
@@ -323,18 +323,18 @@ const TicketAgyFlowModal = ({ open, ticketId, onClose }) => {
                             {activeView === 'plan' ? (
                                 <div className="p-4 bg-white max-h-80 overflow-y-auto">
                                     {ticket.agy_plan_markdown ? (
-                                        <pre className="text-xs sm:text-[13px] text-slate-800 whitespace-pre-wrap font-sans leading-relaxed">{ticket.agy_plan_markdown}</pre>
+                                        <pre className="text-xs sm:text-[13px] text-slate-800 whitespace-pre-wrap font-sans leading-relaxed">{maskIpInText(ticket.agy_plan_markdown)}</pre>
                                     ) : (
                                         <div className="py-10 text-center text-slate-400 text-xs">
                                             {agyStatus === 'planificando'
-                                                ? 'Conectando con 5.252.55.29 y generando Plan de Ejecución con AGY...'
+                                                ? 'Conectando con Consola AGY y generando Plan de Ejecución...'
                                                 : 'Aún no se ha generado un plan. Presiona "Aprobar Ticket y Solicitar Plan a AGY" para iniciar.'}
                                         </div>
                                     )}
                                 </div>
                             ) : (
                                 <div className="p-4 bg-slate-950 text-emerald-400 font-mono text-xs max-h-80 overflow-y-auto">
-                                    <pre className="whitespace-pre-wrap">{ticket.agy_execution_log || 'Sin registros de consola todavía.'}</pre>
+                                    <pre className="whitespace-pre-wrap">{maskIpInText(ticket.agy_execution_log || 'Sin registros de consola todavía.')}</pre>
                                 </div>
                             )}
                         </div>

@@ -17,7 +17,7 @@ router.post('/ai-bundle/auto-triage', ticketController.autoTriageAiBundle);
 router.post('/ai-bundle/generate', ticketController.saveAndGenerateAiBundle);
 router.post('/ai-bundle/resolve-batch', ticketController.resolveAiBundleBatch);
 
-// AGY Remote Console (5.252.55.29) Settings & Orchestration routes
+// AGY Remote Console Settings & Orchestration routes
 router.get('/agy-settings', ticketController.getAgyConfig);
 router.put('/agy-settings', ticketController.updateAgyConfig);
 
@@ -32,7 +32,7 @@ router.put('/:id/status', upload.single('attachment'), ticketController.updateSt
 router.put('/:id/ai-review', ticketController.updateTicketAiReview);
 router.post('/:id/messages', upload.single('attachment'), ticketController.addMessage);
 
-// Ticket AGY Plan & Execution flow (5.252.55.29 + Telegram HitL)
+// Ticket AGY Plan & Execution flow (+ Telegram HitL)
 router.post('/:id/agy/plan', ticketController.approveTicketAndStartAgyPlan);
 router.post('/:id/agy/execute', ticketController.approveAndExecuteAgyPlan);
 router.post('/:id/agy/reject', ticketController.denyAgyPlan);

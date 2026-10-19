@@ -1,7 +1,7 @@
 const pool = require('../server/src/config/db');
 
 async function up() {
-    console.log('[Migration v299] Configurando flujo AGY (5.252.55.29) y aprobación de planes por Telegram en support_tickets...');
+    console.log('[Migration v299] Configurando flujo Consola AGY y aprobación de planes por Telegram en support_tickets...');
 
     const [cols] = await pool.query('SHOW COLUMNS FROM support_tickets');
     const colNames = cols.map((c) => c.Field);
@@ -51,12 +51,12 @@ async function up() {
     await pool.query(`
         CREATE TABLE IF NOT EXISTS agy_server_settings (
             id INT PRIMARY KEY DEFAULT 1,
-            ssh_host VARCHAR(120) NOT NULL DEFAULT '5.252.55.29',
+            ssh_host VARCHAR(120) NOT NULL DEFAULT 'localhost',
             ssh_port INT NOT NULL DEFAULT 22,
             ssh_user VARCHAR(100) NOT NULL DEFAULT 'root',
             ssh_password VARCHAR(255) NULL,
             ssh_private_key_path VARCHAR(500) NULL,
-            project_path VARCHAR(500) NOT NULL DEFAULT '/var/www/SIPEWEBgas',
+            project_path VARCHAR(500) NOT NULL DEFAULT '/opt/nova-saas',
             agy_command VARCHAR(255) NOT NULL DEFAULT 'agy',
             default_model VARCHAR(100) NOT NULL DEFAULT 'gemini-4-argon-high',
             execution_mode VARCHAR(20) NOT NULL DEFAULT 'auto',
@@ -67,7 +67,7 @@ async function up() {
     await pool.query(`
         INSERT IGNORE INTO agy_server_settings
         (id, ssh_host, ssh_port, ssh_user, project_path, agy_command, default_model, execution_mode)
-        VALUES (1, '5.252.55.29', 22, 'root', '/var/www/SIPEWEBgas', 'agy', 'gemini-4-argon-high', 'auto')
+        VALUES (1, 'localhost', 22, 'root', '/opt/nova-saas', 'agy', 'gemini-4-argon-high', 'auto')
     `);
 
     console.log('[Migration v299] Migración v299 completada exitosamente.');

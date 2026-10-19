@@ -6,13 +6,26 @@ const { Client } = require('ssh2');
 const pool = require('../config/db');
 const { buildTicketDiagnosticMarkdown } = require('./ticketAiTaskBridge.service');
 
+function detectDefaultProjectRoot() {
+    if (process.env.AGY_PROJECT_PATH && fs.existsSync(process.env.AGY_PROJECT_PATH)) {
+        return process.env.AGY_PROJECT_PATH;
+    }
+    const cwd = process.cwd();
+    const parentDir = path.resolve(cwd, '..');
+    if (path.basename(cwd) === 'server' && fs.existsSync(path.join(parentDir, 'client'))) {
+        return parentDir;
+    }
+    if (fs.existsSync('/opt/nova-saas')) return '/opt/nova-saas';
+    return parentDir || cwd;
+}
+
 const DEFAULT_SETTINGS = {
-    ssh_host: process.env.AGY_SSH_HOST || '5.252.55.29',
+    ssh_host: process.env.AGY_SSH_HOST || 'localhost',
     ssh_port: Number(process.env.AGY_SSH_PORT || 22),
     ssh_user: process.env.AGY_SSH_USER || 'root',
     ssh_password: process.env.AGY_SSH_PASSWORD || '',
     ssh_private_key_path: process.env.AGY_SSH_PRIVATE_KEY_PATH || '',
-    project_path: process.env.AGY_PROJECT_PATH || '/var/www/SIPEWEBgas',
+    project_path: process.env.AGY_PROJECT_PATH || detectDefaultProjectRoot(),
     agy_command: process.env.AGY_COMMAND || 'agy',
     default_model: process.env.AGY_DEFAULT_MODEL || 'gemini-4-argon-high',
     execution_mode: process.env.AGY_EXECUTION_MODE || 'auto'
@@ -24,13 +37,29 @@ const AVAILABLE_AGY_MODELS = [
     { id: 'gemini-3-flash', label: 'gemini-3-flash (Ultra Rápido)', badge: 'Flash' }
 ];
 
+function sanitizeConsoleText(str = '') {
+    if (!str) return '';
+    return String(str).replace(/\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b/g, 'servidor-agy');
+}
+
+function resolveActiveProjectPath(configuredPath) {
+    if (configuredPath && fs.existsSync(configuredPath)) return configuredPath;
+    return detectDefaultProjectRoot();
+}
+
 async function getAgyServerSettings() {
     try {
         const [rows] = await pool.query('SELECT * FROM agy_server_settings WHERE id = 1 LIMIT 1');
         if (rows.length > 0) {
+            const rawHost = rows[0].ssh_host || '';
+            const safeHost = /^\d+\.\d+\.\d+\.\d+$/.test(rawHost)
+                ? (process.env.AGY_SSH_HOST || 'localhost')
+                : (rawHost || DEFAULT_SETTINGS.ssh_host);
             return {
                 ...DEFAULT_SETTINGS,
                 ...rows[0],
+                ssh_host: safeHost,
+                project_path: resolveActiveProjectPath(rows[0].project_path),
                 ssh_password: rows[0].ssh_password || DEFAULT_SETTINGS.ssh_password,
                 ssh_private_key_path: rows[0].ssh_private_key_path || DEFAULT_SETTINGS.ssh_private_key_path
             };
@@ -44,7 +73,7 @@ async function getAgyServerSettings() {
 async function saveAgyServerSettings(payload = {}) {
     const current = await getAgyServerSettings();
     const next = {
-        ssh_host: String(payload.ssh_host || current.ssh_host || '5.252.55.29').trim(),
+        ssh_host: String(payload.ssh_host || current.ssh_host || 'localhost').trim(),
         ssh_port: Number(payload.ssh_port || current.ssh_port || 22),
         ssh_user: String(payload.ssh_user || current.ssh_user || 'root').trim(),
         ssh_password: payload.ssh_password !== undefined && payload.ssh_password !== '********'
@@ -53,7 +82,7 @@ async function saveAgyServerSettings(payload = {}) {
         ssh_private_key_path: payload.ssh_private_key_path !== undefined
             ? String(payload.ssh_private_key_path || '').trim()
             : (current.ssh_private_key_path || ''),
-        project_path: String(payload.project_path || current.project_path || '/var/www/SIPEWEBgas').trim(),
+        project_path: String(payload.project_path || current.project_path || detectDefaultProjectRoot()).trim(),
         agy_command: String(payload.agy_command || current.agy_command || 'agy').trim(),
         default_model: String(payload.default_model || current.default_model || 'gemini-4-argon-high').trim(),
         execution_mode: ['auto', 'ssh', 'local'].includes(payload.execution_mode) ? payload.execution_mode : current.execution_mode
@@ -83,7 +112,7 @@ async function saveAgyServerSettings(payload = {}) {
 }
 
 function isRunningOnTargetServer(targetHost) {
-    if (!targetHost || targetHost === 'localhost' || targetHost === '127.0.0.1') return true;
+    if (!targetHost || targetHost === 'localhost' || targetHost === '127.0.0.1' || targetHost === 'servidor-agy') return true;
     const nets = os.networkInterfaces();
     for (const iface of Object.values(nets)) {
         for (const addr of iface || []) {
@@ -94,10 +123,12 @@ function isRunningOnTargetServer(targetHost) {
 }
 
 function stripAnsiCodes(str = '') {
-    return String(str)
-        // eslint-disable-next-line no-control-regex
-        .replace(/\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~]|\][^\x07]*\x07)/g, '')
-        .replace(/\r/g, '');
+    return sanitizeConsoleText(
+        String(str)
+            // eslint-disable-next-line no-control-regex
+            .replace(/\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~]|\][^\x07]*\x07)/g, '')
+            .replace(/\r/g, '')
+    );
 }
 
 function parseFeedbackHistory(raw) {
@@ -122,7 +153,7 @@ function buildAgyPlanningPrompt(ticket, model, planVersion = 1) {
 
     return [
         `SOLICITUD DE PLAN DE EJECUCIÓN — TICKET #${ticket.ticket_code} (Plan v${planVersion})`,
-        `Modelo activo requerido: ${model} | Servidor: 5.252.55.29`,
+        `Modelo activo requerido: ${model} | Entorno: Consola AGY`,
         `Asunto: ${ticket.subject} | Tipo: ${ticket.type} | Prioridad: ${ticket.priority}`,
         `Empresa: ${ticket.company_name || 'Global'} (${ticket.branch_name || 'Global'})`,
         `Módulo / Ruta: ${ticket.module_name || 'General'} (${ticket.page_url || 'N/A'})`,
@@ -186,9 +217,13 @@ function buildRemoteShellScript({ projectPath, agyCommand, model, promptText, is
     const b64Prompt = Buffer.from(promptText, 'utf8').toString('base64');
     const safeModel = String(model || 'gemini-4-argon-high').replace(/[^a-zA-Z0-9._-]/g, '');
     const safeCmd = String(agyCommand || 'agy').trim();
-    const safePath = String(projectPath || '/var/www/SIPEWEBgas').replace(/"/g, '');
+    const safePath = String(projectPath || '/opt/nova-saas').replace(/"/g, '');
 
     return `
+[ -f ~/.profile ] && . ~/.profile 2>/dev/null || true
+[ -f ~/.bashrc ] && . ~/.bashrc 2>/dev/null || true
+[ -s "$HOME/.nvm/nvm.sh" ] && . "$HOME/.nvm/nvm.sh" 2>/dev/null || true
+export PATH="$HOME/.local/bin:$HOME/.antigravity/bin:$HOME/.npm-global/bin:/usr/local/bin:$PATH"
 mkdir -p ~/.gemini/antigravity-cli
 if [ -f ~/.gemini/antigravity-cli/settings.json ]; then
   node -e '
@@ -202,13 +237,14 @@ if [ -f ~/.gemini/antigravity-cli/settings.json ]; then
 else
   echo '{"model":"${safeModel}"}' > ~/.gemini/antigravity-cli/settings.json
 fi
-[ -d "${safePath}" ] && cd "${safePath}"
+if [ -d "${safePath}" ]; then cd "${safePath}"; elif [ -d "/opt/nova-saas" ]; then cd "/opt/nova-saas"; fi
 PROMPT_FILE="/tmp/agy_ticket_${Date.now()}.txt"
 echo "${b64Prompt}" | base64 -d > "$PROMPT_FILE"
 FLAT_PROMPT=$(tr '\\n' ' ' < "$PROMPT_FILE")
-echo "=== CONSOLA 5.252.55.29 | Directorio: $(pwd) | Comando: ${safeCmd} | Modelo: ${safeModel} ==="
+echo "=== CONSOLA AGY | Directorio: $(pwd) | Comando: ${safeCmd} | Modelo: ${safeModel} ==="
 echo "[[INICIO_PROMPT_AGY]]"
-if command -v ${safeCmd} >/dev/null 2>&1; then
+AGY_BIN=$(command -v ${safeCmd} 2>/dev/null || find /root /usr/local /opt -name "${safeCmd}" -type f -executable 2>/dev/null | head -n 1)
+if [ -n "$AGY_BIN" ]; then
   (
     sleep 2
     echo "/model ${safeModel}"
@@ -216,7 +252,7 @@ if command -v ${safeCmd} >/dev/null 2>&1; then
     ${isPlanPhase ? 'echo "/plan $FLAT_PROMPT"' : 'echo "$FLAT_PROMPT"'}
     ${isPlanPhase ? 'sleep 35' : 'for i in 1 2 3 4 5; do sleep 8; echo "y"; done'}
     echo "/exit"
-  ) | ${safeCmd} 2>&1
+  ) | "$AGY_BIN" 2>&1
   echo "${endMarker}"
 else
   echo "AGY_BINARY_NOT_FOUND_ON_HOST"
@@ -231,11 +267,11 @@ function runSshInteractiveSession(settings, scriptContent, onChunk, timeoutMs = 
         let output = '';
         let finished = false;
         const timer = setTimeout(() => {
-            if (!finished) { finished = true; try { conn.end(); } catch { /* ignore */ } resolve({ output, timedOut: true }); }
+            if (!finished) { finished = true; try { conn.end(); } catch { /* ignore */ } resolve({ output: sanitizeConsoleText(output), timedOut: true }); }
         }, timeoutMs);
 
         const connectConfig = {
-            host: settings.ssh_host || '5.252.55.29', port: Number(settings.ssh_port || 22),
+            host: settings.ssh_host || process.env.AGY_SSH_HOST || 'localhost', port: Number(settings.ssh_port || 22),
             username: settings.ssh_user || 'root', readyTimeout: 15000
         };
         if (settings.ssh_password) connectConfig.password = settings.ssh_password;
@@ -253,7 +289,7 @@ function runSshInteractiveSession(settings, scriptContent, onChunk, timeoutMs = 
                 stream.on('data', (data) => { output += data.toString('utf8'); if (onChunk) onChunk(stripAnsiCodes(output)); });
                 stream.stderr.on('data', (data) => { output += data.toString('utf8'); if (onChunk) onChunk(stripAnsiCodes(output)); });
                 stream.on('close', () => {
-                    if (!finished) { finished = true; clearTimeout(timer); conn.end(); resolve({ output, timedOut: false }); }
+                    if (!finished) { finished = true; clearTimeout(timer); conn.end(); resolve({ output: sanitizeConsoleText(output), timedOut: false }); }
                 });
             });
         }).on('error', (err) => {
@@ -265,22 +301,23 @@ function runSshInteractiveSession(settings, scriptContent, onChunk, timeoutMs = 
 function runLocalInteractiveSession(settings, scriptContent, onChunk, timeoutMs = 120000) {
     return new Promise((resolve, reject) => {
         const shellBin = process.platform === 'win32' ? 'bash' : '/bin/bash';
+        const targetCwd = resolveActiveProjectPath(settings.project_path);
         const child = spawn(shellBin, ['-c', scriptContent], {
-            cwd: fs.existsSync(settings.project_path) ? settings.project_path : process.cwd(),
+            cwd: fs.existsSync(targetCwd) ? targetCwd : process.cwd(),
             env: { ...process.env, TERM: 'xterm-256color' }
         });
         let output = '';
-        const timer = setTimeout(() => { try { child.kill('SIGTERM'); } catch { /* ignore */ } resolve({ output, timedOut: true }); }, timeoutMs);
+        const timer = setTimeout(() => { try { child.kill('SIGTERM'); } catch { /* ignore */ } resolve({ output: sanitizeConsoleText(output), timedOut: true }); }, timeoutMs);
         child.stdout.on('data', (d) => { output += d.toString('utf8'); if (onChunk) onChunk(stripAnsiCodes(output)); });
         child.stderr.on('data', (d) => { output += d.toString('utf8'); if (onChunk) onChunk(stripAnsiCodes(output)); });
         child.on('error', (err) => { clearTimeout(timer); reject(err); });
-        child.on('close', () => { clearTimeout(timer); resolve({ output, timedOut: false }); });
+        child.on('close', () => { clearTimeout(timer); resolve({ output: sanitizeConsoleText(output), timedOut: false }); });
     });
 }
 
 module.exports = {
     AVAILABLE_AGY_MODELS, getAgyServerSettings, saveAgyServerSettings, isRunningOnTargetServer,
-    stripAnsiCodes, parseFeedbackHistory, buildAgyPlanningPrompt, extractAgyQuestionsAndOptions,
-    buildAgyExecutionPrompt, extractCleanAgyResult, buildRemoteShellScript,
-    runSshInteractiveSession, runLocalInteractiveSession
+    stripAnsiCodes, sanitizeConsoleText, parseFeedbackHistory, buildAgyPlanningPrompt,
+    extractAgyQuestionsAndOptions, buildAgyExecutionPrompt, extractCleanAgyResult,
+    buildRemoteShellScript, runSshInteractiveSession, runLocalInteractiveSession
 };

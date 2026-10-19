@@ -236,10 +236,10 @@ const TicketDetailModal = ({ open, ticketId, onClose, onUpdated, canManage = fal
                         {canManage && (
                             <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
                                 <div className="flex flex-wrap items-center justify-between gap-2">
-                                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Acciones de Técnico y Consola AGY (5.252.55.29)</span>
+                                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Acciones de Técnico y Consola AGY</span>
                                     <div className="flex flex-wrap items-center gap-2">
                                         <button type="button" onClick={() => setAgyOpen(true)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-emerald-400 border border-slate-700 text-xs font-extrabold shadow-sm cursor-pointer">
-                                            <Terminal size={13} /> <span>{ticket.agy_plan_version ? `Plan AGY v${ticket.agy_plan_version} (${ticket.agy_status})` : 'Aprobar y Planificar AGY (5.252.55.29)'}</span>
+                                            <Terminal size={13} /> <span>{ticket.agy_plan_version ? `Plan AGY v${ticket.agy_plan_version} (${ticket.agy_status})` : 'Aprobar y Planificar AGY'}</span>
                                         </button>
                                         <button type="button" disabled={aiReviewMutation.isPending} onClick={() => aiReviewMutation.mutate({ include_in_ai_prompt: !inAiBundle, ai_notes: aiNotes })} className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-extrabold border transition-all cursor-pointer ${inAiBundle ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-white text-indigo-700 border-indigo-200 hover:bg-indigo-50'}`}>
                                             <Bot size={14} /> <span>{inAiBundle ? 'En Paquete IA ✓' : 'Paquete IA'}</span>
