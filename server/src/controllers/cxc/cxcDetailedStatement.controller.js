@@ -60,6 +60,7 @@ const exportDetailedStatementPDF = async (req, res) => {
         let salesSql = `
             SELECT 
                 h.id as sale_id,
+                i.id as item_id,
                 h.fecha_emision as fecha,
                 COALESCE(${dteLatestColSql('h', 'numero_control')}, CAST(h.id AS CHAR)) as documento,
                 CASE h.tipo_documento 
@@ -70,7 +71,8 @@ const exportDetailedStatementPDF = async (req, res) => {
                 COALESCE(NULLIF(h.vehicle_plate, ''), '—') as placas,
                 '0.00' as odometro,
                 ROUND(COALESCE(i.cantidad * i.precio_unitario, i.venta_gravada + i.venta_exenta), 2) as valor,
-                0 as abono
+                0 as abono,
+                COALESCE((SELECT SUM(p.monto) FROM customer_payments p WHERE p.sale_id = h.id), 0) as sale_total_abono
             FROM sales_headers h
             JOIN sales_items i ON h.id = i.sale_id
             LEFT JOIN cat_002_tipo_dte cat ON h.tipo_documento = cat.code
@@ -81,10 +83,34 @@ const exportDetailedStatementPDF = async (req, res) => {
         `;
         const salesParams = [company_id, branch_id, customer_id];
 
+        if (!shouldIncludePayments) {
+            salesSql += ' AND (h.total_pagar - COALESCE((SELECT SUM(p.monto) FROM customer_payments p WHERE p.sale_id = h.id), 0)) > 0.001';
+        }
         if (fromDate) { salesSql += ' AND h.fecha_emision >= ?'; salesParams.push(fromDate); }
         if (toDate) { salesSql += ' AND h.fecha_emision <= ?'; salesParams.push(toDate); }
 
-        const [salesRows] = await pool.query(salesSql, salesParams);
+        const [rawSalesRows] = await pool.query(salesSql, salesParams);
+
+        // If !shouldIncludePayments and a pending sale has a partial payment, allocate it across its items without duplicating
+        const remainingSaleAbono = new Map();
+        if (!shouldIncludePayments) {
+            rawSalesRows.forEach(r => {
+                const totalAb = parseFloat(r.sale_total_abono) || 0;
+                if (totalAb > 0 && !remainingSaleAbono.has(r.sale_id)) {
+                    remainingSaleAbono.set(r.sale_id, totalAb);
+                }
+            });
+        }
+        const salesRows = rawSalesRows.map(r => {
+            let itemAbono = 0;
+            if (!shouldIncludePayments && remainingSaleAbono.has(r.sale_id)) {
+                const rem = remainingSaleAbono.get(r.sale_id) || 0;
+                const val = parseFloat(r.valor) || 0;
+                itemAbono = Math.min(val, rem);
+                remainingSaleAbono.set(r.sale_id, Math.max(0, Math.round((rem - itemAbono) * 100) / 100));
+            }
+            return { ...r, abono: itemAbono };
+        });
 
         // 2. Gas Station Closeout Credits (if active for this branch)
         let gasRows = [];
@@ -98,13 +124,16 @@ const exportDetailedStatementPDF = async (req, res) => {
                     COALESCE(NULLIF(gcc.placa, ''), '—') as placas,
                     COALESCE(NULLIF(gcc.kilometraje, ''), '0.00') as odometro,
                     CAST(gcc.monto AS DECIMAL(12,2)) as valor,
-                    0 as abono
+                    ${!shouldIncludePayments ? 'CAST(COALESCE((SELECT SUM(p.monto) FROM customer_payments p WHERE p.gas_credito_id = gcc.id), 0) AS DECIMAL(12,2))' : '0'} as abono
                 FROM gas_station_closeout_creditos gcc
                 JOIN gas_station_closeouts c ON gcc.closeout_id = c.id
                 WHERE c.company_id = ? AND c.branch_id = ? AND gcc.cliente_id = ?
             `;
             const gasParams = [company_id, branch_id, customer_id];
 
+            if (!shouldIncludePayments) {
+                gasSql += ' AND (gcc.monto - COALESCE((SELECT SUM(p.monto) FROM customer_payments p WHERE p.gas_credito_id = gcc.id), 0)) > 0.001';
+            }
             if (desdeFecha) { gasSql += ' AND c.fecha_turno >= ?'; gasParams.push(desdeFecha); }
             if (fromDate) { gasSql += ' AND c.fecha_turno >= ?'; gasParams.push(fromDate); }
             if (toDate) { gasSql += ' AND c.fecha_turno <= ?'; gasParams.push(toDate); }

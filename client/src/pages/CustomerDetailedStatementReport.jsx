@@ -228,14 +228,14 @@ const CustomerDetailedStatementReport = () => {
                 />
             </div>
 
-            {/* Toggle Consultar Abonos / Solo Consumos */}
+            {/* Toggle Consultar Abonos / Solo Saldo Pendiente */}
             <div className="p-3 bg-slate-50 border border-slate-200/80 rounded-xl flex items-center justify-between gap-3 shadow-xs">
                 <div className="space-y-0.5">
                     <span className="block text-[11px] font-black text-slate-700 uppercase tracking-wider">
-                        {includePayments ? 'Consultar Abonos' : 'Solo Consumos'}
+                        Consultar Abonos
                     </span>
                     <span className="block text-[10px] font-medium text-slate-500">
-                        {includePayments ? 'Incluye facturas, créditos y recibos de abono' : 'Muestra únicamente consumos y facturas a crédito'}
+                        {includePayments ? 'Incluye facturas, créditos y recibos de abono' : 'Solo muestra documentos con saldo pendiente'}
                     </span>
                 </div>
                 <label className="relative inline-flex items-center cursor-pointer shrink-0">
