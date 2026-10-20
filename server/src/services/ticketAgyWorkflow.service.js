@@ -38,8 +38,6 @@ async function ensureAgyFlowSchema() {
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
         await pool.query(`INSERT IGNORE INTO agy_server_settings (id, ssh_host, ssh_port, ssh_user, project_path, agy_command, default_model, execution_mode) VALUES (1, 'localhost', 22, 'root', '/opt/nova-saas', 'agy', 'gemini-4-argon-high', 'auto')`);
         await pool.query(`UPDATE agy_server_settings SET ssh_host = 'localhost', project_path = '/opt/nova-saas' WHERE ssh_host REGEXP '^[0-9]+\\\\.[0-9]+\\\\.[0-9]+\\\\.[0-9]+$' OR project_path = '/var/www/SIPEWEBgas'`);
-
-        // Si un ticket ya tenía su plan ejecutado (completado), asegurar que pase a resuelto para no seguir presentándose como pendiente
         await pool.query(`UPDATE support_tickets SET status = 'resuelto', include_in_ai_prompt = 0, resolved_at = COALESCE(resolved_at, NOW()) WHERE agy_status = 'completado' AND status IN ('abierto', 'en_proceso')`);
 
         const [dirtyRows] = await pool.query(`SELECT id, agy_plan_markdown, agy_execution_log FROM support_tickets WHERE agy_execution_log IS NOT NULL OR agy_plan_markdown IS NOT NULL`);
@@ -100,7 +98,7 @@ function notifyFrontendAgyUpdate(ticket) {
     } catch { /* ignore */ }
 }
 
-async function startTicketAgyPlanning(ticketId, { model = null, aiNotes = undefined, approvedBy = 'SuperAdmin', additionalFeedback = null } = {}) {
+async function startTicketAgyPlanning(ticketId, { model = null, aiNotes = undefined, approvedBy = 'SuperAdmin', additionalFeedback = null, telegramContext = null } = {}) {
     await ensureAgyFlowSchema();
     const ticket = await ticketService.getTicketById(ticketId);
     if (!ticket) throw new Error('Ticket no encontrado');
@@ -128,43 +126,41 @@ async function startTicketAgyPlanning(ticketId, { model = null, aiNotes = undefi
              agy_status = 'planificando', agy_model = ?, agy_plan_version = ?,
              agy_feedback_history = ?, agy_approved_by = ?, agy_execution_log = ?, agy_updated_at = NOW()
          WHERE id = ?`,
-        [
-            updatedAiNotes || null,
-            chosenModel,
-            nextVersion,
-            JSON.stringify(feedbackHistory),
-            approvedBy,
-            initLog,
-            ticketId
-        ]
+        [updatedAiNotes || null, chosenModel, nextVersion, JSON.stringify(feedbackHistory), approvedBy, initLog, ticketId]
     );
 
     const preparingTicket = await ticketService.getTicketById(ticketId);
     notifyFrontendAgyUpdate(preparingTicket);
 
     setImmediate(async () => {
+        const { createTelegramLiveProgress, sendAgyPlanToTelegram } = require('./ticketAgyTelegram.service');
+        let liveProgress = null;
         try {
+            liveProgress = await createTelegramLiveProgress(preparingTicket, {
+                mode: 'plan', model: chosenModel, actorName: approvedBy,
+                sourceChatId: telegramContext?.sourceChatId || null, sourceMessageId: telegramContext?.sourceMessageId || null
+            });
+
             const promptText = buildAgyPlanningPrompt(preparingTicket, chosenModel, nextVersion);
             const endMarker = '[[FIN_PLAN_AGY]]';
-            const script = buildRemoteShellScript({
-                projectPath: settings.project_path,
-                agyCommand: settings.agy_command,
-                model: chosenModel,
-                promptText,
-                isPlanPhase: true,
-                endMarker
-            });
+            const script = buildRemoteShellScript({ projectPath: settings.project_path, agyCommand: settings.agy_command, model: chosenModel, promptText, isPlanPhase: true, endMarker });
 
             let consoleTranscript = initLog;
             let planMarkdown = '';
+            let lastDbSync = 0;
 
             try {
-                const { output } = await runAgyCommandOnTarget(settings, script, null);
+                const { output } = await runAgyCommandOnTarget(settings, script, (liveOut) => {
+                    if (liveProgress) liveProgress.onConsoleChunk(liveOut);
+                    const now = Date.now();
+                    if (now - lastDbSync > 2500) {
+                        lastDbSync = now;
+                        pool.query('UPDATE support_tickets SET agy_execution_log = ? WHERE id = ?', [`${initLog}\n${sanitizeConsoleText(liveOut)}`.slice(-30000), ticketId]).catch(() => {});
+                    }
+                });
                 consoleTranscript += `\n${sanitizeConsoleText(output || '')}`;
                 const extracted = extractCleanAgyResult(output, endMarker);
-                if (extracted && extracted.length > 40) {
-                    planMarkdown = sanitizeConsoleText(extracted);
-                }
+                if (extracted && extracted.length > 40) planMarkdown = sanitizeConsoleText(extracted);
             } catch (sshErr) {
                 consoleTranscript += `\n[Aviso Consola AGY]: ${sanitizeConsoleText(sshErr.message)}\n`;
             }
@@ -175,34 +171,24 @@ async function startTicketAgyPlanning(ticketId, { model = null, aiNotes = undefi
             }
 
             await pool.query(
-                `UPDATE support_tickets
-                 SET agy_status = 'esperando_aprobacion',
-                     agy_plan_markdown = ?,
-                     agy_execution_log = ?,
-                     agy_updated_at = NOW()
-                 WHERE id = ?`,
+                `UPDATE support_tickets SET agy_status = 'esperando_aprobacion', agy_plan_markdown = ?, agy_execution_log = ?, agy_updated_at = NOW() WHERE id = ?`,
                 [sanitizeConsoleText(planMarkdown), sanitizeConsoleText(consoleTranscript).slice(-30000), ticketId]
             );
 
             await ticketService.addTicketMessage(ticketId, {
-                senderType: 'tech',
-                senderName: `AGY (${chosenModel})`,
+                senderType: 'tech', senderName: `AGY (${chosenModel})`,
                 message: `📋 Plan de Ejecución v${nextVersion} generado en Consola AGY y enviado a Telegram para aprobación.`
             });
 
+            if (liveProgress) await liveProgress.complete(`Plan v${nextVersion} completado y listo para tu revisión.`);
             const readyTicket = await ticketService.getTicketById(ticketId);
             notifyFrontendAgyUpdate(readyTicket);
-
-            const { sendAgyPlanToTelegram } = require('./ticketAgyTelegram.service');
             await sendAgyPlanToTelegram(readyTicket);
         } catch (err) {
             console.error('[TicketAgyWorkflow] Error en planificación AGY:', err);
+            if (liveProgress) await liveProgress.complete(`Aviso: ${err.message || 'Error en consola'}`).catch(() => {});
             await pool.query(
-                `UPDATE support_tickets
-                 SET agy_status = 'error',
-                     agy_execution_log = CONCAT(COALESCE(agy_execution_log, ''), '\n[ERROR]: ', ?),
-                     agy_updated_at = NOW()
-                 WHERE id = ?`,
+                `UPDATE support_tickets SET agy_status = 'error', agy_execution_log = CONCAT(COALESCE(agy_execution_log, ''), '\n[ERROR]: ', ?), agy_updated_at = NOW() WHERE id = ?`,
                 [sanitizeConsoleText(err.message || 'Error desconocido'), ticketId]
             );
             const failedTicket = await ticketService.getTicketById(ticketId);
@@ -213,7 +199,7 @@ async function startTicketAgyPlanning(ticketId, { model = null, aiNotes = undefi
     return preparingTicket;
 }
 
-async function executeApprovedTicketAgyPlan(ticketId, { approvedBy = 'SuperAdmin' } = {}) {
+async function executeApprovedTicketAgyPlan(ticketId, { approvedBy = 'SuperAdmin', telegramContext = null } = {}) {
     await ensureAgyFlowSchema();
     const ticket = await ticketService.getTicketById(ticketId);
     if (!ticket) throw new Error('Ticket no encontrado');
@@ -229,12 +215,7 @@ async function executeApprovedTicketAgyPlan(ticketId, { approvedBy = 'SuperAdmin
         `→ Ejecutando plan en Consola AGY (${settings.project_path}) con modelo [${chosenModel}]...\n`;
 
     await pool.query(
-        `UPDATE support_tickets
-         SET agy_status = 'ejecutando',
-             agy_approved_by = ?,
-             agy_execution_log = CONCAT(COALESCE(agy_execution_log, ''), ?),
-             agy_updated_at = NOW()
-         WHERE id = ?`,
+        `UPDATE support_tickets SET agy_status = 'ejecutando', agy_approved_by = ?, agy_execution_log = CONCAT(COALESCE(agy_execution_log, ''), ?), agy_updated_at = NOW() WHERE id = ?`,
         [approvedBy, execStartLog, ticketId]
     );
 
@@ -242,21 +223,30 @@ async function executeApprovedTicketAgyPlan(ticketId, { approvedBy = 'SuperAdmin
     notifyFrontendAgyUpdate(runningTicket);
 
     setImmediate(async () => {
+        const { createTelegramLiveProgress, notifyAgyExecutionResultToTelegram } = require('./ticketAgyTelegram.service');
+        let liveProgress = null;
         try {
-            const promptText = buildAgyExecutionPrompt(runningTicket, chosenModel);
-            const endMarker = '[[FIN_EJECUCION_AGY]]';
-            const script = buildRemoteShellScript({
-                projectPath: settings.project_path,
-                agyCommand: settings.agy_command,
-                model: chosenModel,
-                promptText,
-                isPlanPhase: false,
-                endMarker
+            liveProgress = await createTelegramLiveProgress(runningTicket, {
+                mode: 'execute', model: chosenModel, actorName: approvedBy,
+                sourceChatId: telegramContext?.sourceChatId || null, sourceMessageId: telegramContext?.sourceMessageId || null
             });
 
+            const promptText = buildAgyExecutionPrompt(runningTicket, chosenModel);
+            const endMarker = '[[FIN_EJECUCION_AGY]]';
+            const script = buildRemoteShellScript({ projectPath: settings.project_path, agyCommand: settings.agy_command, model: chosenModel, promptText, isPlanPhase: false, endMarker });
+
             let execOutput = '';
+            let lastDbSync = 0;
+            const baseLog = runningTicket.agy_execution_log || '';
             try {
-                const { output } = await runAgyCommandOnTarget(settings, script, null);
+                const { output } = await runAgyCommandOnTarget(settings, script, (liveOut) => {
+                    if (liveProgress) liveProgress.onConsoleChunk(liveOut);
+                    const now = Date.now();
+                    if (now - lastDbSync > 2500) {
+                        lastDbSync = now;
+                        pool.query('UPDATE support_tickets SET agy_execution_log = ? WHERE id = ?', [`${baseLog}\n${sanitizeConsoleText(liveOut)}`.slice(-30000), ticketId]).catch(() => {});
+                    }
+                });
                 execOutput = extractCleanAgyResult(output, endMarker);
             } catch (sshErr) {
                 execOutput = '';
@@ -271,34 +261,24 @@ async function executeApprovedTicketAgyPlan(ticketId, { approvedBy = 'SuperAdmin
             );
 
             await pool.query(
-                `UPDATE support_tickets
-                 SET agy_status = 'completado',
-                     include_in_ai_prompt = 0,
-                     agy_execution_log = CONCAT(COALESCE(agy_execution_log, ''), '\n=== RESULTADO EJECUCIÓN ===\n', ?),
-                     agy_updated_at = NOW()
-                 WHERE id = ?`,
+                `UPDATE support_tickets SET agy_status = 'completado', include_in_ai_prompt = 0, agy_execution_log = CONCAT(COALESCE(agy_execution_log, ''), '\n=== RESULTADO EJECUCIÓN ===\n', ?), agy_updated_at = NOW() WHERE id = ?`,
                 [finalSummary.slice(-20000), ticketId]
             );
 
-            // Marcar el ticket automáticamente como RESUELTO para que deje de presentarse como pendiente
             await ticketService.updateTicketStatus(ticketId, {
-                status: 'resuelto',
-                resolvedByName: `${approvedBy} (AGY)`,
+                status: 'resuelto', resolvedByName: `${approvedBy} (AGY)`,
                 resolutionNotes: `Solución ejecutada mediante Plan AGY v${runningTicket.agy_plan_version || 1} (${chosenModel}). Si el inconveniente persiste, responde en este ticket para reiterar y re-planificar.`,
                 updatedByType: 'tech'
             });
 
+            if (liveProgress) await liveProgress.complete(`Solución ejecutada y ticket #${runningTicket.ticket_code} marcado como RESUELTO.`);
             const doneTicket = await ticketService.getTicketById(ticketId);
             notifyFrontendAgyUpdate(doneTicket);
-
-            const { notifyAgyExecutionResultToTelegram } = require('./ticketAgyTelegram.service');
             await notifyAgyExecutionResultToTelegram(doneTicket, finalSummary, approvedBy);
         } catch (err) {
             console.error('[TicketAgyWorkflow] Error ejecutando plan AGY:', err);
-            await pool.query(
-                `UPDATE support_tickets SET agy_status = 'error', agy_updated_at = NOW() WHERE id = ?`,
-                [ticketId]
-            );
+            if (liveProgress) await liveProgress.complete(`Aviso en ejecución: ${err.message || 'Error'}`).catch(() => {});
+            await pool.query(`UPDATE support_tickets SET agy_status = 'error', agy_updated_at = NOW() WHERE id = ?`, [ticketId]);
         }
     });
 
@@ -312,18 +292,12 @@ async function rejectTicketAgyPlan(ticketId, { rejectedBy = 'SuperAdmin', reason
 
     const logLine = `\n[${new Date().toISOString()}] ❌ Plan v${ticket.agy_plan_version || 1} DENEGADO por ${rejectedBy}.${reason ? ` Motivo: ${reason}` : ''}\n`;
     await pool.query(
-        `UPDATE support_tickets
-         SET agy_status = 'denegado',
-             agy_approved_by = ?,
-             agy_execution_log = CONCAT(COALESCE(agy_execution_log, ''), ?),
-             agy_updated_at = NOW()
-         WHERE id = ?`,
+        `UPDATE support_tickets SET agy_status = 'denegado', agy_approved_by = ?, agy_execution_log = CONCAT(COALESCE(agy_execution_log, ''), ?), agy_updated_at = NOW() WHERE id = ?`,
         [rejectedBy, logLine, ticketId]
     );
 
     await ticketService.addTicketMessage(ticketId, {
-        senderType: 'tech',
-        senderName: rejectedBy,
+        senderType: 'tech', senderName: rejectedBy,
         message: `❌ Plan de Ejecución AGY v${ticket.agy_plan_version || 1} denegado.${reason ? ` Motivo: ${reason}` : ''}`
     });
 
@@ -332,9 +306,4 @@ async function rejectTicketAgyPlan(ticketId, { rejectedBy = 'SuperAdmin', reason
     return updated;
 }
 
-module.exports = {
-    ensureAgyFlowSchema,
-    startTicketAgyPlanning,
-    executeApprovedTicketAgyPlan,
-    rejectTicketAgyPlan
-};
+module.exports = { ensureAgyFlowSchema, startTicketAgyPlanning, executeApprovedTicketAgyPlan, rejectTicketAgyPlan };
