@@ -1,6 +1,6 @@
 /**
  * Evaluador matemático seguro para CommandPalette (Ctrl+K).
- * - Soporta: +, -, *, /, x, X, ×, ÷, %, paréntesis () y decimales (. o ,).
+ * - Soporta: +, -, *, /, ^, x, X, ×, ÷, %, paréntesis () y decimales (. o ,).
  * - Tolera espacios arbitrarios: '15*8', '15 * 8', '15* 8', '15 *8'.
  * - Tolera prefijo o sufijo '=': '=278+177+75' o '278+177+75='.
  * - Calcula porcentajes comerciales directamente en el árbol sintáctico:
@@ -20,16 +20,17 @@ export function evaluateSafeMath(rawInput) {
     const hadEqualSign = str.startsWith('=') || str.endsWith('=');
     if (str.startsWith('=')) str = str.slice(1).trim();
     if (str.endsWith('=')) str = str.slice(0, -1).trim();
+    str = str.replace(/\$/g, '').trim();
     if (!str || !/\d/.test(str)) return null;
 
     // Whitelist estricta: solo dígitos, espacios, puntos/comas decimales y operadores válidos
-    if (!/^[0-9\s.,+*xX×÷/%()-]+$/.test(str)) return null;
+    if (!/^[0-9\s.,+*^xX×÷/%()-]+$/.test(str)) return null;
 
     // Debe contener al menos un operador/paréntesis o haber incluido '='
-    if (!/[+*xX×÷/%()-]/.test(str) && !hadEqualSign) return null;
+    if (!/[+*^xX×÷/%()-]/.test(str) && !hadEqualSign) return null;
 
     // Si termina en un operador binario incompleto (ej: '15 +') o '(' incompleto, esperar al siguiente número
-    if (/[+*xX×÷/-]\s*$/.test(str) || /\(\s*$/.test(str)) return null;
+    if (/[+*^xX×÷/-]\s*$/.test(str) || /\(\s*$/.test(str)) return null;
 
     // Normalizar operadores de multiplicación y división
     str = str.replace(/[xX×]/g, '*').replace(/÷/g, '/');
@@ -71,7 +72,7 @@ export function evaluateSafeMath(rawInput) {
             rawTokens.push({ type: 'number', value: num });
             continue;
         }
-        if ('+-*/%()'.includes(ch)) {
+        if ('+-*/^%()'.includes(ch)) {
             rawTokens.push({ type: 'operator', value: ch });
             i++;
             continue;
@@ -111,17 +112,8 @@ export function evaluateSafeMath(rawInput) {
     const peek = () => tokens[pos];
     const consume = () => tokens[pos++];
 
-    const parseFactor = () => {
+    const parsePrimary = () => {
         if (!peek()) return null;
-        if (peek().value === '+') {
-            consume();
-            return parseFactor();
-        }
-        if (peek().value === '-') {
-            consume();
-            const factor = parseFactor();
-            return factor ? { value: -factor.value, isPercent: factor.isPercent } : null;
-        }
         if (peek().value === '(') {
             consume();
             const val = parseExpression();
@@ -148,6 +140,32 @@ export function evaluateSafeMath(rawInput) {
             return { value: val, isPercent };
         }
         return null;
+    };
+
+    const parsePower = () => {
+        let base = parsePrimary();
+        if (!base) return null;
+        if (peek() && peek().value === '^') {
+            consume();
+            const exp = parseFactor();
+            if (!exp) return null;
+            return { value: Math.pow(base.value, exp.value), isPercent: false };
+        }
+        return base;
+    };
+
+    const parseFactor = () => {
+        if (!peek()) return null;
+        if (peek().value === '+') {
+            consume();
+            return parseFactor();
+        }
+        if (peek().value === '-') {
+            consume();
+            const factor = parseFactor();
+            return factor ? { value: -factor.value, isPercent: factor.isPercent } : null;
+        }
+        return parsePower();
     };
 
     const parseTerm = () => {
@@ -195,6 +213,52 @@ export function evaluateSafeMath(rawInput) {
 
     // Redondear a máximo 6 decimales sin ceros superfluos
     return Math.round(result * 1000000) / 1000000;
+}
+
+/**
+ * Devuelve el resultado matemático junto con el desglose comercial (IVA 13% El Salvador)
+ * para renderizar los 4 recuadros de Calculadora Instantánea en CommandPalette (Ctrl+K):
+ * - + IVA 13%
+ * - IVA (13%)
+ * - NETO (SIN IVA)
+ * - IVA DESGLOSADO
+ */
+export function evaluateSafeMathDetails(rawInput) {
+    const numericResult = evaluateSafeMath(rawInput);
+    if (numericResult === null) return null;
+
+    let expr = String(rawInput || '').trim();
+    if (expr.startsWith('=')) expr = expr.slice(1).trim();
+    if (expr.endsWith('=')) expr = expr.slice(0, -1).trim();
+
+    const rounded = Math.round((numericResult + Number.EPSILON) * 10000) / 10000;
+    const formatted = rounded.toLocaleString('en-US', {
+        minimumFractionDigits: Number.isInteger(rounded) ? 0 : 2,
+        maximumFractionDigits: 4
+    });
+
+    const currency = rounded.toLocaleString('en-US', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    });
+
+    const iva13 = Math.round((rounded * 0.13 + Number.EPSILON) * 100) / 100;
+    const plusIva = Math.round((rounded * 1.13 + Number.EPSILON) * 100) / 100;
+    const netFromIncluded = Math.round(((rounded / 1.13) + Number.EPSILON) * 100) / 100;
+    const ivaFromIncluded = Math.round(((rounded - netFromIncluded) + Number.EPSILON) * 100) / 100;
+
+    return {
+        expression: expr,
+        raw: rounded,
+        formatted,
+        currency,
+        commercial: {
+            plusIva: plusIva.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+            iva13: iva13.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+            netFromIncluded: netFromIncluded.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+            ivaFromIncluded: ivaFromIncluded.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        }
+    };
 }
 
 /**

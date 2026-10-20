@@ -1,17 +1,18 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Search, CornerDownLeft, Calculator, Ticket, Camera } from 'lucide-react';
+import { Search, CornerDownLeft, Calculator, Ticket, Camera, Copy, Check, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { useMenuItems, GROUP_MODULE_MAP, ITEM_MODULE_MAP } from '../../hooks/useMenuItems';
 import { useAuth } from '../../context/AuthContext';
 import { useTickets } from '../../context/TicketContext';
 import { useSafeNavigate } from '../../hooks/useSafeNavigate';
-import { evaluateSafeMath, copyTextToClipboard } from '../../utils/calculatorUtils';
+import { evaluateSafeMathDetails, copyTextToClipboard } from '../../utils/calculatorUtils';
 
 const TICKET_KEYWORDS = ['ticket', 'tickets', 'soporte', 'problema', 'requerimiento', 'ayuda', 'bug', 'reportar'];
 
 const CommandPalette = ({ isOpen, onClose }) => {
     const [search, setSearch] = useState('');
     const [selectedIndex, setSelectedIndex] = useState(0);
+    const [copiedLabel, setCopiedLabel] = useState(null);
     const inputRef = useRef(null);
     const listRef = useRef(null);
     const { safeNavigate } = useSafeNavigate();
@@ -90,7 +91,7 @@ const CommandPalette = ({ isOpen, onClose }) => {
         return results;
     }, [flatItems, permissions, isSuperAdmin, user?.enabled_modules, user?.company_id, user?.company_name]);
 
-    const calcResult = useMemo(() => evaluateSafeMath(search), [search]);
+    const calcResult = useMemo(() => evaluateSafeMathDetails(search), [search]);
     const hasCalc = calcResult !== null;
 
     const ticketMatch = useMemo(() => {
@@ -118,6 +119,7 @@ const CommandPalette = ({ isOpen, onClose }) => {
         if (isOpen) {
             setSearch('');
             setSelectedIndex(0);
+            setCopiedLabel(null);
             setTimeout(() => inputRef.current?.focus(), 50);
         }
     }, [isOpen]);
@@ -133,12 +135,16 @@ const CommandPalette = ({ isOpen, onClose }) => {
         openQuickTicket({ subject: subjectText, autoCapture: true });
     };
 
-    const handleCopyCalc = async (val) => {
+    const handleCopyCalcValue = async (val, label = 'Resultado', closeAfter = false) => {
         if (val === null || val === undefined) return;
-        const textVal = val.toString();
-        await copyTextToClipboard(textVal);
-        toast.success(`Resultado ${textVal} copiado al portapapeles`);
-        onClose();
+        const cleanText = String(val).replace(/,/g, '');
+        await copyTextToClipboard(cleanText);
+        setCopiedLabel(label);
+        toast.success(`${label} copiado: ${val}`);
+        setTimeout(() => setCopiedLabel(null), 1800);
+        if (closeAfter) {
+            onClose();
+        }
     };
 
     useEffect(() => {
@@ -161,7 +167,7 @@ const CommandPalette = ({ isOpen, onClose }) => {
                     if (hasTicketShortcut && selectedIndex === 0) {
                         handleTriggerQuickTicket();
                     } else if (hasCalc && selectedIndex === (hasTicketShortcut ? 1 : 0)) {
-                        handleCopyCalc(calcResult);
+                        handleCopyCalcValue(calcResult.formatted, 'Resultado');
                     } else {
                         const itemIndex = selectedIndex - specialSlots;
                         if (filteredItems[itemIndex]) handleSelectItem(filteredItems[itemIndex].path);
@@ -188,28 +194,123 @@ const CommandPalette = ({ isOpen, onClose }) => {
     const calcSlotIndex = hasTicketShortcut ? 1 : 0;
 
     return (
-        <div data-ticket-modal="true" className="fixed inset-0 z-[100] flex items-start justify-center pt-[15vh]" onClick={onClose}>
+        <div data-ticket-modal="true" className="fixed inset-0 z-[100] flex items-start justify-center pt-[12vh] px-4" onClick={onClose}>
             <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-            <div className="relative w-full max-w-lg bg-[#0f172a] border border-slate-700/50 rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 fade-in duration-200" onClick={e => e.stopPropagation()}>
+            <div className="relative w-full max-w-[620px] bg-[#0f172a] border border-slate-700/60 rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 fade-in duration-200" onClick={e => e.stopPropagation()}>
                 <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-800">
-                    <Search size={18} className="text-slate-500 shrink-0" />
+                    {hasCalc ? (
+                        <Calculator size={20} className="text-emerald-400 shrink-0" />
+                    ) : (
+                        <Search size={19} className="text-emerald-400 shrink-0" />
+                    )}
                     <input
                         ref={inputRef}
                         type="text"
                         value={search}
                         onChange={e => setSearch(e.target.value)}
-                        placeholder="Buscar menú o escribe 'ticket' para reportar a soporte..."
-                        className="flex-1 bg-transparent text-white text-sm placeholder:text-slate-500 focus:outline-none"
+                        placeholder="Buscar pantalla, calcular (ej. 1250*1.13) o escribe 'ticket'..."
+                        className="flex-1 bg-slate-900/60 border border-slate-700/70 focus:border-indigo-500/60 rounded-xl px-3.5 py-2 text-white text-sm font-medium placeholder:text-slate-500 focus:outline-none transition-colors"
                     />
-                    <kbd className="hidden sm:flex items-center gap-0.5 text-[10px] font-mono text-slate-500 bg-slate-800 px-1.5 py-0.5 rounded-md border border-slate-700">ESC</kbd>
+                    {search && (
+                        <button
+                            type="button"
+                            onClick={() => setSearch('')}
+                            className="text-slate-400 hover:text-white p-1 transition-colors cursor-pointer"
+                            title="Limpiar búsqueda"
+                        >
+                            <X size={16} />
+                        </button>
+                    )}
+                    <kbd className="hidden sm:flex items-center gap-0.5 text-[11px] font-bold font-mono text-slate-400 bg-slate-900 px-2 py-1 rounded-md border border-slate-700">ESC</kbd>
                 </div>
+
+                {hasCalc && calcResult && (
+                    <div
+                        data-index={calcSlotIndex}
+                        onMouseEnter={() => setSelectedIndex(calcSlotIndex)}
+                        className="px-4 pt-3 pb-1"
+                    >
+                        <div
+                            style={{
+                                borderRadius: '12px',
+                                background: 'linear-gradient(135deg, #1e1b4b 0%, #0f172a 100%)',
+                                color: '#fff',
+                                padding: '0.85rem 1rem',
+                                border: selectedIndex === calcSlotIndex
+                                    ? '1px solid rgba(129, 140, 248, 0.65)'
+                                    : '1px solid rgba(99, 102, 241, 0.35)'
+                            }}
+                        >
+                            <div className="flex items-center justify-between gap-3">
+                                <div>
+                                    <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-indigo-300">
+                                        <Calculator size={13} />
+                                        <span>Calculadora Instantánea</span>
+                                    </div>
+                                    <div className="text-xs text-slate-400 font-mono mt-1">
+                                        {calcResult.expression} =
+                                    </div>
+                                    <div className="text-2xl font-black tracking-tight text-white mt-0.5">
+                                        {calcResult.formatted}
+                                    </div>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => handleCopyCalcValue(calcResult.formatted, 'Resultado')}
+                                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-colors cursor-pointer shrink-0"
+                                >
+                                    {copiedLabel === 'Resultado' ? <Check size={14} /> : <Copy size={14} />}
+                                    <span>{copiedLabel === 'Resultado' ? 'Copiado' : 'Copiar'}</span>
+                                </button>
+                            </div>
+
+                            <div
+                                className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3 pt-2.5"
+                                style={{ borderTop: '1px solid rgba(255,255,255,0.1)' }}
+                            >
+                                <button
+                                    type="button"
+                                    onClick={() => handleCopyCalcValue(calcResult.commercial.plusIva, '+ IVA 13%')}
+                                    className="text-left px-2.5 py-1.5 rounded-md bg-white/[0.06] hover:bg-white/[0.12] transition-colors cursor-pointer border border-transparent hover:border-emerald-400/30"
+                                >
+                                    <span className="block text-[10px] text-slate-400 uppercase font-bold">+ IVA 13%</span>
+                                    <span className="text-[12.5px] font-bold text-emerald-300 font-mono">${calcResult.commercial.plusIva}</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => handleCopyCalcValue(calcResult.commercial.iva13, 'IVA (13%)')}
+                                    className="text-left px-2.5 py-1.5 rounded-md bg-white/[0.06] hover:bg-white/[0.12] transition-colors cursor-pointer border border-transparent hover:border-indigo-400/30"
+                                >
+                                    <span className="block text-[10px] text-slate-400 uppercase font-bold">IVA (13%)</span>
+                                    <span className="text-[12.5px] font-bold text-indigo-200 font-mono">${calcResult.commercial.iva13}</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => handleCopyCalcValue(calcResult.commercial.netFromIncluded, 'Neto (sin IVA)')}
+                                    className="text-left px-2.5 py-1.5 rounded-md bg-white/[0.06] hover:bg-white/[0.12] transition-colors cursor-pointer border border-transparent hover:border-amber-400/30"
+                                >
+                                    <span className="block text-[10px] text-slate-400 uppercase font-bold">Neto (sin IVA)</span>
+                                    <span className="text-[12.5px] font-bold text-amber-200 font-mono">${calcResult.commercial.netFromIncluded}</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => handleCopyCalcValue(calcResult.commercial.ivaFromIncluded, 'IVA Desglosado')}
+                                    className="text-left px-2.5 py-1.5 rounded-md bg-white/[0.06] hover:bg-white/[0.12] transition-colors cursor-pointer border border-transparent hover:border-slate-400/30"
+                                >
+                                    <span className="block text-[10px] text-slate-400 uppercase font-bold">IVA Desglosado</span>
+                                    <span className="text-[12.5px] font-bold text-slate-200 font-mono">${calcResult.commercial.ivaFromIncluded}</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 <div ref={listRef} className="max-h-[360px] overflow-y-auto custom-scrollbar p-2">
                     {search.trim() === '' ? (
                         <div className="px-4 py-6 text-center space-y-3">
                             <div>
                                 <p className="text-[11px] text-slate-400 font-medium">
-                                    Escribe para buscar cualquier opción del menú o escribe <strong className="text-indigo-400">ticket</strong>
+                                    Escribe para buscar cualquier opción del menú, calcular (ej. <strong className="text-emerald-400">2x2</strong>) o escribe <strong className="text-indigo-400">ticket</strong>
                                 </p>
                                 <p className="text-[10px] text-slate-500 mt-1">
                                     Atajo rápido de soporte con captura: <kbd className="font-mono bg-slate-800 px-1.5 py-0.5 rounded text-slate-300 border border-slate-700">Ctrl+Shift+K</kbd>
@@ -248,29 +349,6 @@ const CommandPalette = ({ isOpen, onClose }) => {
                                     </div>
                                     <div className="ml-auto flex items-center gap-1.5 shrink-0">
                                         <kbd className="hidden sm:inline-flex items-center text-[10px] font-mono text-indigo-300 bg-indigo-950/80 px-1.5 py-0.5 rounded border border-indigo-500/30">↵ Enter</kbd>
-                                    </div>
-                                </button>
-                            )}
-
-                            {hasCalc && (
-                                <button
-                                    type="button"
-                                    data-index={calcSlotIndex}
-                                    onClick={() => handleCopyCalc(calcResult)}
-                                    onMouseEnter={() => setSelectedIndex(calcSlotIndex)}
-                                    className={`relative w-full flex items-center gap-3 px-3 py-2.5 mb-1.5 rounded-xl transition-all duration-150 text-left overflow-hidden group select-none ${
-                                        selectedIndex === calcSlotIndex ? 'bg-slate-800/90 text-white border border-slate-700/80 shadow-md' : 'text-slate-300 hover:bg-slate-800/50 hover:text-white border border-transparent'
-                                    }`}
-                                >
-                                    {selectedIndex === calcSlotIndex && <div className="absolute left-0 top-1.5 bottom-1.5 w-1 bg-sky-400 rounded-r" />}
-                                    <div className="flex items-center justify-center w-8 h-8 rounded-lg shrink-0 bg-sky-500/20 text-sky-400 border border-sky-500/30">
-                                        <Calculator size={18} />
-                                    </div>
-                                    <div className="flex flex-col min-w-0">
-                                        <span className="text-[15px] font-bold text-white tracking-wide leading-tight">
-                                            {typeof calcResult === 'number' ? calcResult.toLocaleString('en-US', { maximumFractionDigits: 6 }) : calcResult}
-                                        </span>
-                                        <span className="text-[11px] text-slate-400">Copiar resultado al portapapeles</span>
                                     </div>
                                 </button>
                             )}
