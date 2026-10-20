@@ -348,6 +348,21 @@ const SalesTerminal = () => {
 
     const [customersCache, setCustomersCache] = useState({});
 
+    // Asegurar que el cliente seleccionado (por borrador o remisión) esté cargado en caché
+    useEffect(() => {
+        const cid = parseInt(customerId, 10);
+        if (!cid || customersCache[cid]) return;
+        let cancelled = false;
+        axios.get(`/api/customers/${cid}`)
+            .then(res => {
+                if (!cancelled && res.data?.id) {
+                    setCustomersCache(prev => ({ ...prev, [res.data.id]: res.data }));
+                }
+            })
+            .catch(() => {});
+        return () => { cancelled = true; };
+    }, [customerId, customersCache]);
+
     const loadCustomersOptions = useCallback(async (search, page) => {
         const { data } = await axios.get('/api/customers', {
             params: { search: search || undefined, page, limit: 50 }
@@ -1187,7 +1202,7 @@ const SalesTerminal = () => {
                 } else if (activeView === 'pago') {
                     handleProcessSaleRef.current();
                 } else if (tipoDte === '07' ? linkedDocs.length > 0 : (tipoDte === '05' ? (cart.length > 0 && linkedDocs.length > 0) : cart.length > 0)) {
-                    goToPayment();
+                    goToPaymentRef.current();
                 }
             }
             if (e.key === 'Enter' && isSuccessModalOpen) {
@@ -1231,7 +1246,7 @@ const SalesTerminal = () => {
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [cart.length, isProductModalOpen, isAuthModalOpen, isSuccessModalOpen, isFuelModalOpen, tipoDte, navigate, activeView, saleResult, linkedDocs.length, posAllowsDiscounts, canApplyGeneralDiscount, hasItemDiscounts]);
+    }, [cart.length, customerId, isProductModalOpen, isAuthModalOpen, isSuccessModalOpen, isFuelModalOpen, tipoDte, navigate, activeView, saleResult, linkedDocs.length, posAllowsDiscounts, canApplyGeneralDiscount, hasItemDiscounts]);
 
     // Detect if any modal or overlay dialog is active to prevent stealing focus
     const isAnyModalOpen = Boolean(
@@ -1354,6 +1369,10 @@ const SalesTerminal = () => {
 
         // Si hay cliente seleccionado, validar según tipo de DTE
         const customer = selectedCustomerData;
+        if (!customer) {
+            toast.error('Cargando datos del cliente seleccionado, intente nuevamente.');
+            return false;
+        }
         const missing = [];
 
         const rawActividad = customer.codigo_actividad ? String(customer.codigo_actividad).trim() : '';
@@ -1992,6 +2011,8 @@ const SalesTerminal = () => {
         processSale.mutate(saleData);
     };
 
+    const goToPaymentRef = useRef(goToPayment);
+    goToPaymentRef.current = goToPayment;
     const handleProcessSaleRef = useRef(handleProcessSale);
     handleProcessSaleRef.current = handleProcessSale;
     const handleCloseSuccessRef = useRef(handleCloseSuccess);
